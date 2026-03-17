@@ -269,6 +269,20 @@ Flag every hit that does not contain a `#NNN` issue reference. Orphaned TODOs ro
 - No platform-specific syscall imports in non-platform-specific files
 - Cross-platform build check passed (Step 1 item 10)
 
+### Commit Messages
+
+Run:
+```bash
+git log --oneline -20
+```
+
+Flag any commit message that:
+- Does not follow conventional commit format: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, `ci:`, `refactor:`, `perf:`, `security:`
+- Does not reference an issue number: `feat: add file output (#3)`
+- Mentions Claude, AI, LLM, Copilot, or any AI tool — commits represent the project's work, not the tool that produced it
+- Is vague: "fix stuff", "update code", "wip", "misc changes"
+- Mixes multiple concerns in one commit — each commit should be one logical change
+
 ---
 
 ## Step 4 — Output Format

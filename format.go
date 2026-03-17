@@ -18,7 +18,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -242,4 +244,249 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 	}
 	slices.Sort(extra)
 	return extra
+}
+
+// ---------------------------------------------------------------------------
+// CEF Formatter
+// ---------------------------------------------------------------------------
+
+// DefaultCEFFieldMapping maps common audit field names to standard CEF
+// extension keys. Consumers can override individual mappings via
+// [CEFFormatter.FieldMapping].
+var DefaultCEFFieldMapping = map[string]string{
+	"actor_id":   "suser",
+	"source_ip":  "src",
+	"request_id": "externalId",
+	"user_agent": "requestClientApplication",
+	"method":     "requestMethod",
+	"path":       "request",
+	"outcome":    "outcome",
+}
+
+// CEFFormatter serialises audit events in Common Event Format (CEF).
+//
+// The output format is:
+//
+//	CEF:0|{Vendor}|{Product}|{Version}|{eventType}|{description}|{severity}|{extensions}
+//
+// Header fields use pipe (|) as a delimiter. Extension values use
+// key=value pairs separated by spaces.
+//
+// # Escaping
+//
+// Header fields escape backslash and pipe: \ → \\, | → \|.
+// Extension values escape backslash, equals, newline, and CR:
+// \ → \\, = → \=, newline → \n (literal), CR → \r (literal).
+// See the CEF specification for details.
+//
+// # Severity
+//
+// Severity is determined by [CEFFormatter.SeverityFunc]. If nil, all
+// events default to severity 5 (medium). The consumer is responsible
+// for defining severity for their event types.
+type CEFFormatter struct {
+	// Vendor is the CEF header vendor field (e.g. "AxonOps").
+	Vendor string
+
+	// Product is the CEF header product field (e.g. "SchemaRegistry").
+	Product string
+
+	// Version is the CEF header product version field (e.g. "1.0").
+	Version string
+
+	// SeverityFunc maps event types to CEF severity (0-10). If nil,
+	// all events default to severity 5.
+	SeverityFunc func(eventType string) int
+
+	// DescriptionFunc maps event types to human-readable CEF
+	// descriptions. If nil, the event type name is used.
+	DescriptionFunc func(eventType string) string
+
+	// FieldMapping maps audit field names to CEF extension keys.
+	// If nil, [DefaultCEFFieldMapping] is used. Entries in this map
+	// override the defaults; unmapped fields use their original name.
+	FieldMapping map[string]string
+
+	// OmitEmpty controls whether zero-value fields are omitted from
+	// extensions.
+	OmitEmpty bool
+}
+
+// Format serialises a single audit event as a CEF line.
+func (f *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
+	severity := f.severity(eventType)
+	description := f.description(eventType)
+	mapping := f.fieldMapping()
+
+	var ext strings.Builder
+
+	// Timestamp as receipt time (epoch ms).
+	writeExtField(&ext, "rt", fmt.Sprintf("%d", ts.UnixMilli()))
+
+	// Event type as device action.
+	writeExtField(&ext, "act", cefEscapeExtValue(eventType))
+
+	// Duration if present.
+	if v, ok := fields["duration_ms"]; ok {
+		if d, ok := v.(time.Duration); ok {
+			writeExtField(&ext, "cn1", fmt.Sprintf("%d", d.Milliseconds()))
+			writeExtField(&ext, "cn1Label", "durationMs")
+		}
+	}
+
+	// All fields via mapping.
+	allKeys := allFieldKeysSorted(def, fields, f.OmitEmpty)
+	for _, k := range allKeys {
+		if k == "duration_ms" || k == "timestamp" || k == "event_type" {
+			continue
+		}
+		v := fields[k]
+		if f.OmitEmpty && isZeroValue(v) {
+			continue
+		}
+		extKey := mapFieldKey(k, mapping)
+		if err := validateExtKey(extKey); err != nil {
+			return nil, fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
+		}
+		writeExtField(&ext, extKey, formatFieldValue(v))
+	}
+
+	header := fmt.Sprintf("CEF:0|%s|%s|%s|%s|%s|%d|%s\n",
+		cefEscapeHeader(f.Vendor),
+		cefEscapeHeader(f.Product),
+		cefEscapeHeader(f.Version),
+		cefEscapeHeader(eventType),
+		cefEscapeHeader(description),
+		severity,
+		ext.String(),
+	)
+	return []byte(header), nil
+}
+
+func (f *CEFFormatter) severity(eventType string) int {
+	if f.SeverityFunc != nil {
+		return f.SeverityFunc(eventType)
+	}
+	return 5
+}
+
+func (f *CEFFormatter) description(eventType string) string {
+	if f.DescriptionFunc != nil {
+		return f.DescriptionFunc(eventType)
+	}
+	return eventType
+}
+
+func (f *CEFFormatter) fieldMapping() map[string]string {
+	if f.FieldMapping != nil {
+		return f.FieldMapping
+	}
+	return DefaultCEFFieldMapping
+}
+
+// cefEscapeHeader escapes characters in CEF header fields.
+// Header fields use pipe (|) as delimiter -- pipes and backslashes
+// MUST be escaped. Backslash is escaped first to avoid double-escaping.
+func cefEscapeHeader(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `|`, `\|`)
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	return s
+}
+
+// cefEscapeExtValue escapes characters in CEF extension values.
+// Backslash is escaped first to avoid double-escaping.
+func cefEscapeExtValue(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `=`, `\=`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	return s
+}
+
+// validExtKeyRe matches valid CEF extension key names.
+var validExtKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+// validateExtKey returns an error if the key is not a valid CEF
+// extension key name (must match [a-zA-Z0-9_]+).
+func validateExtKey(key string) error {
+	if !validExtKeyRe.MatchString(key) {
+		return fmt.Errorf("audit: cef: invalid extension key %q, must match [a-zA-Z0-9_]+", key)
+	}
+	return nil
+}
+
+// writeExtField writes a key=value pair to the extension string.
+func writeExtField(b *strings.Builder, key, value string) {
+	if b.Len() > 0 {
+		b.WriteByte(' ')
+	}
+	b.WriteString(key)
+	b.WriteByte('=')
+	b.WriteString(cefEscapeExtValue(value))
+}
+
+// mapFieldKey maps an audit field name to a CEF extension key using
+// the provided mapping. If no mapping exists, the field name is used
+// as-is.
+func mapFieldKey(fieldName string, mapping map[string]string) string {
+	if ext, ok := mapping[fieldName]; ok {
+		return ext
+	}
+	return fieldName
+}
+
+// formatFieldValue converts a field value to a string for CEF
+// extension values.
+func formatFieldValue(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case int:
+		return fmt.Sprintf("%d", val)
+	case int64:
+		return fmt.Sprintf("%d", val)
+	case float64:
+		return fmt.Sprintf("%g", val)
+	case time.Duration:
+		return fmt.Sprintf("%d", val.Milliseconds())
+	case time.Time:
+		return val.Format(time.RFC3339)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// allFieldKeysSorted returns all field keys from the EventDef
+// (required + optional) plus any extra fields, sorted alphabetically.
+func allFieldKeysSorted(def *EventDef, fields Fields, omitEmpty bool) []string {
+	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
+	var keys []string
+	for _, k := range def.Required {
+		seen[k] = true
+		keys = append(keys, k)
+	}
+	for _, k := range def.Optional {
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for k := range fields {
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	return keys
 }

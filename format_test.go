@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"testing/quick"
 	"time"
 
 	"github.com/axonops/go-audit"
@@ -251,4 +252,323 @@ func TestJSONFormatter_ExtraFieldsSorted(t *testing.T) {
 	aIdx := strings.Index(raw, `"alpha"`)
 	zIdx := strings.Index(raw, `"zebra"`)
 	assert.Less(t, aIdx, zIdx, "extra fields should be sorted")
+}
+
+// ---------------------------------------------------------------------------
+// CEFFormatter tests
+// ---------------------------------------------------------------------------
+
+func TestCEFFormatter_ValidHeader(t *testing.T) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	data, err := f.Format(testTime, "schema_register", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}, testDef)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.True(t, strings.HasPrefix(line, "CEF:0|TestVendor|TestProduct|1.0|schema_register|"))
+	assert.True(t, strings.HasSuffix(line, "\n"), "must end with newline")
+
+	// Should be a single line.
+	lines := strings.Split(strings.TrimSuffix(line, "\n"), "\n")
+	assert.Equal(t, 1, len(lines))
+}
+
+func TestCEFFormatter_DefaultSeverity(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	// Default severity is 5.
+	assert.Contains(t, string(data), "|ev|5|")
+}
+
+func TestCEFFormatter_CustomSeverity(t *testing.T) {
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		SeverityFunc: func(et string) int {
+			if et == "auth_failure" {
+				return 8
+			}
+			return 3
+		},
+	}
+	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "fail"}, &audit.EventDef{
+		Category: "security",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "|auth_failure|8|")
+}
+
+func TestCEFFormatter_DefaultDescription(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "my_event", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	// Default description is the event type itself.
+	assert.Contains(t, string(data), "|my_event|my_event|")
+}
+
+func TestCEFFormatter_CustomDescription(t *testing.T) {
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		DescriptionFunc: func(et string) string {
+			return "Custom: " + et
+		},
+	}
+	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "|Custom: ev|")
+}
+
+func TestCEFFormatter_ExtensionFields(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id"},
+	})
+	require.NoError(t, err)
+
+	line := string(data)
+	// actor_id maps to suser via DefaultCEFFieldMapping.
+	assert.Contains(t, line, "suser=alice")
+	assert.Contains(t, line, "outcome=success")
+}
+
+func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"actor_id": "customActor",
+			"outcome":  "result",
+		},
+	}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id"},
+	})
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "customActor=alice")
+	assert.Contains(t, line, "result=success")
+	assert.NotContains(t, line, "suser=")
+}
+
+func TestCEFFormatter_OmitEmpty(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1", OmitEmpty: true}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome": "ok",
+		"empty":   "",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"empty"},
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "empty=")
+}
+
+func TestCEFFormatter_DurationInExtensions(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":     "ok",
+		"duration_ms": 2500 * time.Millisecond,
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "cn1=2500")
+	assert.Contains(t, string(data), "cn1Label=durationMs")
+}
+
+// ---------------------------------------------------------------------------
+// CEF escaping tests (exhaustive)
+// ---------------------------------------------------------------------------
+
+func TestCEFEscapeHeader(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"pipe", "hello|world", `hello\|world`},
+		{"backslash", `hello\world`, `hello\\world`},
+		{"both", `a\b|c`, `a\\b\|c`},
+		{"newline stripped", "line1\nline2", "line1 line2"},
+		{"cr stripped", "line1\rline2", "line1 line2"},
+		{"clean", "hello", "hello"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := audit.CEFEscapeHeaderForTest(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCEFEscapeExtValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"equals", "a=b", `a\=b`},
+		{"backslash", `a\b`, `a\\b`},
+		{"newline", "a\nb", `a\nb`},
+		{"cr", "a\rb", `a\rb`},
+		{"all special", "a\\=b\nc\r", `a\\\=b\nc\r`},
+		{"clean", "hello", "hello"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := audit.CEFEscapeExtValueForTest(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCEFExtKeyValidation(t *testing.T) {
+	tests := []struct {
+		key   string
+		valid bool
+	}{
+		{"suser", true},
+		{"cn1Label", true},
+		{"custom_field", true},
+		{"field123", true},
+		{"has space", false},
+		{"has=equals", false},
+		{"has|pipe", false},
+		{"", false},
+		{"has.dot", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			err := audit.ValidateExtKeyForTest(tt.key)
+			if tt.valid {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestCEFEscapeExtValue_QuickCheck(t *testing.T) {
+	f := func(s string) bool {
+		escaped := audit.CEFEscapeExtValueForTest(s)
+		// No raw newlines or carriage returns in escaped output.
+		return !strings.Contains(escaped, "\n") && !strings.Contains(escaped, "\r")
+	}
+	if err := quick.Check(f, nil); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestCEFEscapeHeader_QuickCheck(t *testing.T) {
+	f := func(s string) bool {
+		escaped := audit.CEFEscapeHeaderForTest(s)
+		// No raw newlines, carriage returns, or unescaped pipes.
+		if strings.Contains(escaped, "\n") || strings.Contains(escaped, "\r") {
+			return false
+		}
+		// Check no unescaped pipe: every | must be preceded by \.
+		for i, ch := range escaped {
+			if ch == '|' && (i == 0 || escaped[i-1] != '\\') {
+				return false
+			}
+		}
+		return true
+	}
+	if err := quick.Check(f, nil); err != nil {
+		t.Error(err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CEF log injection prevention
+// ---------------------------------------------------------------------------
+
+func TestCEFFormatter_NewlineInjection(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome": "success\n{injected}",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	assert.Equal(t, 1, len(lines), "embedded newline must not produce a second CEF line")
+}
+
+func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "Bad|Vendor", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev|bad", audit.Fields{
+		"outcome": "ok",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	line := string(data)
+	// The vendor's pipe should be escaped in the header.
+	assert.Contains(t, line, `Bad\|Vendor`)
+	// The event type's pipe should be escaped in the header.
+	assert.Contains(t, line, `ev\|bad`)
+	// Single line.
+	lines := strings.Split(strings.TrimSuffix(line, "\n"), "\n")
+	assert.Equal(t, 1, len(lines))
+}
+
+func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"outcome": "bad key",
+		},
+	}
+	_, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome": "ok",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid extension key")
 }

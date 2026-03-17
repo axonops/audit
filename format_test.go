@@ -554,6 +554,157 @@ func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
 	assert.Equal(t, 1, len(lines))
 }
 
+// ---------------------------------------------------------------------------
+// Logger integration tests
+// ---------------------------------------------------------------------------
+
+func TestLogger_WithFormatter_Custom(t *testing.T) {
+	out := newMockOutput("test")
+	called := false
+	custom := &stubFormatter{
+		fn: func(ts time.Time, eventType string, fields audit.Fields, def *audit.EventDef) ([]byte, error) {
+			called = true
+			return []byte(`{"custom":true}` + "\n"), nil
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithFormatter(custom),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+	assert.True(t, called, "custom formatter should have been called")
+}
+
+type stubFormatter struct {
+	fn func(time.Time, string, audit.Fields, *audit.EventDef) ([]byte, error)
+}
+
+func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fields, def *audit.EventDef) ([]byte, error) {
+	return s.fn(ts, eventType, fields, def)
+}
+
+func TestLogger_DefaultJSONFormatter(t *testing.T) {
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	// Default formatter should produce valid JSON.
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(out.events[0], &m))
+	assert.Equal(t, "auth_failure", m["event_type"])
+}
+
+func TestLogger_CEFViaWithFormatter(t *testing.T) {
+	out := newMockOutput("test")
+	cef := &audit.CEFFormatter{
+		Vendor:  "TestCo",
+		Product: "TestApp",
+		Version: "2.0",
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithFormatter(cef),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	line := string(out.events[0])
+	assert.True(t, strings.HasPrefix(line, "CEF:0|TestCo|TestApp|2.0|auth_failure|"))
+}
+
+func TestLogger_WithFormatter_Nil(t *testing.T) {
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithFormatter(nil),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "formatter must not be nil")
+}
+
+// ---------------------------------------------------------------------------
+// CEF extension key validation
+// ---------------------------------------------------------------------------
+
+func TestCEFFormatter_FieldValueTypes(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":  "ok",
+		"count":    42,
+		"count64":  int64(100),
+		"ratio":    3.14,
+		"active":   true,
+		"inactive": false,
+		"dur":      2 * time.Second,
+		"when":     testTime,
+		"nilfield": nil,
+		"custom":   []string{"a", "b"},
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"count", "count64", "ratio", "active", "inactive", "dur", "when", "nilfield", "custom"},
+	})
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "count=42")
+	assert.Contains(t, line, "count64=100")
+	assert.Contains(t, line, "ratio=3.14")
+	assert.Contains(t, line, "active=true")
+	assert.Contains(t, line, "inactive=false")
+	assert.Contains(t, line, "dur=2000")
+	assert.Contains(t, line, "when=2026-03-17T12:00:00Z")
+}
+
+func TestJSONFormatter_WriteFieldError(t *testing.T) {
+	// A channel value cannot be marshalled — the formatter should
+	// return an error, not panic.
+	f := &audit.JSONFormatter{}
+	_, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome": "ok",
+		"bad":     make(chan struct{}),
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"bad"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json format")
+}
+
 func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 	f := &audit.CEFFormatter{
 		Vendor:  "V",

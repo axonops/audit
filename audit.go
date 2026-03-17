@@ -29,7 +29,6 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -67,9 +66,10 @@ type Logger struct {
 	cfg Config
 	// taxonomy is immutable after construction; no synchronisation
 	// needed for reads.
-	taxonomy *Taxonomy
-	outputs  []Output
-	metrics  Metrics
+	taxonomy  *Taxonomy
+	outputs   []Output
+	metrics   Metrics
+	formatter Formatter
 
 	// Async delivery.
 	ch        chan *auditEntry
@@ -118,6 +118,11 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
+	}
+
+	// Default formatter if WithFormatter was not called.
+	if l.formatter == nil {
+		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
 	}
 
 	if !cfg.Enabled {
@@ -408,7 +413,8 @@ func (l *Logger) processEntry(entry *auditEntry) {
 		}
 	}()
 
-	data, err := l.serialize(entry)
+	ts := time.Now()
+	data, err := l.serialize(entry, ts)
 	if err != nil {
 		slog.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
@@ -434,39 +440,11 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}
 }
 
-// serialize converts an audit entry to JSON bytes.
-// TODO(#2): replace with the full Formatter interface supporting JSON and CEF.
-func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
-	m := make(map[string]any, len(entry.fields)+3)
-
-	if l.cfg.OmitEmpty {
-		for k, v := range entry.fields {
-			if !isZeroValue(v) {
-				m[k] = v
-			}
-		}
-	} else {
-		def := l.taxonomy.Events[entry.eventType]
-		for _, f := range def.Required {
-			m[f] = entry.fields[f]
-		}
-		for _, f := range def.Optional {
-			m[f] = entry.fields[f]
-		}
-		for k, v := range entry.fields {
-			m[k] = v
-		}
-	}
-
-	// Framework-provided fields (overwrite consumer values).
-	m["timestamp"] = time.Now().Format(time.RFC3339Nano)
-	m["event_type"] = entry.eventType
-
-	data, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("audit: json marshal: %w", err)
-	}
-	return append(data, '\n'), nil
+// serialize delegates to the configured [Formatter] to produce the
+// wire-format bytes for an audit entry.
+func (l *Logger) serialize(entry *auditEntry, ts time.Time) ([]byte, error) {
+	def := l.taxonomy.Events[entry.eventType]
+	return l.formatter.Format(ts, entry.eventType, entry.fields, &def)
 }
 
 // validateFields checks that all required fields are present and no

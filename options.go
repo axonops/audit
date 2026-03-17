@@ -14,6 +14,8 @@
 
 package audit
 
+import "fmt"
+
 // Option configures a [Logger] during construction via [NewLogger].
 type Option func(*Logger) error
 
@@ -47,6 +49,19 @@ func WithTaxonomy(t Taxonomy) Option {
 func WithMetrics(m Metrics) Option {
 	return func(l *Logger) error {
 		l.metrics = m
+		return nil
+	}
+}
+
+// WithFormatter sets the event serialisation formatter. If not
+// provided, a [JSONFormatter] is created from the [Config]. Use this
+// to configure a [CEFFormatter] or a custom [Formatter] implementation.
+func WithFormatter(f Formatter) Option {
+	return func(l *Logger) error {
+		if f == nil {
+			return fmt.Errorf("audit: formatter must not be nil")
+		}
+		l.formatter = f
 		return nil
 	}
 }

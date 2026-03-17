@@ -29,7 +29,7 @@ type Fields = map[string]interface{}
 // EventDef defines a single audit event type in the taxonomy.
 type EventDef struct {
 	// Category is the taxonomy category this event belongs to
-	// (e.g. "write", "security"). It must match a key in
+	// (e.g. "write", "security"). It MUST match a key in
 	// [Taxonomy.Categories].
 	Category string
 
@@ -54,15 +54,17 @@ type EventDef struct {
 // "shutdown" lifecycle events, which are added automatically if not
 // already present.
 type Taxonomy struct {
-	// Version is the taxonomy schema version. Must be > 0.
+	// Version is the taxonomy schema version. MUST be > 0. Currently
+	// only version 1 is supported; higher values cause [WithTaxonomy]
+	// to return an error wrapping [ErrTaxonomyInvalid].
 	Version int
 
 	// Categories maps category names to the event type names they
-	// contain. Every event type must appear in exactly one category.
+	// contain. Every event type MUST appear in exactly one category.
 	Categories map[string][]string
 
 	// Events maps event type names to their definitions. Every event
-	// type listed in Categories must have a corresponding entry here.
+	// type listed in Categories MUST have a corresponding entry here.
 	Events map[string]EventDef
 
 	// DefaultEnabled lists category names that are enabled at startup.

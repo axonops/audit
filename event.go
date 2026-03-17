@@ -26,9 +26,10 @@ type EventType struct {
 	logger *Logger
 }
 
-// Audit emits an audit event using this handle's event type. It is
-// equivalent to calling logger.Audit(eventType, fields) with the
-// handle's event type name.
+// Audit emits an audit event using this handle's event type. It
+// returns [ErrBufferFull] if the buffer is full, [ErrClosed] if the
+// logger is shut down, or a validation error if required fields are
+// missing.
 func (e *EventType) Audit(fields Fields) error {
 	return e.logger.Audit(e.name, fields)
 }
@@ -45,6 +46,7 @@ type auditEntry struct {
 	fields    Fields
 }
 
-// ErrHandleNotFound is returned by [Logger.Handle] when the requested
-// event type is not registered in the taxonomy.
+// ErrHandleNotFound is returned by [Logger.Handle], and wrapped in
+// the panic value of [Logger.MustHandle], when the requested event
+// type is not registered in the taxonomy.
 var ErrHandleNotFound = errors.New("audit: event type not found")

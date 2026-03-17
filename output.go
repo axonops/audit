@@ -14,15 +14,20 @@
 
 package audit
 
-// Output is the interface that audit event destinations must implement.
+// Output is the interface that audit event destinations MUST implement.
 // All outputs receive pre-serialised bytes (JSON or CEF). The library
 // provides built-in implementations for stdout, file, syslog, and webhook.
 type Output interface {
 	// Write sends a single serialised audit event to the output.
-	// data is a complete, newline-terminated byte slice.
+	// data is a complete, newline-terminated byte slice. Write is
+	// called from a single goroutine; concurrent calls from the
+	// library will not occur. Implementers MAY assume single-caller
+	// access.
 	Write(data []byte) error
 
-	// Close flushes any buffered data and releases resources.
+	// Close flushes any buffered data and releases resources. The
+	// library guarantees Write will not be called after Close. Close
+	// is called exactly once by [Logger.Close].
 	Close() error
 
 	// Name returns a human-readable identifier for the output,

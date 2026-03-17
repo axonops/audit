@@ -37,8 +37,10 @@ func WithTaxonomy(t Taxonomy) Option {
 	}
 }
 
-// WithMetrics sets the metrics recorder for the logger. If not set or
-// set to nil, metrics are silently discarded.
+// WithMetrics sets the metrics recorder for the logger. If m is nil,
+// or if WithMetrics is not called, metrics are silently discarded.
+// Implementations MUST be safe for concurrent calls from the drain
+// goroutine.
 func WithMetrics(m Metrics) Option {
 	return func(l *Logger) error {
 		l.metrics = m
@@ -48,7 +50,8 @@ func WithMetrics(m Metrics) Option {
 
 // WithOutputs sets the output destinations for the logger. Events are
 // fanned out to all provided outputs. If no outputs are configured,
-// events are validated and filtered but not delivered anywhere.
+// events are validated and filtered but silently discarded. This is
+// useful for testing but SHOULD NOT be used in production.
 func WithOutputs(outputs ...Output) Option {
 	return func(l *Logger) error {
 		l.outputs = outputs

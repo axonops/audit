@@ -24,7 +24,8 @@ import "time"
 // OpenTelemetry, etc.). Consumers wire their own.
 type Metrics interface {
 	// RecordEvent records an event delivery attempt to the named output.
-	// status is "success" or "error".
+	// status is always one of the string literals "success" or "error";
+	// implementers MAY assume no other value is passed.
 	RecordEvent(output, status string)
 
 	// RecordOutputError records a write error on the named output.

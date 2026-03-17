@@ -51,20 +51,25 @@ var ErrConfigInvalid = errors.New("audit: config validation failed")
 
 // Config holds configuration for the audit [Logger].
 type Config struct {
-	// Version is the config schema version. Required; must be > 0.
+	// Version is the config schema version. REQUIRED. MUST be > 0;
+	// the zero value causes [NewLogger] to return an error.
 	Version int
 
-	// Enabled controls whether audit logging is active. When false,
-	// [Logger.Audit] returns nil immediately without validation or
-	// enqueuing.
+	// Enabled controls whether audit logging is active. When false
+	// (the zero value), [NewLogger] returns a no-op logger that
+	// discards all events.
 	Enabled bool
 
 	// BufferSize is the async channel capacity. Zero means
-	// [DefaultBufferSize] (10,000).
+	// [DefaultBufferSize] (10,000). Values above [MaxBufferSize]
+	// (1,000,000) cause [NewLogger] to return an error.
 	BufferSize int
 
 	// DrainTimeout is the maximum time [Logger.Close] waits for
 	// pending events to flush. Zero means [DefaultDrainTimeout] (5s).
+	// Values above [MaxDrainTimeout] (60s) cause [NewLogger] to
+	// return an error. Setting this too low on a high-throughput
+	// system will cause events to be lost at shutdown.
 	DrainTimeout time.Duration
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are

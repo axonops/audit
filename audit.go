@@ -47,8 +47,10 @@ var (
 	// been closed.
 	ErrClosed = errors.New("audit: logger is closed")
 
-	// ErrBufferFull is returned when the async buffer is at capacity
-	// and the event cannot be enqueued.
+	// ErrBufferFull is returned by [Logger.Audit] when the async buffer
+	// is at capacity and the event is dropped. Callers SHOULD treat
+	// this as a drop notification. Increasing [Config.BufferSize] or
+	// reducing event emission rate will reduce frequency.
 	ErrBufferFull = errors.New("audit: buffer full")
 )
 
@@ -84,8 +86,12 @@ type Logger struct {
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
-// and options. A taxonomy must be provided via [WithTaxonomy];
-// otherwise NewLogger returns an error.
+// and options. A taxonomy MUST be provided via [WithTaxonomy];
+// NewLogger returns an error if none is supplied.
+//
+// When [Config.Enabled] is false, NewLogger returns a valid no-op
+// logger. All [Logger.Audit] calls return nil immediately without
+// validation or delivery.
 //
 // NewLogger validates both the configuration and the taxonomy at
 // startup, failing fast with clear errors for any problems.
@@ -128,9 +134,9 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
 //
-// Audit returns [ErrBufferFull] if the async buffer is at capacity,
-// [ErrClosed] if the logger has been closed, or a descriptive error
-// for validation failures.
+// Audit returns [ErrBufferFull] if the async buffer is at capacity
+// (the event is dropped), [ErrClosed] if the logger has been closed,
+// or a descriptive error for validation failures.
 func (l *Logger) Audit(eventType string, fields Fields) error {
 	if !l.cfg.Enabled {
 		return nil
@@ -177,12 +183,14 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 	}
 }
 
-// Close shuts down the logger gracefully. It signals the drain
-// goroutine to stop, waits up to [Config.DrainTimeout] for pending
-// events to flush, then closes all outputs in sequence.
+// Close shuts down the logger gracefully. Close MUST be called when the
+// logger is no longer needed; failing to call Close leaks the drain
+// goroutine and loses all buffered events.
 //
-// If [Logger.EmitStartup] was called, Close automatically emits a
-// shutdown event before draining.
+// Close signals the drain goroutine to stop, waits up to
+// [Config.DrainTimeout] for pending events to flush, then closes all
+// outputs in sequence. If [Logger.EmitStartup] was called, Close
+// automatically emits a shutdown event before draining.
 //
 // Close is idempotent — subsequent calls return nil.
 func (l *Logger) Close() error {
@@ -228,7 +236,8 @@ func (l *Logger) waitForDrain() {
 }
 
 // EnableCategory enables all events in the named category. The
-// category must exist in the registered taxonomy.
+// category MUST exist in the registered taxonomy. Per-event overrides
+// via [Logger.DisableEvent] take precedence over category state.
 func (l *Logger) EnableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
@@ -240,8 +249,8 @@ func (l *Logger) EnableCategory(category string) error {
 }
 
 // DisableCategory disables all events in the named category. The
-// category must exist in the registered taxonomy. Per-event overrides
-// via [Logger.EnableEvent] take precedence.
+// category MUST exist in the registered taxonomy. Per-event overrides
+// via [Logger.EnableEvent] take precedence over category state.
 func (l *Logger) DisableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
@@ -253,8 +262,8 @@ func (l *Logger) DisableCategory(category string) error {
 }
 
 // EnableEvent enables a specific event type regardless of its
-// category's state. The event type must exist in the registered
-// taxonomy.
+// category's state. The event type MUST exist in the registered
+// taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) EnableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
@@ -266,8 +275,8 @@ func (l *Logger) EnableEvent(eventType string) error {
 }
 
 // DisableEvent disables a specific event type regardless of its
-// category's state. The event type must exist in the registered
-// taxonomy.
+// category's state. The event type MUST exist in the registered
+// taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) DisableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
@@ -289,7 +298,9 @@ func (l *Logger) Handle(eventType string) (*EventType, error) {
 }
 
 // MustHandle returns an [EventType] handle for the named event type.
-// It panics if the event type is not registered.
+// It panics with an error wrapping [ErrHandleNotFound] if the event
+// type is not registered. Use [Logger.Handle] to receive the error
+// instead of panicking.
 func (l *Logger) MustHandle(eventType string) *EventType {
 	h, err := l.Handle(eventType)
 	if err != nil {

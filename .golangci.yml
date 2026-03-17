@@ -1,0 +1,113 @@
+# golangci-lint configuration for go-audit
+# See https://golangci-lint.run/usage/configuration/
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    # Default linters
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Additional required linters
+    - errorlint     # correct error wrapping
+    - gofmt         # formatting
+    - goimports     # import grouping
+    - revive        # comprehensive Go linter
+    - gocritic      # opinionated checks
+    - gocyclo       # cyclomatic complexity
+    - gocognit      # cognitive complexity
+    - godot         # godoc comment periods
+    - godox         # detect TODO/FIXME without issue refs
+    - prealloc      # slice preallocation
+    - unconvert     # unnecessary type conversions
+    - misspell      # spelling
+    - nolintlint    # nolint directive hygiene
+    - exportloopref # loop variable capture
+    - bodyclose     # HTTP response body close
+    - nilerr        # returning nil when err is non-nil
+    - tparallel     # test parallelism
+    - thelper       # test helper detection
+    - copyloopvar   # loop variable copy
+
+linters-settings:
+  gocyclo:
+    min-complexity: 10
+
+  gocognit:
+    min-complexity: 15
+
+  godox:
+    keywords:
+      - FIXME
+      - BUG
+      - HACK
+    # TODO with issue refs (e.g. TODO(#2)) are allowed.
+
+  revive:
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+        disabled: true  # functional options pattern uses unused params
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  errorlint:
+    errorf: true
+    asserts: true
+    comparison: true
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+  govet:
+    enable-all: true
+
+issues:
+  exclude-rules:
+    # Test files are allowed to use dot imports for testify.
+    - path: _test\.go
+      linters:
+        - revive
+      text: "dot-imports"
+
+    # Test files can have longer functions.
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - gocognit
+
+    # Example test functions don't need to check all errors.
+    - path: example_test\.go
+      linters:
+        - errcheck
+
+  max-issues-per-linter: 0
+  max-same-issues: 0

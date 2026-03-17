@@ -15,8 +15,9 @@
 package audit
 
 // Output is the interface that audit event destinations MUST implement.
-// All outputs receive pre-serialised bytes (JSON or CEF). The library
-// provides built-in implementations for stdout, file, syslog, and webhook.
+// All outputs receive pre-serialised bytes (currently JSON; CEF support
+// is planned -- see issue #2). The library will provide built-in
+// implementations for stdout, file, syslog, and webhook.
 type Output interface {
 	// Write sends a single serialised audit event to the output.
 	// data is a complete, newline-terminated byte slice. Write is

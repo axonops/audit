@@ -24,7 +24,7 @@ import (
 
 // Fields is a typed alias for audit event field maps. Consumers pass
 // field values as Fields to [Logger.Audit].
-type Fields = map[string]interface{}
+type Fields = map[string]any
 
 // EventDef defines a single audit event type in the taxonomy.
 type EventDef struct {
@@ -69,7 +69,9 @@ type Taxonomy struct {
 
 	// DefaultEnabled lists category names that are enabled at startup.
 	// Events in categories not listed here are silently discarded
-	// unless explicitly enabled at runtime.
+	// unless explicitly enabled at runtime via [Logger.EnableCategory].
+	// An empty slice means all non-lifecycle categories are disabled;
+	// all events will be silently discarded until enabled at runtime.
 	DefaultEnabled []string
 }
 
@@ -159,7 +161,7 @@ func validateTaxonomy(t Taxonomy) error {
 // checkTaxonomyVersion validates the taxonomy version field.
 func checkTaxonomyVersion(t Taxonomy) []string {
 	if t.Version == 0 {
-		return []string{"taxonomy version is required — set version: 1"}
+		return []string{"taxonomy version is required -- set version: 1"}
 	}
 	if t.Version > currentTaxonomyVersion {
 		return []string{fmt.Sprintf(

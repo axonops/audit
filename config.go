@@ -20,28 +20,37 @@ import (
 	"time"
 )
 
-const (
-	// ValidationStrict rejects unknown fields with an error.
-	// This is the default validation mode.
-	ValidationStrict = "strict"
+// ValidationMode controls how [Logger.Audit] handles unknown fields
+// (fields not listed in the event's Required or Optional lists).
+type ValidationMode string
 
-	// ValidationWarn logs a warning for unknown fields but accepts them.
-	ValidationWarn = "warn"
+const (
+	// ValidationStrict rejects unknown fields with an error; it is the
+	// default when [Config.ValidationMode] is empty.
+	ValidationStrict ValidationMode = "strict"
+
+	// ValidationWarn logs a warning for unknown fields via [log/slog]
+	// but accepts the event.
+	ValidationWarn ValidationMode = "warn"
 
 	// ValidationPermissive silently accepts unknown fields.
-	ValidationPermissive = "permissive"
+	ValidationPermissive ValidationMode = "permissive"
 
 	// DefaultBufferSize is the default async channel capacity.
 	DefaultBufferSize = 10_000
 
 	// MaxBufferSize is the maximum allowed async channel capacity.
-	// This prevents accidental memory exhaustion from misconfiguration.
+	// Values above this limit cause [NewLogger] to return an error
+	// wrapping [ErrConfigInvalid].
 	MaxBufferSize = 1_000_000
 
 	// DefaultDrainTimeout is the default graceful shutdown deadline.
 	DefaultDrainTimeout = 5 * time.Second
 
 	// MaxDrainTimeout is the maximum allowed graceful shutdown deadline.
+	// Values above this limit cause [NewLogger] to return an error
+	// wrapping [ErrConfigInvalid]. Setting DrainTimeout too low on a
+	// high-throughput system causes events to be lost at shutdown.
 	MaxDrainTimeout = 60 * time.Second
 )
 
@@ -51,8 +60,11 @@ var ErrConfigInvalid = errors.New("audit: config validation failed")
 
 // Config holds configuration for the audit [Logger].
 type Config struct {
-	// Version is the config schema version. REQUIRED. MUST be > 0;
-	// the zero value causes [NewLogger] to return an error.
+	// Version is the config schema version. MUST be > 0; the zero
+	// value causes [NewLogger] to return an error wrapping
+	// [ErrConfigInvalid]. Set to 1 for all current consumers; this
+	// field enables forward-compatible migrations when the config
+	// schema changes in future library versions.
 	Version int
 
 	// Enabled controls whether audit logging is active. When false
@@ -74,14 +86,15 @@ type Config struct {
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are
 	// included in serialised output. When true, only non-zero fields
-	// are serialised. When false, all registered fields are present
-	// (some compliance regimes require this).
+	// are serialised. When false (the zero value), all registered
+	// fields are present. Consumers operating under compliance regimes
+	// that require all registered fields SHOULD leave this as false.
 	OmitEmpty bool
 
 	// ValidationMode controls how unknown fields are handled.
 	// One of [ValidationStrict], [ValidationWarn], or
 	// [ValidationPermissive]. Empty defaults to [ValidationStrict].
-	ValidationMode string
+	ValidationMode ValidationMode
 }
 
 // applyDefaults fills zero-valued fields with their documented defaults.

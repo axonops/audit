@@ -34,6 +34,13 @@ linters:
     - tparallel     # test parallelism
     - thelper       # test helper detection
     - copyloopvar   # loop variable copy
+    - exhaustive    # switch exhaustiveness on enums
+    - wrapcheck     # errors from external packages must be wrapped
+    - forcetypeassert # type assertions must use two-return form
+    - cyclop        # alternative complexity checker
+    - contextcheck  # context.Context passed and used correctly
+    - noctx         # http.NewRequest without context (future-proofs webhook)
+    - rowserrcheck  # sql.Rows.Err() checked (future-proofs)
 
 linters-settings:
   gocyclo:
@@ -41,6 +48,9 @@ linters-settings:
 
   gocognit:
     min-complexity: 15
+
+  cyclop:
+    max-complexity: 10
 
   godox:
     keywords:

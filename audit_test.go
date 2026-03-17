@@ -1071,6 +1071,24 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 	assert.False(t, hasActive, "OmitEmpty should omit false bool")
 }
 
+func TestLogger_Audit_OmitEmptyUnknownTypeIncluded(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true, ValidationMode: audit.ValidationPermissive}, out)
+
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"meta":     struct{}{},
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	ev := out.getEvent(0)
+	_, hasMeta := ev["meta"]
+	assert.True(t, hasMeta, "unknown types should be included when OmitEmpty is enabled")
+}
+
 // ---------------------------------------------------------------------------
 // Shutdown with nil app_name stored
 // ---------------------------------------------------------------------------
@@ -1131,6 +1149,41 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 
 	// Only the valid event should have been delivered.
 	assert.Equal(t, 1, out.eventCount())
+}
+
+type panicMarshaler struct{}
+
+func (panicMarshaler) MarshalJSON() ([]byte, error) {
+	panic("boom")
+}
+
+func TestLogger_Audit_DrainLoopRecoversFromPanic(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	// This field panics during JSON marshaling. The logger should recover
+	// and continue processing subsequent events.
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"bad":      panicMarshaler{},
+	})
+	require.NoError(t, err)
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "sentinel",
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	assert.Equal(t, 1, out.eventCount())
+	assert.Equal(t, "sentinel", out.getEvent(0)["actor_id"])
 }
 
 // ---------------------------------------------------------------------------

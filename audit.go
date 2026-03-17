@@ -33,7 +33,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -349,7 +348,7 @@ func (l *Logger) drainLoop(ctx context.Context) {
 		select {
 		case entry := <-l.ch:
 			if entry != nil {
-				l.processEntry(entry)
+				l.processEntrySafely(entry)
 			}
 		case <-ctx.Done():
 			l.drainRemaining()
@@ -365,12 +364,26 @@ func (l *Logger) drainRemaining() {
 		select {
 		case entry := <-l.ch:
 			if entry != nil {
-				l.processEntry(entry)
+				l.processEntrySafely(entry)
 			}
 		default:
 			return
 		}
 	}
+}
+
+// processEntrySafely ensures a malformed event cannot terminate the
+// drain goroutine.
+func (l *Logger) processEntrySafely(entry *auditEntry) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("audit: recovered panic in drain loop",
+				"event_type", entry.eventType,
+				"panic", r)
+		}
+	}()
+
+	l.processEntry(entry)
 }
 
 // processEntry serialises an audit entry and writes it to all outputs.
@@ -517,5 +530,39 @@ func isZeroValue(v interface{}) bool {
 	if v == nil {
 		return true
 	}
-	return reflect.ValueOf(v).IsZero()
+
+	switch x := v.(type) {
+	case string:
+		return x == ""
+	case bool:
+		return !x
+	case int:
+		return x == 0
+	case int8:
+		return x == 0
+	case int16:
+		return x == 0
+	case int32:
+		return x == 0
+	case int64:
+		return x == 0
+	case uint:
+		return x == 0
+	case uint8:
+		return x == 0
+	case uint16:
+		return x == 0
+	case uint32:
+		return x == 0
+	case uint64:
+		return x == 0
+	case uintptr:
+		return x == 0
+	case float32:
+		return x == 0
+	case float64:
+		return x == 0
+	default:
+		return false
+	}
 }

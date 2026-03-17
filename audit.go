@@ -14,7 +14,7 @@
 
 package audit
 
-// Architecture: async buffer → single drain goroutine → serialise → fan-out
+// Architecture: async buffer -> single drain goroutine -> serialise -> fan-out
 //
 // Audit() validates the event against the registered taxonomy, checks
 // the global filter, then enqueues the event to a buffered channel. A
@@ -33,8 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,6 +58,10 @@ var (
 // and delivers events asynchronously to configured [Output]
 // destinations.
 //
+// The library uses [log/slog] for internal diagnostics (buffer drops,
+// serialisation failures, output write errors). Consumers can configure
+// the slog default handler to control this output.
+//
 // A Logger is safe for concurrent use by multiple goroutines.
 type Logger struct {
 	cfg Config
@@ -69,9 +72,10 @@ type Logger struct {
 	metrics  Metrics
 
 	// Async delivery.
-	ch     chan *auditEntry
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ch        chan *auditEntry
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	drainDone chan struct{} // closed when drainLoop exits
 
 	// Shutdown state.
 	closeOnce      sync.Once
@@ -93,8 +97,9 @@ type Logger struct {
 // logger. All [Logger.Audit] calls return nil immediately without
 // validation or delivery.
 //
-// NewLogger validates both the configuration and the taxonomy at
-// startup, failing fast with clear errors for any problems.
+// NewLogger MUST NOT return a non-nil *Logger when cfg or the taxonomy
+// is invalid. Config version migration runs before validation; a zero
+// [Config.Version] returns an error wrapping [ErrConfigInvalid].
 func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	if err := migrateConfig(&cfg); err != nil {
 		return nil, err
@@ -112,7 +117,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	}
 
 	if l.taxonomy == nil {
-		return nil, fmt.Errorf("audit: taxonomy is required — use WithTaxonomy")
+		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
 	}
 
 	if !cfg.Enabled {
@@ -122,6 +127,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancel = cancel
 	l.ch = make(chan *auditEntry, cfg.BufferSize)
+	l.drainDone = make(chan struct{})
 	l.wg.Add(1)
 	go l.drainLoop(ctx)
 
@@ -145,6 +151,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return ErrClosed
 	}
 
+	// taxonomy is immutable after construction; safe to read without lock.
 	def, ok := l.taxonomy.Events[eventType]
 	if !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
@@ -192,7 +199,8 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 // outputs in sequence. If [Logger.EmitStartup] was called, Close
 // automatically emits a shutdown event before draining.
 //
-// Close is idempotent — subsequent calls return nil.
+// Close is idempotent -- subsequent calls return nil (or the same
+// error if an output failed to close on the first call).
 func (l *Logger) Close() error {
 	l.closeOnce.Do(func() {
 		l.closed.Store(true)
@@ -201,6 +209,9 @@ func (l *Logger) Close() error {
 			return
 		}
 
+		// Enqueue shutdown event before signalling the drain goroutine.
+		// The event is in the channel before cancel() fires, so
+		// drainRemaining will always process it.
 		if l.startupEmitted.Load() {
 			l.emitShutdown()
 		}
@@ -219,17 +230,11 @@ func (l *Logger) Close() error {
 }
 
 // waitForDrain waits for the drain goroutine to finish, with a
-// timeout. The helper goroutine always terminates because the drain
-// goroutine will exit once its context is cancelled.
+// timeout. No extra goroutine is spawned; we select on the drainDone
+// channel that drainLoop closes when it exits.
 func (l *Logger) waitForDrain() {
-	done := make(chan struct{})
-	go func() {
-		l.wg.Wait()
-		close(done)
-	}()
-
 	select {
-	case <-done:
+	case <-l.drainDone:
 	case <-time.After(l.cfg.DrainTimeout):
 		slog.Warn("audit: drain timed out, some events may be lost")
 	}
@@ -239,6 +244,7 @@ func (l *Logger) waitForDrain() {
 // category MUST exist in the registered taxonomy. Per-event overrides
 // via [Logger.DisableEvent] take precedence over category state.
 func (l *Logger) EnableCategory(category string) error {
+	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
@@ -252,6 +258,7 @@ func (l *Logger) EnableCategory(category string) error {
 // category MUST exist in the registered taxonomy. Per-event overrides
 // via [Logger.EnableEvent] take precedence over category state.
 func (l *Logger) DisableCategory(category string) error {
+	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
@@ -265,6 +272,7 @@ func (l *Logger) DisableCategory(category string) error {
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) EnableEvent(eventType string) error {
+	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
@@ -278,6 +286,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) DisableEvent(eventType string) error {
+	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
@@ -309,9 +318,16 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 	return h
 }
 
-// EmitStartup emits a startup lifecycle event. The "app_name" field is
-// required. Close will automatically emit a corresponding shutdown
-// event if EmitStartup was called, using the same app_name.
+// EmitStartup emits a startup lifecycle event. The "app_name" field
+// is required by the default lifecycle taxonomy; omitting it returns a
+// validation error. [Logger.Close] will automatically emit a
+// corresponding shutdown event if EmitStartup was called, using the
+// same app_name.
+//
+// EmitStartup MUST be called before [Logger.Close]; calling it after
+// returns [ErrClosed]. On a disabled logger (where [Config.Enabled] is
+// false), EmitStartup returns nil immediately and no shutdown event
+// will be emitted by Close.
 func (l *Logger) EmitStartup(fields Fields) error {
 	if appName, ok := fields["app_name"]; ok {
 		if s, ok := appName.(string); ok {
@@ -323,8 +339,12 @@ func (l *Logger) EmitStartup(fields Fields) error {
 }
 
 // emitShutdown enqueues a shutdown lifecycle event directly to the
-// channel, bypassing the closed check. It is called by Close before
-// the drain goroutine is signalled to stop.
+// channel, bypassing the closed check and field validation. This is
+// intentional: the framework controls the shutdown event's fields
+// and the logger is already in the process of shutting down.
+//
+// It is called by Close before the drain goroutine is signalled to
+// stop, ensuring the event is in the channel before cancel() fires.
 func (l *Logger) emitShutdown() {
 	appName := "unknown"
 	if v := l.startupAppName.Load(); v != nil {
@@ -345,6 +365,7 @@ func (l *Logger) emitShutdown() {
 // channel, serialises them, and fans out to all outputs.
 func (l *Logger) drainLoop(ctx context.Context) {
 	defer l.wg.Done()
+	defer close(l.drainDone)
 	for {
 		select {
 		case entry := <-l.ch:
@@ -374,7 +395,17 @@ func (l *Logger) drainRemaining() {
 }
 
 // processEntry serialises an audit entry and writes it to all outputs.
+// It recovers from panics to prevent a single bad event from killing
+// the drain goroutine and halting all audit delivery.
 func (l *Logger) processEntry(entry *auditEntry) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("audit: panic in processEntry",
+				"event_type", entry.eventType,
+				"panic", r)
+		}
+	}()
+
 	data, err := l.serialize(entry)
 	if err != nil {
 		slog.Error("audit: serialisation failed",
@@ -404,7 +435,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // serialize converts an audit entry to JSON bytes.
 // TODO(#2): replace with the full Formatter interface supporting JSON and CEF.
 func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
-	m := make(map[string]interface{}, len(entry.fields)+3)
+	m := make(map[string]any, len(entry.fields)+3)
 
 	if l.cfg.OmitEmpty {
 		for k, v := range entry.fields {
@@ -456,7 +487,7 @@ func checkRequiredFields(eventType string, def *EventDef, fields Fields) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	sort.Strings(missing)
+	slices.Sort(missing)
 	return fmt.Errorf("audit: event %q missing required fields: [%s]",
 		eventType, strings.Join(missing, ", "))
 }
@@ -485,7 +516,7 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		return nil
 	}
 
-	sort.Strings(unknown)
+	slices.Sort(unknown)
 	msg := fmt.Sprintf("audit: event %q has unknown fields: [%s]",
 		eventType, strings.Join(unknown, ", "))
 
@@ -511,11 +542,36 @@ func copyFields(fields Fields) Fields {
 	return cp
 }
 
-// isZeroValue reports whether v is a zero value for its type. It
-// handles nil, empty strings, zero numbers, and false booleans.
-func isZeroValue(v interface{}) bool {
+// isZeroValue reports whether v is a zero value for its type. It uses
+// a type switch for common types to avoid reflection overhead and
+// panics. Unknown types fall back to a non-nil check only.
+func isZeroValue(v any) bool {
 	if v == nil {
 		return true
 	}
-	return reflect.ValueOf(v).IsZero()
+	switch val := v.(type) {
+	case string:
+		return val == ""
+	case bool:
+		return !val
+	case int:
+		return val == 0
+	case int64:
+		return val == 0
+	case float64:
+		return val == 0
+	case int32:
+		return val == 0
+	case float32:
+		return val == 0
+	case uint:
+		return val == 0
+	case uint64:
+		return val == 0
+	default:
+		// For slices, maps, funcs, and other complex types, we only
+		// check nil. We do not use reflect to avoid panics on types
+		// like func or chan.
+		return false
+	}
 }

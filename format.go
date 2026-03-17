@@ -18,8 +18,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,16 +148,19 @@ func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
 	e.buf.WriteString(`"timestamp":`)
 	switch format {
 	case TimestampUnixMillis:
-		fmt.Fprintf(e.buf, "%d", ts.UnixMilli())
+		e.buf.WriteString(strconv.FormatInt(ts.UnixMilli(), 10))
 	default:
-		data, _ := json.Marshal(ts.Format(time.RFC3339Nano))
+		data, err := json.Marshal(ts.Format(time.RFC3339Nano))
+		if err != nil && e.err == nil {
+			e.err = err
+		}
 		e.buf.Write(data)
 	}
 }
 
 func (e *jsonEncoder) writeStringField(key, value string) {
 	e.writeComma()
-	fmt.Fprintf(e.buf, "%q:", key)
+	e.writeKey(key)
 	data, err := json.Marshal(value)
 	if err != nil && e.err == nil {
 		e.err = err
@@ -167,7 +170,17 @@ func (e *jsonEncoder) writeStringField(key, value string) {
 
 func (e *jsonEncoder) writeInt64Field(key string, value int64) {
 	e.writeComma()
-	fmt.Fprintf(e.buf, "%q:%d", key, value)
+	e.writeKey(key)
+	e.buf.WriteString(strconv.FormatInt(value, 10))
+}
+
+func (e *jsonEncoder) writeKey(key string) {
+	data, err := json.Marshal(key)
+	if err != nil && e.err == nil {
+		e.err = err
+	}
+	e.buf.Write(data)
+	e.buf.WriteByte(':')
 }
 
 func (e *jsonEncoder) writeField(key string, value any) {
@@ -182,7 +195,7 @@ func (e *jsonEncoder) writeField(key string, value any) {
 	}
 
 	e.writeComma()
-	fmt.Fprintf(e.buf, "%q:", key)
+	e.writeKey(key)
 	data, err := json.Marshal(value)
 	if err != nil && e.err == nil {
 		e.err = err
@@ -250,10 +263,9 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 // CEF Formatter
 // ---------------------------------------------------------------------------
 
-// DefaultCEFFieldMapping maps common audit field names to standard CEF
-// extension keys. Consumers can override individual mappings via
-// [CEFFormatter.FieldMapping].
-var DefaultCEFFieldMapping = map[string]string{
+// defaultCEFFieldMapping is the built-in mapping from audit field names
+// to CEF extension keys.
+var defaultCEFFieldMapping = map[string]string{
 	"actor_id":   "suser",
 	"source_ip":  "src",
 	"request_id": "externalId",
@@ -261,6 +273,18 @@ var DefaultCEFFieldMapping = map[string]string{
 	"method":     "requestMethod",
 	"path":       "request",
 	"outcome":    "outcome",
+}
+
+// DefaultCEFFieldMapping returns a copy of the built-in field mapping
+// from audit field names to standard CEF extension keys. Consumers can
+// use this as a base, add or override entries, and pass the result to
+// [CEFFormatter.FieldMapping].
+func DefaultCEFFieldMapping() map[string]string {
+	cp := make(map[string]string, len(defaultCEFFieldMapping))
+	for k, v := range defaultCEFFieldMapping {
+		cp[k] = v
+	}
+	return cp
 }
 
 // CEFFormatter serialises audit events in Common Event Format (CEF).
@@ -321,15 +345,15 @@ func (f *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def
 	var ext strings.Builder
 
 	// Timestamp as receipt time (epoch ms).
-	writeExtField(&ext, "rt", fmt.Sprintf("%d", ts.UnixMilli()))
+	writeExtField(&ext, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
 
-	// Event type as device action.
-	writeExtField(&ext, "act", cefEscapeExtValue(eventType))
+	// Event type as device action (writeExtField handles escaping).
+	writeExtField(&ext, "act", eventType)
 
 	// Duration if present.
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
-			writeExtField(&ext, "cn1", fmt.Sprintf("%d", d.Milliseconds()))
+			writeExtField(&ext, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
 			writeExtField(&ext, "cn1Label", "durationMs")
 		}
 	}
@@ -378,10 +402,18 @@ func (f *CEFFormatter) description(eventType string) string {
 }
 
 func (f *CEFFormatter) fieldMapping() map[string]string {
-	if f.FieldMapping != nil {
-		return f.FieldMapping
+	if f.FieldMapping == nil {
+		return defaultCEFFieldMapping
 	}
-	return DefaultCEFFieldMapping
+	// Merge consumer overrides with defaults.
+	merged := make(map[string]string, len(defaultCEFFieldMapping)+len(f.FieldMapping))
+	for k, v := range defaultCEFFieldMapping {
+		merged[k] = v
+	}
+	for k, v := range f.FieldMapping {
+		merged[k] = v
+	}
+	return merged
 }
 
 // cefEscapeHeader escapes characters in CEF header fields.
@@ -396,23 +428,34 @@ func cefEscapeHeader(s string) string {
 }
 
 // cefEscapeExtValue escapes characters in CEF extension values.
-// Backslash is escaped first to avoid double-escaping.
+// Backslash is escaped first to avoid double-escaping. All C0 control
+// characters (0x00-0x1F) are stripped after newline/CR escaping.
 func cefEscapeExtValue(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `=`, `\=`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	s = strings.ReplaceAll(s, "\r", `\r`)
+	// Strip remaining C0 control characters (0x00-0x1F).
+	// \n and \r are already escaped to literal sequences above.
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 {
+			return -1
+		}
+		return r
+	}, s)
 	return s
 }
-
-// validExtKeyRe matches valid CEF extension key names.
-var validExtKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // validateExtKey returns an error if the key is not a valid CEF
 // extension key name (must match [a-zA-Z0-9_]+).
 func validateExtKey(key string) error {
-	if !validExtKeyRe.MatchString(key) {
-		return fmt.Errorf("audit: cef: invalid extension key %q, must match [a-zA-Z0-9_]+", key)
+	if len(key) == 0 {
+		return fmt.Errorf("must match [a-zA-Z0-9_]+")
+	}
+	for _, c := range key {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return fmt.Errorf("must match [a-zA-Z0-9_]+")
+		}
 	}
 	return nil
 }
@@ -447,18 +490,15 @@ func formatFieldValue(v any) string {
 	case string:
 		return val
 	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
+		return strconv.FormatBool(val)
 	case int:
-		return fmt.Sprintf("%d", val)
+		return strconv.Itoa(val)
 	case int64:
-		return fmt.Sprintf("%d", val)
+		return strconv.FormatInt(val, 10)
 	case float64:
-		return fmt.Sprintf("%g", val)
+		return strconv.FormatFloat(val, 'g', -1, 64)
 	case time.Duration:
-		return fmt.Sprintf("%d", val.Milliseconds())
+		return strconv.FormatInt(val.Milliseconds(), 10)
 	case time.Time:
 		return val.Format(time.RFC3339)
 	default:

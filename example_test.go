@@ -175,3 +175,41 @@ func ExampleLogger_Close() {
 	fmt.Println("logger will be closed on function exit")
 	// Output: logger will be closed on function exit
 }
+
+func ExampleWithFormatter() {
+	cef := &audit.CEFFormatter{
+		Vendor:  "MyCompany",
+		Product: "MyApp",
+		Version: "1.0",
+		SeverityFunc: func(eventType string) int {
+			if eventType == "auth_failure" {
+				return 8
+			}
+			return 5
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(audit.Taxonomy{
+			Version:    1,
+			Categories: map[string][]string{"security": {"auth_failure"}},
+			Events: map[string]audit.EventDef{
+				"auth_failure": {Category: "security", Required: []string{"outcome"}},
+			},
+			DefaultEnabled: []string{"security"},
+		}),
+		audit.WithFormatter(cef),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("audit close: %v", err)
+		}
+	}()
+
+	fmt.Println("CEF formatter configured")
+	// Output: CEF formatter configured
+}

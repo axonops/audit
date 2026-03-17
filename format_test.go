@@ -383,6 +383,33 @@ func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
 	assert.NotContains(t, line, "suser=")
 }
 
+func TestCEFFormatter_CustomFieldMappingMergesDefaults(t *testing.T) {
+	// Custom mapping overrides actor_id but source_ip should still
+	// use the default mapping to "src".
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"actor_id": "customActor",
+		},
+	}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":   "success",
+		"actor_id":  "alice",
+		"source_ip": "10.0.0.1",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id"},
+		Optional: []string{"source_ip"},
+	})
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "customActor=alice", "override should apply")
+	assert.Contains(t, line, "src=10.0.0.1", "default mapping should still apply")
+}
+
 func TestCEFFormatter_OmitEmpty(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1", OmitEmpty: true}
 	data, err := f.Format(testTime, "ev", audit.Fields{
@@ -703,6 +730,29 @@ func TestJSONFormatter_WriteFieldError(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json format")
+}
+
+func TestDefaultCEFFieldMapping(t *testing.T) {
+	m := audit.DefaultCEFFieldMapping()
+	assert.Equal(t, "suser", m["actor_id"])
+	assert.Equal(t, "src", m["source_ip"])
+
+	// Mutating the returned copy should not affect the default.
+	m["actor_id"] = "modified"
+	m2 := audit.DefaultCEFFieldMapping()
+	assert.Equal(t, "suser", m2["actor_id"], "default mapping must not be mutated")
+}
+
+func TestCEFFormatter_NullByteStripped(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome": "ok\x00injected",
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "\x00", "null bytes must be stripped")
 }
 
 func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {

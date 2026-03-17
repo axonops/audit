@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -58,7 +59,9 @@ var (
 //
 // A Logger is safe for concurrent use by multiple goroutines.
 type Logger struct {
-	cfg      Config
+	cfg Config
+	// taxonomy is immutable after construction; no synchronisation
+	// needed for reads.
 	taxonomy *Taxonomy
 	outputs  []Output
 	metrics  Metrics
@@ -73,6 +76,7 @@ type Logger struct {
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
 	closeErr       error
+	startupAppName atomic.Value // stores string from EmitStartup
 
 	// Filter state, protected by mu.
 	mu     sync.RWMutex
@@ -176,7 +180,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
-		return nil
+		return ErrBufferFull
 	}
 }
 
@@ -302,22 +306,34 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 
 // EmitStartup emits a startup lifecycle event. The "app_name" field is
 // required. Close will automatically emit a corresponding shutdown
-// event if EmitStartup was called.
+// event if EmitStartup was called, using the same app_name.
 func (l *Logger) EmitStartup(fields Fields) error {
+	if appName, ok := fields["app_name"]; ok {
+		if s, ok := appName.(string); ok {
+			l.startupAppName.Store(s)
+		}
+	}
 	l.startupEmitted.Store(true)
 	return l.Audit("startup", fields)
 }
 
-// emitShutdown emits a shutdown lifecycle event. It is called
-// automatically by Close when EmitStartup was called. It temporarily
-// re-enables the closed flag to allow the event through.
+// emitShutdown enqueues a shutdown lifecycle event directly to the
+// channel, bypassing the closed check. It is called by Close before
+// the drain goroutine is signalled to stop.
 func (l *Logger) emitShutdown() {
-	// Temporarily allow audit calls during shutdown.
-	l.closed.Store(false)
-	defer l.closed.Store(true)
-
-	if err := l.Audit("shutdown", Fields{"app_name": "unknown"}); err != nil {
-		slog.Warn("audit: failed to emit shutdown event", "error", err)
+	appName := "unknown"
+	if v := l.startupAppName.Load(); v != nil {
+		appName = v.(string)
+	}
+	entry := &auditEntry{
+		eventType: "shutdown",
+		fields:    Fields{"app_name": appName},
+	}
+	// Non-blocking enqueue — if buffer is full, drop silently.
+	select {
+	case l.ch <- entry:
+	default:
+		slog.Warn("audit: buffer full, dropping shutdown event")
 	}
 }
 
@@ -384,7 +400,7 @@ func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
 	if l.cfg.OmitEmpty {
 		// Only include non-zero fields.
 		for k, v := range entry.fields {
-			if v != nil && v != "" {
+			if !isZeroValue(v) {
 				m[k] = v
 			}
 		}
@@ -477,4 +493,13 @@ func copyFields(fields Fields) Fields {
 		cp[k] = v
 	}
 	return cp
+}
+
+// isZeroValue reports whether v is a zero value for its type. It
+// handles nil, empty strings, zero numbers, and false booleans.
+func isZeroValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	return reflect.ValueOf(v).IsZero()
 }

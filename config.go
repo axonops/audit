@@ -34,8 +34,15 @@ const (
 	// DefaultBufferSize is the default async channel capacity.
 	DefaultBufferSize = 10_000
 
+	// MaxBufferSize is the maximum allowed async channel capacity.
+	// This prevents accidental memory exhaustion from misconfiguration.
+	MaxBufferSize = 1_000_000
+
 	// DefaultDrainTimeout is the default graceful shutdown deadline.
 	DefaultDrainTimeout = 5 * time.Second
+
+	// MaxDrainTimeout is the maximum allowed graceful shutdown deadline.
+	MaxDrainTimeout = 60 * time.Second
 )
 
 // ErrConfigInvalid is the sentinel error wrapped by configuration
@@ -86,20 +93,19 @@ func (c *Config) applyDefaults() {
 }
 
 // validateConfig checks the config for correctness. It returns an error
-// wrapping [ErrConfigInvalid] on failure.
+// wrapping [ErrConfigInvalid] on failure. Version checks are handled by
+// [migrateConfig] which runs before this function.
 func validateConfig(c *Config) error {
 	c.applyDefaults()
 
-	if c.Version == 0 {
-		return fmt.Errorf("%w: config version is required — set version: 1", ErrConfigInvalid)
+	if c.BufferSize > MaxBufferSize {
+		return fmt.Errorf("%w: buffer_size %d exceeds maximum %d",
+			ErrConfigInvalid, c.BufferSize, MaxBufferSize)
 	}
-	if c.Version > currentConfigVersion {
-		return fmt.Errorf("%w: config version %d is not supported by this library version (max: %d), upgrade the library",
-			ErrConfigInvalid, c.Version, currentConfigVersion)
-	}
-	if c.Version < minSupportedConfigVersion {
-		return fmt.Errorf("%w: config version %d is no longer supported, minimum supported is %d",
-			ErrConfigInvalid, c.Version, minSupportedConfigVersion)
+
+	if c.DrainTimeout > MaxDrainTimeout {
+		return fmt.Errorf("%w: drain_timeout %s exceeds maximum %s",
+			ErrConfigInvalid, c.DrainTimeout, MaxDrainTimeout)
 	}
 
 	switch c.ValidationMode {

@@ -14,7 +14,7 @@
 
 package audit
 
-import "fmt"
+import "errors"
 
 // EventType is a handle for a registered audit event type. It carries
 // the event type name and a reference to the owning [Logger], enabling
@@ -47,4 +47,4 @@ type auditEntry struct {
 
 // ErrHandleNotFound is returned by [Logger.Handle] when the requested
 // event type is not registered in the taxonomy.
-var ErrHandleNotFound = fmt.Errorf("audit: event type not found")
+var ErrHandleNotFound = errors.New("audit: event type not found")

@@ -330,9 +330,8 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
 
-	// Give the drain loop a moment, then verify no event delivered.
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 0, out.eventCount(), "disabled category event should not be delivered")
+	// Verify no event delivered — waitForEvents should time out.
+	assert.False(t, out.waitForEvents(1, 100*time.Millisecond), "disabled category event should not be delivered")
 }
 
 func TestLogger_Audit_OptionalFields(t *testing.T) {
@@ -550,13 +549,18 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 	// Fill the buffer (1 slot) + drain goroutine may take one.
 	// Send enough to guarantee overflow.
+	var bufferFullSeen bool
 	for i := 0; i < 100; i++ {
-		_ = logger.Audit("auth_failure", audit.Fields{
+		err = logger.Audit("auth_failure", audit.Fields{
 			"outcome":  "failure",
 			"actor_id": "bob",
 		})
+		if errors.Is(err, audit.ErrBufferFull) {
+			bufferFullSeen = true
+		}
 	}
 
+	assert.True(t, bufferFullSeen, "should have seen ErrBufferFull")
 	assert.Greater(t, metrics.getBufferDrops(), 0, "should have recorded buffer drops")
 
 	// Unblock and close.
@@ -689,8 +693,7 @@ func TestLogger_DisableCategory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 0, out.eventCount(), "disabled category should not deliver events")
+	assert.False(t, out.waitForEvents(1, 100*time.Millisecond), "disabled category should not deliver events")
 }
 
 func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
@@ -709,8 +712,9 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 	err = logger.Audit("config_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 1, out.eventCount(), "only overridden event should be delivered")
+	// Wait for the first event, then confirm no second one arrives.
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+	assert.False(t, out.waitForEvents(2, 100*time.Millisecond), "only overridden event should be delivered")
 }
 
 func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
@@ -802,6 +806,7 @@ func TestLogger_Close_AutoEmitsShutdown(t *testing.T) {
 	assert.Equal(t, 2, out.eventCount())
 	ev := out.getEvent(1)
 	assert.Equal(t, "shutdown", ev["event_type"])
+	assert.Equal(t, "test-app", ev["app_name"], "shutdown should reuse startup app_name")
 }
 
 func TestLogger_Close_NoStartupNoShutdown(t *testing.T) {
@@ -936,8 +941,7 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Wait a bit for the drain loop to process.
-	time.Sleep(100 * time.Millisecond)
+	// Close drains all pending events.
 	require.NoError(t, logger.Close())
 
 	metrics.mu.Lock()

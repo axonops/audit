@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -112,7 +113,7 @@ func injectLifecycleEvents(t *Taxonomy) {
 			Required: []string{"app_name"},
 			Optional: []string{"version", "config"},
 		}
-		if !sliceContains(t.Categories[lifecycleCategory], "startup") {
+		if !slices.Contains(t.Categories[lifecycleCategory], "startup") {
 			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "startup")
 		}
 	}
@@ -124,13 +125,13 @@ func injectLifecycleEvents(t *Taxonomy) {
 			Required: []string{"app_name"},
 			Optional: []string{"reason", "uptime_ms"},
 		}
-		if !sliceContains(t.Categories[lifecycleCategory], "shutdown") {
+		if !slices.Contains(t.Categories[lifecycleCategory], "shutdown") {
 			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "shutdown")
 		}
 	}
 
 	// Ensure lifecycle category is in DefaultEnabled.
-	if !sliceContains(t.DefaultEnabled, lifecycleCategory) {
+	if !slices.Contains(t.DefaultEnabled, lifecycleCategory) {
 		t.DefaultEnabled = append(t.DefaultEnabled, lifecycleCategory)
 	}
 }
@@ -195,7 +196,7 @@ func validateTaxonomy(t Taxonomy) error {
 			errs = append(errs, fmt.Sprintf(
 				"event %q references category %q which does not exist in Categories",
 				et, def.Category))
-		} else if !sliceContains(t.Categories[def.Category], et) {
+		} else if !slices.Contains(t.Categories[def.Category], et) {
 			errs = append(errs, fmt.Sprintf(
 				"event %q has category %q but is not listed in Categories[%q]",
 				et, def.Category, def.Category))
@@ -231,14 +232,4 @@ func validateTaxonomy(t Taxonomy) error {
 		return fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
 	}
 	return nil
-}
-
-// sliceContains reports whether s contains v.
-func sliceContains(s []string, v string) bool {
-	for _, item := range s {
-		if item == v {
-			return true
-		}
-	}
-	return false
 }

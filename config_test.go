@@ -29,6 +29,7 @@ func TestNewLogger_ConfigVersionZero(t *testing.T) {
 		audit.WithTaxonomy(validTaxonomy()),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "version is required")
 }
 
@@ -38,7 +39,19 @@ func TestNewLogger_ConfigVersionTooHigh(t *testing.T) {
 		audit.WithTaxonomy(validTaxonomy()),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "not supported")
+}
+
+func TestNewLogger_ConfigVersionNegative(t *testing.T) {
+	// Negative version is treated as below minimum supported.
+	_, err := audit.NewLogger(
+		audit.Config{Version: -1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), "no longer supported")
 }
 
 func TestNewLogger_InvalidValidationMode(t *testing.T) {
@@ -47,6 +60,7 @@ func TestNewLogger_InvalidValidationMode(t *testing.T) {
 		audit.WithTaxonomy(validTaxonomy()),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "invalid validation mode")
 }
 

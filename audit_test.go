@@ -330,8 +330,13 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
 
-	// Verify no event delivered — waitForEvents should time out.
-	assert.False(t, out.waitForEvents(1, 100*time.Millisecond), "disabled category event should not be delivered")
+	// Send an enabled event as sentinel to prove the drain loop processed
+	// past the filtered event.
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.eventCount(), "disabled category event should not be delivered")
+	assert.Equal(t, "auth_failure", out.getEvent(0)["event_type"])
 }
 
 func TestLogger_Audit_OptionalFields(t *testing.T) {
@@ -693,7 +698,11 @@ func TestLogger_DisableCategory(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.False(t, out.waitForEvents(1, 100*time.Millisecond), "disabled category should not deliver events")
+	// Send an enabled event as sentinel to prove processing.
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.eventCount(), "disabled category should not deliver events")
 }
 
 func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
@@ -712,9 +721,12 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 	err = logger.Audit("config_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
 
-	// Wait for the first event, then confirm no second one arrives.
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.False(t, out.waitForEvents(2, 100*time.Millisecond), "only overridden event should be delivered")
+	// Send an enabled event as sentinel, then verify only 2 events
+	// (schema_read + sentinel), not 3.
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(2, 2*time.Second))
+	assert.Equal(t, 2, out.eventCount(), "only overridden event + sentinel should be delivered")
 }
 
 func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
@@ -1049,4 +1061,72 @@ func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
 
 	// Both startup and shutdown should have arrived.
 	assert.Equal(t, 2, out.eventCount())
+}
+
+// ---------------------------------------------------------------------------
+// Serialisation failure — non-JSON-serialisable field value
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_SerializationFailure(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	// A channel cannot be marshalled to JSON. The event passes validation
+	// (permissive mode) and is enqueued, but serialisation fails in the
+	// drain loop. The output should receive zero events and no panic.
+	ch := make(chan struct{})
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"bad":      ch,
+	})
+	require.NoError(t, err)
+
+	// Send a valid event as sentinel to confirm drain loop processed
+	// the bad event without crashing.
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "sentinel",
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	// Only the valid event should have been delivered.
+	assert.Equal(t, 1, out.eventCount())
+}
+
+// ---------------------------------------------------------------------------
+// copyFields with nil input
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
+
+	// Create a taxonomy with an event that has no required fields.
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string][]string{"misc": {"no_req"}},
+		Events: map[string]audit.EventDef{
+			"no_req": {Category: "misc", Optional: []string{"info"}},
+		},
+		DefaultEnabled: []string{"misc"},
+	}
+
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// nil fields should work when there are no required fields.
+	err = logger.Audit("no_req", nil)
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
 }

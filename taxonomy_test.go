@@ -221,3 +221,17 @@ func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid))
 }
+
+func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(audit.Taxonomy{
+			Version:    -1,
+			Categories: map[string][]string{"write": {"ev1"}},
+			Events:     map[string]audit.EventDef{"ev1": {Category: "write", Required: []string{"f1"}}},
+		}),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "no longer supported")
+}

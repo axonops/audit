@@ -13,6 +13,13 @@ Standalone Go audit logging library — multi-output, async, with taxonomy-drive
 
 The full specification is GitHub issue [axonops/axonops-schema-registry#371](https://github.com/axonops/axonops-schema-registry/issues/371). That issue is the authoritative source for requirements. If this file conflicts with the spec, the spec wins.
 
+## Workflow
+After completing any feature, explicitly run these agents before marking done:
+1. `code-reviewer` — on all changed files
+2. `security-reviewer` — on any code touching TLS, HTTP, credentials, or external input
+3. `go-quality` — as a final gate before commit
+4. `devops` — on any CI/CD or workflow changes
+
 ## Reference Implementation
 
 The existing audit code lives in a sibling checkout at:

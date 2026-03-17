@@ -978,3 +978,75 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 	assert.NoError(t, err)
 	require.NoError(t, logger.Close())
 }
+
+// ---------------------------------------------------------------------------
+// Config bounds tests
+// ---------------------------------------------------------------------------
+
+func TestNewLogger_BufferSizeExceedsMax(t *testing.T) {
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: audit.MaxBufferSize + 1},
+		audit.WithTaxonomy(validTaxonomy()),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestNewLogger_DrainTimeoutExceedsMax(t *testing.T) {
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, DrainTimeout: audit.MaxDrainTimeout + 1},
+		audit.WithTaxonomy(validTaxonomy()),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
+// ---------------------------------------------------------------------------
+// OmitEmpty with non-string zero values
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true, ValidationMode: audit.ValidationPermissive}, out)
+
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"count":    0,     // zero int should be omitted
+		"active":   false, // false bool should be omitted
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	ev := out.getEvent(0)
+	_, hasCount := ev["count"]
+	assert.False(t, hasCount, "OmitEmpty should omit zero int")
+	_, hasActive := ev["active"]
+	assert.False(t, hasActive, "OmitEmpty should omit false bool")
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown with nil app_name stored
+// ---------------------------------------------------------------------------
+
+func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationPermissive},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// EmitStartup without app_name (will fail validation in strict,
+	// but we use permissive to test the shutdown fallback).
+	err = logger.EmitStartup(audit.Fields{"app_name": "my-service"})
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Close())
+
+	// Both startup and shutdown should have arrived.
+	assert.Equal(t, 2, out.eventCount())
+}

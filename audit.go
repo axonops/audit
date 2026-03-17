@@ -348,7 +348,9 @@ func (l *Logger) EmitStartup(fields Fields) error {
 func (l *Logger) emitShutdown() {
 	appName := "unknown"
 	if v := l.startupAppName.Load(); v != nil {
-		appName = v.(string)
+		if s, ok := v.(string); ok {
+			appName = s
+		}
 	}
 	entry := &auditEntry{
 		eventType: "shutdown",

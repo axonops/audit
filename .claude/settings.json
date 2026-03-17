@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go:*)",
+      "Bash(make:*)",
+      "Bash(gh:*)",
+      "Bash(git:*)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(gosec:*)",
+      "Bash(govulncheck:*)",
+      "Bash(staticcheck:*)",
+      "Bash(gofmt:*)",
+      "Bash(goimports:*)",
+      "Bash(gocyclo:*)",
+      "Bash(gocognit:*)",
+      "Bash(deadcode:*)",
+      "Bash(gorelease:*)",
+      "Bash(benchstat:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(chmod:*)",
+      "Bash(diff:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(tee:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)"
+    ]
+  }
+}

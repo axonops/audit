@@ -31,6 +31,9 @@ Run the **issue-writer** agent. Every issue must have: summary, detailed require
 ### When writing tests:
 5. **test-writer** — use for creating unit, integration, and BDD tests
 
+### When writing or reviewing documentation:
+6. **docs-writer** — on any README, godoc, examples, CONTRIBUTING, CHANGELOG, SECURITY.md, or config reference changes. All documentation follows RFC 2119 for requirement-level terminology. Every code example must compile. Every config field must be documented with type, default, valid values, and boundary behaviour.
+
 ### Issue quality is non-negotiable:
 Do not create issues with `gh issue create` without running the issue-writer agent first. A vague issue with bullet points and no acceptance criteria is not an issue — it is a TODO comment that escaped into the tracker. Every issue is a contract: it must contain enough detail that a developer can implement it without asking clarifying questions.
 

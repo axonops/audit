@@ -642,6 +642,37 @@ func TestLogger_Audit_AfterClose(t *testing.T) {
 	assert.ErrorIs(t, err, audit.ErrClosed)
 }
 
+func TestLogger_Close_DrainTimeout(t *testing.T) {
+
+	// Use a blocking output that never unblocks combined with a very
+	// short drain timeout. Close should return within a bounded time
+	// rather than hanging.
+	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 10, DrainTimeout: 10 * time.Millisecond},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// Enqueue an event so the drain goroutine has work to do.
+	_ = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+
+	start := time.Now()
+	_ = logger.Close()
+	elapsed := time.Since(start)
+
+	// Close should complete quickly (within 1s), not hang for the
+	// default 5s drain timeout.
+	assert.Less(t, elapsed, 1*time.Second, "Close should respect short DrainTimeout")
+
+	// Unblock the output to avoid goroutine leak in test.
+	close(out.blockCh)
+}
+
 func TestLogger_Close_OutputError(t *testing.T) {
 
 	out := &errorOutput{name: "bad", closeErr: errors.New("close failed")}
@@ -655,6 +686,7 @@ func TestLogger_Close_OutputError(t *testing.T) {
 	err = logger.Close()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "close failed")
+	assert.Contains(t, err.Error(), "bad", "error should include output name")
 }
 
 type errorOutput struct {
@@ -910,6 +942,7 @@ func TestLogger_ConcurrentClose(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	assert.Equal(t, int32(0), errCount.Load(), "idempotent Close should not error")
 }
 
 // ---------------------------------------------------------------------------

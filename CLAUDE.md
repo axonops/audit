@@ -13,12 +13,26 @@ Standalone Go audit logging library — multi-output, async, with taxonomy-drive
 
 The full specification is GitHub issue [axonops/axonops-schema-registry#371](https://github.com/axonops/axonops-schema-registry/issues/371). That issue is the authoritative source for requirements. If this file conflicts with the spec, the spec wins.
 
-## Workflow
-After completing any feature, explicitly run these agents before marking done:
-1. `code-reviewer` — on all changed files
-2. `security-reviewer` — on any code touching TLS, HTTP, credentials, or external input
-3. `go-quality` — as a final gate before commit
-4. `devops` — on any CI/CD or workflow changes
+## Workflow — Agent Gates
+
+These agents are mandatory gates, not optional tools. Do not skip them.
+
+### Before creating any GitHub issue:
+Run the **issue-writer** agent. Every issue must have: summary, detailed requirements, numbered acceptance criteria, specific testing requirements (named tests, not "add tests"), documentation requirements, dependencies, and labels. If any section is missing or vague, rewrite it before creating.
+
+### After completing any feature:
+1. **code-reviewer** — on all changed files
+2. **security-reviewer** — on any code touching TLS, HTTP, credentials, or external input
+3. **go-quality** — as a final gate before commit
+
+### After creating or modifying CI/CD configuration:
+4. **devops** — on any workflow, GoReleaser, Dependabot, or Makefile changes
+
+### When writing tests:
+5. **test-writer** — use for creating unit, integration, and BDD tests
+
+### Issue quality is non-negotiable:
+Do not create issues with `gh issue create` without running the issue-writer agent first. A vague issue with bullet points and no acceptance criteria is not an issue — it is a TODO comment that escaped into the tracker. Every issue is a contract: it must contain enough detail that a developer can implement it without asking clarifying questions.
 
 ## Reference Implementation
 

@@ -13,6 +13,8 @@ Standalone Go audit logging library — multi-output, async, with taxonomy-drive
 
 The full specification is GitHub issue [axonops/axonops-schema-registry#371](https://github.com/axonops/axonops-schema-registry/issues/371). That issue is the authoritative source for requirements. If this file conflicts with the spec, the spec wins.
 
+Never mention Claude, AI, LLM, or any AI tool in commit messages — commits represent the project's work, not the tool that produced it
+
 ## Workflow — Agent Gates
 
 These agents are mandatory gates, not optional tools. Do not skip them.

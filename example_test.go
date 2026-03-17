@@ -42,7 +42,11 @@ func ExampleNewLogger() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("audit close: %v", err)
+		}
+	}()
 
 	fmt.Println("logger created")
 	// Output: logger created
@@ -63,7 +67,11 @@ func ExampleLogger_Audit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("audit close: %v", err)
+		}
+	}()
 
 	err = logger.Audit("doc_create", audit.Fields{"outcome": "success"})
 	if err != nil {
@@ -89,7 +97,11 @@ func ExampleLogger_MustHandle() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("audit close: %v", err)
+		}
+	}()
 
 	// Get a handle for zero-allocation audit calls.
 	docCreate := logger.MustHandle("doc_create")
@@ -122,7 +134,11 @@ func ExampleLogger_EnableCategory() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("audit close: %v", err)
+		}
+	}()
 
 	// "read" category is disabled by default. Enable it at runtime.
 	if err := logger.EnableCategory("read"); err != nil {

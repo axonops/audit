@@ -141,34 +141,51 @@ func injectLifecycleEvents(t *Taxonomy) {
 // [ErrTaxonomyInvalid].
 func validateTaxonomy(t Taxonomy) error {
 	var errs []string
+	errs = append(errs, checkTaxonomyVersion(t)...)
+	errs = append(errs, checkCategoryConsistency(t)...)
+	errs = append(errs, checkEventConsistency(t)...)
+	errs = append(errs, checkFieldOverlap(t)...)
+	errs = append(errs, checkDefaultEnabled(t)...)
 
-	// 1. Version must be > 0.
-	if t.Version == 0 {
-		errs = append(errs, "taxonomy version is required — set version: 1")
-	} else if t.Version > currentTaxonomyVersion {
-		errs = append(errs, fmt.Sprintf(
-			"taxonomy version %d is not supported by this library version (max: %d), upgrade the library",
-			t.Version, currentTaxonomyVersion))
-	} else if t.Version < minSupportedTaxonomyVersion {
-		errs = append(errs, fmt.Sprintf(
-			"taxonomy version %d is no longer supported, minimum supported is %d",
-			t.Version, minSupportedTaxonomyVersion))
+	if len(errs) > 0 {
+		sort.Strings(errs)
+		return fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
 	}
+	return nil
+}
 
-	// 2. Categories must not be empty.
+// checkTaxonomyVersion validates the taxonomy version field.
+func checkTaxonomyVersion(t Taxonomy) []string {
+	if t.Version == 0 {
+		return []string{"taxonomy version is required — set version: 1"}
+	}
+	if t.Version > currentTaxonomyVersion {
+		return []string{fmt.Sprintf(
+			"taxonomy version %d is not supported by this library version (max: %d), upgrade the library",
+			t.Version, currentTaxonomyVersion)}
+	}
+	if t.Version < minSupportedTaxonomyVersion {
+		return []string{fmt.Sprintf(
+			"taxonomy version %d is no longer supported, minimum supported is %d",
+			t.Version, minSupportedTaxonomyVersion)}
+	}
+	return nil
+}
+
+// checkCategoryConsistency validates categories and their members.
+func checkCategoryConsistency(t Taxonomy) []string {
+	var errs []string
 	if len(t.Categories) == 0 {
 		errs = append(errs, "taxonomy must define at least one category")
 	}
 
-	// Build reverse map: event type → category it appears in within Categories.
+	// Check for duplicate event types across categories.
 	eventToCategory := make(map[string][]string)
 	for cat, events := range t.Categories {
 		for _, et := range events {
 			eventToCategory[et] = append(eventToCategory[et], cat)
 		}
 	}
-
-	// 3. No duplicate event types across categories.
 	for et, cats := range eventToCategory {
 		if len(cats) > 1 {
 			sort.Strings(cats)
@@ -178,7 +195,7 @@ func validateTaxonomy(t Taxonomy) error {
 		}
 	}
 
-	// 4. Every event in Categories must exist in Events map.
+	// Every event in Categories must exist in Events map.
 	for cat, events := range t.Categories {
 		for _, et := range events {
 			if _, ok := t.Events[et]; !ok {
@@ -188,9 +205,12 @@ func validateTaxonomy(t Taxonomy) error {
 			}
 		}
 	}
+	return errs
+}
 
-	// 5. Every event in Events must reference a valid category and
-	//    appear in that category's list.
+// checkEventConsistency validates that events reference valid categories.
+func checkEventConsistency(t Taxonomy) []string {
+	var errs []string
 	for et, def := range t.Events {
 		if _, ok := t.Categories[def.Category]; !ok {
 			errs = append(errs, fmt.Sprintf(
@@ -202,8 +222,12 @@ func validateTaxonomy(t Taxonomy) error {
 				et, def.Category, def.Category))
 		}
 	}
+	return errs
+}
 
-	// 6. No field in both Required and Optional.
+// checkFieldOverlap validates no field appears in both Required and Optional.
+func checkFieldOverlap(t Taxonomy) []string {
+	var errs []string
 	for et, def := range t.Events {
 		seen := make(map[string]bool, len(def.Required))
 		for _, f := range def.Required {
@@ -217,8 +241,12 @@ func validateTaxonomy(t Taxonomy) error {
 			}
 		}
 	}
+	return errs
+}
 
-	// 7. DefaultEnabled must reference valid categories.
+// checkDefaultEnabled validates that DefaultEnabled references valid categories.
+func checkDefaultEnabled(t Taxonomy) []string {
+	var errs []string
 	for _, cat := range t.DefaultEnabled {
 		if _, ok := t.Categories[cat]; !ok {
 			errs = append(errs, fmt.Sprintf(
@@ -226,10 +254,5 @@ func validateTaxonomy(t Taxonomy) error {
 				cat))
 		}
 	}
-
-	if len(errs) > 0 {
-		sort.Strings(errs)
-		return fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
-	}
-	return nil
+	return errs
 }

@@ -97,9 +97,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, err
 	}
 
-	l := &Logger{
-		cfg: cfg,
-	}
+	l := &Logger{cfg: cfg}
 
 	for _, opt := range opts {
 		if err := opt(l); err != nil {
@@ -111,12 +109,10 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required — use WithTaxonomy")
 	}
 
-	// If disabled, return a valid but inert logger.
 	if !cfg.Enabled {
 		return l, nil
 	}
 
-	// Start async delivery.
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancel = cancel
 	l.ch = make(chan *auditEntry, cfg.BufferSize)
@@ -132,32 +128,26 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
 //
-// Audit returns an error if the logger is closed, the event type is
-// unknown, required fields are missing, or unknown fields are present
-// in strict validation mode.
+// Audit returns [ErrBufferFull] if the async buffer is at capacity,
+// [ErrClosed] if the logger has been closed, or a descriptive error
+// for validation failures.
 func (l *Logger) Audit(eventType string, fields Fields) error {
-	// Fast path: disabled logger.
 	if !l.cfg.Enabled {
 		return nil
 	}
-
-	// Closed check.
 	if l.closed.Load() {
 		return ErrClosed
 	}
 
-	// Look up event definition.
 	def, ok := l.taxonomy.Events[eventType]
 	if !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
-	// Validate required fields.
 	if err := l.validateFields(eventType, &def, fields); err != nil {
 		return err
 	}
 
-	// Check global filter.
 	l.mu.RLock()
 	enabled := l.filter.isEnabled(eventType, l.taxonomy)
 	l.mu.RUnlock()
@@ -165,18 +155,21 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return nil
 	}
 
-	// Enqueue.
 	entry := &auditEntry{
 		eventType: eventType,
 		fields:    copyFields(fields),
 	}
+	return l.enqueue(entry)
+}
 
+// enqueue attempts a non-blocking send to the async channel.
+func (l *Logger) enqueue(entry *auditEntry) error {
 	select {
 	case l.ch <- entry:
 		return nil
 	default:
 		slog.Warn("audit: buffer full, dropping event",
-			"event_type", eventType)
+			"event_type", entry.eventType)
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
@@ -196,34 +189,18 @@ func (l *Logger) Close() error {
 	l.closeOnce.Do(func() {
 		l.closed.Store(true)
 
-		// If not enabled, there is no drain goroutine to stop.
 		if !l.cfg.Enabled {
 			return
 		}
 
-		// Auto-emit shutdown if startup was emitted.
 		if l.startupEmitted.Load() {
 			l.emitShutdown()
 		}
 
-		// Signal drain goroutine to stop.
+		// Signal drain goroutine to stop and wait for it.
 		l.cancel()
+		l.waitForDrain()
 
-		// Wait with timeout.
-		done := make(chan struct{})
-		go func() {
-			l.wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Drained successfully.
-		case <-time.After(l.cfg.DrainTimeout):
-			slog.Warn("audit: drain timed out, some events may be lost")
-		}
-
-		// Close all outputs in order.
 		for _, o := range l.outputs {
 			if err := o.Close(); err != nil && l.closeErr == nil {
 				l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
@@ -231,6 +208,23 @@ func (l *Logger) Close() error {
 		}
 	})
 	return l.closeErr
+}
+
+// waitForDrain waits for the drain goroutine to finish, with a
+// timeout. The helper goroutine always terminates because the drain
+// goroutine will exit once its context is cancelled.
+func (l *Logger) waitForDrain() {
+	done := make(chan struct{})
+	go func() {
+		l.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(l.cfg.DrainTimeout):
+		slog.Warn("audit: drain timed out, some events may be lost")
+	}
 }
 
 // EnableCategory enables all events in the named category. The
@@ -329,7 +323,6 @@ func (l *Logger) emitShutdown() {
 		eventType: "shutdown",
 		fields:    Fields{"app_name": appName},
 	}
-	// Non-blocking enqueue — if buffer is full, drop silently.
 	select {
 	case l.ch <- entry:
 	default:
@@ -348,17 +341,23 @@ func (l *Logger) drainLoop(ctx context.Context) {
 				l.processEntry(entry)
 			}
 		case <-ctx.Done():
-			// Drain remaining events.
-			for {
-				select {
-				case entry := <-l.ch:
-					if entry != nil {
-						l.processEntry(entry)
-					}
-				default:
-					return
-				}
+			l.drainRemaining()
+			return
+		}
+	}
+}
+
+// drainRemaining flushes any events left in the channel after the
+// context is cancelled.
+func (l *Logger) drainRemaining() {
+	for {
+		select {
+		case entry := <-l.ch:
+			if entry != nil {
+				l.processEntry(entry)
 			}
+		default:
+			return
 		}
 	}
 }
@@ -391,21 +390,18 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}
 }
 
-// serialize converts an audit entry to JSON bytes. This is a minimal
-// implementation for the core logger; issue #2 adds the full Formatter
-// interface with JSON and CEF support.
+// serialize converts an audit entry to JSON bytes.
+// TODO(#2): replace with the full Formatter interface supporting JSON and CEF.
 func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
 	m := make(map[string]interface{}, len(entry.fields)+3)
 
 	if l.cfg.OmitEmpty {
-		// Only include non-zero fields.
 		for k, v := range entry.fields {
 			if !isZeroValue(v) {
 				m[k] = v
 			}
 		}
 	} else {
-		// Include all registered fields, setting missing ones to nil.
 		def := l.taxonomy.Events[entry.eventType]
 		for _, f := range def.Required {
 			m[f] = entry.fields[f]
@@ -413,7 +409,6 @@ func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
 		for _, f := range def.Optional {
 			m[f] = entry.fields[f]
 		}
-		// Also include any extra fields the consumer provided.
 		for k, v := range entry.fields {
 			m[k] = v
 		}
@@ -433,20 +428,30 @@ func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
 // validateFields checks that all required fields are present and no
 // unknown fields are included (behavior depends on validation mode).
 func (l *Logger) validateFields(eventType string, def *EventDef, fields Fields) error {
-	// Check required fields.
+	if err := checkRequiredFields(eventType, def, fields); err != nil {
+		return err
+	}
+	return l.checkUnknownFields(eventType, def, fields)
+}
+
+// checkRequiredFields returns an error listing any missing required fields.
+func checkRequiredFields(eventType string, def *EventDef, fields Fields) error {
 	var missing []string
 	for _, f := range def.Required {
 		if _, ok := fields[f]; !ok {
 			missing = append(missing, f)
 		}
 	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		return fmt.Errorf("audit: event %q missing required fields: [%s]",
-			eventType, strings.Join(missing, ", "))
+	if len(missing) == 0 {
+		return nil
 	}
+	sort.Strings(missing)
+	return fmt.Errorf("audit: event %q missing required fields: [%s]",
+		eventType, strings.Join(missing, ", "))
+}
 
-	// Check for unknown fields.
+// checkUnknownFields validates unknown fields per the validation mode.
+func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fields) error {
 	if l.cfg.ValidationMode == ValidationPermissive {
 		return nil
 	}
@@ -465,20 +470,20 @@ func (l *Logger) validateFields(eventType string, def *EventDef, fields Fields) 
 			unknown = append(unknown, k)
 		}
 	}
-
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		msg := fmt.Sprintf("audit: event %q has unknown fields: [%s]",
-			eventType, strings.Join(unknown, ", "))
-
-		switch l.cfg.ValidationMode {
-		case ValidationStrict:
-			return errors.New(msg)
-		case ValidationWarn:
-			slog.Warn(msg)
-		}
+	if len(unknown) == 0 {
+		return nil
 	}
 
+	sort.Strings(unknown)
+	msg := fmt.Sprintf("audit: event %q has unknown fields: [%s]",
+		eventType, strings.Join(unknown, ", "))
+
+	switch l.cfg.ValidationMode {
+	case ValidationStrict:
+		return errors.New(msg)
+	case ValidationWarn:
+		slog.Warn(msg)
+	}
 	return nil
 }
 

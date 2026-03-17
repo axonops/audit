@@ -544,6 +544,8 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 	// Tiny buffer + blocking output to force buffer full.
 	out := &blockingOutput{name: "blocking", blockCh: make(chan struct{})}
+	t.Cleanup(func() { close(out.blockCh) })
+
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
 		audit.WithTaxonomy(validTaxonomy()),
@@ -551,6 +553,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
 
 	// Fill the buffer (1 slot) + drain goroutine may take one.
 	// Send enough to guarantee overflow.
@@ -567,10 +570,6 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 	assert.True(t, bufferFullSeen, "should have seen ErrBufferFull")
 	assert.Greater(t, metrics.getBufferDrops(), 0, "should have recorded buffer drops")
-
-	// Unblock and close.
-	close(out.blockCh)
-	require.NoError(t, logger.Close())
 }
 
 // blockingOutput blocks on Write until blockCh is closed.
@@ -648,6 +647,8 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 	// short drain timeout. Close should return within a bounded time
 	// rather than hanging.
 	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
+	t.Cleanup(func() { close(out.blockCh) })
+
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 10, DrainTimeout: 10 * time.Millisecond},
 		audit.WithTaxonomy(validTaxonomy()),
@@ -668,9 +669,6 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 	// Close should complete quickly (within 1s), not hang for the
 	// default 5s drain timeout.
 	assert.Less(t, elapsed, 1*time.Second, "Close should respect short DrainTimeout")
-
-	// Unblock the output to avoid goroutine leak in test.
-	close(out.blockCh)
 }
 
 func TestLogger_Close_OutputError(t *testing.T) {
@@ -1162,4 +1160,313 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	err = logger.Audit("no_req", nil)
 	require.NoError(t, err)
 	require.True(t, out.waitForEvents(1, 2*time.Second))
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent writes + Close race test
+// ---------------------------------------------------------------------------
+
+func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// Start N goroutines writing, then Close concurrently.
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				_ = logger.Audit("auth_failure", audit.Fields{
+					"outcome":  "failure",
+					"actor_id": "bob",
+				})
+			}
+		}()
+	}
+
+	// Close while writes are in flight -- must not panic or race.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = logger.Close()
+	}()
+
+	wg.Wait()
+}
+
+// ---------------------------------------------------------------------------
+// Handle.Audit after Close
+// ---------------------------------------------------------------------------
+
+func TestLogger_Handle_AuditAfterClose(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	h := logger.MustHandle("auth_failure")
+	require.NoError(t, logger.Close())
+
+	err = h.Audit(audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	assert.ErrorIs(t, err, audit.ErrClosed)
+}
+
+// ---------------------------------------------------------------------------
+// EmitStartup without app_name in strict mode
+// ---------------------------------------------------------------------------
+
+func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
+
+	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required fields")
+	assert.Contains(t, err.Error(), "app_name")
+}
+
+// ---------------------------------------------------------------------------
+// Multi-output fan-out
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_MultipleOutputs(t *testing.T) {
+
+	out1 := newMockOutput("out1")
+	out2 := newMockOutput("out2")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out1, out2),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+
+	require.True(t, out1.waitForEvents(1, 2*time.Second))
+	require.True(t, out2.waitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out1.eventCount())
+	assert.Equal(t, 1, out2.eventCount())
+}
+
+// ---------------------------------------------------------------------------
+// OmitEmpty with non-zero values included
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		OmitEmpty:      true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"count":    42,
+		"active":   true,
+	})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+
+	ev := out.getEvent(0)
+	assert.Equal(t, float64(42), ev["count"], "non-zero int should be included with OmitEmpty")
+	assert.Equal(t, true, ev["active"], "true bool should be included with OmitEmpty")
+}
+
+// ---------------------------------------------------------------------------
+// isZeroValue does not panic on func values
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
+
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		OmitEmpty:      true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	// A func value should not cause a panic in isZeroValue.
+	// With OmitEmpty, isZeroValue returns false for a non-nil func,
+	// so the func is included in the map. json.Marshal will fail on
+	// func types, causing the event to be dropped. The drain goroutine
+	// must survive this without panicking.
+	err := logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+		"callback": func() {},
+	})
+	require.NoError(t, err)
+
+	// Send sentinel to prove drain goroutine survived the bad event.
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "sentinel",
+	})
+	require.NoError(t, err)
+	// Only the sentinel arrives (the func event fails serialization).
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown event dropped on full buffer
+// ---------------------------------------------------------------------------
+
+func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
+
+	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
+	t.Cleanup(func() { close(out.blockCh) })
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// Emit startup so Close will try to emit shutdown.
+	_ = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
+
+	// Fill the buffer so emitShutdown's non-blocking send hits default.
+	for i := 0; i < 100; i++ {
+		_ = logger.Audit("auth_failure", audit.Fields{
+			"outcome":  "failure",
+			"actor_id": "bob",
+		})
+	}
+
+	// Close should not panic or hang even when shutdown event is dropped.
+	_ = logger.Close()
+}
+
+// ---------------------------------------------------------------------------
+// Empty DefaultEnabled -- all events filtered
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
+
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string][]string{"write": {"ev1"}},
+		Events: map[string]audit.EventDef{
+			"ev1": {Category: "write", Required: []string{"f1"}},
+		},
+		DefaultEnabled: []string{}, // empty -- only lifecycle enabled
+	}
+
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// ev1 should be filtered (write category not enabled).
+	err = logger.Audit("ev1", audit.Fields{"f1": "val"})
+	require.NoError(t, err)
+
+	// Startup (lifecycle, always enabled) should work as sentinel.
+	err = logger.Audit("startup", audit.Fields{"app_name": "test"})
+	require.NoError(t, err)
+	require.True(t, out.waitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.eventCount(), "only lifecycle event should pass when DefaultEnabled is empty")
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkAudit(b *testing.B) {
+	out := newMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer logger.Close()
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+}
+
+func BenchmarkAuditDisabledCategory(b *testing.B) {
+	out := newMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer logger.Close()
+
+	fields := audit.Fields{"outcome": "success"}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// "read" category is not in DefaultEnabled -- early filter exit.
+		_ = logger.Audit("schema_read", fields)
+	}
+}
+
+func BenchmarkAuditDisabledLogger(b *testing.B) {
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: false},
+		audit.WithTaxonomy(validTaxonomy()),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer logger.Close()
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("auth_failure", fields)
+	}
 }

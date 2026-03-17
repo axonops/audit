@@ -30,7 +30,7 @@ const (
 // versions. For v0.1.0 only version 1 exists, so this is scaffolding.
 func migrateConfig(c *Config) error {
 	if c.Version == 0 {
-		return fmt.Errorf("%w: config version is required — set version: 1", ErrConfigInvalid)
+		return fmt.Errorf("%w: config version is required -- set version: 1", ErrConfigInvalid)
 	}
 	if c.Version > currentConfigVersion {
 		return fmt.Errorf("%w: config version %d is not supported by this library version (max: %d), upgrade the library",
@@ -49,7 +49,7 @@ func migrateConfig(c *Config) error {
 // scaffolding.
 func migrateTaxonomy(t *Taxonomy) error {
 	if t.Version == 0 {
-		return fmt.Errorf("%w: taxonomy version is required — set version: 1", ErrTaxonomyInvalid)
+		return fmt.Errorf("%w: taxonomy version is required -- set version: 1", ErrTaxonomyInvalid)
 	}
 	if t.Version > currentTaxonomyVersion {
 		return fmt.Errorf("%w: taxonomy version %d is not supported by this library version (max: %d), upgrade the library",

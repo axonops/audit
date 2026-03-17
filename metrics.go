@@ -32,7 +32,8 @@ type Metrics interface {
 	RecordOutputError(output string)
 
 	// RecordOutputFiltered records that an event was skipped by a
-	// per-output event route filter.
+	// per-output event route filter (see issue #6 for the fan-out
+	// engine that uses this).
 	RecordOutputFiltered(output string)
 
 	// RecordBufferDrop records that an event was dropped because the

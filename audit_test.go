@@ -547,7 +547,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
 		audit.WithTaxonomy(validTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),

@@ -95,9 +95,19 @@ type CEFFormatter struct {
 	// extensions.
 	OmitEmpty bool
 
+	// noCopy prevents go vet from missing struct copies after first use.
+	// CEFFormatter embeds sync.Once which must not be copied.
+	noCopy          noCopy //nolint:unused // vet-only guard
 	resolveOnce     sync.Once
 	resolvedMapping map[string]string
 }
+
+// noCopy is a go vet guard that prevents copying of structs containing
+// sync primitives. See https://pkg.go.dev/sync#Locker.
+type noCopy struct{}
+
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}
 
 // Format serialises a single audit event as a CEF line.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
@@ -144,16 +154,24 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		writeExtField(&ext, extKey, formatFieldValue(v))
 	}
 
-	header := fmt.Sprintf("CEF:0|%s|%s|%s|%s|%s|%d|%s\n",
-		cefEscapeHeader(cf.Vendor),
-		cefEscapeHeader(cf.Product),
-		cefEscapeHeader(cf.Version),
-		cefEscapeHeader(eventType),
-		cefEscapeHeader(description),
-		severity,
-		ext.String(),
-	)
-	return []byte(header), nil
+	var line strings.Builder
+	line.Grow(256)
+	line.WriteString("CEF:0|")
+	line.WriteString(cefEscapeHeader(cf.Vendor))
+	line.WriteByte('|')
+	line.WriteString(cefEscapeHeader(cf.Product))
+	line.WriteByte('|')
+	line.WriteString(cefEscapeHeader(cf.Version))
+	line.WriteByte('|')
+	line.WriteString(cefEscapeHeader(eventType))
+	line.WriteByte('|')
+	line.WriteString(cefEscapeHeader(description))
+	line.WriteByte('|')
+	line.WriteString(strconv.Itoa(severity))
+	line.WriteByte('|')
+	line.WriteString(ext.String())
+	line.WriteByte('\n')
+	return []byte(line.String()), nil
 }
 
 func (cf *CEFFormatter) severity(eventType string) int {
@@ -183,7 +201,7 @@ func (cf *CEFFormatter) description(eventType string) string {
 func (cf *CEFFormatter) fieldMapping() map[string]string {
 	cf.resolveOnce.Do(func() {
 		if cf.FieldMapping == nil {
-			cf.resolvedMapping = defaultCEFFieldMapping
+			cf.resolvedMapping = DefaultCEFFieldMapping() // defensive copy
 			return
 		}
 		merged := make(map[string]string, len(defaultCEFFieldMapping)+len(cf.FieldMapping))

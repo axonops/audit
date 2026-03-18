@@ -36,6 +36,24 @@ type Metrics interface {
 	// engine that uses this).
 	RecordOutputFiltered(output string)
 
+	// RecordValidationError records that [Logger.Audit] rejected an
+	// event due to a validation failure: unknown event type, missing
+	// required fields, or unknown fields in strict mode. The
+	// eventType parameter is the event type string that was passed to
+	// Audit.
+	RecordValidationError(eventType string)
+
+	// RecordFiltered records that an event was silently discarded by
+	// the global category/event filter. This is distinct from
+	// [Metrics.RecordOutputFiltered] which tracks per-output route
+	// filtering.
+	RecordFiltered(eventType string)
+
+	// RecordSerializationError records that the configured [Formatter]
+	// returned an error (or panicked) when serialising an event. The
+	// event is dropped when this occurs.
+	RecordSerializationError(eventType string)
+
 	// RecordBufferDrop records that an event was dropped because the
 	// main async buffer was full.
 	RecordBufferDrop()

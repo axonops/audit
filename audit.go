@@ -159,10 +159,16 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	// taxonomy is immutable after construction; safe to read without lock.
 	def, ok := l.taxonomy.Events[eventType]
 	if !ok {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
 	if err := l.validateFields(eventType, &def, fields); err != nil {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
 		return err
 	}
 
@@ -170,6 +176,9 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	enabled := l.filter.isEnabled(eventType, l.taxonomy)
 	l.mu.RUnlock()
 	if !enabled {
+		if l.metrics != nil {
+			l.metrics.RecordFiltered(eventType)
+		}
 		return nil
 	}
 
@@ -364,7 +373,11 @@ func (l *Logger) emitShutdown() {
 	select {
 	case l.ch <- entry:
 	default:
-		slog.Warn("audit: buffer full, dropping shutdown event")
+		slog.Warn("audit: buffer full, dropping shutdown event",
+			"buffer_size", l.cfg.BufferSize)
+		if l.metrics != nil {
+			l.metrics.RecordBufferDrop()
+		}
 	}
 }
 
@@ -410,6 +423,9 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			slog.Error("audit: panic in processEntry",
 				"event_type", entry.eventType,
 				"panic", r)
+			if l.metrics != nil {
+				l.metrics.RecordSerializationError(entry.eventType)
+			}
 		}
 	}()
 
@@ -419,6 +435,9 @@ func (l *Logger) processEntry(entry *auditEntry) {
 		slog.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
 			"error", err)
+		if l.metrics != nil {
+			l.metrics.RecordSerializationError(entry.eventType)
+		}
 		return
 	}
 

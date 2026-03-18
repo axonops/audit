@@ -136,6 +136,13 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	l.wg.Add(1)
 	go l.drainLoop(ctx)
 
+	slog.Info("audit: logger created",
+		"buffer_size", cfg.BufferSize,
+		"drain_timeout", cfg.DrainTimeout,
+		"validation_mode", string(cfg.ValidationMode),
+		"outputs", len(l.outputs),
+	)
+
 	return l, nil
 }
 
@@ -196,7 +203,8 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		return nil
 	default:
 		slog.Warn("audit: buffer full, dropping event",
-			"event_type", entry.eventType)
+			"event_type", entry.eventType,
+			"buffer_size", l.cfg.BufferSize)
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
@@ -223,22 +231,29 @@ func (l *Logger) Close() error {
 			return
 		}
 
-		// Enqueue shutdown event before signalling the drain goroutine.
-		// The event is in the channel before cancel() fires, so
-		// drainRemaining will always process it.
+		shutdownStart := time.Now()
+		slog.Info("audit: shutdown started")
+
 		if l.startupEmitted.Load() {
 			l.emitShutdown()
 		}
 
-		// Signal drain goroutine to stop and wait for it.
 		l.cancel()
 		l.waitForDrain()
 
 		for _, o := range l.outputs {
-			if err := o.Close(); err != nil && l.closeErr == nil {
-				l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
+			if err := o.Close(); err != nil {
+				slog.Error("audit: output close failed",
+					"output", o.Name(),
+					"error", err)
+				if l.closeErr == nil {
+					l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
+				}
 			}
 		}
+
+		slog.Info("audit: shutdown complete",
+			"duration", time.Since(shutdownStart))
 	})
 	return l.closeErr
 }
@@ -250,7 +265,9 @@ func (l *Logger) waitForDrain() {
 	select {
 	case <-l.drainDone:
 	case <-time.After(l.cfg.DrainTimeout):
-		slog.Warn("audit: drain timed out, some events may be lost")
+		slog.Warn("audit: drain timed out, some events may be lost",
+			"drain_timeout", l.cfg.DrainTimeout,
+			"buffer_remaining", len(l.ch))
 	}
 }
 
@@ -265,6 +282,7 @@ func (l *Logger) EnableCategory(category string) error {
 	l.mu.Lock()
 	l.filter.enabledCategories[category] = true
 	l.mu.Unlock()
+	slog.Info("audit: category enabled", "category", category)
 	return nil
 }
 
@@ -279,6 +297,7 @@ func (l *Logger) DisableCategory(category string) error {
 	l.mu.Lock()
 	l.filter.enabledCategories[category] = false
 	l.mu.Unlock()
+	slog.Info("audit: category disabled", "category", category)
 	return nil
 }
 
@@ -293,6 +312,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	l.mu.Lock()
 	l.filter.eventOverrides[eventType] = true
 	l.mu.Unlock()
+	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
@@ -307,6 +327,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	l.mu.Lock()
 	l.filter.eventOverrides[eventType] = false
 	l.mu.Unlock()
+	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -386,6 +407,8 @@ func (l *Logger) emitShutdown() {
 func (l *Logger) drainLoop(ctx context.Context) {
 	defer l.wg.Done()
 	defer close(l.drainDone)
+	defer slog.Debug("audit: drain loop exiting")
+	slog.Debug("audit: drain loop started")
 	for {
 		select {
 		case entry := <-l.ch:
@@ -516,14 +539,15 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 	}
 
 	slices.Sort(unknown)
-	msg := fmt.Sprintf("audit: event %q has unknown fields: [%s]",
-		eventType, strings.Join(unknown, ", "))
 
 	switch l.cfg.ValidationMode {
 	case ValidationStrict:
-		return errors.New(msg)
+		return fmt.Errorf("audit: event %q has unknown fields: [%s]",
+			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		slog.Warn(msg)
+		slog.Warn("audit: event has unknown fields",
+			"event_type", eventType,
+			"unknown_fields", unknown)
 	}
 	return nil
 }

@@ -1525,7 +1525,6 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
 	err = logger.Audit("auth_failure", audit.Fields{
 		"outcome":  "fail",

@@ -8,6 +8,7 @@ run:
 linters:
   enable:
     # Default linters
+    - typecheck
     - errcheck
     - gosimple
     - govet

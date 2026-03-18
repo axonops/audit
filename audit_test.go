@@ -1412,7 +1412,7 @@ func BenchmarkAudit(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{
 		"outcome":  "success",
@@ -1437,14 +1437,13 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{"outcome": "success"}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		// "read" category is not in DefaultEnabled -- early filter exit.
 		_ = logger.Audit("schema_read", fields)
 	}
 }
@@ -1457,7 +1456,7 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{
 		"outcome":  "success",

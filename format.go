@@ -15,12 +15,7 @@
 package audit
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -35,7 +30,7 @@ type Formatter interface {
 }
 
 // TimestampFormat controls how timestamps are rendered in serialised
-// output.
+// output. Unrecognised values default to [TimestampRFC3339Nano].
 type TimestampFormat string
 
 const (
@@ -49,172 +44,25 @@ const (
 	TimestampUnixMillis TimestampFormat = "unix_ms"
 )
 
-// JSONFormatter serialises audit events as line-delimited JSON.
-//
-// Fields are emitted in deterministic order: framework fields first
-// (timestamp, event_type, duration_ms if present), then required
-// fields (sorted), then optional fields (sorted), then any extra
-// fields (sorted). Each event is terminated by a newline.
-//
-// [time.Duration] values are converted to int64 milliseconds.
-// Timestamps are rendered according to [JSONFormatter.Timestamp]
-// (default [TimestampRFC3339Nano]).
-type JSONFormatter struct {
-	// OmitEmpty controls whether zero-value fields are omitted.
-	// When true, fields where [isZeroValue] returns true are skipped.
-	OmitEmpty bool
-
-	// Timestamp controls the timestamp format. Empty defaults to
-	// [TimestampRFC3339Nano].
-	Timestamp TimestampFormat
-}
-
-// Format serialises a single audit event as a JSON line.
-func (f *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-
-	enc := &jsonEncoder{buf: &buf, omitEmpty: f.OmitEmpty}
-
-	// Framework fields first.
-	enc.writeTimestamp(ts, f.tsFormat())
-	enc.writeStringField("event_type", eventType)
-	f.writeDuration(enc, fields)
-
-	// Required fields (sorted).
-	required := sortedFieldKeys(def.Required, fields, f.OmitEmpty)
-	for _, k := range required {
-		enc.writeField(k, fields[k])
-	}
-
-	// Optional fields (sorted).
-	optional := sortedFieldKeys(def.Optional, fields, f.OmitEmpty)
-	for _, k := range optional {
-		enc.writeField(k, fields[k])
-	}
-
-	// Extra fields not in required or optional (sorted).
-	extra := extraFieldKeys(def, fields, f.OmitEmpty)
-	for _, k := range extra {
-		enc.writeField(k, fields[k])
-	}
-
-	buf.WriteByte('}')
-	buf.WriteByte('\n')
-
-	if enc.err != nil {
-		return nil, fmt.Errorf("audit: json format: %w", enc.err)
-	}
-	return buf.Bytes(), nil
-}
-
-func (f *JSONFormatter) tsFormat() TimestampFormat {
-	if f.Timestamp == "" {
-		return TimestampRFC3339Nano
-	}
-	return f.Timestamp
-}
-
-// writeDuration checks for a duration_ms field with a time.Duration
-// value and writes it as int64 milliseconds.
-func (f *JSONFormatter) writeDuration(enc *jsonEncoder, fields Fields) {
-	if v, ok := fields["duration_ms"]; ok {
-		if d, ok := v.(time.Duration); ok {
-			enc.writeInt64Field("duration_ms", d.Milliseconds())
-			return
-		}
-		// Not a time.Duration — will be written as a regular field.
-	}
-}
-
-// jsonEncoder writes JSON key-value pairs to a buffer with comma
-// separation. It tracks the first error encountered.
-type jsonEncoder struct {
-	buf       *bytes.Buffer
-	omitEmpty bool
-	written   bool // true after the first field is written
-	err       error
-}
-
-func (e *jsonEncoder) writeComma() {
-	if e.written {
-		e.buf.WriteByte(',')
-	}
-	e.written = true
-}
-
-func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
-	e.writeComma()
-	e.buf.WriteString(`"timestamp":`)
-	switch format {
-	case TimestampUnixMillis:
-		e.buf.WriteString(strconv.FormatInt(ts.UnixMilli(), 10))
-	default:
-		data, err := json.Marshal(ts.Format(time.RFC3339Nano))
-		if err != nil && e.err == nil {
-			e.err = err
-		}
-		e.buf.Write(data)
-	}
-}
-
-func (e *jsonEncoder) writeStringField(key, value string) {
-	e.writeComma()
-	e.writeKey(key)
-	data, err := json.Marshal(value)
-	if err != nil && e.err == nil {
-		e.err = err
-	}
-	e.buf.Write(data)
-}
-
-func (e *jsonEncoder) writeInt64Field(key string, value int64) {
-	e.writeComma()
-	e.writeKey(key)
-	e.buf.WriteString(strconv.FormatInt(value, 10))
-}
-
-func (e *jsonEncoder) writeKey(key string) {
-	data, err := json.Marshal(key)
-	if err != nil && e.err == nil {
-		e.err = err
-	}
-	e.buf.Write(data)
-	e.buf.WriteByte(':')
-}
-
-func (e *jsonEncoder) writeField(key string, value any) {
-	if e.omitEmpty && isZeroValue(value) {
-		return
-	}
-
-	// Convert time.Duration to int64 milliseconds.
-	if d, ok := value.(time.Duration); ok {
-		e.writeInt64Field(key, d.Milliseconds())
-		return
-	}
-
-	e.writeComma()
-	e.writeKey(key)
-	data, err := json.Marshal(value)
-	if err != nil && e.err == nil {
-		e.err = err
-	}
-	e.buf.Write(data)
-}
-
 // sortedFieldKeys returns the keys from fieldNames that exist in
 // fields, sorted alphabetically. If omitEmpty is true, zero-value
-// fields are excluded.
+// fields are excluded. Framework fields (timestamp, event_type) are
+// always skipped. duration_ms is only skipped if the value is a
+// [time.Duration] (already handled as a framework field); non-Duration
+// values pass through as regular fields.
 func sortedFieldKeys(fieldNames []string, fields Fields, omitEmpty bool) []string {
 	if len(fieldNames) == 0 {
 		return nil
 	}
 	keys := make([]string, 0, len(fieldNames))
 	for _, k := range fieldNames {
-		// Skip framework fields handled separately.
-		if k == "timestamp" || k == "event_type" || k == "duration_ms" {
+		if k == "timestamp" || k == "event_type" {
 			continue
+		}
+		if k == "duration_ms" {
+			if _, isDuration := fields[k].(time.Duration); isDuration {
+				continue // handled as framework field
+			}
 		}
 		v, exists := fields[k]
 		if !exists && omitEmpty {
@@ -233,22 +81,26 @@ func sortedFieldKeys(fieldNames []string, fields Fields, omitEmpty bool) []strin
 // Required or Optional lists (i.e. extra fields from permissive mode),
 // sorted alphabetically.
 func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
-	known := make(map[string]bool, len(def.Required)+len(def.Optional)+3)
+	known := make(map[string]bool, len(def.Required)+len(def.Optional)+2)
 	for _, k := range def.Required {
 		known[k] = true
 	}
 	for _, k := range def.Optional {
 		known[k] = true
 	}
-	// Framework fields are handled separately.
 	known["timestamp"] = true
 	known["event_type"] = true
-	known["duration_ms"] = true
 
 	var extra []string
 	for k, v := range fields {
 		if known[k] {
 			continue
+		}
+		// Skip duration_ms only if it's a time.Duration (handled as framework field).
+		if k == "duration_ms" {
+			if _, isDuration := v.(time.Duration); isDuration {
+				continue
+			}
 		}
 		if omitEmpty && isZeroValue(v) {
 			continue
@@ -259,256 +111,9 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 	return extra
 }
 
-// ---------------------------------------------------------------------------
-// CEF Formatter
-// ---------------------------------------------------------------------------
-
-// defaultCEFFieldMapping is the built-in mapping from audit field names
-// to CEF extension keys.
-var defaultCEFFieldMapping = map[string]string{
-	"actor_id":   "suser",
-	"source_ip":  "src",
-	"request_id": "externalId",
-	"user_agent": "requestClientApplication",
-	"method":     "requestMethod",
-	"path":       "request",
-	"outcome":    "outcome",
-}
-
-// DefaultCEFFieldMapping returns a copy of the built-in field mapping
-// from audit field names to standard CEF extension keys. Consumers can
-// use this as a base, add or override entries, and pass the result to
-// [CEFFormatter.FieldMapping].
-func DefaultCEFFieldMapping() map[string]string {
-	cp := make(map[string]string, len(defaultCEFFieldMapping))
-	for k, v := range defaultCEFFieldMapping {
-		cp[k] = v
-	}
-	return cp
-}
-
-// CEFFormatter serialises audit events in Common Event Format (CEF).
-//
-// The output format is:
-//
-//	CEF:0|{Vendor}|{Product}|{Version}|{eventType}|{description}|{severity}|{extensions}
-//
-// Header fields use pipe (|) as a delimiter. Extension values use
-// key=value pairs separated by spaces.
-//
-// # Escaping
-//
-// Header fields escape backslash and pipe: \ → \\, | → \|.
-// Extension values escape backslash, equals, newline, and CR:
-// \ → \\, = → \=, newline → \n (literal), CR → \r (literal).
-// See the CEF specification for details.
-//
-// # Severity
-//
-// Severity is determined by [CEFFormatter.SeverityFunc]. If nil, all
-// events default to severity 5 (medium). The consumer is responsible
-// for defining severity for their event types.
-type CEFFormatter struct {
-	// Vendor is the CEF header vendor field (e.g. "AxonOps").
-	Vendor string
-
-	// Product is the CEF header product field (e.g. "SchemaRegistry").
-	Product string
-
-	// Version is the CEF header product version field (e.g. "1.0").
-	Version string
-
-	// SeverityFunc maps event types to CEF severity (0-10). If nil,
-	// all events default to severity 5.
-	SeverityFunc func(eventType string) int
-
-	// DescriptionFunc maps event types to human-readable CEF
-	// descriptions. If nil, the event type name is used.
-	DescriptionFunc func(eventType string) string
-
-	// FieldMapping maps audit field names to CEF extension keys.
-	// If nil, [DefaultCEFFieldMapping] is used. Entries in this map
-	// override the defaults; unmapped fields use their original name.
-	FieldMapping map[string]string
-
-	// OmitEmpty controls whether zero-value fields are omitted from
-	// extensions.
-	OmitEmpty bool
-}
-
-// Format serialises a single audit event as a CEF line.
-func (f *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
-	severity := f.severity(eventType)
-	description := f.description(eventType)
-	mapping := f.fieldMapping()
-
-	var ext strings.Builder
-
-	// Timestamp as receipt time (epoch ms).
-	writeExtField(&ext, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
-
-	// Event type as device action (writeExtField handles escaping).
-	writeExtField(&ext, "act", eventType)
-
-	// Duration if present.
-	if v, ok := fields["duration_ms"]; ok {
-		if d, ok := v.(time.Duration); ok {
-			writeExtField(&ext, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
-			writeExtField(&ext, "cn1Label", "durationMs")
-		}
-	}
-
-	// All fields via mapping.
-	allKeys := allFieldKeysSorted(def, fields, f.OmitEmpty)
-	for _, k := range allKeys {
-		if k == "duration_ms" || k == "timestamp" || k == "event_type" {
-			continue
-		}
-		v := fields[k]
-		if f.OmitEmpty && isZeroValue(v) {
-			continue
-		}
-		extKey := mapFieldKey(k, mapping)
-		if err := validateExtKey(extKey); err != nil {
-			return nil, fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
-		}
-		writeExtField(&ext, extKey, formatFieldValue(v))
-	}
-
-	header := fmt.Sprintf("CEF:0|%s|%s|%s|%s|%s|%d|%s\n",
-		cefEscapeHeader(f.Vendor),
-		cefEscapeHeader(f.Product),
-		cefEscapeHeader(f.Version),
-		cefEscapeHeader(eventType),
-		cefEscapeHeader(description),
-		severity,
-		ext.String(),
-	)
-	return []byte(header), nil
-}
-
-func (f *CEFFormatter) severity(eventType string) int {
-	if f.SeverityFunc != nil {
-		return f.SeverityFunc(eventType)
-	}
-	return 5
-}
-
-func (f *CEFFormatter) description(eventType string) string {
-	if f.DescriptionFunc != nil {
-		return f.DescriptionFunc(eventType)
-	}
-	return eventType
-}
-
-func (f *CEFFormatter) fieldMapping() map[string]string {
-	if f.FieldMapping == nil {
-		return defaultCEFFieldMapping
-	}
-	// Merge consumer overrides with defaults.
-	merged := make(map[string]string, len(defaultCEFFieldMapping)+len(f.FieldMapping))
-	for k, v := range defaultCEFFieldMapping {
-		merged[k] = v
-	}
-	for k, v := range f.FieldMapping {
-		merged[k] = v
-	}
-	return merged
-}
-
-// cefEscapeHeader escapes characters in CEF header fields.
-// Header fields use pipe (|) as delimiter -- pipes and backslashes
-// MUST be escaped. Backslash is escaped first to avoid double-escaping.
-func cefEscapeHeader(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `|`, `\|`)
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	return s
-}
-
-// cefEscapeExtValue escapes characters in CEF extension values.
-// Backslash is escaped first to avoid double-escaping. All C0 control
-// characters (0x00-0x1F) are stripped after newline/CR escaping.
-func cefEscapeExtValue(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `=`, `\=`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	// Strip remaining C0 control characters (0x00-0x1F).
-	// \n and \r are already escaped to literal sequences above.
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 {
-			return -1
-		}
-		return r
-	}, s)
-	return s
-}
-
-// validateExtKey returns an error if the key is not a valid CEF
-// extension key name (must match [a-zA-Z0-9_]+).
-func validateExtKey(key string) error {
-	if len(key) == 0 {
-		return fmt.Errorf("must match [a-zA-Z0-9_]+")
-	}
-	for _, c := range key {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
-			return fmt.Errorf("must match [a-zA-Z0-9_]+")
-		}
-	}
-	return nil
-}
-
-// writeExtField writes a key=value pair to the extension string.
-func writeExtField(b *strings.Builder, key, value string) {
-	if b.Len() > 0 {
-		b.WriteByte(' ')
-	}
-	b.WriteString(key)
-	b.WriteByte('=')
-	b.WriteString(cefEscapeExtValue(value))
-}
-
-// mapFieldKey maps an audit field name to a CEF extension key using
-// the provided mapping. If no mapping exists, the field name is used
-// as-is.
-func mapFieldKey(fieldName string, mapping map[string]string) string {
-	if ext, ok := mapping[fieldName]; ok {
-		return ext
-	}
-	return fieldName
-}
-
-// formatFieldValue converts a field value to a string for CEF
-// extension values.
-func formatFieldValue(v any) string {
-	if v == nil {
-		return ""
-	}
-	switch val := v.(type) {
-	case string:
-		return val
-	case bool:
-		return strconv.FormatBool(val)
-	case int:
-		return strconv.Itoa(val)
-	case int64:
-		return strconv.FormatInt(val, 10)
-	case float64:
-		return strconv.FormatFloat(val, 'g', -1, 64)
-	case time.Duration:
-		return strconv.FormatInt(val.Milliseconds(), 10)
-	case time.Time:
-		return val.Format(time.RFC3339)
-	default:
-		return fmt.Sprintf("%v", val)
-	}
-}
-
 // allFieldKeysSorted returns all field keys from the EventDef
 // (required + optional) plus any extra fields, sorted alphabetically.
-func allFieldKeysSorted(def *EventDef, fields Fields, omitEmpty bool) []string {
+func allFieldKeysSorted(def *EventDef, fields Fields) []string {
 	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
 	var keys []string
 	for _, k := range def.Required {

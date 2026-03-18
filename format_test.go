@@ -16,6 +16,7 @@ package audit_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/quick"
@@ -106,6 +107,66 @@ func TestJSONFormatter_DurationMarshalling(t *testing.T) {
 
 	// duration_ms should be int64 milliseconds, not Go duration string.
 	assert.Equal(t, float64(1500), m["duration_ms"])
+}
+
+func TestJSONFormatter_DurationAsInt(t *testing.T) {
+	// duration_ms as a plain int (not time.Duration) must not be dropped.
+	f := &audit.JSONFormatter{}
+	data, err := f.Format(testTime, "schema_register", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"subject":     "my-topic",
+		"duration_ms": 250,
+	}, testDef)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	assert.Equal(t, float64(250), m["duration_ms"], "duration_ms as int must not be dropped")
+}
+
+func TestCEFFormatter_DurationAsInt(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	data, err := f.Format(testTime, "ev", audit.Fields{
+		"outcome":     "ok",
+		"duration_ms": 500,
+	}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"duration_ms"},
+	})
+	require.NoError(t, err)
+
+	// Non-Duration duration_ms should appear as a regular field, not be dropped.
+	line := string(data)
+	assert.Contains(t, line, "duration_ms=500", "duration_ms as int must not be dropped in CEF")
+}
+
+func TestCEFFormatter_SeverityClamped(t *testing.T) {
+	tests := []struct {
+		name     string
+		severity int
+		want     int
+	}{
+		{"below zero", -5, 0},
+		{"above ten", 42, 10},
+		{"in range", 7, 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &audit.CEFFormatter{
+				Vendor: "V", Product: "P", Version: "1",
+				SeverityFunc: func(string) int { return tt.severity },
+			}
+			data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+				Category: "write",
+				Required: []string{"outcome"},
+			})
+			require.NoError(t, err)
+			assert.Contains(t, string(data), fmt.Sprintf("|%d|", tt.want))
+		})
+	}
 }
 
 func TestJSONFormatter_TimestampRFC3339Nano(t *testing.T) {
@@ -772,4 +833,56 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid extension key")
+}
+
+// ---------------------------------------------------------------------------
+// Formatter benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkJSONFormatter_Format(b *testing.B) {
+	f := &audit.JSONFormatter{}
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+		"version":  1,
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id", "subject"},
+		Optional: []string{"version"},
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "schema_register", fields, def)
+	}
+}
+
+func BenchmarkCEFFormatter_Format(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+		"version":  1,
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id", "subject"},
+		Optional: []string{"version"},
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "schema_register", fields, def)
+	}
 }

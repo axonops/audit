@@ -525,6 +525,8 @@ func copyFields(fields Fields) Fields {
 // isZeroValue reports whether v is a zero value for its type. It uses
 // a type switch for common types to avoid reflection overhead and
 // panics. Unknown types fall back to a non-nil check only.
+//
+//nolint:cyclop,gocyclo // flat type switch over primitive types; linear structure, not true branch complexity
 func isZeroValue(v any) bool {
 	if v == nil {
 		return true

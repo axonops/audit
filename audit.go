@@ -173,6 +173,9 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	}
 
 	if err := l.validateFields(eventType, &def, fields); err != nil {
+		// Only strict-mode rejections are validation errors. Warn-mode
+		// unknown fields return nil (event accepted) and are observable
+		// only via slog -- they are not validation errors.
 		if l.metrics != nil {
 			l.metrics.RecordValidationError(eventType)
 		}

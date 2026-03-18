@@ -1533,9 +1533,8 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Send sentinel to ensure drain loop processed the bad event.
-	// (The bad formatter always fails, so use a valid event that will also fail.)
-	// Wait a bit then close to drain.
+	// Close drains the event through processEntry, triggering the
+	// serialization error metric.
 	require.NoError(t, logger.Close())
 
 	metrics.mu.Lock()
@@ -1574,26 +1573,35 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 }
 
 func TestAudit_NilMetrics_NoPanic(t *testing.T) {
-	// Verify that all metrics paths handle nil metrics without panic.
+	// Verify that all metrics paths handle nil metrics without panic,
+	// including the async serialization error path in processEntry.
+	badFormatter := &stubFormatter{
+		fn: func(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+			return nil, errors.New("format failed")
+		},
+	}
 	out := newMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(validTaxonomy()),
 		audit.WithOutputs(out),
+		audit.WithFormatter(badFormatter),
 		// No WithMetrics -- metrics is nil.
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
-	// Validation error path.
+	// Validation error path (unknown event type).
 	_ = logger.Audit("nonexistent", audit.Fields{})
 	// Missing required field path.
 	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
 	// Filtered event path.
 	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
-	// Buffer full path (tiny buffer).
-	// Normal path.
+	// Normal path (will trigger serialization error in drain goroutine).
 	_ = logger.Audit("auth_failure", audit.Fields{"outcome": "fail", "actor_id": "bob"})
+
+	// Close drains the bad event through processEntry -> serialize error
+	// with nil metrics. Must not panic.
+	require.NoError(t, logger.Close())
 }
 
 // ---------------------------------------------------------------------------

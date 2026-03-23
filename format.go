@@ -26,6 +26,18 @@ import (
 // Format is called from a single goroutine (the drain loop);
 // implementations do not need to be safe for concurrent use.
 type Formatter interface {
+	// Format serialises a single audit event into a wire-format byte
+	// slice. Implementations MUST append a newline terminator; the
+	// library passes the result directly to [Output.Write].
+	//
+	// ts is the wall-clock time recorded at drain time (not
+	// submission). eventType is the registered event type name.
+	// fields contains the caller-supplied key-value pairs. def is the
+	// [EventDef] for eventType; it is never nil when called by the
+	// library.
+	//
+	// A non-nil error causes the event to be dropped and
+	// [Metrics.RecordSerializationError] to be called.
 	Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error)
 }
 

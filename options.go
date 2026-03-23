@@ -21,9 +21,9 @@ type Option func(*Logger) error
 
 // WithTaxonomy registers the event taxonomy for validation. This option
 // is required; [NewLogger] returns an error if no taxonomy is provided.
-// WithTaxonomy MUST be called exactly once; calling it more than once
-// replaces the taxonomy and resets all runtime category and event
-// overrides.
+// WithTaxonomy SHOULD be called exactly once per [NewLogger] call.
+// Calling it more than once replaces the taxonomy and resets all
+// runtime category and event overrides established by the previous call.
 //
 // The taxonomy is validated at startup. Lifecycle events (startup and
 // shutdown) are injected automatically if not already present.

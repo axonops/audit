@@ -69,13 +69,18 @@ func DefaultCEFFieldMapping() map[string]string {
 // events default to severity 5 (medium). Values are clamped to the
 // valid CEF range 0-10.
 type CEFFormatter struct {
-	// Vendor is the CEF header vendor field (e.g. "AxonOps").
+	// Vendor is the CEF header vendor field (e.g. "AxonOps"). If empty,
+	// the vendor position in the header is blank but the pipe
+	// delimiters are preserved. SHOULD be non-empty for
+	// standard-compliant CEF output.
 	Vendor string
 
 	// Product is the CEF header product field (e.g. "SchemaRegistry").
+	// If empty, the product position is blank. SHOULD be non-empty.
 	Product string
 
 	// Version is the CEF header product version field (e.g. "1.0").
+	// If empty, the version position is blank. SHOULD be non-empty.
 	Version string
 
 	// SeverityFunc maps event types to CEF severity (0-10). If nil,
@@ -86,9 +91,13 @@ type CEFFormatter struct {
 	// descriptions. If nil, the event type name is used.
 	DescriptionFunc func(eventType string) string
 
-	// FieldMapping maps audit field names to CEF extension keys.
-	// If nil, [DefaultCEFFieldMapping] is used. Entries in this map
-	// override the defaults; unmapped fields use their original name.
+	// FieldMapping maps audit field names to CEF extension keys. If nil,
+	// [DefaultCEFFieldMapping] is used. If non-nil, entries are merged
+	// with [DefaultCEFFieldMapping]: consumer entries override matching
+	// defaults, and defaults not present in FieldMapping remain active.
+	// To suppress all defaults, call [DefaultCEFFieldMapping], delete
+	// unwanted entries, and pass the result. Unmapped fields use their
+	// original audit field name as the extension key.
 	FieldMapping map[string]string
 
 	// OmitEmpty controls whether zero-value fields are omitted from
@@ -97,7 +106,7 @@ type CEFFormatter struct {
 
 	// noCopy prevents go vet from missing struct copies after first use.
 	// CEFFormatter embeds sync.Once which must not be copied.
-	noCopy          noCopy //nolint:unused // vet-only guard
+	noCopy          noCopy //nolint:unused // triggers go vet copylocks on struct copies
 	resolveOnce     sync.Once
 	resolvedMapping map[string]string
 }

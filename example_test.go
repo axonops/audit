@@ -320,3 +320,46 @@ func ExampleLogger_SetOutputRoute() {
 	fmt.Println("route set to security only")
 	// Output: route set to security only
 }
+
+func ExampleNewSyslogOutput_tcp() {
+	// Plain TCP syslog — the simplest configuration.
+	// Note: this example will fail without a running syslog server.
+	cfg := audit.SyslogConfig{
+		Network:  "tcp",
+		Address:  "syslog.example.com:514",
+		Facility: "local0",
+		AppName:  "myapp",
+	}
+	fmt.Println("network:", cfg.Network)
+	fmt.Println("facility:", cfg.Facility)
+	// Output:
+	// network: tcp
+	// facility: local0
+}
+
+func ExampleNewSyslogOutput_tls() {
+	// TLS syslog with CA verification.
+	cfg := audit.SyslogConfig{
+		Network: "tcp+tls",
+		Address: "syslog.example.com:6514",
+		TLSCA:   "/etc/audit/ca.pem",
+	}
+	fmt.Println("network:", cfg.Network)
+	// Output: network: tcp+tls
+}
+
+func ExampleNewSyslogOutput_mtls() {
+	// mTLS syslog with client certificate authentication.
+	cfg := audit.SyslogConfig{
+		Network: "tcp+tls",
+		Address: "syslog.example.com:6514",
+		TLSCert: "/etc/audit/client-cert.pem",
+		TLSKey:  "/etc/audit/client-key.pem",
+		TLSCA:   "/etc/audit/ca.pem",
+	}
+	fmt.Println("network:", cfg.Network)
+	fmt.Println("has client cert:", cfg.TLSCert != "")
+	// Output:
+	// network: tcp+tls
+	// has client cert: true
+}

@@ -90,27 +90,9 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 			"permissions", fmt.Sprintf("%04o", perm))
 	}
 
-	if cfg.MaxSizeMB <= 0 {
-		cfg.MaxSizeMB = 100
-	}
-	if cfg.MaxBackups <= 0 {
-		cfg.MaxBackups = 5
-	}
-	if cfg.MaxAgeDays <= 0 {
-		cfg.MaxAgeDays = 30
-	}
-
-	if cfg.MaxSizeMB > MaxFileSizeMB {
-		return nil, fmt.Errorf("%w: max_size_mb %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxSizeMB, MaxFileSizeMB)
-	}
-	if cfg.MaxBackups > MaxFileBackups {
-		return nil, fmt.Errorf("%w: max_backups %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxBackups, MaxFileBackups)
-	}
-	if cfg.MaxAgeDays > MaxFileAgeDays {
-		return nil, fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxAgeDays, MaxFileAgeDays)
+	applyFileDefaults(&cfg)
+	if err := validateFileLimits(&cfg); err != nil {
+		return nil, err
 	}
 
 	compress := true
@@ -186,6 +168,37 @@ func parsePermissions(s string) (os.FileMode, error) {
 		return 0, fmt.Errorf("value %04o exceeds maximum 0777", mode)
 	}
 	return mode, nil
+}
+
+// applyFileDefaults fills zero-valued rotation fields with defaults.
+func applyFileDefaults(cfg *FileConfig) {
+	if cfg.MaxSizeMB <= 0 {
+		cfg.MaxSizeMB = 100
+	}
+	if cfg.MaxBackups <= 0 {
+		cfg.MaxBackups = 5
+	}
+	if cfg.MaxAgeDays <= 0 {
+		cfg.MaxAgeDays = 30
+	}
+}
+
+// validateFileLimits checks that rotation fields do not exceed their
+// upper bounds.
+func validateFileLimits(cfg *FileConfig) error {
+	if cfg.MaxSizeMB > MaxFileSizeMB {
+		return fmt.Errorf("%w: max_size_mb %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxSizeMB, MaxFileSizeMB)
+	}
+	if cfg.MaxBackups > MaxFileBackups {
+		return fmt.Errorf("%w: max_backups %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxBackups, MaxFileBackups)
+	}
+	if cfg.MaxAgeDays > MaxFileAgeDays {
+		return fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxAgeDays, MaxFileAgeDays)
+	}
+	return nil
 }
 
 // ensureFilePermissions creates or updates the file with the given

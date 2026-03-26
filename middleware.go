@@ -248,7 +248,7 @@ func truncateString(s string, maxLen int) string {
 	}
 	// Truncate to maxLen, then back up to the last valid rune start.
 	s = s[:maxLen]
-	for len(s) > 0 && !utf8.ValidString(s) {
+	for s != "" && !utf8.ValidString(s) {
 		s = s[:len(s)-1]
 	}
 	return s

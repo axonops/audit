@@ -965,17 +965,17 @@ func TestTruncateString(t *testing.T) {
 	tests := []struct {
 		name   string
 		input  string
-		maxLen int
 		expect string
+		maxLen int
 	}{
-		{"under limit", "hello", 10, "hello"},
-		{"at limit", "hello", 5, "hello"},
-		{"over limit", "hello world", 5, "hello"},
-		{"empty", "", 10, ""},
-		{"multibyte not split", "caf\u00e9!", 5, "caf\u00e9"},
-		{"multibyte split backed up", "caf\u00e9!", 4, "caf"},
-		{"exact boundary 512", strings.Repeat("a", 512), 512, strings.Repeat("a", 512)},
-		{"one over boundary 513", strings.Repeat("a", 513), 512, strings.Repeat("a", 512)},
+		{"under limit", "hello", "hello", 10},
+		{"at limit", "hello", "hello", 5},
+		{"over limit", "hello world", "hello", 5},
+		{"empty", "", "", 10},
+		{"multibyte not split", "caf\u00e9!", "caf\u00e9", 5},
+		{"multibyte split backed up", "caf\u00e9!", "caf", 4},
+		{"exact boundary 512", strings.Repeat("a", 512), strings.Repeat("a", 512), 512},
+		{"one over boundary 513", strings.Repeat("a", 513), strings.Repeat("a", 512), 512},
 	}
 
 	for _, tt := range tests {

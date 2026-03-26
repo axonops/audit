@@ -808,12 +808,16 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"wrong_ca"}`+"\n")))
-	time.Sleep(1 * time.Second)
-	require.NoError(t, out.Close())
 
-	// The TLS handshake fails — events are dropped.
-	assert.Greater(t, metrics.getWebhookDrops(), 0,
+	// Poll for the TLS failure to be recorded as a webhook drop.
+	// This replaces time.Sleep synchronisation with an observable
+	// condition, per CLAUDE.md requirements.
+	require.Eventually(t, func() bool {
+		return metrics.getWebhookDrops() > 0
+	}, 5*time.Second, 50*time.Millisecond,
 		"wrong CA should cause TLS failure and event drop")
+
+	require.NoError(t, out.Close())
 }
 
 // ---------------------------------------------------------------------------

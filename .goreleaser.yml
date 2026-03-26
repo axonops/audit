@@ -1,0 +1,44 @@
+version: 2
+
+# go-audit is a library, not a CLI — no binary builds needed.
+# GoReleaser is used for changelog generation and GitHub releases only.
+builds: []
+
+before:
+  hooks:
+    - go mod tidy
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^chore:'
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+  groups:
+    - title: Breaking Changes
+      regexp: '^.*!:'
+      order: 0
+    - title: Features
+      regexp: '^feat'
+      order: 1
+    - title: Bug Fixes
+      regexp: '^fix'
+      order: 2
+    - title: Refactoring
+      regexp: '^refactor'
+      order: 3
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+release:
+  github:
+    owner: axonops
+    name: go-audit
+  draft: false
+  prerelease: auto
+  name_template: '{{ .Tag }}'

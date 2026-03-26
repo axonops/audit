@@ -29,7 +29,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		// lumberjack starts an internal goroutine for log rotation that
+		// shuts down asynchronously after Close returns.
+		goleak.IgnoreTopFunction("gopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun"),
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -37,12 +41,12 @@ func TestMain(m *testing.M) {
 // ---------------------------------------------------------------------------
 
 type mockOutput struct {
-	mu       sync.Mutex
-	events   [][]byte
-	closed   bool
-	name     string
 	writeErr error
-	writeCh  chan struct{} // signalled on every Write
+	writeCh  chan struct{}
+	name     string
+	events   [][]byte
+	mu       sync.Mutex
+	closed   bool
 }
 
 func newMockOutput(name string) *mockOutput {
@@ -113,15 +117,15 @@ func (m *mockOutput) waitForEvents(n int, timeout time.Duration) bool {
 // ---------------------------------------------------------------------------
 
 type mockMetrics struct {
-	mu                  sync.Mutex
-	bufferDrops         int
-	webhookDrops        int
 	events              map[string]int // "output:status" -> count
 	outputErrors        map[string]int
 	filteredCount       map[string]int
 	validationErrors    map[string]int // eventType -> count
 	globalFiltered      map[string]int // eventType -> count
 	serializationErrors map[string]int // eventType -> count
+	mu                  sync.Mutex
+	bufferDrops         int
+	webhookDrops        int
 }
 
 func newMockMetrics() *mockMetrics {
@@ -399,7 +403,9 @@ func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 	require.True(t, out.waitForEvents(1, 2*time.Second))
 
 	ev := out.getEvent(0)
-	ts, err := time.Parse(time.RFC3339Nano, ev["timestamp"].(string))
+	tsStr, ok := ev["timestamp"].(string)
+	require.True(t, ok, "timestamp should be a string")
+	ts, err := time.Parse(time.RFC3339Nano, tsStr)
 	require.NoError(t, err)
 	assert.False(t, ts.Before(before), "timestamp should be after test start")
 }
@@ -598,8 +604,8 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 // blockingOutput blocks on Write until blockCh is closed.
 type blockingOutput struct {
-	name    string
 	blockCh chan struct{}
+	name    string
 }
 
 func (b *blockingOutput) Write(_ []byte) error {
@@ -712,8 +718,8 @@ func TestLogger_Close_OutputError(t *testing.T) {
 }
 
 type errorOutput struct {
-	name     string
 	closeErr error
+	name     string
 }
 
 func (e *errorOutput) Write(_ []byte) error { return nil }

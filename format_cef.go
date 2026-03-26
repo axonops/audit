@@ -71,20 +71,6 @@ func DefaultCEFFieldMapping() map[string]string {
 // events default to severity 5 (medium). Values are clamped to the
 // valid CEF range 0-10.
 type CEFFormatter struct {
-	// Vendor is the CEF header vendor field (e.g. "AxonOps"). If empty,
-	// the vendor position in the header is blank but the pipe
-	// delimiters are preserved. SHOULD be non-empty for
-	// standard-compliant CEF output.
-	Vendor string
-
-	// Product is the CEF header product field (e.g. "SchemaRegistry").
-	// If empty, the product position is blank. SHOULD be non-empty.
-	Product string
-
-	// Version is the CEF header product version field (e.g. "1.0").
-	// If empty, the version position is blank. SHOULD be non-empty.
-	Version string
-
 	// SeverityFunc maps event types to CEF severity (0-10). If nil,
 	// all events default to severity 5. Values are clamped to 0-10.
 	SeverityFunc func(eventType string) int
@@ -100,17 +86,31 @@ type CEFFormatter struct {
 	// To suppress all defaults, call [DefaultCEFFieldMapping], delete
 	// unwanted entries, and pass the result. Unmapped fields use their
 	// original audit field name as the extension key.
-	FieldMapping map[string]string
+	FieldMapping    map[string]string
+	resolvedMapping map[string]string
+
+	// Vendor is the CEF header vendor field (e.g. "AxonOps"). If empty,
+	// the vendor position in the header is blank but the pipe
+	// delimiters are preserved. SHOULD be non-empty for
+	// standard-compliant CEF output.
+	Vendor string
+
+	// Product is the CEF header product field (e.g. "SchemaRegistry").
+	// If empty, the product position is blank. SHOULD be non-empty.
+	Product string
+
+	// Version is the CEF header product version field (e.g. "1.0").
+	// If empty, the version position is blank. SHOULD be non-empty.
+	Version string
+
+	// noCopy prevents go vet from missing struct copies after first use.
+	// CEFFormatter embeds sync.Once which must not be copied.
+	noCopy      noCopy
+	resolveOnce sync.Once
 
 	// OmitEmpty controls whether zero-value fields are omitted from
 	// extensions.
 	OmitEmpty bool
-
-	// noCopy prevents go vet from missing struct copies after first use.
-	// CEFFormatter embeds sync.Once which must not be copied.
-	noCopy          noCopy //nolint:unused // triggers go vet copylocks on struct copies
-	resolveOnce     sync.Once
-	resolvedMapping map[string]string
 }
 
 // noCopy is a go vet guard that prevents copying of structs containing
@@ -163,16 +163,22 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	}
 
 	// All fields via mapping.
+	if err := cf.writeFieldExtensions(&buf, extStart, fields, def, mapping); err != nil {
+		return nil, err
+	}
+
+	buf.WriteByte('\n')
+	// Safe: buf is local and not reused; Bytes() is the sole reference.
+	return buf.Bytes(), nil
+}
+
+// writeFieldExtensions writes all user-defined fields as CEF
+// extensions into buf, starting at extStart.
+func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string) error {
 	allKeys := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
-		if k == "timestamp" || k == "event_type" {
+		if isFrameworkField(k, fields) {
 			continue
-		}
-		// Allow non-Duration duration_ms values through as regular fields.
-		if k == "duration_ms" {
-			if _, isDuration := fields[k].(time.Duration); isDuration {
-				continue
-			}
 		}
 		v := fields[k]
 		if cf.OmitEmpty && isZeroValue(v) {
@@ -180,14 +186,11 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		}
 		extKey := mapFieldKey(k, mapping)
 		if err := validateExtKey(extKey); err != nil {
-			return nil, fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
+			return fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
 		}
-		writeExtField(&buf, extStart, extKey, formatFieldValue(v))
+		writeExtField(buf, extStart, extKey, formatFieldValue(v))
 	}
-
-	buf.WriteByte('\n')
-	// Safe: buf is local and not reused; Bytes() is the sole reference.
-	return buf.Bytes(), nil
+	return nil
 }
 
 func (cf *CEFFormatter) severity(eventType string) int {
@@ -266,11 +269,11 @@ func cefEscapeExtValue(s string) string {
 // validateExtKey returns an error if the key is not a valid CEF
 // extension key name (must match [a-zA-Z0-9_]+).
 func validateExtKey(key string) error {
-	if len(key) == 0 {
+	if key == "" {
 		return fmt.Errorf("must match [a-zA-Z0-9_]+")
 	}
 	for _, c := range key {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return fmt.Errorf("must match [a-zA-Z0-9_]+")
 		}
 	}

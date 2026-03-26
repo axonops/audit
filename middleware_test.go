@@ -34,7 +34,6 @@ import (
 	"github.com/axonops/go-audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
 )
 
 func TestGetHints_NilWithoutMiddleware(t *testing.T) {
@@ -659,7 +658,10 @@ func TestMiddleware_AuditError_LoggedNotPropagated(t *testing.T) {
 }
 
 func TestMiddleware_ConcurrentRequests(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	// Goroutine leak detection is handled globally by TestMain via
+	// goleak.VerifyTestMain. Per-test goleak.VerifyNone is unreliable
+	// in a shared binary where other tests' drain loops may still be
+	// running during this test's cleanup.
 	logger, out := newMiddlewareTestLogger(t)
 
 	var calls atomic.Int64

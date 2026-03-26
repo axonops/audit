@@ -258,3 +258,65 @@ func ExampleNewFileOutput() {
 	fmt.Println("file output created")
 	// Output: file output created
 }
+
+func ExampleEventRoute_include() {
+	// Include mode: only security events are delivered to this output.
+	route := audit.EventRoute{
+		IncludeCategories: []string{"security"},
+	}
+	fmt.Println("empty:", route.IsEmpty())
+	// Output: empty: false
+}
+
+func ExampleEventRoute_exclude() {
+	// Exclude mode: all events except reads are delivered.
+	route := audit.EventRoute{
+		ExcludeCategories: []string{"read"},
+	}
+	fmt.Println("empty:", route.IsEmpty())
+	// Output: empty: false
+}
+
+func ExampleLogger_SetOutputRoute() {
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(audit.Taxonomy{
+			Version: 1,
+			Categories: map[string][]string{
+				"write":    {"user_create"},
+				"security": {"auth_failure"},
+			},
+			Events: map[string]audit.EventDef{
+				"user_create":  {Category: "write", Required: []string{"outcome"}},
+				"auth_failure": {Category: "security", Required: []string{"outcome"}},
+			},
+			DefaultEnabled: []string{"write", "security"},
+		}),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if closeErr := logger.Close(); closeErr != nil {
+			log.Printf("audit close: %v", closeErr)
+		}
+	}()
+
+	// Restrict output to security events only at runtime.
+	if err := logger.SetOutputRoute("stdout", &audit.EventRoute{
+		IncludeCategories: []string{"security"},
+	}); err != nil {
+		fmt.Println("route error:", err)
+		return
+	}
+
+	fmt.Println("route set to security only")
+	// Output: route set to security only
+}

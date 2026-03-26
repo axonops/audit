@@ -82,6 +82,20 @@ func (m *mockOutput) Close() error {
 
 func (m *mockOutput) Name() string { return m.name }
 
+func (m *mockOutput) setWriteErr(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.writeErr = err
+}
+
+func (m *mockOutput) getEvents() [][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([][]byte, len(m.events))
+	copy(cp, m.events)
+	return cp
+}
+
 func (m *mockOutput) eventCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -187,6 +201,12 @@ func (m *mockMetrics) RecordSerializationError(eventType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.serializationErrors[eventType]++
+}
+
+func (m *mockMetrics) getOutputFiltered(output string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filteredCount[output]
 }
 
 func (m *mockMetrics) getBufferDrops() int {

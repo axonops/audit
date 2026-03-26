@@ -72,7 +72,10 @@ type Logger struct {
 	taxonomy       *Taxonomy
 	cancel         context.CancelFunc
 	drainDone      chan struct{}
-	outputs        []Output
+	// entries and outputsByName are immutable after construction;
+	// safe to read without holding l.mu.
+	entries        []*outputEntry
+	outputsByName  map[string]*outputEntry
 	cfg            Config
 	wg             sync.WaitGroup
 	mu             sync.RWMutex
@@ -112,6 +115,13 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
 	}
 
+	// Validate per-output event routes against the taxonomy.
+	for _, oe := range l.entries {
+		if err := ValidateEventRoute(&oe.route, l.taxonomy); err != nil {
+			return nil, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
+		}
+	}
+
 	// Default formatter if WithFormatter was not called.
 	if l.formatter == nil {
 		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
@@ -132,7 +142,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		"buffer_size", cfg.BufferSize,
 		"drain_timeout", cfg.DrainTimeout,
 		"validation_mode", string(cfg.ValidationMode),
-		"outputs", len(l.outputs),
+		"outputs", len(l.entries),
 	)
 
 	return l, nil
@@ -236,13 +246,13 @@ func (l *Logger) Close() error {
 		l.cancel()
 		l.waitForDrain()
 
-		for _, o := range l.outputs {
-			if err := o.Close(); err != nil {
+		for _, oe := range l.entries {
+			if err := oe.output.Close(); err != nil {
 				slog.Error("audit: output close failed",
-					"output", o.Name(),
+					"output", oe.output.Name(),
 					"error", err)
 				if l.closeErr == nil {
-					l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
+					l.closeErr = fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
 				}
 			}
 		}
@@ -324,6 +334,49 @@ func (l *Logger) DisableEvent(eventType string) error {
 	l.mu.Unlock()
 	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
+}
+
+// SetOutputRoute sets the per-output event route for the named output.
+// The route is validated against the taxonomy; unknown categories or
+// event types return an error. Mixed include/exclude routes return an
+// error. An unknown output name returns an error.
+//
+// SetOutputRoute is safe for concurrent use with event delivery.
+func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
+	oe, ok := l.outputsByName[outputName]
+	if !ok {
+		return fmt.Errorf("audit: unknown output %q", outputName)
+	}
+	if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+		return err
+	}
+	oe.setRoute(route)
+	slog.Info("audit: output route set", "output", outputName)
+	return nil
+}
+
+// ClearOutputRoute removes the per-output event route for the named
+// output, causing it to receive all globally-enabled events.
+//
+// ClearOutputRoute is safe for concurrent use with event delivery.
+func (l *Logger) ClearOutputRoute(outputName string) error {
+	oe, ok := l.outputsByName[outputName]
+	if !ok {
+		return fmt.Errorf("audit: unknown output %q", outputName)
+	}
+	oe.setRoute(&EventRoute{})
+	slog.Info("audit: output route cleared", "output", outputName)
+	return nil
+}
+
+// GetOutputRoute returns a copy of the current per-output event route
+// for the named output. An unknown output name returns an error.
+func (l *Logger) GetOutputRoute(outputName string) (EventRoute, error) {
+	oe, ok := l.outputsByName[outputName]
+	if !ok {
+		return EventRoute{}, fmt.Errorf("audit: unknown output %q", outputName)
+	}
+	return oe.getRoute(), nil
 }
 
 // Handle returns an [EventType] handle for the named event type. The
@@ -432,9 +485,9 @@ func (l *Logger) drainRemaining() {
 	}
 }
 
-// processEntry serialises an audit entry and writes it to all outputs.
-// It recovers from panics to prevent a single bad event from killing
-// the drain goroutine and halting all audit delivery.
+// processEntry fans out an audit entry to all matching outputs. Events
+// are serialised once per unique Formatter; per-output routes are
+// checked before delivery. Output failures are isolated.
 func (l *Logger) processEntry(entry *auditEntry) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -448,7 +501,36 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}()
 
 	ts := time.Now()
-	data, err := l.serialize(entry, ts)
+	def := l.taxonomy.Events[entry.eventType]
+	category := def.Category
+
+	cache := make(map[Formatter][]byte)
+
+	for _, oe := range l.entries {
+		if !oe.matchesEvent(entry.eventType, category) {
+			if l.metrics != nil {
+				l.metrics.RecordOutputFiltered(oe.output.Name())
+			}
+			continue
+		}
+
+		data := l.formatCached(oe, entry, ts, &def, cache)
+		if data == nil {
+			continue
+		}
+		l.writeToOutput(oe.output, data, entry.eventType)
+	}
+}
+
+// formatCached returns the serialised bytes for the output's formatter,
+// using the cache to avoid redundant serialisation. Returns nil if
+// serialisation failed.
+func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache map[Formatter][]byte) []byte {
+	f := oe.effectiveFormatter(l.formatter)
+	if data, ok := cache[f]; ok {
+		return data // may be nil if serialisation failed
+	}
+	data, err := f.Format(ts, entry.eventType, entry.fields, def)
 	if err != nil {
 		slog.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
@@ -456,12 +538,11 @@ func (l *Logger) processEntry(entry *auditEntry) {
 		if l.metrics != nil {
 			l.metrics.RecordSerializationError(entry.eventType)
 		}
-		return
+		cache[f] = nil // mark as failed
+		return nil
 	}
-
-	for _, o := range l.outputs {
-		l.writeToOutput(o, data, entry.eventType)
-	}
+	cache[f] = data
+	return data
 }
 
 // writeToOutput sends data to a single output and records metrics.
@@ -480,17 +561,6 @@ func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
 	if l.metrics != nil {
 		l.metrics.RecordEvent(o.Name(), "success")
 	}
-}
-
-// serialize delegates to the configured [Formatter] to produce the
-// wire-format bytes for an audit entry.
-func (l *Logger) serialize(entry *auditEntry, ts time.Time) ([]byte, error) {
-	def := l.taxonomy.Events[entry.eventType]
-	data, err := l.formatter.Format(ts, entry.eventType, entry.fields, &def)
-	if err != nil {
-		return nil, fmt.Errorf("audit: serialize %q: %w", entry.eventType, err)
-	}
-	return data, nil
 }
 
 // validateFields checks that all required fields are present and no

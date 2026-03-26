@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 )
 
@@ -95,6 +96,160 @@ type Config struct {
 	// fields are present. Consumers operating under compliance regimes
 	// that require all registered fields SHOULD leave this as false.
 	OmitEmpty bool
+}
+
+// OutputsConfig defines all output destinations for the logger. Primary
+// outputs (Stdout, File) are single instances with default names.
+// Additional named instances are configured via the Extra slice.
+type OutputsConfig struct {
+	// Stdout configures the primary stdout output. Ignored if nil.
+	Stdout *StdoutConfig
+
+	// File configures the primary file output. Ignored if nil.
+	File *FileConfig
+
+	// Extra defines additional named output instances. Each entry
+	// creates a separate output with its own [EventRoute] and
+	// formatter. Names MUST be unique across all outputs (including
+	// the primary ones). Duplicate names cause [BuildOutputs] to
+	// return an error.
+	Extra []NamedOutputConfig
+}
+
+// NamedOutputConfig defines an additional named output instance. Use
+// this to configure multiple outputs of the same type (e.g. two file
+// outputs writing to different paths with different event routes).
+type NamedOutputConfig struct {
+	Stdout *StdoutConfig
+	File   *FileConfig
+	Name   string
+	Type   string
+	Route  EventRoute
+}
+
+// BuildOutputs constructs [Output] instances and [Option] values from
+// an [OutputsConfig]. The returned options should be passed to
+// [NewLogger]. BuildOutputs validates output names for uniqueness,
+// file path uniqueness, and type/config consistency.
+func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
+	opts := make([]Option, 0, 2+len(cfg.Extra))
+	names := make(map[string]bool)
+	filePaths := make(map[string]string) // normalised path -> output name
+
+	if cfg.Stdout != nil {
+		out, err := NewStdoutOutput(*cfg.Stdout)
+		if err != nil {
+			return nil, fmt.Errorf("audit: stdout output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
+		opts = append(opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.File != nil {
+		out, err := NewFileOutput(*cfg.File)
+		if err != nil {
+			return nil, fmt.Errorf("audit: file output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
+		if err := trackFilePath(filePaths, cfg.File.Path, name); err != nil {
+			return nil, err
+		}
+		opts = append(opts, WithNamedOutput(out, nil, nil))
+	}
+
+	for i := range cfg.Extra {
+		opt, err := buildExtraOutput(&cfg.Extra[i], i, names, filePaths)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, opt)
+	}
+
+	return opts, nil
+}
+
+// buildExtraOutput validates and constructs a single Extra output entry.
+func buildExtraOutput(nc *NamedOutputConfig, idx int, names map[string]bool, filePaths map[string]string) (Option, error) {
+	if nc.Name == "" {
+		return nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", idx)
+	}
+	if names[nc.Name] {
+		return nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
+	}
+	names[nc.Name] = true
+
+	if nc.Type == "file" && nc.File != nil {
+		if err := trackFilePath(filePaths, nc.File.Path, nc.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	out, err := buildNamedOutput(nc)
+	if err != nil {
+		return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
+	}
+	return WithNamedOutput(out, &nc.Route, nil), nil
+}
+
+// trackFilePath checks that a file path is not already used by another
+// output. Paths are normalised with filepath.Clean, filepath.Abs, and
+// filepath.EvalSymlinks (if the path exists) before comparison.
+func trackFilePath(seen map[string]string, path, outputName string) error {
+	cleaned := filepath.Clean(path)
+	abs, err := filepath.Abs(cleaned)
+	if err != nil {
+		abs = cleaned
+	}
+	// Resolve symlinks if the path (or its parent) exists on disk.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	if existing, dup := seen[abs]; dup {
+		return fmt.Errorf("audit: file outputs %q and %q share the same path %q", existing, outputName, path)
+	}
+	seen[abs] = outputName
+	return nil
+}
+
+// buildNamedOutput constructs an Output from a NamedOutputConfig.
+func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
+	switch nc.Type {
+	case "stdout":
+		if nc.Stdout == nil {
+			return nil, fmt.Errorf("type %q requires Stdout config", nc.Type)
+		}
+		out, err := NewStdoutOutput(*nc.Stdout)
+		if err != nil {
+			return nil, err
+		}
+		return &namedOutput{Output: out, name: nc.Name}, nil
+	case "file":
+		if nc.File == nil {
+			return nil, fmt.Errorf("type %q requires File config", nc.Type)
+		}
+		return newNamedFileOutput(nc.Name, *nc.File)
+	default:
+		return nil, fmt.Errorf("unknown output type %q", nc.Type)
+	}
+}
+
+// namedOutput wraps an Output to override its Name.
+type namedOutput struct {
+	Output
+	name string
+}
+
+func (n *namedOutput) Name() string { return n.name }
+
+// newNamedFileOutput creates a FileOutput and wraps it with a custom name.
+func newNamedFileOutput(name string, cfg FileConfig) (Output, error) {
+	out, err := NewFileOutput(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &namedOutput{Output: out, name: name}, nil
 }
 
 // applyDefaults fills zero-valued fields with their documented defaults.

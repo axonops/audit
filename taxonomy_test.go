@@ -56,8 +56,8 @@ func TestNewLogger_ValidTaxonomy(t *testing.T) {
 func TestNewLogger_TaxonomyValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		taxonomy  audit.Taxonomy
 		wantError string
+		taxonomy  audit.Taxonomy
 	}{
 		{
 			name: "version zero",

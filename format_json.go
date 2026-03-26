@@ -33,12 +33,12 @@ import (
 // Timestamps are rendered according to [JSONFormatter.Timestamp]
 // (default [TimestampRFC3339Nano]).
 type JSONFormatter struct {
-	// OmitEmpty controls whether zero-value fields are omitted.
-	OmitEmpty bool
-
 	// Timestamp controls the timestamp format. Empty defaults to
 	// [TimestampRFC3339Nano].
 	Timestamp TimestampFormat
+
+	// OmitEmpty controls whether zero-value fields are omitted.
+	OmitEmpty bool
 }
 
 // Format serialises a single audit event as a JSON line.
@@ -99,9 +99,9 @@ func (jf *JSONFormatter) writeDuration(enc *jsonEncoder, fields Fields) {
 // separation. It tracks the first error encountered.
 type jsonEncoder struct {
 	buf       *bytes.Buffer
+	err       error
 	omitEmpty bool
 	hasFields bool // true after the first field is written
-	err       error
 }
 
 func (e *jsonEncoder) writeComma() {
@@ -117,7 +117,7 @@ func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
 	switch format {
 	case TimestampUnixMillis:
 		e.buf.WriteString(strconv.FormatInt(ts.UnixMilli(), 10))
-	default:
+	case TimestampRFC3339Nano:
 		data, err := json.Marshal(ts.Format(time.RFC3339Nano))
 		if err != nil && e.err == nil {
 			e.err = err

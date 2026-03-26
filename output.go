@@ -14,6 +14,12 @@
 
 package audit
 
+import "errors"
+
+// ErrOutputClosed is returned by [Output.Write] when the output has
+// already been closed.
+var ErrOutputClosed = errors.New("audit: output is closed")
+
 // Output is the interface that audit event destinations MUST implement.
 // All outputs receive pre-serialised bytes (JSON, CEF, or a custom
 // format chosen via [WithFormatter]). The library will provide built-in

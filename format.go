@@ -68,25 +68,36 @@ func sortedFieldKeys(fieldNames []string, fields Fields, omitEmpty bool) []strin
 	}
 	keys := make([]string, 0, len(fieldNames))
 	for _, k := range fieldNames {
-		if k == "timestamp" || k == "event_type" {
+		if isFrameworkField(k, fields) {
 			continue
 		}
-		if k == "duration_ms" {
-			if _, isDuration := fields[k].(time.Duration); isDuration {
-				continue // handled as framework field
-			}
-		}
-		v, exists := fields[k]
-		if !exists && omitEmpty {
-			continue
-		}
-		if omitEmpty && isZeroValue(v) {
+		if omitEmpty && shouldOmit(k, fields) {
 			continue
 		}
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// isFrameworkField reports whether k is a framework-managed field that
+// should be skipped during user-field iteration.
+func isFrameworkField(k string, fields Fields) bool {
+	if k == "timestamp" || k == "event_type" {
+		return true
+	}
+	if k == "duration_ms" {
+		_, isDuration := fields[k].(time.Duration)
+		return isDuration
+	}
+	return false
+}
+
+// shouldOmit reports whether a field should be omitted when OmitEmpty
+// is true: the field either does not exist or has a zero value.
+func shouldOmit(k string, fields Fields) bool {
+	v, exists := fields[k]
+	return !exists || isZeroValue(v)
 }
 
 // extraFieldKeys returns field keys that are not in the EventDef's
@@ -103,16 +114,10 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 	known["timestamp"] = true
 	known["event_type"] = true
 
-	var extra []string
+	extra := make([]string, 0, len(fields))
 	for k, v := range fields {
-		if known[k] {
+		if known[k] || isFrameworkField(k, fields) {
 			continue
-		}
-		// Skip duration_ms only if it's a time.Duration (handled as framework field).
-		if k == "duration_ms" {
-			if _, isDuration := v.(time.Duration); isDuration {
-				continue
-			}
 		}
 		if omitEmpty && isZeroValue(v) {
 			continue
@@ -127,7 +132,7 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 // (required + optional) plus any extra fields, sorted alphabetically.
 func allFieldKeysSorted(def *EventDef, fields Fields) []string {
 	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
-	var keys []string
+	keys := make([]string, 0, len(def.Required)+len(def.Optional)+len(fields))
 	for _, k := range def.Required {
 		seen[k] = true
 		keys = append(keys, k)

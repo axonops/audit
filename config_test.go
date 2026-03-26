@@ -207,6 +207,28 @@ func TestBuildOutputs_DuplicateFilePathNormalised(t *testing.T) {
 	assert.Contains(t, err.Error(), "share the same path")
 }
 
+func TestBuildOutputs_SyslogTypeMissingConfig(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "syslog", Syslog: nil},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires Syslog config")
+}
+
+func TestBuildOutputs_SyslogInvalidConfig(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "syslog", Syslog: &audit.SyslogConfig{
+				// Missing address — should fail validation.
+			}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be empty")
+}
+
 func TestBuildOutputs_TypeConfigMismatch(t *testing.T) {
 	_, err := audit.BuildOutputs(audit.OutputsConfig{
 		Extra: []audit.NamedOutputConfig{

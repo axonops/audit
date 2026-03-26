@@ -108,6 +108,9 @@ type OutputsConfig struct {
 	// File configures the primary file output. Ignored if nil.
 	File *FileConfig
 
+	// Syslog configures the primary syslog output. Ignored if nil.
+	Syslog *SyslogConfig
+
 	// Extra defines additional named output instances. Each entry
 	// creates a separate output with its own [EventRoute] and
 	// formatter. Names MUST be unique across all outputs (including
@@ -122,6 +125,7 @@ type OutputsConfig struct {
 type NamedOutputConfig struct {
 	Stdout *StdoutConfig
 	File   *FileConfig
+	Syslog *SyslogConfig
 	Name   string
 	Type   string
 	Route  EventRoute
@@ -156,6 +160,16 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		if err := trackFilePath(filePaths, cfg.File.Path, name); err != nil {
 			return nil, err
 		}
+		opts = append(opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.Syslog != nil {
+		out, err := NewSyslogOutput(cfg.Syslog)
+		if err != nil {
+			return nil, fmt.Errorf("audit: syslog output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
 		opts = append(opts, WithNamedOutput(out, nil, nil))
 	}
 
@@ -230,6 +244,15 @@ func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 			return nil, fmt.Errorf("type %q requires File config", nc.Type)
 		}
 		return newNamedFileOutput(nc.Name, *nc.File)
+	case "syslog":
+		if nc.Syslog == nil {
+			return nil, fmt.Errorf("type %q requires Syslog config", nc.Type)
+		}
+		out, err := NewSyslogOutput(nc.Syslog)
+		if err != nil {
+			return nil, err
+		}
+		return &namedOutput{Output: out, name: nc.Name}, nil
 	default:
 		return nil, fmt.Errorf("unknown output type %q", nc.Type)
 	}

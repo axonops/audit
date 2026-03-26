@@ -341,8 +341,8 @@ func middlewareTaxonomy() audit.Taxonomy {
 }
 
 // middlewareBuilder is a standard EventBuilder for middleware tests.
-func middlewareBuilder(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
-	fields := audit.Fields{
+func middlewareBuilder(hints *audit.Hints, transport *audit.TransportMetadata) (eventType string, fields audit.Fields, skip bool) {
+	fields = audit.Fields{
 		"outcome":            hints.Outcome,
 		"client_ip":          transport.ClientIP,
 		"method":             transport.Method,

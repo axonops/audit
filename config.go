@@ -164,7 +164,7 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	}
 
 	if cfg.Syslog != nil {
-		out, err := NewSyslogOutput(*cfg.Syslog)
+		out, err := NewSyslogOutput(cfg.Syslog)
 		if err != nil {
 			return nil, fmt.Errorf("audit: syslog output: %w", err)
 		}
@@ -248,7 +248,7 @@ func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 		if nc.Syslog == nil {
 			return nil, fmt.Errorf("type %q requires Syslog config", nc.Type)
 		}
-		out, err := NewSyslogOutput(*nc.Syslog)
+		out, err := NewSyslogOutput(nc.Syslog)
 		if err != nil {
 			return nil, err
 		}

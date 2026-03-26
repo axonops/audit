@@ -321,45 +321,40 @@ func ExampleLogger_SetOutputRoute() {
 	// Output: route set to security only
 }
 
-func ExampleNewSyslogOutput_tcp() {
+func ExampleSyslogConfig_tcp() {
 	// Plain TCP syslog — the simplest configuration.
-	// Note: this example will fail without a running syslog server.
-	cfg := audit.SyslogConfig{
+	cfg := &audit.SyslogConfig{
 		Network:  "tcp",
 		Address:  "syslog.example.com:514",
 		Facility: "local0",
 		AppName:  "myapp",
 	}
-	fmt.Println("network:", cfg.Network)
-	fmt.Println("facility:", cfg.Facility)
-	// Output:
-	// network: tcp
-	// facility: local0
+	fmt.Printf("network=%s address=%s facility=%s app=%s\n",
+		cfg.Network, cfg.Address, cfg.Facility, cfg.AppName)
+	// Output: network=tcp address=syslog.example.com:514 facility=local0 app=myapp
 }
 
-func ExampleNewSyslogOutput_tls() {
+func ExampleSyslogConfig_tls() {
 	// TLS syslog with CA verification.
-	cfg := audit.SyslogConfig{
+	cfg := &audit.SyslogConfig{
 		Network: "tcp+tls",
 		Address: "syslog.example.com:6514",
 		TLSCA:   "/etc/audit/ca.pem",
 	}
-	fmt.Println("network:", cfg.Network)
-	// Output: network: tcp+tls
+	fmt.Printf("network=%s ca=%s\n", cfg.Network, cfg.TLSCA)
+	// Output: network=tcp+tls ca=/etc/audit/ca.pem
 }
 
-func ExampleNewSyslogOutput_mtls() {
+func ExampleSyslogConfig_mtls() {
 	// mTLS syslog with client certificate authentication.
-	cfg := audit.SyslogConfig{
+	cfg := &audit.SyslogConfig{
 		Network: "tcp+tls",
 		Address: "syslog.example.com:6514",
 		TLSCert: "/etc/audit/client-cert.pem",
 		TLSKey:  "/etc/audit/client-key.pem",
 		TLSCA:   "/etc/audit/ca.pem",
 	}
-	fmt.Println("network:", cfg.Network)
-	fmt.Println("has client cert:", cfg.TLSCert != "")
-	// Output:
-	// network: tcp+tls
-	// has client cert: true
+	fmt.Printf("network=%s cert=%s key=%s ca=%s\n",
+		cfg.Network, cfg.TLSCert, cfg.TLSKey, cfg.TLSCA)
+	// Output: network=tcp+tls cert=/etc/audit/client-cert.pem key=/etc/audit/client-key.pem ca=/etc/audit/ca.pem
 }

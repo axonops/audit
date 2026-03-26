@@ -22,6 +22,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -96,7 +97,8 @@ func (s *mockSyslogServer) handleConn(conn net.Conn) {
 				return
 			default:
 			}
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
 			return
@@ -152,7 +154,7 @@ func TestNewSyslogOutput_TCP(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -162,7 +164,7 @@ func TestNewSyslogOutput_TCP(t *testing.T) {
 
 func TestNewSyslogOutput_UDP(t *testing.T) {
 	// UDP doesn't need a running server to construct.
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "udp",
 		Address: "127.0.0.1:9514",
 	})
@@ -232,7 +234,7 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := audit.NewSyslogOutput(tt.cfg)
+			_, err := audit.NewSyslogOutput(&tt.cfg)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
@@ -247,7 +249,7 @@ func TestSyslogOutput_Write(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -270,7 +272,7 @@ func TestSyslogOutput_WriteMultiple(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -295,7 +297,7 @@ func TestSyslogOutput_CloseIdempotent(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -309,7 +311,7 @@ func TestSyslogOutput_WriteAfterClose(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -324,7 +326,7 @@ func TestSyslogOutput_Name(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -339,7 +341,7 @@ func TestSyslogOutput_ImplementsOutput(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp",
 		Address: srv.addr(),
 	})
@@ -365,7 +367,7 @@ func TestParseFacility_AllStandard(t *testing.T) {
 			// Verify construction succeeds with each facility.
 			srv := newMockSyslogServer(t)
 			defer srv.close()
-			out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+			out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 				Network:  "tcp",
 				Address:  srv.addr(),
 				Facility: f,
@@ -377,7 +379,7 @@ func TestParseFacility_AllStandard(t *testing.T) {
 }
 
 func TestParseFacility_Unknown(t *testing.T) {
-	_, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	_, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network:  "udp",
 		Address:  "localhost:514",
 		Facility: "nonexistent",
@@ -559,7 +561,8 @@ func (s *mockTLSSyslogServer) handleConn(conn net.Conn) {
 				return
 			default:
 			}
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
 			return
@@ -610,7 +613,7 @@ func TestSyslogOutput_TLS(t *testing.T) {
 	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp+tls",
 		Address: srv.addr(),
 		TLSCA:   certs.caPath,
@@ -633,7 +636,7 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
 	defer srv.close()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network: "tcp+tls",
 		Address: srv.addr(),
 		TLSCert: certs.clientCert,
@@ -659,7 +662,7 @@ func TestSyslogOutput_WriteFailure_ReturnsError(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
 
-	out, err := audit.NewSyslogOutput(audit.SyslogConfig{
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
 		Network:    "tcp",
 		Address:    addr,
 		MaxRetries: 1, // minimal retries to keep test fast

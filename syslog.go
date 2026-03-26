@@ -123,8 +123,8 @@ type SyslogOutput struct {
 
 // NewSyslogOutput creates a new [SyslogOutput] from the given config.
 // It validates the config and establishes the initial connection.
-func NewSyslogOutput(cfg SyslogConfig) (*SyslogOutput, error) {
-	if err := validateSyslogConfig(&cfg); err != nil {
+func NewSyslogOutput(cfg *SyslogConfig) (*SyslogOutput, error) {
+	if err := validateSyslogConfig(cfg); err != nil {
 		return nil, err
 	}
 
@@ -139,7 +139,7 @@ func NewSyslogOutput(cfg SyslogConfig) (*SyslogOutput, error) {
 
 	var tlsCfg *tls.Config
 	if cfg.Network == "tcp+tls" {
-		tlsCfg, err = buildSyslogTLSConfig(&cfg)
+		tlsCfg, err = buildSyslogTLSConfig(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("audit: syslog tls config: %w", err)
 		}
@@ -340,12 +340,15 @@ func validateSyslogConfig(cfg *SyslogConfig) error {
 		cfg.Facility = DefaultSyslogFacility
 	}
 
-	// TLS cert/key pairing.
+	return validateSyslogTLSFiles(cfg)
+}
+
+// validateSyslogTLSFiles checks TLS cert/key pairing and file existence.
+func validateSyslogTLSFiles(cfg *SyslogConfig) error {
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
 		return fmt.Errorf("audit: syslog tls_cert and tls_key must both be set or both empty")
 	}
 
-	// File existence and type checks for TLS paths.
 	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
 		if path != "" {
 			fi, err := os.Stat(path)

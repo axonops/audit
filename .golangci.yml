@@ -8,6 +8,7 @@ run:
 linters:
   enable:
     # Default linters
+    - typecheck
     - errcheck
     - gosimple
     - govet
@@ -54,10 +55,13 @@ linters-settings:
 
   godox:
     keywords:
+      - TODO
       - FIXME
       - BUG
       - HACK
-    # TODO with issue refs (e.g. TODO(#2)) are allowed.
+    # godox flags ALL TODOs. The Makefile check-todos target enforces
+    # that every TODO uses the TODO(#NNN) format with an issue reference.
+    # In CI, use make check-todos for the nuanced check.
 
   revive:
     rules:

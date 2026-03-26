@@ -29,7 +29,6 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -67,9 +66,10 @@ type Logger struct {
 	cfg Config
 	// taxonomy is immutable after construction; no synchronisation
 	// needed for reads.
-	taxonomy *Taxonomy
-	outputs  []Output
-	metrics  Metrics
+	taxonomy  *Taxonomy
+	outputs   []Output
+	metrics   Metrics
+	formatter Formatter
 
 	// Async delivery.
 	ch        chan *auditEntry
@@ -120,6 +120,11 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
 	}
 
+	// Default formatter if WithFormatter was not called.
+	if l.formatter == nil {
+		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
+	}
+
 	if !cfg.Enabled {
 		return l, nil
 	}
@@ -130,6 +135,13 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	l.drainDone = make(chan struct{})
 	l.wg.Add(1)
 	go l.drainLoop(ctx)
+
+	slog.Info("audit: logger created",
+		"buffer_size", cfg.BufferSize,
+		"drain_timeout", cfg.DrainTimeout,
+		"validation_mode", string(cfg.ValidationMode),
+		"outputs", len(l.outputs),
+	)
 
 	return l, nil
 }
@@ -154,10 +166,19 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	// taxonomy is immutable after construction; safe to read without lock.
 	def, ok := l.taxonomy.Events[eventType]
 	if !ok {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
 	if err := l.validateFields(eventType, &def, fields); err != nil {
+		// Only strict-mode rejections are validation errors. Warn-mode
+		// unknown fields return nil (event accepted) and are observable
+		// only via slog -- they are not validation errors.
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
 		return err
 	}
 
@@ -165,6 +186,9 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	enabled := l.filter.isEnabled(eventType, l.taxonomy)
 	l.mu.RUnlock()
 	if !enabled {
+		if l.metrics != nil {
+			l.metrics.RecordFiltered(eventType)
+		}
 		return nil
 	}
 
@@ -182,7 +206,8 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		return nil
 	default:
 		slog.Warn("audit: buffer full, dropping event",
-			"event_type", entry.eventType)
+			"event_type", entry.eventType,
+			"buffer_size", l.cfg.BufferSize)
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
@@ -209,22 +234,29 @@ func (l *Logger) Close() error {
 			return
 		}
 
-		// Enqueue shutdown event before signalling the drain goroutine.
-		// The event is in the channel before cancel() fires, so
-		// drainRemaining will always process it.
+		shutdownStart := time.Now()
+		slog.Info("audit: shutdown started")
+
 		if l.startupEmitted.Load() {
 			l.emitShutdown()
 		}
 
-		// Signal drain goroutine to stop and wait for it.
 		l.cancel()
 		l.waitForDrain()
 
 		for _, o := range l.outputs {
-			if err := o.Close(); err != nil && l.closeErr == nil {
-				l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
+			if err := o.Close(); err != nil {
+				slog.Error("audit: output close failed",
+					"output", o.Name(),
+					"error", err)
+				if l.closeErr == nil {
+					l.closeErr = fmt.Errorf("audit: output %q: %w", o.Name(), err)
+				}
 			}
 		}
+
+		slog.Info("audit: shutdown complete",
+			"duration", time.Since(shutdownStart))
 	})
 	return l.closeErr
 }
@@ -236,7 +268,9 @@ func (l *Logger) waitForDrain() {
 	select {
 	case <-l.drainDone:
 	case <-time.After(l.cfg.DrainTimeout):
-		slog.Warn("audit: drain timed out, some events may be lost")
+		slog.Warn("audit: drain timed out, some events may be lost",
+			"drain_timeout", l.cfg.DrainTimeout,
+			"buffer_remaining", len(l.ch))
 	}
 }
 
@@ -251,6 +285,7 @@ func (l *Logger) EnableCategory(category string) error {
 	l.mu.Lock()
 	l.filter.enabledCategories[category] = true
 	l.mu.Unlock()
+	slog.Info("audit: category enabled", "category", category)
 	return nil
 }
 
@@ -265,6 +300,7 @@ func (l *Logger) DisableCategory(category string) error {
 	l.mu.Lock()
 	l.filter.enabledCategories[category] = false
 	l.mu.Unlock()
+	slog.Info("audit: category disabled", "category", category)
 	return nil
 }
 
@@ -279,6 +315,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	l.mu.Lock()
 	l.filter.eventOverrides[eventType] = true
 	l.mu.Unlock()
+	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
@@ -293,6 +330,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	l.mu.Lock()
 	l.filter.eventOverrides[eventType] = false
 	l.mu.Unlock()
+	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -359,7 +397,11 @@ func (l *Logger) emitShutdown() {
 	select {
 	case l.ch <- entry:
 	default:
-		slog.Warn("audit: buffer full, dropping shutdown event")
+		slog.Warn("audit: buffer full, dropping shutdown event",
+			"buffer_size", l.cfg.BufferSize)
+		if l.metrics != nil {
+			l.metrics.RecordBufferDrop()
+		}
 	}
 }
 
@@ -368,6 +410,8 @@ func (l *Logger) emitShutdown() {
 func (l *Logger) drainLoop(ctx context.Context) {
 	defer l.wg.Done()
 	defer close(l.drainDone)
+	defer slog.Debug("audit: drain loop exiting")
+	slog.Debug("audit: drain loop started")
 	for {
 		select {
 		case entry := <-l.ch:
@@ -405,14 +449,21 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			slog.Error("audit: panic in processEntry",
 				"event_type", entry.eventType,
 				"panic", r)
+			if l.metrics != nil {
+				l.metrics.RecordSerializationError(entry.eventType)
+			}
 		}
 	}()
 
-	data, err := l.serialize(entry)
+	ts := time.Now()
+	data, err := l.serialize(entry, ts)
 	if err != nil {
 		slog.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
 			"error", err)
+		if l.metrics != nil {
+			l.metrics.RecordSerializationError(entry.eventType)
+		}
 		return
 	}
 
@@ -434,39 +485,11 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}
 }
 
-// serialize converts an audit entry to JSON bytes.
-// TODO(#2): replace with the full Formatter interface supporting JSON and CEF.
-func (l *Logger) serialize(entry *auditEntry) ([]byte, error) {
-	m := make(map[string]any, len(entry.fields)+3)
-
-	if l.cfg.OmitEmpty {
-		for k, v := range entry.fields {
-			if !isZeroValue(v) {
-				m[k] = v
-			}
-		}
-	} else {
-		def := l.taxonomy.Events[entry.eventType]
-		for _, f := range def.Required {
-			m[f] = entry.fields[f]
-		}
-		for _, f := range def.Optional {
-			m[f] = entry.fields[f]
-		}
-		for k, v := range entry.fields {
-			m[k] = v
-		}
-	}
-
-	// Framework-provided fields (overwrite consumer values).
-	m["timestamp"] = time.Now().Format(time.RFC3339Nano)
-	m["event_type"] = entry.eventType
-
-	data, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("audit: json marshal: %w", err)
-	}
-	return append(data, '\n'), nil
+// serialize delegates to the configured [Formatter] to produce the
+// wire-format bytes for an audit entry.
+func (l *Logger) serialize(entry *auditEntry, ts time.Time) ([]byte, error) {
+	def := l.taxonomy.Events[entry.eventType]
+	return l.formatter.Format(ts, entry.eventType, entry.fields, &def)
 }
 
 // validateFields checks that all required fields are present and no
@@ -519,14 +542,15 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 	}
 
 	slices.Sort(unknown)
-	msg := fmt.Sprintf("audit: event %q has unknown fields: [%s]",
-		eventType, strings.Join(unknown, ", "))
 
 	switch l.cfg.ValidationMode {
 	case ValidationStrict:
-		return errors.New(msg)
+		return fmt.Errorf("audit: event %q has unknown fields: [%s]",
+			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		slog.Warn(msg)
+		slog.Warn("audit: event has unknown fields",
+			"event_type", eventType,
+			"unknown_fields", unknown)
 	}
 	return nil
 }
@@ -547,6 +571,8 @@ func copyFields(fields Fields) Fields {
 // isZeroValue reports whether v is a zero value for its type. It uses
 // a type switch for common types to avoid reflection overhead and
 // panics. Unknown types fall back to a non-nil check only.
+//
+//nolint:cyclop,gocyclo // flat type switch over primitive types; linear structure, not true branch complexity
 func isZeroValue(v any) bool {
 	if v == nil {
 		return true

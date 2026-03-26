@@ -15,8 +15,11 @@
 package audit_test
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/axonops/go-audit"
 )
@@ -212,4 +215,44 @@ func ExampleWithFormatter() {
 
 	fmt.Println("CEF formatter configured")
 	// Output: CEF formatter configured
+}
+
+func ExampleNewStdoutOutput() {
+	// Create a stdout output for development/debugging. When Writer is
+	// nil, os.Stdout is used. Here we use a bytes.Buffer for testing.
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{
+		Writer: &buf,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	fmt.Println("stdout output:", out.Name())
+	// Output: stdout output: stdout
+}
+
+func ExampleNewFileOutput() {
+	// Create a file output with rotation for production use.
+	dir, err := os.MkdirTemp("", "audit-example-*")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	out, err := audit.NewFileOutput(audit.FileConfig{
+		Path:        filepath.Join(dir, "audit.log"),
+		MaxSizeMB:   100,
+		MaxBackups:  5,
+		MaxAgeDays:  30,
+		Permissions: "0600",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	fmt.Println("file output created")
+	// Output: file output created
 }

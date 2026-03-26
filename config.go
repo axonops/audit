@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"time"
 )
@@ -143,29 +144,48 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	opts := make([]Option, 0, 2+len(cfg.Extra))
 	names := make(map[string]bool)
 	filePaths := make(map[string]string)
+	created := make([]Output, 0, 4+len(cfg.Extra)) // track for cleanup on partial failure
 
-	if err := buildPrimaryOutputs(&cfg, &opts, names, filePaths); err != nil {
+	if err := buildPrimaryOutputs(&cfg, &opts, names, filePaths, &created); err != nil {
+		closeOutputs(created)
 		return nil, err
 	}
 
 	for i := range cfg.Extra {
-		opt, err := buildExtraOutput(&cfg.Extra[i], i, names, filePaths)
+		opt, out, err := buildExtraOutputTracked(&cfg.Extra[i], i, names, filePaths)
 		if err != nil {
+			closeOutputs(created)
 			return nil, err
 		}
+		created = append(created, out)
 		opts = append(opts, opt)
 	}
 
 	return opts, nil
 }
 
+// closeOutputs closes all outputs in reverse order, logging errors
+// but not propagating them. Used for cleanup on partial construction
+// failure.
+func closeOutputs(outputs []Output) {
+	for i := len(outputs) - 1; i >= 0; i-- {
+		if err := outputs[i].Close(); err != nil {
+			slog.Warn("audit: cleanup: close output failed",
+				"output", outputs[i].Name(),
+				"error", err)
+		}
+	}
+}
+
 // buildPrimaryOutputs constructs the primary (non-Extra) outputs.
-func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bool, filePaths map[string]string) error {
+// Created outputs are appended to *created for cleanup on failure.
+func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bool, filePaths map[string]string, created *[]Output) error {
 	if cfg.Stdout != nil {
 		out, err := NewStdoutOutput(*cfg.Stdout)
 		if err != nil {
 			return fmt.Errorf("audit: stdout output: %w", err)
 		}
+		*created = append(*created, out)
 		names[out.Name()] = true
 		*opts = append(*opts, WithNamedOutput(out, nil, nil))
 	}
@@ -175,6 +195,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 		if err != nil {
 			return fmt.Errorf("audit: file output: %w", err)
 		}
+		*created = append(*created, out)
 		names[out.Name()] = true
 		if err := trackFilePath(filePaths, cfg.File.Path, out.Name()); err != nil {
 			return err
@@ -187,6 +208,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 		if err != nil {
 			return fmt.Errorf("audit: syslog output: %w", err)
 		}
+		*created = append(*created, out)
 		names[out.Name()] = true
 		*opts = append(*opts, WithNamedOutput(out, nil, nil))
 	}
@@ -196,6 +218,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 		if err != nil {
 			return fmt.Errorf("audit: webhook output: %w", err)
 		}
+		*created = append(*created, out)
 		names[out.Name()] = true
 		*opts = append(*opts, WithNamedOutput(out, nil, nil))
 	}
@@ -203,27 +226,28 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 	return nil
 }
 
-// buildExtraOutput validates and constructs a single Extra output entry.
-func buildExtraOutput(nc *NamedOutputConfig, idx int, names map[string]bool, filePaths map[string]string) (Option, error) {
+// buildExtraOutputTracked is like buildExtraOutput but also returns
+// the Output for cleanup tracking.
+func buildExtraOutputTracked(nc *NamedOutputConfig, idx int, names map[string]bool, filePaths map[string]string) (Option, Output, error) {
 	if nc.Name == "" {
-		return nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", idx)
+		return nil, nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", idx)
 	}
 	if names[nc.Name] {
-		return nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
+		return nil, nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
 	}
 	names[nc.Name] = true
 
 	if nc.Type == "file" && nc.File != nil {
 		if err := trackFilePath(filePaths, nc.File.Path, nc.Name); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	out, err := buildNamedOutput(nc)
 	if err != nil {
-		return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
+		return nil, nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
 	}
-	return WithNamedOutput(out, &nc.Route, nil), nil
+	return WithNamedOutput(out, &nc.Route, nil), out, nil
 }
 
 // trackFilePath checks that a file path is not already used by another

@@ -261,6 +261,47 @@ func TestBuildOutputs_TypeConfigMismatch(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires File config")
 }
 
+func TestBuildOutputs_PartialFailure_ClosesWebhook(t *testing.T) {
+	// Create a valid webhook (starts batch goroutine) then an invalid Extra.
+	// BuildOutputs should close the webhook on failure.
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Webhook: &audit.WebhookConfig{
+			URL:                "http://localhost:1/webhook",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+		},
+		Extra: []audit.NamedOutputConfig{
+			{Name: "bad", Type: "file", File: &audit.FileConfig{Path: ""}}, // invalid
+		},
+	})
+	require.Error(t, err)
+	// If cleanup works, the webhook batch goroutine exits.
+	// goleak.VerifyTestMain in audit_test.go will catch leaks.
+}
+
+func TestBuildOutputs_PartialFailure_MultipleOutputs(t *testing.T) {
+	dir := t.TempDir()
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Stdout: &audit.StdoutConfig{},
+		File:   &audit.FileConfig{Path: filepath.Join(dir, "a.log")},
+		Extra: []audit.NamedOutputConfig{
+			{Name: "bad", Type: "webhook", Webhook: &audit.WebhookConfig{}}, // empty URL
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be empty")
+}
+
+func TestBuildOutputs_SuccessPath_Unchanged(t *testing.T) {
+	dir := t.TempDir()
+	opts, err := audit.BuildOutputs(audit.OutputsConfig{
+		Stdout: &audit.StdoutConfig{},
+		File:   &audit.FileConfig{Path: filepath.Join(dir, "audit.log")},
+	})
+	require.NoError(t, err)
+	assert.Len(t, opts, 2)
+}
+
 func TestBuildOutputs_NamedOutputUsedWithLogger(t *testing.T) {
 	dir := t.TempDir()
 	outputOpts, err := audit.BuildOutputs(audit.OutputsConfig{

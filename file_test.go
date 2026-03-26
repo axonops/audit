@@ -135,8 +135,8 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		cfg     audit.FileConfig
 		wantErr string
+		cfg     audit.FileConfig
 	}{
 		{
 			name:    "empty path",

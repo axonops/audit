@@ -63,29 +63,20 @@ var (
 //
 // A Logger is safe for concurrent use by multiple goroutines.
 type Logger struct {
-	// taxonomy is immutable after construction; no synchronisation
-	// needed for reads.
-	taxonomy  *Taxonomy
-	outputs   []Output
-	metrics   Metrics
-	formatter Formatter
-
-	// Async delivery.
-	ch        chan *auditEntry
-	cancel    context.CancelFunc
-	drainDone chan struct{} // closed when drainLoop exits
-
-	// Shutdown state.
-	startupAppName atomic.Value // stores string from EmitStartup
+	startupAppName atomic.Value
 	closeErr       error
-	closeOnce      sync.Once
-	wg             sync.WaitGroup
-
-	// Filter state, protected by mu.
-	mu     sync.RWMutex
-	filter filterState
-
+	filter         filterState
+	metrics        Metrics
+	formatter      Formatter
+	ch             chan *auditEntry
+	taxonomy       *Taxonomy
+	cancel         context.CancelFunc
+	drainDone      chan struct{}
+	outputs        []Output
 	cfg            Config
+	wg             sync.WaitGroup
+	mu             sync.RWMutex
+	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
 }

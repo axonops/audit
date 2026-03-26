@@ -105,7 +105,7 @@ type CEFFormatter struct {
 
 	// noCopy prevents go vet from missing struct copies after first use.
 	// CEFFormatter embeds sync.Once which must not be copied.
-	noCopy      noCopy //nolint:govet // triggers copylocks on struct copies
+	noCopy      noCopy
 	resolveOnce sync.Once
 
 	// OmitEmpty controls whether zero-value fields are omitted from

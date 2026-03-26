@@ -250,7 +250,8 @@ func ExampleNewFileOutput() {
 		Permissions: "0600",
 	})
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("create error:", err)
+		return
 	}
 	defer func() { _ = out.Close() }()
 

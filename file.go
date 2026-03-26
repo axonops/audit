@@ -27,29 +27,12 @@ import (
 
 // FileConfig holds configuration for [FileOutput].
 type FileConfig struct {
-	// Path is the file path for the audit log. REQUIRED; an empty path
-	// causes [NewFileOutput] to return an error.
-	Path string
-
-	// Permissions is the file mode for the audit log file, specified as
-	// an octal string (e.g. "0600"). Empty defaults to "0600".
+	Compress    *bool
+	Path        string
 	Permissions string
-
-	// Compress controls whether rotated log files are compressed with
-	// gzip. Nil defaults to true.
-	Compress *bool
-
-	// MaxSizeMB is the maximum size in megabytes before the log file
-	// is rotated. Zero defaults to 100.
-	MaxSizeMB int
-
-	// MaxBackups is the maximum number of old log files to retain.
-	// Zero defaults to 5.
-	MaxBackups int
-
-	// MaxAgeDays is the maximum number of days to retain old log files.
-	// Zero defaults to 30.
-	MaxAgeDays int
+	MaxSizeMB   int
+	MaxBackups  int
+	MaxAgeDays  int
 }
 
 // FileOutput writes serialised audit events to a file with automatic
@@ -60,8 +43,8 @@ type FileConfig struct {
 // to [FileOutput.Write] and [FileOutput.Close].
 type FileOutput struct {
 	logger *lumberjack.Logger
-	mu     sync.RWMutex
 	path   string
+	mu     sync.RWMutex
 	closed bool
 }
 

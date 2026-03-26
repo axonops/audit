@@ -41,10 +41,10 @@ func TestMain(m *testing.M) {
 // ---------------------------------------------------------------------------
 
 type mockOutput struct {
-	events   [][]byte
-	writeCh  chan struct{} // signalled on every Write
-	name     string
 	writeErr error
+	writeCh  chan struct{}
+	name     string
+	events   [][]byte
 	mu       sync.Mutex
 	closed   bool
 }
@@ -604,8 +604,8 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 // blockingOutput blocks on Write until blockCh is closed.
 type blockingOutput struct {
-	name    string
 	blockCh chan struct{}
+	name    string
 }
 
 func (b *blockingOutput) Write(_ []byte) error {

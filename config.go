@@ -142,49 +142,10 @@ type NamedOutputConfig struct {
 func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	opts := make([]Option, 0, 2+len(cfg.Extra))
 	names := make(map[string]bool)
-	filePaths := make(map[string]string) // normalised path -> output name
+	filePaths := make(map[string]string)
 
-	if cfg.Stdout != nil {
-		out, err := NewStdoutOutput(*cfg.Stdout)
-		if err != nil {
-			return nil, fmt.Errorf("audit: stdout output: %w", err)
-		}
-		name := out.Name()
-		names[name] = true
-		opts = append(opts, WithNamedOutput(out, nil, nil))
-	}
-
-	if cfg.File != nil {
-		out, err := NewFileOutput(*cfg.File)
-		if err != nil {
-			return nil, fmt.Errorf("audit: file output: %w", err)
-		}
-		name := out.Name()
-		names[name] = true
-		if err := trackFilePath(filePaths, cfg.File.Path, name); err != nil {
-			return nil, err
-		}
-		opts = append(opts, WithNamedOutput(out, nil, nil))
-	}
-
-	if cfg.Syslog != nil {
-		out, err := NewSyslogOutput(cfg.Syslog)
-		if err != nil {
-			return nil, fmt.Errorf("audit: syslog output: %w", err)
-		}
-		name := out.Name()
-		names[name] = true
-		opts = append(opts, WithNamedOutput(out, nil, nil))
-	}
-
-	if cfg.Webhook != nil {
-		out, err := NewWebhookOutput(cfg.Webhook, nil)
-		if err != nil {
-			return nil, fmt.Errorf("audit: webhook output: %w", err)
-		}
-		name := out.Name()
-		names[name] = true
-		opts = append(opts, WithNamedOutput(out, nil, nil))
+	if err := buildPrimaryOutputs(&cfg, &opts, names, filePaths); err != nil {
+		return nil, err
 	}
 
 	for i := range cfg.Extra {
@@ -196,6 +157,50 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	}
 
 	return opts, nil
+}
+
+// buildPrimaryOutputs constructs the primary (non-Extra) outputs.
+func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bool, filePaths map[string]string) error {
+	if cfg.Stdout != nil {
+		out, err := NewStdoutOutput(*cfg.Stdout)
+		if err != nil {
+			return fmt.Errorf("audit: stdout output: %w", err)
+		}
+		names[out.Name()] = true
+		*opts = append(*opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.File != nil {
+		out, err := NewFileOutput(*cfg.File)
+		if err != nil {
+			return fmt.Errorf("audit: file output: %w", err)
+		}
+		names[out.Name()] = true
+		if err := trackFilePath(filePaths, cfg.File.Path, out.Name()); err != nil {
+			return err
+		}
+		*opts = append(*opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.Syslog != nil {
+		out, err := NewSyslogOutput(cfg.Syslog)
+		if err != nil {
+			return fmt.Errorf("audit: syslog output: %w", err)
+		}
+		names[out.Name()] = true
+		*opts = append(*opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.Webhook != nil {
+		out, err := NewWebhookOutput(cfg.Webhook, nil)
+		if err != nil {
+			return fmt.Errorf("audit: webhook output: %w", err)
+		}
+		names[out.Name()] = true
+		*opts = append(*opts, WithNamedOutput(out, nil, nil))
+	}
+
+	return nil
 }
 
 // buildExtraOutput validates and constructs a single Extra output entry.
@@ -242,6 +247,8 @@ func trackFilePath(seen map[string]string, path, outputName string) error {
 }
 
 // buildNamedOutput constructs an Output from a NamedOutputConfig.
+//
+//nolint:gocyclo // flat switch over output types; linear structure, each case identical pattern
 func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 	switch nc.Type {
 	case "stdout":

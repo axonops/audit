@@ -74,6 +74,7 @@
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
 //   - [SyslogOutput] — RFC 5424 syslog output (TCP/UDP/TLS/mTLS); see [NewSyslogOutput]
+//   - [WebhookOutput] — batched HTTP webhook with retry and SSRF prevention; see [NewWebhookOutput]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Metrics] — optional instrumentation interface
 //

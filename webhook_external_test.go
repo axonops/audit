@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -519,9 +520,125 @@ func TestWebhookOutput_ConcurrentWrites(t *testing.T) {
 	for range goroutines {
 		go func() {
 			defer wg.Done()
-			_ = out.Write([]byte(`{"event":"concurrent"}`))
+			_ = out.Write([]byte(`{"event":"concurrent"}` + "\n"))
 		}()
 	}
 	wg.Wait()
 	// Close is handled by t.Cleanup in newTestWebhookOutput.
+}
+
+// ---------------------------------------------------------------------------
+// Commit 7 tests: Edge cases, SSRF enforcement, backoff, NDJSON
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_WriteNil(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url())
+	assert.NoError(t, out.Write(nil), "Write(nil) should not panic or error")
+}
+
+func TestWebhookOutput_WriteEmpty(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url())
+	assert.NoError(t, out.Write([]byte{}), "Write([]byte{}) should not panic or error")
+}
+
+func TestWebhookOutput_SSRFBlocked(t *testing.T) {
+	// httptest server at 127.0.0.1. With AllowPrivateRanges=false,
+	// SSRF check blocks loopback. Events should be dropped.
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: false, // SSRF blocks 127.0.0.1
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		MaxRetries:         1,
+		BufferSize:         10,
+	}, metrics)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"ssrf"}`+"\n")))
+	// Wait for the batch to be attempted and fail.
+	time.Sleep(500 * time.Millisecond)
+	require.NoError(t, out.Close())
+
+	// No requests should reach the server — SSRF blocked the dial.
+	assert.Equal(t, 0, srv.requestCount(), "SSRF should block connection to loopback")
+}
+
+func TestWebhookOutput_RequestTimeout(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(5 * time.Second) // slow server
+		w.WriteHeader(200)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            100 * time.Millisecond, // very short
+		MaxRetries:         1,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"timeout"}`+"\n")))
+	// Wait for timeout + retries.
+	time.Sleep(1 * time.Second)
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
+		"timed out request should result in dropped batch")
+}
+
+func TestWebhookBackoff(t *testing.T) {
+	d0 := audit.WebhookBackoff(0)
+	assert.GreaterOrEqual(t, d0, 50*time.Millisecond) // 100ms * 0.5
+	assert.Less(t, d0, 100*time.Millisecond)          // 100ms * 1.0
+
+	d1 := audit.WebhookBackoff(1)
+	assert.GreaterOrEqual(t, d1, 100*time.Millisecond)
+	assert.Less(t, d1, 200*time.Millisecond)
+
+	// Should be capped at 5s.
+	d20 := audit.WebhookBackoff(20)
+	assert.LessOrEqual(t, d20, 5*time.Second)
+}
+
+func TestBuildNDJSON(t *testing.T) {
+	events := [][]byte{
+		[]byte(`{"a":1}` + "\n"),
+		[]byte(`{"b":2}`), // missing newline — should be added
+		[]byte(`{"c":3}` + "\n"),
+	}
+	result := audit.BuildNDJSON(events)
+	lines := strings.Split(strings.TrimSpace(string(result)), "\n")
+	assert.Len(t, lines, 3)
+	for _, line := range lines {
+		assert.True(t, json.Valid([]byte(line)), "each line should be valid JSON: %s", line)
+	}
+}
+
+func TestBuildNDJSON_Empty(t *testing.T) {
+	result := audit.BuildNDJSON(nil)
+	assert.Empty(t, result)
+}
+
+func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
+	data, err := os.ReadFile("webhook.go")
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "InsecureSkipVerify: true",
+		"InsecureSkipVerify must never be set to true")
 }

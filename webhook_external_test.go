@@ -815,3 +815,142 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	assert.Greater(t, metrics.getWebhookDrops(), 0,
 		"wrong CA should cause TLS failure and event drop")
 }
+
+// ---------------------------------------------------------------------------
+// Delivery metrics tests (#53)
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          3,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	for range 3 {
+		require.NoError(t, out.Write([]byte(`{"event":"metric_test"}`+"\n")))
+	}
+	// Wait for the batch to be delivered — server MUST receive the
+	// request BEFORE we Close() (which cancels the context).
+	require.True(t, srv.waitForRequests(1, 5*time.Second),
+		"server should receive at least 1 request")
+
+	// Small delay to ensure the batch goroutine has processed the
+	// response and recorded metrics before Close cancels the context.
+	time.Sleep(50 * time.Millisecond) // deliberate: wait for response processing
+
+	require.NoError(t, out.Close())
+
+	// RecordEvent should be called with "success" for each event in the batch.
+	name := out.Name()
+	assert.Equal(t, 3, metrics.getEventCount(name, "success"),
+		"RecordEvent(success) should be called once per delivered event")
+	assert.Equal(t, 0, metrics.getEventCount(name, "error"),
+		"RecordEvent(error) should not be called on success")
+}
+
+func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(503)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          2,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		MaxRetries:         2,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	for range 2 {
+		require.NoError(t, out.Write([]byte(`{"event":"drop_test"}`+"\n")))
+	}
+	require.NoError(t, out.Close())
+
+	name := out.Name()
+	assert.Equal(t, 2, metrics.getEventCount(name, "error"),
+		"RecordEvent(error) should be called once per dropped event")
+	assert.Equal(t, 0, metrics.getEventCount(name, "success"),
+		"RecordEvent(success) should not be called when retries exhausted")
+}
+
+func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
+	// Slow server to keep batch goroutine busy.
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(1 * time.Second)
+		w.WriteHeader(200)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		MaxRetries:         1,
+		BufferSize:         3,
+	}, metrics)
+	require.NoError(t, err)
+
+	// Fill buffer — overflow events get RecordEvent(error).
+	for range 15 {
+		_ = out.Write([]byte(`{"event":"overflow"}` + "\n"))
+	}
+	require.NoError(t, out.Close())
+
+	name := out.Name()
+	assert.Greater(t, metrics.getEventCount(name, "error"), 0,
+		"RecordEvent(error) should be called for buffer overflow drops")
+}
+
+func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
+	// Verify that the core writeToOutput does NOT call RecordEvent
+	// for webhook outputs (they report their own delivery).
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	metrics := newMockMetrics()
+
+	webhookOut, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	// Create a logger with the webhook output and metrics.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(webhookOut, &audit.EventRoute{}, nil),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	name := webhookOut.Name()
+	// The webhook should report its OWN success metrics (from the delivery goroutine).
+	assert.Equal(t, 1, metrics.getEventCount(name, "success"),
+		"webhook should report delivery success from batch goroutine")
+}

@@ -177,6 +177,7 @@ func (w *WebhookOutput) Write(data []byte) error {
 			"buffer_size", cap(w.ch))
 		if w.metrics != nil {
 			w.metrics.RecordWebhookDrop()
+			w.metrics.RecordEvent(w.Name(), "error")
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}
@@ -208,6 +209,11 @@ func (w *WebhookOutput) Close() error {
 	w.client.CloseIdleConnections()
 	return nil
 }
+
+// ReportsDelivery returns true, indicating that WebhookOutput reports
+// its own delivery metrics from the batch goroutine after actual HTTP
+// delivery, not from the Write enqueue path.
+func (w *WebhookOutput) ReportsDelivery() bool { return true }
 
 // Name returns the human-readable identifier for this output.
 func (w *WebhookOutput) Name() string {

@@ -209,6 +209,12 @@ func (m *mockMetrics) getOutputFiltered(output string) int {
 	return m.filteredCount[output]
 }
 
+func (m *mockMetrics) getEventCount(output, status string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.events[output+":"+status]
+}
+
 func (m *mockMetrics) getWebhookDrops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

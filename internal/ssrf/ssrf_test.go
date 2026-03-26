@@ -108,6 +108,32 @@ func TestCheckIP_AllowPrivateRanges(t *testing.T) {
 	}
 }
 
+func TestCheckIP_IPv4MappedIPv6(t *testing.T) {
+	tests := []struct {
+		name    string
+		ip      string
+		blocked bool
+	}{
+		{"mapped loopback", "::ffff:127.0.0.1", true},
+		{"mapped private 10.x", "::ffff:10.0.0.1", true},
+		{"mapped private 192.168", "::ffff:192.168.1.1", true},
+		{"mapped metadata", "::ffff:169.254.169.254", true},
+		{"mapped public", "::ffff:8.8.8.8", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			require.NotNil(t, ip)
+			err := ssrf.CheckIP(ip, false)
+			if tt.blocked {
+				assert.Error(t, err, "%s should be blocked", tt.ip)
+			} else {
+				assert.NoError(t, err, "%s should be allowed", tt.ip)
+			}
+		})
+	}
+}
+
 func TestCheckAddress(t *testing.T) {
 	err := ssrf.CheckAddress("127.0.0.1:443", false)
 	assert.Error(t, err, "loopback should be blocked")

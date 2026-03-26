@@ -495,8 +495,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"exhaust"}`+"\n")))
-	// Wait for retries to complete.
-	time.Sleep(2 * time.Second)
+	// Close blocks until batch goroutine exits (retries complete or cancelled).
 	require.NoError(t, out.Close())
 
 	assert.Greater(t, metrics.getWebhookDrops(), 0,
@@ -569,8 +568,7 @@ func TestWebhookOutput_SSRFBlocked(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"ssrf"}`+"\n")))
-	// Wait for the batch to be attempted and fail.
-	time.Sleep(500 * time.Millisecond)
+	// Close blocks until batch goroutine exits (SSRF failure completes).
 	require.NoError(t, out.Close())
 
 	// No requests should reach the server — SSRF blocked the dial.
@@ -596,8 +594,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"timeout"}`+"\n")))
-	// Wait for timeout + retries.
-	time.Sleep(1 * time.Second)
+	// Close blocks until batch goroutine exits (timeout + retries complete).
 	require.NoError(t, out.Close())
 
 	assert.Greater(t, metrics.getWebhookDrops(), 0,
@@ -635,6 +632,86 @@ func TestBuildNDJSON(t *testing.T) {
 func TestBuildNDJSON_Empty(t *testing.T) {
 	result := audit.BuildNDJSON(nil)
 	assert.Empty(t, result)
+}
+
+func TestNewWebhookOutput_EmbeddedCredentials_Rejected(t *testing.T) {
+	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL: "https://user:pass@example.com/webhook",
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not contain credentials")
+}
+
+func TestNewWebhookOutput_HeaderValueCRLF_Rejected(t *testing.T) {
+	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:     "https://example.com/webhook",
+		Headers: map[string]string{"X-Custom": "val\r\nEvil: injected"},
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid characters")
+}
+
+func TestNewWebhookOutput_TLSCA_NonexistentFile(t *testing.T) {
+	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:   "https://example.com/webhook",
+		TLSCA: "/nonexistent/ca.pem",
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ca certificate")
+}
+
+func TestNewWebhookOutput_TLSCA_InvalidPEM(t *testing.T) {
+	dir := t.TempDir()
+	badCA := dir + "/bad-ca.pem"
+	require.NoError(t, os.WriteFile(badCA, []byte("not a pem"), 0o600))
+
+	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:   "https://example.com/webhook",
+		TLSCA: badCA,
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse ca certificate")
+}
+
+func TestNewWebhookOutput_TLSCert_NonexistentFile(t *testing.T) {
+	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:     "https://example.com/webhook",
+		TLSCert: "/nonexistent/cert.pem",
+		TLSKey:  "/nonexistent/key.pem",
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "client certificate")
+}
+
+func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          10,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	// Start writers and close concurrently — exercise the race detector.
+	var wg sync.WaitGroup
+	wg.Add(21) // 20 writers + 1 closer
+	for range 20 {
+		go func() {
+			defer wg.Done()
+			_ = out.Write([]byte(`{"event":"race"}` + "\n"))
+		}()
+	}
+	go func() {
+		defer wg.Done()
+		_ = out.Close()
+	}()
+	wg.Wait()
 }
 
 func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {

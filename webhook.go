@@ -191,6 +191,10 @@ type WebhookOutput struct {
 // the background batch goroutine. The metrics parameter is optional
 // (may be nil).
 func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics) (*WebhookOutput, error) {
+	// Copy config so validation/defaults don't mutate the caller's struct.
+	cfgCopy := *cfg
+	cfg = &cfgCopy
+
 	if err := validateWebhookConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -576,10 +580,18 @@ func validateWebhookConfig(cfg *WebhookConfig) error {
 		return fmt.Errorf("audit: webhook url must be https (got %q); set AllowInsecureHTTP for testing", u.Scheme)
 	}
 
-	// Validate header names for CRLF injection.
-	for k := range cfg.Headers {
+	// Reject URLs with embedded credentials — they would leak in logs.
+	if u.User != nil {
+		return fmt.Errorf("audit: webhook url must not contain credentials; use Headers for auth")
+	}
+
+	// Validate header names and values for CRLF injection.
+	for k, v := range cfg.Headers {
 		if strings.ContainsAny(k, "\r\n") {
 			return fmt.Errorf("audit: webhook header name %q contains invalid characters", k)
+		}
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("audit: webhook header value for %q contains invalid characters", k)
 		}
 	}
 

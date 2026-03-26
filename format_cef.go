@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,28 +23,29 @@ import (
 	"time"
 )
 
-// defaultCEFFieldMapping is the built-in mapping from audit field names
-// to CEF extension keys. Do not mutate -- treat as read-only.
-var defaultCEFFieldMapping = map[string]string{
-	"actor_id":   "suser",
-	"source_ip":  "src",
-	"request_id": "externalId",
-	"user_agent": "requestClientApplication",
-	"method":     "requestMethod",
-	"path":       "request",
-	"outcome":    "outcome",
+// defaultCEFFieldMappingEntries returns a new map containing the
+// built-in audit-field-to-CEF-extension-key mapping. Each call returns
+// a distinct map instance; callers may mutate the result without
+// affecting other callers. No package-level mutable state is held.
+func defaultCEFFieldMappingEntries() map[string]string {
+	return map[string]string{
+		"actor_id":   "suser",
+		"source_ip":  "src",
+		"request_id": "externalId",
+		"user_agent": "requestClientApplication",
+		"method":     "requestMethod",
+		"path":       "request",
+		"outcome":    "outcome",
+	}
 }
 
-// DefaultCEFFieldMapping returns a copy of the built-in field mapping
-// from audit field names to standard CEF extension keys. Consumers can
-// use this as a base, add or override entries, and pass the result to
-// [CEFFormatter.FieldMapping].
+// DefaultCEFFieldMapping returns a new map containing the built-in
+// field mapping from audit field names to standard CEF extension keys.
+// Each call returns a distinct map instance; callers may freely mutate
+// the result. Consumers can use this as a base, add or override
+// entries, and pass the result to [CEFFormatter.FieldMapping].
 func DefaultCEFFieldMapping() map[string]string {
-	cp := make(map[string]string, len(defaultCEFFieldMapping))
-	for k, v := range defaultCEFFieldMapping {
-		cp[k] = v
-	}
-	return cp
+	return defaultCEFFieldMappingEntries()
 }
 
 // CEFFormatter serialises audit events in Common Event Format (CEF).
@@ -118,25 +120,45 @@ type noCopy struct{}
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
 
-// Format serialises a single audit event as a CEF line.
+// Format serialises a single audit event as a CEF line using a single
+// buffer for both header and extensions.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
 	severity := cf.severity(eventType)
 	description := cf.description(eventType)
 	mapping := cf.fieldMapping()
 
-	var ext strings.Builder
+	var buf bytes.Buffer
+	buf.Grow(256)
+
+	// Write header: CEF:0|vendor|product|version|eventType|description|severity|
+	buf.WriteString("CEF:0|")
+	buf.WriteString(cefEscapeHeader(cf.Vendor))
+	buf.WriteByte('|')
+	buf.WriteString(cefEscapeHeader(cf.Product))
+	buf.WriteByte('|')
+	buf.WriteString(cefEscapeHeader(cf.Version))
+	buf.WriteByte('|')
+	buf.WriteString(cefEscapeHeader(eventType))
+	buf.WriteByte('|')
+	buf.WriteString(cefEscapeHeader(description))
+	buf.WriteByte('|')
+	buf.WriteString(strconv.Itoa(severity))
+	buf.WriteByte('|')
+
+	// Write extensions directly into the same buffer.
+	extStart := buf.Len()
 
 	// Timestamp as receipt time (epoch ms).
-	writeExtField(&ext, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
+	writeExtField(&buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
 
-	// Event type as device action (writeExtField handles escaping).
-	writeExtField(&ext, "act", eventType)
+	// Event type as device action.
+	writeExtField(&buf, extStart, "act", eventType)
 
 	// Duration if present as time.Duration.
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
-			writeExtField(&ext, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
-			writeExtField(&ext, "cn1Label", "durationMs")
+			writeExtField(&buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
+			writeExtField(&buf, extStart, "cn1Label", "durationMs")
 		}
 	}
 
@@ -146,7 +168,7 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		if k == "timestamp" || k == "event_type" {
 			continue
 		}
-		// Skip duration_ms only if it's a time.Duration (handled above).
+		// Allow non-Duration duration_ms values through as regular fields.
 		if k == "duration_ms" {
 			if _, isDuration := fields[k].(time.Duration); isDuration {
 				continue
@@ -160,27 +182,12 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		if err := validateExtKey(extKey); err != nil {
 			return nil, fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
 		}
-		writeExtField(&ext, extKey, formatFieldValue(v))
+		writeExtField(&buf, extStart, extKey, formatFieldValue(v))
 	}
 
-	var line strings.Builder
-	line.Grow(256)
-	line.WriteString("CEF:0|")
-	line.WriteString(cefEscapeHeader(cf.Vendor))
-	line.WriteByte('|')
-	line.WriteString(cefEscapeHeader(cf.Product))
-	line.WriteByte('|')
-	line.WriteString(cefEscapeHeader(cf.Version))
-	line.WriteByte('|')
-	line.WriteString(cefEscapeHeader(eventType))
-	line.WriteByte('|')
-	line.WriteString(cefEscapeHeader(description))
-	line.WriteByte('|')
-	line.WriteString(strconv.Itoa(severity))
-	line.WriteByte('|')
-	line.WriteString(ext.String())
-	line.WriteByte('\n')
-	return []byte(line.String()), nil
+	buf.WriteByte('\n')
+	// Safe: buf is local and not reused; Bytes() is the sole reference.
+	return buf.Bytes(), nil
 }
 
 func (cf *CEFFormatter) severity(eventType string) int {
@@ -209,12 +216,13 @@ func (cf *CEFFormatter) description(eventType string) string {
 // overrides with defaults. The result is computed once and cached.
 func (cf *CEFFormatter) fieldMapping() map[string]string {
 	cf.resolveOnce.Do(func() {
+		defaults := defaultCEFFieldMappingEntries()
 		if cf.FieldMapping == nil {
-			cf.resolvedMapping = DefaultCEFFieldMapping() // defensive copy
+			cf.resolvedMapping = defaults
 			return
 		}
-		merged := make(map[string]string, len(defaultCEFFieldMapping)+len(cf.FieldMapping))
-		for k, v := range defaultCEFFieldMapping {
+		merged := make(map[string]string, len(defaults)+len(cf.FieldMapping))
+		for k, v := range defaults {
 			merged[k] = v
 		}
 		for k, v := range cf.FieldMapping {
@@ -269,9 +277,11 @@ func validateExtKey(key string) error {
 	return nil
 }
 
-// writeExtField writes a key=value pair to the extension string.
-func writeExtField(b *strings.Builder, key, value string) {
-	if b.Len() > 0 {
+// writeExtField writes a key=value pair to the buffer. extStart is the
+// buffer position where extensions begin (after the header); a space
+// separator is added before each field except the first extension.
+func writeExtField(b *bytes.Buffer, extStart int, key, value string) {
+	if b.Len() > extStart {
 		b.WriteByte(' ')
 	}
 	b.WriteString(key)

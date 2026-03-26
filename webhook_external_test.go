@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -641,4 +642,99 @@ func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "InsecureSkipVerify: true",
 		"InsecureSkipVerify must never be set to true")
+}
+
+// ---------------------------------------------------------------------------
+// TLS tests (reuses generateTestCerts from syslog_test.go)
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
+	certs := generateTestCerts(t)
+
+	// Start an HTTPS server with the test CA's cert.
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	srv.TLS = certs.tlsCfg
+	srv.StartTLS()
+	t.Cleanup(func() { srv.Close() })
+
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.URL,
+		TLSCA:              certs.caPath,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"tls_test"}`+"\n")))
+	// Close flushes the final batch.
+	require.NoError(t, out.Close())
+}
+
+func TestWebhookOutput_TLS_MTLS(t *testing.T) {
+	certs := generateTestCerts(t)
+	// Require client cert.
+	certs.tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	srv.TLS = certs.tlsCfg
+	srv.StartTLS()
+	t.Cleanup(func() { srv.Close() })
+
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.URL,
+		TLSCA:              certs.caPath,
+		TLSCert:            certs.clientCert,
+		TLSKey:             certs.clientKey,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"mtls_test"}`+"\n")))
+	require.NoError(t, out.Close())
+}
+
+func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
+	certs := generateTestCerts(t)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	srv.TLS = certs.tlsCfg
+	srv.StartTLS()
+	t.Cleanup(func() { srv.Close() })
+
+	// Generate a DIFFERENT CA — the server cert won't be trusted.
+	wrongCerts := generateTestCerts(t)
+
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.URL,
+		TLSCA:              wrongCerts.caPath, // wrong CA
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            2 * time.Second,
+		MaxRetries:         1,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"wrong_ca"}`+"\n")))
+	time.Sleep(1 * time.Second)
+	require.NoError(t, out.Close())
+
+	// The TLS handshake fails — events are dropped.
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
+		"wrong CA should cause TLS failure and event drop")
 }

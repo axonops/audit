@@ -57,7 +57,9 @@ const (
 // SyslogConfig holds configuration for [SyslogOutput].
 type SyslogConfig struct {
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
-	// Empty defaults to "tcp".
+	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
+	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).
+	// Use TCP or TCP+TLS for reliable delivery of large audit events.
 	Network string
 
 	// Address is the syslog server address in host:port format.
@@ -97,13 +99,38 @@ type SyslogConfig struct {
 // SyslogOutput writes serialised audit events to a syslog server over
 // TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
 // RFC 5424 structured syslog messages with the pre-serialised audit
-// payload (JSON or CEF) as the message body.
+// payload (JSON or CEF) as the message body. The payload is placed in
+// the MSG portion of the RFC 5424 message, not in structured data
+// elements, so no SD escaping is required.
+//
+// # Reconnection
 //
 // On connection failure, [SyslogOutput] attempts bounded exponential
-// backoff reconnection (100ms to 30s, up to [SyslogConfig.MaxRetries]
-// attempts). Reconnection happens synchronously within [Write] since
-// the [Output] interface guarantees single-caller access from the
-// drain goroutine.
+// backoff reconnection (100ms to 30s with jitter, up to
+// [SyslogConfig.MaxRetries] attempts). Reconnection happens within
+// [Write]: the mutex is released during the backoff sleep so [Close]
+// can interrupt it. On reconnection, the old srslog.Writer is closed
+// and a fresh connection is dialled — this avoids conflicting with
+// srslog's own internal retry-on-write behaviour. The event that
+// triggered the reconnection is retried once on the new connection.
+// If all retries are exhausted, the event is lost and an error is
+// returned.
+//
+// # UDP limitations
+//
+// UDP syslog is fire-and-forget. [Write] over UDP rarely returns an
+// error even if no server is listening. RFC 5424 recommends receivers
+// support messages up to 2048 bytes on UDP; larger payloads may be
+// silently truncated or dropped by the OS. Consumers with large audit
+// events SHOULD use TCP or TCP+TLS.
+//
+// # TLS certificates
+//
+// TLS certificate files are loaded once at construction time and are
+// NOT hot-reloaded. If a certificate expires and is rotated on disk,
+// the output continues using the old certificate until the process is
+// restarted. This differs from the schema registry which supports
+// certificate auto-reload.
 //
 // SyslogOutput is safe for concurrent use.
 type SyslogOutput struct {
@@ -135,6 +162,9 @@ func NewSyslogOutput(cfg *SyslogConfig) (*SyslogOutput, error) {
 
 	// Hostname failure is non-fatal; an empty hostname is acceptable
 	// in the RFC 5424 header (NILVALUE "-" per §6.2.4).
+	// Note: both hostname and ProcID (set by srslog via os.Getpid())
+	// are cached at construction time and not updated if the process
+	// forks or the hostname changes during the process lifetime.
 	hostname, _ := os.Hostname()
 
 	var tlsCfg *tls.Config

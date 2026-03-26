@@ -727,3 +727,150 @@ func TestSyslogOutput_NoInsecureSkipVerify(t *testing.T) {
 	assert.NotContains(t, string(data), "InsecureSkipVerify:true",
 		"InsecureSkipVerify must never be set to true")
 }
+
+// ---------------------------------------------------------------------------
+// Empty and edge-case payloads
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_WriteNil(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "tcp",
+		Address: srv.addr(),
+	})
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+
+	// Write(nil) should not panic. srslog may send an empty message
+	// or silently drop it — either is acceptable.
+	err = out.Write(nil)
+	assert.NoError(t, err, "Write(nil) should not error")
+}
+
+func TestSyslogOutput_WriteEmpty(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "tcp",
+		Address: srv.addr(),
+	})
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+
+	err = out.Write([]byte{})
+	assert.NoError(t, err, "Write([]byte{}) should not error")
+}
+
+// ---------------------------------------------------------------------------
+// Rapid-fire TCP writes (validates RFC 5425 framing)
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_RapidFireTCP(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "tcp",
+		Address: srv.addr(),
+	})
+	require.NoError(t, err)
+
+	const count = 100
+	for i := range count {
+		data := []byte(fmt.Sprintf(`{"event":"rapid","n":%d}`, i))
+		require.NoError(t, out.Write(data))
+	}
+
+	require.True(t, srv.waitForData(5*time.Second), "server should receive data")
+	require.NoError(t, out.Close())
+
+	// Verify all events arrived by checking the concatenated content.
+	all := strings.Join(srv.getMessages(), "")
+	for i := range count {
+		assert.Contains(t, all, fmt.Sprintf(`"n":%d`, i),
+			"event %d should be present in server data", i)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent writes
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_ConcurrentWrites(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "tcp",
+		Address: srv.addr(),
+	})
+	require.NoError(t, err)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(n int) {
+			defer wg.Done()
+			_ = out.Write([]byte(fmt.Sprintf(`{"g":%d}`, n)))
+		}(i)
+	}
+	wg.Wait()
+	require.NoError(t, out.Close())
+}
+
+// ---------------------------------------------------------------------------
+// UDP write path
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_WriteUDP(t *testing.T) {
+	// Start a UDP listener to receive syslog messages.
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	addr := conn.LocalAddr().String()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "udp",
+		Address: addr,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"udp_test"}`)))
+
+	// Read from the UDP listener with a timeout.
+	buf := make([]byte, 8192)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+	n, _, readErr := conn.ReadFrom(buf)
+	require.NoError(t, readErr)
+
+	assert.Contains(t, string(buf[:n]), "udp_test",
+		"UDP server should receive the event")
+
+	require.NoError(t, out.Close())
+}
+
+func TestSyslogOutput_WriteUDP_LargePayload(t *testing.T) {
+	// Start a UDP listener.
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "udp",
+		Address: conn.LocalAddr().String(),
+	})
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+
+	// A payload larger than typical UDP syslog limits (>2048 bytes).
+	// The write should not panic. It may succeed (OS buffers it),
+	// fail silently, or return an error — all are acceptable.
+	largePayload := []byte(`{"data":"` + strings.Repeat("x", 4096) + `"}`)
+	_ = out.Write(largePayload)
+	// No assertion on error — UDP is fire-and-forget.
+}

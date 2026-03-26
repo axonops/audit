@@ -15,11 +15,13 @@
 package audit_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -240,6 +242,268 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 	assert.Greater(t, metrics.getWebhookDrops(), 0,
 		"RecordWebhookDrop should be called for overflow")
 }
+
+// ---------------------------------------------------------------------------
+// Commit 5 tests: HTTP POST, NDJSON, retry
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_Delivery(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 3
+	})
+
+	for range 3 {
+		require.NoError(t, out.Write([]byte(`{"event":"delivery_test"}`+"\n")))
+	}
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), 1)
+
+	// Verify NDJSON: 3 lines, each valid JSON.
+	lines := strings.Split(strings.TrimSpace(string(reqs[0].Body)), "\n")
+	assert.Len(t, lines, 3)
+	for _, line := range lines {
+		assert.True(t, json.Valid([]byte(line)), "each line should be valid JSON: %s", line)
+	}
+}
+
+func TestWebhookOutput_ContentType_NDJSON(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"ct"}`+"\n")))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	assert.Equal(t, "application/x-ndjson", reqs[0].Headers.Get("Content-Type"))
+}
+
+func TestWebhookOutput_FlushInterval(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1000 // large, so only timer triggers
+		cfg.FlushInterval = 50 * time.Millisecond
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"timer"}`+"\n")))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), 1)
+	assert.Contains(t, string(reqs[0].Body), "timer")
+}
+
+func TestWebhookOutput_CloseFlushesRemaining(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1000,             // won't trigger on size
+		FlushInterval:      10 * time.Second, // won't trigger on timer
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	for range 3 {
+		require.NoError(t, out.Write([]byte(`{"event":"close_flush"}`+"\n")))
+	}
+
+	// Close triggers final flush.
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), 1)
+	assert.Contains(t, string(reqs[len(reqs)-1].Body), "close_flush")
+}
+
+func TestWebhookOutput_EmptyBatch_NoRequest(t *testing.T) {
+	var requestCount int32
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.WriteHeader(200)
+	})
+	_ = newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.FlushInterval = 20 * time.Millisecond
+	})
+
+	// Wait for 2+ flush intervals with no events.
+	time.Sleep(60 * time.Millisecond) //nolint:gocritic // intentional: testing absence of action
+
+	assert.Equal(t, int32(0), atomic.LoadInt32(&requestCount),
+		"empty batch should not trigger HTTP request")
+}
+
+func TestWebhookOutput_TimerResets_AfterBatchFlush(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 2
+		cfg.FlushInterval = 200 * time.Millisecond
+	})
+
+	// 2 events → batch-size flush.
+	require.NoError(t, out.Write([]byte(`{"n":1}`+"\n")))
+	require.NoError(t, out.Write([]byte(`{"n":2}`+"\n")))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+
+	// 1 more event immediately after flush.
+	require.NoError(t, out.Write([]byte(`{"n":3}`+"\n")))
+
+	// Timer should reset — partial batch flushes at ~200ms from now.
+	require.True(t, srv.waitForRequests(2, 1*time.Second),
+		"partial batch should flush after reset FlushInterval")
+	require.NoError(t, out.Close())
+}
+
+func TestWebhookOutput_CustomHeaders(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1
+		cfg.Headers = map[string]string{
+			"Authorization": "Bearer test-token-123",
+			"X-Custom":      "custom-value",
+		}
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"headers"}`+"\n")))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	assert.Equal(t, "Bearer test-token-123", reqs[0].Headers.Get("Authorization"))
+	assert.Equal(t, "custom-value", reqs[0].Headers.Get("X-Custom"))
+}
+
+func TestWebhookOutput_Retry_503ThenSuccess(t *testing.T) {
+	var attempts atomic.Int32
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		n := attempts.Add(1)
+		if n <= 2 {
+			w.WriteHeader(503)
+			return
+		}
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1
+		cfg.MaxRetries = 5
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"retry"}`+"\n")))
+	require.True(t, srv.waitForRequests(3, 10*time.Second))
+	require.NoError(t, out.Close())
+
+	assert.Equal(t, int32(3), attempts.Load())
+}
+
+func TestWebhookOutput_NoRetry_4xx(t *testing.T) {
+	for _, code := range []int{400, 401, 403, 404, 422} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			var attempts atomic.Int32
+			srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				attempts.Add(1)
+				w.WriteHeader(code)
+			})
+			out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+				cfg.BatchSize = 1
+				cfg.MaxRetries = 3
+			})
+
+			require.NoError(t, out.Write([]byte(`{"event":"no_retry"}`+"\n")))
+			require.True(t, srv.waitForRequests(1, 2*time.Second))
+			require.NoError(t, out.Close())
+
+			assert.Equal(t, int32(1), attempts.Load(), "%d should not trigger retry", code)
+		})
+	}
+}
+
+func TestWebhookOutput_Retry_429(t *testing.T) {
+	var attempts atomic.Int32
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		n := attempts.Add(1)
+		if n == 1 {
+			w.WriteHeader(429)
+			return
+		}
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"429"}`+"\n")))
+	require.True(t, srv.waitForRequests(2, 10*time.Second))
+	require.NoError(t, out.Close())
+
+	assert.Equal(t, int32(2), attempts.Load())
+}
+
+func TestWebhookOutput_Redirect_Rejected(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "/other")
+		w.WriteHeader(301)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BatchSize = 1
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"redirect"}`+"\n")))
+	require.NoError(t, out.Close())
+
+	// Redirect is non-retryable — at most 1 request.
+	assert.LessOrEqual(t, srv.requestCount(), 1)
+}
+
+func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(503)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		MaxRetries:         2,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, metrics)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"exhaust"}`+"\n")))
+	// Wait for retries to complete.
+	time.Sleep(2 * time.Second)
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
+		"RecordWebhookDrop should be called on retry exhaustion")
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent writes (Commit 4, moved here for organization)
+// ---------------------------------------------------------------------------
 
 func TestWebhookOutput_ConcurrentWrites(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {

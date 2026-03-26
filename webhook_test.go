@@ -28,8 +28,8 @@ import (
 func TestValidateWebhookConfig(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     WebhookConfig
 		wantErr string
+		cfg     WebhookConfig
 	}{
 		{
 			name:    "empty URL",

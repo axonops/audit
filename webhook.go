@@ -171,19 +171,19 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 //
 // WebhookOutput is safe for concurrent use.
 type WebhookOutput struct {
+	metrics    Metrics
+	done       chan struct{}
+	headers    map[string]string
+	ch         chan []byte
+	cancel     context.CancelFunc
 	client     *http.Client
 	url        string
-	headers    map[string]string // immutable after construction
-	metrics    Metrics
-	ch         chan []byte // internal async buffer
-	cancel     context.CancelFunc
-	done       chan struct{} // closed when batch goroutine exits
 	batchSize  int
 	maxRetries int
 	flushIvl   time.Duration
 	timeout    time.Duration
-	closed     atomic.Bool
 	mu         sync.Mutex
+	closed     atomic.Bool
 }
 
 // NewWebhookOutput creates a new [WebhookOutput] from the given config.
@@ -342,16 +342,20 @@ func (w *WebhookOutput) batchLoop(ctx context.Context) {
 			resetWebhookTimer(timer, w.flushIvl)
 
 		case <-ctx.Done():
-			// Drain remaining events from the channel.
-			for {
-				select {
-				case data := <-w.ch:
-					batch = append(batch, data)
-				default:
-					goto drained
-				}
-			}
-		drained:
+			w.drainAndFlush(batch)
+			return
+		}
+	}
+}
+
+// drainAndFlush reads remaining events from the channel and does a
+// final flush with a fresh context.
+func (w *WebhookOutput) drainAndFlush(batch [][]byte) {
+	for {
+		select {
+		case data := <-w.ch:
+			batch = append(batch, data)
+		default:
 			if len(batch) > 0 {
 				w.flushFinal(batch)
 			}
@@ -499,16 +503,16 @@ func buildNDJSON(events [][]byte) []byte {
 // capped at 5s.
 func webhookBackoff(attempt int) time.Duration {
 	const (
-		base = 100 * time.Millisecond
-		max  = 5 * time.Second
+		base    = 100 * time.Millisecond
+		maxBack = 5 * time.Second
 	)
 	exp := float64(attempt)
 	if exp > 20 {
 		exp = 20
 	}
 	d := base * time.Duration(math.Pow(2, exp))
-	if d > max {
-		d = max
+	if d > maxBack {
+		d = maxBack
 	}
 	var b [1]byte
 	if _, err := rand.Read(b[:]); err == nil {
@@ -585,14 +589,8 @@ func validateWebhookConfig(cfg *WebhookConfig) error {
 		return fmt.Errorf("audit: webhook url must not contain credentials; use Headers for auth")
 	}
 
-	// Validate header names and values for CRLF injection.
-	for k, v := range cfg.Headers {
-		if strings.ContainsAny(k, "\r\n") {
-			return fmt.Errorf("audit: webhook header name %q contains invalid characters", k)
-		}
-		if strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("audit: webhook header value for %q contains invalid characters", k)
-		}
+	if err := validateWebhookHeaders(cfg.Headers); err != nil {
+		return err
 	}
 
 	// TLS cert/key pairing.
@@ -602,6 +600,19 @@ func validateWebhookConfig(cfg *WebhookConfig) error {
 
 	applyWebhookDefaults(cfg)
 	return validateWebhookLimits(cfg)
+}
+
+// validateWebhookHeaders checks header names and values for CRLF injection.
+func validateWebhookHeaders(headers map[string]string) error {
+	for k, v := range headers {
+		if strings.ContainsAny(k, "\r\n") {
+			return fmt.Errorf("audit: webhook header name %q contains invalid characters", k)
+		}
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("audit: webhook header value for %q contains invalid characters", k)
+		}
+	}
+	return nil
 }
 
 // applyWebhookDefaults fills zero-valued fields with documented defaults.

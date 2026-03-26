@@ -40,8 +40,8 @@ import (
 // a waitForRequests polling helper (no time.Sleep).
 type webhookTestServer struct {
 	server    *httptest.Server
-	requests  []*webhookCapturedRequest
 	requestCh chan struct{}
+	requests  []*webhookCapturedRequest
 	mu        sync.Mutex
 }
 
@@ -346,7 +346,7 @@ func TestWebhookOutput_EmptyBatch_NoRequest(t *testing.T) {
 	})
 
 	// Wait for 2+ flush intervals with no events.
-	time.Sleep(60 * time.Millisecond) //nolint:gocritic // intentional: testing absence of action
+	time.Sleep(60 * time.Millisecond) // intentional: testing absence of action
 
 	assert.Equal(t, int32(0), atomic.LoadInt32(&requestCount),
 		"empty batch should not trigger HTTP request")

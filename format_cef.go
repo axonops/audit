@@ -22,28 +22,29 @@ import (
 	"time"
 )
 
-// defaultCEFFieldMapping is the built-in mapping from audit field names
-// to CEF extension keys. Do not mutate -- treat as read-only.
-var defaultCEFFieldMapping = map[string]string{
-	"actor_id":   "suser",
-	"source_ip":  "src",
-	"request_id": "externalId",
-	"user_agent": "requestClientApplication",
-	"method":     "requestMethod",
-	"path":       "request",
-	"outcome":    "outcome",
+// defaultCEFFieldMappingEntries returns a new map containing the
+// built-in audit-field-to-CEF-extension-key mapping. Each call returns
+// a distinct map instance; callers may mutate the result without
+// affecting other callers. No package-level mutable state is held.
+func defaultCEFFieldMappingEntries() map[string]string {
+	return map[string]string{
+		"actor_id":   "suser",
+		"source_ip":  "src",
+		"request_id": "externalId",
+		"user_agent": "requestClientApplication",
+		"method":     "requestMethod",
+		"path":       "request",
+		"outcome":    "outcome",
+	}
 }
 
-// DefaultCEFFieldMapping returns a copy of the built-in field mapping
-// from audit field names to standard CEF extension keys. Consumers can
-// use this as a base, add or override entries, and pass the result to
-// [CEFFormatter.FieldMapping].
+// DefaultCEFFieldMapping returns a new map containing the built-in
+// field mapping from audit field names to standard CEF extension keys.
+// Each call returns a distinct map instance; callers may freely mutate
+// the result. Consumers can use this as a base, add or override
+// entries, and pass the result to [CEFFormatter.FieldMapping].
 func DefaultCEFFieldMapping() map[string]string {
-	cp := make(map[string]string, len(defaultCEFFieldMapping))
-	for k, v := range defaultCEFFieldMapping {
-		cp[k] = v
-	}
-	return cp
+	return defaultCEFFieldMappingEntries()
 }
 
 // CEFFormatter serialises audit events in Common Event Format (CEF).
@@ -209,12 +210,13 @@ func (cf *CEFFormatter) description(eventType string) string {
 // overrides with defaults. The result is computed once and cached.
 func (cf *CEFFormatter) fieldMapping() map[string]string {
 	cf.resolveOnce.Do(func() {
+		defaults := defaultCEFFieldMappingEntries()
 		if cf.FieldMapping == nil {
-			cf.resolvedMapping = DefaultCEFFieldMapping() // defensive copy
+			cf.resolvedMapping = defaults
 			return
 		}
-		merged := make(map[string]string, len(defaultCEFFieldMapping)+len(cf.FieldMapping))
-		for k, v := range defaultCEFFieldMapping {
+		merged := make(map[string]string, len(defaults)+len(cf.FieldMapping))
+		for k, v := range defaults {
 			merged[k] = v
 		}
 		for k, v := range cf.FieldMapping {

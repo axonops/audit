@@ -229,6 +229,28 @@ func TestBuildOutputs_SyslogInvalidConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "must not be empty")
 }
 
+func TestBuildOutputs_WebhookTypeMissingConfig(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "webhook", Webhook: nil},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires Webhook config")
+}
+
+func TestBuildOutputs_WebhookInvalidConfig(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "webhook", Webhook: &audit.WebhookConfig{
+				// Missing URL — should fail validation.
+			}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be empty")
+}
+
 func TestBuildOutputs_TypeConfigMismatch(t *testing.T) {
 	_, err := audit.BuildOutputs(audit.OutputsConfig{
 		Extra: []audit.NamedOutputConfig{

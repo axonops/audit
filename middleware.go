@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -245,4 +246,111 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return h.Hijack()
 	}
 	return nil, nil, errHijackNotSupported
+}
+
+// AuditMiddleware returns HTTP middleware that captures transport
+// metadata automatically and calls the [EventBuilder] after the
+// handler returns. The builder transforms [Hints] (populated by the
+// handler) and [TransportMetadata] into an audit event.
+//
+// If logger is nil, the returned middleware is an identity function
+// that passes requests through without auditing. This allows
+// consumers to conditionally disable audit middleware without
+// nil-checking at every call site.
+//
+// AuditMiddleware panics if builder is nil (programming error).
+func AuditMiddleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Handler {
+	if logger == nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	if builder == nil {
+		panic("audit: EventBuilder must not be nil")
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hints := &Hints{}
+			ctx := context.WithValue(r.Context(), hintsKey{}, hints)
+			r = r.WithContext(ctx)
+
+			reqID := r.Header.Get("X-Request-Id")
+			if reqID == "" {
+				reqID = newRequestID()
+			}
+
+			rw := &responseWriter{ResponseWriter: w}
+			start := time.Now()
+
+			var panicked bool
+			var panicVal any
+
+			func() {
+				defer func() {
+					if v := recover(); v != nil {
+						panicked = true
+						panicVal = v
+						if !rw.written {
+							rw.statusCode = http.StatusInternalServerError
+							rw.written = true
+						}
+					}
+				}()
+				next.ServeHTTP(rw, r)
+			}()
+
+			statusCode := rw.statusCode
+			if !rw.written {
+				statusCode = http.StatusOK
+			}
+
+			transport := TransportMetadata{
+				ClientIP:          clientIP(r),
+				TransportSecurity: transportSecurity(r),
+				Method:            r.Method,
+				Path:              r.URL.Path,
+				UserAgent:         r.UserAgent(),
+				RequestID:         reqID,
+				StatusCode:        statusCode,
+				Duration:          time.Since(start),
+			}
+
+			emitAuditEvent(logger, builder, hints, transport)
+
+			if panicked {
+				panic(panicVal)
+			}
+		})
+	}
+}
+
+// emitAuditEvent calls the EventBuilder and, if not skipped, emits
+// the audit event. Builder panics are recovered and logged.
+func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transport TransportMetadata) {
+	var (
+		eventType string
+		fields    Fields
+		skip      bool
+	)
+
+	func() {
+		defer func() {
+			if v := recover(); v != nil {
+				slog.Error("audit: EventBuilder panicked",
+					"panic", v,
+					"request_id", transport.RequestID)
+				skip = true
+			}
+		}()
+		eventType, fields, skip = builder(hints, transport)
+	}()
+
+	if skip {
+		return
+	}
+
+	if err := logger.Audit(eventType, fields); err != nil {
+		slog.Warn("audit: middleware event failed",
+			"event_type", eventType,
+			"request_id", transport.RequestID,
+			"error", err)
+	}
 }

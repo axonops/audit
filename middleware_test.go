@@ -20,11 +20,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/axonops/go-audit"
 	"github.com/stretchr/testify/assert"
@@ -295,4 +299,415 @@ func TestResponseWriter_Unwrap(t *testing.T) {
 
 	inner := rw.Unwrap()
 	assert.Equal(t, rec, inner)
+}
+
+// --- AuditMiddleware tests ---
+
+// middlewareTaxonomy returns a taxonomy suitable for middleware tests.
+func middlewareTaxonomy() audit.Taxonomy {
+	return audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"access": {"http_request"},
+		},
+		Events: map[string]audit.EventDef{
+			"http_request": {
+				Category: "access",
+				Required: []string{"outcome"},
+				Optional: []string{
+					"actor_id", "actor_type", "auth_method", "role",
+					"target_type", "target_id", "reason", "error",
+					"client_ip", "method", "path", "user_agent",
+					"request_id", "status_code", "duration_ms",
+					"transport_security", "extra_field",
+				},
+			},
+		},
+		DefaultEnabled: []string{"access"},
+	}
+}
+
+// middlewareBuilder is a standard EventBuilder for middleware tests.
+func middlewareBuilder(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	fields := audit.Fields{
+		"outcome":            hints.Outcome,
+		"client_ip":          transport.ClientIP,
+		"method":             transport.Method,
+		"path":               transport.Path,
+		"status_code":        transport.StatusCode,
+		"request_id":         transport.RequestID,
+		"transport_security": transport.TransportSecurity,
+		"user_agent":         transport.UserAgent,
+		"duration_ms":        transport.Duration.Milliseconds(),
+	}
+	if hints.ActorID != "" {
+		fields["actor_id"] = hints.ActorID
+	}
+	return "http_request", fields, false
+}
+
+// newMiddlewareTestLogger creates a Logger with a mockOutput for middleware tests.
+func newMiddlewareTestLogger(t *testing.T) (*audit.Logger, *mockOutput) {
+	t.Helper()
+	out := newMockOutput("mw-test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(middlewareTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = logger.Close()
+	})
+	return logger, out
+}
+
+func TestAuditMiddleware_NilLogger_PassThrough(t *testing.T) {
+	called := false
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(nil, middlewareBuilder)
+	wrapped := mw(handler)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	wrapped.ServeHTTP(rec, req)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAuditMiddleware_NilBuilder_Panics(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	assert.PanicsWithValue(t, "audit: EventBuilder must not be nil", func() {
+		audit.AuditMiddleware(logger, nil)
+	})
+}
+
+func TestAuditMiddleware_BasicFlow(t *testing.T) {
+	logger, out := newMiddlewareTestLogger(t)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		require.NotNil(t, hints)
+		hints.Outcome = "success"
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, middlewareBuilder)
+	wrapped := mw(handler)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/users", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	wrapped.ServeHTTP(rec, req)
+
+	// Wait for async delivery.
+	require.NoError(t, logger.Close())
+
+	assert.GreaterOrEqual(t, out.eventCount(), 1)
+}
+
+func TestAuditMiddleware_HintsPopulatedByHandler(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedHints *audit.Hints
+	var capturedTransport audit.TransportMetadata
+
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedHints = hints
+		capturedTransport = transport
+		return "http_request", audit.Fields{"outcome": hints.Outcome}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		hints.Outcome = "success"
+		hints.ActorID = "user-42"
+		hints.ActorType = "user"
+		hints.AuthMethod = "bearer"
+		hints.Role = "admin"
+		hints.TargetType = "document"
+		hints.TargetID = "doc-99"
+		hints.Reason = "routine access"
+		hints.Error = ""
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/docs/99", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	require.NotNil(t, capturedHints)
+	assert.Equal(t, "success", capturedHints.Outcome)
+	assert.Equal(t, "user-42", capturedHints.ActorID)
+	assert.Equal(t, "user", capturedHints.ActorType)
+	assert.Equal(t, "bearer", capturedHints.AuthMethod)
+	assert.Equal(t, "admin", capturedHints.Role)
+	assert.Equal(t, "document", capturedHints.TargetType)
+	assert.Equal(t, "doc-99", capturedHints.TargetID)
+	assert.Equal(t, "routine access", capturedHints.Reason)
+
+	assert.Equal(t, http.MethodGet, capturedTransport.Method)
+	assert.Equal(t, "/api/docs/99", capturedTransport.Path)
+}
+
+func TestAuditMiddleware_HintsExtra(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedExtra map[string]any
+
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedExtra = hints.Extra
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		hints.Extra = map[string]any{
+			"tenant_id": "t-123",
+			"org":       "acme",
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	require.NotNil(t, capturedExtra)
+	assert.Equal(t, "t-123", capturedExtra["tenant_id"])
+	assert.Equal(t, "acme", capturedExtra["org"])
+}
+
+func TestAuditMiddleware_SkipTrue(t *testing.T) {
+	logger, out := newMiddlewareTestLogger(t)
+
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "", nil, true // skip
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 0, out.eventCount())
+}
+
+func TestAuditMiddleware_PanicRecovery(t *testing.T) {
+	logger, out := newMiddlewareTestLogger(t)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		hints.Outcome = "error"
+		panic("handler exploded")
+	})
+
+	mw := audit.AuditMiddleware(logger, middlewareBuilder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+
+	assert.PanicsWithValue(t, "handler exploded", func() {
+		mw(handler).ServeHTTP(rec, req)
+	})
+
+	// Audit event should still have been emitted before re-panic.
+	require.NoError(t, logger.Close())
+	assert.GreaterOrEqual(t, out.eventCount(), 1)
+}
+
+func TestAuditMiddleware_TransportMetadata_Complete(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var captured audit.TransportMetadata
+
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		captured = transport
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/items", nil)
+	req.RemoteAddr = "192.168.1.1:9999"
+	req.Header.Set("User-Agent", "test-agent/1.0")
+	req.Header.Set("X-Request-Id", "req-abc-123")
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Equal(t, "192.168.1.1", captured.ClientIP)
+	assert.Equal(t, "none", captured.TransportSecurity)
+	assert.Equal(t, http.MethodPost, captured.Method)
+	assert.Equal(t, "/api/items", captured.Path)
+	assert.Equal(t, "test-agent/1.0", captured.UserAgent)
+	assert.Equal(t, "req-abc-123", captured.RequestID)
+	assert.Equal(t, http.StatusCreated, captured.StatusCode)
+	assert.Greater(t, captured.Duration, time.Duration(0))
+}
+
+func TestAuditMiddleware_RequestID_FromHeader(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedID string
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedID = transport.RequestID
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Header.Set("X-Request-Id", "custom-id-42")
+	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+	assert.Equal(t, "custom-id-42", capturedID)
+}
+
+func TestAuditMiddleware_RequestID_Generated(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedID string
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedID = transport.RequestID
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	// No X-Request-Id header.
+	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+	assert.Regexp(t, uuidV4Pattern, capturedID)
+}
+
+func TestAuditMiddleware_AuditError_LoggedNotPropagated(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	// Return an unknown event type to trigger an Audit error.
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "nonexistent_event", audit.Fields{"outcome": "success"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+
+	// Should not panic; error is logged via slog, not propagated.
+	assert.NotPanics(t, func() {
+		mw(handler).ServeHTTP(rec, req)
+	})
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAuditMiddleware_ConcurrentRequests(t *testing.T) {
+	logger, out := newMiddlewareTestLogger(t)
+
+	var calls atomic.Int64
+
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		calls.Add(1)
+		return "http_request", audit.Fields{"outcome": hints.Outcome, "actor_id": hints.ActorID}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		hints.Outcome = "success"
+		hints.ActorID = r.Header.Get("X-Actor")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	wrapped := mw(handler)
+
+	var wg sync.WaitGroup
+	for i := range 100 {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.RemoteAddr = "10.0.0.1:12345"
+			req.Header.Set("X-Actor", fmt.Sprintf("user-%d", idx))
+			wrapped.ServeHTTP(rec, req)
+		}(i)
+	}
+	wg.Wait()
+
+	assert.Equal(t, int64(100), calls.Load())
+
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 100, out.eventCount())
+}
+
+func TestAuditMiddleware_StatusCode_FromHandler(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedStatus int
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedStatus = transport.StatusCode
+		return "http_request", audit.Fields{"outcome": "not_found"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, capturedStatus)
+}
+
+func TestAuditMiddleware_Duration_Positive(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedDuration time.Duration
+	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedDuration = transport.Duration
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Brief computation to ensure measurable duration.
+		time.Sleep(time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.AuditMiddleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Greater(t, capturedDuration, time.Duration(0))
 }

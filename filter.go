@@ -99,7 +99,7 @@ func validateRouteEntries(route *EventRoute, taxonomy *Taxonomy) error {
 	return nil
 }
 
-func checkCategories(unknown []string, cats []string, taxonomy *Taxonomy) []string {
+func checkCategories(unknown, cats []string, taxonomy *Taxonomy) []string {
 	for _, cat := range cats {
 		if _, ok := taxonomy.Categories[cat]; !ok {
 			unknown = append(unknown, "category "+cat)
@@ -108,7 +108,7 @@ func checkCategories(unknown []string, cats []string, taxonomy *Taxonomy) []stri
 	return unknown
 }
 
-func checkEventTypes(unknown []string, evts []string, taxonomy *Taxonomy) []string {
+func checkEventTypes(unknown, evts []string, taxonomy *Taxonomy) []string {
 	for _, evt := range evts {
 		if _, ok := taxonomy.Events[evt]; !ok {
 			unknown = append(unknown, "event type "+evt)

@@ -65,7 +65,7 @@ func (oe *outputEntry) effectiveFormatter(defaultFmt Formatter) Formatter {
 // setRoute replaces the output's event route under a write lock.
 // Slices are deep-copied to prevent the caller from mutating backing
 // arrays after the call returns.
-func (oe *outputEntry) setRoute(route EventRoute) {
+func (oe *outputEntry) setRoute(route *EventRoute) {
 	oe.mu.Lock()
 	oe.route = EventRoute{
 		IncludeCategories: slices.Clone(route.IncludeCategories),

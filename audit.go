@@ -350,7 +350,7 @@ func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
 	if err := ValidateEventRoute(route, l.taxonomy); err != nil {
 		return err
 	}
-	oe.setRoute(*route)
+	oe.setRoute(route)
 	slog.Info("audit: output route set", "output", outputName)
 	return nil
 }
@@ -364,7 +364,7 @@ func (l *Logger) ClearOutputRoute(outputName string) error {
 	if !ok {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
-	oe.setRoute(EventRoute{})
+	oe.setRoute(&EventRoute{})
 	slog.Info("audit: output route cleared", "output", outputName)
 	return nil
 }

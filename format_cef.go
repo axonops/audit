@@ -168,6 +168,7 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		if k == "timestamp" || k == "event_type" {
 			continue
 		}
+		// Allow non-Duration duration_ms values through as regular fields.
 		if k == "duration_ms" {
 			if _, isDuration := fields[k].(time.Duration); isDuration {
 				continue
@@ -185,6 +186,7 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	}
 
 	buf.WriteByte('\n')
+	// Safe: buf is local and not reused; Bytes() is the sole reference.
 	return buf.Bytes(), nil
 }
 

@@ -829,7 +829,6 @@ func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 		Category: "write",
 		Required: []string{"outcome"},
 	}
-	fields := audit.Fields{"outcome": "ok"}
 	ts := time.Now()
 
 	var wg sync.WaitGroup
@@ -837,9 +836,20 @@ func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := cf.Format(ts, "ev", fields, def)
+			// Each goroutine gets its own fields map to avoid relying
+			// on Format never writing to the map.
+			f := audit.Fields{"outcome": "ok"}
+			data, err := cf.Format(ts, "ev", f, def)
 			if err != nil {
 				t.Errorf("Format failed: %v", err)
+				return
+			}
+			s := string(data)
+			if !strings.HasPrefix(s, "CEF:0|V|P|1|") {
+				t.Errorf("unexpected output prefix: %s", s[:40])
+			}
+			if !strings.HasSuffix(s, "\n") {
+				t.Errorf("output missing newline terminator")
 			}
 		}()
 	}

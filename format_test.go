@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"testing/quick"
 	"time"
@@ -802,6 +803,57 @@ func TestDefaultCEFFieldMapping(t *testing.T) {
 	m["actor_id"] = "modified"
 	m2 := audit.DefaultCEFFieldMapping()
 	assert.Equal(t, "suser", m2["actor_id"], "default mapping must not be mutated")
+}
+
+func TestDefaultCEFFieldMapping_IndependentCopies(t *testing.T) {
+	// Each call must return a distinct map instance. Mutating one
+	// must not affect the other.
+	m1 := audit.DefaultCEFFieldMapping()
+	m2 := audit.DefaultCEFFieldMapping()
+
+	m1["actor_id"] = "corrupted"
+	m1["new_key"] = "injected"
+
+	assert.Equal(t, "suser", m2["actor_id"], "second call must not see first call's mutation")
+	_, hasNew := m2["new_key"]
+	assert.False(t, hasNew, "second call must not see first call's new key")
+}
+
+func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
+	cf := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	}
+	ts := time.Now()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Each goroutine gets its own fields map to avoid relying
+			// on Format never writing to the map.
+			f := audit.Fields{"outcome": "ok"}
+			data, err := cf.Format(ts, "ev", f, def)
+			if err != nil {
+				t.Errorf("Format failed: %v", err)
+				return
+			}
+			s := string(data)
+			if !strings.HasPrefix(s, "CEF:0|V|P|1|") {
+				t.Errorf("unexpected output prefix: %s", s[:40])
+			}
+			if !strings.HasSuffix(s, "\n") {
+				t.Errorf("output missing newline terminator")
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestCEFFormatter_NullByteStripped(t *testing.T) {

@@ -103,3 +103,7 @@ nohup.out
 
 
 bench.txt
+
+# Claude Code local configuration (not shared in repo)
+CLAUDE.md
+.claude/

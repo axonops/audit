@@ -67,12 +67,56 @@ func WithFormatter(f Formatter) Option {
 }
 
 // WithOutputs sets the output destinations for the logger. Events are
-// fanned out to all provided outputs. If no outputs are configured,
-// events are validated and filtered but silently discarded. This is
-// useful for testing but SHOULD NOT be used in production.
+// fanned out to all provided outputs. Each output receives all
+// globally-enabled events (no per-output filtering). Use
+// [WithNamedOutput] to configure per-output event routes or formatters.
+//
+// If no outputs are configured, events are validated and filtered but
+// silently discarded. This is useful for testing but SHOULD NOT be
+// used in production.
 func WithOutputs(outputs ...Output) Option {
 	return func(l *Logger) error {
-		l.outputs = outputs
+		entries := make([]*outputEntry, len(outputs))
+		byName := make(map[string]*outputEntry, len(outputs))
+		for i, o := range outputs {
+			name := o.Name()
+			if _, dup := byName[name]; dup {
+				return fmt.Errorf("audit: duplicate output name %q", name)
+			}
+			oe := &outputEntry{output: o}
+			entries[i] = oe
+			byName[name] = oe
+		}
+		l.entries = entries
+		l.outputsByName = byName
+		return nil
+	}
+}
+
+// WithNamedOutput adds a single named output with an optional
+// [EventRoute] and per-output [Formatter]. The route restricts which
+// events are delivered to this output. If formatter is nil, the
+// logger's default formatter is used.
+//
+// Output names MUST be unique across all outputs; duplicate names
+// cause [NewLogger] to return an error. Routes are validated against
+// the taxonomy after all options have been applied.
+func WithNamedOutput(output Output, route EventRoute, formatter Formatter) Option {
+	return func(l *Logger) error {
+		name := output.Name()
+		if l.outputsByName == nil {
+			l.outputsByName = make(map[string]*outputEntry)
+		}
+		if _, dup := l.outputsByName[name]; dup {
+			return fmt.Errorf("audit: duplicate output name %q", name)
+		}
+		oe := &outputEntry{
+			output:    output,
+			route:     route,
+			formatter: formatter,
+		}
+		l.entries = append(l.entries, oe)
+		l.outputsByName[name] = oe
 		return nil
 	}
 }

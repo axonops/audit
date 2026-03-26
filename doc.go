@@ -76,6 +76,10 @@
 //   - [SyslogOutput] — RFC 5424 syslog output (TCP/UDP/TLS/mTLS); see [NewSyslogOutput]
 //   - [WebhookOutput] — batched HTTP webhook with retry and SSRF prevention; see [NewWebhookOutput]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
+//   - [AuditMiddleware] — router-agnostic HTTP middleware; captures transport metadata automatically
+//   - [Hints] — per-request mutable audit metadata; populated by handlers via [GetHints]
+//   - [TransportMetadata] — HTTP transport fields captured by the middleware
+//   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional instrumentation interface
 //
 // # Taxonomy

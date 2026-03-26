@@ -165,6 +165,30 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 			},
 			wantErr: "exceeds maximum",
 		},
+		{
+			name: "MaxSizeMB exceeds limit",
+			cfg: audit.FileConfig{
+				Path:      filepath.Join(dir, "big.log"),
+				MaxSizeMB: audit.MaxFileSizeMB + 1,
+			},
+			wantErr: "max_size_mb",
+		},
+		{
+			name: "MaxBackups exceeds limit",
+			cfg: audit.FileConfig{
+				Path:       filepath.Join(dir, "backups.log"),
+				MaxBackups: audit.MaxFileBackups + 1,
+			},
+			wantErr: "max_backups",
+		},
+		{
+			name: "MaxAgeDays exceeds limit",
+			cfg: audit.FileConfig{
+				Path:       filepath.Join(dir, "age.log"),
+				MaxAgeDays: audit.MaxFileAgeDays + 1,
+			},
+			wantErr: "max_age_days",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -173,6 +197,28 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
+	dir := t.TempDir()
+	out, err := audit.NewFileOutput(audit.FileConfig{
+		Path:       filepath.Join(dir, "boundary.log"),
+		MaxSizeMB:  audit.MaxFileSizeMB,
+		MaxBackups: audit.MaxFileBackups,
+		MaxAgeDays: audit.MaxFileAgeDays,
+	})
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+}
+
+func TestFileOutput_MaxExceeded_WrapsErrConfigInvalid(t *testing.T) {
+	dir := t.TempDir()
+	_, err := audit.NewFileOutput(audit.FileConfig{
+		Path:      filepath.Join(dir, "test.log"),
+		MaxSizeMB: audit.MaxFileSizeMB + 1,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
 
 func TestFileOutput_ImplementsOutput(t *testing.T) {

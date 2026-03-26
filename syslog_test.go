@@ -128,6 +128,22 @@ func (s *mockSyslogServer) messageCount() int {
 	return len(s.messages)
 }
 
+// waitForData polls until the server has received at least one chunk,
+// or the timeout expires. Replaces time.Sleep for synchronisation.
+func (s *mockSyslogServer) waitForData(timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		if s.messageCount() > 0 {
+			return true
+		}
+		select {
+		case <-deadline:
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Construction validation
 // ---------------------------------------------------------------------------
@@ -241,7 +257,7 @@ func TestSyslogOutput_Write(t *testing.T) {
 	require.NoError(t, out.Write(data))
 
 	// Give the server time to receive.
-	time.Sleep(100 * time.Millisecond)
+	require.True(t, srv.waitForData(2*time.Second), "server should receive data")
 	require.NoError(t, out.Close())
 
 	msgs := srv.getMessages()
@@ -265,7 +281,7 @@ func TestSyslogOutput_WriteMultiple(t *testing.T) {
 		require.NoError(t, out.Write(data))
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	require.True(t, srv.waitForData(2*time.Second), "server should receive data")
 	require.NoError(t, out.Close())
 
 	// Messages may be coalesced in TCP reads; check the content.
@@ -569,6 +585,26 @@ func (s *mockTLSSyslogServer) getMessages() []string {
 	return cp
 }
 
+func (s *mockTLSSyslogServer) messageCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.messages)
+}
+
+func (s *mockTLSSyslogServer) waitForData(timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		if s.messageCount() > 0 {
+			return true
+		}
+		select {
+		case <-deadline:
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 func TestSyslogOutput_TLS(t *testing.T) {
 	certs := generateTestCerts(t)
 	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
@@ -582,7 +618,7 @@ func TestSyslogOutput_TLS(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"tls_test"}`)))
-	time.Sleep(200 * time.Millisecond)
+	require.True(t, srv.waitForData(2*time.Second), "TLS server should receive data")
 	require.NoError(t, out.Close())
 
 	msgs := srv.getMessages()
@@ -607,7 +643,7 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"mtls_test"}`)))
-	time.Sleep(200 * time.Millisecond)
+	require.True(t, srv.waitForData(2*time.Second), "mTLS server should receive data")
 	require.NoError(t, out.Close())
 
 	msgs := srv.getMessages()
@@ -635,7 +671,6 @@ func TestSyslogOutput_WriteFailure_ReturnsError(t *testing.T) {
 
 	// Kill the server.
 	srv.close()
-	time.Sleep(50 * time.Millisecond)
 
 	// Writes should eventually error (server gone, retries exhausted).
 	// May take a couple of attempts due to TCP buffering.
@@ -656,19 +691,24 @@ func TestSyslogOutput_WriteFailure_ReturnsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBackoffDuration(t *testing.T) {
-	// Verify exponential growth and cap.
+	// Backoff uses jitter [0.5, 1.0), so verify the result is within
+	// the expected range.
 	d1 := audit.BackoffDuration(1)
-	assert.Equal(t, 100*time.Millisecond, d1)
+	assert.GreaterOrEqual(t, d1, 50*time.Millisecond) // 100ms * 0.5
+	assert.Less(t, d1, 100*time.Millisecond)          // 100ms * 1.0
 
 	d2 := audit.BackoffDuration(2)
-	assert.Equal(t, 200*time.Millisecond, d2)
+	assert.GreaterOrEqual(t, d2, 100*time.Millisecond) // 200ms * 0.5
+	assert.Less(t, d2, 200*time.Millisecond)
 
 	d3 := audit.BackoffDuration(3)
-	assert.Equal(t, 400*time.Millisecond, d3)
+	assert.GreaterOrEqual(t, d3, 200*time.Millisecond) // 400ms * 0.5
+	assert.Less(t, d3, 400*time.Millisecond)
 
-	// Large attempt should be capped at 30s.
+	// Large attempt should be capped at 30s (with jitter, 15-30s).
 	d20 := audit.BackoffDuration(20)
-	assert.Equal(t, 30*time.Second, d20)
+	assert.GreaterOrEqual(t, d20, 15*time.Second)
+	assert.LessOrEqual(t, d20, 30*time.Second)
 }
 
 // ---------------------------------------------------------------------------

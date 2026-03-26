@@ -20,6 +20,7 @@ package audit
 // The library accepts *tls.Config so we control TLS version and certs.
 
 import (
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -107,7 +108,8 @@ type SyslogConfig struct {
 // SyslogOutput is safe for concurrent use.
 type SyslogOutput struct {
 	writer   *srslog.Writer
-	tlsCfg   *tls.Config // cached for reconnection; nil for non-TLS
+	tlsCfg   *tls.Config   // cached for reconnection; nil for non-TLS
+	closeCh  chan struct{} // closed by Close() to interrupt backoff
 	address  string
 	network  string
 	appName  string
@@ -131,6 +133,8 @@ func NewSyslogOutput(cfg SyslogConfig) (*SyslogOutput, error) {
 		return nil, fmt.Errorf("audit: syslog facility %q: %w", cfg.Facility, err)
 	}
 
+	// Hostname failure is non-fatal; an empty hostname is acceptable
+	// in the RFC 5424 header (NILVALUE "-" per §6.2.4).
 	hostname, _ := os.Hostname()
 
 	var tlsCfg *tls.Config
@@ -148,6 +152,7 @@ func NewSyslogOutput(cfg SyslogConfig) (*SyslogOutput, error) {
 
 	s := &SyslogOutput{
 		tlsCfg:   tlsCfg,
+		closeCh:  make(chan struct{}),
 		address:  cfg.Address,
 		network:  cfg.Network,
 		appName:  cfg.AppName,
@@ -194,6 +199,7 @@ func (s *SyslogOutput) Close() error {
 		return nil
 	}
 	s.closed = true
+	close(s.closeCh) // interrupt any in-progress backoff
 
 	if s.writer != nil {
 		if err := s.writer.Close(); err != nil {
@@ -231,7 +237,8 @@ func (s *SyslogOutput) connect() error {
 }
 
 // handleWriteFailure attempts reconnection with bounded exponential
-// backoff. Called with s.mu held.
+// backoff. Called with s.mu held. Releases the mutex during the
+// backoff sleep so Close() is not blocked.
 func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 	s.failures++
 
@@ -244,19 +251,32 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 			s.failures, writeErr)
 	}
 
-	// Close the old writer and attempt reconnection.
+	// Close the old writer before reconnecting.
 	if s.writer != nil {
 		_ = s.writer.Close()
 		s.writer = nil
 	}
 
-	backoff := BackoffDuration(s.failures)
+	backoff := backoffDuration(s.failures)
 	slog.Warn("audit: syslog reconnecting",
 		"address", s.address,
 		"attempt", s.failures,
 		"backoff", backoff)
 
-	time.Sleep(backoff)
+	// Release the mutex during backoff so Close() can proceed.
+	s.mu.Unlock()
+	select {
+	case <-time.After(backoff):
+	case <-s.closeCh:
+		s.mu.Lock()
+		return fmt.Errorf("audit: syslog closed during reconnect: %w", writeErr)
+	}
+	s.mu.Lock()
+
+	// Check if we were closed while sleeping.
+	if s.closed {
+		return ErrOutputClosed
+	}
 
 	if err := s.connect(); err != nil {
 		slog.Error("audit: syslog reconnect failed",
@@ -277,13 +297,21 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 	return nil
 }
 
-// BackoffDuration returns the backoff duration for the given attempt
-// number using bounded exponential backoff (100ms * 2^attempt, capped
-// at 30s).
-func BackoffDuration(attempt int) time.Duration {
-	d := syslogBaseBackoff * time.Duration(math.Pow(2, float64(attempt-1)))
+// backoffDuration returns the backoff duration for the given attempt
+// number using bounded exponential backoff with jitter
+// (100ms * 2^attempt * [0.5, 1.0], capped at 30s). Jitter prevents
+// thundering herd when multiple clients reconnect simultaneously.
+func backoffDuration(attempt int) time.Duration {
+	exp := math.Min(float64(attempt-1), 20) // clamp exponent to avoid overflow
+	d := syslogBaseBackoff * time.Duration(math.Pow(2, exp))
 	if d > syslogMaxBackoff {
 		d = syslogMaxBackoff
+	}
+	// Add jitter: multiply by [0.5, 1.0) using crypto/rand.
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		jitter := 0.5 + float64(b[0])/512.0 // [0.5, 1.0)
+		d = time.Duration(float64(d) * jitter)
 	}
 	return d
 }
@@ -317,11 +345,15 @@ func validateSyslogConfig(cfg *SyslogConfig) error {
 		return fmt.Errorf("audit: syslog tls_cert and tls_key must both be set or both empty")
 	}
 
-	// File existence checks for TLS.
+	// File existence and type checks for TLS paths.
 	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
 		if path != "" {
-			if _, err := os.Stat(path); err != nil {
+			fi, err := os.Stat(path)
+			if err != nil {
 				return fmt.Errorf("audit: syslog tls file %q: %w", path, err)
+			}
+			if fi.IsDir() {
+				return fmt.Errorf("audit: syslog tls file %q is a directory", path)
 			}
 		}
 	}
@@ -360,33 +392,35 @@ func buildSyslogTLSConfig(cfg *SyslogConfig) (*tls.Config, error) {
 	return tlsCfg, nil
 }
 
+// syslogFacilities maps facility name strings to srslog.Priority values.
+// This is an immutable lookup table populated at init time.
+var syslogFacilities = map[string]srslog.Priority{
+	"kern":     srslog.LOG_KERN,
+	"user":     srslog.LOG_USER,
+	"mail":     srslog.LOG_MAIL,
+	"daemon":   srslog.LOG_DAEMON,
+	"auth":     srslog.LOG_AUTH,
+	"syslog":   srslog.LOG_SYSLOG,
+	"lpr":      srslog.LOG_LPR,
+	"news":     srslog.LOG_NEWS,
+	"uucp":     srslog.LOG_UUCP,
+	"cron":     srslog.LOG_CRON,
+	"authpriv": srslog.LOG_AUTHPRIV,
+	"ftp":      srslog.LOG_FTP,
+	"local0":   srslog.LOG_LOCAL0,
+	"local1":   srslog.LOG_LOCAL1,
+	"local2":   srslog.LOG_LOCAL2,
+	"local3":   srslog.LOG_LOCAL3,
+	"local4":   srslog.LOG_LOCAL4,
+	"local5":   srslog.LOG_LOCAL5,
+	"local6":   srslog.LOG_LOCAL6,
+	"local7":   srslog.LOG_LOCAL7,
+}
+
 // parseFacility converts a facility name string to a srslog.Priority.
 // Unknown facility names return an error.
 func parseFacility(name string) (srslog.Priority, error) {
-	facilities := map[string]srslog.Priority{
-		"kern":     srslog.LOG_KERN,
-		"user":     srslog.LOG_USER,
-		"mail":     srslog.LOG_MAIL,
-		"daemon":   srslog.LOG_DAEMON,
-		"auth":     srslog.LOG_AUTH,
-		"syslog":   srslog.LOG_SYSLOG,
-		"lpr":      srslog.LOG_LPR,
-		"news":     srslog.LOG_NEWS,
-		"uucp":     srslog.LOG_UUCP,
-		"cron":     srslog.LOG_CRON,
-		"authpriv": srslog.LOG_AUTHPRIV,
-		"ftp":      srslog.LOG_FTP,
-		"local0":   srslog.LOG_LOCAL0,
-		"local1":   srslog.LOG_LOCAL1,
-		"local2":   srslog.LOG_LOCAL2,
-		"local3":   srslog.LOG_LOCAL3,
-		"local4":   srslog.LOG_LOCAL4,
-		"local5":   srslog.LOG_LOCAL5,
-		"local6":   srslog.LOG_LOCAL6,
-		"local7":   srslog.LOG_LOCAL7,
-	}
-
-	p, ok := facilities[name]
+	p, ok := syslogFacilities[name]
 	if !ok {
 		return 0, fmt.Errorf("audit: unknown syslog facility %q", name)
 	}

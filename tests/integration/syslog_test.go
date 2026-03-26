@@ -177,7 +177,7 @@ func TestSyslogIntegration_TCP_RFC5424Format(t *testing.T) {
 	// Verify the message payload arrived intact.
 	assert.Contains(t, log, "rfc5424_check",
 		"syslog should contain the event payload")
-	// Verify the syslog line has a timestamp (RFC 5424 or RFC 3164 format).
-	assert.Contains(t, log, "2026-",
+	// Verify the syslog line has a timestamp.
+	assert.Contains(t, log, time.Now().Format("2006-"),
 		"syslog should contain a timestamp")
 }

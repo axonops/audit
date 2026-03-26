@@ -45,10 +45,7 @@ func (w *WebhookOutput) doPostWithRetry(ctx context.Context, batch [][]byte) {
 
 		retryable, err := w.doPost(ctx, body)
 		if err == nil {
-			// Success — record metrics.
-			if w.metrics != nil {
-				w.metrics.RecordWebhookFlush(len(batch), time.Since(start))
-			}
+			w.recordSuccess(len(batch), time.Since(start))
 			return
 		}
 
@@ -118,13 +115,28 @@ func (w *WebhookOutput) doPost(ctx context.Context, body []byte) (bool, error) {
 	return false, fmt.Errorf("audit: webhook client error %d", resp.StatusCode)
 }
 
-// recordDrop records dropped events in metrics.
+// recordSuccess records successful delivery metrics for a batch.
+func (w *WebhookOutput) recordSuccess(batchSize int, dur time.Duration) {
+	if w.metrics == nil {
+		return
+	}
+	w.metrics.RecordWebhookFlush(batchSize, dur)
+	name := w.Name()
+	for range batchSize {
+		w.metrics.RecordEvent(name, "success")
+	}
+}
+
+// recordDrop records dropped events in metrics. Both RecordWebhookDrop
+// and RecordEvent(name, "error") are called per dropped event.
 func (w *WebhookOutput) recordDrop(count int) {
 	if w.metrics == nil {
 		return
 	}
+	name := w.Name()
 	for range count {
 		w.metrics.RecordWebhookDrop()
+		w.metrics.RecordEvent(name, "error")
 	}
 }
 

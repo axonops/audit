@@ -14,6 +14,123 @@
 
 package audit
 
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
+
+// EventRoute restricts which events are delivered to a specific output.
+// Routes operate in one of two mutually exclusive modes:
+//
+// Include mode (allow-list): events are delivered only if their category
+// is in [EventRoute.IncludeCategories] OR their event type is in
+// [EventRoute.IncludeEventTypes]. The two fields form a union.
+//
+// Exclude mode (deny-list): events are delivered unless their category
+// is in [EventRoute.ExcludeCategories] OR their event type is in
+// [EventRoute.ExcludeEventTypes]. The two fields form a union.
+//
+// Setting both include and exclude fields on the same route is a
+// bootstrap error. An empty route (all fields nil/empty) delivers all
+// globally-enabled events.
+type EventRoute struct {
+	// IncludeCategories lists category names to allow. Events whose
+	// category is in this list are delivered. Mutually exclusive with
+	// ExcludeCategories and ExcludeEventTypes.
+	IncludeCategories []string
+
+	// IncludeEventTypes lists event type names to allow. Events whose
+	// type is in this list are delivered regardless of category.
+	// Mutually exclusive with ExcludeCategories and ExcludeEventTypes.
+	IncludeEventTypes []string
+
+	// ExcludeCategories lists category names to deny. Events whose
+	// category is in this list are skipped. Mutually exclusive with
+	// IncludeCategories and IncludeEventTypes.
+	ExcludeCategories []string
+
+	// ExcludeEventTypes lists event type names to deny. Events whose
+	// type is in this list are skipped regardless of category.
+	// Mutually exclusive with IncludeCategories and IncludeEventTypes.
+	ExcludeEventTypes []string
+}
+
+// IsEmpty reports whether all route fields are empty, meaning the
+// output receives all globally-enabled events.
+func (r *EventRoute) IsEmpty() bool {
+	return len(r.IncludeCategories) == 0 &&
+		len(r.IncludeEventTypes) == 0 &&
+		len(r.ExcludeCategories) == 0 &&
+		len(r.ExcludeEventTypes) == 0
+}
+
+func (r *EventRoute) isIncludeMode() bool {
+	return len(r.IncludeCategories) > 0 || len(r.IncludeEventTypes) > 0
+}
+
+func (r *EventRoute) isExcludeMode() bool {
+	return len(r.ExcludeCategories) > 0 || len(r.ExcludeEventTypes) > 0
+}
+
+// ValidateEventRoute checks that the route is well-formed and all
+// referenced categories and event types exist in the taxonomy.
+func ValidateEventRoute(route EventRoute, taxonomy *Taxonomy) error {
+	if route.isIncludeMode() && route.isExcludeMode() {
+		return fmt.Errorf("audit: EventRoute must use either include or exclude, not both")
+	}
+
+	var unknown []string
+	for _, cat := range route.IncludeCategories {
+		if _, ok := taxonomy.Categories[cat]; !ok {
+			unknown = append(unknown, "category "+cat)
+		}
+	}
+	for _, cat := range route.ExcludeCategories {
+		if _, ok := taxonomy.Categories[cat]; !ok {
+			unknown = append(unknown, "category "+cat)
+		}
+	}
+	for _, evt := range route.IncludeEventTypes {
+		if _, ok := taxonomy.Events[evt]; !ok {
+			unknown = append(unknown, "event type "+evt)
+		}
+	}
+	for _, evt := range route.ExcludeEventTypes {
+		if _, ok := taxonomy.Events[evt]; !ok {
+			unknown = append(unknown, "event type "+evt)
+		}
+	}
+
+	if len(unknown) > 0 {
+		slices.Sort(unknown)
+		return fmt.Errorf("audit: EventRoute references unknown taxonomy entries: [%s]",
+			strings.Join(unknown, ", "))
+	}
+	return nil
+}
+
+// MatchesRoute reports whether an event should be delivered to an
+// output with the given route. eventType is the event name, category
+// is its taxonomy category. An empty route matches all events.
+func MatchesRoute(route *EventRoute, eventType, category string) bool {
+	if route.IsEmpty() {
+		return true
+	}
+
+	if route.isIncludeMode() {
+		return slices.Contains(route.IncludeCategories, category) ||
+			slices.Contains(route.IncludeEventTypes, eventType)
+	}
+
+	// Exclude mode.
+	if slices.Contains(route.ExcludeCategories, category) ||
+		slices.Contains(route.ExcludeEventTypes, eventType) {
+		return false
+	}
+	return true
+}
+
 // filterState tracks which categories and individual event types are
 // enabled. It is protected by the Logger's sync.RWMutex.
 type filterState struct {

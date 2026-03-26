@@ -21,49 +21,52 @@ import (
 )
 
 // ClientIP exports clientIP for testing.
-var ClientIP = clientIP
+func ClientIP(r *http.Request) string { return clientIP(r) }
 
-// TransportSecurityFunc exports transportSecurity for testing.
-var TransportSecurityFunc = transportSecurity
+// TransportSecurity exports transportSecurity for testing.
+func TransportSecurity(r *http.Request) string { return transportSecurity(r) }
 
 // NewRequestID exports newRequestID for testing.
-var NewRequestID = newRequestID
+func NewRequestID() string { return newRequestID() }
 
 // ValidRequestID exports validRequestID for testing.
-var ValidRequestID = validRequestID
+func ValidRequestID(id string) bool { return validRequestID(id) }
+
+// TruncateString exports truncateString for testing.
+func TruncateString(s string, maxLen int) string { return truncateString(s, maxLen) }
 
 // NewResponseWriter exports the responseWriter constructor for testing.
 func NewResponseWriter(w http.ResponseWriter) *ResponseWriterWrapper {
-	return &ResponseWriterWrapper{W: &responseWriter{ResponseWriter: w}}
+	return &ResponseWriterWrapper{rw: &responseWriter{ResponseWriter: w}}
 }
 
-// ResponseWriterWrapper exposes the unexported responseWriter fields for testing.
+// ResponseWriterWrapper exposes the unexported responseWriter for testing.
 type ResponseWriterWrapper struct {
-	W *responseWriter
+	rw *responseWriter
 }
 
 // WriteHeader delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) WriteHeader(code int) { rw.W.WriteHeader(code) }
+func (w *ResponseWriterWrapper) WriteHeader(code int) { w.rw.WriteHeader(code) }
 
 // Write delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) Write(b []byte) (int, error) { return rw.W.Write(b) }
+func (w *ResponseWriterWrapper) Write(b []byte) (int, error) { return w.rw.Write(b) }
 
 // Unwrap delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) Unwrap() http.ResponseWriter { return rw.W.Unwrap() }
+func (w *ResponseWriterWrapper) Unwrap() http.ResponseWriter { return w.rw.Unwrap() }
 
 // Flush delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) Flush() { rw.W.Flush() }
+func (w *ResponseWriterWrapper) Flush() { w.rw.Flush() }
 
 // Hijack delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return rw.W.Hijack()
+func (w *ResponseWriterWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.rw.Hijack()
 }
 
 // StatusCode returns the captured status code.
-func (rw *ResponseWriterWrapper) StatusCode() int { return rw.W.statusCode }
+func (w *ResponseWriterWrapper) StatusCode() int { return w.rw.statusCode }
 
 // Written returns whether WriteHeader or Write has been called.
-func (rw *ResponseWriterWrapper) Written() bool { return rw.W.written }
+func (w *ResponseWriterWrapper) Written() bool { return w.rw.written }
 
 // Header delegates to the wrapped responseWriter.
-func (rw *ResponseWriterWrapper) Header() http.Header { return rw.W.Header() }
+func (w *ResponseWriterWrapper) Header() http.Header { return w.rw.Header() }

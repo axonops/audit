@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,6 +34,7 @@ import (
 	"github.com/axonops/go-audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func TestGetHints_NilWithoutMiddleware(t *testing.T) {
@@ -116,6 +118,23 @@ func TestClientIP(t *testing.T) {
 			xff:      "::1",
 			expected: "::1",
 		},
+		{
+			name:     "XFF trailing comma falls through",
+			xff:      "10.0.0.1,",
+			remote:   "10.0.0.99:80",
+			expected: "10.0.0.99",
+		},
+		{
+			name:     "XFF bare comma falls through",
+			xff:      ",",
+			remote:   "10.0.0.99:80",
+			expected: "10.0.0.99",
+		},
+		{
+			name:     "RemoteAddr unix socket path returned as-is",
+			remote:   "/var/run/app.sock",
+			expected: "/var/run/app.sock",
+		},
 	}
 
 	for _, tt := range tests {
@@ -165,7 +184,7 @@ func TestTransportSecurity(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 			r.TLS = tt.tls
 
-			got := audit.TransportSecurityFunc(r)
+			got := audit.TransportSecurity(r)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -422,7 +441,7 @@ func TestMiddleware_BasicFlow(t *testing.T) {
 	// Wait for async delivery.
 	require.NoError(t, logger.Close())
 
-	assert.GreaterOrEqual(t, out.eventCount(), 1)
+	assert.Equal(t, 1, out.eventCount())
 }
 
 func TestMiddleware_HintsPopulatedByHandler(t *testing.T) {
@@ -542,7 +561,7 @@ func TestMiddleware_PanicRecovery(t *testing.T) {
 
 	// Audit event should still have been emitted before re-panic.
 	require.NoError(t, logger.Close())
-	assert.GreaterOrEqual(t, out.eventCount(), 1)
+	assert.Equal(t, 1, out.eventCount())
 }
 
 func TestMiddleware_TransportMetadata_Complete(t *testing.T) {
@@ -640,6 +659,7 @@ func TestMiddleware_AuditError_LoggedNotPropagated(t *testing.T) {
 }
 
 func TestMiddleware_ConcurrentRequests(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	logger, out := newMiddlewareTestLogger(t)
 
 	var calls atomic.Int64
@@ -721,7 +741,7 @@ func TestMiddleware_Duration_Positive(t *testing.T) {
 	mw(handler).ServeHTTP(rec, req)
 
 	// time.Since(start) always returns > 0 on monotonic clock.
-	assert.GreaterOrEqual(t, capturedDuration, time.Duration(0))
+	assert.Greater(t, capturedDuration, time.Duration(0))
 }
 
 func TestMiddleware_BuilderPanic_Recovered(t *testing.T) {
@@ -765,6 +785,9 @@ func TestValidRequestID(t *testing.T) {
 		{"contains carriage return", "req-id\r", false},
 		{"contains null", "req-id\x00", false},
 		{"contains tab", "req-id\t", false},
+		{"contains DEL", "req-id\x7f", false},
+		{"non-ASCII unicode rejected", "req-\u00e9", false},
+		{"RTL override rejected", "req-\u202e", false},
 	}
 
 	for _, tt := range tests {
@@ -814,6 +837,172 @@ func TestMiddleware_UserAgent_Truncated(t *testing.T) {
 	assert.Equal(t, 512, len(capturedUA))
 }
 
+func TestMiddleware_NilLoggerNilBuilder_NoPanic(t *testing.T) {
+	// When logger is nil, builder is never checked — Middleware(nil, nil) must not panic.
+	assert.NotPanics(t, func() {
+		mw := audit.Middleware(nil, nil)
+		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+		handler.ServeHTTP(rec, req)
+	})
+}
+
+func TestMiddleware_NilLogger_GetHintsReturnsNil(t *testing.T) {
+	var hintsInHandler *audit.Hints
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hintsInHandler = audit.GetHints(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.Middleware(nil, func(_ *audit.Hints, _ *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "", nil, true
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Nil(t, hintsInHandler, "GetHints should return nil when logger is nil")
+}
+
+func TestMiddleware_HintsError_PassedToBuilder(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedError string
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedError = hints.Error
+		return "http_request", audit.Fields{"outcome": "failure"}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hints := audit.GetHints(r.Context())
+		hints.Error = "permission denied"
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	mw := audit.Middleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/secret", http.NoBody)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Equal(t, "permission denied", capturedError)
+}
+
+func TestMiddleware_HandlerWritesNothing_Status200(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedStatus int
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedStatus = transport.StatusCode
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	// Handler returns without calling Write or WriteHeader.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+	mw := audit.Middleware(logger, builder)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(handler).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, capturedStatus)
+}
+
+// errorWriter is an http.ResponseWriter whose Write always fails.
+type errorWriter struct {
+	http.ResponseWriter
+	err error
+}
+
+func (e *errorWriter) Write([]byte) (int, error) { return 0, e.err }
+
+func TestResponseWriter_Write_InnerError(t *testing.T) {
+	writeErr := errors.New("disk full")
+	inner := &errorWriter{
+		ResponseWriter: httptest.NewRecorder(),
+		err:            writeErr,
+	}
+	rw := audit.NewResponseWriter(inner)
+
+	_, err := rw.Write([]byte("data"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, writeErr)
+}
+
+func TestResponseWriter_Hijack_InnerError(t *testing.T) {
+	hijackErr := errors.New("connection reset")
+	inner := &mockHijacker{
+		ResponseWriter: httptest.NewRecorder(),
+		err:            hijackErr,
+	}
+	rw := audit.NewResponseWriter(inner)
+
+	conn, brw, err := rw.Hijack()
+	assert.Nil(t, conn)
+	assert.Nil(t, brw)
+	assert.ErrorIs(t, err, hijackErr)
+}
+
+func TestResponseWriter_WriteAfterWriteHeader(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(rec)
+
+	rw.WriteHeader(http.StatusCreated)
+	_, err := rw.Write([]byte("body"))
+	require.NoError(t, err)
+
+	// StatusCode should not be overwritten by Write.
+	assert.Equal(t, http.StatusCreated, rw.StatusCode())
+}
+
+func TestTruncateString(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		maxLen int
+		expect string
+	}{
+		{"under limit", "hello", 10, "hello"},
+		{"at limit", "hello", 5, "hello"},
+		{"over limit", "hello world", 5, "hello"},
+		{"empty", "", 10, ""},
+		{"multibyte not split", "caf\u00e9!", 5, "caf\u00e9"},
+		{"multibyte split backed up", "caf\u00e9!", 4, "caf"},
+		{"exact boundary 512", strings.Repeat("a", 512), 512, strings.Repeat("a", 512)},
+		{"one over boundary 513", strings.Repeat("a", 513), 512, strings.Repeat("a", 512)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := audit.TruncateString(tt.input, tt.maxLen)
+			assert.Equal(t, tt.expect, got)
+		})
+	}
+}
+
+func TestMiddleware_Path_Truncated(t *testing.T) {
+	logger, _ := newMiddlewareTestLogger(t)
+
+	var capturedPath string
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		capturedPath = transport.Path
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	mw := audit.Middleware(logger, builder)
+	rec := httptest.NewRecorder()
+	longPath := "/" + strings.Repeat("x", 3000)
+	req := httptest.NewRequest(http.MethodGet, longPath, http.NoBody)
+	req.RemoteAddr = "10.0.0.1:12345"
+	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
+
+	assert.Equal(t, 2048, len(capturedPath))
+}
+
 // --- Benchmarks ---
 
 func BenchmarkNewRequestID(b *testing.B) {
@@ -830,11 +1019,17 @@ func BenchmarkClientIP(b *testing.B) {
 	}
 }
 
+func BenchmarkValidRequestID(b *testing.B) {
+	for b.Loop() {
+		audit.ValidRequestID("550e8400-e29b-41d4-a716-446655440000")
+	}
+}
+
 func BenchmarkMiddleware(b *testing.B) {
 	taxonomy := middlewareTaxonomy()
 	out := newMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1_000_000},
 		audit.WithTaxonomy(taxonomy),
 		audit.WithOutputs(out),
 	)

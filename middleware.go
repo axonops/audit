@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -38,6 +39,11 @@ const (
 	// stored in [TransportMetadata]. Longer values are truncated to
 	// prevent oversized audit events in size-limited outputs (syslog, CEF).
 	maxUserAgentLen = 512
+
+	// maxPathLen is the maximum length of the URL path stored in
+	// [TransportMetadata]. Longer paths are truncated to prevent
+	// oversized audit events in size-limited outputs (syslog, CEF).
+	maxPathLen = 2048
 )
 
 // hintsKey is the unexported context key for [Hints].
@@ -218,26 +224,34 @@ func newRequestID() string {
 }
 
 // validRequestID checks that a request ID is safe to propagate:
-// not too long and no control characters that could enable log injection.
+// printable ASCII only (0x20–0x7e), bounded length, no control
+// characters or non-ASCII that could enable log injection or visual
+// spoofing.
 func validRequestID(id string) bool {
 	if id == "" || len(id) > maxRequestIDLen {
 		return false
 	}
 	for _, c := range id {
-		if c < 0x20 || c == 0x7f {
+		if c < 0x20 || c > 0x7e {
 			return false
 		}
 	}
 	return true
 }
 
-// truncateString returns s truncated to maxLen bytes. If truncated,
-// the result may split a multi-byte UTF-8 character.
+// truncateString returns s truncated to at most maxLen bytes,
+// backing up to the last complete UTF-8 rune boundary to avoid
+// producing invalid UTF-8 in serialised output.
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	// Truncate to maxLen, then back up to the last valid rune start.
+	s = s[:maxLen]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // responseWriter wraps [http.ResponseWriter] to capture the status
@@ -263,17 +277,17 @@ func (rw *responseWriter) WriteHeader(code int) {
 }
 
 // Write delegates to the inner [http.ResponseWriter]. If WriteHeader
-// has not been called, an implicit 200 OK is recorded.
+// has not been called, an implicit 200 OK is recorded. Errors are
+// returned unmodified to preserve the [http.ResponseWriter] contract
+// and allow callers to discriminate error types.
+//
+//nolint:wrapcheck // transparent proxy — must not alter inner writer errors
 func (rw *responseWriter) Write(b []byte) (int, error) {
 	if !rw.written {
 		rw.statusCode = http.StatusOK
 		rw.written = true
 	}
-	n, err := rw.ResponseWriter.Write(b)
-	if err != nil {
-		return n, fmt.Errorf("audit: response write: %w", err)
-	}
-	return n, nil
+	return rw.ResponseWriter.Write(b)
 }
 
 // Unwrap returns the inner [http.ResponseWriter], enabling
@@ -296,14 +310,13 @@ func (rw *responseWriter) Flush() {
 var ErrHijackNotSupported = errors.New("audit: underlying ResponseWriter does not support hijacking")
 
 // Hijack delegates to the inner writer if it implements
-// [http.Hijacker]. Returns an error if hijacking is not supported.
+// [http.Hijacker]. Returns [ErrHijackNotSupported] if hijacking is
+// not supported. Inner hijack errors are returned unmodified.
+//
+//nolint:wrapcheck // transparent proxy — must not alter inner hijacker errors
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
-		conn, brw, err := h.Hijack()
-		if err != nil {
-			return nil, nil, fmt.Errorf("audit: hijack: %w", err)
-		}
-		return conn, brw, nil
+		return h.Hijack()
 	}
 	return nil, nil, ErrHijackNotSupported
 }
@@ -359,7 +372,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, logge
 		ClientIP:          clientIP(r),
 		TransportSecurity: transportSecurity(r),
 		Method:            r.Method,
-		Path:              r.URL.Path,
+		Path:              truncateString(r.URL.Path, maxPathLen),
 		UserAgent:         truncateString(r.UserAgent(), maxUserAgentLen),
 		RequestID:         reqID,
 		StatusCode:        statusCode,

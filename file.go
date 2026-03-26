@@ -25,6 +25,23 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+const (
+	// MaxFileSizeMB is the maximum allowed value for [FileConfig.MaxSizeMB].
+	// Values above this limit cause [NewFileOutput] to return an error
+	// wrapping [ErrConfigInvalid].
+	MaxFileSizeMB = 10_240 // 10 GB
+
+	// MaxFileBackups is the maximum allowed value for [FileConfig.MaxBackups].
+	// Values above this limit cause [NewFileOutput] to return an error
+	// wrapping [ErrConfigInvalid].
+	MaxFileBackups = 100
+
+	// MaxFileAgeDays is the maximum allowed value for [FileConfig.MaxAgeDays].
+	// Values above this limit cause [NewFileOutput] to return an error
+	// wrapping [ErrConfigInvalid].
+	MaxFileAgeDays = 365
+)
+
 // FileConfig holds configuration for [FileOutput].
 type FileConfig struct {
 	Compress    *bool
@@ -81,6 +98,19 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 	if cfg.MaxAgeDays <= 0 {
 		cfg.MaxAgeDays = 30
+	}
+
+	if cfg.MaxSizeMB > MaxFileSizeMB {
+		return nil, fmt.Errorf("%w: max_size_mb %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxSizeMB, MaxFileSizeMB)
+	}
+	if cfg.MaxBackups > MaxFileBackups {
+		return nil, fmt.Errorf("%w: max_backups %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxBackups, MaxFileBackups)
+	}
+	if cfg.MaxAgeDays > MaxFileAgeDays {
+		return nil, fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
+			ErrConfigInvalid, cfg.MaxAgeDays, MaxFileAgeDays)
 	}
 
 	compress := true

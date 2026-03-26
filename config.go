@@ -248,7 +248,7 @@ func trackFilePath(seen map[string]string, path, outputName string) error {
 
 // buildNamedOutput constructs an Output from a NamedOutputConfig.
 //
-//nolint:gocyclo // flat switch over output types; linear structure, each case identical pattern
+//nolint:gocyclo,cyclop // flat switch over output types; linear structure, each case identical pattern
 func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 	switch nc.Type {
 	case "stdout":

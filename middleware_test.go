@@ -120,7 +120,7 @@ func TestClientIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/test", nil)
+			r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 			if tt.xff != "" {
 				r.Header.Set("X-Forwarded-For", tt.xff)
 			}
@@ -162,7 +162,7 @@ func TestTransportSecurity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/test", nil)
+			r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 			r.TLS = tt.tls
 
 			got := audit.TransportSecurityFunc(r)
@@ -341,7 +341,7 @@ func middlewareTaxonomy() audit.Taxonomy {
 }
 
 // middlewareBuilder is a standard EventBuilder for middleware tests.
-func middlewareBuilder(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+func middlewareBuilder(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 	fields := audit.Fields{
 		"outcome":            hints.Outcome,
 		"client_ip":          transport.ClientIP,
@@ -386,7 +386,7 @@ func TestMiddleware_NilLogger_PassThrough(t *testing.T) {
 	wrapped := mw(handler)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	wrapped.ServeHTTP(rec, req)
 
 	assert.True(t, called)
@@ -415,7 +415,7 @@ func TestMiddleware_BasicFlow(t *testing.T) {
 	wrapped := mw(handler)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/users", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/users", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	wrapped.ServeHTTP(rec, req)
 
@@ -431,9 +431,9 @@ func TestMiddleware_HintsPopulatedByHandler(t *testing.T) {
 	var capturedHints *audit.Hints
 	var capturedTransport audit.TransportMetadata
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedHints = hints
-		capturedTransport = transport
+		capturedTransport = *transport
 		return "http_request", audit.Fields{"outcome": hints.Outcome}, false
 	}
 
@@ -453,7 +453,7 @@ func TestMiddleware_HintsPopulatedByHandler(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/docs/99", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/docs/99", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
@@ -476,7 +476,7 @@ func TestMiddleware_HintsExtra(t *testing.T) {
 
 	var capturedExtra map[string]any
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedExtra = hints.Extra
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
@@ -492,7 +492,7 @@ func TestMiddleware_HintsExtra(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
@@ -504,7 +504,7 @@ func TestMiddleware_HintsExtra(t *testing.T) {
 func TestMiddleware_SkipTrue(t *testing.T) {
 	logger, out := newMiddlewareTestLogger(t)
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		return "", nil, true // skip
 	}
 
@@ -514,7 +514,7 @@ func TestMiddleware_SkipTrue(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
@@ -533,7 +533,7 @@ func TestMiddleware_PanicRecovery(t *testing.T) {
 
 	mw := audit.Middleware(logger, middlewareBuilder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	req := httptest.NewRequest(http.MethodGet, "/boom", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 
 	assert.PanicsWithValue(t, "handler exploded", func() {
@@ -550,8 +550,8 @@ func TestMiddleware_TransportMetadata_Complete(t *testing.T) {
 
 	var captured audit.TransportMetadata
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
-		captured = transport
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		captured = *transport
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
@@ -561,7 +561,7 @@ func TestMiddleware_TransportMetadata_Complete(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/items", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/items", http.NoBody)
 	req.RemoteAddr = "192.168.1.1:9999"
 	req.Header.Set("User-Agent", "test-agent/1.0")
 	req.Header.Set("X-Request-Id", "req-abc-123")
@@ -581,14 +581,14 @@ func TestMiddleware_RequestID_FromHeader(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedID string
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedID = transport.RequestID
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	req.Header.Set("X-Request-Id", "custom-id-42")
 	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
@@ -600,14 +600,14 @@ func TestMiddleware_RequestID_Generated(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedID string
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedID = transport.RequestID
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	// No X-Request-Id header.
 	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
@@ -619,7 +619,7 @@ func TestMiddleware_AuditError_LoggedNotPropagated(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	// Return an unknown event type to trigger an Audit error.
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		return "nonexistent_event", audit.Fields{"outcome": "success"}, false
 	}
 
@@ -629,7 +629,7 @@ func TestMiddleware_AuditError_LoggedNotPropagated(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 
 	// Should not panic; error is logged via slog, not propagated.
@@ -644,7 +644,7 @@ func TestMiddleware_ConcurrentRequests(t *testing.T) {
 
 	var calls atomic.Int64
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		calls.Add(1)
 		return "http_request", audit.Fields{"outcome": hints.Outcome, "actor_id": hints.ActorID}, false
 	}
@@ -665,7 +665,7 @@ func TestMiddleware_ConcurrentRequests(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 			req.RemoteAddr = "10.0.0.1:12345"
 			req.Header.Set("X-Actor", fmt.Sprintf("user-%d", idx))
 			wrapped.ServeHTTP(rec, req)
@@ -683,7 +683,7 @@ func TestMiddleware_StatusCode_FromHandler(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedStatus int
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedStatus = transport.StatusCode
 		return "http_request", audit.Fields{"outcome": "not_found"}, false
 	}
@@ -694,7 +694,7 @@ func TestMiddleware_StatusCode_FromHandler(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req := httptest.NewRequest(http.MethodGet, "/missing", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
@@ -705,7 +705,7 @@ func TestMiddleware_Duration_Positive(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedDuration time.Duration
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedDuration = transport.Duration
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
@@ -716,7 +716,7 @@ func TestMiddleware_Duration_Positive(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
@@ -727,7 +727,7 @@ func TestMiddleware_Duration_Positive(t *testing.T) {
 func TestMiddleware_BuilderPanic_Recovered(t *testing.T) {
 	logger, out := newMiddlewareTestLogger(t)
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		panic("builder exploded")
 	}
 
@@ -737,7 +737,7 @@ func TestMiddleware_BuilderPanic_Recovered(t *testing.T) {
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 
 	// Builder panic must not propagate to the caller.
@@ -778,14 +778,14 @@ func TestMiddleware_RequestID_InvalidHeader_GeneratesUUID(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedID string
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedID = transport.RequestID
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	req.Header.Set("X-Request-Id", "injected\nfake-log-line")
 	mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).ServeHTTP(rec, req)
@@ -798,14 +798,14 @@ func TestMiddleware_UserAgent_Truncated(t *testing.T) {
 	logger, _ := newMiddlewareTestLogger(t)
 
 	var capturedUA string
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		capturedUA = transport.UserAgent
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
 	mw := audit.Middleware(logger, builder)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 	longUA := strings.Repeat("x", 1000)
 	req.Header.Set("User-Agent", longUA)
@@ -823,7 +823,7 @@ func BenchmarkNewRequestID(b *testing.B) {
 }
 
 func BenchmarkClientIP(b *testing.B) {
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1, 192.168.1.1")
 	for b.Loop() {
 		audit.ClientIP(r)
@@ -843,7 +843,7 @@ func BenchmarkMiddleware(b *testing.B) {
 	}
 	defer func() { _ = logger.Close() }()
 
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		return "http_request", audit.Fields{"outcome": "success"}, false
 	}
 
@@ -852,7 +852,7 @@ func BenchmarkMiddleware(b *testing.B) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/bench", nil)
+	req := httptest.NewRequest(http.MethodGet, "/bench", http.NoBody)
 	req.RemoteAddr = "10.0.0.1:12345"
 
 	for b.Loop() {

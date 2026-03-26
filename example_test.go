@@ -386,7 +386,7 @@ func ExampleMiddleware() {
 	defer func() { _ = logger.Close() }()
 
 	// The EventBuilder transforms per-request hints into an audit event.
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		return "http_request", audit.Fields{
 			"outcome":     hints.Outcome,
 			"method":      transport.Method,
@@ -447,7 +447,7 @@ func ExampleMiddleware_skip() {
 	defer func() { _ = logger.Close() }()
 
 	// Skip health-check endpoints to reduce noise.
-	builder := func(hints *audit.Hints, transport audit.TransportMetadata) (string, audit.Fields, bool) {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		if transport.Path == "/healthz" || transport.Path == "/readyz" {
 			return "", nil, true // skip
 		}

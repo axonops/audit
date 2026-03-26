@@ -128,7 +128,7 @@ type TransportMetadata struct {
 //   - eventType: the taxonomy event type name to pass to [Logger.Audit]
 //   - fields: the audit event fields
 //   - skip: if true, no audit event is emitted for this request
-type EventBuilder func(hints *Hints, transport TransportMetadata) (eventType string, fields Fields, skip bool)
+type EventBuilder func(hints *Hints, transport *TransportMetadata) (eventType string, fields Fields, skip bool)
 
 // GetHints retrieves the [Hints] from the request context. Returns
 // nil if the request was not wrapped by [Middleware].
@@ -220,7 +220,7 @@ func newRequestID() string {
 // validRequestID checks that a request ID is safe to propagate:
 // not too long and no control characters that could enable log injection.
 func validRequestID(id string) bool {
-	if len(id) == 0 || len(id) > maxRequestIDLen {
+	if id == "" || len(id) > maxRequestIDLen {
 		return false
 	}
 	for _, c := range id {
@@ -269,7 +269,11 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.statusCode = http.StatusOK
 		rw.written = true
 	}
-	return rw.ResponseWriter.Write(b)
+	n, err := rw.ResponseWriter.Write(b)
+	if err != nil {
+		return n, fmt.Errorf("audit: response write: %w", err)
+	}
+	return n, nil
 }
 
 // Unwrap returns the inner [http.ResponseWriter], enabling
@@ -295,7 +299,11 @@ var ErrHijackNotSupported = errors.New("audit: underlying ResponseWriter does no
 // [http.Hijacker]. Returns an error if hijacking is not supported.
 func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
-		return h.Hijack()
+		conn, brw, err := h.Hijack()
+		if err != nil {
+			return nil, nil, fmt.Errorf("audit: hijack: %w", err)
+		}
+		return conn, brw, nil
 	}
 	return nil, nil, ErrHijackNotSupported
 }
@@ -320,63 +328,72 @@ func Middleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Ha
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			hints := &Hints{}
-			ctx := context.WithValue(r.Context(), hintsKey{}, hints)
-			r = r.WithContext(ctx)
-
-			reqID := r.Header.Get("X-Request-Id")
-			if !validRequestID(reqID) {
-				reqID = newRequestID()
-			}
-
-			rw := &responseWriter{ResponseWriter: w}
-			start := time.Now()
-
-			var panicked bool
-			var panicVal any
-
-			func() {
-				defer func() {
-					if v := recover(); v != nil {
-						panicked = true
-						panicVal = v
-						if !rw.written {
-							rw.statusCode = http.StatusInternalServerError
-							rw.written = true
-						}
-					}
-				}()
-				next.ServeHTTP(rw, r)
-			}()
-
-			statusCode := rw.statusCode
-			if !rw.written {
-				statusCode = http.StatusOK
-			}
-
-			transport := TransportMetadata{
-				ClientIP:          clientIP(r),
-				TransportSecurity: transportSecurity(r),
-				Method:            r.Method,
-				Path:              r.URL.Path,
-				UserAgent:         truncateString(r.UserAgent(), maxUserAgentLen),
-				RequestID:         reqID,
-				StatusCode:        statusCode,
-				Duration:          time.Since(start),
-			}
-
-			emitAuditEvent(logger, builder, hints, transport)
-
-			if panicked {
-				panic(panicVal)
-			}
+			serveAudit(w, r, next, logger, builder)
 		})
 	}
 }
 
+// serveAudit is the per-request handler logic extracted from
+// [Middleware] to keep cognitive complexity within bounds.
+func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, logger *Logger, builder EventBuilder) {
+	hints := &Hints{}
+	ctx := context.WithValue(r.Context(), hintsKey{}, hints)
+	r = r.WithContext(ctx)
+
+	reqID := r.Header.Get("X-Request-Id")
+	if !validRequestID(reqID) {
+		reqID = newRequestID()
+	}
+
+	rw := &responseWriter{ResponseWriter: w}
+	start := time.Now()
+
+	panicked, panicVal := invokeHandler(next, rw, r)
+
+	statusCode := rw.statusCode
+	if !rw.written {
+		statusCode = http.StatusOK
+	}
+
+	transport := &TransportMetadata{
+		ClientIP:          clientIP(r),
+		TransportSecurity: transportSecurity(r),
+		Method:            r.Method,
+		Path:              r.URL.Path,
+		UserAgent:         truncateString(r.UserAgent(), maxUserAgentLen),
+		RequestID:         reqID,
+		StatusCode:        statusCode,
+		Duration:          time.Since(start),
+	}
+
+	emitAuditEvent(logger, builder, hints, transport)
+
+	if panicked {
+		panic(panicVal)
+	}
+}
+
+// invokeHandler calls next.ServeHTTP with panic recovery. If the
+// handler panics, the status code is set to 500 and the panic value
+// is captured for re-raising after the audit event is emitted.
+func invokeHandler(next http.Handler, rw *responseWriter, r *http.Request) (panicked bool, panicVal any) {
+	defer func() {
+		if v := recover(); v != nil {
+			panicked = true
+			panicVal = v
+			if !rw.written {
+				rw.statusCode = http.StatusInternalServerError
+				rw.written = true
+			}
+		}
+	}()
+	next.ServeHTTP(rw, r)
+	return false, nil
+}
+
 // emitAuditEvent calls the EventBuilder and, if not skipped, emits
 // the audit event. Builder panics are recovered and logged.
-func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transport TransportMetadata) {
+func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transport *TransportMetadata) {
 	var (
 		eventType string
 		fields    Fields

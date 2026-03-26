@@ -54,6 +54,7 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
+	cfg.Path = filepath.Clean(cfg.Path)
 
 	parentDir := filepath.Dir(cfg.Path)
 	if _, err := os.Lstat(parentDir); err != nil {
@@ -160,7 +161,8 @@ func parsePermissions(s string) (os.FileMode, error) {
 // ensureFilePermissions creates or updates the file with the given
 // permissions. If the file does not exist, it is created. If it
 // exists, its permissions are updated via the file descriptor to
-// avoid symlink TOCTOU races.
+// reduce symlink TOCTOU exposure. The Lstat-to-OpenFile window is
+// not fully atomic; O_NOFOLLOW would close it but is not portable.
 func ensureFilePermissions(path string, perm os.FileMode) error {
 	// Check for symlinks before opening to prevent following them.
 	if info, err := os.Lstat(path); err == nil {

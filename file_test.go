@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/axonops/go-audit"
@@ -202,6 +203,35 @@ func TestFileOutput_MultipleWrites(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
 	assert.Len(t, lines, 10)
+}
+
+func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := audit.NewFileOutput(audit.FileConfig{Path: path})
+	require.NoError(t, err)
+
+	const goroutines = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(n int) {
+			defer wg.Done()
+			data := []byte(fmt.Sprintf(`{"n":%d}`+"\n", n))
+			// Errors are expected after Close; just exercise the race detector.
+			_ = out.Write(data)
+		}(i)
+	}
+
+	// Close while writes are in-flight.
+	assert.NoError(t, out.Close())
+	wg.Wait()
+
+	// Verify no panic occurred and the file has some content.
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Greater(t, len(content), 0)
 }
 
 func TestFileOutput_CompressFalse(t *testing.T) {

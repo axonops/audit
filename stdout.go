@@ -19,7 +19,6 @@ import (
 	"io"
 	"os"
 	"sync"
-	"sync/atomic"
 )
 
 // StdoutConfig holds configuration for [StdoutOutput].
@@ -43,7 +42,7 @@ type StdoutConfig struct {
 type StdoutOutput struct {
 	writer io.Writer
 	mu     sync.Mutex
-	closed atomic.Bool
+	closed bool
 }
 
 // NewStdoutOutput creates a new [StdoutOutput] from the given config.
@@ -60,13 +59,12 @@ func NewStdoutOutput(cfg StdoutConfig) (*StdoutOutput, error) {
 // Write returns [ErrOutputClosed] if the output has been closed.
 // Write is safe for concurrent use.
 func (s *StdoutOutput) Write(data []byte) error {
-	if s.closed.Load() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
 		return ErrOutputClosed
 	}
-	s.mu.Lock()
-	_, err := s.writer.Write(data)
-	s.mu.Unlock()
-	if err != nil {
+	if _, err := s.writer.Write(data); err != nil {
 		return fmt.Errorf("audit: stdout output write: %w", err)
 	}
 	return nil
@@ -74,9 +72,11 @@ func (s *StdoutOutput) Write(data []byte) error {
 
 // Close marks the output as closed. Subsequent calls to [Write] return
 // [ErrOutputClosed]. Close does NOT close the underlying writer. Close
-// is idempotent.
+// is idempotent and safe for concurrent use with [StdoutOutput.Write].
 func (s *StdoutOutput) Close() error {
-	s.closed.Store(true)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 	return nil
 }
 

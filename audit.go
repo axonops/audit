@@ -63,7 +63,6 @@ var (
 //
 // A Logger is safe for concurrent use by multiple goroutines.
 type Logger struct {
-	cfg Config
 	// taxonomy is immutable after construction; no synchronisation
 	// needed for reads.
 	taxonomy  *Taxonomy
@@ -74,19 +73,21 @@ type Logger struct {
 	// Async delivery.
 	ch        chan *auditEntry
 	cancel    context.CancelFunc
-	wg        sync.WaitGroup
 	drainDone chan struct{} // closed when drainLoop exits
 
 	// Shutdown state.
-	closeOnce      sync.Once
-	closed         atomic.Bool
-	startupEmitted atomic.Bool
-	closeErr       error
 	startupAppName atomic.Value // stores string from EmitStartup
+	closeErr       error
+	closeOnce      sync.Once
+	wg             sync.WaitGroup
 
 	// Filter state, protected by mu.
 	mu     sync.RWMutex
 	filter filterState
+
+	cfg            Config
+	closed         atomic.Bool
+	startupEmitted atomic.Bool
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
@@ -468,20 +469,25 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}
 
 	for _, o := range l.outputs {
-		if writeErr := o.Write(data); writeErr != nil {
-			slog.Error("audit: output write failed",
-				"output", o.Name(),
-				"event_type", entry.eventType,
-				"error", writeErr)
-			if l.metrics != nil {
-				l.metrics.RecordOutputError(o.Name())
-				l.metrics.RecordEvent(o.Name(), "error")
-			}
-			continue
-		}
+		l.writeToOutput(o, data, entry.eventType)
+	}
+}
+
+// writeToOutput sends data to a single output and records metrics.
+func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
+	if writeErr := o.Write(data); writeErr != nil {
+		slog.Error("audit: output write failed",
+			"output", o.Name(),
+			"event_type", eventType,
+			"error", writeErr)
 		if l.metrics != nil {
-			l.metrics.RecordEvent(o.Name(), "success")
+			l.metrics.RecordOutputError(o.Name())
+			l.metrics.RecordEvent(o.Name(), "error")
 		}
+		return
+	}
+	if l.metrics != nil {
+		l.metrics.RecordEvent(o.Name(), "success")
 	}
 }
 
@@ -489,7 +495,11 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // wire-format bytes for an audit entry.
 func (l *Logger) serialize(entry *auditEntry, ts time.Time) ([]byte, error) {
 	def := l.taxonomy.Events[entry.eventType]
-	return l.formatter.Format(ts, entry.eventType, entry.fields, &def)
+	data, err := l.formatter.Format(ts, entry.eventType, entry.fields, &def)
+	if err != nil {
+		return nil, fmt.Errorf("audit: serialize %q: %w", entry.eventType, err)
+	}
+	return data, nil
 }
 
 // validateFields checks that all required fields are present and no
@@ -551,6 +561,8 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		slog.Warn("audit: event has unknown fields",
 			"event_type", eventType,
 			"unknown_fields", unknown)
+	case ValidationPermissive:
+		// Silently accept unknown fields.
 	}
 	return nil
 }

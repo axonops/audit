@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -40,8 +41,8 @@ type StdoutConfig struct {
 //
 // StdoutOutput is safe for concurrent use.
 type StdoutOutput struct {
-	mu     sync.Mutex
 	writer io.Writer
+	mu     sync.Mutex
 	closed atomic.Bool
 }
 
@@ -65,7 +66,10 @@ func (s *StdoutOutput) Write(data []byte) error {
 	s.mu.Lock()
 	_, err := s.writer.Write(data)
 	s.mu.Unlock()
-	return err
+	if err != nil {
+		return fmt.Errorf("audit: stdout output write: %w", err)
+	}
+	return nil
 }
 
 // Close marks the output as closed. Subsequent calls to [Write] return

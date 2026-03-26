@@ -71,14 +71,14 @@ func ExampleLogger_Audit() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := logger.Close(); err != nil {
-			log.Printf("audit close: %v", err)
+		if closeErr := logger.Close(); closeErr != nil {
+			log.Printf("audit close: %v", closeErr)
 		}
 	}()
 
-	err = logger.Audit("doc_create", audit.Fields{"outcome": "success"})
-	if err != nil {
-		log.Fatal(err)
+	if err = logger.Audit("doc_create", audit.Fields{"outcome": "success"}); err != nil {
+		fmt.Println("audit error:", err)
+		return
 	}
 
 	fmt.Println("event emitted")
@@ -101,17 +101,17 @@ func ExampleLogger_MustHandle() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := logger.Close(); err != nil {
-			log.Printf("audit close: %v", err)
+		if closeErr := logger.Close(); closeErr != nil {
+			log.Printf("audit close: %v", closeErr)
 		}
 	}()
 
 	// Get a handle for zero-allocation audit calls.
 	docCreate := logger.MustHandle("doc_create")
 
-	err = docCreate.Audit(audit.Fields{"outcome": "success"})
-	if err != nil {
-		log.Fatal(err)
+	if err = docCreate.Audit(audit.Fields{"outcome": "success"}); err != nil {
+		fmt.Println("audit error:", err)
+		return
 	}
 
 	fmt.Println("handle name:", docCreate.Name())
@@ -145,7 +145,8 @@ func ExampleLogger_EnableCategory() {
 
 	// "read" category is disabled by default. Enable it at runtime.
 	if err := logger.EnableCategory("read"); err != nil {
-		log.Fatal(err)
+		fmt.Println("enable error:", err)
+		return
 	}
 
 	fmt.Println("read category enabled")

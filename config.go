@@ -60,22 +60,10 @@ var ErrConfigInvalid = errors.New("audit: config validation failed")
 
 // Config holds configuration for the audit [Logger].
 type Config struct {
-	// Version is the config schema version. MUST be > 0; the zero
-	// value causes [NewLogger] to return an error wrapping
-	// [ErrConfigInvalid]. Set to 1 for all current consumers; this
-	// field enables forward-compatible migrations when the config
-	// schema changes in future library versions.
-	Version int
-
-	// Enabled controls whether audit logging is active. When false
-	// (the zero value), [NewLogger] returns a no-op logger that
-	// discards all events.
-	Enabled bool
-
-	// BufferSize is the async channel capacity. Zero means
-	// [DefaultBufferSize] (10,000). Values above [MaxBufferSize]
-	// (1,000,000) cause [NewLogger] to return an error.
-	BufferSize int
+	// ValidationMode controls how unknown fields are handled.
+	// One of [ValidationStrict], [ValidationWarn], or
+	// [ValidationPermissive]. Empty defaults to [ValidationStrict].
+	ValidationMode ValidationMode
 
 	// DrainTimeout is the maximum time [Logger.Close] waits for
 	// pending events to flush. Zero means [DefaultDrainTimeout] (5s).
@@ -84,17 +72,29 @@ type Config struct {
 	// system will cause events to be lost at shutdown.
 	DrainTimeout time.Duration
 
+	// Version is the config schema version. MUST be > 0; the zero
+	// value causes [NewLogger] to return an error wrapping
+	// [ErrConfigInvalid]. Set to 1 for all current consumers; this
+	// field enables forward-compatible migrations when the config
+	// schema changes in future library versions.
+	Version int
+
+	// BufferSize is the async channel capacity. Zero means
+	// [DefaultBufferSize] (10,000). Values above [MaxBufferSize]
+	// (1,000,000) cause [NewLogger] to return an error.
+	BufferSize int
+
+	// Enabled controls whether audit logging is active. When false
+	// (the zero value), [NewLogger] returns a no-op logger that
+	// discards all events.
+	Enabled bool
+
 	// OmitEmpty controls whether empty/nil/zero-value fields are
 	// included in serialised output. When true, only non-zero fields
 	// are serialised. When false (the zero value), all registered
 	// fields are present. Consumers operating under compliance regimes
 	// that require all registered fields SHOULD leave this as false.
 	OmitEmpty bool
-
-	// ValidationMode controls how unknown fields are handled.
-	// One of [ValidationStrict], [ValidationWarn], or
-	// [ValidationPermissive]. Empty defaults to [ValidationStrict].
-	ValidationMode ValidationMode
 }
 
 // applyDefaults fills zero-valued fields with their documented defaults.

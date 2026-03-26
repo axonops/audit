@@ -22,8 +22,8 @@ import "errors"
 //
 // Obtain a handle via [Logger.Handle] or [Logger.MustHandle].
 type EventType struct {
-	name   string
 	logger *Logger
+	name   string
 }
 
 // Audit emits an audit event using this handle's event type. It
@@ -42,8 +42,8 @@ func (e *EventType) Name() string {
 // auditEntry is the internal representation of an audit event as it
 // travels through the async channel. It is not exported.
 type auditEntry struct {
-	eventType string
 	fields    Fields
+	eventType string
 }
 
 // ErrHandleNotFound is returned by [Logger.Handle], and wrapped in

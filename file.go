@@ -31,6 +31,14 @@ type FileConfig struct {
 	// causes [NewFileOutput] to return an error.
 	Path string
 
+	// Permissions is the file mode for the audit log file, specified as
+	// an octal string (e.g. "0600"). Empty defaults to "0600".
+	Permissions string
+
+	// Compress controls whether rotated log files are compressed with
+	// gzip. Nil defaults to true.
+	Compress *bool
+
 	// MaxSizeMB is the maximum size in megabytes before the log file
 	// is rotated. Zero defaults to 100.
 	MaxSizeMB int
@@ -42,14 +50,6 @@ type FileConfig struct {
 	// MaxAgeDays is the maximum number of days to retain old log files.
 	// Zero defaults to 30.
 	MaxAgeDays int
-
-	// Compress controls whether rotated log files are compressed with
-	// gzip. Nil defaults to true.
-	Compress *bool
-
-	// Permissions is the file mode for the audit log file, specified as
-	// an octal string (e.g. "0600"). Empty defaults to "0600".
-	Permissions string
 }
 
 // FileOutput writes serialised audit events to a file with automatic
@@ -59,8 +59,8 @@ type FileConfig struct {
 // FileOutput is safe for concurrent use, including concurrent calls
 // to [FileOutput.Write] and [FileOutput.Close].
 type FileOutput struct {
-	mu     sync.RWMutex
 	logger *lumberjack.Logger
+	mu     sync.RWMutex
 	path   string
 	closed bool
 }
@@ -130,8 +130,10 @@ func (f *FileOutput) Write(data []byte) error {
 	if f.closed {
 		return ErrOutputClosed
 	}
-	_, err := f.logger.Write(data)
-	return err
+	if _, err := f.logger.Write(data); err != nil {
+		return fmt.Errorf("audit: file output write: %w", err)
+	}
+	return nil
 }
 
 // Close closes the underlying lumberjack logger and marks the output
@@ -144,7 +146,10 @@ func (f *FileOutput) Close() error {
 		return nil
 	}
 	f.closed = true
-	return f.logger.Close()
+	if err := f.logger.Close(); err != nil {
+		return fmt.Errorf("audit: file output close: %w", err)
+	}
+	return nil
 }
 
 // Name returns the human-readable identifier for this output.

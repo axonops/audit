@@ -54,11 +54,6 @@ type EventDef struct {
 // "shutdown" lifecycle events, which are added automatically if not
 // already present.
 type Taxonomy struct {
-	// Version is the taxonomy schema version. MUST be > 0. Currently
-	// only version 1 is supported; higher values cause [WithTaxonomy]
-	// to return an error wrapping [ErrTaxonomyInvalid].
-	Version int
-
 	// Categories maps category names to the event type names they
 	// contain. Every event type MUST appear in exactly one category.
 	Categories map[string][]string
@@ -73,6 +68,11 @@ type Taxonomy struct {
 	// An empty slice means all non-lifecycle categories are disabled;
 	// all events will be silently discarded until enabled at runtime.
 	DefaultEnabled []string
+
+	// Version is the taxonomy schema version. MUST be > 0. Currently
+	// only version 1 is supported; higher values cause [WithTaxonomy]
+	// to return an error wrapping [ErrTaxonomyInvalid].
+	Version int
 }
 
 const (

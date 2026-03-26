@@ -72,6 +72,8 @@ type Logger struct {
 	taxonomy       *Taxonomy
 	cancel         context.CancelFunc
 	drainDone      chan struct{}
+	// entries and outputsByName are immutable after construction;
+	// safe to read without holding l.mu.
 	entries        []*outputEntry
 	outputsByName  map[string]*outputEntry
 	cfg            Config

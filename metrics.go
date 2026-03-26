@@ -35,10 +35,6 @@ type Metrics interface {
 	// prevented an event from being delivered to the named output.
 	// This is distinct from [Metrics.RecordFiltered], which records
 	// global category/event filter drops before any output is reached.
-	//
-	// Note: per-output routing is not yet implemented. This method is
-	// declared for forward compatibility; the library does not
-	// currently call it.
 	RecordOutputFiltered(output string)
 
 	// RecordValidationError records that [Logger.Audit] rejected an

@@ -71,13 +71,16 @@ func WithFormatter(f Formatter) Option {
 // globally-enabled events (no per-output filtering). Use
 // [WithNamedOutput] to configure per-output event routes or formatters.
 //
-// If no outputs are configured, events are validated and filtered but
-// silently discarded. This is useful for testing but SHOULD NOT be
-// used in production.
+// WithOutputs MUST NOT be combined with [WithNamedOutput]; mixing the
+// two returns an error. If no outputs are configured, events are
+// validated and filtered but silently discarded.
 func WithOutputs(outputs ...Output) Option {
 	return func(l *Logger) error {
-		entries := make([]*outputEntry, len(outputs))
+		if len(l.entries) > 0 {
+			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput")
+		}
 		byName := make(map[string]*outputEntry, len(outputs))
+		entries := make([]*outputEntry, len(outputs))
 		for i, o := range outputs {
 			name := o.Name()
 			if _, dup := byName[name]; dup {

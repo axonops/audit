@@ -203,6 +203,12 @@ func (m *mockMetrics) RecordSerializationError(eventType string) {
 	m.serializationErrors[eventType]++
 }
 
+func (m *mockMetrics) getOutputFiltered(output string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.filteredCount[output]
+}
+
 func (m *mockMetrics) getBufferDrops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

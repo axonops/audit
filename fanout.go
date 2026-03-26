@@ -14,7 +14,10 @@
 
 package audit
 
-import "sync"
+import (
+	"slices"
+	"sync"
+)
 
 // Event flow through the fan-out engine:
 //
@@ -60,15 +63,27 @@ func (oe *outputEntry) effectiveFormatter(defaultFmt Formatter) Formatter {
 }
 
 // setRoute replaces the output's event route under a write lock.
+// Slices are deep-copied to prevent the caller from mutating backing
+// arrays after the call returns.
 func (oe *outputEntry) setRoute(route EventRoute) {
 	oe.mu.Lock()
-	oe.route = route
+	oe.route = EventRoute{
+		IncludeCategories: slices.Clone(route.IncludeCategories),
+		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
+		ExcludeCategories: slices.Clone(route.ExcludeCategories),
+		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
+	}
 	oe.mu.Unlock()
 }
 
-// getRoute returns a copy of the output's current event route.
+// getRoute returns a deep copy of the output's current event route.
 func (oe *outputEntry) getRoute() EventRoute {
 	oe.mu.RLock()
 	defer oe.mu.RUnlock()
-	return oe.route
+	return EventRoute{
+		IncludeCategories: slices.Clone(oe.route.IncludeCategories),
+		IncludeEventTypes: slices.Clone(oe.route.IncludeEventTypes),
+		ExcludeCategories: slices.Clone(oe.route.ExcludeCategories),
+		ExcludeEventTypes: slices.Clone(oe.route.ExcludeEventTypes),
+	}
 }

@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -24,35 +25,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newFanoutTestLogger creates a logger with the testTaxonomy and the
-// given outputs/options. It registers cleanup for Close.
-func newFanoutTestLogger(t *testing.T, outputs []audit.Output, extraOpts ...audit.Option) *audit.Logger {
-	t.Helper()
-	opts := []audit.Option{
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithOutputs(outputs...),
-	}
-	opts = append(opts, extraOpts...)
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		opts...,
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
-	return logger
-}
-
-func TestFanout_DeliverToAllOutputs(t *testing.T) {
+func TestFanout_DeliverToAll(t *testing.T) {
 	out1 := newMockOutput("out1")
 	out2 := newMockOutput("out2")
 	out3 := newMockOutput("out3")
-	logger := newFanoutTestLogger(t, []audit.Output{out1, out2, out3})
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithOutputs(out1, out2, out3),
+	)
+	require.NoError(t, err)
 
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
 
 	for _, out := range []*mockOutput{out1, out2, out3} {
-		require.True(t, out.waitForEvents(1, 2*time.Second),
-			"output %s did not receive event", out.Name())
+		assert.Equal(t, 1, out.eventCount(),
+			"output %s should receive 1 event", out.Name())
 	}
 }
 
@@ -60,118 +49,101 @@ func TestFanout_OutputFailureIsolation(t *testing.T) {
 	failing := newMockOutput("failing")
 	failing.setWriteErr(assert.AnError)
 	healthy := newMockOutput("healthy")
-	logger := newFanoutTestLogger(t, []audit.Output{failing, healthy})
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithOutputs(failing, healthy),
+	)
+	require.NoError(t, err)
 
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
 
-	require.True(t, healthy.waitForEvents(1, 2*time.Second),
+	assert.Equal(t, 1, healthy.eventCount(),
 		"healthy output should receive event despite failing output")
 }
 
-func TestFanout_IncludeRoute_CategoryMatch(t *testing.T) {
-	secOut := newMockOutput("security-only")
-	allOut := newMockOutput("all-events")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(allOut, audit.EventRoute{}, nil),
-		audit.WithNamedOutput(secOut, audit.EventRoute{
-			IncludeCategories: []string{"security"},
-		}, nil),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+func TestFanout_RouteFiltering(t *testing.T) {
+	tests := []struct {
+		name      string
+		route     audit.EventRoute
+		events    []string // event types to emit
+		wantCount int
+	}{
+		{
+			name:      "include category matches",
+			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			events:    []string{"user_create", "auth_failure"},
+			wantCount: 1, // only auth_failure
+		},
+		{
+			name:      "include category no match",
+			route:     audit.EventRoute{IncludeCategories: []string{"security"}},
+			events:    []string{"user_create", "user_get"},
+			wantCount: 0,
+		},
+		{
+			name:      "include event type matches",
+			route:     audit.EventRoute{IncludeEventTypes: []string{"auth_failure"}},
+			events:    []string{"auth_failure", "permission_denied"},
+			wantCount: 1, // only auth_failure
+		},
+		{
+			name: "include union matches category and event type",
+			route: audit.EventRoute{
+				IncludeCategories: []string{"write"},
+				IncludeEventTypes: []string{"auth_failure"},
+			},
+			events:    []string{"user_create", "auth_failure", "user_get"},
+			wantCount: 2, // user_create (write) + auth_failure
+		},
+		{
+			name:      "exclude category skips",
+			route:     audit.EventRoute{ExcludeCategories: []string{"read"}},
+			events:    []string{"user_create", "user_get"},
+			wantCount: 1, // only user_create
+		},
+		{
+			name:      "exclude event type skips",
+			route:     audit.EventRoute{ExcludeEventTypes: []string{"config_get"}},
+			events:    []string{"config_get", "user_get"},
+			wantCount: 1, // only user_get
+		},
+		{
+			name: "exclude union skips both",
+			route: audit.EventRoute{
+				ExcludeCategories: []string{"read"},
+				ExcludeEventTypes: []string{"user_delete"},
+			},
+			events:    []string{"user_create", "user_delete", "user_get"},
+			wantCount: 1, // only user_create
+		},
+		{
+			name:      "empty route receives all",
+			route:     audit.EventRoute{},
+			events:    []string{"user_create", "auth_failure", "user_get"},
+			wantCount: 3,
+		},
+	}
 
-	// Write event should go to allOut but not secOut.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	// Security event should go to both.
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := newMockOutput("routed")
+			logger, err := audit.NewLogger(
+				audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+				audit.WithTaxonomy(testTaxonomy()),
+				audit.WithNamedOutput(out, tt.route, nil),
+			)
+			require.NoError(t, err)
 
-	require.True(t, allOut.waitForEvents(2, 2*time.Second))
-	// Give secOut time to potentially receive — it should only get 1.
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 1, secOut.eventCount(), "security-only should receive 1 event")
-}
+			for _, evt := range tt.events {
+				require.NoError(t, logger.Audit(evt, audit.Fields{"outcome": "success"}))
+			}
+			require.NoError(t, logger.Close())
 
-func TestFanout_ExcludeRoute_CategoryMatch(t *testing.T) {
-	noRead := newMockOutput("no-reads")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(noRead, audit.EventRoute{
-			ExcludeCategories: []string{"read"},
-		}, nil),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
-
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("user_get", audit.Fields{"outcome": "success"}))
-
-	require.True(t, noRead.waitForEvents(1, 2*time.Second))
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 1, noRead.eventCount(), "no-reads should skip read events")
-}
-
-func TestFanout_IncludeRoute_EventTypeMatch(t *testing.T) {
-	out := newMockOutput("specific")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(out, audit.EventRoute{
-			IncludeEventTypes: []string{"auth_failure"},
-		}, nil),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
-
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
-	require.NoError(t, logger.Audit("permission_denied", audit.Fields{"outcome": "failure"}))
-
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 1, out.eventCount())
-}
-
-func TestFanout_IncludeRoute_Union(t *testing.T) {
-	out := newMockOutput("union")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(out, audit.EventRoute{
-			IncludeCategories: []string{"write"},
-			IncludeEventTypes: []string{"auth_failure"},
-		}, nil),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
-
-	// write category event.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	// specific event type from a different category.
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
-	// not in either include.
-	require.NoError(t, logger.Audit("user_get", audit.Fields{"outcome": "success"}))
-
-	require.True(t, out.waitForEvents(2, 2*time.Second))
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 2, out.eventCount(), "union should match write + auth_failure")
-}
-
-func TestFanout_EmptyRoute_ReceivesAll(t *testing.T) {
-	out := newMockOutput("all")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(out, audit.EventRoute{}, nil),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
-
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
-
-	require.True(t, out.waitForEvents(2, 2*time.Second))
+			assert.Equal(t, tt.wantCount, out.eventCount())
+		})
+	}
 }
 
 func TestFanout_DuplicateOutputName_Error(t *testing.T) {
@@ -184,6 +156,19 @@ func TestFanout_DuplicateOutputName_Error(t *testing.T) {
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "duplicate output name")
+}
+
+func TestFanout_WithOutputs_AfterWithNamedOutput_Error(t *testing.T) {
+	out1 := newMockOutput("named")
+	out2 := newMockOutput("plain")
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(out1, audit.EventRoute{}, nil),
+		audit.WithOutputs(out2), // should error
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used with WithNamedOutput")
 }
 
 func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
@@ -221,7 +206,6 @@ func TestFanout_SetOutputRoute(t *testing.T) {
 		audit.WithNamedOutput(out, audit.EventRoute{}, nil),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
 	// Initially receives all events.
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
@@ -234,16 +218,45 @@ func TestFanout_SetOutputRoute(t *testing.T) {
 
 	require.NoError(t, logger.Audit("user_delete", audit.Fields{"outcome": "success"}))
 	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.Close())
 
-	require.True(t, out.waitForEvents(2, 2*time.Second))
-	time.Sleep(100 * time.Millisecond)
 	// Should have: 1 initial + 1 auth_failure = 2 (user_delete filtered).
 	assert.Equal(t, 2, out.eventCount())
 }
 
+func TestFanout_SetOutputRoute_DoesNotAffectOtherOutputs(t *testing.T) {
+	outA := newMockOutput("a")
+	outB := newMockOutput("b")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(outA, audit.EventRoute{}, nil),
+		audit.WithNamedOutput(outB, audit.EventRoute{}, nil),
+	)
+	require.NoError(t, err)
+
+	// Restrict A to security only.
+	require.NoError(t, logger.SetOutputRoute("a", audit.EventRoute{
+		IncludeCategories: []string{"security"},
+	}))
+
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 1, outA.eventCount(), "A should only get auth_failure")
+	assert.Equal(t, 2, outB.eventCount(), "B should get both events")
+}
+
 func TestFanout_SetOutputRoute_UnknownOutput(t *testing.T) {
-	logger := newFanoutTestLogger(t, nil)
-	err := logger.SetOutputRoute("nonexistent", audit.EventRoute{})
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.SetOutputRoute("nonexistent", audit.EventRoute{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown output")
 }
@@ -275,17 +288,27 @@ func TestFanout_ClearOutputRoute(t *testing.T) {
 		}, nil),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
-	// Only security events delivered initially.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 0, out.eventCount())
-
-	// Clear route — now receives all.
+	// Clear route — now receives all events.
 	require.NoError(t, logger.ClearOutputRoute("routed"))
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 2, out.eventCount(), "should receive all events after clearing route")
+}
+
+func TestFanout_ClearOutputRoute_UnknownOutput(t *testing.T) {
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.ClearOutputRoute("nonexistent")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output")
 }
 
 func TestFanout_GetOutputRoute(t *testing.T) {
@@ -302,6 +325,49 @@ func TestFanout_GetOutputRoute(t *testing.T) {
 	got, err := logger.GetOutputRoute("test")
 	require.NoError(t, err)
 	assert.Equal(t, route.IncludeCategories, got.IncludeCategories)
+
+	// Mutating the returned route must not affect the stored route.
+	got.IncludeCategories = append(got.IncludeCategories, "write")
+	got2, err := logger.GetOutputRoute("test")
+	require.NoError(t, err)
+	assert.Len(t, got2.IncludeCategories, 1, "stored route should not be mutated")
+}
+
+func TestFanout_GetOutputRoute_UnknownOutput(t *testing.T) {
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	_, err = logger.GetOutputRoute("nonexistent")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output")
+}
+
+func TestFanout_GetOutputRoute_ReflectsSetAndClear(t *testing.T) {
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(out, audit.EventRoute{}, nil),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	// Set a route.
+	newRoute := audit.EventRoute{IncludeCategories: []string{"write"}}
+	require.NoError(t, logger.SetOutputRoute("test", newRoute))
+	got, err := logger.GetOutputRoute("test")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"write"}, got.IncludeCategories)
+
+	// Clear.
+	require.NoError(t, logger.ClearOutputRoute("test"))
+	got, err = logger.GetOutputRoute("test")
+	require.NoError(t, err)
+	assert.True(t, got.IsEmpty())
 }
 
 func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
@@ -312,12 +378,10 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 		audit.WithNamedOutput(out, audit.EventRoute{}, nil),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Goroutine 1: emit events.
 	go func() {
 		defer wg.Done()
 		for range 100 {
@@ -325,7 +389,6 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 		}
 	}()
 
-	// Goroutine 2: toggle routes.
 	go func() {
 		defer wg.Done()
 		for range 50 {
@@ -337,8 +400,12 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 	}()
 
 	wg.Wait()
-	// Just verify no panic or race; exact count doesn't matter.
-	assert.GreaterOrEqual(t, out.eventCount(), 0)
+	require.NoError(t, logger.Close())
+
+	// All events are security category, so they should all arrive
+	// regardless of route toggling (include security = match, empty = match).
+	assert.Equal(t, 100, out.eventCount(),
+		"all security events should arrive regardless of route toggling")
 }
 
 func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
@@ -358,17 +425,17 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 			DefaultEnabled: []string{"write"}, // security NOT enabled
 		}),
 		audit.WithNamedOutput(out, audit.EventRoute{
-			IncludeCategories: []string{"security"}, // route wants security
+			IncludeCategories: []string{"security"},
 		}, nil),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
-	// Security is globally disabled — should not reach the output even
-	// though the output route includes it.
+	// Globally disabled — should not reach output even though route includes it.
 	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
-	time.Sleep(200 * time.Millisecond)
-	assert.Equal(t, 0, out.eventCount(), "globally disabled event should not reach any output")
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 0, out.eventCount(),
+		"globally disabled event should not reach any output")
 }
 
 func TestFanout_PerOutputFormatter(t *testing.T) {
@@ -384,22 +451,138 @@ func TestFanout_PerOutputFormatter(t *testing.T) {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(jsonOut, audit.EventRoute{}, nil),   // default JSON
-		audit.WithNamedOutput(cefOut, audit.EventRoute{}, cefFmt), // CEF
+		audit.WithNamedOutput(jsonOut, audit.EventRoute{}, nil),
+		audit.WithNamedOutput(cefOut, audit.EventRoute{}, cefFmt),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
 
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
 
-	require.True(t, jsonOut.waitForEvents(1, 2*time.Second))
-	require.True(t, cefOut.waitForEvents(1, 2*time.Second))
+	require.Equal(t, 1, jsonOut.eventCount())
+	require.Equal(t, 1, cefOut.eventCount())
 
-	// JSON output should start with '{'.
 	jsonData := jsonOut.getEvents()[0]
 	assert.Equal(t, byte('{'), jsonData[0], "json output should be JSON")
 
-	// CEF output should start with "CEF:0|".
 	cefData := cefOut.getEvents()[0]
 	assert.Contains(t, string(cefData), "CEF:0|", "cef output should be CEF")
+}
+
+func TestFanout_PanicInFormatter_DrainLoopSurvives(t *testing.T) {
+	out := newMockOutput("survivor")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(out, audit.EventRoute{}, &panicFormatter{}),
+	)
+	require.NoError(t, err)
+
+	// The panic is recovered by processEntry — drain loop survives.
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	// Second event also processed (drain loop not dead).
+	require.NoError(t, logger.Audit("user_delete", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
+
+	// Events are lost due to panic, but the drain loop is alive.
+	assert.Equal(t, 0, out.eventCount())
+}
+
+// panicFormatter is a Formatter that always panics.
+type panicFormatter struct{}
+
+func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+	panic("formatter panic")
+}
+
+func TestFanout_SharedFormatter_DeliversSameBytes(t *testing.T) {
+	out1 := newMockOutput("a")
+	out2 := newMockOutput("b")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithOutputs(out1, out2), // same default formatter
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
+
+	require.Equal(t, 1, out1.eventCount())
+	require.Equal(t, 1, out2.eventCount())
+
+	// Same formatter → same bytes.
+	assert.Equal(t, out1.getEvents()[0], out2.getEvents()[0],
+		"outputs sharing a formatter should receive identical bytes")
+}
+
+func TestFanout_PerOutputRouteFilter_MetricsRecordFiltered(t *testing.T) {
+	out := newMockOutput("filtered")
+	metrics := newMockMetrics()
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithMetrics(metrics),
+		audit.WithNamedOutput(out, audit.EventRoute{
+			IncludeCategories: []string{"security"},
+		}, nil),
+	)
+	require.NoError(t, err)
+
+	// This write event will be filtered by the per-output route.
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 0, out.eventCount())
+	assert.Greater(t, metrics.getOutputFiltered("filtered"), 0,
+		"RecordOutputFiltered should be called for route-filtered events")
+}
+
+func TestFanout_ExcludeEventType_EndToEnd(t *testing.T) {
+	out := newMockOutput("no-config-get")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(out, audit.EventRoute{
+			ExcludeEventTypes: []string{"config_get"},
+		}, nil),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("config_get", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Audit("user_get", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 2, out.eventCount(), "config_get should be excluded")
+}
+
+// errorFormatter always returns an error (does not panic).
+type errorFormatter struct{}
+
+func (e *errorFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+	return nil, fmt.Errorf("format failed")
+}
+
+func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
+	goodOut := newMockOutput("good")
+	badOut := newMockOutput("bad")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(goodOut, audit.EventRoute{}, nil),
+		audit.WithNamedOutput(badOut, audit.EventRoute{}, &errorFormatter{}),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 1, goodOut.eventCount(),
+		"good output should receive event despite error formatter on other output")
+	assert.Equal(t, 0, badOut.eventCount(),
+		"bad output should receive nothing due to formatter error")
 }

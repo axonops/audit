@@ -201,13 +201,17 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 }
 
 // trackFilePath checks that a file path is not already used by another
-// output. Paths are normalised with filepath.Clean and filepath.Abs
-// before comparison.
+// output. Paths are normalised with filepath.Clean, filepath.Abs, and
+// filepath.EvalSymlinks (if the path exists) before comparison.
 func trackFilePath(seen map[string]string, path, outputName string) error {
 	cleaned := filepath.Clean(path)
 	abs, err := filepath.Abs(cleaned)
 	if err != nil {
-		abs = cleaned // fall back to cleaned path if Abs fails
+		abs = cleaned
+	}
+	// Resolve symlinks if the path (or its parent) exists on disk.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
 	}
 	if existing, dup := seen[abs]; dup {
 		return fmt.Errorf("audit: file outputs %q and %q share the same path %q", existing, outputName, path)
@@ -223,7 +227,11 @@ func buildNamedOutput(nc NamedOutputConfig) (Output, error) {
 		if nc.Stdout == nil {
 			return nil, fmt.Errorf("type %q requires Stdout config", nc.Type)
 		}
-		return NewStdoutOutput(*nc.Stdout)
+		out, err := NewStdoutOutput(*nc.Stdout)
+		if err != nil {
+			return nil, err
+		}
+		return &namedOutput{Output: out, name: nc.Name}, nil
 	case "file":
 		if nc.File == nil {
 			return nil, fmt.Errorf("type %q requires File config", nc.Type)

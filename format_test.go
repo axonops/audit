@@ -856,6 +856,67 @@ func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 	wg.Wait()
 }
 
+func TestCEFFormatter_AllocCount(t *testing.T) {
+	cf := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id", "subject"},
+		Optional: []string{"version"},
+	}
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+		"version":  1,
+	}
+	ts := testTime
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = cf.Format(ts, "schema_register", fields, def)
+	})
+
+	t.Logf("CEFFormatter.Format AllocsPerRun = %.0f", allocs)
+	// Measured: 5 allocs normally, 6 with -race (was 11 before #39).
+	// The race detector adds instrumentation allocs. Threshold covers both.
+	const maxCEFAllocs = 10
+	if allocs > maxCEFAllocs {
+		t.Errorf("CEFFormatter.Format allocations = %.0f, want <= %d (was 11 before single-buffer fix)", allocs, maxCEFAllocs)
+	}
+}
+
+func TestJSONFormatter_AllocCount(t *testing.T) {
+	jf := &audit.JSONFormatter{}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome", "actor_id", "subject"},
+		Optional: []string{"version"},
+	}
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+		"version":  1,
+	}
+	ts := testTime
+
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = jf.Format(ts, "schema_register", fields, def)
+	})
+
+	t.Logf("JSONFormatter.Format AllocsPerRun = %.0f", allocs)
+	// Measured: 25 allocs normally, ~41 with -race. The race detector
+	// instruments memory operations and adds significant allocations.
+	// Threshold covers both modes.
+	const maxJSONAllocs = 45
+	if allocs > maxJSONAllocs {
+		t.Errorf("JSONFormatter.Format allocations = %.0f, want <= %d", allocs, maxJSONAllocs)
+	}
+}
+
 func TestCEFFormatter_NullByteStripped(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	data, err := f.Format(testTime, "ev", audit.Fields{

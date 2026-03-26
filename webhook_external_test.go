@@ -170,3 +170,94 @@ func TestWebhookOutput_Name(t *testing.T) {
 	assert.True(t, strings.HasPrefix(name, "webhook:"), "Name should start with webhook:")
 	assert.Contains(t, name, "127.0.0.1")
 }
+
+// ---------------------------------------------------------------------------
+// Commit 4 tests: Write/Close lifecycle
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_WriteAfterClose(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+	}, nil)
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	err = out.Write([]byte(`{"event":"after_close"}`))
+	assert.ErrorIs(t, err, audit.ErrOutputClosed)
+}
+
+func TestWebhookOutput_CloseIdempotent(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+	}, nil)
+	require.NoError(t, err)
+	assert.NoError(t, out.Close())
+	assert.NoError(t, out.Close())
+}
+
+func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
+	// Slow server keeps the batch goroutine busy.
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(1 * time.Second)
+		w.WriteHeader(200)
+	})
+	metrics := newMockMetrics()
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1, // flush immediately
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		MaxRetries:         1,
+		BufferSize:         3, // tiny buffer
+	}, metrics)
+	require.NoError(t, err)
+
+	// First event triggers flush (blocks on slow server).
+	// Subsequent writes fill buffer and overflow.
+	start := time.Now()
+	for range 15 {
+		_ = out.Write([]byte(`{"event":"overflow"}`))
+	}
+	elapsed := time.Since(start)
+
+	assert.Less(t, elapsed, 500*time.Millisecond,
+		"Write should not block on full buffer")
+
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
+		"RecordWebhookDrop should be called for overflow")
+}
+
+func TestWebhookOutput_ConcurrentWrites(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+		cfg.BufferSize = 1000
+	})
+
+	var wg sync.WaitGroup
+	const goroutines = 50
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			_ = out.Write([]byte(`{"event":"concurrent"}`))
+		}()
+	}
+	wg.Wait()
+	// Close is handled by t.Cleanup in newTestWebhookOutput.
+}

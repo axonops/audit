@@ -120,27 +120,11 @@ type OutputsConfig struct {
 // this to configure multiple outputs of the same type (e.g. two file
 // outputs writing to different paths with different event routes).
 type NamedOutputConfig struct {
-	// Name is a unique human-readable identifier for this output,
-	// used in metrics labels and log messages. REQUIRED; empty name
-	// causes [BuildOutputs] to return an error.
-	Name string
-
-	// Type is the output type: "stdout" or "file". It MUST match
-	// the populated config pointer below. Mismatched type/config
-	// causes [BuildOutputs] to return an error.
-	Type string
-
-	// Route restricts which events are delivered to this output.
-	// An empty route delivers all globally-enabled events.
-	Route EventRoute
-
-	// Stdout is the config for a stdout-type output. Populated when
-	// Type is "stdout".
 	Stdout *StdoutConfig
-
-	// File is the config for a file-type output. Populated when
-	// Type is "file".
-	File *FileConfig
+	File   *FileConfig
+	Name   string
+	Type   string
+	Route  EventRoute
 }
 
 // BuildOutputs constructs [Output] instances and [Option] values from
@@ -148,7 +132,7 @@ type NamedOutputConfig struct {
 // [NewLogger]. BuildOutputs validates output names for uniqueness,
 // file path uniqueness, and type/config consistency.
 func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
-	var opts []Option
+	opts := make([]Option, 0, 2+len(cfg.Extra))
 	names := make(map[string]bool)
 	filePaths := make(map[string]string) // normalised path -> output name
 
@@ -159,7 +143,7 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		}
 		name := out.Name()
 		names[name] = true
-		opts = append(opts, WithNamedOutput(out, EventRoute{}, nil))
+		opts = append(opts, WithNamedOutput(out, nil, nil))
 	}
 
 	if cfg.File != nil {
@@ -172,32 +156,41 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		if err := trackFilePath(filePaths, cfg.File.Path, name); err != nil {
 			return nil, err
 		}
-		opts = append(opts, WithNamedOutput(out, EventRoute{}, nil))
+		opts = append(opts, WithNamedOutput(out, nil, nil))
 	}
 
-	for i, nc := range cfg.Extra {
-		if nc.Name == "" {
-			return nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", i)
-		}
-		if names[nc.Name] {
-			return nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
-		}
-		names[nc.Name] = true
-
-		if nc.Type == "file" && nc.File != nil {
-			if err := trackFilePath(filePaths, nc.File.Path, nc.Name); err != nil {
-				return nil, err
-			}
-		}
-
-		out, err := buildNamedOutput(nc)
+	for i := range cfg.Extra {
+		opt, err := buildExtraOutput(&cfg.Extra[i], i, names, filePaths)
 		if err != nil {
-			return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
+			return nil, err
 		}
-		opts = append(opts, WithNamedOutput(out, nc.Route, nil))
+		opts = append(opts, opt)
 	}
 
 	return opts, nil
+}
+
+// buildExtraOutput validates and constructs a single Extra output entry.
+func buildExtraOutput(nc *NamedOutputConfig, idx int, names map[string]bool, filePaths map[string]string) (Option, error) {
+	if nc.Name == "" {
+		return nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", idx)
+	}
+	if names[nc.Name] {
+		return nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
+	}
+	names[nc.Name] = true
+
+	if nc.Type == "file" && nc.File != nil {
+		if err := trackFilePath(filePaths, nc.File.Path, nc.Name); err != nil {
+			return nil, err
+		}
+	}
+
+	out, err := buildNamedOutput(nc)
+	if err != nil {
+		return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
+	}
+	return WithNamedOutput(out, &nc.Route, nil), nil
 }
 
 // trackFilePath checks that a file path is not already used by another
@@ -221,7 +214,7 @@ func trackFilePath(seen map[string]string, path, outputName string) error {
 }
 
 // buildNamedOutput constructs an Output from a NamedOutputConfig.
-func buildNamedOutput(nc NamedOutputConfig) (Output, error) {
+func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 	switch nc.Type {
 	case "stdout":
 		if nc.Stdout == nil {

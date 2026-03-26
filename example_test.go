@@ -298,7 +298,7 @@ func ExampleLogger_SetOutputRoute() {
 			},
 			DefaultEnabled: []string{"write", "security"},
 		}),
-		audit.WithNamedOutput(out, audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -310,7 +310,7 @@ func ExampleLogger_SetOutputRoute() {
 	}()
 
 	// Restrict output to security events only at runtime.
-	if err := logger.SetOutputRoute("stdout", audit.EventRoute{
+	if err := logger.SetOutputRoute("stdout", &audit.EventRoute{
 		IncludeCategories: []string{"security"},
 	}); err != nil {
 		fmt.Println("route error:", err)

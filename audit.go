@@ -117,7 +117,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 
 	// Validate per-output event routes against the taxonomy.
 	for _, oe := range l.entries {
-		if err := ValidateEventRoute(oe.route, l.taxonomy); err != nil {
+		if err := ValidateEventRoute(&oe.route, l.taxonomy); err != nil {
 			return nil, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
 		}
 	}
@@ -342,7 +342,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 // error. An unknown output name returns an error.
 //
 // SetOutputRoute is safe for concurrent use with event delivery.
-func (l *Logger) SetOutputRoute(outputName string, route EventRoute) error {
+func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
 	oe, ok := l.outputsByName[outputName]
 	if !ok {
 		return fmt.Errorf("audit: unknown output %q", outputName)
@@ -350,7 +350,7 @@ func (l *Logger) SetOutputRoute(outputName string, route EventRoute) error {
 	if err := ValidateEventRoute(route, l.taxonomy); err != nil {
 		return err
 	}
-	oe.setRoute(route)
+	oe.setRoute(*route)
 	slog.Info("audit: output route set", "output", outputName)
 	return nil
 }
@@ -504,13 +504,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	def := l.taxonomy.Events[entry.eventType]
 	category := def.Category
 
-	// Cache serialised bytes per Formatter to avoid redundant work
-	// when multiple outputs share the same formatter.
-	type serialised struct {
-		data []byte
-		ok   bool // false if serialisation failed
-	}
-	cache := make(map[Formatter]*serialised)
+	cache := make(map[Formatter][]byte)
 
 	for _, oe := range l.entries {
 		if !oe.matchesEvent(entry.eventType, category) {
@@ -520,29 +514,35 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			continue
 		}
 
-		f := oe.effectiveFormatter(l.formatter)
-		s, cached := cache[f]
-		if !cached {
-			data, err := f.Format(ts, entry.eventType, entry.fields, &def)
-			if err != nil {
-				slog.Error("audit: serialisation failed",
-					"event_type", entry.eventType,
-					"error", err)
-				if l.metrics != nil {
-					l.metrics.RecordSerializationError(entry.eventType)
-				}
-				s = &serialised{ok: false}
-			} else {
-				s = &serialised{data: data, ok: true}
-			}
-			cache[f] = s
-		}
-		if !s.ok {
+		data := l.formatCached(oe, entry, ts, &def, cache)
+		if data == nil {
 			continue
 		}
-
-		l.writeToOutput(oe.output, s.data, entry.eventType)
+		l.writeToOutput(oe.output, data, entry.eventType)
 	}
+}
+
+// formatCached returns the serialised bytes for the output's formatter,
+// using the cache to avoid redundant serialisation. Returns nil if
+// serialisation failed.
+func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache map[Formatter][]byte) []byte {
+	f := oe.effectiveFormatter(l.formatter)
+	if data, ok := cache[f]; ok {
+		return data // may be nil if serialisation failed
+	}
+	data, err := f.Format(ts, entry.eventType, entry.fields, def)
+	if err != nil {
+		slog.Error("audit: serialisation failed",
+			"event_type", entry.eventType,
+			"error", err)
+		if l.metrics != nil {
+			l.metrics.RecordSerializationError(entry.eventType)
+		}
+		cache[f] = nil // mark as failed
+		return nil
+	}
+	cache[f] = data
+	return data
 }
 
 // writeToOutput sends data to a single output and records metrics.

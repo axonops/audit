@@ -75,32 +75,21 @@ func (r *EventRoute) isExcludeMode() bool {
 
 // ValidateEventRoute checks that the route is well-formed and all
 // referenced categories and event types exist in the taxonomy.
-func ValidateEventRoute(route EventRoute, taxonomy *Taxonomy) error {
+func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 	if route.isIncludeMode() && route.isExcludeMode() {
 		return fmt.Errorf("audit: EventRoute must use either include or exclude, not both")
 	}
+	return validateRouteEntries(route, taxonomy)
+}
 
+// validateRouteEntries checks that all categories and event types
+// referenced by the route exist in the taxonomy.
+func validateRouteEntries(route *EventRoute, taxonomy *Taxonomy) error {
 	var unknown []string
-	for _, cat := range route.IncludeCategories {
-		if _, ok := taxonomy.Categories[cat]; !ok {
-			unknown = append(unknown, "category "+cat)
-		}
-	}
-	for _, cat := range route.ExcludeCategories {
-		if _, ok := taxonomy.Categories[cat]; !ok {
-			unknown = append(unknown, "category "+cat)
-		}
-	}
-	for _, evt := range route.IncludeEventTypes {
-		if _, ok := taxonomy.Events[evt]; !ok {
-			unknown = append(unknown, "event type "+evt)
-		}
-	}
-	for _, evt := range route.ExcludeEventTypes {
-		if _, ok := taxonomy.Events[evt]; !ok {
-			unknown = append(unknown, "event type "+evt)
-		}
-	}
+	unknown = checkCategories(unknown, route.IncludeCategories, taxonomy)
+	unknown = checkCategories(unknown, route.ExcludeCategories, taxonomy)
+	unknown = checkEventTypes(unknown, route.IncludeEventTypes, taxonomy)
+	unknown = checkEventTypes(unknown, route.ExcludeEventTypes, taxonomy)
 
 	if len(unknown) > 0 {
 		slices.Sort(unknown)
@@ -108,6 +97,24 @@ func ValidateEventRoute(route EventRoute, taxonomy *Taxonomy) error {
 			strings.Join(unknown, ", "))
 	}
 	return nil
+}
+
+func checkCategories(unknown []string, cats []string, taxonomy *Taxonomy) []string {
+	for _, cat := range cats {
+		if _, ok := taxonomy.Categories[cat]; !ok {
+			unknown = append(unknown, "category "+cat)
+		}
+	}
+	return unknown
+}
+
+func checkEventTypes(unknown []string, evts []string, taxonomy *Taxonomy) []string {
+	for _, evt := range evts {
+		if _, ok := taxonomy.Events[evt]; !ok {
+			unknown = append(unknown, "event type "+evt)
+		}
+	}
+	return unknown
 }
 
 // MatchesRoute reports whether an event should be delivered to an

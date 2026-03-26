@@ -55,8 +55,8 @@ func TestValidateEventRoute(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		route   audit.EventRoute
 		wantErr string
+		route   audit.EventRoute
 	}{
 		{
 			name:  "empty route",
@@ -140,7 +140,7 @@ func TestValidateEventRoute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := audit.ValidateEventRoute(tt.route, &tax)
+			err := audit.ValidateEventRoute(&tt.route, &tax)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 			} else {
@@ -154,9 +154,9 @@ func TestValidateEventRoute(t *testing.T) {
 func TestMatchesRoute(t *testing.T) {
 	tests := []struct {
 		name      string
-		route     audit.EventRoute
 		eventType string
 		category  string
+		route     audit.EventRoute
 		want      bool
 	}{
 		// Empty route — matches everything.

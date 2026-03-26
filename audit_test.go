@@ -113,19 +113,25 @@ func (m *mockOutput) waitForEvents(n int, timeout time.Duration) bool {
 // ---------------------------------------------------------------------------
 
 type mockMetrics struct {
-	mu            sync.Mutex
-	bufferDrops   int
-	webhookDrops  int
-	events        map[string]int // "output:status" -> count
-	outputErrors  map[string]int
-	filteredCount map[string]int
+	mu                  sync.Mutex
+	bufferDrops         int
+	webhookDrops        int
+	events              map[string]int // "output:status" -> count
+	outputErrors        map[string]int
+	filteredCount       map[string]int
+	validationErrors    map[string]int // eventType -> count
+	globalFiltered      map[string]int // eventType -> count
+	serializationErrors map[string]int // eventType -> count
 }
 
 func newMockMetrics() *mockMetrics {
 	return &mockMetrics{
-		events:        make(map[string]int),
-		outputErrors:  make(map[string]int),
-		filteredCount: make(map[string]int),
+		events:              make(map[string]int),
+		outputErrors:        make(map[string]int),
+		filteredCount:       make(map[string]int),
+		validationErrors:    make(map[string]int),
+		globalFiltered:      make(map[string]int),
+		serializationErrors: make(map[string]int),
 	}
 }
 
@@ -160,6 +166,24 @@ func (m *mockMetrics) RecordWebhookDrop() {
 }
 
 func (m *mockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
+
+func (m *mockMetrics) RecordValidationError(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.validationErrors[eventType]++
+}
+
+func (m *mockMetrics) RecordFiltered(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.globalFiltered[eventType]++
+}
+
+func (m *mockMetrics) RecordSerializationError(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.serializationErrors[eventType]++
+}
 
 func (m *mockMetrics) getBufferDrops() int {
 	m.mu.Lock()
@@ -547,7 +571,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
 		audit.WithTaxonomy(validTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
@@ -1399,6 +1423,187 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Metrics instrumentation tests (#36)
+// ---------------------------------------------------------------------------
+
+func TestAudit_UnknownEventType_RecordsValidationError(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
+		audit.WithMetrics(metrics))
+
+	_ = logger.Audit("nonexistent", audit.Fields{})
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Equal(t, 1, metrics.validationErrors["nonexistent"])
+}
+
+func TestAudit_MissingRequiredField_RecordsValidationError(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
+		audit.WithMetrics(metrics))
+
+	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Equal(t, 1, metrics.validationErrors["schema_register"])
+}
+
+func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationStrict},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	_ = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "fail",
+		"actor_id": "bob",
+		"bogus":    "val",
+	})
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Equal(t, 1, metrics.validationErrors["auth_failure"])
+}
+
+func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
+		audit.WithMetrics(metrics))
+
+	// "read" category is not in DefaultEnabled.
+	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Equal(t, 1, metrics.globalFiltered["schema_read"])
+}
+
+func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
+		audit.WithMetrics(metrics))
+
+	// Disable a specific event in an enabled category.
+	require.NoError(t, logger.DisableEvent("schema_register"))
+
+	_ = logger.Audit("schema_register", audit.Fields{
+		"outcome":  "ok",
+		"actor_id": "alice",
+		"subject":  "test",
+	})
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Equal(t, 1, metrics.globalFiltered["schema_register"])
+}
+
+func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
+	metrics := newMockMetrics()
+	out := newMockOutput("test")
+	badFormatter := &stubFormatter{
+		fn: func(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+			return nil, errors.New("format failed")
+		},
+	}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithFormatter(badFormatter),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "fail",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+
+	// Close drains the event through processEntry, triggering the
+	// serialization error metric.
+	require.NoError(t, logger.Close())
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Greater(t, metrics.serializationErrors["auth_failure"], 0)
+}
+
+func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
+	metrics := newMockMetrics()
+	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
+	t.Cleanup(func() { close(out.blockCh) })
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	_ = logger.EmitStartup(audit.Fields{"app_name": "test"})
+
+	// Fill the buffer.
+	for i := 0; i < 100; i++ {
+		_ = logger.Audit("auth_failure", audit.Fields{
+			"outcome":  "fail",
+			"actor_id": "bob",
+		})
+	}
+
+	_ = logger.Close()
+
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Greater(t, metrics.bufferDrops, 0, "emitShutdown should call RecordBufferDrop on buffer full")
+}
+
+func TestAudit_NilMetrics_NoPanic(t *testing.T) {
+	// Verify that all metrics paths handle nil metrics without panic,
+	// including the async serialization error path in processEntry.
+	badFormatter := &stubFormatter{
+		fn: func(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+			return nil, errors.New("format failed")
+		},
+	}
+	out := newMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithFormatter(badFormatter),
+		// No WithMetrics -- metrics is nil.
+	)
+	require.NoError(t, err)
+
+	// Validation error path (unknown event type).
+	_ = logger.Audit("nonexistent", audit.Fields{})
+	// Missing required field path.
+	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
+	// Filtered event path.
+	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
+	// Normal path (will trigger serialization error in drain goroutine).
+	_ = logger.Audit("auth_failure", audit.Fields{"outcome": "fail", "actor_id": "bob"})
+
+	// Close drains the bad event through processEntry -> serialize error
+	// with nil metrics. Must not panic.
+	require.NoError(t, logger.Close())
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 
@@ -1412,7 +1617,7 @@ func BenchmarkAudit(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{
 		"outcome":  "success",
@@ -1437,14 +1642,13 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{"outcome": "success"}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		// "read" category is not in DefaultEnabled -- early filter exit.
 		_ = logger.Audit("schema_read", fields)
 	}
 }
@@ -1457,7 +1661,7 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer logger.Close()
+	b.Cleanup(func() { _ = logger.Close() })
 
 	fields := audit.Fields{
 		"outcome":  "success",

@@ -31,10 +31,33 @@ type Metrics interface {
 	// RecordOutputError records a write error on the named output.
 	RecordOutputError(output string)
 
-	// RecordOutputFiltered records that an event was skipped by a
-	// per-output event route filter (see issue #6 for the fan-out
-	// engine that uses this).
+	// RecordOutputFiltered records that a per-output event route filter
+	// prevented an event from being delivered to the named output.
+	// This is distinct from [Metrics.RecordFiltered], which records
+	// global category/event filter drops before any output is reached.
+	//
+	// Note: per-output routing is not yet implemented. This method is
+	// declared for forward compatibility; the library does not
+	// currently call it.
 	RecordOutputFiltered(output string)
+
+	// RecordValidationError records that [Logger.Audit] rejected an
+	// event due to a validation failure: unknown event type, missing
+	// required fields, or unknown fields in strict mode. The
+	// eventType parameter is the event type string that was passed to
+	// Audit.
+	RecordValidationError(eventType string)
+
+	// RecordFiltered records that an event was silently discarded by
+	// the global category/event filter. This is distinct from
+	// [Metrics.RecordOutputFiltered] which tracks per-output route
+	// filtering.
+	RecordFiltered(eventType string)
+
+	// RecordSerializationError records that the configured [Formatter]
+	// returned an error (or panicked) when serialising an event. The
+	// event is dropped when this occurs.
+	RecordSerializationError(eventType string)
 
 	// RecordBufferDrop records that an event was dropped because the
 	// main async buffer was full.

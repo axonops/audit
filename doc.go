@@ -70,6 +70,9 @@
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
 //   - [Output] — interface for audit event destinations
 //   - [EventType] — handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [Formatter] — interface for custom serialisation; see [WithFormatter]
+//   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
+//   - [CEFFormatter] — Common Event Format formatter for SIEM integration
 //   - [Metrics] — optional instrumentation interface
 //
 // # Taxonomy
@@ -91,7 +94,8 @@
 //
 // [Logger.Close] MUST be called when the logger is no longer needed. Failing
 // to call Close leaks the drain goroutine and causes any buffered events to be
-// lost. Close signals the drain goroutine to stop, waits up to a configurable
-// deadline for pending events to flush, then closes all outputs in sequence.
-// Close is idempotent via [sync.Once].
+// lost. Close signals the drain goroutine to stop, waits up to
+// [Config.DrainTimeout] for pending events to flush, then closes all outputs
+// in sequence. Events still in the buffer when DrainTimeout expires are lost;
+// a warning is emitted via [log/slog]. Close is idempotent via [sync.Once].
 package audit

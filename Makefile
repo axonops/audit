@@ -60,8 +60,19 @@ security:
 	govulncheck ./...
 	gosec -quiet ./...
 
+# Enforce TODO comments must reference a GitHub issue: TODO(#NNN)
+check-todos:
+	@ORPHANED=$$(grep -rn 'TODO' --include='*.go' | grep -v 'TODO(#[0-9]' | grep -v 'nolint' | grep -v '_test.go.*TODO'); \
+	if [ -n "$$ORPHANED" ]; then \
+		echo "ERROR: orphaned TODO without issue reference:"; \
+		echo "$$ORPHANED"; \
+		echo ""; \
+		echo "All TODOs must use the format: TODO(#NNN): description"; \
+		exit 1; \
+	fi
+
 # Full local quality gate — run before marking anything done
-check: fmt vet lint test-race tidy
+check: fmt vet lint test-race tidy check-todos
 	@echo ""
 	@echo "All checks passed."
 

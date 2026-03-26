@@ -111,6 +111,9 @@ type OutputsConfig struct {
 	// Syslog configures the primary syslog output. Ignored if nil.
 	Syslog *SyslogConfig
 
+	// Webhook configures the primary webhook output. Ignored if nil.
+	Webhook *WebhookConfig
+
 	// Extra defines additional named output instances. Each entry
 	// creates a separate output with its own [EventRoute] and
 	// formatter. Names MUST be unique across all outputs (including
@@ -123,12 +126,13 @@ type OutputsConfig struct {
 // this to configure multiple outputs of the same type (e.g. two file
 // outputs writing to different paths with different event routes).
 type NamedOutputConfig struct {
-	Stdout *StdoutConfig
-	File   *FileConfig
-	Syslog *SyslogConfig
-	Name   string
-	Type   string
-	Route  EventRoute
+	Stdout  *StdoutConfig
+	File    *FileConfig
+	Syslog  *SyslogConfig
+	Webhook *WebhookConfig
+	Name    string
+	Type    string
+	Route   EventRoute
 }
 
 // BuildOutputs constructs [Output] instances and [Option] values from
@@ -167,6 +171,16 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		out, err := NewSyslogOutput(cfg.Syslog)
 		if err != nil {
 			return nil, fmt.Errorf("audit: syslog output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
+		opts = append(opts, WithNamedOutput(out, nil, nil))
+	}
+
+	if cfg.Webhook != nil {
+		out, err := NewWebhookOutput(cfg.Webhook, nil)
+		if err != nil {
+			return nil, fmt.Errorf("audit: webhook output: %w", err)
 		}
 		name := out.Name()
 		names[name] = true
@@ -249,6 +263,15 @@ func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 			return nil, fmt.Errorf("type %q requires Syslog config", nc.Type)
 		}
 		out, err := NewSyslogOutput(nc.Syslog)
+		if err != nil {
+			return nil, err
+		}
+		return &namedOutput{Output: out, name: nc.Name}, nil
+	case "webhook":
+		if nc.Webhook == nil {
+			return nil, fmt.Errorf("type %q requires Webhook config", nc.Type)
+		}
+		out, err := NewWebhookOutput(nc.Webhook, nil)
 		if err != nil {
 			return nil, err
 		}

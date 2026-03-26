@@ -73,6 +73,7 @@
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
+//   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Metrics] — optional instrumentation interface
 //
 // # Taxonomy

@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 )
 
@@ -144,11 +145,12 @@ type NamedOutputConfig struct {
 
 // BuildOutputs constructs [Output] instances and [Option] values from
 // an [OutputsConfig]. The returned options should be passed to
-// [NewLogger]. BuildOutputs validates output names for uniqueness and
-// type/config consistency.
+// [NewLogger]. BuildOutputs validates output names for uniqueness,
+// file path uniqueness, and type/config consistency.
 func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	var opts []Option
 	names := make(map[string]bool)
+	filePaths := make(map[string]string) // normalised path -> output name
 
 	if cfg.Stdout != nil {
 		out, err := NewStdoutOutput(*cfg.Stdout)
@@ -167,6 +169,9 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		}
 		name := out.Name()
 		names[name] = true
+		if err := trackFilePath(filePaths, cfg.File.Path, name); err != nil {
+			return nil, err
+		}
 		opts = append(opts, WithNamedOutput(out, EventRoute{}, nil))
 	}
 
@@ -179,6 +184,12 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 		}
 		names[nc.Name] = true
 
+		if nc.Type == "file" && nc.File != nil {
+			if err := trackFilePath(filePaths, nc.File.Path, nc.Name); err != nil {
+				return nil, err
+			}
+		}
+
 		out, err := buildNamedOutput(nc)
 		if err != nil {
 			return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
@@ -187,6 +198,22 @@ func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
 	}
 
 	return opts, nil
+}
+
+// trackFilePath checks that a file path is not already used by another
+// output. Paths are normalised with filepath.Clean and filepath.Abs
+// before comparison.
+func trackFilePath(seen map[string]string, path, outputName string) error {
+	cleaned := filepath.Clean(path)
+	abs, err := filepath.Abs(cleaned)
+	if err != nil {
+		abs = cleaned // fall back to cleaned path if Abs fails
+	}
+	if existing, dup := seen[abs]; dup {
+		return fmt.Errorf("audit: file outputs %q and %q share the same path %q", existing, outputName, path)
+	}
+	seen[abs] = outputName
+	return nil
 }
 
 // buildNamedOutput constructs an Output from a NamedOutputConfig.

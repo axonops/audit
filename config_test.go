@@ -179,6 +179,34 @@ func TestBuildOutputs_UnknownType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown output type")
 }
 
+func TestBuildOutputs_DuplicateFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "same.log")
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		File: &audit.FileConfig{Path: path},
+		Extra: []audit.NamedOutputConfig{
+			{Name: "extra", Type: "file", File: &audit.FileConfig{Path: path}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "share the same path")
+}
+
+func TestBuildOutputs_DuplicateFilePathNormalised(t *testing.T) {
+	dir := t.TempDir()
+	// Same path but written differently.
+	path1 := filepath.Join(dir, "audit.log")
+	path2 := filepath.Join(dir, ".", "audit.log")
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "out1", Type: "file", File: &audit.FileConfig{Path: path1}},
+			{Name: "out2", Type: "file", File: &audit.FileConfig{Path: path2}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "share the same path")
+}
+
 func TestBuildOutputs_TypeConfigMismatch(t *testing.T) {
 	_, err := audit.BuildOutputs(audit.OutputsConfig{
 		Extra: []audit.NamedOutputConfig{

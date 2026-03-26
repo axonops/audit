@@ -29,6 +29,9 @@ var TransportSecurityFunc = transportSecurity
 // NewRequestID exports newRequestID for testing.
 var NewRequestID = newRequestID
 
+// ValidRequestID exports validRequestID for testing.
+var ValidRequestID = validRequestID
+
 // NewResponseWriter exports the responseWriter constructor for testing.
 func NewResponseWriter(w http.ResponseWriter) *ResponseWriterWrapper {
 	return &ResponseWriterWrapper{W: &responseWriter{ResponseWriter: w}}

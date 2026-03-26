@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,18 @@ import (
 	"net/http"
 	"strings"
 	"time"
+)
+
+const (
+	// maxRequestIDLen is the maximum length of an X-Request-Id header
+	// value accepted by the middleware. Values exceeding this length
+	// or containing control characters are replaced with a generated UUID.
+	maxRequestIDLen = 128
+
+	// maxUserAgentLen is the maximum length of the User-Agent header
+	// stored in [TransportMetadata]. Longer values are truncated to
+	// prevent oversized audit events in size-limited outputs (syslog, CEF).
+	maxUserAgentLen = 512
 )
 
 // hintsKey is the unexported context key for [Hints].
@@ -118,7 +131,7 @@ type TransportMetadata struct {
 type EventBuilder func(hints *Hints, transport TransportMetadata) (eventType string, fields Fields, skip bool)
 
 // GetHints retrieves the [Hints] from the request context. Returns
-// nil if the request was not wrapped by [AuditMiddleware].
+// nil if the request was not wrapped by [Middleware].
 func GetHints(ctx context.Context) *Hints {
 	h, _ := ctx.Value(hintsKey{}).(*Hints)
 	return h
@@ -134,13 +147,16 @@ func clientIP(r *http.Request) string {
 		parts := strings.Split(xff, ",")
 		// Rightmost entry is set by the last trusted proxy.
 		ip := strings.TrimSpace(parts[len(parts)-1])
-		if ip != "" {
+		if ip != "" && net.ParseIP(ip) != nil {
 			return ip
 		}
 	}
 
 	if xri := r.Header.Get("X-Real-Ip"); xri != "" {
-		return strings.TrimSpace(xri)
+		ip := strings.TrimSpace(xri)
+		if net.ParseIP(ip) != nil {
+			return ip
+		}
 	}
 
 	if r.RemoteAddr == "" {
@@ -185,8 +201,43 @@ func newRequestID() string {
 	// Set version (4) and variant (RFC 4122).
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
+
+	// Encode directly into a fixed-size buffer to avoid fmt.Sprintf
+	// allocations on the hot path.
+	var buf [36]byte
+	hex.Encode(buf[0:8], uuid[0:4])
+	buf[8] = '-'
+	hex.Encode(buf[9:13], uuid[4:6])
+	buf[13] = '-'
+	hex.Encode(buf[14:18], uuid[6:8])
+	buf[18] = '-'
+	hex.Encode(buf[19:23], uuid[8:10])
+	buf[23] = '-'
+	hex.Encode(buf[24:36], uuid[10:16])
+	return string(buf[:])
+}
+
+// validRequestID checks that a request ID is safe to propagate:
+// not too long and no control characters that could enable log injection.
+func validRequestID(id string) bool {
+	if len(id) == 0 || len(id) > maxRequestIDLen {
+		return false
+	}
+	for _, c := range id {
+		if c < 0x20 || c == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// truncateString returns s truncated to maxLen bytes. If truncated,
+// the result may split a multi-byte UTF-8 character.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }
 
 // responseWriter wraps [http.ResponseWriter] to capture the status
@@ -235,9 +286,10 @@ func (rw *responseWriter) Flush() {
 	}
 }
 
-// errHijackNotSupported is returned by Hijack when the inner writer
-// does not implement [http.Hijacker].
-var errHijackNotSupported = errors.New("audit: underlying ResponseWriter does not support hijacking")
+// ErrHijackNotSupported is returned by the middleware's response
+// writer Hijack method when the underlying [http.ResponseWriter] does
+// not implement [http.Hijacker].
+var ErrHijackNotSupported = errors.New("audit: underlying ResponseWriter does not support hijacking")
 
 // Hijack delegates to the inner writer if it implements
 // [http.Hijacker]. Returns an error if hijacking is not supported.
@@ -245,21 +297,21 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
 		return h.Hijack()
 	}
-	return nil, nil, errHijackNotSupported
+	return nil, nil, ErrHijackNotSupported
 }
 
-// AuditMiddleware returns HTTP middleware that captures transport
-// metadata automatically and calls the [EventBuilder] after the
-// handler returns. The builder transforms [Hints] (populated by the
-// handler) and [TransportMetadata] into an audit event.
+// Middleware returns HTTP middleware that captures transport metadata
+// automatically and calls the [EventBuilder] after the handler
+// returns. The builder transforms [Hints] (populated by the handler)
+// and [TransportMetadata] into an audit event.
 //
 // If logger is nil, the returned middleware is an identity function
 // that passes requests through without auditing. This allows
 // consumers to conditionally disable audit middleware without
 // nil-checking at every call site.
 //
-// AuditMiddleware panics if builder is nil (programming error).
-func AuditMiddleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Handler {
+// Middleware panics if builder is nil (programming error).
+func Middleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Handler {
 	if logger == nil {
 		return func(next http.Handler) http.Handler { return next }
 	}
@@ -273,7 +325,7 @@ func AuditMiddleware(logger *Logger, builder EventBuilder) func(http.Handler) ht
 			r = r.WithContext(ctx)
 
 			reqID := r.Header.Get("X-Request-Id")
-			if reqID == "" {
+			if !validRequestID(reqID) {
 				reqID = newRequestID()
 			}
 
@@ -307,7 +359,7 @@ func AuditMiddleware(logger *Logger, builder EventBuilder) func(http.Handler) ht
 				TransportSecurity: transportSecurity(r),
 				Method:            r.Method,
 				Path:              r.URL.Path,
-				UserAgent:         r.UserAgent(),
+				UserAgent:         truncateString(r.UserAgent(), maxUserAgentLen),
 				RequestID:         reqID,
 				StatusCode:        statusCode,
 				Duration:          time.Since(start),
@@ -334,8 +386,9 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 	func() {
 		defer func() {
 			if v := recover(); v != nil {
+				panicStr := truncateString(fmt.Sprintf("%v", v), 512)
 				slog.Error("audit: EventBuilder panicked",
-					"panic", v,
+					"panic", panicStr,
 					"request_id", transport.RequestID)
 				skip = true
 			}

@@ -360,7 +360,7 @@ func ExampleSyslogConfig_mtls() {
 	// Output: network=tcp+tls address=syslog.example.com:6514 cert=/etc/audit/client-cert.pem key=/etc/audit/client-key.pem ca=/etc/audit/ca.pem
 }
 
-func ExampleAuditMiddleware() {
+func ExampleMiddleware() {
 	taxonomy := audit.Taxonomy{
 		Version: 1,
 		Categories: map[string][]string{
@@ -395,7 +395,7 @@ func ExampleAuditMiddleware() {
 		}, false
 	}
 
-	mw := audit.AuditMiddleware(logger, builder)
+	mw := audit.Middleware(logger, builder)
 	_ = mw // wrap your http.Handler with mw(handler)
 
 	fmt.Println("middleware created")
@@ -421,7 +421,7 @@ func ExampleGetHints() {
 	// Output: handler with hints
 }
 
-func ExampleAuditMiddleware_skip() {
+func ExampleMiddleware_skip() {
 	taxonomy := audit.Taxonomy{
 		Version: 1,
 		Categories: map[string][]string{
@@ -457,14 +457,14 @@ func ExampleAuditMiddleware_skip() {
 		}, false
 	}
 
-	mw := audit.AuditMiddleware(logger, builder)
+	mw := audit.Middleware(logger, builder)
 	_ = mw
 
 	fmt.Println("skip middleware created")
 	// Output: skip middleware created
 }
 
-func ExampleAuditMiddleware_router() {
+func ExampleMiddleware_router() {
 	// AuditMiddleware works with any router that supports
 	// the func(http.Handler) http.Handler middleware pattern.
 	//

@@ -226,7 +226,7 @@ func (s *SyslogOutput) connect() error {
 		w, err = srslog.Dial(s.network, s.address, s.priority, s.appName)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("audit: syslog connect %s://%s: %w", s.network, s.address, err)
 	}
 
 	w.SetFormatter(srslog.RFC5424Formatter)

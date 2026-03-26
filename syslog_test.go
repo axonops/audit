@@ -41,10 +41,10 @@ import (
 // mockSyslogServer listens on TCP and collects received messages.
 type mockSyslogServer struct {
 	listener net.Listener
-	messages []string
-	mu       sync.Mutex
-	wg       sync.WaitGroup
 	done     chan struct{}
+	messages []string
+	wg       sync.WaitGroup
+	mu       sync.Mutex
 }
 
 func newMockSyslogServer(t *testing.T) *mockSyslogServer {
@@ -175,8 +175,8 @@ func TestNewSyslogOutput_UDP(t *testing.T) {
 func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     audit.SyslogConfig
 		wantErr string
+		cfg     audit.SyslogConfig
 	}{
 		{
 			name:    "missing address",
@@ -395,12 +395,12 @@ func TestParseFacility_Unknown(t *testing.T) {
 // testCerts generates a self-signed CA, server cert, and optionally
 // a client cert for testing TLS.
 type testCerts struct {
+	tlsCfg     *tls.Config
 	caPath     string
 	certPath   string
 	keyPath    string
 	clientCert string
 	clientKey  string
-	tlsCfg     *tls.Config // server TLS config
 }
 
 func generateTestCerts(t *testing.T) *testCerts {
@@ -510,10 +510,10 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 // mockTLSSyslogServer listens on TLS TCP.
 type mockTLSSyslogServer struct {
 	listener net.Listener
-	messages []string
-	mu       sync.Mutex
-	wg       sync.WaitGroup
 	done     chan struct{}
+	messages []string
+	wg       sync.WaitGroup
+	mu       sync.Mutex
 }
 
 func newMockTLSSyslogServer(t *testing.T, tlsCfg *tls.Config) *mockTLSSyslogServer {

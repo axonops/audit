@@ -274,10 +274,10 @@ func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
 	assert.NoError(t, out.Close())
 	wg.Wait()
 
-	// Verify no panic occurred and the file has some content.
-	content, err := os.ReadFile(path)
+	// Verify no panic occurred. Content may be empty if Close() won
+	// the race against all write goroutines — that's valid behaviour.
+	_, err = os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Greater(t, len(content), 0)
 }
 
 func TestFileOutput_CompressFalse(t *testing.T) {

@@ -839,21 +839,17 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	for range 3 {
 		require.NoError(t, out.Write([]byte(`{"event":"metric_test"}`+"\n")))
 	}
-	// Wait for the batch to be delivered — server MUST receive the
-	// request BEFORE we Close() (which cancels the context).
-	require.True(t, srv.waitForRequests(1, 5*time.Second),
-		"server should receive at least 1 request")
-
-	// Small delay to ensure the batch goroutine has processed the
-	// response and recorded metrics before Close cancels the context.
-	time.Sleep(50 * time.Millisecond) // deliberate: wait for response processing
+	// Poll the success metric as the synchronisation signal — this
+	// ensures the batch goroutine has fully processed the HTTP response
+	// and recorded metrics before we close.
+	name := out.Name()
+	require.Eventually(t, func() bool {
+		return metrics.getEventCount(name, "success") == 3
+	}, 5*time.Second, 10*time.Millisecond,
+		"RecordEvent(success) should be called once per delivered event")
 
 	require.NoError(t, out.Close())
 
-	// RecordEvent should be called with "success" for each event in the batch.
-	name := out.Name()
-	assert.Equal(t, 3, metrics.getEventCount(name, "success"),
-		"RecordEvent(success) should be called once per delivered event")
 	assert.Equal(t, 0, metrics.getEventCount(name, "error"),
 		"RecordEvent(error) should not be called on success")
 }
@@ -946,11 +942,16 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.True(t, srv.waitForRequests(1, 2*time.Second))
-	require.NoError(t, logger.Close())
 
+	// Wait for the batch goroutine to finish delivery and record the
+	// success metric. Polling the metric is the correct synchronisation
+	// signal — waitForRequests only proves the HTTP handler fired, not
+	// that the client has read the response and recorded metrics.
 	name := webhookOut.Name()
-	// The webhook should report its OWN success metrics (from the delivery goroutine).
-	assert.Equal(t, 1, metrics.getEventCount(name, "success"),
+	require.Eventually(t, func() bool {
+		return metrics.getEventCount(name, "success") == 1
+	}, 5*time.Second, 10*time.Millisecond,
 		"webhook should report delivery success from batch goroutine")
+
+	require.NoError(t, logger.Close())
 }

@@ -15,8 +15,10 @@
 package audit
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -184,4 +186,63 @@ func newRequestID() string {
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
+}
+
+// responseWriter wraps [http.ResponseWriter] to capture the status
+// code written by the handler. It delegates all calls to the inner
+// writer and supports [http.Flusher], [http.Hijacker], and the
+// Unwrap pattern used by [http.ResponseController].
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+// WriteHeader captures the status code on the first call and
+// delegates to the inner [http.ResponseWriter]. Subsequent calls are
+// ignored per the [http.ResponseWriter] contract.
+func (rw *responseWriter) WriteHeader(code int) {
+	if rw.written {
+		return
+	}
+	rw.statusCode = code
+	rw.written = true
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Write delegates to the inner [http.ResponseWriter]. If WriteHeader
+// has not been called, an implicit 200 OK is recorded.
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.written {
+		rw.statusCode = http.StatusOK
+		rw.written = true
+	}
+	return rw.ResponseWriter.Write(b)
+}
+
+// Unwrap returns the inner [http.ResponseWriter], enabling
+// [http.ResponseController] to access underlying interfaces.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
+}
+
+// Flush delegates to the inner writer if it implements [http.Flusher].
+// If the inner writer does not support flushing, the call is a no-op.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// errHijackNotSupported is returned by Hijack when the inner writer
+// does not implement [http.Hijacker].
+var errHijackNotSupported = errors.New("audit: underlying ResponseWriter does not support hijacking")
+
+// Hijack delegates to the inner writer if it implements
+// [http.Hijacker]. Returns an error if hijacking is not supported.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, errHijackNotSupported
 }

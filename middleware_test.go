@@ -15,10 +15,14 @@
 package audit_test
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
 
@@ -167,4 +171,128 @@ func TestNewRequestID_Unique(t *testing.T) {
 		seen[id] = struct{}{}
 	}
 	assert.Len(t, seen, 100)
+}
+
+// --- responseWriter tests ---
+
+func TestResponseWriter_DefaultStatus200(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(rec)
+
+	_, err := rw.Write([]byte("hello"))
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, rw.StatusCode())
+	assert.True(t, rw.Written())
+}
+
+func TestResponseWriter_CapturesStatus(t *testing.T) {
+	codes := []int{200, 201, 301, 404, 500}
+	for _, code := range codes {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			rw := audit.NewResponseWriter(rec)
+
+			rw.WriteHeader(code)
+			assert.Equal(t, code, rw.StatusCode())
+			assert.Equal(t, code, rec.Code)
+		})
+	}
+}
+
+func TestResponseWriter_WriteHeaderIdempotent(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(rec)
+
+	rw.WriteHeader(http.StatusCreated)
+	rw.WriteHeader(http.StatusInternalServerError) // should be ignored
+
+	assert.Equal(t, http.StatusCreated, rw.StatusCode())
+	assert.Equal(t, http.StatusCreated, rec.Code)
+}
+
+func TestResponseWriter_BodyPassThrough(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(rec)
+
+	data := []byte("audit event data")
+	n, err := rw.Write(data)
+	require.NoError(t, err)
+	assert.Equal(t, len(data), n)
+	assert.Equal(t, "audit event data", rec.Body.String())
+}
+
+// mockFlusher is a ResponseWriter that also implements http.Flusher.
+type mockFlusher struct {
+	http.ResponseWriter
+	flushed bool
+}
+
+func (m *mockFlusher) Flush() { m.flushed = true }
+
+func TestResponseWriter_Flush_Supported(t *testing.T) {
+	inner := &mockFlusher{ResponseWriter: httptest.NewRecorder()}
+	rw := audit.NewResponseWriter(inner)
+
+	rw.Flush()
+	assert.True(t, inner.flushed)
+}
+
+func TestResponseWriter_Flush_NotSupported(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// httptest.ResponseRecorder implements Flusher, so wrap it to
+	// hide the Flusher interface.
+	rw := audit.NewResponseWriter(struct{ http.ResponseWriter }{rec})
+
+	// Should not panic.
+	assert.NotPanics(t, func() { rw.Flush() })
+}
+
+// mockHijacker is a ResponseWriter that also implements http.Hijacker.
+type mockHijacker struct {
+	http.ResponseWriter
+	conn net.Conn
+	err  error
+}
+
+func (m *mockHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return m.conn, nil, m.err
+}
+
+func TestResponseWriter_Hijack_Supported(t *testing.T) {
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		_ = server.Close()
+		_ = client.Close()
+	})
+
+	inner := &mockHijacker{
+		ResponseWriter: httptest.NewRecorder(),
+		conn:           server,
+	}
+	rw := audit.NewResponseWriter(inner)
+
+	conn, _, err := rw.Hijack()
+	require.NoError(t, err)
+	assert.Equal(t, server, conn)
+}
+
+func TestResponseWriter_Hijack_NotSupported(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(struct{ http.ResponseWriter }{rec})
+
+	conn, brw, err := rw.Hijack()
+	assert.Nil(t, conn)
+	assert.Nil(t, brw)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, err)) // just ensure it's an error
+	assert.Contains(t, err.Error(), "hijacking")
+}
+
+func TestResponseWriter_Unwrap(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rw := audit.NewResponseWriter(rec)
+
+	inner := rw.Unwrap()
+	assert.Equal(t, rec, inner)
 }

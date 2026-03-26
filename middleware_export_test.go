@@ -14,6 +14,12 @@
 
 package audit
 
+import (
+	"bufio"
+	"net"
+	"net/http"
+)
+
 // ClientIP exports clientIP for testing.
 var ClientIP = clientIP
 
@@ -22,3 +28,39 @@ var TransportSecurityFunc = transportSecurity
 
 // NewRequestID exports newRequestID for testing.
 var NewRequestID = newRequestID
+
+// NewResponseWriter exports the responseWriter constructor for testing.
+func NewResponseWriter(w http.ResponseWriter) *ResponseWriterWrapper {
+	return &ResponseWriterWrapper{W: &responseWriter{ResponseWriter: w}}
+}
+
+// ResponseWriterWrapper exposes the unexported responseWriter fields for testing.
+type ResponseWriterWrapper struct {
+	W *responseWriter
+}
+
+// WriteHeader delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) WriteHeader(code int) { rw.W.WriteHeader(code) }
+
+// Write delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) Write(b []byte) (int, error) { return rw.W.Write(b) }
+
+// Unwrap delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) Unwrap() http.ResponseWriter { return rw.W.Unwrap() }
+
+// Flush delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) Flush() { rw.W.Flush() }
+
+// Hijack delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return rw.W.Hijack()
+}
+
+// StatusCode returns the captured status code.
+func (rw *ResponseWriterWrapper) StatusCode() int { return rw.W.statusCode }
+
+// Written returns whether WriteHeader or Write has been called.
+func (rw *ResponseWriterWrapper) Written() bool { return rw.W.written }
+
+// Header delegates to the wrapped responseWriter.
+func (rw *ResponseWriterWrapper) Header() http.Header { return rw.W.Header() }

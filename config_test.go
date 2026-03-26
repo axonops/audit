@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -109,5 +110,114 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	require.NoError(t, logger.Close())
+}
+
+func TestBuildOutputs_StdoutAndFile(t *testing.T) {
+	dir := t.TempDir()
+	opts, err := audit.BuildOutputs(audit.OutputsConfig{
+		Stdout: &audit.StdoutConfig{},
+		File:   &audit.FileConfig{Path: filepath.Join(dir, "audit.log")},
+	})
+	require.NoError(t, err)
+	assert.Len(t, opts, 2)
+}
+
+func TestBuildOutputs_ExtraNamedFileOutputs(t *testing.T) {
+	dir := t.TempDir()
+	opts, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{
+				Name: "security-log",
+				Type: "file",
+				File: &audit.FileConfig{Path: filepath.Join(dir, "security.log")},
+				Route: audit.EventRoute{
+					IncludeCategories: []string{"security"},
+				},
+			},
+			{
+				Name: "all-events",
+				Type: "file",
+				File: &audit.FileConfig{Path: filepath.Join(dir, "all.log")},
+			},
+		},
+	})
+	require.NoError(t, err)
+	assert.Len(t, opts, 2)
+}
+
+func TestBuildOutputs_DuplicateName(t *testing.T) {
+	dir := t.TempDir()
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "dup", Type: "file", File: &audit.FileConfig{Path: filepath.Join(dir, "a.log")}},
+			{Name: "dup", Type: "file", File: &audit.FileConfig{Path: filepath.Join(dir, "b.log")}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate output name")
+}
+
+func TestBuildOutputs_EmptyName(t *testing.T) {
+	dir := t.TempDir()
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "", Type: "file", File: &audit.FileConfig{Path: filepath.Join(dir, "a.log")}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "name must not be empty")
+}
+
+func TestBuildOutputs_UnknownType(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "kafka"},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown output type")
+}
+
+func TestBuildOutputs_TypeConfigMismatch(t *testing.T) {
+	_, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{Name: "test", Type: "file", Stdout: &audit.StdoutConfig{}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires File config")
+}
+
+func TestBuildOutputs_NamedOutputUsedWithLogger(t *testing.T) {
+	dir := t.TempDir()
+	outputOpts, err := audit.BuildOutputs(audit.OutputsConfig{
+		Extra: []audit.NamedOutputConfig{
+			{
+				Name: "security-file",
+				Type: "file",
+				File: &audit.FileConfig{Path: filepath.Join(dir, "sec.log")},
+				Route: audit.EventRoute{
+					IncludeCategories: []string{"security"},
+				},
+			},
+			{
+				Name: "all-file",
+				Type: "file",
+				File: &audit.FileConfig{Path: filepath.Join(dir, "all.log")},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	loggerOpts := append([]audit.Option{
+		audit.WithTaxonomy(testTaxonomy()),
+	}, outputOpts...)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		loggerOpts...,
+	)
+	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 }

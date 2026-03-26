@@ -97,6 +97,133 @@ type Config struct {
 	OmitEmpty bool
 }
 
+// OutputsConfig defines all output destinations for the logger. Primary
+// outputs (Stdout, File) are single instances with default names.
+// Additional named instances are configured via the Extra slice.
+type OutputsConfig struct {
+	// Stdout configures the primary stdout output. Ignored if nil.
+	Stdout *StdoutConfig
+
+	// File configures the primary file output. Ignored if nil.
+	File *FileConfig
+
+	// Extra defines additional named output instances. Each entry
+	// creates a separate output with its own [EventRoute] and
+	// formatter. Names MUST be unique across all outputs (including
+	// the primary ones). Duplicate names cause [BuildOutputs] to
+	// return an error.
+	Extra []NamedOutputConfig
+}
+
+// NamedOutputConfig defines an additional named output instance. Use
+// this to configure multiple outputs of the same type (e.g. two file
+// outputs writing to different paths with different event routes).
+type NamedOutputConfig struct {
+	// Name is a unique human-readable identifier for this output,
+	// used in metrics labels and log messages. REQUIRED; empty name
+	// causes [BuildOutputs] to return an error.
+	Name string
+
+	// Type is the output type: "stdout" or "file". It MUST match
+	// the populated config pointer below. Mismatched type/config
+	// causes [BuildOutputs] to return an error.
+	Type string
+
+	// Route restricts which events are delivered to this output.
+	// An empty route delivers all globally-enabled events.
+	Route EventRoute
+
+	// Stdout is the config for a stdout-type output. Populated when
+	// Type is "stdout".
+	Stdout *StdoutConfig
+
+	// File is the config for a file-type output. Populated when
+	// Type is "file".
+	File *FileConfig
+}
+
+// BuildOutputs constructs [Output] instances and [Option] values from
+// an [OutputsConfig]. The returned options should be passed to
+// [NewLogger]. BuildOutputs validates output names for uniqueness and
+// type/config consistency.
+func BuildOutputs(cfg OutputsConfig) ([]Option, error) {
+	var opts []Option
+	names := make(map[string]bool)
+
+	if cfg.Stdout != nil {
+		out, err := NewStdoutOutput(*cfg.Stdout)
+		if err != nil {
+			return nil, fmt.Errorf("audit: stdout output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
+		opts = append(opts, WithNamedOutput(out, EventRoute{}, nil))
+	}
+
+	if cfg.File != nil {
+		out, err := NewFileOutput(*cfg.File)
+		if err != nil {
+			return nil, fmt.Errorf("audit: file output: %w", err)
+		}
+		name := out.Name()
+		names[name] = true
+		opts = append(opts, WithNamedOutput(out, EventRoute{}, nil))
+	}
+
+	for i, nc := range cfg.Extra {
+		if nc.Name == "" {
+			return nil, fmt.Errorf("audit: Extra[%d]: name must not be empty", i)
+		}
+		if names[nc.Name] {
+			return nil, fmt.Errorf("audit: duplicate output name %q", nc.Name)
+		}
+		names[nc.Name] = true
+
+		out, err := buildNamedOutput(nc)
+		if err != nil {
+			return nil, fmt.Errorf("audit: output %q: %w", nc.Name, err)
+		}
+		opts = append(opts, WithNamedOutput(out, nc.Route, nil))
+	}
+
+	return opts, nil
+}
+
+// buildNamedOutput constructs an Output from a NamedOutputConfig.
+func buildNamedOutput(nc NamedOutputConfig) (Output, error) {
+	switch nc.Type {
+	case "stdout":
+		if nc.Stdout == nil {
+			return nil, fmt.Errorf("type %q requires Stdout config", nc.Type)
+		}
+		return NewStdoutOutput(*nc.Stdout)
+	case "file":
+		if nc.File == nil {
+			return nil, fmt.Errorf("type %q requires File config", nc.Type)
+		}
+		return newNamedFileOutput(nc.Name, *nc.File)
+	default:
+		return nil, fmt.Errorf("unknown output type %q", nc.Type)
+	}
+}
+
+// namedOutput wraps an Output to override its Name.
+type namedOutput struct {
+	Output
+	name string
+}
+
+func (n *namedOutput) Name() string { return n.name }
+
+// newNamedFileOutput creates a FileOutput and wraps it with a custom name.
+func newNamedFileOutput(name string, cfg FileConfig) (Output, error) {
+	out, err := NewFileOutput(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &namedOutput{Output: out, name: name}, nil
+}
+
 // applyDefaults fills zero-valued fields with their documented defaults.
 func (c *Config) applyDefaults() {
 	if c.BufferSize <= 0 {

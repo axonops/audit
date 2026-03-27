@@ -112,4 +112,3 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 
 	require.NoError(t, logger.Close())
 }
-

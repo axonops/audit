@@ -293,4 +293,3 @@ func ExampleLogger_SetOutputRoute() {
 	fmt.Println("route set to security only")
 	// Output: route set to security only
 }
-

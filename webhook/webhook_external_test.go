@@ -15,12 +15,21 @@
 package webhook_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,11 +37,262 @@ import (
 	"time"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/tests/testhelper"
 	"github.com/axonops/go-audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// ---------------------------------------------------------------------------
+// Test helpers: TLS certificates
+// ---------------------------------------------------------------------------
+
+// testCerts holds paths to test TLS certificates and a server TLS config.
+type testCerts struct {
+	tlsCfg     *tls.Config
+	caPath     string
+	certPath   string
+	keyPath    string
+	clientCert string
+	clientKey  string
+}
+
+// generateTestCerts creates a self-signed CA, server cert, and client
+// cert for testing TLS. All files are written to t.TempDir().
+func generateTestCerts(t *testing.T) *testCerts {
+	t.Helper()
+	dir := t.TempDir()
+
+	// CA key and cert.
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	caCertDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	require.NoError(t, err)
+	caCert, err := x509.ParseCertificate(caCertDER)
+	require.NoError(t, err)
+
+	caPath := filepath.Join(dir, "ca.pem")
+	writePEM(t, caPath, "CERTIFICATE", caCertDER)
+
+	// Server key and cert.
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	serverTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+	serverCertDER, err := x509.CreateCertificate(rand.Reader, serverTemplate, caCert, &serverKey.PublicKey, caKey)
+	require.NoError(t, err)
+
+	certPath := filepath.Join(dir, "server-cert.pem")
+	keyPath := filepath.Join(dir, "server-key.pem")
+	writePEM(t, certPath, "CERTIFICATE", serverCertDER)
+	writeKeyPEM(t, keyPath, serverKey)
+
+	// Client key and cert.
+	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	clientTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(3),
+		Subject:      pkix.Name{CommonName: "test-client"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	clientCertDER, err := x509.CreateCertificate(rand.Reader, clientTemplate, caCert, &clientKey.PublicKey, caKey)
+	require.NoError(t, err)
+
+	clientCertPath := filepath.Join(dir, "client-cert.pem")
+	clientKeyPath := filepath.Join(dir, "client-key.pem")
+	writePEM(t, clientCertPath, "CERTIFICATE", clientCertDER)
+	writeKeyPEM(t, clientKeyPath, clientKey)
+
+	// Server TLS config.
+	serverTLSCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	require.NoError(t, err)
+
+	caPool := x509.NewCertPool()
+	caPool.AddCert(caCert)
+
+	return &testCerts{
+		caPath:     caPath,
+		certPath:   certPath,
+		keyPath:    keyPath,
+		clientCert: clientCertPath,
+		clientKey:  clientKeyPath,
+		tlsCfg: &tls.Config{
+			Certificates: []tls.Certificate{serverTLSCert},
+			ClientCAs:    caPool,
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+			MinVersion:   tls.VersionTLS13,
+		},
+	}
+}
+
+// writePEM writes a PEM-encoded block to the given path.
+func writePEM(t *testing.T, path, blockType string, data []byte) {
+	t.Helper()
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: data}))
+}
+
+// writeKeyPEM writes an ECDSA private key as PEM to the given path.
+func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
+	t.Helper()
+	der, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	writePEM(t, path, "EC PRIVATE KEY", der)
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers: mock metrics
+// ---------------------------------------------------------------------------
+
+// mockMetrics satisfies both audit.Metrics and webhook.Metrics for testing.
+type mockMetrics struct {
+	mu               sync.Mutex
+	events           map[string]int // "output:status" -> count
+	outputErrors     map[string]int
+	filteredCount    map[string]int
+	validationErrors map[string]int
+	globalFiltered   map[string]int
+	serializationErr map[string]int
+	bufferDrops      int
+	webhookDrops     int
+}
+
+func newMockMetrics() *mockMetrics {
+	return &mockMetrics{
+		events:           make(map[string]int),
+		outputErrors:     make(map[string]int),
+		filteredCount:    make(map[string]int),
+		validationErrors: make(map[string]int),
+		globalFiltered:   make(map[string]int),
+		serializationErr: make(map[string]int),
+	}
+}
+
+// --- audit.Metrics methods ---
+
+func (m *mockMetrics) RecordEvent(output, status string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events[output+":"+status]++
+}
+
+func (m *mockMetrics) RecordOutputError(output string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.outputErrors[output]++
+}
+
+func (m *mockMetrics) RecordOutputFiltered(output string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.filteredCount[output]++
+}
+
+func (m *mockMetrics) RecordBufferDrop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bufferDrops++
+}
+
+func (m *mockMetrics) RecordValidationError(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.validationErrors[eventType]++
+}
+
+func (m *mockMetrics) RecordFiltered(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.globalFiltered[eventType]++
+}
+
+func (m *mockMetrics) RecordSerializationError(eventType string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.serializationErr[eventType]++
+}
+
+// --- webhook.Metrics methods ---
+
+func (m *mockMetrics) RecordWebhookDrop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.webhookDrops++
+}
+
+func (m *mockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
+
+// --- Accessors ---
+
+func (m *mockMetrics) getEventCount(output, status string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.events[output+":"+status]
+}
+
+func (m *mockMetrics) getWebhookDrops() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.webhookDrops
+}
+
+func (m *mockMetrics) getBufferDrops() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.bufferDrops
+}
+
+var _ audit.Metrics = (*mockMetrics)(nil)
+var _ webhook.Metrics = (*mockMetrics)(nil)
+
+// ---------------------------------------------------------------------------
+// Test helpers: taxonomy
+// ---------------------------------------------------------------------------
+
+// testTaxonomy returns a taxonomy with common event types for testing.
+func testTaxonomy() audit.Taxonomy {
+	return audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"write":    {"user_create", "user_delete"},
+			"read":     {"user_get", "config_get"},
+			"security": {"auth_failure", "permission_denied"},
+		},
+		Events: map[string]audit.EventDef{
+			"user_create":       {Category: "write", Required: []string{"outcome"}},
+			"user_delete":       {Category: "write", Required: []string{"outcome"}},
+			"user_get":          {Category: "read", Required: []string{"outcome"}},
+			"config_get":        {Category: "read", Required: []string{"outcome"}},
+			"auth_failure":      {Category: "security", Required: []string{"outcome"}},
+			"permission_denied": {Category: "security", Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"write", "read", "security"},
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Test helpers for webhook
@@ -217,7 +477,7 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		w.WriteHeader(200)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -243,7 +503,7 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.GetWebhookDrops(), 0,
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
 		"RecordWebhookDrop should be called for overflow")
 }
 
@@ -483,7 +743,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(503)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -500,7 +760,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 	// Close blocks until batch goroutine exits (retries complete or cancelled).
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.GetWebhookDrops(), 0,
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
 		"RecordWebhookDrop should be called on retry exhaustion")
 }
 
@@ -556,7 +816,7 @@ func TestWebhookOutput_SSRFBlocked(t *testing.T) {
 		w.WriteHeader(200)
 	})
 
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -582,7 +842,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		time.Sleep(5 * time.Second) // slow server
 		w.WriteHeader(200)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -599,7 +859,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 	// Close blocks until batch goroutine exits (timeout + retries complete).
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.GetWebhookDrops(), 0,
+	assert.Greater(t, metrics.getWebhookDrops(), 0,
 		"timed out request should result in dropped batch")
 }
 
@@ -723,18 +983,18 @@ func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
 func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 	// Nil TLSPolicy should behave identically to the previous hardcoded
 	// TLS 1.3 default.
-	certs := testhelper.GenerateTestCerts(t)
+	certs := generateTestCerts(t)
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.TLSCfg
+	srv.TLS = certs.tlsCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
-		TLSCA:              certs.CAPath,
+		TLSCA:              certs.caPath,
 		TLSPolicy:          nil, // explicitly nil
 		AllowPrivateRanges: true,
 		BatchSize:          1,
@@ -749,20 +1009,20 @@ func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 }
 
 func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
-	certs := testhelper.GenerateTestCerts(t)
+	certs := generateTestCerts(t)
 	// Server accepts TLS 1.2.
-	certs.TLSCfg.MinVersion = tls.VersionTLS12
+	certs.tlsCfg.MinVersion = tls.VersionTLS12
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.TLSCfg
+	srv.TLS = certs.tlsCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:   srv.URL,
-		TLSCA: certs.CAPath,
+		TLSCA: certs.caPath,
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12: true,
 		},
@@ -786,23 +1046,23 @@ func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TLS tests (reuses generateTestCerts from testhelper)
+// TLS tests
 // ---------------------------------------------------------------------------
 
 func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
-	certs := testhelper.GenerateTestCerts(t)
+	certs := generateTestCerts(t)
 
 	// Start an HTTPS server with the test CA's cert.
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.TLSCfg
+	srv.TLS = certs.tlsCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
-		TLSCA:              certs.CAPath,
+		TLSCA:              certs.caPath,
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
@@ -817,22 +1077,22 @@ func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
 }
 
 func TestWebhookOutput_TLS_MTLS(t *testing.T) {
-	certs := testhelper.GenerateTestCerts(t)
+	certs := generateTestCerts(t)
 	// Require client cert.
-	certs.TLSCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	certs.tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.TLSCfg
+	srv.TLS = certs.tlsCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
-		TLSCA:              certs.CAPath,
-		TLSCert:            certs.ClientCert,
-		TLSKey:             certs.ClientKey,
+		TLSCA:              certs.caPath,
+		TLSCert:            certs.clientCert,
+		TLSKey:             certs.clientKey,
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
@@ -846,22 +1106,22 @@ func TestWebhookOutput_TLS_MTLS(t *testing.T) {
 }
 
 func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
-	certs := testhelper.GenerateTestCerts(t)
+	certs := generateTestCerts(t)
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	}))
-	srv.TLS = certs.TLSCfg
+	srv.TLS = certs.tlsCfg
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
 	// Generate a DIFFERENT CA — the server cert won't be trusted.
-	wrongCerts := testhelper.GenerateTestCerts(t)
+	wrongCerts := generateTestCerts(t)
 
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
-		TLSCA:              wrongCerts.CAPath, // wrong CA
+		TLSCA:              wrongCerts.caPath, // wrong CA
 		AllowPrivateRanges: true,
 		BatchSize:          1,
 		FlushInterval:      50 * time.Millisecond,
@@ -877,7 +1137,7 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	// This replaces time.Sleep synchronisation with an observable
 	// condition, per CLAUDE.md requirements.
 	require.Eventually(t, func() bool {
-		return metrics.GetWebhookDrops() > 0
+		return metrics.getWebhookDrops() > 0
 	}, 5*time.Second, 50*time.Millisecond,
 		"wrong CA should cause TLS failure and event drop")
 
@@ -892,7 +1152,7 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -912,13 +1172,13 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	// and recorded metrics before we close.
 	name := out.Name()
 	require.Eventually(t, func() bool {
-		return metrics.GetEventCount(name, "success") == 3
+		return metrics.getEventCount(name, "success") == 3
 	}, 5*time.Second, 10*time.Millisecond,
 		"RecordEvent(success) should be called once per delivered event")
 
 	require.NoError(t, out.Close())
 
-	assert.Equal(t, 0, metrics.GetEventCount(name, "error"),
+	assert.Equal(t, 0, metrics.getEventCount(name, "error"),
 		"RecordEvent(error) should not be called on success")
 }
 
@@ -926,7 +1186,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(503)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -945,9 +1205,9 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	name := out.Name()
-	assert.Equal(t, 2, metrics.GetEventCount(name, "error"),
+	assert.Equal(t, 2, metrics.getEventCount(name, "error"),
 		"RecordEvent(error) should be called once per dropped event")
-	assert.Equal(t, 0, metrics.GetEventCount(name, "success"),
+	assert.Equal(t, 0, metrics.getEventCount(name, "success"),
 		"RecordEvent(success) should not be called when retries exhausted")
 }
 
@@ -957,7 +1217,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		w.WriteHeader(200)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -977,7 +1237,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	name := out.Name()
-	assert.Greater(t, metrics.GetEventCount(name, "error"), 0,
+	assert.Greater(t, metrics.getEventCount(name, "error"), 0,
 		"RecordEvent(error) should be called for buffer overflow drops")
 }
 
@@ -987,7 +1247,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	metrics := testhelper.NewMockMetrics()
+	metrics := newMockMetrics()
 
 	webhookOut, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
@@ -1003,7 +1263,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	// Create a logger with the webhook output and metrics.
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
-		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(webhookOut, &audit.EventRoute{}, nil),
 		audit.WithMetrics(metrics),
 	)
@@ -1017,7 +1277,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	// that the client has read the response and recorded metrics.
 	name := webhookOut.Name()
 	require.Eventually(t, func() bool {
-		return metrics.GetEventCount(name, "success") == 1
+		return metrics.getEventCount(name, "success") == 1
 	}, 5*time.Second, 10*time.Millisecond,
 		"webhook should report delivery success from batch goroutine")
 

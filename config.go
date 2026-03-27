@@ -191,7 +191,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 	}
 
 	if cfg.File != nil {
-		out, err := NewFileOutput(*cfg.File)
+		out, err := NewFileOutput(*cfg.File, nil)
 		if err != nil {
 			return fmt.Errorf("audit: file output: %w", err)
 		}
@@ -204,7 +204,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 	}
 
 	if cfg.Syslog != nil {
-		out, err := NewSyslogOutput(cfg.Syslog)
+		out, err := NewSyslogOutput(cfg.Syslog, nil)
 		if err != nil {
 			return fmt.Errorf("audit: syslog output: %w", err)
 		}
@@ -214,7 +214,7 @@ func buildPrimaryOutputs(cfg *OutputsConfig, opts *[]Option, names map[string]bo
 	}
 
 	if cfg.Webhook != nil {
-		out, err := NewWebhookOutput(cfg.Webhook, nil)
+		out, err := NewWebhookOutput(cfg.Webhook, nil, nil)
 		if err != nil {
 			return fmt.Errorf("audit: webhook output: %w", err)
 		}
@@ -293,7 +293,7 @@ func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 		if nc.Syslog == nil {
 			return nil, fmt.Errorf("type %q requires Syslog config", nc.Type)
 		}
-		out, err := NewSyslogOutput(nc.Syslog)
+		out, err := NewSyslogOutput(nc.Syslog, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +302,7 @@ func buildNamedOutput(nc *NamedOutputConfig) (Output, error) {
 		if nc.Webhook == nil {
 			return nil, fmt.Errorf("type %q requires Webhook config", nc.Type)
 		}
-		out, err := NewWebhookOutput(nc.Webhook, nil)
+		out, err := NewWebhookOutput(nc.Webhook, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -322,7 +322,7 @@ func (n *namedOutput) Name() string { return n.name }
 
 // newNamedFileOutput creates a FileOutput and wraps it with a custom name.
 func newNamedFileOutput(name string, cfg FileConfig) (Output, error) {
-	out, err := NewFileOutput(cfg)
+	out, err := NewFileOutput(cfg, nil)
 	if err != nil {
 		return nil, err
 	}

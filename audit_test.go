@@ -126,6 +126,13 @@ func (m *mockOutput) waitForEvents(n int, timeout time.Duration) bool {
 // Mock metrics
 // ---------------------------------------------------------------------------
 
+var (
+	_ audit.Metrics        = (*mockMetrics)(nil)
+	_ audit.FileMetrics    = (*mockMetrics)(nil)
+	_ audit.SyslogMetrics  = (*mockMetrics)(nil)
+	_ audit.WebhookMetrics = (*mockMetrics)(nil)
+)
+
 type mockMetrics struct {
 	events              map[string]int // "output:status" -> count
 	outputErrors        map[string]int
@@ -133,6 +140,8 @@ type mockMetrics struct {
 	validationErrors    map[string]int // eventType -> count
 	globalFiltered      map[string]int // eventType -> count
 	serializationErrors map[string]int // eventType -> count
+	fileRotations       map[string]int // path -> count
+	syslogReconnects    map[string]int // "address:success|failure" -> count
 	mu                  sync.Mutex
 	bufferDrops         int
 	webhookDrops        int
@@ -142,6 +151,8 @@ func newMockMetrics() *mockMetrics {
 	return &mockMetrics{
 		events:              make(map[string]int),
 		outputErrors:        make(map[string]int),
+		fileRotations:       make(map[string]int),
+		syslogReconnects:    make(map[string]int),
 		filteredCount:       make(map[string]int),
 		validationErrors:    make(map[string]int),
 		globalFiltered:      make(map[string]int),
@@ -180,6 +191,24 @@ func (m *mockMetrics) RecordWebhookDrop() {
 }
 
 func (m *mockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
+
+func (m *mockMetrics) RecordFileRotation(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fileRotations[path]++
+}
+
+func (m *mockMetrics) RecordSyslogReconnect(address string, success bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := address + ":"
+	if success {
+		key += "success"
+	} else {
+		key += "failure"
+	}
+	m.syslogReconnects[key]++
+}
 
 func (m *mockMetrics) RecordValidationError(eventType string) {
 	m.mu.Lock()
@@ -221,6 +250,18 @@ func (m *mockMetrics) getBufferDrops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.bufferDrops
+}
+
+func (m *mockMetrics) getSyslogReconnectCount(address string, success bool) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := address + ":"
+	if success {
+		key += "success"
+	} else {
+		key += "failure"
+	}
+	return m.syslogReconnects[key]
 }
 
 // ---------------------------------------------------------------------------

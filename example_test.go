@@ -248,7 +248,7 @@ func ExampleNewFileOutput() {
 		MaxBackups:  5,
 		MaxAgeDays:  30,
 		Permissions: "0600",
-	})
+	}, nil)
 	if err != nil {
 		fmt.Println("create error:", err)
 		return

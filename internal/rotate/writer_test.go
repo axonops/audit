@@ -1070,6 +1070,125 @@ func TestWriter_CompressionOnResume(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// OnRotate callback — black-box
+// ---------------------------------------------------------------------------
+
+func TestWriter_OnRotate_NilDoesNotPanic(t *testing.T) {
+	// A nil OnRotate must not panic when rotation fires.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     0o600,
+		OnRotate: nil, // explicit nil — the default
+	})
+	require.NoError(t, err)
+
+	// Trigger rotation by writing past MaxSize.
+	payload := bytes.Repeat([]byte("A"), 30)
+	_, err = w.Write(payload) // 30 bytes
+	require.NoError(t, err)
+
+	// This write pushes total to 60 > 50, causing rotation.
+	assert.NotPanics(t, func() {
+		_, err = w.Write(payload)
+		require.NoError(t, err)
+	}, "nil OnRotate must not panic when rotation fires")
+
+	require.NoError(t, w.Close())
+}
+
+func TestWriter_OnRotate_CalledOncePerRotation(t *testing.T) {
+	// OnRotate must be called exactly once per rotation event, with
+	// the path of the active file that was just rotated (not the backup path).
+	//
+	// MaxSize=100 bytes. Fill sequence:
+	//   write1: 60 bytes → size=60  (no rotation)
+	//   write2: 60 bytes → size would be 120 > 100 → rotation #1, size=60
+	//   write3: 10 bytes → size=70  (no rotation)
+	//   write4: 60 bytes → size would be 130 > 100 → rotation #2, size=60
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	var (
+		mu           sync.Mutex
+		rotatedPaths []string
+	)
+	onRotate := func(rotatedPath string) {
+		mu.Lock()
+		defer mu.Unlock()
+		rotatedPaths = append(rotatedPaths, rotatedPath)
+	}
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  100,
+		Mode:     0o600,
+		OnRotate: onRotate,
+	})
+	require.NoError(t, err)
+
+	big := bytes.Repeat([]byte("B"), 60)
+	small := bytes.Repeat([]byte("S"), 10)
+
+	_, err = w.Write(big) // 60 bytes — under limit
+	require.NoError(t, err)
+	_, err = w.Write(big) // 120 > 100 — rotation #1, then write 60 bytes
+	require.NoError(t, err)
+	_, err = w.Write(small) // 10 bytes — under limit
+	require.NoError(t, err)
+	_, err = w.Write(big) // 70+60 = 130 > 100 — rotation #2, then write 60 bytes
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	mu.Lock()
+	count := len(rotatedPaths)
+	paths := make([]string, count)
+	copy(paths, rotatedPaths)
+	mu.Unlock()
+
+	assert.Equal(t, 2, count,
+		"OnRotate should be called exactly once per rotation, got %d calls", count)
+
+	for i, p := range paths {
+		assert.Equal(t, path, p,
+			"OnRotate call %d: got path %q, want %q (active file path)", i, p, path)
+	}
+}
+
+func TestWriter_OnRotate_NotCalledOnNormalWrite(t *testing.T) {
+	// OnRotate must not be called when no rotation occurs.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	var called atomic.Int32
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize: 10240, // 10 KB — writes below this do not rotate
+		Mode:    0o600,
+		OnRotate: func(_ string) {
+			called.Add(1)
+		},
+	})
+	require.NoError(t, err)
+
+	for range 5 {
+		_, err = w.Write([]byte("small event\n"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+
+	assert.Equal(t, int32(0), called.Load(),
+		"OnRotate must not be called when no rotation occurs")
+}
+
+// ---------------------------------------------------------------------------
 // OnError callback — black-box
 // ---------------------------------------------------------------------------
 

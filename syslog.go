@@ -139,23 +139,25 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 //
 // SyslogOutput is safe for concurrent use.
 type SyslogOutput struct {
-	writer   *srslog.Writer
-	tlsCfg   *tls.Config   // cached for reconnection; nil for non-TLS
-	closeCh  chan struct{} // closed by Close() to interrupt backoff
-	address  string
-	network  string
-	appName  string
-	hostname string
-	mu       sync.Mutex
-	priority srslog.Priority
-	failures int // consecutive failure count
-	maxRetry int
-	closed   bool
+	writer        *srslog.Writer
+	tlsCfg        *tls.Config   // cached for reconnection; nil for non-TLS
+	syslogMetrics SyslogMetrics // optional; nil disables syslog-specific metrics
+	closeCh       chan struct{} // closed by Close() to interrupt backoff
+	address       string
+	network       string
+	appName       string
+	hostname      string
+	mu            sync.Mutex
+	priority      srslog.Priority
+	failures      int // consecutive failure count
+	maxRetry      int
+	closed        bool
 }
 
 // NewSyslogOutput creates a new [SyslogOutput] from the given config.
 // It validates the config and establishes the initial connection.
-func NewSyslogOutput(cfg *SyslogConfig) (*SyslogOutput, error) {
+// The syslogMetrics parameter is optional (may be nil).
+func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics SyslogMetrics) (*SyslogOutput, error) {
 	if err := validateSyslogConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -186,14 +188,15 @@ func NewSyslogOutput(cfg *SyslogConfig) (*SyslogOutput, error) {
 	}
 
 	s := &SyslogOutput{
-		tlsCfg:   tlsCfg,
-		closeCh:  make(chan struct{}),
-		address:  cfg.Address,
-		network:  cfg.Network,
-		appName:  cfg.AppName,
-		hostname: hostname,
-		priority: priority | srslog.LOG_INFO,
-		maxRetry: maxRetry,
+		tlsCfg:        tlsCfg,
+		syslogMetrics: syslogMetrics,
+		closeCh:       make(chan struct{}),
+		address:       cfg.Address,
+		network:       cfg.Network,
+		appName:       cfg.AppName,
+		hostname:      hostname,
+		priority:      priority | srslog.LOG_INFO,
+		maxRetry:      maxRetry,
 	}
 
 	if err := s.connect(); err != nil {
@@ -210,17 +213,23 @@ func NewSyslogOutput(cfg *SyslogConfig) (*SyslogOutput, error) {
 // has been closed.
 func (s *SyslogOutput) Write(data []byte) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.closed {
+		s.mu.Unlock()
 		return ErrOutputClosed
 	}
 
 	if _, err := s.writer.Write(data); err != nil {
-		return s.handleWriteFailure(data, err)
+		reconnected, writeErr := s.handleWriteFailure(data, err)
+		s.mu.Unlock()
+		if reconnected != nil && s.syslogMetrics != nil {
+			s.syslogMetrics.RecordSyslogReconnect(s.address, *reconnected)
+		}
+		return writeErr
 	}
 
 	s.failures = 0
+	s.mu.Unlock()
 	return nil
 }
 
@@ -272,9 +281,12 @@ func (s *SyslogOutput) connect() error {
 }
 
 // handleWriteFailure attempts reconnection with bounded exponential
-// backoff. Called with s.mu held. Releases the mutex during the
-// backoff sleep so Close() is not blocked.
-func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
+// backoff. Called with s.mu held; returns with s.mu still held.
+// Releases the mutex during the backoff sleep so Close() is not blocked.
+// The second return value is non-nil when a reconnection was attempted:
+// *true for success, *false for failure. The caller uses this to invoke
+// [SyslogMetrics.RecordSyslogReconnect] outside the mutex.
+func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) (*bool, error) {
 	s.failures++
 
 	if s.failures > s.maxRetry {
@@ -282,7 +294,7 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
-		return fmt.Errorf("audit: syslog write after %d failures: %w",
+		return nil, fmt.Errorf("audit: syslog write after %d failures: %w",
 			s.failures, writeErr)
 	}
 
@@ -304,13 +316,13 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 	case <-time.After(backoff):
 	case <-s.closeCh:
 		s.mu.Lock()
-		return fmt.Errorf("audit: syslog closed during reconnect: %w", writeErr)
+		return nil, fmt.Errorf("audit: syslog closed during reconnect: %w", writeErr)
 	}
 	s.mu.Lock()
 
 	// Check if we were closed while sleeping.
 	if s.closed {
-		return ErrOutputClosed
+		return nil, ErrOutputClosed
 	}
 
 	if err := s.connect(); err != nil {
@@ -318,18 +330,20 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) error {
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
-		return fmt.Errorf("audit: syslog reconnect: %w", err)
+		reconnected := false
+		return &reconnected, fmt.Errorf("audit: syslog reconnect: %w", err)
 	}
 
 	slog.Info("audit: syslog reconnected", "address", s.address)
+	reconnected := true
 
 	// Retry the write on the new connection.
 	if _, err := s.writer.Write(data); err != nil {
-		return fmt.Errorf("audit: syslog write after reconnect: %w", err)
+		return &reconnected, fmt.Errorf("audit: syslog write after reconnect: %w", err)
 	}
 
 	s.failures = 0
-	return nil
+	return &reconnected, nil
 }
 
 // backoffDuration returns the backoff duration for the given attempt

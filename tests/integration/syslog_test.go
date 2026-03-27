@@ -105,7 +105,7 @@ func TestSyslogIntegration_TCP_SendAndReceive(t *testing.T) {
 		Address:  addr,
 		Facility: "local0",
 		AppName:  "go-audit-test",
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Send a known event.
@@ -133,7 +133,7 @@ func TestSyslogIntegration_TCP_MultipleEvents(t *testing.T) {
 		Address:  addr,
 		Facility: "local0",
 		AppName:  "go-audit-test",
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	events := []string{
@@ -164,7 +164,7 @@ func TestSyslogIntegration_TCP_RFC5424Format(t *testing.T) {
 		Address:  addr,
 		Facility: "local0",
 		AppName:  "go-audit-test",
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"rfc5424_check"}`)))

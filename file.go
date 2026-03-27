@@ -68,7 +68,8 @@ type FileOutput struct {
 
 // NewFileOutput creates a new [FileOutput] from the given config.
 // It validates the path, permissions, and parent directory existence.
-func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
+// The fileMetrics parameter is optional (may be nil).
+func NewFileOutput(cfg FileConfig, fileMetrics FileMetrics) (*FileOutput, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
@@ -104,7 +105,7 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 
 	logPath := cfg.Path // capture for closure
-	rw, err := rotate.New(cfg.Path, rotate.Config{
+	rotCfg := rotate.Config{
 		MaxSize:    int64(cfg.MaxSizeMB) * 1024 * 1024,
 		MaxAge:     time.Duration(cfg.MaxAgeDays) * 24 * time.Hour,
 		Mode:       perm,
@@ -114,7 +115,13 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 			slog.Warn("audit: file output background error",
 				"path", logPath, "error", err)
 		},
-	})
+	}
+	if fileMetrics != nil {
+		rotCfg.OnRotate = func(path string) {
+			fileMetrics.RecordFileRotation(path)
+		}
+	}
+	rw, err := rotate.New(cfg.Path, rotCfg)
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output: %w", err)
 	}

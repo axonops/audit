@@ -213,7 +213,10 @@ func validateWebhookLimits(cfg *WebhookConfig) error {
 func buildWebhookTLSConfig(cfg *WebhookConfig) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
-		slog.Warn(w, "output", "webhook", "url", cfg.URL)
+		// Log only scheme+host to avoid leaking query-parameter tokens.
+		u, _ := url.Parse(cfg.URL)
+		sanitised := u.Scheme + "://" + u.Host
+		slog.Warn(w, "output", "webhook", "url", sanitised)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

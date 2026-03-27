@@ -17,6 +17,7 @@ package audit_test
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,20 +143,28 @@ func TestTLSPolicy_Apply_TLS13_AllowWeakCiphersNoEffect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNoInsecureSkipVerify_InProductionCode(t *testing.T) {
-	matches, err := filepath.Glob("*.go")
-	require.NoError(t, err)
-
-	for _, path := range matches {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		data, err := os.ReadFile(path)
-		require.NoError(t, err)
+		if d.IsDir() {
+			if path == "vendor" || path == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
 
 		content := string(data)
 		assert.NotContains(t, content, "InsecureSkipVerify: true",
 			"%s must not set InsecureSkipVerify to true", path)
 		assert.NotContains(t, content, "InsecureSkipVerify:true",
 			"%s must not set InsecureSkipVerify to true (no space)", path)
-	}
+		return nil
+	})
+	require.NoError(t, err)
 }

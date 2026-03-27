@@ -168,8 +168,8 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 
 // mockMetrics implements syslog.Metrics for testing.
 type mockMetrics struct {
-	mu               sync.Mutex
 	syslogReconnects map[string]int // "address:success|failure" -> count
+	mu               sync.Mutex
 }
 
 func newMockMetrics() *mockMetrics {

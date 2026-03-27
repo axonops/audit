@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package webhook
 
 import (
 	"bytes"
@@ -131,7 +131,7 @@ func (w *WebhookOutput) recordSuccess(batchSize int, dur time.Duration) {
 	}
 }
 
-// recordDrop records dropped events in metrics. [WebhookMetrics.RecordWebhookDrop]
+// recordDrop records dropped events in metrics. [Metrics.RecordWebhookDrop]
 // and RecordEvent(name, "error") are called per dropped event.
 func (w *WebhookOutput) recordDrop(count int) {
 	if w.webhookMetrics == nil && w.metrics == nil {
@@ -169,7 +169,7 @@ func buildNDJSON(events [][]byte) []byte {
 }
 
 // webhookBackoff returns a jittered exponential backoff duration
-// for webhook retry: 100ms × 2^attempt with [0.5, 1.0) jitter,
+// for webhook retry: 100ms * 2^attempt with [0.5, 1.0) jitter,
 // capped at 5s.
 func webhookBackoff(attempt int) time.Duration {
 	const (

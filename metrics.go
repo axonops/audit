@@ -14,8 +14,6 @@
 
 package audit
 
-import "time"
-
 // Metrics is an optional instrumentation interface that consumers implement
 // to collect audit pipeline telemetry. Pass an implementation via
 // [WithMetrics]; pass nil to disable metrics collection.
@@ -58,17 +56,4 @@ type Metrics interface {
 	// RecordBufferDrop records that an event was dropped because the
 	// main async buffer was full.
 	RecordBufferDrop()
-}
-
-// WebhookMetrics is an optional interface for webhook-specific
-// instrumentation. Pass an implementation to [NewWebhookOutput] to
-// collect batch-level telemetry. Pass nil to disable.
-type WebhookMetrics interface {
-	// RecordWebhookDrop records that an event was dropped because the
-	// webhook output's internal buffer was full.
-	RecordWebhookDrop()
-
-	// RecordWebhookFlush records a webhook batch flush with the number
-	// of events in the batch and the flush duration.
-	RecordWebhookFlush(batchSize int, dur time.Duration)
 }

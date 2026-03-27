@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package webhook
 
 import (
 	"crypto/tls"
@@ -23,6 +23,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	audit "github.com/axonops/go-audit"
 )
 
 // Default values for [WebhookConfig] fields.
@@ -79,9 +81,9 @@ type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSP
 	TLSKey string
 
 	// TLSPolicy controls TLS version and cipher suite policy. When nil,
-	// the default policy (TLS 1.3 only) is used. See [TLSPolicy] for
+	// the default policy (TLS 1.3 only) is used. See [audit.TLSPolicy] for
 	// details on enabling TLS 1.2 fallback.
-	TLSPolicy *TLSPolicy
+	TLSPolicy *audit.TLSPolicy
 
 	// FlushInterval is the maximum time between batch flushes.
 	// The timer resets after every flush (batch-size or timer
@@ -99,7 +101,7 @@ type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSP
 	BatchSize int
 
 	// BufferSize is the internal async buffer capacity. When full,
-	// new events are dropped and [WebhookMetrics.RecordWebhookDrop] is called.
+	// new events are dropped and [Metrics.RecordWebhookDrop] is called.
 	// Zero defaults to [DefaultWebhookBufferSize] (10,000).
 	// Values above [MaxWebhookBufferSize] (1,000,000) are rejected.
 	BufferSize int
@@ -194,21 +196,21 @@ func applyWebhookDefaults(cfg *WebhookConfig) {
 func validateWebhookLimits(cfg *WebhookConfig) error {
 	if cfg.BatchSize > MaxWebhookBatchSize {
 		return fmt.Errorf("%w: webhook batch_size %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.BatchSize, MaxWebhookBatchSize)
+			audit.ErrConfigInvalid, cfg.BatchSize, MaxWebhookBatchSize)
 	}
 	if cfg.BufferSize > MaxWebhookBufferSize {
 		return fmt.Errorf("%w: webhook buffer_size %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.BufferSize, MaxWebhookBufferSize)
+			audit.ErrConfigInvalid, cfg.BufferSize, MaxWebhookBufferSize)
 	}
 	if cfg.MaxRetries > MaxWebhookMaxRetries {
 		return fmt.Errorf("%w: webhook max_retries %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxRetries, MaxWebhookMaxRetries)
+			audit.ErrConfigInvalid, cfg.MaxRetries, MaxWebhookMaxRetries)
 	}
 	return nil
 }
 
 // buildWebhookTLSConfig creates a TLS configuration for webhook
-// connections using the [TLSPolicy] from the config (defaulting to
+// connections using the [audit.TLSPolicy] from the config (defaulting to
 // TLS 1.3 only when nil). InsecureSkipVerify is never set.
 func buildWebhookTLSConfig(cfg *WebhookConfig) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)

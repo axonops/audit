@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit_test
+package webhook_test
 
 import (
 	"crypto/tls"
@@ -27,8 +27,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axonops/go-audit"
+	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/tests/testhelper"
+	"github.com/axonops/go-audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,9 +115,9 @@ func (s *webhookTestServer) requestCount() int {
 
 // newTestWebhookOutput creates a webhook output for testing with
 // AllowInsecureHTTP and AllowPrivateRanges (httptest uses http://127.0.0.1).
-func newTestWebhookOutput(t *testing.T, url string, opts ...func(*audit.WebhookConfig)) *audit.WebhookOutput {
+func newTestWebhookOutput(t *testing.T, url string, opts ...func(*webhook.WebhookConfig)) *webhook.WebhookOutput {
 	t.Helper()
-	cfg := &audit.WebhookConfig{
+	cfg := &webhook.WebhookConfig{
 		URL:                url,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -129,7 +130,7 @@ func newTestWebhookOutput(t *testing.T, url string, opts ...func(*audit.WebhookC
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := audit.NewWebhookOutput(cfg, nil, nil)
+	out, err := webhook.NewWebhookOutput(cfg, nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out
@@ -143,7 +144,7 @@ func TestNewWebhookOutput_Valid(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -153,7 +154,7 @@ func TestNewWebhookOutput_Valid(t *testing.T) {
 }
 
 func TestNewWebhookOutput_InvalidConfig(t *testing.T) {
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{}, nil, nil)
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{}, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must not be empty")
 }
@@ -184,7 +185,7 @@ func TestWebhookOutput_WriteAfterClose(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -200,7 +201,7 @@ func TestWebhookOutput_CloseIdempotent(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -217,7 +218,7 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -254,7 +255,7 @@ func TestWebhookOutput_Delivery(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 3
 	})
 
@@ -279,7 +280,7 @@ func TestWebhookOutput_ContentType_NDJSON(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1
 	})
 
@@ -295,7 +296,7 @@ func TestWebhookOutput_FlushInterval(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1000 // large, so only timer triggers
 		cfg.FlushInterval = 50 * time.Millisecond
 	})
@@ -313,7 +314,7 @@ func TestWebhookOutput_CloseFlushesRemaining(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -342,7 +343,7 @@ func TestWebhookOutput_EmptyBatch_NoRequest(t *testing.T) {
 		atomic.AddInt32(&requestCount, 1)
 		w.WriteHeader(200)
 	})
-	_ = newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	_ = newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.FlushInterval = 20 * time.Millisecond
 	})
 
@@ -357,12 +358,12 @@ func TestWebhookOutput_TimerResets_AfterBatchFlush(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 2
 		cfg.FlushInterval = 200 * time.Millisecond
 	})
 
-	// 2 events → batch-size flush.
+	// 2 events -> batch-size flush.
 	require.NoError(t, out.Write([]byte(`{"n":1}`+"\n")))
 	require.NoError(t, out.Write([]byte(`{"n":2}`+"\n")))
 	require.True(t, srv.waitForRequests(1, 2*time.Second))
@@ -380,7 +381,7 @@ func TestWebhookOutput_CustomHeaders(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1
 		cfg.Headers = map[string]string{
 			"Authorization": "Bearer test-token-123",
@@ -407,7 +408,7 @@ func TestWebhookOutput_Retry_503ThenSuccess(t *testing.T) {
 		}
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1
 		cfg.MaxRetries = 5
 	})
@@ -427,7 +428,7 @@ func TestWebhookOutput_NoRetry_4xx(t *testing.T) {
 				attempts.Add(1)
 				w.WriteHeader(code)
 			})
-			out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+			out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 				cfg.BatchSize = 1
 				cfg.MaxRetries = 3
 			})
@@ -451,7 +452,7 @@ func TestWebhookOutput_Retry_429(t *testing.T) {
 		}
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1
 	})
 
@@ -467,7 +468,7 @@ func TestWebhookOutput_Redirect_Rejected(t *testing.T) {
 		w.Header().Set("Location", "/other")
 		w.WriteHeader(301)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BatchSize = 1
 	})
 
@@ -483,7 +484,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 		w.WriteHeader(503)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -511,7 +512,7 @@ func TestWebhookOutput_ConcurrentWrites(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *audit.WebhookConfig) {
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.WebhookConfig) {
 		cfg.BufferSize = 1000
 	})
 
@@ -556,7 +557,7 @@ func TestWebhookOutput_SSRFBlocked(t *testing.T) {
 	})
 
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: false, // SSRF blocks 127.0.0.1
@@ -582,7 +583,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -603,16 +604,16 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 }
 
 func TestWebhookBackoff(t *testing.T) {
-	d0 := audit.WebhookBackoff(0)
+	d0 := webhook.WebhookBackoff(0)
 	assert.GreaterOrEqual(t, d0, 50*time.Millisecond) // 100ms * 0.5
 	assert.Less(t, d0, 100*time.Millisecond)          // 100ms * 1.0
 
-	d1 := audit.WebhookBackoff(1)
+	d1 := webhook.WebhookBackoff(1)
 	assert.GreaterOrEqual(t, d1, 100*time.Millisecond)
 	assert.Less(t, d1, 200*time.Millisecond)
 
 	// Should be capped at 5s.
-	d20 := audit.WebhookBackoff(20)
+	d20 := webhook.WebhookBackoff(20)
 	assert.LessOrEqual(t, d20, 5*time.Second)
 }
 
@@ -622,7 +623,7 @@ func TestBuildNDJSON(t *testing.T) {
 		[]byte(`{"b":2}`), // missing newline — should be added
 		[]byte(`{"c":3}` + "\n"),
 	}
-	result := audit.BuildNDJSON(events)
+	result := webhook.BuildNDJSON(events)
 	lines := strings.Split(strings.TrimSpace(string(result)), "\n")
 	assert.Len(t, lines, 3)
 	for _, line := range lines {
@@ -631,12 +632,12 @@ func TestBuildNDJSON(t *testing.T) {
 }
 
 func TestBuildNDJSON_Empty(t *testing.T) {
-	result := audit.BuildNDJSON(nil)
+	result := webhook.BuildNDJSON(nil)
 	assert.Empty(t, result)
 }
 
 func TestNewWebhookOutput_EmbeddedCredentials_Rejected(t *testing.T) {
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL: "https://user:pass@example.com/webhook",
 	}, nil, nil)
 	require.Error(t, err)
@@ -644,7 +645,7 @@ func TestNewWebhookOutput_EmbeddedCredentials_Rejected(t *testing.T) {
 }
 
 func TestNewWebhookOutput_HeaderValueCRLF_Rejected(t *testing.T) {
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:     "https://example.com/webhook",
 		Headers: map[string]string{"X-Custom": "val\r\nEvil: injected"},
 	}, nil, nil)
@@ -653,7 +654,7 @@ func TestNewWebhookOutput_HeaderValueCRLF_Rejected(t *testing.T) {
 }
 
 func TestNewWebhookOutput_TLSCA_NonexistentFile(t *testing.T) {
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:   "https://example.com/webhook",
 		TLSCA: "/nonexistent/ca.pem",
 	}, nil, nil)
@@ -666,7 +667,7 @@ func TestNewWebhookOutput_TLSCA_InvalidPEM(t *testing.T) {
 	badCA := dir + "/bad-ca.pem"
 	require.NoError(t, os.WriteFile(badCA, []byte("not a pem"), 0o600))
 
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:   "https://example.com/webhook",
 		TLSCA: badCA,
 	}, nil, nil)
@@ -675,7 +676,7 @@ func TestNewWebhookOutput_TLSCA_InvalidPEM(t *testing.T) {
 }
 
 func TestNewWebhookOutput_TLSCert_NonexistentFile(t *testing.T) {
-	_, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	_, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:     "https://example.com/webhook",
 		TLSCert: "/nonexistent/cert.pem",
 		TLSKey:  "/nonexistent/key.pem",
@@ -688,7 +689,7 @@ func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -731,7 +732,7 @@ func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
 		TLSCA:              certs.CAPath,
 		TLSPolicy:          nil, // explicitly nil
@@ -759,7 +760,7 @@ func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:   srv.URL,
 		TLSCA: certs.CAPath,
 		TLSPolicy: &audit.TLSPolicy{
@@ -785,7 +786,7 @@ func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TLS tests (reuses generateTestCerts from syslog_test.go)
+// TLS tests (reuses generateTestCerts from testhelper)
 // ---------------------------------------------------------------------------
 
 func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
@@ -799,7 +800,7 @@ func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
 		TLSCA:              certs.CAPath,
 		AllowPrivateRanges: true,
@@ -827,7 +828,7 @@ func TestWebhookOutput_TLS_MTLS(t *testing.T) {
 	srv.StartTLS()
 	t.Cleanup(func() { srv.Close() })
 
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
 		TLSCA:              certs.CAPath,
 		TLSCert:            certs.ClientCert,
@@ -858,7 +859,7 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	wrongCerts := testhelper.GenerateTestCerts(t)
 
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.URL,
 		TLSCA:              wrongCerts.CAPath, // wrong CA
 		AllowPrivateRanges: true,
@@ -892,7 +893,7 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -926,7 +927,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 		w.WriteHeader(503)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -957,7 +958,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := testhelper.NewMockMetrics()
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -988,7 +989,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	})
 	metrics := testhelper.NewMockMetrics()
 
-	webhookOut, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	webhookOut, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
@@ -1027,7 +1028,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 // Nil WebhookMetrics (#54)
 // ---------------------------------------------------------------------------
 
-// coreOnlyMetrics implements Metrics but not WebhookMetrics.
+// coreOnlyMetrics implements audit.Metrics but not webhook.Metrics.
 type coreOnlyMetrics struct {
 	events map[string]int
 	mu     sync.Mutex
@@ -1055,7 +1056,7 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	m := &coreOnlyMetrics{events: make(map[string]int)}
-	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+	out, err := webhook.NewWebhookOutput(&webhook.WebhookConfig{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,

@@ -74,7 +74,6 @@
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
-//   - [WebhookOutput] — batched HTTP webhook with retry and SSRF prevention; see [NewWebhookOutput]
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
@@ -82,7 +81,6 @@
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional core instrumentation interface
-//   - [WebhookMetrics] — optional webhook-specific instrumentation; see [WebhookOutput]
 //
 // # Taxonomy
 //

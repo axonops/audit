@@ -16,7 +16,8 @@ linters:
     - unused        # unused code detection
     - gosimple      # simpler code constructs
     - ineffassign   # ineffective assignments
-    - typecheck     # type-checking (compilation prerequisite)
+    # typecheck is a built-in stage in golangci-lint, not a configurable
+    # linter — it runs automatically and cannot be enabled/disabled.
     # Project-specific linters
     - errorlint     # correct error wrapping
     - revive        # comprehensive Go linter

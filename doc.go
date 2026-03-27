@@ -75,6 +75,7 @@
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
 //   - [SyslogOutput] — RFC 5424 syslog output (TCP/UDP/TLS/mTLS); see [NewSyslogOutput]
 //   - [WebhookOutput] — batched HTTP webhook with retry and SSRF prevention; see [NewWebhookOutput]
+//   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
 //   - [Hints] — per-request mutable audit metadata; populated by handlers via [GetHints]

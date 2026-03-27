@@ -234,8 +234,19 @@ func (s *Output) Write(data []byte) error {
 		return audit.ErrOutputClosed
 	}
 
-	if _, err := s.writer.Write(data); err != nil {
-		reconnected, writeErr := s.handleWriteFailure(data, err)
+	// writer may be nil if a previous reconnect attempt failed and left
+	// the connection in a broken state. Treat a nil writer as a write
+	// failure so handleWriteFailure can attempt reconnection or report
+	// max-retries-exceeded.
+	var writeAttemptErr error
+	if s.writer == nil {
+		writeAttemptErr = fmt.Errorf("audit: syslog writer not connected")
+	} else if _, err := s.writer.Write(data); err != nil {
+		writeAttemptErr = err
+	}
+
+	if writeAttemptErr != nil {
+		reconnected, writeErr := s.handleWriteFailure(data, writeAttemptErr)
 		s.mu.Unlock()
 		if reconnected != nil && s.syslogMetrics != nil {
 			s.syslogMetrics.RecordSyslogReconnect(s.address, *reconnected)

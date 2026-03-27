@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/tests/testhelper"
+	"github.com/axonops/go-audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

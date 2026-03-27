@@ -53,18 +53,6 @@ updates:
     labels:
       - "dependencies"
 
-  # Test helpers module
-  - package-ecosystem: "gomod"
-    directory: "/tests/testhelper"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "chore(deps):"
-    labels:
-      - "dependencies"
-
   # GitHub Actions — keeps SHA pins current
   - package-ecosystem: "github-actions"
     directory: "/"

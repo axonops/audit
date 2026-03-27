@@ -85,7 +85,7 @@ tidy:
 
 # Reject replace directives in all go.mod files
 check-replace:
-	@for mod in $(MODULES) tests/testhelper; do \
+	@for mod in $(MODULES); do \
 		if grep -q "^replace " "$$mod/go.mod" 2>/dev/null; then \
 			echo "ERROR: $$mod/go.mod contains replace directive"; \
 			exit 1; \

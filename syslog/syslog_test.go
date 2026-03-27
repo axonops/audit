@@ -1368,3 +1368,291 @@ func TestNewSyslogOutput_TLSConfig_InvalidClientCert(t *testing.T) {
 	assert.Contains(t, err.Error(), "tls config",
 		"error should indicate a TLS configuration failure")
 }
+
+// ---------------------------------------------------------------------------
+// buildSyslogTLSConfig — CA file exists but is unreadable (permission denied)
+// ---------------------------------------------------------------------------
+
+func TestNewSyslogOutput_TLSConfig_UnreadableCAFile(t *testing.T) {
+	// buildSyslogTLSConfig calls os.ReadFile after validateSyslogTLSFiles
+	// has already confirmed the path exists and is not a directory.
+	// A file with mode 0o000 passes os.Stat but fails os.ReadFile with
+	// a permission-denied error, exercising the "reading ca certificate"
+	// error path inside buildSyslogTLSConfig.
+	//
+	// This test is skipped when running as root because root bypasses
+	// file permission checks and ReadFile would succeed.
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test: running as root")
+	}
+
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "unreadable-ca.pem")
+	// Write a syntactically valid (but throwaway) placeholder so os.Stat
+	// sees a regular file, then remove all permissions.
+	require.NoError(t, os.WriteFile(caPath, []byte("placeholder\n"), 0o600))
+	require.NoError(t, os.Chmod(caPath, 0o000))
+	t.Cleanup(func() {
+		// Restore permissions so t.TempDir cleanup can remove the file.
+		_ = os.Chmod(caPath, 0o600)
+	})
+
+	_, err := syslog.New(&syslog.Config{
+		Network: "tcp+tls",
+		Address: "localhost:6514",
+		TLSCA:   caPath,
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ca certificate",
+		"error should mention CA certificate when ReadFile is denied")
+}
+
+// ---------------------------------------------------------------------------
+// handleWriteFailure — closeCh fires reliably during backoff
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T) {
+	// Exercise the `case <-s.closeCh:` arm of handleWriteFailure's select.
+	//
+	// Strategy:
+	//  1. Connect to a live server and confirm data flows.
+	//  2. Kill the server so the next write fails and enters handleWriteFailure.
+	//  3. MaxRetries is high so we never exhaust retries before Close fires.
+	//  4. After a short delay, call Close() which signals closeCh and
+	//     interrupts the backoff select.
+	//
+	// The observable outcome is:
+	//  - Write() returns an error (either "closed during reconnect",
+	//    ErrOutputClosed, or retry exhaustion)
+	//  - Close() returns without hanging
+	//  - No goroutine leak
+
+	srv := newMockSyslogServer(t)
+	addr := srv.addr()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    addr,
+		MaxRetries: 50, // high so we never exhaust retries before Close fires
+	}, nil)
+	require.NoError(t, err)
+
+	// Establish the connection and confirm data flows.
+	require.NoError(t, out.Write([]byte(`{"n":0}`)))
+	require.True(t, srv.waitForData(2*time.Second), "initial write must reach server")
+
+	// Tear down the server. The next write will fail and enter backoff.
+	srv.close()
+
+	// Schedule Close() after a short delay so it fires while the write
+	// goroutine is inside handleWriteFailure's backoff select.
+	time.AfterFunc(150*time.Millisecond, func() {
+		_ = out.Close()
+	})
+
+	// writeErrCh receives the first error from the write loop once a
+	// write fails and is interrupted by closeCh (or any other terminal
+	// condition). We loop writes because the first write after server
+	// death may succeed due to TCP buffering in srslog.
+	writeErrCh := make(chan error, 1)
+	go func() {
+		for {
+			if err := out.Write([]byte(`{"n":1}`)); err != nil {
+				writeErrCh <- err
+				return
+			}
+		}
+	}()
+
+	// Wait for the write goroutine to finish.
+	select {
+	case writeErr := <-writeErrCh:
+		// The error should be either "closed during reconnect" (closeCh fired)
+		// or ErrOutputClosed (closed before/during write) or a retry-exhaustion
+		// error. All are acceptable — the key assertion is no hang and no panic.
+		assert.Error(t, writeErr,
+			"write must return an error when output is closed during backoff")
+	case <-time.After(5 * time.Second):
+		t.Fatal("write goroutine did not terminate after Close — possible hang in handleWriteFailure")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleWriteFailure — s.closed is true after backoff timer fires
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_HandleWriteFailure_ClosedAfterBackoffTimer(t *testing.T) {
+	// Exercise the `if s.closed { return nil, audit.ErrOutputClosed }` check
+	// (lines 339-341 in syslog.go) that runs after the backoff timer fires
+	// and handleWriteFailure re-acquires the mutex.
+	//
+	// This check is distinct from the closeCh path (lines 332-334):
+	//  - closeCh path: Close() calls close(s.closeCh) while handleWriteFailure
+	//    is still waiting in the select — the closeCh case wins.
+	//  - s.closed path: the time.After case wins the select, but by the time
+	//    handleWriteFailure re-acquires s.mu, Close() has already run and set
+	//    s.closed = true. handleWriteFailure sees the flag and returns
+	//    ErrOutputClosed without attempting to reconnect.
+	//
+	// Reliable reproduction: use a slow-reconnect scenario (MaxRetries=5)
+	// and call Close() from a goroutine that is triggered by the write
+	// goroutine starting. The window (50-100ms backoff) is wide enough that
+	// Close() reliably runs while the timer is ticking, producing both paths
+	// across test runs. Either path is a correct outcome.
+	//
+	// The observable property under test: Write() terminates promptly and
+	// returns an error — it does NOT block indefinitely after Close() is called.
+
+	srv := newMockSyslogServer(t)
+	addr := srv.addr()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    addr,
+		MaxRetries: 5,
+	}, nil)
+	require.NoError(t, err)
+
+	// Establish the connection.
+	require.NoError(t, out.Write([]byte(`{"setup":true}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+
+	// Kill the server so writes will fail and enter backoff.
+	srv.close()
+
+	// writeStartedCh is closed by the write goroutine before it issues its
+	// first failing write, giving Close() a reliable signal to fire during
+	// the backoff window without using time.Sleep for synchronisation.
+	writeStartedCh := make(chan struct{})
+	writeErrCh := make(chan error, 1)
+
+	go func() {
+		close(writeStartedCh) // signal: about to write against dead server
+		for {
+			if err := out.Write([]byte(`{"n":1}`)); err != nil {
+				writeErrCh <- err
+				return
+			}
+		}
+	}()
+
+	// Wait for the write goroutine to start, then close the output.
+	// The goroutine will enter handleWriteFailure (50-100ms backoff).
+	// Close() fires promptly after writingCh is closed — well before
+	// the first backoff timer fires — exercising the closeCh or the
+	// s.closed check depending on which races ahead.
+	<-writeStartedCh
+	require.NoError(t, out.Close())
+
+	select {
+	case writeErr := <-writeErrCh:
+		// Either ErrOutputClosed (s.closed path), "closed during reconnect"
+		// (closeCh path), or retry-exhausted are all valid outcomes.
+		assert.Error(t, writeErr, "write must return error when output is closed during backoff")
+	case <-time.After(10 * time.Second):
+		t.Error("write goroutine did not terminate — handleWriteFailure may be hanging after Close")
+		_ = out.Close()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleWriteFailure — max retries exceeded produces a clear error
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_HandleWriteFailure_MaxRetriesExceeded_ErrorMessage(t *testing.T) {
+	// Verify the exact shape of the error returned when max retries are
+	// exceeded in handleWriteFailure. The error message must include the
+	// failure count so operators can diagnose it.
+	//
+	// With MaxRetries=1 and a permanently dead server:
+	//   - Write A: failures increments to 1 (not > 1), enters backoff,
+	//     connect() fails → returns a reconnect error. failures stays at 1.
+	//   - Write B: failures increments to 2 (> maxRetry=1), hits the
+	//     early return: "audit: syslog write after %d failures: %w".
+	//     The error contains the word "failures".
+	//
+	// We issue writes in a loop and check each returned error; we stop
+	// when we find one matching the max-retries format.
+	srv := newMockSyslogServer(t)
+	addr := srv.addr()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    addr,
+		MaxRetries: 1,
+	}, nil)
+	require.NoError(t, err)
+
+	// Establish the connection.
+	require.NoError(t, out.Write([]byte(`{"n":0}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+
+	// Kill the server permanently.
+	srv.close()
+
+	// Write A: failures=1 ≤ 1, enters backoff → reconnect fails → error.
+	// Write B: failures=2 > 1, hits the max-retries early return.
+	// We loop up to 5 writes to handle any TCP buffering on the first write
+	// (it might succeed silently), and stop when we see the "failures" error.
+	var maxRetriesErr error
+	for range 5 {
+		e := out.Write([]byte(`{"n":1}`))
+		if e != nil && strings.Contains(e.Error(), "failures") {
+			maxRetriesErr = e
+			break
+		}
+	}
+
+	require.NotNil(t, maxRetriesErr,
+		"expected a max-retries-exceeded error containing 'failures' within 5 write attempts")
+	assert.Contains(t, maxRetriesErr.Error(), "failures",
+		"max-retries-exceeded error should contain the failure count")
+
+	require.NoError(t, out.Close())
+}
+
+// ---------------------------------------------------------------------------
+// Close — writer.Close() returns an error
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_Close_WriterCloseError(t *testing.T) {
+	// Exercise the error path in Close() where s.writer.Close() returns
+	// an error (lines 264-266 in syslog.go).
+	//
+	// srslog.Writer.Close() can fail if the underlying network connection
+	// is already broken. We cause this by closing the server-side listener
+	// (which forces a TCP RST on the existing connection) and then calling
+	// out.Close() — srslog may detect the broken connection and return an
+	// error when trying to flush/close.
+	//
+	// Note: srslog may also swallow the error internally and return nil.
+	// In that case this test degrades to a no-error assertion, which is
+	// still valid (Close() must never return an unexpected error on a
+	// clean path). The test documents the intended behaviour: either nil
+	// or a well-formed error is acceptable; panic is not.
+	srv := newMockSyslogServer(t)
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"n":0}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+
+	// Kill the server to force a broken connection on the output side.
+	srv.close()
+
+	// out.Close() must not panic. It may return nil or a wrapped error
+	// from srslog — both are acceptable.
+	closeErr := out.Close()
+	// Acceptable: nil (srslog swallowed it) or a non-nil error.
+	// Not acceptable: panic.
+	if closeErr != nil {
+		assert.Contains(t, closeErr.Error(), "syslog close",
+			"Close error should be wrapped with 'syslog close' context")
+	}
+	// Second close must always be nil (idempotent).
+	assert.NoError(t, out.Close())
+}

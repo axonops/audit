@@ -105,8 +105,6 @@ linters:
       enable-all: true
 
   exclusions:
-    max-issues-per-linter: 0
-    max-same-issues: 0
     rules:
       # Test files are allowed to use dot imports for testify.
       - path: _test\.go

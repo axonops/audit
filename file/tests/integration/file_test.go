@@ -41,7 +41,7 @@ func TestFileOutput_Rotation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.NewFileOutput(file.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       path,
 		MaxSizeMB:  1, // 1 MB to trigger rotation quickly
 		MaxBackups: 3,
@@ -76,7 +76,7 @@ func TestFileOutput_Compression(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	compress := true
-	out, err := file.NewFileOutput(file.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 3,
@@ -121,7 +121,7 @@ func TestFileOutput_CompressionDisabled(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	compress := false
-	out, err := file.NewFileOutput(file.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 3,
@@ -152,7 +152,7 @@ func TestFileOutput_MaxBackups(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	compress := false
-	out, err := file.NewFileOutput(file.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 2, // Keep only 2 backups
@@ -187,7 +187,7 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.NewFileOutput(file.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

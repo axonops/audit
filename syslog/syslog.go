@@ -34,11 +34,11 @@ import (
 	"github.com/gravwell/srslog"
 )
 
-// Compile-time assertion: SyslogOutput satisfies audit.Output.
-var _ audit.Output = (*SyslogOutput)(nil)
+// Compile-time assertion: Output satisfies audit.Output.
+var _ audit.Output = (*Output)(nil)
 
 // Metrics is an optional interface for syslog-specific
-// instrumentation. Pass an implementation to [NewSyslogOutput] to
+// instrumentation. Pass an implementation to [New] to
 // collect reconnection telemetry. Pass nil to disable.
 type Metrics interface {
 	// RecordSyslogReconnect records a syslog reconnection attempt.
@@ -48,19 +48,19 @@ type Metrics interface {
 	RecordSyslogReconnect(address string, success bool)
 }
 
-// Default values for [SyslogConfig] fields.
+// Default values for [Config] fields.
 const (
-	// DefaultSyslogAppName is the default application name in the
-	// syslog header when [SyslogConfig.AppName] is empty.
-	DefaultSyslogAppName = "audit"
+	// DefaultAppName is the default application name in the
+	// syslog header when [Config.AppName] is empty.
+	DefaultAppName = "audit"
 
-	// DefaultSyslogFacility is the default syslog facility when
-	// [SyslogConfig.Facility] is empty.
-	DefaultSyslogFacility = "local0"
+	// DefaultFacility is the default syslog facility when
+	// [Config.Facility] is empty.
+	DefaultFacility = "local0"
 
-	// DefaultSyslogMaxRetries is the default number of reconnection
+	// DefaultMaxRetries is the default number of reconnection
 	// attempts before giving up.
-	DefaultSyslogMaxRetries = 10
+	DefaultMaxRetries = 10
 
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
@@ -69,8 +69,8 @@ const (
 	syslogMaxBackoff = 30 * time.Second
 )
 
-// SyslogConfig holds configuration for [SyslogOutput].
-type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
+// Config holds configuration for [Output].
+type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
 	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
 	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).
@@ -78,19 +78,19 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 	Network string
 
 	// Address is the syslog server address in host:port format.
-	// REQUIRED; an empty address causes [NewSyslogOutput] to return
+	// REQUIRED; an empty address causes [New] to return
 	// an error.
 	Address string
 
 	// AppName is the application name in the syslog header.
-	// Empty defaults to [DefaultSyslogAppName] ("audit").
+	// Empty defaults to [DefaultAppName] ("audit").
 	AppName string
 
 	// Facility is the syslog facility name. Supported values:
 	// kern, user, mail, daemon, auth, syslog, lpr, news, uucp,
 	// cron, authpriv, ftp, local0 through local7.
-	// Empty defaults to [DefaultSyslogFacility] ("local0").
-	// Unknown values cause [NewSyslogOutput] to return an error.
+	// Empty defaults to [DefaultFacility] ("local0").
+	// Unknown values cause [New] to return an error.
 	Facility string
 
 	// TLSCert is the path to the client certificate for mTLS.
@@ -112,11 +112,11 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 
 	// MaxRetries is the maximum number of consecutive reconnection
 	// attempts before giving up. Zero defaults to
-	// [DefaultSyslogMaxRetries] (10).
+	// [DefaultMaxRetries] (10).
 	MaxRetries int
 }
 
-// SyslogOutput writes serialised audit events to a syslog server over
+// Output writes serialised audit events to a syslog server over
 // TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
 // RFC 5424 structured syslog messages with the pre-serialised audit
 // payload (JSON or CEF) as the message body. The payload is placed in
@@ -125,9 +125,9 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 //
 // # Reconnection
 //
-// On connection failure, [SyslogOutput] attempts bounded exponential
+// On connection failure, [Output] attempts bounded exponential
 // backoff reconnection (100ms to 30s with jitter, up to
-// [SyslogConfig.MaxRetries] attempts). Reconnection happens within
+// [Config.MaxRetries] attempts). Reconnection happens within
 // [Write]: the mutex is released during the backoff sleep so [Close]
 // can interrupt it. On reconnection, the old srslog.Writer is closed
 // and a fresh connection is dialled — this avoids conflicting with
@@ -152,8 +152,8 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 // restarted. This differs from the schema registry which supports
 // certificate auto-reload.
 //
-// SyslogOutput is safe for concurrent use.
-type SyslogOutput struct {
+// Output is safe for concurrent use.
+type Output struct {
 	writer        *srslog.Writer
 	tlsCfg        *tls.Config // cached for reconnection; nil for non-TLS
 	syslogMetrics Metrics     // optional; nil disables syslog-specific metrics
@@ -169,10 +169,10 @@ type SyslogOutput struct {
 	closed        bool
 }
 
-// NewSyslogOutput creates a new [SyslogOutput] from the given config.
+// New creates a new [Output] from the given config.
 // It validates the config and establishes the initial connection.
 // The syslogMetrics parameter is optional (may be nil).
-func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics Metrics) (*SyslogOutput, error) {
+func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 	if err := validateSyslogConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -199,10 +199,10 @@ func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics Metrics) (*SyslogOutput, e
 
 	maxRetry := cfg.MaxRetries
 	if maxRetry <= 0 {
-		maxRetry = DefaultSyslogMaxRetries
+		maxRetry = DefaultMaxRetries
 	}
 
-	s := &SyslogOutput{
+	s := &Output{
 		tlsCfg:        tlsCfg,
 		syslogMetrics: syslogMetrics,
 		closeCh:       make(chan struct{}),
@@ -226,7 +226,7 @@ func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics Metrics) (*SyslogOutput, e
 // connection failure, Write attempts reconnection with bounded
 // exponential backoff. Write returns [audit.ErrOutputClosed] if the
 // output has been closed.
-func (s *SyslogOutput) Write(data []byte) error {
+func (s *Output) Write(data []byte) error {
 	s.mu.Lock()
 
 	if s.closed {
@@ -250,7 +250,7 @@ func (s *SyslogOutput) Write(data []byte) error {
 
 // Close closes the syslog connection. Close is idempotent and safe
 // for concurrent use.
-func (s *SyslogOutput) Close() error {
+func (s *Output) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -269,12 +269,12 @@ func (s *SyslogOutput) Close() error {
 }
 
 // Name returns the human-readable identifier for this output.
-func (s *SyslogOutput) Name() string {
+func (s *Output) Name() string {
 	return "syslog:" + s.address
 }
 
 // connect establishes a connection to the syslog server.
-func (s *SyslogOutput) connect() error {
+func (s *Output) connect() error {
 	var w *srslog.Writer
 	var err error
 
@@ -301,7 +301,7 @@ func (s *SyslogOutput) connect() error {
 // The second return value is non-nil when a reconnection was attempted:
 // *true for success, *false for failure. The caller uses this to invoke
 // [Metrics.RecordSyslogReconnect] outside the mutex.
-func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) (*bool, error) {
+func (s *Output) handleWriteFailure(data []byte, writeErr error) (*bool, error) {
 	s.failures++
 
 	if s.failures > s.maxRetry {
@@ -382,7 +382,7 @@ func backoffDuration(attempt int) time.Duration {
 
 // validateSyslogConfig checks the config for correctness, applying
 // defaults where needed.
-func validateSyslogConfig(cfg *SyslogConfig) error {
+func validateSyslogConfig(cfg *Config) error {
 	if cfg.Address == "" {
 		return fmt.Errorf("audit: syslog address must not be empty")
 	}
@@ -398,17 +398,17 @@ func validateSyslogConfig(cfg *SyslogConfig) error {
 	}
 
 	if cfg.AppName == "" {
-		cfg.AppName = DefaultSyslogAppName
+		cfg.AppName = DefaultAppName
 	}
 	if cfg.Facility == "" {
-		cfg.Facility = DefaultSyslogFacility
+		cfg.Facility = DefaultFacility
 	}
 
 	return validateSyslogTLSFiles(cfg)
 }
 
 // validateSyslogTLSFiles checks TLS cert/key pairing and file existence.
-func validateSyslogTLSFiles(cfg *SyslogConfig) error {
+func validateSyslogTLSFiles(cfg *Config) error {
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
 		return fmt.Errorf("audit: syslog tls_cert and tls_key must both be set or both empty")
 	}
@@ -431,7 +431,7 @@ func validateSyslogTLSFiles(cfg *SyslogConfig) error {
 // buildSyslogTLSConfig creates a TLS configuration for syslog
 // connections using the [audit.TLSPolicy] from the config (defaulting
 // to TLS 1.3 only when nil). InsecureSkipVerify is never set.
-func buildSyslogTLSConfig(cfg *SyslogConfig) (*tls.Config, error) {
+func buildSyslogTLSConfig(cfg *Config) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
 		slog.Warn(w, "output", "syslog", "address", cfg.Address)

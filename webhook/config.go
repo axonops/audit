@@ -27,36 +27,36 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
-// Default values for [WebhookConfig] fields.
+// Default values for [Config] fields.
 const (
-	// DefaultWebhookBatchSize is the default maximum events per batch.
-	DefaultWebhookBatchSize = 100
+	// DefaultBatchSize is the default maximum events per batch.
+	DefaultBatchSize = 100
 
-	// DefaultWebhookFlushInterval is the default maximum time between
+	// DefaultFlushInterval is the default maximum time between
 	// batch flushes.
-	DefaultWebhookFlushInterval = 5 * time.Second
+	DefaultFlushInterval = 5 * time.Second
 
-	// DefaultWebhookTimeout is the default HTTP request timeout.
-	DefaultWebhookTimeout = 10 * time.Second
+	// DefaultTimeout is the default HTTP request timeout.
+	DefaultTimeout = 10 * time.Second
 
-	// DefaultWebhookMaxRetries is the default retry count for 5xx/429.
-	DefaultWebhookMaxRetries = 3
+	// DefaultMaxRetries is the default retry count for 5xx/429.
+	DefaultMaxRetries = 3
 
-	// DefaultWebhookBufferSize is the default internal buffer capacity.
-	DefaultWebhookBufferSize = 10_000
+	// DefaultBufferSize is the default internal buffer capacity.
+	DefaultBufferSize = 10_000
 
-	// MaxWebhookBatchSize is the upper bound for BatchSize.
-	MaxWebhookBatchSize = 10_000
+	// MaxBatchSize is the upper bound for BatchSize.
+	MaxBatchSize = 10_000
 
-	// MaxWebhookBufferSize is the upper bound for BufferSize.
-	MaxWebhookBufferSize = 1_000_000
+	// MaxBufferSize is the upper bound for BufferSize.
+	MaxBufferSize = 1_000_000
 
-	// MaxWebhookMaxRetries is the upper bound for MaxRetries.
-	MaxWebhookMaxRetries = 20
+	// MaxMaxRetries is the upper bound for MaxRetries.
+	MaxMaxRetries = 20
 )
 
-// WebhookConfig holds configuration for [WebhookOutput].
-type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
+// Config holds configuration for [Output].
+type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
 	// URL is the HTTP endpoint to POST batched events to.
 	// REQUIRED. MUST be https:// unless [AllowInsecureHTTP] is true.
 	URL string
@@ -87,28 +87,28 @@ type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSP
 
 	// FlushInterval is the maximum time between batch flushes.
 	// The timer resets after every flush (batch-size or timer
-	// triggered). Zero defaults to [DefaultWebhookFlushInterval] (5s).
+	// triggered). Zero defaults to [DefaultFlushInterval] (5s).
 	FlushInterval time.Duration
 
 	// Timeout is the HTTP request timeout covering the full
 	// request/response lifecycle including body read.
-	// Zero defaults to [DefaultWebhookTimeout] (10s).
+	// Zero defaults to [DefaultTimeout] (10s).
 	Timeout time.Duration
 
 	// BatchSize is the maximum events per HTTP request.
-	// Zero defaults to [DefaultWebhookBatchSize] (100).
-	// Values above [MaxWebhookBatchSize] (10,000) are rejected.
+	// Zero defaults to [DefaultBatchSize] (100).
+	// Values above [MaxBatchSize] (10,000) are rejected.
 	BatchSize int
 
 	// BufferSize is the internal async buffer capacity. When full,
 	// new events are dropped and [Metrics.RecordWebhookDrop] is called.
-	// Zero defaults to [DefaultWebhookBufferSize] (10,000).
-	// Values above [MaxWebhookBufferSize] (1,000,000) are rejected.
+	// Zero defaults to [DefaultBufferSize] (10,000).
+	// Values above [MaxBufferSize] (1,000,000) are rejected.
 	BufferSize int
 
 	// MaxRetries is the retry count for 5xx and 429 responses.
-	// Zero defaults to [DefaultWebhookMaxRetries] (3).
-	// Values above [MaxWebhookMaxRetries] (20) are rejected.
+	// Zero defaults to [DefaultMaxRetries] (3).
+	// Values above [MaxMaxRetries] (20) are rejected.
 	MaxRetries int
 
 	// AllowInsecureHTTP permits http:// URLs. Default: false.
@@ -124,7 +124,7 @@ type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSP
 
 // validateWebhookConfig checks the config for correctness, applying
 // defaults where needed.
-func validateWebhookConfig(cfg *WebhookConfig) error {
+func validateWebhookConfig(cfg *Config) error {
 	if cfg.URL == "" {
 		return fmt.Errorf("audit: webhook url must not be empty")
 	}
@@ -174,37 +174,37 @@ func validateWebhookHeaders(headers map[string]string) error {
 }
 
 // applyWebhookDefaults fills zero-valued fields with documented defaults.
-func applyWebhookDefaults(cfg *WebhookConfig) {
+func applyWebhookDefaults(cfg *Config) {
 	if cfg.BatchSize <= 0 {
-		cfg.BatchSize = DefaultWebhookBatchSize
+		cfg.BatchSize = DefaultBatchSize
 	}
 	if cfg.FlushInterval <= 0 {
-		cfg.FlushInterval = DefaultWebhookFlushInterval
+		cfg.FlushInterval = DefaultFlushInterval
 	}
 	if cfg.Timeout <= 0 {
-		cfg.Timeout = DefaultWebhookTimeout
+		cfg.Timeout = DefaultTimeout
 	}
 	if cfg.MaxRetries <= 0 {
-		cfg.MaxRetries = DefaultWebhookMaxRetries
+		cfg.MaxRetries = DefaultMaxRetries
 	}
 	if cfg.BufferSize <= 0 {
-		cfg.BufferSize = DefaultWebhookBufferSize
+		cfg.BufferSize = DefaultBufferSize
 	}
 }
 
 // validateWebhookLimits checks upper bounds on numeric fields.
-func validateWebhookLimits(cfg *WebhookConfig) error {
-	if cfg.BatchSize > MaxWebhookBatchSize {
+func validateWebhookLimits(cfg *Config) error {
+	if cfg.BatchSize > MaxBatchSize {
 		return fmt.Errorf("%w: webhook batch_size %d exceeds maximum %d",
-			audit.ErrConfigInvalid, cfg.BatchSize, MaxWebhookBatchSize)
+			audit.ErrConfigInvalid, cfg.BatchSize, MaxBatchSize)
 	}
-	if cfg.BufferSize > MaxWebhookBufferSize {
+	if cfg.BufferSize > MaxBufferSize {
 		return fmt.Errorf("%w: webhook buffer_size %d exceeds maximum %d",
-			audit.ErrConfigInvalid, cfg.BufferSize, MaxWebhookBufferSize)
+			audit.ErrConfigInvalid, cfg.BufferSize, MaxBufferSize)
 	}
-	if cfg.MaxRetries > MaxWebhookMaxRetries {
+	if cfg.MaxRetries > MaxMaxRetries {
 		return fmt.Errorf("%w: webhook max_retries %d exceeds maximum %d",
-			audit.ErrConfigInvalid, cfg.MaxRetries, MaxWebhookMaxRetries)
+			audit.ErrConfigInvalid, cfg.MaxRetries, MaxMaxRetries)
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func validateWebhookLimits(cfg *WebhookConfig) error {
 // buildWebhookTLSConfig creates a TLS configuration for webhook
 // connections using the [audit.TLSPolicy] from the config (defaulting to
 // TLS 1.3 only when nil). InsecureSkipVerify is never set.
-func buildWebhookTLSConfig(cfg *WebhookConfig) (*tls.Config, error) {
+func buildWebhookTLSConfig(cfg *Config) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
 		// Log only scheme+host to avoid leaking query-parameter tokens.

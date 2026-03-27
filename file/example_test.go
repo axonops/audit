@@ -23,7 +23,7 @@ import (
 	"github.com/axonops/go-audit/file"
 )
 
-func ExampleNewFileOutput() {
+func ExampleNew() {
 	// Create a file output with rotation for production use.
 	dir, err := os.MkdirTemp("", "audit-example-*")
 	if err != nil {
@@ -31,7 +31,7 @@ func ExampleNewFileOutput() {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	out, err := file.NewFileOutput(file.FileConfig{
+	out, err := file.New(file.Config{
 		Path:        filepath.Join(dir, "audit.log"),
 		MaxSizeMB:   100,
 		MaxBackups:  5,

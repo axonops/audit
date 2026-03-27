@@ -20,9 +20,9 @@ import (
 	"github.com/axonops/go-audit/syslog"
 )
 
-func ExampleSyslogConfig_tcp() {
+func ExampleConfig_tcp() {
 	// Plain TCP syslog — the simplest configuration.
-	cfg := &syslog.SyslogConfig{
+	cfg := &syslog.Config{
 		Network:  "tcp",
 		Address:  "syslog.example.com:514",
 		Facility: "local0",
@@ -33,9 +33,9 @@ func ExampleSyslogConfig_tcp() {
 	// Output: network=tcp address=syslog.example.com:514 facility=local0 app=myapp
 }
 
-func ExampleSyslogConfig_tls() {
+func ExampleConfig_tls() {
 	// TLS syslog with CA verification.
-	cfg := &syslog.SyslogConfig{
+	cfg := &syslog.Config{
 		Network: "tcp+tls",
 		Address: "syslog.example.com:6514",
 		TLSCA:   "/etc/audit/ca.pem",
@@ -44,9 +44,9 @@ func ExampleSyslogConfig_tls() {
 	// Output: network=tcp+tls address=syslog.example.com:6514 ca=/etc/audit/ca.pem
 }
 
-func ExampleSyslogConfig_mtls() {
+func ExampleConfig_mtls() {
 	// mTLS syslog with client certificate authentication.
-	cfg := &syslog.SyslogConfig{
+	cfg := &syslog.Config{
 		Network: "tcp+tls",
 		Address: "syslog.example.com:6514",
 		TLSCert: "/etc/audit/client-cert.pem",

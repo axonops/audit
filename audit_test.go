@@ -1447,6 +1447,262 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DeliveryReporter — writeToOutput skips core metrics when selfReports=true
+// ---------------------------------------------------------------------------
+
+// deliveryReporterOutput is a mock output that implements DeliveryReporter.
+// It reports its own delivery, so the core logger must NOT call RecordEvent
+// or RecordOutputError for it.
+type deliveryReporterOutput struct {
+	testhelper.MockOutput
+	writeErrToReturn error
+}
+
+func newDeliveryReporterOutput(name string) *deliveryReporterOutput {
+	return &deliveryReporterOutput{
+		MockOutput: *testhelper.NewMockOutput(name),
+	}
+}
+
+func (d *deliveryReporterOutput) ReportsDelivery() bool { return true }
+
+func (d *deliveryReporterOutput) Write(data []byte) error {
+	if d.writeErrToReturn != nil {
+		return d.writeErrToReturn
+	}
+	return d.MockOutput.Write(data)
+}
+
+var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)
+var _ audit.Output = (*deliveryReporterOutput)(nil)
+
+func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
+	// When an output satisfies DeliveryReporter and ReportsDelivery()
+	// returns true, the core logger must NOT call RecordEvent on success.
+	metrics := testhelper.NewMockMetrics()
+	out := newDeliveryReporterOutput("self-reporting")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	// The self-reporting output received the event.
+	assert.Equal(t, 1, out.EventCount())
+
+	// The core logger must not have called RecordEvent for this output.
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "success"),
+		"core logger must not call RecordEvent(success) for DeliveryReporter outputs")
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "error"),
+		"core logger must not call RecordEvent(error) for DeliveryReporter outputs")
+}
+
+func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
+	// When a DeliveryReporter output fails on Write, the core logger must
+	// NOT call RecordEvent or RecordOutputError — the output is responsible.
+	metrics := testhelper.NewMockMetrics()
+	out := newDeliveryReporterOutput("self-reporting-fail")
+	out.writeErrToReturn = errors.New("delivery failed")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	// Core logger must not record any metrics for the self-reporting output.
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "success"),
+		"core logger must not call RecordEvent(success) for DeliveryReporter outputs")
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "error"),
+		"core logger must not call RecordEvent(error) for DeliveryReporter outputs")
+
+	metrics.Mu.Lock()
+	errCount := metrics.OutputErrors["self-reporting-fail"]
+	metrics.Mu.Unlock()
+	assert.Equal(t, 0, errCount,
+		"core logger must not call RecordOutputError for DeliveryReporter outputs")
+}
+
+func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.T) {
+	// A plain output (not DeliveryReporter) must have RecordEvent(success)
+	// called by the core logger on a successful write.
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("plain")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	assert.Greater(t, metrics.GetEventCount("plain", "success"), 0,
+		"core logger must call RecordEvent(success) for plain (non-DeliveryReporter) outputs")
+}
+
+// ---------------------------------------------------------------------------
+// isZeroValue — integer and float type branches
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
+	// Exercises the int32, float32, uint, uint64 branches in isZeroValue
+	// via the OmitEmpty path through the JSON formatter.
+	out := testhelper.NewMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		OmitEmpty:      true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	tests := []struct {
+		name    string
+		fields  audit.Fields
+		wantKey string
+		wantIn  bool
+	}{
+		{
+			name:    "zero int32 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int32(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero int32 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int32(7)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero float32 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero float32 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(3.14)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero uint omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero uint included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(99)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero uint64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero uint64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(1)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero int64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero int64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int64(42)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero float64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero float64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float64(2.71)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name: "slice value not omitted (default branch)",
+			// A non-nil slice hits the default branch in isZeroValue, which
+			// returns false (not a zero value), so the field is included.
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": []string{"a"}},
+			wantKey: "val",
+			wantIn:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use a fresh output per subtest to avoid event ordering issues.
+			subOut := testhelper.NewMockOutput("sub-" + tt.name)
+			subLogger, err := audit.NewLogger(
+				audit.Config{
+					Version:        1,
+					Enabled:        true,
+					OmitEmpty:      true,
+					ValidationMode: audit.ValidationPermissive,
+				},
+				audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+				audit.WithOutputs(subOut),
+			)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, subLogger.Close()) })
+
+			require.NoError(t, subLogger.Audit("auth_failure", tt.fields))
+			require.True(t, subOut.WaitForEvents(1, 2*time.Second))
+
+			ev := subOut.GetEvent(0)
+			_, found := ev[tt.wantKey]
+			if tt.wantIn {
+				assert.True(t, found, "field %q should be present when non-zero", tt.wantKey)
+			} else {
+				assert.False(t, found, "field %q should be omitted when zero", tt.wantKey)
+			}
+		})
+	}
+
+	// Prevent unused warning for the outer logger.
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "ok", "actor_id": "x"}))
+	_ = out
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 

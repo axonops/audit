@@ -55,7 +55,7 @@ const (
 )
 
 // SyslogConfig holds configuration for [SyslogOutput].
-type SyslogConfig struct {
+type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
 	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
 	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).

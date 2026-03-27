@@ -40,7 +40,7 @@ type TLSPolicy struct {
 //
 // The returned warnings slice contains human-readable messages for
 // security-sensitive configurations (e.g. weak ciphers enabled).
-func (p *TLSPolicy) Apply(cfg *tls.Config) (*tls.Config, []string) {
+func (p *TLSPolicy) Apply(cfg *tls.Config) (result *tls.Config, warnings []string) {
 	if cfg == nil {
 		cfg = &tls.Config{}
 	}

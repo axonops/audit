@@ -54,7 +54,7 @@ const (
 )
 
 // WebhookConfig holds configuration for [WebhookOutput].
-type WebhookConfig struct {
+type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
 	// URL is the HTTP endpoint to POST batched events to.
 	// REQUIRED. MUST be https:// unless [AllowInsecureHTTP] is true.
 	URL string

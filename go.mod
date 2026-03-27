@@ -3,7 +3,6 @@ module github.com/axonops/go-audit
 go 1.26.1
 
 require (
-	github.com/gravwell/srslog v0.0.0-20250709201549-e1b2fdb7e306
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.41.0
 	go.uber.org/goleak v1.3.0

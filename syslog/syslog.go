@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package syslog
 
 // srslog (github.com/gravwell/srslog) is used for syslog transport.
 // It is a maintained fork of github.com/RackSec/srslog which provides
@@ -30,8 +30,23 @@ import (
 	"sync"
 	"time"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/gravwell/srslog"
 )
+
+// Compile-time assertion: SyslogOutput satisfies audit.Output.
+var _ audit.Output = (*SyslogOutput)(nil)
+
+// Metrics is an optional interface for syslog-specific
+// instrumentation. Pass an implementation to [NewSyslogOutput] to
+// collect reconnection telemetry. Pass nil to disable.
+type Metrics interface {
+	// RecordSyslogReconnect records a syslog reconnection attempt.
+	// success indicates whether the reconnection succeeded. The
+	// address is the configured host:port. Implementations SHOULD
+	// NOT use address as an unbounded metric label.
+	RecordSyslogReconnect(address string, success bool)
+}
 
 // Default values for [SyslogConfig] fields.
 const (
@@ -91,9 +106,9 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 	TLSCA string
 
 	// TLSPolicy controls TLS version and cipher suite policy. When nil,
-	// the default policy (TLS 1.3 only) is used. See [TLSPolicy] for
-	// details on enabling TLS 1.2 fallback.
-	TLSPolicy *TLSPolicy
+	// the default policy (TLS 1.3 only) is used. See [audit.TLSPolicy]
+	// for details on enabling TLS 1.2 fallback.
+	TLSPolicy *audit.TLSPolicy
 
 	// MaxRetries is the maximum number of consecutive reconnection
 	// attempts before giving up. Zero defaults to
@@ -140,9 +155,9 @@ type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPo
 // SyslogOutput is safe for concurrent use.
 type SyslogOutput struct {
 	writer        *srslog.Writer
-	tlsCfg        *tls.Config   // cached for reconnection; nil for non-TLS
-	syslogMetrics SyslogMetrics // optional; nil disables syslog-specific metrics
-	closeCh       chan struct{} // closed by Close() to interrupt backoff
+	tlsCfg        *tls.Config // cached for reconnection; nil for non-TLS
+	syslogMetrics Metrics     // optional; nil disables syslog-specific metrics
+	closeCh       chan struct{}
 	address       string
 	network       string
 	appName       string
@@ -157,7 +172,7 @@ type SyslogOutput struct {
 // NewSyslogOutput creates a new [SyslogOutput] from the given config.
 // It validates the config and establishes the initial connection.
 // The syslogMetrics parameter is optional (may be nil).
-func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics SyslogMetrics) (*SyslogOutput, error) {
+func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics Metrics) (*SyslogOutput, error) {
 	if err := validateSyslogConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -209,14 +224,14 @@ func NewSyslogOutput(cfg *SyslogConfig, syslogMetrics SyslogMetrics) (*SyslogOut
 
 // Write sends a serialised audit event to the syslog server. On
 // connection failure, Write attempts reconnection with bounded
-// exponential backoff. Write returns [ErrOutputClosed] if the output
-// has been closed.
+// exponential backoff. Write returns [audit.ErrOutputClosed] if the
+// output has been closed.
 func (s *SyslogOutput) Write(data []byte) error {
 	s.mu.Lock()
 
 	if s.closed {
 		s.mu.Unlock()
-		return ErrOutputClosed
+		return audit.ErrOutputClosed
 	}
 
 	if _, err := s.writer.Write(data); err != nil {
@@ -285,7 +300,7 @@ func (s *SyslogOutput) connect() error {
 // Releases the mutex during the backoff sleep so Close() is not blocked.
 // The second return value is non-nil when a reconnection was attempted:
 // *true for success, *false for failure. The caller uses this to invoke
-// [SyslogMetrics.RecordSyslogReconnect] outside the mutex.
+// [Metrics.RecordSyslogReconnect] outside the mutex.
 func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) (*bool, error) {
 	s.failures++
 
@@ -322,7 +337,7 @@ func (s *SyslogOutput) handleWriteFailure(data []byte, writeErr error) (*bool, e
 
 	// Check if we were closed while sleeping.
 	if s.closed {
-		return nil, ErrOutputClosed
+		return nil, audit.ErrOutputClosed
 	}
 
 	if err := s.connect(); err != nil {
@@ -414,8 +429,8 @@ func validateSyslogTLSFiles(cfg *SyslogConfig) error {
 }
 
 // buildSyslogTLSConfig creates a TLS configuration for syslog
-// connections using the [TLSPolicy] from the config (defaulting to
-// TLS 1.3 only when nil). InsecureSkipVerify is never set.
+// connections using the [audit.TLSPolicy] from the config (defaulting
+// to TLS 1.3 only when nil). InsecureSkipVerify is never set.
 func buildSyslogTLSConfig(cfg *SyslogConfig) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {

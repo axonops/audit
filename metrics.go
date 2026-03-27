@@ -60,17 +60,6 @@ type Metrics interface {
 	RecordBufferDrop()
 }
 
-// SyslogMetrics is an optional interface for syslog-specific
-// instrumentation. Pass an implementation to [NewSyslogOutput] to
-// collect reconnection telemetry. Pass nil to disable.
-type SyslogMetrics interface {
-	// RecordSyslogReconnect records a syslog reconnection attempt.
-	// success indicates whether the reconnection succeeded. The
-	// address is the configured host:port. Implementations SHOULD
-	// NOT use address as an unbounded metric label.
-	RecordSyslogReconnect(address string, success bool)
-}
-
 // WebhookMetrics is an optional interface for webhook-specific
 // instrumentation. Pass an implementation to [NewWebhookOutput] to
 // collect batch-level telemetry. Pass nil to disable.

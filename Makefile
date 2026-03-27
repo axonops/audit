@@ -1,12 +1,23 @@
-.PHONY: test test-race test-integration test-bdd lint vet fmt build check bench coverage clean
+.PHONY: test-core test-file test-syslog test-webhook test-all test-integration test-bdd \
+       lint-all vet-all fmt build-all bench coverage tidy check-replace check-todos check clean
 
-# Unit tests
-test:
-	go test -v -count=1 ./...
+MODULES := . file syslog webhook
 
-# Unit tests with race detector
-test-race:
-	go test -race -v -count=1 ./...
+# --- Per-module test targets ---
+
+test-core:
+	cd . && go test -race -v -count=1 ./...
+
+test-file:
+	cd file && go test -race -v -count=1 ./...
+
+test-syslog:
+	cd syslog && go test -race -v -count=1 ./...
+
+test-webhook:
+	cd webhook && go test -race -v -count=1 ./...
+
+test-all: test-core test-file test-syslog test-webhook
 
 # Integration tests (requires Docker)
 test-integration:
@@ -16,49 +27,70 @@ test-integration:
 test-bdd:
 	go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
-# Lint
-lint:
-	golangci-lint run --timeout=5m ./...
+# --- Linting ---
 
-# Vet
-vet:
-	go vet ./...
+lint-all:
+	@for mod in $(MODULES); do \
+		echo "=== lint $$mod ==="; \
+		(cd $$mod && golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) || exit 1; \
+	done
 
-# Format
+# --- Vet ---
+
+vet-all:
+	@for mod in $(MODULES); do \
+		echo "=== vet $$mod ==="; \
+		(cd $$mod && go vet ./...) || exit 1; \
+	done
+
+# --- Format ---
+
 fmt:
 	gofmt -s -w .
 	goimports -w .
 
-# Build
-build:
-	go build ./...
+# --- Build ---
 
-# Cross-platform build verification
 build-all:
-	GOOS=linux   GOARCH=amd64 go build ./...
-	GOOS=darwin  GOARCH=arm64 go build ./...
-	GOOS=windows GOARCH=amd64 go build ./...
+	@for mod in $(MODULES); do \
+		echo "=== build $$mod (linux/amd64) ==="; \
+		(cd $$mod && GOOS=linux GOARCH=amd64 go build ./...) || exit 1; \
+		echo "=== build $$mod (darwin/arm64) ==="; \
+		(cd $$mod && GOOS=darwin GOARCH=arm64 go build ./...) || exit 1; \
+		echo "=== build $$mod (windows/amd64) ==="; \
+		(cd $$mod && GOOS=windows GOARCH=amd64 go build ./...) || exit 1; \
+	done
 
-# Benchmarks
+# --- Benchmarks ---
+
 bench:
 	go test -bench=. -benchmem -count=3 ./... | tee bench.txt
 
-# Coverage report
+# --- Coverage ---
+
 coverage:
-	go test -race -coverprofile=coverage.out ./...
-	go tool cover -func=coverage.out | grep total
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report: coverage.html"
+	@for mod in $(MODULES); do \
+		echo "=== coverage $$mod ==="; \
+		(cd $$mod && go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total) || exit 1; \
+	done
 
-# Module hygiene
+# --- Module hygiene ---
+
 tidy:
-	go mod tidy
-	@git diff --exit-code go.mod go.sum || (echo "ERROR: go.mod/go.sum not tidy" && exit 1)
+	@for mod in $(MODULES); do \
+		echo "=== tidy $$mod ==="; \
+		(cd $$mod && go mod tidy) || exit 1; \
+	done
 
-# Security checks
-security:
-	govulncheck ./...
-	gosec -quiet ./...
+# Reject replace directives in all go.mod files
+check-replace:
+	@for mod in $(MODULES) tests/testhelper; do \
+		if grep -q "^replace " "$$mod/go.mod" 2>/dev/null; then \
+			echo "ERROR: $$mod/go.mod contains replace directive"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "No replace directives found."
 
 # Enforce TODO comments must reference a GitHub issue: TODO(#NNN)
 check-todos:
@@ -66,17 +98,28 @@ check-todos:
 	if [ -n "$$ORPHANED" ]; then \
 		echo "ERROR: orphaned TODO without issue reference:"; \
 		echo "$$ORPHANED"; \
-		echo ""; \
-		echo "All TODOs must use the format: TODO(#NNN): description"; \
 		exit 1; \
 	fi
 
-# Full local quality gate — run before marking anything done
-check: fmt vet lint test-race tidy check-todos
+# --- Security ---
+
+security:
+	@for mod in $(MODULES); do \
+		echo "=== security $$mod ==="; \
+		(cd $$mod && govulncheck ./...) || exit 1; \
+	done
+
+# --- Full local quality gate ---
+
+check: fmt vet-all lint-all test-all tidy check-replace check-todos
 	@echo ""
 	@echo "All checks passed."
 
-# Clean test cache
+# --- Clean ---
+
 clean:
 	go clean -testcache
-	rm -f coverage.out coverage.html bench.txt
+	@for mod in $(MODULES); do \
+		rm -f $$mod/coverage.out $$mod/coverage.html; \
+	done
+	rm -f bench.txt

@@ -15,16 +15,133 @@
 package rotate
 
 import (
+	"bytes"
 	"compress/gzip"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// ---------------------------------------------------------------------------
+// gzipCopy tests
+// ---------------------------------------------------------------------------
+
+type errorReader struct{ err error }
+
+func (r *errorReader) Read([]byte) (int, error) { return 0, r.err }
+
+type errorWriter struct{ err error }
+
+func (w *errorWriter) Write([]byte) (int, error) { return 0, w.err }
+
+// errorAfterNWriter succeeds for the first n bytes, then returns err.
+type errorAfterNWriter struct {
+	err error
+	w   io.Writer
+	n   int
+}
+
+func (w *errorAfterNWriter) Write(p []byte) (int, error) {
+	if w.n <= 0 {
+		return 0, w.err
+	}
+	if len(p) > w.n {
+		n, _ := w.w.Write(p[:w.n])
+		w.n = 0
+		return n, w.err
+	}
+	n, writeErr := w.w.Write(p)
+	w.n -= n
+	if writeErr != nil {
+		return n, fmt.Errorf("test write: %w", writeErr)
+	}
+	return n, nil
+}
+
+func TestGzipCopy_Success(t *testing.T) {
+	t.Parallel()
+
+	src := bytes.NewReader([]byte("hello world\n"))
+	var dst bytes.Buffer
+
+	require.NoError(t, gzipCopy(&dst, src))
+
+	gr, err := gzip.NewReader(&dst)
+	require.NoError(t, err)
+	data, err := io.ReadAll(gr)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello world\n"), data)
+}
+
+func TestGzipCopy_ReadError(t *testing.T) {
+	t.Parallel()
+
+	readErr := errors.New("disk read failure")
+	src := &errorReader{err: readErr}
+	var dst bytes.Buffer
+
+	err := gzipCopy(&dst, src)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compress copy")
+	assert.ErrorIs(t, err, readErr)
+}
+
+func TestGzipCopy_WriteError(t *testing.T) {
+	t.Parallel()
+
+	src := bytes.NewReader([]byte("data to compress"))
+	writeErr := errors.New("disk write failure")
+	dst := &errorWriter{err: writeErr}
+
+	err := gzipCopy(dst, src)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "compress copy")
+	assert.ErrorIs(t, err, writeErr)
+}
+
+func TestGzipCopy_FlushError(t *testing.T) {
+	t.Parallel()
+
+	// Use a large input so gzip must flush multiple times. The
+	// errorAfterNWriter accepts the gzip header and initial compressed
+	// data, then fails on a subsequent write — triggering an error
+	// during either io.Copy or gz.Close.
+	src := bytes.NewReader(bytes.Repeat([]byte("x"), 64*1024))
+	flushErr := errors.New("flush failure")
+	dst := &errorAfterNWriter{
+		w:   &bytes.Buffer{},
+		n:   20, // accept gzip header (~10 bytes) + a few compressed bytes
+		err: flushErr,
+	}
+
+	err := gzipCopy(dst, src)
+	require.Error(t, err)
+	// Error surfaces during io.Copy or gz.Close depending on buffer timing.
+	assert.True(t,
+		containsAny(err.Error(), "compress copy", "gzip close"),
+		"error should mention compress copy or gzip close, got: %v", err)
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// compressFile tests
+// ---------------------------------------------------------------------------
 
 func TestCompressFile_Success(t *testing.T) {
 	t.Parallel()
@@ -50,7 +167,7 @@ func TestCompressFile_Success(t *testing.T) {
 	// Dest should be valid gzip with correct content.
 	f, err := os.Open(dst)
 	require.NoError(t, err)
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // test cleanup
 	gr, err := gzip.NewReader(f)
 	require.NoError(t, err)
 	data, err := io.ReadAll(gr)
@@ -67,7 +184,7 @@ func TestCompressFile_SourceMissing(t *testing.T) {
 
 	err := compressFile(src, dst, 0o600)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "compress source")
+	assert.Contains(t, err.Error(), "compress open source")
 }
 
 func TestCompressFile_DestDirMissing(t *testing.T) {
@@ -95,16 +212,16 @@ func TestCompressFile_SourceSymlink(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	real := filepath.Join(dir, "real.log")
+	realFile := filepath.Join(dir, "real.log")
 	link := filepath.Join(dir, "link.log")
 	dst := filepath.Join(dir, "link.log.gz")
 
-	require.NoError(t, os.WriteFile(real, []byte("secret"), 0o600))
-	require.NoError(t, os.Symlink(real, link))
+	require.NoError(t, os.WriteFile(realFile, []byte("secret"), 0o600))
+	require.NoError(t, os.Symlink(realFile, link))
 
 	err := compressFile(link, dst, 0o600)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "symlink")
+	assert.Contains(t, err.Error(), "compress open source")
 
 	// Destination should not have been created.
 	_, err = os.Stat(dst)

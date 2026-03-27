@@ -34,7 +34,7 @@ func safeOpen(name string, flag int, mode os.FileMode) (*os.File, error) {
 	// Enforce configured permissions on every open — even for existing
 	// files that may have been created with different permissions.
 	if err := f.Chmod(mode); err != nil {
-		_ = f.Close() //nolint:errcheck // close on error path
+		_ = f.Close() // close on error path
 		return nil, fmt.Errorf("rotate: chmod %q: %w", name, err)
 	}
 
@@ -45,7 +45,7 @@ func safeOpen(name string, flag int, mode os.FileMode) (*os.File, error) {
 func safeStat(name string) (os.FileInfo, error) {
 	info, err := os.Lstat(name)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck // callers depend on os.IsNotExist matching
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("rotate: %q is a symlink", name)

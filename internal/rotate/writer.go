@@ -30,6 +30,12 @@ import (
 
 // Config controls the rotation behaviour of a [Writer].
 type Config struct {
+	// OnError is called sequentially from a single background goroutine
+	// whenever a background operation (compression, backup removal,
+	// age-based cleanup) fails. It must not block. If nil, errors are
+	// silently discarded.
+	OnError func(error)
+
 	// MaxSize is the maximum size in bytes of the active log file before
 	// rotation is triggered. Required; must be > 0.
 	MaxSize int64
@@ -38,14 +44,14 @@ type Config struct {
 	// duration are removed during cleanup. Zero means no age limit.
 	MaxAge time.Duration
 
+	// MaxBackups is the maximum number of backup files to retain. Zero
+	// means unlimited.
+	MaxBackups int
+
 	// Mode is the file permission bits applied to every file the writer
 	// creates or opens — active, backup, and compressed. Required; must
 	// be non-zero.
 	Mode os.FileMode
-
-	// MaxBackups is the maximum number of backup files to retain. Zero
-	// means unlimited.
-	MaxBackups int
 
 	// Compress enables gzip compression of rotated backup files.
 	Compress bool
@@ -58,23 +64,20 @@ type Config struct {
 // Writer is lazy — [New] validates the configuration but does not
 // create or open the file. The file is opened on the first [Writer.Write].
 type Writer struct {
-	cfg      Config
-	filename string // absolute, cleaned path
+	// now is used for testing to control time.
+	now      func() time.Time
+	file     *os.File
+	millCh   chan struct{}
+	millDone chan struct{} // closed when the mill goroutine exits
+	filename string        // absolute, cleaned path
 	dir      string
 	prefix   string // base name without extension, with trailing "-"
 	ext      string // extension including the dot
-
-	size int64
-	file *os.File
-
+	cfg      Config
+	size     int64
 	mu       sync.Mutex
-	millCh   chan struct{}
-	millDone chan struct{} // closed when the mill goroutine exits
 	millOnce sync.Once
 	closed   bool
-
-	// now is used for testing to control time.
-	now func() time.Time
 }
 
 // New creates a [Writer] that will write to filename with the given
@@ -136,14 +139,14 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	writeLen := int64(len(p))
 
 	if w.file == nil {
-		if err := w.openExistingOrNew(writeLen); err != nil {
-			return 0, err
+		if openErr := w.openExistingOrNew(writeLen); openErr != nil {
+			return 0, openErr
 		}
 	}
 
 	if w.size+writeLen > w.cfg.MaxSize {
-		if err := w.rotate(); err != nil {
-			return 0, err
+		if rotateErr := w.rotate(); rotateErr != nil {
+			return 0, rotateErr
 		}
 	}
 
@@ -208,7 +211,10 @@ func (w *Writer) openExistingOrNew(writeLen int64) error {
 func (w *Writer) openNew() error {
 	// If the current file exists, rename it to a backup.
 	if _, err := safeStat(w.filename); err == nil {
-		name := w.backupName(w.now())
+		name, nameErr := w.backupName(w.now())
+		if nameErr != nil {
+			return nameErr
+		}
 		// Reject if the backup destination is a symlink — an attacker
 		// could pre-create a symlink at the predictable backup path to
 		// redirect audit data.
@@ -263,7 +269,17 @@ func (w *Writer) Sync() error {
 	if w.file == nil {
 		return nil
 	}
-	return w.file.Sync()
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("rotate: sync: %w", err)
+	}
+	return nil
+}
+
+// reportError calls the configured OnError callback if non-nil.
+func (w *Writer) reportError(err error) {
+	if w.cfg.OnError != nil {
+		w.cfg.OnError(err)
+	}
 }
 
 // Ensure Writer satisfies io.WriteCloser.

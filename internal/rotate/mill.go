@@ -49,54 +49,95 @@ func (w *Writer) millRun() {
 func (w *Writer) millRunOnce() {
 	files, err := w.oldLogFiles()
 	if err != nil {
+		w.reportError(err)
 		return
 	}
 
-	// Compress uncompressed backups if enabled.
 	if w.cfg.Compress {
-		for _, f := range files {
-			if strings.HasSuffix(f.Name(), w.ext+".gz") {
-				continue
-			}
-			src := filepath.Join(w.dir, f.Name())
-			dst := src + ".gz"
-			if err := compressFile(src, dst, w.cfg.Mode); err != nil {
-				continue
-			}
-		}
-		// Re-read after compression to get updated file list.
-		files, err = w.oldLogFiles()
-		if err != nil {
-			return
-		}
+		files = w.millCompress(files)
 	}
 
-	// Enforce MaxBackups.
-	if w.cfg.MaxBackups > 0 && len(files) > w.cfg.MaxBackups {
-		for _, f := range files[w.cfg.MaxBackups:] {
-			_ = os.Remove(filepath.Join(w.dir, f.Name())) //nolint:errcheck // best-effort cleanup
+	w.millEnforceMaxBackups(files)
+	w.millEnforceMaxAge(files)
+}
+
+// millCompress compresses uncompressed backups and returns the
+// refreshed file list.
+func (w *Writer) millCompress(files []os.DirEntry) []os.DirEntry {
+	for _, f := range files {
+		if strings.HasSuffix(f.Name(), w.ext+".gz") {
+			continue
+		}
+		src := filepath.Join(w.dir, f.Name())
+		dst := src + ".gz"
+		if compressErr := compressFile(src, dst, w.cfg.Mode); compressErr != nil {
+			w.reportError(fmt.Errorf("rotate: compress backup %q: %w", f.Name(), compressErr))
+			continue
 		}
 	}
+	// Re-read after compression to get updated file list.
+	refreshed, readErr := w.oldLogFiles()
+	if readErr != nil {
+		w.reportError(readErr)
+		return nil
+	}
+	return refreshed
+}
 
-	// Enforce MaxAge.
-	if w.cfg.MaxAge > 0 {
-		cutoff := w.now().Add(-w.cfg.MaxAge)
-		for _, f := range files {
-			ts, ok := w.parseTimestamp(f.Name())
-			if !ok {
-				continue
-			}
-			if ts.Before(cutoff) {
-				_ = os.Remove(filepath.Join(w.dir, f.Name())) //nolint:errcheck // best-effort cleanup
+// millEnforceMaxBackups removes excess backups beyond the configured limit.
+func (w *Writer) millEnforceMaxBackups(files []os.DirEntry) {
+	if w.cfg.MaxBackups <= 0 || len(files) <= w.cfg.MaxBackups {
+		return
+	}
+	for _, f := range files[w.cfg.MaxBackups:] {
+		if removeErr := os.Remove(filepath.Join(w.dir, f.Name())); removeErr != nil {
+			w.reportError(fmt.Errorf("rotate: remove excess backup %q: %w", f.Name(), removeErr))
+		}
+	}
+}
+
+// millEnforceMaxAge removes backups older than the configured age limit.
+func (w *Writer) millEnforceMaxAge(files []os.DirEntry) {
+	if w.cfg.MaxAge <= 0 {
+		return
+	}
+	cutoff := w.now().Add(-w.cfg.MaxAge)
+	for _, f := range files {
+		ts, ok := w.parseTimestamp(f.Name())
+		if !ok {
+			continue
+		}
+		if ts.Before(cutoff) {
+			if removeErr := os.Remove(filepath.Join(w.dir, f.Name())); removeErr != nil {
+				w.reportError(fmt.Errorf("rotate: remove expired backup %q: %w", f.Name(), removeErr))
 			}
 		}
 	}
 }
 
-// backupName generates a timestamped backup filename.
-func (w *Writer) backupName(t time.Time) string {
+// backupName generates a unique timestamped backup filename. If the
+// base name already exists (same-millisecond collision), a counter
+// suffix is appended: name-1.ext, name-2.ext, etc. Returns an error
+// if no free name can be found after 1000 attempts.
+func (w *Writer) backupName(t time.Time) (string, error) {
 	ts := t.Format("2006-01-02T15-04-05.000")
-	return filepath.Join(w.dir, w.prefix+ts+w.ext)
+	base := filepath.Join(w.dir, w.prefix+ts)
+
+	// Try without counter first (common case).
+	name := base + w.ext
+	if _, err := os.Lstat(name); os.IsNotExist(err) {
+		return name, nil
+	}
+
+	// Collision — append counter suffix.
+	for i := 1; i < 1000; i++ {
+		name = fmt.Sprintf("%s-%d%s", base, i, w.ext)
+		if _, err := os.Lstat(name); os.IsNotExist(err) {
+			return name, nil
+		}
+	}
+
+	return "", fmt.Errorf("rotate: backup name collision limit exceeded for %s", base+w.ext)
 }
 
 // oldLogFiles returns all backup files in the directory sorted by
@@ -107,7 +148,7 @@ func (w *Writer) oldLogFiles() ([]os.DirEntry, error) {
 		return nil, fmt.Errorf("rotate: read dir %q: %w", w.dir, err)
 	}
 
-	var backups []os.DirEntry
+	backups := make([]os.DirEntry, 0, len(entries))
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -137,6 +178,7 @@ func (w *Writer) oldLogFiles() ([]os.DirEntry, error) {
 }
 
 // parseTimestamp extracts the timestamp from a backup filename.
+// It handles optional collision counter suffixes: name-1.ext, name-2.ext.
 func (w *Writer) parseTimestamp(name string) (time.Time, bool) {
 	// Strip .gz suffix if present.
 	name = strings.TrimSuffix(name, ".gz")
@@ -145,9 +187,31 @@ func (w *Writer) parseTimestamp(name string) (time.Time, bool) {
 	// Strip prefix.
 	name = strings.TrimPrefix(name, w.prefix)
 
+	// Strip optional collision counter suffix: "-1", "-2", etc.
+	// The timestamp ends with ".000" (milliseconds), so the last
+	// hyphen after that is the counter separator.
+	if idx := strings.LastIndex(name, "-"); idx > 0 {
+		if isDigits(name[idx+1:]) {
+			name = name[:idx]
+		}
+	}
+
 	t, err := time.Parse("2006-01-02T15-04-05.000", name)
 	if err != nil {
 		return time.Time{}, false
 	}
 	return t, true
+}
+
+// isDigits reports whether s is a non-empty string of ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

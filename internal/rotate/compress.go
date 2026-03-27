@@ -21,6 +21,20 @@ import (
 	"os"
 )
 
+// gzipCopy reads from src and writes gzip-compressed data to dst.
+// It closes the gzip writer but does not close src or dst.
+func gzipCopy(dst io.Writer, src io.Reader) error {
+	gz := gzip.NewWriter(dst)
+	if _, err := io.Copy(gz, src); err != nil {
+		gz.Close() //nolint:errcheck // error path
+		return fmt.Errorf("rotate: compress copy: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("rotate: compress gzip close: %w", err)
+	}
+	return nil
+}
+
 // compressFile gzip-compresses src into dst with the given file mode.
 // Both source and destination paths are checked for symlinks via
 // [safeStat] and [safeOpen] to prevent symlink-based redirection
@@ -29,12 +43,9 @@ import (
 // On success the source file is removed. On failure any partial
 // destination file is removed and the source is left intact.
 func compressFile(src, dst string, mode os.FileMode) error {
-	// Reject symlinks on the source path before reading.
-	if _, err := safeStat(src); err != nil {
-		return fmt.Errorf("rotate: compress source %q: %w", src, err)
-	}
-
-	in, err := os.Open(src)
+	// Use safeOpen for the source to enforce O_NOFOLLOW on Unix,
+	// preventing a TOCTOU race between stat and open.
+	in, err := safeOpen(src, os.O_RDONLY, mode)
 	if err != nil {
 		return fmt.Errorf("rotate: compress open source %q: %w", src, err)
 	}
@@ -47,24 +58,15 @@ func compressFile(src, dst string, mode os.FileMode) error {
 		return fmt.Errorf("rotate: compress create dest %q: %w", dst, err)
 	}
 
-	gz := gzip.NewWriter(out)
-
-	if _, err := io.Copy(gz, in); err != nil {
-		gz.Close()  //nolint:errcheck // error path
-		out.Close() //nolint:errcheck // error path
-		os.Remove(dst)
-		return fmt.Errorf("rotate: compress copy: %w", err)
+	if copyErr := gzipCopy(out, in); copyErr != nil {
+		out.Close()    //nolint:errcheck // error path
+		os.Remove(dst) //nolint:errcheck // best-effort cleanup of partial dest on error path
+		return copyErr
 	}
 
-	if err := gz.Close(); err != nil {
-		out.Close() //nolint:errcheck // error path
-		os.Remove(dst)
-		return fmt.Errorf("rotate: compress gzip close: %w", err)
-	}
-
-	if err := out.Close(); err != nil {
-		os.Remove(dst)
-		return fmt.Errorf("rotate: compress close dest: %w", err)
+	if closeErr := out.Close(); closeErr != nil {
+		os.Remove(dst) //nolint:errcheck // best-effort cleanup of partial dest on error path
+		return fmt.Errorf("rotate: compress close dest: %w", closeErr)
 	}
 
 	if err := os.Remove(src); err != nil {

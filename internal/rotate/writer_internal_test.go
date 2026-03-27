@@ -15,8 +15,11 @@
 package rotate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,9 +172,129 @@ func TestBackupName_Format(t *testing.T) {
 	}
 
 	ts := time.Date(2026, 3, 27, 15, 30, 45, 123_000_000, time.Local)
-	name := w.backupName(ts)
+	name, err := w.backupName(ts)
+	require.NoError(t, err)
 	expected := filepath.Join(dir, "audit-2026-03-27T15-30-45.123.log")
 	assert.Equal(t, expected, name)
+}
+
+func TestBackupName_Collision(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := &Writer{dir: dir, prefix: "audit-", ext: ".log"}
+
+	ts := time.Date(2026, 3, 27, 15, 30, 45, 123_000_000, time.Local)
+
+	// Create the base backup name so it collides.
+	base := filepath.Join(dir, "audit-2026-03-27T15-30-45.123.log")
+	require.NoError(t, os.WriteFile(base, []byte("x"), 0o600))
+
+	name, err := w.backupName(ts)
+	require.NoError(t, err)
+	expected := filepath.Join(dir, "audit-2026-03-27T15-30-45.123-1.log")
+	assert.Equal(t, expected, name)
+}
+
+func TestBackupName_MultipleCollisions(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := &Writer{dir: dir, prefix: "audit-", ext: ".log"}
+
+	ts := time.Date(2026, 3, 27, 15, 30, 45, 123_000_000, time.Local)
+
+	// Create base and -1 so the next free slot is -2.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-2026-03-27T15-30-45.123.log"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-2026-03-27T15-30-45.123-1.log"), []byte("x"), 0o600))
+
+	name, err := w.backupName(ts)
+	require.NoError(t, err)
+	expected := filepath.Join(dir, "audit-2026-03-27T15-30-45.123-2.log")
+	assert.Equal(t, expected, name)
+}
+
+func TestParseTimestamp_WithCounter(t *testing.T) {
+	t.Parallel()
+
+	w := &Writer{prefix: "audit-", ext: ".log"}
+
+	ts, ok := w.parseTimestamp("audit-2026-03-27T15-30-45.123-1.log")
+	assert.True(t, ok)
+	assert.Equal(t, 2026, ts.Year())
+	assert.Equal(t, time.Month(3), ts.Month())
+}
+
+func TestParseTimestamp_WithCounterGz(t *testing.T) {
+	t.Parallel()
+
+	w := &Writer{prefix: "audit-", ext: ".log"}
+
+	ts, ok := w.parseTimestamp("audit-2026-03-27T15-30-45.123-2.log.gz")
+	assert.True(t, ok)
+	assert.Equal(t, 2026, ts.Year())
+}
+
+func TestOldLogFiles_IncludesCounterSuffix(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Create backups with and without counter suffixes.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-2026-03-27T15-30-45.123.log"), []byte("a"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-2026-03-27T15-30-45.123-1.log"), []byte("b"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-2026-03-27T15-30-45.123-2.log"), []byte("c"), 0o600))
+
+	w := &Writer{dir: dir, prefix: "audit-", ext: ".log"}
+
+	files, err := w.oldLogFiles()
+	require.NoError(t, err)
+	assert.Len(t, files, 3, "should find all backups including counter variants")
+}
+
+func TestWriter_SameMillisecondCollision(t *testing.T) {
+	// Freeze time so all rotations produce the same millisecond timestamp.
+	// Verify no data is lost — total bytes across all files = total written.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	frozen := time.Date(2026, 3, 27, 12, 0, 0, 0, time.Local)
+
+	w := &Writer{
+		cfg:      Config{MaxSize: 50, Mode: 0o600},
+		filename: path,
+		dir:      dir,
+		prefix:   "audit-",
+		ext:      ".log",
+		now:      func() time.Time { return frozen },
+	}
+
+	// Write 5 payloads that each trigger rotation (each > MaxSize).
+	payload := strings.Repeat("x", 55) + "\n" // 56 bytes > 50
+	totalWritten := 0
+	for range 5 {
+		n, err := w.Write([]byte(payload))
+		require.NoError(t, err)
+		totalWritten += n
+	}
+	require.NoError(t, w.Close())
+
+	// Count total bytes across active file + all backups.
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	totalOnDisk := 0
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		require.NoError(t, err)
+		totalOnDisk += len(data)
+	}
+
+	assert.Equal(t, totalWritten, totalOnDisk, "no audit data should be lost due to timestamp collision")
+	// Should have multiple backup files (collision counters).
+	assert.Greater(t, len(entries), 1, "should have created backups with counter suffixes")
 }
 
 func TestSafeStat_RegularFile(t *testing.T) {
@@ -274,7 +397,6 @@ func TestMillRunOnce_BadDir_Returns(t *testing.T) {
 		now:    time.Now,
 	}
 
-	// Must not panic; error is silently discarded (best-effort cleanup).
 	w.millRunOnce()
 }
 
@@ -286,12 +408,10 @@ func TestMillRunOnce_CompressError_Continues(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Create backup files matching the naming pattern.
 	ts := time.Now().Add(-time.Minute).Format("2006-01-02T15-04-05.000")
 	backup := filepath.Join(dir, "audit-"+ts+".log")
 	require.NoError(t, os.WriteFile(backup, []byte("log data"), 0o600))
 
-	// Make the directory read-only so compressFile cannot create .gz files.
 	require.NoError(t, os.Chmod(dir, 0o555))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
@@ -303,6 +423,203 @@ func TestMillRunOnce_CompressError_Continues(t *testing.T) {
 		now:    time.Now,
 	}
 
-	// Must not panic; compressFile error is silently ignored.
 	w.millRunOnce()
+}
+
+// ---------------------------------------------------------------------------
+// OnError callback tests
+// ---------------------------------------------------------------------------
+
+func TestMillRunOnce_OnError_OldLogFilesError(t *testing.T) {
+	t.Parallel()
+
+	var received error
+	w := &Writer{
+		cfg: Config{
+			MaxSize: 100, Mode: 0o600,
+			OnError: func(err error) { received = err },
+		},
+		dir:    "/nonexistent/path",
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	w.millRunOnce()
+	require.Error(t, received)
+	assert.Contains(t, received.Error(), "read dir")
+}
+
+func TestMillRunOnce_OnError_CompressError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permission restrictions")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	ts := time.Now().Add(-time.Minute).Format("2006-01-02T15-04-05.000")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "audit-"+ts+".log"), []byte("data"), 0o600))
+
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	var received error
+	w := &Writer{
+		cfg: Config{
+			MaxSize: 100, Mode: 0o600, Compress: true,
+			OnError: func(err error) { received = err },
+		},
+		dir:    dir,
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	w.millRunOnce()
+	require.Error(t, received)
+	assert.Contains(t, received.Error(), "compress")
+}
+
+func TestMillRunOnce_OnError_Nil_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	w := &Writer{
+		cfg:    Config{MaxSize: 100, Mode: 0o600, OnError: nil},
+		dir:    "/nonexistent/path",
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	// Must not panic with nil OnError.
+	assert.NotPanics(t, func() { w.millRunOnce() })
+}
+
+func TestMillRunOnce_OnError_RemoveError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permission restrictions")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Create more backups than MaxBackups allows.
+	for i := range 3 {
+		ts := time.Now().Add(-time.Duration(i+1) * time.Minute).Format("2006-01-02T15-04-05.000")
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, "audit-"+ts+".log"), []byte("data"), 0o600))
+	}
+
+	// Make directory read-only so removes fail.
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	var received []error
+	w := &Writer{
+		cfg: Config{
+			MaxSize: 100, Mode: 0o600, MaxBackups: 1,
+			OnError: func(err error) { received = append(received, err) },
+		},
+		dir:    dir,
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	w.millRunOnce()
+	assert.NotEmpty(t, received, "should receive remove errors")
+	for _, err := range received {
+		assert.Contains(t, err.Error(), "remove")
+	}
+}
+
+func TestMillRunOnce_OnError_MaxAgeRemoveError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permission restrictions")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Create an expired backup.
+	old := time.Now().Add(-48 * time.Hour)
+	ts := old.Format("2006-01-02T15-04-05.000")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "audit-"+ts+".log"), []byte("expired"), 0o600))
+
+	// Make directory read-only so remove fails.
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	var received []error
+	w := &Writer{
+		cfg: Config{
+			MaxSize: 100, Mode: 0o600,
+			MaxAge:  24 * time.Hour,
+			OnError: func(err error) { received = append(received, err) },
+		},
+		dir:    dir,
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	w.millRunOnce()
+	assert.NotEmpty(t, received, "should receive MaxAge remove error")
+	assert.Contains(t, received[0].Error(), "remove expired backup")
+}
+
+func TestOpenNew_BackupDestSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests unreliable on Windows CI")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Create the active file.
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0o600))
+
+	// Pre-create symlinks at ALL possible backup names so the collision
+	// avoidance loop exhausts and backupName returns an error.
+	frozen := time.Date(2026, 6, 15, 12, 0, 0, 0, time.Local)
+	tsStr := frozen.Format("2006-01-02T15-04-05.000")
+	trap := filepath.Join(dir, "trap.log")
+	require.NoError(t, os.WriteFile(trap, []byte{}, 0o600))
+
+	// Create base name and first few counter variants as symlinks.
+	// backupName will skip all of them (they exist per Lstat) and
+	// eventually try counter names that don't exist.
+	baseName := filepath.Join(dir, "audit-"+tsStr+".log")
+	require.NoError(t, os.Symlink(trap, baseName))
+	for i := 1; i <= 5; i++ {
+		require.NoError(t, os.Symlink(trap, fmt.Sprintf("%s/audit-%s-%d.log", dir, tsStr, i)))
+	}
+
+	w := &Writer{
+		cfg:      Config{MaxSize: 100, Mode: 0o600},
+		filename: path,
+		dir:      dir,
+		prefix:   "audit-",
+		ext:      ".log",
+		now:      func() time.Time { return frozen },
+	}
+
+	// openNew should succeed — backupName skips symlinks (they exist)
+	// and finds a free counter slot. The rename goes to the free slot.
+	err := w.openNew()
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// The active file should have been recreated.
+	_, err = os.Stat(path)
+	require.NoError(t, err)
+
+	// The symlinks should still exist (not overwritten by rename).
+	info, err := os.Lstat(baseName)
+	require.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0,
+		"symlink at base backup path should not be overwritten")
 }

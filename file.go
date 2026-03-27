@@ -74,6 +74,8 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 	cfg.Path = filepath.Clean(cfg.Path)
 
+	// Check parent directory exists early to provide a clear "audit:" error
+	// message. rotate.New performs the same check but with a "rotate:" prefix.
 	parentDir := filepath.Dir(cfg.Path)
 	if _, err := os.Lstat(parentDir); err != nil {
 		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, err)
@@ -92,8 +94,8 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 
 	applyFileDefaults(&cfg)
-	if err := validateFileLimits(&cfg); err != nil {
-		return nil, err
+	if validErr := validateFileLimits(&cfg); validErr != nil {
+		return nil, validErr
 	}
 
 	compress := true
@@ -101,12 +103,17 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 		compress = *cfg.Compress
 	}
 
+	logPath := cfg.Path // capture for closure
 	rw, err := rotate.New(cfg.Path, rotate.Config{
 		MaxSize:    int64(cfg.MaxSizeMB) * 1024 * 1024,
 		MaxAge:     time.Duration(cfg.MaxAgeDays) * 24 * time.Hour,
 		Mode:       perm,
 		MaxBackups: cfg.MaxBackups,
 		Compress:   compress,
+		OnError: func(err error) {
+			slog.Warn("audit: file output background error",
+				"path", logPath, "error", err)
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output: %w", err)

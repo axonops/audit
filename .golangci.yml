@@ -14,8 +14,9 @@ linters:
     - govet         # go vet checks (configured below with enable-all)
     - staticcheck   # bugs, performance, deprecated API usage
     - unused        # unused code detection
-    - gosimple      # simpler code constructs
     - ineffassign   # ineffective assignments
+    # gosimple is bundled into staticcheck in golangci-lint v2 and
+    # cannot be enabled separately.
     # typecheck is a built-in stage in golangci-lint, not a configurable
     # linter — it runs automatically and cannot be enabled/disabled.
     # Project-specific linters

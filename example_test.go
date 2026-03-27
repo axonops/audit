@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 
 	"github.com/axonops/go-audit"
 )
@@ -232,31 +230,6 @@ func ExampleNewStdoutOutput() {
 
 	fmt.Println("stdout output:", out.Name())
 	// Output: stdout output: stdout
-}
-
-func ExampleNewFileOutput() {
-	// Create a file output with rotation for production use.
-	dir, err := os.MkdirTemp("", "audit-example-*")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-
-	out, err := audit.NewFileOutput(audit.FileConfig{
-		Path:        filepath.Join(dir, "audit.log"),
-		MaxSizeMB:   100,
-		MaxBackups:  5,
-		MaxAgeDays:  30,
-		Permissions: "0600",
-	}, nil)
-	if err != nil {
-		fmt.Println("create error:", err)
-		return
-	}
-	defer func() { _ = out.Close() }()
-
-	fmt.Println("file output created")
-	// Output: file output created
 }
 
 func ExampleEventRoute_include() {

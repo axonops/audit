@@ -60,18 +60,6 @@ type Metrics interface {
 	RecordBufferDrop()
 }
 
-// FileMetrics is an optional interface for file-output-specific
-// instrumentation. Pass an implementation to [NewFileOutput] to
-// collect rotation telemetry. Pass nil to disable.
-type FileMetrics interface {
-	// RecordFileRotation records that the file output rotated its
-	// active log file. The path argument is the absolute filesystem
-	// path of the file that was rotated. Implementations SHOULD NOT
-	// use this value as an unbounded metric label — it may expose
-	// infrastructure topology and cause cardinality explosion.
-	RecordFileRotation(path string)
-}
-
 // SyslogMetrics is an optional interface for syslog-specific
 // instrumentation. Pass an implementation to [NewSyslogOutput] to
 // collect reconnection telemetry. Pass nil to disable.

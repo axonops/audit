@@ -714,6 +714,68 @@ func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
 	wg.Wait()
 }
 
+// ---------------------------------------------------------------------------
+// TLSPolicy integration
+// ---------------------------------------------------------------------------
+
+func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
+	// Nil TLSPolicy should behave identically to the previous hardcoded
+	// TLS 1.3 default.
+	certs := generateTestCerts(t)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	srv.TLS = certs.tlsCfg
+	srv.StartTLS()
+	t.Cleanup(func() { srv.Close() })
+
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:                srv.URL,
+		TLSCA:              certs.caPath,
+		TLSPolicy:          nil, // explicitly nil
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"nil_policy"}`+"\n")))
+	require.NoError(t, out.Close())
+}
+
+func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
+	certs := generateTestCerts(t)
+	// Server accepts TLS 1.2.
+	certs.tlsCfg.MinVersion = tls.VersionTLS12
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	srv.TLS = certs.tlsCfg
+	srv.StartTLS()
+	t.Cleanup(func() { srv.Close() })
+
+	out, err := audit.NewWebhookOutput(&audit.WebhookConfig{
+		URL:   srv.URL,
+		TLSCA: certs.caPath,
+		TLSPolicy: &audit.TLSPolicy{
+			AllowTLS12: true,
+		},
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"tls12_policy"}`+"\n")))
+	require.NoError(t, out.Close())
+}
+
 func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
 	data, err := os.ReadFile("webhook.go")
 	require.NoError(t, err)

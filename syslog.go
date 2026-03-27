@@ -55,7 +55,7 @@ const (
 )
 
 // SyslogConfig holds configuration for [SyslogOutput].
-type SyslogConfig struct {
+type SyslogConfig struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
 	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
 	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).
@@ -89,6 +89,11 @@ type SyslogConfig struct {
 	// TLSCA is the path to the CA certificate for server verification.
 	// When set, the server's certificate is verified against this CA.
 	TLSCA string
+
+	// TLSPolicy controls TLS version and cipher suite policy. When nil,
+	// the default policy (TLS 1.3 only) is used. See [TLSPolicy] for
+	// details on enabling TLS 1.2 fallback.
+	TLSPolicy *TLSPolicy
 
 	// MaxRetries is the maximum number of consecutive reconnection
 	// attempts before giving up. Zero defaults to
@@ -395,11 +400,12 @@ func validateSyslogTLSFiles(cfg *SyslogConfig) error {
 }
 
 // buildSyslogTLSConfig creates a TLS configuration for syslog
-// connections. TLS 1.3 is the minimum supported version.
-// InsecureSkipVerify is always false.
+// connections using the [TLSPolicy] from the config (defaulting to
+// TLS 1.3 only when nil). InsecureSkipVerify is never set.
 func buildSyslogTLSConfig(cfg *SyslogConfig) (*tls.Config, error) {
-	tlsCfg := &tls.Config{
-		MinVersion: tls.VersionTLS13,
+	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
+	for _, w := range warnings {
+		slog.Warn(w, "output", "syslog", "address", cfg.Address)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

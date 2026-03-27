@@ -110,3 +110,28 @@ func TestCompressFile_SourceSymlink(t *testing.T) {
 	_, err = os.Stat(dst)
 	assert.True(t, os.IsNotExist(err))
 }
+
+func TestCompressFile_RemoveSourceFails_ErrorReturned(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can remove files from read-only dirs; test requires non-root")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "logs")
+	require.NoError(t, os.Mkdir(subdir, 0o755))
+
+	src := filepath.Join(subdir, "input.log")
+	dst := filepath.Join(dir, "input.log.gz") // dst in parent dir (writable)
+
+	require.NoError(t, os.WriteFile(src, []byte("data to compress\n"), 0o644))
+
+	// Make the source's parent directory non-writable so os.Remove(src) fails,
+	// but dst lives in a writable directory so compression itself succeeds.
+	require.NoError(t, os.Chmod(subdir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(subdir, 0o755) })
+
+	err := compressFile(src, dst, 0o600)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "remove source")
+}

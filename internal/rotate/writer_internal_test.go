@@ -200,6 +200,53 @@ func TestCloseFile_NilFile(t *testing.T) {
 	assert.NoError(t, w.closeFile())
 }
 
+func TestCloseFile_ClosedFd_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f, err := os.Create(filepath.Join(dir, "test.log"))
+	require.NoError(t, err)
+
+	// Close fd manually so the subsequent closeFile call fails.
+	require.NoError(t, f.Close())
+
+	w := &Writer{file: f, size: 5}
+	err = w.closeFile()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "close file")
+	// File handle must be cleared even after Close error.
+	assert.Nil(t, w.file)
+	assert.Equal(t, int64(0), w.size)
+}
+
+func TestRotate_CloseFileError_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+
+	// Close the fd manually so rotate → closeFile returns an error.
+	require.NoError(t, f.Close())
+
+	w := &Writer{
+		cfg:      Config{MaxSize: 100, Mode: 0o600},
+		filename: path,
+		dir:      dir,
+		prefix:   "audit-",
+		ext:      ".log",
+		file:     f,
+		size:     10,
+		now:      time.Now,
+	}
+
+	err = w.rotate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "close file")
+}
+
 func TestMillRunOnce_NoBackups(t *testing.T) {
 	t.Parallel()
 
@@ -213,5 +260,49 @@ func TestMillRunOnce_NoBackups(t *testing.T) {
 	}
 
 	// Should not panic on empty directory.
+	w.millRunOnce()
+}
+
+func TestMillRunOnce_BadDir_Returns(t *testing.T) {
+	t.Parallel()
+
+	w := &Writer{
+		cfg:    Config{MaxSize: 100, Mode: 0o600},
+		dir:    "/nonexistent/path/that/cannot/be/read",
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	// Must not panic; error is silently discarded (best-effort cleanup).
+	w.millRunOnce()
+}
+
+func TestMillRunOnce_CompressError_Continues(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permission restrictions")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Create backup files matching the naming pattern.
+	ts := time.Now().Add(-time.Minute).Format("2006-01-02T15-04-05.000")
+	backup := filepath.Join(dir, "audit-"+ts+".log")
+	require.NoError(t, os.WriteFile(backup, []byte("log data"), 0o600))
+
+	// Make the directory read-only so compressFile cannot create .gz files.
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	w := &Writer{
+		cfg:    Config{MaxSize: 100, Mode: 0o600, Compress: true},
+		dir:    dir,
+		prefix: "audit-",
+		ext:    ".log",
+		now:    time.Now,
+	}
+
+	// Must not panic; compressFile error is silently ignored.
 	w.millRunOnce()
 }

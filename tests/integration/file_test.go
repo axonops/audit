@@ -34,11 +34,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m,
-		// lumberjack starts an internal goroutine for log rotation that
-		// shuts down asynchronously after Close returns.
-		goleak.IgnoreTopFunction("gopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun"),
-	)
+	goleak.VerifyTestMain(m)
 }
 
 func TestFileOutput_Rotation(t *testing.T) {
@@ -59,8 +55,8 @@ func TestFileOutput_Rotation(t *testing.T) {
 		require.NoError(t, out.Write([]byte(line)))
 	}
 
-	// Close before inspecting the directory to ensure lumberjack's
-	// mill goroutine has completed rotation.
+	// Close before inspecting the directory to ensure the rotation
+	// goroutine has completed.
 	require.NoError(t, out.Close())
 
 	entries, err := os.ReadDir(dir)

@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -648,6 +649,109 @@ func TestWriter_ConcurrentWrites(t *testing.T) {
 	for err := range errs {
 		t.Errorf("concurrent write error: %v", err)
 	}
+}
+
+func TestWriter_ConcurrentWritesStress(t *testing.T) {
+	// Stress test: 1000 goroutines writing concurrently with rotation
+	// enabled. Verifies thread safety under heavy contention, no panics,
+	// no data races (via -race), and no goroutine leaks.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:    1024, // 1KB — forces frequent rotation under load
+		Mode:       0o600,
+		MaxBackups: 10,
+		Compress:   true,
+	})
+	require.NoError(t, err)
+
+	const goroutines = 1000
+	const writesPerGoroutine = 50
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	var writeErrors atomic.Int64
+	var totalWrites atomic.Int64
+
+	for i := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			for j := range writesPerGoroutine {
+				msg := fmt.Sprintf(`{"goroutine":%d,"seq":%d,"ts":"%s"}`+"\n",
+					id, j, time.Now().Format(time.RFC3339Nano))
+				if _, err := w.Write([]byte(msg)); err != nil {
+					writeErrors.Add(1)
+					continue
+				}
+				totalWrites.Add(1)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Close must complete cleanly — no panics, no hangs.
+	require.NoError(t, w.Close())
+
+	// All writes should succeed (no errors expected since we don't close early).
+	assert.Equal(t, int64(0), writeErrors.Load(), "no write errors expected")
+	assert.Equal(t, int64(goroutines*writesPerGoroutine), totalWrites.Load(),
+		"all writes should succeed")
+
+	// Verify files exist and active file is readable.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotEmpty(t, data, "active file should contain data")
+
+	// Verify backups were created (1000*50 writes at ~80 bytes each =
+	// ~4MB, with 1KB MaxSize → many rotations).
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Greater(t, len(entries), 1, "rotation should have created backups")
+}
+
+func TestWriter_ConcurrentWriteAndClose(t *testing.T) {
+	// Exercises the race between Write and Close — Close while 500
+	// goroutines are writing. Some writes succeed, some get ErrClosed.
+	// No panics, no races, no leaked goroutines.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize: 512,
+		Mode:    0o600,
+	})
+	require.NoError(t, err)
+
+	const goroutines = 500
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			for j := range 20 {
+				msg := fmt.Sprintf("g%d-w%d\n", id, j)
+				_, err := w.Write([]byte(msg))
+				if err != nil {
+					// After Close, writes return os.ErrClosed — that's expected.
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Let some goroutines start writing, then close.
+	require.NoError(t, w.Close())
+	wg.Wait()
+
+	// Double-close must be safe.
+	require.NoError(t, w.Close())
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.41.0
 	go.uber.org/goleak v1.3.0
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

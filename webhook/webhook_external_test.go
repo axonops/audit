@@ -175,13 +175,13 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 
 // mockMetrics satisfies both audit.Metrics and webhook.Metrics for testing.
 type mockMetrics struct {
-	mu               sync.Mutex
 	events           map[string]int // "output:status" -> count
 	outputErrors     map[string]int
 	filteredCount    map[string]int
 	validationErrors map[string]int
 	globalFiltered   map[string]int
 	serializationErr map[string]int
+	mu               sync.Mutex
 	bufferDrops      int
 	webhookDrops     int
 }
@@ -263,12 +263,6 @@ func (m *mockMetrics) getWebhookDrops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.webhookDrops
-}
-
-func (m *mockMetrics) getBufferDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.bufferDrops
 }
 
 var _ audit.Metrics = (*mockMetrics)(nil)

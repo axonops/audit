@@ -21,7 +21,8 @@ test-all: test-core test-file test-syslog test-webhook
 
 # Integration tests (requires Docker)
 test-integration:
-	go test -race -v -count=1 -tags=integration ./tests/integration/...
+	cd file && go test -race -v -count=1 -tags=integration ./tests/integration/...
+	cd syslog && go test -race -v -count=1 -tags=integration ./tests/integration/...
 
 # BDD tests (requires Docker)
 test-bdd:

@@ -126,7 +126,9 @@ jobs:
         run: go work init . file syslog webhook tests/testhelper
 
       - name: Run integration tests
-        run: go test -race -count=1 -tags=integration ./tests/integration/...
+        run: |
+          cd file && go test -race -count=1 -tags=integration ./tests/integration/...
+          cd ../syslog && go test -race -count=1 -tags=integration ./tests/integration/...
 
   security:
     name: Security Scan

@@ -17,7 +17,19 @@
 //
 // The library validates every audit event against a consumer-defined taxonomy,
 // delivers events asynchronously via a buffered channel, and fans out to
-// multiple configurable outputs (file, syslog, webhook, stdout).
+// multiple configurable outputs.
+//
+// # Multi-Module Structure
+//
+// Output backends live in separate Go modules so consumers import only
+// what they need:
+//
+//   - github.com/axonops/go-audit — core (this package, stdlib only)
+//   - github.com/axonops/go-audit/file — file output with rotation
+//   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
+//   - github.com/axonops/go-audit/webhook — batched HTTP webhook
+//
+// [StdoutOutput] ships with core and requires no additional import.
 //
 // # Stability
 //

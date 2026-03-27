@@ -8,6 +8,18 @@ run:
 
 linters:
   enable:
+    # Go toolchain defaults — explicitly listed for reproducibility
+    # across golangci-lint version upgrades.
+    - errcheck      # all error returns checked
+    - govet         # go vet checks (configured below with enable-all)
+    - staticcheck   # bugs, performance, deprecated API usage
+    - unused        # unused code detection
+    - ineffassign   # ineffective assignments
+    # gosimple is bundled into staticcheck in golangci-lint v2 and
+    # cannot be enabled separately.
+    # typecheck is a built-in stage in golangci-lint, not a configurable
+    # linter — it runs automatically and cannot be enabled/disabled.
+    # Project-specific linters
     - errorlint     # correct error wrapping
     - revive        # comprehensive Go linter
     - gocritic      # opinionated checks
@@ -28,8 +40,11 @@ linters:
     - wrapcheck     # errors from external packages must be wrapped
     - forcetypeassert # type assertions must use two-return form
     - cyclop        # alternative complexity checker
-    - noctx         # http.NewRequest without context (future-proofs webhook)
-    - rowserrcheck  # sql.Rows.Err() checked (future-proofs)
+    - noctx         # http.NewRequest without context
+    - rowserrcheck  # sql.Rows.Err() checked
+    # Note: contextcheck is not a standard golangci-lint v2 linter
+    # and is omitted. Context propagation is enforced by noctx and
+    # manual review.
 
   settings:
     gocyclo:

@@ -99,7 +99,7 @@ type WebhookConfig struct { //nolint:govet // fieldalignment: pointer field TLSP
 	BatchSize int
 
 	// BufferSize is the internal async buffer capacity. When full,
-	// new events are dropped and [Metrics.RecordWebhookDrop] is called.
+	// new events are dropped and [WebhookMetrics.RecordWebhookDrop] is called.
 	// Zero defaults to [DefaultWebhookBufferSize] (10,000).
 	// Values above [MaxWebhookBufferSize] (1,000,000) are rejected.
 	BufferSize int

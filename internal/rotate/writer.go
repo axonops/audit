@@ -30,6 +30,12 @@ import (
 
 // Config controls the rotation behaviour of a [Writer].
 type Config struct {
+	// OnRotate is called from the Write goroutine immediately after a
+	// successful rotation. The path argument is the absolute path of
+	// the file that was rotated. It must not block. If nil, rotation
+	// events are silently discarded.
+	OnRotate func(path string)
+
 	// OnError is called sequentially from a single background goroutine
 	// whenever a background operation (compression, backup removal,
 	// age-based cleanup) fails. It must not block. If nil, errors are
@@ -129,33 +135,51 @@ func New(filename string, cfg Config) (*Writer, error) {
 // Write returns an error wrapping [os.ErrClosed] if the writer has
 // been closed.
 func (w *Writer) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	var rotated bool
 
+	w.mu.Lock()
+	n, rotated, err = w.writeLocked(p)
+	w.mu.Unlock()
+
+	if rotated && w.cfg.OnRotate != nil {
+		w.cfg.OnRotate(w.filename)
+	}
+	return n, err
+}
+
+// writeLocked performs the write under the mutex, returning whether
+// a rotation occurred so the caller can invoke OnRotate outside the lock.
+func (w *Writer) writeLocked(p []byte) (n int, rotated bool, err error) {
 	if w.closed {
-		return 0, fmt.Errorf("rotate: %w", os.ErrClosed)
+		return 0, false, fmt.Errorf("rotate: %w", os.ErrClosed)
 	}
 
 	writeLen := int64(len(p))
 
 	if w.file == nil {
-		if openErr := w.openExistingOrNew(writeLen); openErr != nil {
-			return 0, openErr
+		var openRotated bool
+		openRotated, err = w.openExistingOrNew(writeLen)
+		if err != nil {
+			return 0, false, err
+		}
+		if openRotated {
+			rotated = true
 		}
 	}
 
 	if w.size+writeLen > w.cfg.MaxSize {
 		if rotateErr := w.rotate(); rotateErr != nil {
-			return 0, rotateErr
+			return 0, false, rotateErr
 		}
+		rotated = true
 	}
 
 	n, err = w.file.Write(p)
 	w.size += int64(n)
 	if err != nil {
-		return n, fmt.Errorf("rotate: write: %w", err)
+		return n, rotated, fmt.Errorf("rotate: write: %w", err)
 	}
-	return n, nil
+	return n, rotated, nil
 }
 
 // Close closes the active file and waits for any in-progress
@@ -181,29 +205,30 @@ func (w *Writer) Close() error {
 }
 
 // openExistingOrNew opens an existing file for appending if it exists
-// and has capacity, or creates a new file.
-func (w *Writer) openExistingOrNew(writeLen int64) error {
+// and has capacity, or creates a new file. Returns true if a rotation
+// occurred.
+func (w *Writer) openExistingOrNew(writeLen int64) (bool, error) {
 	info, err := safeStat(w.filename)
 	if os.IsNotExist(err) {
-		return w.openNew()
+		return false, w.openNew()
 	}
 	if err != nil {
-		return fmt.Errorf("rotate: stat %q: %w", w.filename, err)
+		return false, fmt.Errorf("rotate: stat %q: %w", w.filename, err)
 	}
 
 	if info.Size()+writeLen > w.cfg.MaxSize {
-		return w.rotate()
+		return true, w.rotate()
 	}
 
 	f, err := safeOpen(w.filename, os.O_APPEND|os.O_WRONLY, w.cfg.Mode)
 	if err != nil {
 		// If we can't open the existing file, create a new one.
-		return w.openNew()
+		return false, w.openNew()
 	}
 
 	w.file = f
 	w.size = info.Size()
-	return nil
+	return false, nil
 }
 
 // openNew renames the current file (if any) to a timestamped backup

@@ -81,7 +81,10 @@
 //   - [Hints] — per-request mutable audit metadata; populated by handlers via [GetHints]
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
-//   - [Metrics] — optional instrumentation interface
+//   - [Metrics] — optional core instrumentation interface
+//   - [FileMetrics] — optional file-output-specific instrumentation; see [FileOutput]
+//   - [SyslogMetrics] — optional syslog-specific instrumentation; see [SyslogOutput]
+//   - [WebhookMetrics] — optional webhook-specific instrumentation; see [WebhookOutput]
 //
 // # Taxonomy
 //

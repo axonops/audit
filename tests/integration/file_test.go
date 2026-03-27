@@ -46,7 +46,7 @@ func TestFileOutput_Rotation(t *testing.T) {
 		MaxSizeMB:  1, // 1 MB to trigger rotation quickly
 		MaxBackups: 3,
 		MaxAgeDays: 30,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Write >1MB of data to trigger at least one rotation.
@@ -82,7 +82,7 @@ func TestFileOutput_Compression(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Write >1MB to trigger rotation.
@@ -127,7 +127,7 @@ func TestFileOutput_CompressionDisabled(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Write >1MB to trigger rotation.
@@ -158,7 +158,7 @@ func TestFileOutput_MaxBackups(t *testing.T) {
 		MaxBackups: 2, // Keep only 2 backups
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Write enough data for several rotations (~5MB).
@@ -187,7 +187,7 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path})
+	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

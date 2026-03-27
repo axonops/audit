@@ -24,7 +24,7 @@ package audit
 //
 // The internal channel decouples the Logger's drain loop from HTTP
 // latency. If the channel is full, events are dropped (non-blocking)
-// and [Metrics.RecordWebhookDrop] is recorded.
+// and [WebhookMetrics.RecordWebhookDrop] is recorded.
 
 import (
 	"context"
@@ -57,7 +57,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // On HTTP 5xx or 429, the batch is retried with exponential backoff
 // and jitter (100ms to 5s). On 4xx (other than 429), the batch is
 // dropped immediately. On retry exhaustion, the batch is dropped and
-// [Metrics.RecordWebhookDrop] is called for each event.
+// [WebhookMetrics.RecordWebhookDrop] is called for each event.
 //
 // # SSRF Prevention
 //
@@ -73,26 +73,27 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 //
 // WebhookOutput is safe for concurrent use.
 type WebhookOutput struct {
-	metrics    Metrics
-	done       chan struct{}
-	headers    map[string]string
-	ch         chan []byte
-	cancel     context.CancelFunc
-	client     *http.Client
-	url        string
-	batchSize  int
-	maxRetries int
-	flushIvl   time.Duration
-	timeout    time.Duration
-	mu         sync.Mutex
-	closed     atomic.Bool
+	metrics        Metrics
+	webhookMetrics WebhookMetrics
+	done           chan struct{}
+	headers        map[string]string
+	ch             chan []byte
+	cancel         context.CancelFunc
+	client         *http.Client
+	url            string
+	batchSize      int
+	maxRetries     int
+	flushIvl       time.Duration
+	timeout        time.Duration
+	mu             sync.Mutex
+	closed         atomic.Bool
 }
 
 // NewWebhookOutput creates a new [WebhookOutput] from the given config.
 // It validates the config, builds an SSRF-safe HTTP client, and starts
-// the background batch goroutine. The metrics parameter is optional
+// the background batch goroutine. Both metrics parameters are optional
 // (may be nil).
-func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics) (*WebhookOutput, error) {
+func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics, webhookMetrics WebhookMetrics) (*WebhookOutput, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
@@ -140,17 +141,18 @@ func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics) (*WebhookOutput, erro
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &WebhookOutput{
-		client:     client,
-		url:        cfg.URL,
-		headers:    headers,
-		metrics:    metrics,
-		ch:         make(chan []byte, cfg.BufferSize),
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		batchSize:  cfg.BatchSize,
-		maxRetries: cfg.MaxRetries,
-		flushIvl:   cfg.FlushInterval,
-		timeout:    cfg.Timeout,
+		client:         client,
+		url:            cfg.URL,
+		headers:        headers,
+		metrics:        metrics,
+		webhookMetrics: webhookMetrics,
+		ch:             make(chan []byte, cfg.BufferSize),
+		cancel:         cancel,
+		done:           make(chan struct{}),
+		batchSize:      cfg.BatchSize,
+		maxRetries:     cfg.MaxRetries,
+		flushIvl:       cfg.FlushInterval,
+		timeout:        cfg.Timeout,
 	}
 
 	go w.batchLoop(ctx)
@@ -159,7 +161,7 @@ func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics) (*WebhookOutput, erro
 
 // Write enqueues a serialised audit event for batched delivery. The
 // data is copied before enqueuing. If the internal buffer is full,
-// the event is dropped and [Metrics.RecordWebhookDrop] is called.
+// the event is dropped and [WebhookMetrics.RecordWebhookDrop] is called.
 // Write never blocks the caller.
 func (w *WebhookOutput) Write(data []byte) error {
 	if w.closed.Load() {
@@ -175,8 +177,10 @@ func (w *WebhookOutput) Write(data []byte) error {
 	default:
 		slog.Warn("audit: webhook buffer full, dropping event",
 			"buffer_size", cap(w.ch))
+		if w.webhookMetrics != nil {
+			w.webhookMetrics.RecordWebhookDrop()
+		}
 		if w.metrics != nil {
-			w.metrics.RecordWebhookDrop()
 			w.metrics.RecordEvent(w.Name(), "error")
 		}
 		return nil // non-blocking — do not return error to drain goroutine

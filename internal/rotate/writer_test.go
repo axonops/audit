@@ -1,0 +1,855 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package rotate_test
+
+import (
+	"bytes"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/axonops/go-audit/internal/rotate"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+)
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+
+// ---------------------------------------------------------------------------
+// New — validation
+// ---------------------------------------------------------------------------
+
+func TestNew_Validation(t *testing.T) {
+	t.Parallel()
+
+	validDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		filename string
+		cfg      rotate.Config
+		wantErr  string
+	}{
+		{
+			name:     "empty path",
+			filename: "",
+			cfg:      rotate.Config{MaxSize: 100, Mode: 0o600},
+			wantErr:  "filename must not be empty",
+		},
+		{
+			name:     "missing parent directory",
+			filename: filepath.Join(validDir, "no-such-dir", "audit.log"),
+			cfg:      rotate.Config{MaxSize: 100, Mode: 0o600},
+			wantErr:  "parent directory",
+		},
+		{
+			name:     "zero MaxSize",
+			filename: filepath.Join(validDir, "audit.log"),
+			cfg:      rotate.Config{MaxSize: 0, Mode: 0o600},
+			wantErr:  "MaxSize must be > 0",
+		},
+		{
+			name:     "negative MaxSize",
+			filename: filepath.Join(validDir, "audit.log"),
+			cfg:      rotate.Config{MaxSize: -1, Mode: 0o600},
+			wantErr:  "MaxSize must be > 0",
+		},
+		{
+			name:     "zero Mode",
+			filename: filepath.Join(validDir, "audit.log"),
+			cfg:      rotate.Config{MaxSize: 100, Mode: 0},
+			wantErr:  "Mode must be non-zero",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w, err := rotate.New(tc.filename, tc.cfg)
+			assert.Nil(t, w)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+func TestNew_SymlinkPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests unreliable on Windows CI")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.log")
+	require.NoError(t, os.WriteFile(real, []byte("x"), 0o600))
+
+	link := filepath.Join(dir, "link.log")
+	require.NoError(t, os.Symlink(real, link))
+
+	w, err := rotate.New(link, rotate.Config{MaxSize: 100, Mode: 0o600})
+	require.NoError(t, err, "New should succeed — symlink check is on Write, not New")
+
+	_, err = w.Write([]byte("test"))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+	require.NoError(t, w.Close())
+}
+
+// ---------------------------------------------------------------------------
+// Write — basic
+// ---------------------------------------------------------------------------
+
+func TestWriter_Write_CreatesFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o640})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	// File must not exist after New.
+	_, err = os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "file should not exist before first Write")
+
+	n, err := w.Write([]byte("hello\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 6, n)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+}
+
+func TestWriter_Write_Appends(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	_, err = w.Write([]byte("line1\n"))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("line2\n"))
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "line1\nline2\n", string(data))
+}
+
+// ---------------------------------------------------------------------------
+// Write — rotation
+// ---------------------------------------------------------------------------
+
+func TestWriter_Write_RotatesOnSize(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	// Write enough to exceed MaxSize.
+	payload := bytes.Repeat([]byte("A"), 30)
+	_, err = w.Write(payload) // 30 bytes
+	require.NoError(t, err)
+	_, err = w.Write(payload) // 60 > 50 → rotate
+	require.NoError(t, err)
+
+	// Active file should contain only the last write.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Len(t, data, 30)
+
+	// There should be a backup file.
+	backups := findBackups(t, dir, "audit-", ".log")
+	assert.GreaterOrEqual(t, len(backups), 1)
+}
+
+func TestWriter_Write_OversizedPayload(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	// Single write > MaxSize should be accepted.
+	big := bytes.Repeat([]byte("B"), 100)
+	n, err := w.Write(big)
+	require.NoError(t, err)
+	assert.Equal(t, 100, n)
+
+	// Next write should trigger rotation.
+	_, err = w.Write([]byte("C"))
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "C", string(data))
+}
+
+func TestWriter_Write_BackupNaming(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	payload := bytes.Repeat([]byte("X"), 60)
+	_, err = w.Write(payload)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("Y"))
+	require.NoError(t, err)
+
+	backups := findBackups(t, dir, "audit-", ".log")
+	require.NotEmpty(t, backups)
+
+	// Backup name should match format: audit-YYYY-MM-DDThh-mm-ss.mmm.log
+	name := backups[0]
+	ts := strings.TrimPrefix(name, "audit-")
+	ts = strings.TrimSuffix(ts, ".log")
+	_, err = time.Parse("2006-01-02T15-04-05.000", ts)
+	assert.NoError(t, err, "backup name %q should contain a valid timestamp", name)
+}
+
+// ---------------------------------------------------------------------------
+// Write — permissions
+// ---------------------------------------------------------------------------
+
+func TestWriter_Write_AllFilesUseConfiguredMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	mode := os.FileMode(0o640)
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: mode})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	payload := bytes.Repeat([]byte("A"), 60)
+	_, err = w.Write(payload)
+	require.NoError(t, err)
+	_, err = w.Write([]byte("B"))
+	require.NoError(t, err)
+
+	// Active file.
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, mode, info.Mode().Perm(), "active file permissions")
+
+	// Backup.
+	backups := findBackups(t, dir, "audit-", ".log")
+	require.NotEmpty(t, backups)
+	for _, b := range backups {
+		bInfo, err := os.Stat(filepath.Join(dir, b))
+		require.NoError(t, err)
+		assert.Equal(t, mode, bInfo.Mode().Perm(), "backup %s permissions", b)
+	}
+}
+
+func TestWriter_Write_ModeOnReopen(t *testing.T) {
+	// Verifies that openExistingOrNew uses configured mode, not hardcoded 0644.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	mode := os.FileMode(0o600)
+
+	// Create file with a different mode to simulate existing file.
+	require.NoError(t, os.WriteFile(path, []byte("old"), 0o644))
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: mode})
+	require.NoError(t, err)
+
+	_, err = w.Write([]byte("new\n"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, mode, info.Mode().Perm(), "should enforce configured mode, not 0644")
+}
+
+// ---------------------------------------------------------------------------
+// Write — symlink rejection
+// ---------------------------------------------------------------------------
+
+func TestWriter_Write_SymlinkRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests unreliable on Windows CI")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.log")
+	require.NoError(t, os.WriteFile(real, []byte{}, 0o600))
+
+	link := filepath.Join(dir, "link.log")
+	require.NoError(t, os.Symlink(real, link))
+
+	w, err := rotate.New(link, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+
+	_, err = w.Write([]byte("test"))
+	assert.Error(t, err)
+	require.NoError(t, w.Close())
+}
+
+func TestWriter_Write_SymlinkCreatedBetweenRotations(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink tests unreliable on Windows CI")
+	}
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	// First write — creates the file normally.
+	_, err = w.Write(bytes.Repeat([]byte("A"), 30))
+	require.NoError(t, err)
+
+	// Replace the file with a symlink (simulates an attacker).
+	require.NoError(t, os.Remove(path))
+	trap := filepath.Join(dir, "trap.log")
+	require.NoError(t, os.WriteFile(trap, []byte{}, 0o600))
+	require.NoError(t, os.Symlink(trap, path))
+
+	// Next write should trigger rotation and hit the symlink check.
+	_, err = w.Write(bytes.Repeat([]byte("B"), 30))
+	assert.Error(t, err, "should reject symlink created between writes")
+}
+
+// ---------------------------------------------------------------------------
+// Close
+// ---------------------------------------------------------------------------
+
+func TestWriter_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+
+	_, err = w.Write([]byte("test"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+	require.NoError(t, w.Close(), "second close should not error")
+}
+
+func TestWriter_Close_WaitsForCompression(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     0o600,
+		Compress: true,
+	})
+	require.NoError(t, err)
+
+	// Write enough to trigger rotation + compression.
+	for i := range 5 {
+		_, err = w.Write([]byte(fmt.Sprintf("event-%03d", i) + strings.Repeat("x", 50) + "\n"))
+		require.NoError(t, err)
+	}
+
+	// Close must wait for compression to finish.
+	require.NoError(t, w.Close())
+
+	// After close, .gz files should exist.
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	assert.NotEmpty(t, gzFiles, "compressed backups should exist after Close")
+}
+
+func TestWriter_Write_AfterClose(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	_, err = w.Write([]byte("test"))
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, os.ErrClosed)
+}
+
+// ---------------------------------------------------------------------------
+// Retention
+// ---------------------------------------------------------------------------
+
+func TestWriter_Retention_MaxBackups(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:    50,
+		Mode:       0o600,
+		MaxBackups: 2,
+	})
+	require.NoError(t, err)
+
+	// Write enough to generate >2 backups.
+	for i := range 5 {
+		payload := fmt.Sprintf("event-%d-", i) + strings.Repeat("x", 50) + "\n"
+		_, err = w.Write([]byte(payload))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+
+	backups := findBackups(t, dir, "audit-", ".log")
+	assert.LessOrEqual(t, len(backups), 2, "should retain at most MaxBackups backups")
+}
+
+func TestWriter_Retention_MaxAge(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Create fake old backups.
+	old := time.Now().Add(-48 * time.Hour)
+	oldName := fmt.Sprintf("audit-%s.log", old.Format("2006-01-02T15-04-05.000"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, oldName), []byte("old"), 0o600))
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize: 50,
+		Mode:    0o600,
+		MaxAge:  24 * time.Hour,
+	})
+	require.NoError(t, err)
+
+	// Trigger a rotation to invoke the mill.
+	payload := strings.Repeat("x", 60)
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	// Old backup should be removed.
+	_, err = os.Stat(filepath.Join(dir, oldName))
+	assert.True(t, os.IsNotExist(err), "old backup should have been removed by MaxAge")
+}
+
+// ---------------------------------------------------------------------------
+// Compression
+// ---------------------------------------------------------------------------
+
+func TestWriter_Compression_CreatesGz(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     0o600,
+		Compress: true,
+	})
+	require.NoError(t, err)
+
+	payload := strings.Repeat("x", 60) + "\n"
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y\n"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	assert.NotEmpty(t, gzFiles, "should have compressed backup")
+
+	// Verify the .gz file is valid gzip.
+	for _, name := range gzFiles {
+		f, err := os.Open(filepath.Join(dir, name))
+		require.NoError(t, err)
+		gr, err := gzip.NewReader(f)
+		require.NoError(t, err)
+		_, err = io.ReadAll(gr)
+		assert.NoError(t, err, "gz file %s should be valid gzip", name)
+		gr.Close()
+		f.Close()
+	}
+}
+
+func TestWriter_Compression_CorrectMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	mode := os.FileMode(0o640)
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     mode,
+		Compress: true,
+	})
+	require.NoError(t, err)
+
+	payload := strings.Repeat("x", 60) + "\n"
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y\n"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	require.NotEmpty(t, gzFiles)
+
+	for _, name := range gzFiles {
+		info, err := os.Stat(filepath.Join(dir, name))
+		require.NoError(t, err)
+		assert.Equal(t, mode, info.Mode().Perm(), "gz file %s should have configured mode", name)
+	}
+}
+
+func TestWriter_Compression_SourceRemoved(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     0o600,
+		Compress: true,
+	})
+	require.NoError(t, err)
+
+	payload := strings.Repeat("x", 60) + "\n"
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y\n"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	// Uncompressed backup should be removed.
+	uncompressed := findBackups(t, dir, "audit-", ".log")
+	assert.Empty(t, uncompressed, "uncompressed backups should be removed after compression")
+
+	// Compressed backup should exist.
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	assert.NotEmpty(t, gzFiles)
+}
+
+func TestWriter_Compression_Disabled(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:  50,
+		Mode:     0o600,
+		Compress: false,
+	})
+	require.NoError(t, err)
+
+	payload := strings.Repeat("x", 60) + "\n"
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y\n"))
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	assert.Empty(t, gzFiles, "should not have compressed backups when Compress=false")
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency
+// ---------------------------------------------------------------------------
+
+func TestWriter_ConcurrentWrites(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 500, Mode: 0o600})
+	require.NoError(t, err)
+
+	const goroutines = 50
+	const writes = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errs := make(chan error, goroutines*writes)
+
+	for i := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			for j := range writes {
+				msg := fmt.Sprintf("g%d-w%d\n", id, j)
+				if _, err := w.Write([]byte(msg)); err != nil {
+					errs <- err
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errs)
+	require.NoError(t, w.Close())
+
+	for err := range errs {
+		t.Errorf("concurrent write error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Lazy open / No MkdirAll
+// ---------------------------------------------------------------------------
+
+func TestWriter_LazyOpen(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+
+	// File must NOT exist after New.
+	_, err = os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "New should not create the file")
+
+	require.NoError(t, w.Close())
+}
+
+func TestWriter_NoMkdirAll(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "missing", "dir", "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	assert.Nil(t, w)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parent directory")
+}
+
+// ---------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------
+
+func TestWriter_Sync(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	// Sync on unopened writer should be a no-op.
+	require.NoError(t, w.Sync())
+
+	_, err = w.Write([]byte("test\n"))
+	require.NoError(t, err)
+
+	// Sync on open writer should succeed.
+	require.NoError(t, w.Sync())
+}
+
+// ---------------------------------------------------------------------------
+// Edge cases for coverage
+// ---------------------------------------------------------------------------
+
+func TestWriter_OpenExistingFile(t *testing.T) {
+	// Exercises the openExistingOrNew path where the file exists and has capacity.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Pre-create a small file.
+	require.NoError(t, os.WriteFile(path, []byte("existing\n"), 0o600))
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
+	require.NoError(t, err)
+
+	_, err = w.Write([]byte("appended\n"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "existing\n")
+	assert.Contains(t, string(data), "appended\n")
+}
+
+func TestWriter_OpenExistingFile_AtCapacity(t *testing.T) {
+	// Exercises the openExistingOrNew path where the file exists but is at capacity.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Pre-create a file that is at capacity.
+	require.NoError(t, os.WriteFile(path, bytes.Repeat([]byte("x"), 100), 0o600))
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 100, Mode: 0o600})
+	require.NoError(t, err)
+
+	_, err = w.Write([]byte("new\n"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// The old content should be in a backup, new content in the active file.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "new\n", string(data))
+}
+
+func TestWriter_RotateCloseError(t *testing.T) {
+	// Exercise the rotate → closeFile path by triggering multiple rotations.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600})
+	require.NoError(t, err)
+
+	for i := range 4 {
+		payload := fmt.Sprintf("event-%d-%s\n", i, strings.Repeat("x", 50))
+		_, err = w.Write([]byte(payload))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+
+	backups := findBackups(t, dir, "audit-", ".log")
+	assert.GreaterOrEqual(t, len(backups), 1, "at least one backup from multiple rotations")
+}
+
+func TestWriter_CompressionWithRetention(t *testing.T) {
+	// Exercise compression + MaxBackups together.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:    50,
+		Mode:       0o600,
+		Compress:   true,
+		MaxBackups: 2,
+	})
+	require.NoError(t, err)
+
+	for i := range 5 {
+		payload := fmt.Sprintf("event-%d-%s\n", i, strings.Repeat("x", 50))
+		_, err = w.Write([]byte(payload))
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Close())
+
+	// Should have at most 2 compressed backups.
+	gzFiles := findBackups(t, dir, "audit-", ".log.gz")
+	assert.LessOrEqual(t, len(gzFiles), 2)
+}
+
+func TestWriter_NonLogFilesIgnored(t *testing.T) {
+	// Verify that unrelated files in the directory are not treated as backups.
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Create unrelated files that share the prefix.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "audit-notes.txt"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "other.log"), []byte("x"), 0o600))
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 50, Mode: 0o600, MaxBackups: 1})
+	require.NoError(t, err)
+
+	payload := strings.Repeat("x", 60)
+	_, err = w.Write([]byte(payload))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("y"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// Unrelated files should still exist.
+	_, err = os.Stat(filepath.Join(dir, "audit-notes.txt"))
+	assert.NoError(t, err, "unrelated file should not be removed")
+	_, err = os.Stat(filepath.Join(dir, "other.log"))
+	assert.NoError(t, err, "unrelated file should not be removed")
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+func findBackups(t *testing.T, dir, prefix, suffix string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var result []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) {
+			// Exclude .gz when looking for bare suffix (e.g. ".log" should not match ".log.gz")
+			if !strings.HasSuffix(suffix, ".gz") && strings.HasSuffix(name, ".gz") {
+				continue
+			}
+			result = append(result, name)
+		}
+	}
+	return result
+}

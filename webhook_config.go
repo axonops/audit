@@ -18,6 +18,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
@@ -76,6 +77,11 @@ type WebhookConfig struct {
 	// TLSKey is the path to the client private key for mTLS.
 	// Both TLSCert and TLSKey must be set for client authentication.
 	TLSKey string
+
+	// TLSPolicy controls TLS version and cipher suite policy. When nil,
+	// the default policy (TLS 1.3 only) is used. See [TLSPolicy] for
+	// details on enabling TLS 1.2 fallback.
+	TLSPolicy *TLSPolicy
 
 	// FlushInterval is the maximum time between batch flushes.
 	// The timer resets after every flush (batch-size or timer
@@ -202,10 +208,12 @@ func validateWebhookLimits(cfg *WebhookConfig) error {
 }
 
 // buildWebhookTLSConfig creates a TLS configuration for webhook
-// connections. TLS 1.3 is the minimum. InsecureSkipVerify is never set.
+// connections using the [TLSPolicy] from the config (defaulting to
+// TLS 1.3 only when nil). InsecureSkipVerify is never set.
 func buildWebhookTLSConfig(cfg *WebhookConfig) (*tls.Config, error) {
-	tlsCfg := &tls.Config{
-		MinVersion: tls.VersionTLS13,
+	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
+	for _, w := range warnings {
+		slog.Warn(w, "output", "webhook", "url", cfg.URL)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

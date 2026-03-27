@@ -655,6 +655,58 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TLSPolicy integration
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
+	// Nil TLSPolicy should behave identically to the previous hardcoded
+	// TLS 1.3 default: connect to a TLS 1.3 server with a custom CA.
+	certs := generateTestCerts(t)
+	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network:   "tcp+tls",
+		Address:   srv.addr(),
+		TLSCA:     certs.caPath,
+		TLSPolicy: nil, // explicitly nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, out.Write([]byte(`{"event":"nil_policy"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs)
+	assert.Contains(t, msgs[0], "nil_policy")
+}
+
+func TestSyslogOutput_TLSPolicy_AllowTLS12(t *testing.T) {
+	certs := generateTestCerts(t)
+	// Server accepts TLS 1.2.
+	certs.tlsCfg.MinVersion = tls.VersionTLS12
+	srv := newMockTLSSyslogServer(t, certs.tlsCfg)
+	defer srv.close()
+
+	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+		Network: "tcp+tls",
+		Address: srv.addr(),
+		TLSCA:   certs.caPath,
+		TLSPolicy: &audit.TLSPolicy{
+			AllowTLS12: true,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, out.Write([]byte(`{"event":"tls12_policy"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs)
+	assert.Contains(t, msgs[0], "tls12_policy")
+}
+
+// ---------------------------------------------------------------------------
 // Reconnection
 // ---------------------------------------------------------------------------
 

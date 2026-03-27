@@ -69,6 +69,7 @@
 //   - [EventDef] — definition of a single event type's fields
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
 //   - [Output] — interface for audit event destinations
+//   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
 //   - [EventType] — handle for zero-allocation audit calls; see [Logger.MustHandle]
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order

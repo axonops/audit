@@ -41,3 +41,13 @@ type Output interface {
 	// used in log messages and metrics labels.
 	Name() string
 }
+
+// DeliveryReporter is an optional interface that [Output] implementations
+// may satisfy to indicate they handle their own delivery metrics
+// reporting. When satisfied and [DeliveryReporter.ReportsDelivery]
+// returns true, the core logger skips its default per-event
+// [Metrics.RecordEvent] calls for that output — the output is
+// responsible for calling them after actual delivery.
+type DeliveryReporter interface {
+	ReportsDelivery() bool
+}

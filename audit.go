@@ -546,20 +546,10 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 }
 
 // writeToOutput sends data to a single output and records metrics.
-// deliveryReporter is an optional interface that async outputs (like
-// [WebhookOutput]) implement to indicate they report their own delivery
-// metrics. When an output implements this interface and ReportsDelivery
-// returns true, writeToOutput skips its RecordEvent calls — the output
-// is responsible for calling them from its delivery goroutine after
-// actual delivery (not just enqueue).
-type deliveryReporter interface {
-	ReportsDelivery() bool
-}
-
 func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
 	// Check if this output reports its own delivery metrics.
 	selfReports := false
-	if dr, ok := o.(deliveryReporter); ok {
+	if dr, ok := o.(DeliveryReporter); ok {
 		selfReports = dr.ReportsDelivery()
 	}
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package webhook
 
 import (
 	"testing"
@@ -25,47 +25,47 @@ import (
 // Config validation (Commit 2)
 // ---------------------------------------------------------------------------
 
-func TestValidateWebhookConfig(t *testing.T) {
+func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		wantErr string
-		cfg     WebhookConfig
+		cfg     Config
 	}{
 		{
 			name:    "empty URL",
-			cfg:     WebhookConfig{},
+			cfg:     Config{},
 			wantErr: "must not be empty",
 		},
 		{
 			name: "HTTP without AllowInsecureHTTP",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL: "http://example.com/webhook",
 			},
 			wantErr: "must be https",
 		},
 		{
 			name: "HTTP with AllowInsecureHTTP",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:               "http://example.com/webhook",
 				AllowInsecureHTTP: true,
 			},
 		},
 		{
 			name: "HTTPS valid",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL: "https://example.com/webhook",
 			},
 		},
 		{
 			name: "invalid URL scheme",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL: "ftp://example.com/data",
 			},
 			wantErr: "scheme must be http or https",
 		},
 		{
 			name: "CRLF in header name",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:     "https://example.com/webhook",
 				Headers: map[string]string{"Bad\r\nHeader": "value"},
 			},
@@ -73,7 +73,7 @@ func TestValidateWebhookConfig(t *testing.T) {
 		},
 		{
 			name: "cert without key",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:     "https://example.com/webhook",
 				TLSCert: "/tmp/cert.pem",
 			},
@@ -81,7 +81,7 @@ func TestValidateWebhookConfig(t *testing.T) {
 		},
 		{
 			name: "key without cert",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:    "https://example.com/webhook",
 				TLSKey: "/tmp/key.pem",
 			},
@@ -89,25 +89,25 @@ func TestValidateWebhookConfig(t *testing.T) {
 		},
 		{
 			name: "batch size exceeds max",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:       "https://example.com/webhook",
-				BatchSize: MaxWebhookBatchSize + 1,
+				BatchSize: MaxBatchSize + 1,
 			},
 			wantErr: "batch_size",
 		},
 		{
 			name: "buffer size exceeds max",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:        "https://example.com/webhook",
-				BufferSize: MaxWebhookBufferSize + 1,
+				BufferSize: MaxBufferSize + 1,
 			},
 			wantErr: "buffer_size",
 		},
 		{
 			name: "max retries exceeds max",
-			cfg: WebhookConfig{
+			cfg: Config{
 				URL:        "https://example.com/webhook",
-				MaxRetries: MaxWebhookMaxRetries + 1,
+				MaxRetries: MaxMaxRetries + 1,
 			},
 			wantErr: "max_retries",
 		},
@@ -126,23 +126,23 @@ func TestValidateWebhookConfig(t *testing.T) {
 	}
 }
 
-func TestValidateWebhookConfig_Defaults(t *testing.T) {
-	cfg := WebhookConfig{URL: "https://example.com/webhook"}
+func TestValidateConfig_Defaults(t *testing.T) {
+	cfg := Config{URL: "https://example.com/webhook"}
 	require.NoError(t, validateWebhookConfig(&cfg))
 
-	assert.Equal(t, DefaultWebhookBatchSize, cfg.BatchSize)
-	assert.Equal(t, DefaultWebhookFlushInterval, cfg.FlushInterval)
-	assert.Equal(t, DefaultWebhookTimeout, cfg.Timeout)
-	assert.Equal(t, DefaultWebhookMaxRetries, cfg.MaxRetries)
-	assert.Equal(t, DefaultWebhookBufferSize, cfg.BufferSize)
+	assert.Equal(t, DefaultBatchSize, cfg.BatchSize)
+	assert.Equal(t, DefaultFlushInterval, cfg.FlushInterval)
+	assert.Equal(t, DefaultTimeout, cfg.Timeout)
+	assert.Equal(t, DefaultMaxRetries, cfg.MaxRetries)
+	assert.Equal(t, DefaultBufferSize, cfg.BufferSize)
 }
 
-func TestValidateWebhookConfig_BoundaryValues(t *testing.T) {
-	cfg := WebhookConfig{
+func TestValidateConfig_BoundaryValues(t *testing.T) {
+	cfg := Config{
 		URL:        "https://example.com/webhook",
-		BatchSize:  MaxWebhookBatchSize,
-		BufferSize: MaxWebhookBufferSize,
-		MaxRetries: MaxWebhookMaxRetries,
+		BatchSize:  MaxBatchSize,
+		BufferSize: MaxBufferSize,
+		MaxRetries: MaxMaxRetries,
 	}
 	require.NoError(t, validateWebhookConfig(&cfg))
 }

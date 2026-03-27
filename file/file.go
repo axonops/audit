@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package file
 
 import (
 	"fmt"
@@ -23,28 +23,44 @@ import (
 	"sync"
 	"time"
 
-	"github.com/axonops/go-audit/internal/rotate"
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/file/internal/rotate"
 )
+
+// Compile-time assertion that Output implements audit.Output.
+var _ audit.Output = (*Output)(nil)
 
 const (
-	// MaxFileSizeMB is the maximum allowed value for [FileConfig.MaxSizeMB].
-	// Values above this limit cause [NewFileOutput] to return an error
-	// wrapping [ErrConfigInvalid].
-	MaxFileSizeMB = 10_240 // 10 GB
+	// MaxSizeMB is the maximum allowed value for [Config.MaxSizeMB].
+	// Values above this limit cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	MaxSizeMB = 10_240 // 10 GB
 
-	// MaxFileBackups is the maximum allowed value for [FileConfig.MaxBackups].
-	// Values above this limit cause [NewFileOutput] to return an error
-	// wrapping [ErrConfigInvalid].
-	MaxFileBackups = 100
+	// MaxBackups is the maximum allowed value for [Config.MaxBackups].
+	// Values above this limit cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	MaxBackups = 100
 
-	// MaxFileAgeDays is the maximum allowed value for [FileConfig.MaxAgeDays].
-	// Values above this limit cause [NewFileOutput] to return an error
-	// wrapping [ErrConfigInvalid].
-	MaxFileAgeDays = 365
+	// MaxAgeDays is the maximum allowed value for [Config.MaxAgeDays].
+	// Values above this limit cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	MaxAgeDays = 365
 )
 
-// FileConfig holds configuration for [FileOutput].
-type FileConfig struct {
+// Metrics is an optional interface for file-output-specific
+// instrumentation. Pass an implementation to [New] to
+// collect rotation telemetry. Pass nil to disable.
+type Metrics interface {
+	// RecordFileRotation records that the file output rotated its
+	// active log file. The path argument is the absolute filesystem
+	// path of the file that was rotated. Implementations SHOULD NOT
+	// use this value as an unbounded metric label — it may expose
+	// infrastructure topology and cause cardinality explosion.
+	RecordFileRotation(path string)
+}
+
+// Config holds configuration for [Output].
+type Config struct {
 	Compress    *bool
 	Path        string
 	Permissions string
@@ -53,23 +69,23 @@ type FileConfig struct {
 	MaxAgeDays  int
 }
 
-// FileOutput writes serialised audit events to a file with automatic
+// Output writes serialised audit events to a file with automatic
 // size-based rotation. It supports backup retention, age-based cleanup,
 // and optional gzip compression.
 //
-// FileOutput is safe for concurrent use, including concurrent calls
-// to [FileOutput.Write] and [FileOutput.Close].
-type FileOutput struct {
+// Output is safe for concurrent use, including concurrent calls
+// to [Output.Write] and [Output.Close].
+type Output struct {
 	writer *rotate.Writer
 	path   string
 	mu     sync.RWMutex
 	closed bool
 }
 
-// NewFileOutput creates a new [FileOutput] from the given config.
+// New creates a new [Output] from the given config.
 // It validates the path, permissions, and parent directory existence.
 // The fileMetrics parameter is optional (may be nil).
-func NewFileOutput(cfg FileConfig, fileMetrics FileMetrics) (*FileOutput, error) {
+func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
@@ -126,17 +142,17 @@ func NewFileOutput(cfg FileConfig, fileMetrics FileMetrics) (*FileOutput, error)
 		return nil, fmt.Errorf("audit: file output: %w", err)
 	}
 
-	return &FileOutput{writer: rw, path: cfg.Path}, nil
+	return &Output{writer: rw, path: cfg.Path}, nil
 }
 
 // Write sends a serialised audit event to the file. Write returns
-// [ErrOutputClosed] if the output has been closed. Write is safe for
+// [audit.ErrOutputClosed] if the output has been closed. Write is safe for
 // concurrent use.
-func (f *FileOutput) Write(data []byte) error {
+func (f *Output) Write(data []byte) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if f.closed {
-		return ErrOutputClosed
+		return audit.ErrOutputClosed
 	}
 	if _, err := f.writer.Write(data); err != nil {
 		return fmt.Errorf("audit: file output write: %w", err)
@@ -146,8 +162,8 @@ func (f *FileOutput) Write(data []byte) error {
 
 // Close closes the underlying file writer and marks the output as
 // closed. Close is idempotent and safe for concurrent use with
-// [FileOutput.Write].
-func (f *FileOutput) Close() error {
+// [Output.Write].
+func (f *Output) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {
@@ -161,7 +177,7 @@ func (f *FileOutput) Close() error {
 }
 
 // Name returns the human-readable identifier for this output.
-func (f *FileOutput) Name() string {
+func (f *Output) Name() string {
 	return "file:" + f.path
 }
 
@@ -183,7 +199,7 @@ func parsePermissions(s string) (os.FileMode, error) {
 }
 
 // applyFileDefaults fills zero-valued rotation fields with defaults.
-func applyFileDefaults(cfg *FileConfig) {
+func applyFileDefaults(cfg *Config) {
 	if cfg.MaxSizeMB <= 0 {
 		cfg.MaxSizeMB = 100
 	}
@@ -197,18 +213,18 @@ func applyFileDefaults(cfg *FileConfig) {
 
 // validateFileLimits checks that rotation fields do not exceed their
 // upper bounds.
-func validateFileLimits(cfg *FileConfig) error {
-	if cfg.MaxSizeMB > MaxFileSizeMB {
+func validateFileLimits(cfg *Config) error {
+	if cfg.MaxSizeMB > MaxSizeMB {
 		return fmt.Errorf("%w: max_size_mb %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxSizeMB, MaxFileSizeMB)
+			audit.ErrConfigInvalid, cfg.MaxSizeMB, MaxSizeMB)
 	}
-	if cfg.MaxBackups > MaxFileBackups {
+	if cfg.MaxBackups > MaxBackups {
 		return fmt.Errorf("%w: max_backups %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxBackups, MaxFileBackups)
+			audit.ErrConfigInvalid, cfg.MaxBackups, MaxBackups)
 	}
-	if cfg.MaxAgeDays > MaxFileAgeDays {
+	if cfg.MaxAgeDays > MaxAgeDays {
 		return fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
-			ErrConfigInvalid, cfg.MaxAgeDays, MaxFileAgeDays)
+			audit.ErrConfigInvalid, cfg.MaxAgeDays, MaxAgeDays)
 	}
 	return nil
 }

@@ -6,9 +6,14 @@ coverage:
         threshold: 1%
     patch:
       default:
-        target: 80%
+        target: 90%
         threshold: 1%
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true
 
 ignore:
   - "examples/**"
   - "tests/**"
+  - "internal/testhelper/**"

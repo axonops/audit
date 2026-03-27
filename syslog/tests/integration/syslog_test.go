@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/syslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -100,7 +100,7 @@ func TestSyslogIntegration_TCP_SendAndReceive(t *testing.T) {
 	addr, container := startRsyslogContainer(t)
 	defer func() { _ = container.Terminate(context.Background()) }()
 
-	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+	out, err := syslog.New(&syslog.Config{
 		Network:  "tcp",
 		Address:  addr,
 		Facility: "local0",
@@ -128,7 +128,7 @@ func TestSyslogIntegration_TCP_MultipleEvents(t *testing.T) {
 	addr, container := startRsyslogContainer(t)
 	defer func() { _ = container.Terminate(context.Background()) }()
 
-	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+	out, err := syslog.New(&syslog.Config{
 		Network:  "tcp",
 		Address:  addr,
 		Facility: "local0",
@@ -159,7 +159,7 @@ func TestSyslogIntegration_TCP_RFC5424Format(t *testing.T) {
 	addr, container := startRsyslogContainer(t)
 	defer func() { _ = container.Terminate(context.Background()) }()
 
-	out, err := audit.NewSyslogOutput(&audit.SyslogConfig{
+	out, err := syslog.New(&syslog.Config{
 		Network:  "tcp",
 		Address:  addr,
 		Facility: "local0",

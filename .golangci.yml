@@ -123,6 +123,12 @@ linters:
         linters:
           - errcheck
 
+      # Internal test helpers are never exposed to consumers.
+      - path: internal/testhelper/
+        linters:
+          - revive
+        text: "exported"
+
 formatters:
   enable:
     - gofmt

@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 
 	"github.com/axonops/go-audit"
 )
@@ -234,31 +232,6 @@ func ExampleNewStdoutOutput() {
 	// Output: stdout output: stdout
 }
 
-func ExampleNewFileOutput() {
-	// Create a file output with rotation for production use.
-	dir, err := os.MkdirTemp("", "audit-example-*")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-
-	out, err := audit.NewFileOutput(audit.FileConfig{
-		Path:        filepath.Join(dir, "audit.log"),
-		MaxSizeMB:   100,
-		MaxBackups:  5,
-		MaxAgeDays:  30,
-		Permissions: "0600",
-	}, nil)
-	if err != nil {
-		fmt.Println("create error:", err)
-		return
-	}
-	defer func() { _ = out.Close() }()
-
-	fmt.Println("file output created")
-	// Output: file output created
-}
-
 func ExampleEventRoute_include() {
 	// Include mode: only security events are delivered to this output.
 	route := audit.EventRoute{
@@ -319,42 +292,4 @@ func ExampleLogger_SetOutputRoute() {
 
 	fmt.Println("route set to security only")
 	// Output: route set to security only
-}
-
-func ExampleSyslogConfig_tcp() {
-	// Plain TCP syslog — the simplest configuration.
-	cfg := &audit.SyslogConfig{
-		Network:  "tcp",
-		Address:  "syslog.example.com:514",
-		Facility: "local0",
-		AppName:  "myapp",
-	}
-	fmt.Printf("network=%s address=%s facility=%s app=%s\n",
-		cfg.Network, cfg.Address, cfg.Facility, cfg.AppName)
-	// Output: network=tcp address=syslog.example.com:514 facility=local0 app=myapp
-}
-
-func ExampleSyslogConfig_tls() {
-	// TLS syslog with CA verification.
-	cfg := &audit.SyslogConfig{
-		Network: "tcp+tls",
-		Address: "syslog.example.com:6514",
-		TLSCA:   "/etc/audit/ca.pem",
-	}
-	fmt.Printf("network=%s address=%s ca=%s\n", cfg.Network, cfg.Address, cfg.TLSCA)
-	// Output: network=tcp+tls address=syslog.example.com:6514 ca=/etc/audit/ca.pem
-}
-
-func ExampleSyslogConfig_mtls() {
-	// mTLS syslog with client certificate authentication.
-	cfg := &audit.SyslogConfig{
-		Network: "tcp+tls",
-		Address: "syslog.example.com:6514",
-		TLSCert: "/etc/audit/client-cert.pem",
-		TLSKey:  "/etc/audit/client-key.pem",
-		TLSCA:   "/etc/audit/ca.pem",
-	}
-	fmt.Printf("network=%s address=%s cert=%s key=%s ca=%s\n",
-		cfg.Network, cfg.Address, cfg.TLSCert, cfg.TLSKey, cfg.TLSCA)
-	// Output: network=tcp+tls address=syslog.example.com:6514 cert=/etc/audit/client-cert.pem key=/etc/audit/client-key.pem ca=/etc/audit/ca.pem
 }

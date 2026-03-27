@@ -19,34 +19,15 @@ import (
 	"testing"
 
 	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// validTaxonomy returns a well-formed taxonomy for testing.
-func validTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"read":     {"schema_read", "config_read"},
-			"write":    {"schema_register", "schema_delete"},
-			"security": {"auth_failure"},
-		},
-		Events: map[string]audit.EventDef{
-			"schema_read":     {Category: "read", Required: []string{"outcome"}, Optional: []string{"subject"}},
-			"config_read":     {Category: "read", Required: []string{"outcome"}},
-			"schema_register": {Category: "write", Required: []string{"outcome", "actor_id", "subject"}, Optional: []string{"schema_type"}},
-			"schema_delete":   {Category: "write", Required: []string{"outcome", "actor_id", "subject"}},
-			"auth_failure":    {Category: "security", Required: []string{"outcome", "actor_id"}, Optional: []string{"reason"}},
-		},
-		DefaultEnabled: []string{"write", "security"},
-	}
-}
-
 func TestNewLogger_ValidTaxonomy(t *testing.T) {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, logger)
@@ -172,7 +153,7 @@ func TestNewLogger_LifecycleEventsInjected(t *testing.T) {
 	// injected automatically.
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, logger.Close()) }()
@@ -187,7 +168,7 @@ func TestNewLogger_LifecycleEventsInjected(t *testing.T) {
 
 func TestNewLogger_LifecycleEventsPreserved(t *testing.T) {
 	// Consumer defines their own startup event — it should be preserved.
-	tax := validTaxonomy()
+	tax := testhelper.ValidTaxonomy()
 	tax.Categories["lifecycle"] = []string{"startup", "shutdown"}
 	tax.Events["startup"] = audit.EventDef{
 		Category: "lifecycle",

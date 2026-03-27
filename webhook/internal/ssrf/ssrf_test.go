@@ -18,7 +18,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/axonops/go-audit/internal/ssrf"
+	"github.com/axonops/go-audit/webhook/internal/ssrf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

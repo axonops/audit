@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
-
-// BackoffDuration is exported for testing only.
-var BackoffDuration = backoffDuration
+// Package file provides a file-based [audit.Output] implementation with
+// automatic size-based rotation, backup retention, age-based cleanup,
+// and optional gzip compression.
+//
+// Recommended import alias:
+//
+//	import auditfile "github.com/axonops/go-audit/file"
+package file

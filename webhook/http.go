@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package webhook
 
 import (
 	"bytes"
@@ -28,7 +28,7 @@ import (
 )
 
 // doPostWithRetry attempts HTTP POST with exponential backoff retry.
-func (w *WebhookOutput) doPostWithRetry(ctx context.Context, batch [][]byte) {
+func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 	start := time.Now()
 	body := buildNDJSON(batch)
 
@@ -73,7 +73,7 @@ func (w *WebhookOutput) doPostWithRetry(ctx context.Context, batch [][]byte) {
 // doPost sends a single HTTP POST. Returns (retryable, error).
 // nil error means success (2xx). Redirect rejections and 4xx are
 // non-retryable. 5xx, 429, and network errors are retryable.
-func (w *WebhookOutput) doPost(ctx context.Context, body []byte) (bool, error) {
+func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.url, bytes.NewReader(body))
 	if err != nil {
 		return false, fmt.Errorf("audit: webhook request: %w", err)
@@ -116,7 +116,7 @@ func (w *WebhookOutput) doPost(ctx context.Context, body []byte) (bool, error) {
 }
 
 // recordSuccess records successful delivery metrics for a batch.
-func (w *WebhookOutput) recordSuccess(batchSize int, dur time.Duration) {
+func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	if w.webhookMetrics == nil && w.metrics == nil {
 		return
 	}
@@ -131,9 +131,9 @@ func (w *WebhookOutput) recordSuccess(batchSize int, dur time.Duration) {
 	}
 }
 
-// recordDrop records dropped events in metrics. [WebhookMetrics.RecordWebhookDrop]
+// recordDrop records dropped events in metrics. [Metrics.RecordWebhookDrop]
 // and RecordEvent(name, "error") are called per dropped event.
-func (w *WebhookOutput) recordDrop(count int) {
+func (w *Output) recordDrop(count int) {
 	if w.webhookMetrics == nil && w.metrics == nil {
 		return
 	}
@@ -169,7 +169,7 @@ func buildNDJSON(events [][]byte) []byte {
 }
 
 // webhookBackoff returns a jittered exponential backoff duration
-// for webhook retry: 100ms × 2^attempt with [0.5, 1.0) jitter,
+// for webhook retry: 100ms * 2^attempt with [0.5, 1.0) jitter,
 // capped at 5s.
 func webhookBackoff(attempt int) time.Duration {
 	const (

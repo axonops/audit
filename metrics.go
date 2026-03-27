@@ -14,8 +14,6 @@
 
 package audit
 
-import "time"
-
 // Metrics is an optional instrumentation interface that consumers implement
 // to collect audit pipeline telemetry. Pass an implementation via
 // [WithMetrics]; pass nil to disable metrics collection.
@@ -58,40 +56,4 @@ type Metrics interface {
 	// RecordBufferDrop records that an event was dropped because the
 	// main async buffer was full.
 	RecordBufferDrop()
-}
-
-// FileMetrics is an optional interface for file-output-specific
-// instrumentation. Pass an implementation to [NewFileOutput] to
-// collect rotation telemetry. Pass nil to disable.
-type FileMetrics interface {
-	// RecordFileRotation records that the file output rotated its
-	// active log file. The path argument is the absolute filesystem
-	// path of the file that was rotated. Implementations SHOULD NOT
-	// use this value as an unbounded metric label — it may expose
-	// infrastructure topology and cause cardinality explosion.
-	RecordFileRotation(path string)
-}
-
-// SyslogMetrics is an optional interface for syslog-specific
-// instrumentation. Pass an implementation to [NewSyslogOutput] to
-// collect reconnection telemetry. Pass nil to disable.
-type SyslogMetrics interface {
-	// RecordSyslogReconnect records a syslog reconnection attempt.
-	// success indicates whether the reconnection succeeded. The
-	// address is the configured host:port. Implementations SHOULD
-	// NOT use address as an unbounded metric label.
-	RecordSyslogReconnect(address string, success bool)
-}
-
-// WebhookMetrics is an optional interface for webhook-specific
-// instrumentation. Pass an implementation to [NewWebhookOutput] to
-// collect batch-level telemetry. Pass nil to disable.
-type WebhookMetrics interface {
-	// RecordWebhookDrop records that an event was dropped because the
-	// webhook output's internal buffer was full.
-	RecordWebhookDrop()
-
-	// RecordWebhookFlush records a webhook batch flush with the number
-	// of events in the batch and the flush duration.
-	RecordWebhookFlush(batchSize int, dur time.Duration)
 }

@@ -1,6 +1,10 @@
+github.com/axonops/go-audit v0.1.0 h1:ABbQfOdy10/NrSJkxQajPT2RoPcpB3MvhEaYNhmhVbw=
+github.com/axonops/go-audit v0.1.0/go.mod h1:VcYYC9PTsqyomNev/n5Vv9Oq5NNDAXKk1xFeEai0xwo=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/gravwell/srslog v0.0.0-20250709201549-e1b2fdb7e306 h1:pQvjl7uTPxf0VEeQzCDwZL1Wt5HwZ8lokmRF51PiIlY=
+github.com/gravwell/srslog v0.0.0-20250709201549-e1b2fdb7e306/go.mod h1:jl0CWwGcasjx+fkb28oeJZeNe1MRGlm7IhrayAkU4rE=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=

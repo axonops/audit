@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit_test
+package file_test
 
 import (
 	"fmt"
@@ -22,16 +22,22 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/axonops/go-audit"
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestFileOutput_Write(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -47,7 +53,7 @@ func TestFileOutput_Close(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	assert.NoError(t, out.Close())
 }
@@ -56,7 +62,7 @@ func TestFileOutput_CloseIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	assert.NoError(t, out.Close())
 	assert.NoError(t, out.Close())
@@ -66,7 +72,7 @@ func TestFileOutput_WriteAfterClose(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -78,7 +84,7 @@ func TestFileOutput_Name(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -89,7 +95,7 @@ func TestFileOutput_Permissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -105,7 +111,7 @@ func TestFileOutput_CustomPermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{
+	out, err := file.New(file.Config{
 		Path:        path,
 		Permissions: "0644",
 	}, nil)
@@ -125,7 +131,7 @@ func TestFileOutput_DefaultConfig(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	// All zero-value fields should get sensible defaults.
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -143,21 +149,21 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		wantErr string
-		cfg     audit.FileConfig
+		cfg     file.Config
 	}{
 		{
 			name:    "empty path",
-			cfg:     audit.FileConfig{Path: ""},
+			cfg:     file.Config{Path: ""},
 			wantErr: "must not be empty",
 		},
 		{
 			name:    "missing parent directory",
-			cfg:     audit.FileConfig{Path: "/nonexistent/dir/audit.log"},
+			cfg:     file.Config{Path: "/nonexistent/dir/audit.log"},
 			wantErr: "parent directory",
 		},
 		{
 			name: "invalid permissions",
-			cfg: audit.FileConfig{
+			cfg: file.Config{
 				Path:        filepath.Join(dir, "invalid-perm.log"),
 				Permissions: "not-octal",
 			},
@@ -165,7 +171,7 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 		},
 		{
 			name: "permissions out of range",
-			cfg: audit.FileConfig{
+			cfg: file.Config{
 				Path:        filepath.Join(dir, "out-of-range.log"),
 				Permissions: "1777",
 			},
@@ -173,32 +179,32 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 		},
 		{
 			name: "MaxSizeMB exceeds limit",
-			cfg: audit.FileConfig{
+			cfg: file.Config{
 				Path:      filepath.Join(dir, "big.log"),
-				MaxSizeMB: audit.MaxFileSizeMB + 1,
+				MaxSizeMB: file.MaxSizeMB + 1,
 			},
 			wantErr: "max_size_mb",
 		},
 		{
 			name: "MaxBackups exceeds limit",
-			cfg: audit.FileConfig{
+			cfg: file.Config{
 				Path:       filepath.Join(dir, "backups.log"),
-				MaxBackups: audit.MaxFileBackups + 1,
+				MaxBackups: file.MaxBackups + 1,
 			},
 			wantErr: "max_backups",
 		},
 		{
 			name: "MaxAgeDays exceeds limit",
-			cfg: audit.FileConfig{
+			cfg: file.Config{
 				Path:       filepath.Join(dir, "age.log"),
-				MaxAgeDays: audit.MaxFileAgeDays + 1,
+				MaxAgeDays: file.MaxAgeDays + 1,
 			},
 			wantErr: "max_age_days",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := audit.NewFileOutput(tt.cfg, nil)
+			_, err := file.New(tt.cfg, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
@@ -207,11 +213,11 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 
 func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 	dir := t.TempDir()
-	out, err := audit.NewFileOutput(audit.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       filepath.Join(dir, "boundary.log"),
-		MaxSizeMB:  audit.MaxFileSizeMB,
-		MaxBackups: audit.MaxFileBackups,
-		MaxAgeDays: audit.MaxFileAgeDays,
+		MaxSizeMB:  file.MaxSizeMB,
+		MaxBackups: file.MaxBackups,
+		MaxAgeDays: file.MaxAgeDays,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -219,9 +225,9 @@ func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 
 func TestFileOutput_MaxExceeded_WrapsErrConfigInvalid(t *testing.T) {
 	dir := t.TempDir()
-	_, err := audit.NewFileOutput(audit.FileConfig{
+	_, err := file.New(file.Config{
 		Path:      filepath.Join(dir, "test.log"),
-		MaxSizeMB: audit.MaxFileSizeMB + 1,
+		MaxSizeMB: file.MaxSizeMB + 1,
 	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -231,7 +237,7 @@ func TestFileOutput_ImplementsOutput(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -242,7 +248,7 @@ func TestFileOutput_MultipleWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -261,7 +267,7 @@ func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	const goroutines = 20
@@ -294,7 +300,7 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	compress := false
-	out, err := audit.NewFileOutput(audit.FileConfig{
+	out, err := file.New(file.Config{
 		Path:     path,
 		Compress: &compress,
 	}, nil)
@@ -306,11 +312,11 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FileMetrics (#54)
+// Metrics (#54)
 // ---------------------------------------------------------------------------
 
-// fileOnlyMetrics implements FileMetrics but not the full Metrics interface.
-// It is used to verify that NewFileOutput accepts any FileMetrics implementation,
+// fileOnlyMetrics implements file.Metrics but not the full audit.Metrics interface.
+// It is used to verify that NewFileOutput accepts any file.Metrics implementation,
 // not just the full mockMetrics.
 type fileOnlyMetrics struct {
 	rotations []string // paths passed to RecordFileRotation
@@ -323,7 +329,7 @@ func (m *fileOnlyMetrics) RecordFileRotation(path string) {
 	m.rotations = append(m.rotations, path)
 }
 
-var _ audit.FileMetrics = (*fileOnlyMetrics)(nil)
+var _ file.Metrics = (*fileOnlyMetrics)(nil)
 
 func (m *fileOnlyMetrics) rotationCount() int {
 	m.mu.Lock()
@@ -352,7 +358,7 @@ func TestFileOutput_NilFileMetrics_RotationDoesNotPanic(t *testing.T) {
 	// MaxSizeMB below 1 through FileConfig, we rely on the fact that
 	// rotation simply does not fire for small payloads — but we do verify
 	// that the nil metrics path is safe at runtime by passing nil explicitly.
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -364,7 +370,7 @@ func TestFileOutput_NilFileMetrics_RotationDoesNotPanic(t *testing.T) {
 }
 
 func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T) {
-	// Verify that FileMetrics.RecordFileRotation is called exactly once
+	// Verify that file.Metrics.RecordFileRotation is called exactly once
 	// per rotation, with the correct path.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
@@ -373,7 +379,7 @@ func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T
 
 	// MaxSizeMB=1 forces rotation after 1 MB of data. We write just over
 	// 1 MB to trigger exactly one rotation.
-	out, err := audit.NewFileOutput(audit.FileConfig{
+	out, err := file.New(file.Config{
 		Path:      path,
 		MaxSizeMB: 1,
 	}, m)
@@ -410,7 +416,7 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 
 	m := &fileOnlyMetrics{}
 
-	out, err := audit.NewFileOutput(audit.FileConfig{
+	out, err := file.New(file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 10,
@@ -433,13 +439,13 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 }
 
 func TestFileOutput_FileMetrics_InterfaceAssertion(t *testing.T) {
-	// Compile-time: verify FileOutput accepts any FileMetrics, not just
+	// Compile-time: verify FileOutput accepts any file.Metrics, not just
 	// mockMetrics. This test would not compile if the interface changed.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	var m audit.FileMetrics = &fileOnlyMetrics{}
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: path}, m)
+	var m file.Metrics = &fileOnlyMetrics{}
+	out, err := file.New(file.Config{Path: path}, m)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
@@ -454,7 +460,7 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 	require.NoError(t, os.Symlink(target, link))
 
 	// Construction succeeds — symlink check happens on first Write.
-	out, err := audit.NewFileOutput(audit.FileConfig{Path: link}, nil)
+	out, err := file.New(file.Config{Path: link}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package audit
+package webhook
 
 // The webhook output uses a two-buffer architecture:
 //
 //	Logger drain goroutine
-//	  → WebhookOutput.Write(data) — non-blocking copy+enqueue
+//	  → Output.Write(data) — non-blocking copy+enqueue
 //	    → batch goroutine reads from channel
 //	      → accumulates events, flushes on size/timer/close
 //	      → HTTP POST as NDJSON with retry
 //
 // The internal channel decouples the Logger's drain loop from HTTP
 // latency. If the channel is full, events are dropped (non-blocking)
-// and [WebhookMetrics.RecordWebhookDrop] is recorded.
+// and [Metrics.RecordWebhookDrop] is recorded.
 
 import (
 	"context"
@@ -38,15 +38,33 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/axonops/go-audit/internal/ssrf"
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/webhook/internal/ssrf"
 )
+
+// Compile-time assertions.
+var _ audit.Output = (*Output)(nil)
+var _ audit.DeliveryReporter = (*Output)(nil)
+
+// Metrics is an optional interface for webhook-specific
+// instrumentation. Pass an implementation to [New] to
+// collect batch-level telemetry. Pass nil to disable.
+type Metrics interface {
+	// RecordWebhookDrop records that an event was dropped because the
+	// webhook output's internal buffer was full.
+	RecordWebhookDrop()
+
+	// RecordWebhookFlush records a webhook batch flush with the number
+	// of events in the batch and the flush duration.
+	RecordWebhookFlush(batchSize int, dur time.Duration)
+}
 
 // errRedirectBlocked is returned by the http.Client's CheckRedirect
 // function. It is checked in doPost to classify redirect errors as
 // non-retryable.
 var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 
-// WebhookOutput sends batched audit events to an HTTP endpoint with
+// Output sends batched audit events to an HTTP endpoint with
 // retry, SSRF prevention, and graceful shutdown.
 //
 // See the package-level architecture comment for the two-buffer design.
@@ -57,7 +75,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // On HTTP 5xx or 429, the batch is retried with exponential backoff
 // and jitter (100ms to 5s). On 4xx (other than 429), the batch is
 // dropped immediately. On retry exhaustion, the batch is dropped and
-// [WebhookMetrics.RecordWebhookDrop] is called for each event.
+// [Metrics.RecordWebhookDrop] is called for each event.
 //
 // # SSRF Prevention
 //
@@ -71,10 +89,10 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // Retries may cause duplicate delivery if the server processes a batch
 // but returns 5xx due to a timeout. Receivers SHOULD be idempotent.
 //
-// WebhookOutput is safe for concurrent use.
-type WebhookOutput struct {
-	metrics        Metrics
-	webhookMetrics WebhookMetrics
+// Output is safe for concurrent use.
+type Output struct {
+	metrics        audit.Metrics
+	webhookMetrics Metrics
 	done           chan struct{}
 	headers        map[string]string
 	ch             chan []byte
@@ -89,11 +107,11 @@ type WebhookOutput struct {
 	closed         atomic.Bool
 }
 
-// NewWebhookOutput creates a new [WebhookOutput] from the given config.
+// New creates a new [Output] from the given config.
 // It validates the config, builds an SSRF-safe HTTP client, and starts
 // the background batch goroutine. Both metrics parameters are optional
 // (may be nil).
-func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics, webhookMetrics WebhookMetrics) (*WebhookOutput, error) {
+func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
@@ -140,7 +158,7 @@ func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics, webhookMetrics Webhoo
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	w := &WebhookOutput{
+	w := &Output{
 		client:         client,
 		url:            cfg.URL,
 		headers:        headers,
@@ -161,11 +179,11 @@ func NewWebhookOutput(cfg *WebhookConfig, metrics Metrics, webhookMetrics Webhoo
 
 // Write enqueues a serialised audit event for batched delivery. The
 // data is copied before enqueuing. If the internal buffer is full,
-// the event is dropped and [WebhookMetrics.RecordWebhookDrop] is called.
+// the event is dropped and [Metrics.RecordWebhookDrop] is called.
 // Write never blocks the caller.
-func (w *WebhookOutput) Write(data []byte) error {
+func (w *Output) Write(data []byte) error {
 	if w.closed.Load() {
-		return ErrOutputClosed
+		return audit.ErrOutputClosed
 	}
 
 	cp := make([]byte, len(data))
@@ -190,7 +208,7 @@ func (w *WebhookOutput) Write(data []byte) error {
 // Close signals the batch goroutine to drain and flush, then waits
 // for completion. In-flight HTTP retries are cancelled via context.
 // Close is idempotent.
-func (w *WebhookOutput) Close() error {
+func (w *Output) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -214,13 +232,13 @@ func (w *WebhookOutput) Close() error {
 	return nil
 }
 
-// ReportsDelivery returns true, indicating that WebhookOutput reports
+// ReportsDelivery returns true, indicating that Output reports
 // its own delivery metrics from the batch goroutine after actual HTTP
 // delivery, not from the Write enqueue path.
-func (w *WebhookOutput) ReportsDelivery() bool { return true }
+func (w *Output) ReportsDelivery() bool { return true }
 
 // Name returns the human-readable identifier for this output.
-func (w *WebhookOutput) Name() string {
+func (w *Output) Name() string {
 	if u, err := url.Parse(w.url); err == nil {
 		return "webhook:" + u.Host
 	}
@@ -229,7 +247,7 @@ func (w *WebhookOutput) Name() string {
 
 // batchLoop is the background goroutine that accumulates events and
 // flushes batches on size, timer, or shutdown.
-func (w *WebhookOutput) batchLoop(ctx context.Context) {
+func (w *Output) batchLoop(ctx context.Context) {
 	defer close(w.done)
 
 	batch := make([][]byte, 0, w.batchSize)
@@ -262,7 +280,7 @@ func (w *WebhookOutput) batchLoop(ctx context.Context) {
 
 // drainAndFlush reads remaining events from the channel and does a
 // final flush with a fresh context.
-func (w *WebhookOutput) drainAndFlush(batch [][]byte) {
+func (w *Output) drainAndFlush(batch [][]byte) {
 	for {
 		select {
 		case data := <-w.ch:
@@ -277,13 +295,13 @@ func (w *WebhookOutput) drainAndFlush(batch [][]byte) {
 }
 
 // flush sends a batch via HTTP POST with retry.
-func (w *WebhookOutput) flush(ctx context.Context, batch [][]byte) {
+func (w *Output) flush(ctx context.Context, batch [][]byte) {
 	w.doPostWithRetry(ctx, batch)
 }
 
 // flushFinal sends a final batch during shutdown with a fresh
 // short-deadline context (the main context is already cancelled).
-func (w *WebhookOutput) flushFinal(batch [][]byte) {
+func (w *Output) flushFinal(batch [][]byte) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.timeout)
 	defer cancel()
 	w.doPostWithRetry(ctx, batch)

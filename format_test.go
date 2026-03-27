@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -648,7 +649,7 @@ func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_WithFormatter_Custom(t *testing.T) {
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	called := false
 	custom := &stubFormatter{
 		fn: func(ts time.Time, eventType string, fields audit.Fields, def *audit.EventDef) ([]byte, error) {
@@ -659,7 +660,7 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(custom),
 	)
@@ -671,7 +672,7 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.True(t, called, "custom formatter should have been called")
 }
 
@@ -684,10 +685,10 @@ func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fiel
 }
 
 func TestLogger_DefaultJSONFormatter(t *testing.T) {
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -698,16 +699,16 @@ func TestLogger_DefaultJSONFormatter(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// Default formatter should produce valid JSON.
 	var m map[string]any
-	require.NoError(t, json.Unmarshal(out.events[0], &m))
+	require.NoError(t, json.Unmarshal(out.GetEvents()[0], &m))
 	assert.Equal(t, "auth_failure", m["event_type"])
 }
 
 func TestLogger_CEFViaWithFormatter(t *testing.T) {
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	cef := &audit.CEFFormatter{
 		Vendor:  "TestCo",
 		Product: "TestApp",
@@ -716,7 +717,7 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(cef),
 	)
@@ -728,16 +729,16 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	line := string(out.events[0])
+	line := string(out.GetEvents()[0])
 	assert.True(t, strings.HasPrefix(line, "CEF:0|TestCo|TestApp|2.0|auth_failure|"))
 }
 
 func TestLogger_WithFormatter_Nil(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithFormatter(nil),
 	)
 	require.Error(t, err)

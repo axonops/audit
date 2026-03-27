@@ -17,7 +17,19 @@
 //
 // The library validates every audit event against a consumer-defined taxonomy,
 // delivers events asynchronously via a buffered channel, and fans out to
-// multiple configurable outputs (file, syslog, webhook, stdout).
+// multiple configurable outputs.
+//
+// # Multi-Module Structure
+//
+// Output backends live in separate Go modules so consumers import only
+// what they need:
+//
+//   - github.com/axonops/go-audit — core (this package, stdlib only)
+//   - github.com/axonops/go-audit/file — file output with rotation
+//   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
+//   - github.com/axonops/go-audit/webhook — batched HTTP webhook
+//
+// [StdoutOutput] ships with core and requires no additional import.
 //
 // # Stability
 //
@@ -69,12 +81,11 @@
 //   - [EventDef] — definition of a single event type's fields
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
 //   - [Output] — interface for audit event destinations
+//   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
 //   - [EventType] — handle for zero-allocation audit calls; see [Logger.MustHandle]
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
-//   - [SyslogOutput] — RFC 5424 syslog output (TCP/UDP/TLS/mTLS); see [NewSyslogOutput]
-//   - [WebhookOutput] — batched HTTP webhook with retry and SSRF prevention; see [NewWebhookOutput]
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
@@ -82,9 +93,6 @@
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional core instrumentation interface
-//   - [FileMetrics] — optional file-output-specific instrumentation; see [FileOutput]
-//   - [SyslogMetrics] — optional syslog-specific instrumentation; see [SyslogOutput]
-//   - [WebhookMetrics] — optional webhook-specific instrumentation; see [WebhookOutput]
 //
 // # Taxonomy
 //

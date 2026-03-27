@@ -15,7 +15,6 @@
 package audit_test
 
 import (
-	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -23,6 +22,7 @@ import (
 	"time"
 
 	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -33,245 +33,13 @@ func TestMain(m *testing.M) {
 }
 
 // ---------------------------------------------------------------------------
-// Mock output
-// ---------------------------------------------------------------------------
-
-type mockOutput struct {
-	writeErr error
-	writeCh  chan struct{}
-	name     string
-	events   [][]byte
-	mu       sync.Mutex
-	closed   bool
-}
-
-func newMockOutput(name string) *mockOutput {
-	return &mockOutput{
-		name:    name,
-		writeCh: make(chan struct{}, 1000),
-	}
-}
-
-func (m *mockOutput) Write(data []byte) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.writeErr != nil {
-		return m.writeErr
-	}
-	cp := make([]byte, len(data))
-	copy(cp, data)
-	m.events = append(m.events, cp)
-	// Non-blocking signal.
-	select {
-	case m.writeCh <- struct{}{}:
-	default:
-	}
-	return nil
-}
-
-func (m *mockOutput) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.closed = true
-	return nil
-}
-
-func (m *mockOutput) Name() string { return m.name }
-
-func (m *mockOutput) setWriteErr(err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.writeErr = err
-}
-
-func (m *mockOutput) getEvents() [][]byte {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cp := make([][]byte, len(m.events))
-	copy(cp, m.events)
-	return cp
-}
-
-func (m *mockOutput) eventCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.events)
-}
-
-func (m *mockOutput) getEvent(i int) map[string]interface{} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var result map[string]interface{}
-	if err := json.Unmarshal(m.events[i], &result); err != nil {
-		panic("unmarshal event: " + err.Error())
-	}
-	return result
-}
-
-func (m *mockOutput) waitForEvents(n int, timeout time.Duration) bool {
-	deadline := time.After(timeout)
-	for {
-		if m.eventCount() >= n {
-			return true
-		}
-		select {
-		case <-m.writeCh:
-		case <-deadline:
-			return false
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Mock metrics
-// ---------------------------------------------------------------------------
-
-var (
-	_ audit.Metrics        = (*mockMetrics)(nil)
-	_ audit.FileMetrics    = (*mockMetrics)(nil)
-	_ audit.SyslogMetrics  = (*mockMetrics)(nil)
-	_ audit.WebhookMetrics = (*mockMetrics)(nil)
-)
-
-type mockMetrics struct {
-	events              map[string]int // "output:status" -> count
-	outputErrors        map[string]int
-	filteredCount       map[string]int
-	validationErrors    map[string]int // eventType -> count
-	globalFiltered      map[string]int // eventType -> count
-	serializationErrors map[string]int // eventType -> count
-	fileRotations       map[string]int // path -> count
-	syslogReconnects    map[string]int // "address:success|failure" -> count
-	mu                  sync.Mutex
-	bufferDrops         int
-	webhookDrops        int
-}
-
-func newMockMetrics() *mockMetrics {
-	return &mockMetrics{
-		events:              make(map[string]int),
-		outputErrors:        make(map[string]int),
-		fileRotations:       make(map[string]int),
-		syslogReconnects:    make(map[string]int),
-		filteredCount:       make(map[string]int),
-		validationErrors:    make(map[string]int),
-		globalFiltered:      make(map[string]int),
-		serializationErrors: make(map[string]int),
-	}
-}
-
-func (m *mockMetrics) RecordEvent(output, status string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.events[output+":"+status]++
-}
-
-func (m *mockMetrics) RecordOutputError(output string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.outputErrors[output]++
-}
-
-func (m *mockMetrics) RecordOutputFiltered(output string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.filteredCount[output]++
-}
-
-func (m *mockMetrics) RecordBufferDrop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.bufferDrops++
-}
-
-func (m *mockMetrics) RecordWebhookDrop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.webhookDrops++
-}
-
-func (m *mockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
-
-func (m *mockMetrics) RecordFileRotation(path string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.fileRotations[path]++
-}
-
-func (m *mockMetrics) RecordSyslogReconnect(address string, success bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	key := address + ":"
-	if success {
-		key += "success"
-	} else {
-		key += "failure"
-	}
-	m.syslogReconnects[key]++
-}
-
-func (m *mockMetrics) RecordValidationError(eventType string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.validationErrors[eventType]++
-}
-
-func (m *mockMetrics) RecordFiltered(eventType string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.globalFiltered[eventType]++
-}
-
-func (m *mockMetrics) RecordSerializationError(eventType string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.serializationErrors[eventType]++
-}
-
-func (m *mockMetrics) getOutputFiltered(output string) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.filteredCount[output]
-}
-
-func (m *mockMetrics) getEventCount(output, status string) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.events[output+":"+status]
-}
-
-func (m *mockMetrics) getWebhookDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.webhookDrops
-}
-
-func (m *mockMetrics) getBufferDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.bufferDrops
-}
-
-func (m *mockMetrics) getSyslogReconnectCount(address string, success bool) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	key := address + ":"
-	if success {
-		key += "success"
-	} else {
-		key += "failure"
-	}
-	return m.syslogReconnects[key]
-}
-
-// ---------------------------------------------------------------------------
 // Helper: create a logger with a mock output
 // ---------------------------------------------------------------------------
 
-func newTestLogger(t *testing.T, cfg audit.Config, out *mockOutput, opts ...audit.Option) *audit.Logger {
+func newTestLogger(t *testing.T, cfg audit.Config, out *testhelper.MockOutput, opts ...audit.Option) *audit.Logger {
 	t.Helper()
 	allOpts := []audit.Option{
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	}
 	allOpts = append(allOpts, opts...)
@@ -289,7 +57,7 @@ func newTestLogger(t *testing.T, cfg audit.Config, out *mockOutput, opts ...audi
 
 func TestLogger_Audit_ValidCall(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("schema_register", audit.Fields{
@@ -299,8 +67,8 @@ func TestLogger_Audit_ValidCall(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.True(t, out.waitForEvents(1, 2*time.Second), "expected 1 event")
-	ev := out.getEvent(0)
+	require.True(t, out.WaitForEvents(1, 2*time.Second), "expected 1 event")
+	ev := out.GetEvent(0)
 	assert.Equal(t, "schema_register", ev["event_type"])
 	assert.Equal(t, "success", ev["outcome"])
 	assert.Equal(t, "alice", ev["actor_id"])
@@ -309,7 +77,7 @@ func TestLogger_Audit_ValidCall(t *testing.T) {
 
 func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("schema_register", audit.Fields{
@@ -324,7 +92,7 @@ func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 
 func TestLogger_Audit_MissingSingleRequiredField(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("schema_register", audit.Fields{
@@ -338,7 +106,7 @@ func TestLogger_Audit_MissingSingleRequiredField(t *testing.T) {
 
 func TestLogger_Audit_UnknownEventType(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("schema_registr", audit.Fields{})
@@ -349,7 +117,7 @@ func TestLogger_Audit_UnknownEventType(t *testing.T) {
 
 func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -369,7 +137,7 @@ func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 
 func TestLogger_Audit_UnknownFieldWarn(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -384,12 +152,12 @@ func TestLogger_Audit_UnknownFieldWarn(t *testing.T) {
 	})
 	// Warn mode: no error, event accepted.
 	assert.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
 func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -403,12 +171,12 @@ func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
 		"bogus_field": "value",
 	})
 	assert.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
 func TestLogger_Audit_NilFields(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// schema_register requires outcome, actor_id, subject — nil map
@@ -420,7 +188,7 @@ func TestLogger_Audit_NilFields(t *testing.T) {
 
 func TestLogger_Audit_DisabledCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "read" category is not in DefaultEnabled.
@@ -431,14 +199,14 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 	// past the filtered event.
 	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.eventCount(), "disabled category event should not be delivered")
-	assert.Equal(t, "auth_failure", out.getEvent(0)["event_type"])
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "disabled category event should not be delivered")
+	assert.Equal(t, "auth_failure", out.GetEvent(0)["event_type"])
 }
 
 func TestLogger_Audit_OptionalFields(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// Include an optional field.
@@ -449,8 +217,8 @@ func TestLogger_Audit_OptionalFields(t *testing.T) {
 		"schema_type": "AVRO",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	ev := out.getEvent(0)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	ev := out.GetEvent(0)
 	assert.Equal(t, "AVRO", ev["schema_type"])
 }
 
@@ -460,7 +228,7 @@ func TestLogger_Audit_OptionalFields(t *testing.T) {
 
 func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	before := time.Now()
@@ -469,9 +237,9 @@ func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	tsStr, ok := ev["timestamp"].(string)
 	require.True(t, ok, "timestamp should be a string")
 	ts, err := time.Parse(time.RFC3339Nano, tsStr)
@@ -481,7 +249,7 @@ func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 
 func TestLogger_Audit_EventTypeAutoPopulated(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("auth_failure", audit.Fields{
@@ -489,15 +257,15 @@ func TestLogger_Audit_EventTypeAutoPopulated(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	assert.Equal(t, "auth_failure", ev["event_type"])
 }
 
 func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationPermissive}, out)
 
 	err := logger.Audit("auth_failure", audit.Fields{
@@ -506,9 +274,9 @@ func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
 		"timestamp": "consumer-set-value",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	// Framework should have overwritten the consumer value.
 	assert.NotEqual(t, "consumer-set-value", ev["timestamp"])
 }
@@ -519,7 +287,7 @@ func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
 
 func TestLogger_Audit_OmitEmptyTrue(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true}, out)
 
 	err := logger.Audit("schema_register", audit.Fields{
@@ -529,16 +297,16 @@ func TestLogger_Audit_OmitEmptyTrue(t *testing.T) {
 		// schema_type (optional) not provided
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	_, hasSchemaType := ev["schema_type"]
 	assert.False(t, hasSchemaType, "OmitEmpty should omit unset optional fields")
 }
 
 func TestLogger_Audit_OmitEmptyFalse(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: false}, out)
 
 	err := logger.Audit("schema_register", audit.Fields{
@@ -548,9 +316,9 @@ func TestLogger_Audit_OmitEmptyFalse(t *testing.T) {
 		// schema_type (optional) not provided
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	_, hasSchemaType := ev["schema_type"]
 	assert.True(t, hasSchemaType, "OmitEmpty=false should include all registered fields")
 }
@@ -561,7 +329,7 @@ func TestLogger_Audit_OmitEmptyFalse(t *testing.T) {
 
 func TestLogger_Handle_Valid(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	h, err := logger.Handle("schema_register")
@@ -572,7 +340,7 @@ func TestLogger_Handle_Valid(t *testing.T) {
 
 func TestLogger_Handle_Error(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	h, err := logger.Handle("nonexistent")
@@ -583,7 +351,7 @@ func TestLogger_Handle_Error(t *testing.T) {
 
 func TestLogger_MustHandle_Valid(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	assert.NotPanics(t, func() {
@@ -594,7 +362,7 @@ func TestLogger_MustHandle_Valid(t *testing.T) {
 
 func TestLogger_MustHandle_Panics(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	assert.Panics(t, func() {
@@ -604,7 +372,7 @@ func TestLogger_MustHandle_Panics(t *testing.T) {
 
 func TestLogger_Handle_Audit(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	h := logger.MustHandle("auth_failure")
@@ -613,9 +381,9 @@ func TestLogger_Handle_Audit(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	assert.Equal(t, "auth_failure", ev["event_type"])
 }
 
@@ -625,7 +393,7 @@ func TestLogger_Handle_Audit(t *testing.T) {
 
 func TestLogger_Audit_EventDelivered(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.Audit("auth_failure", audit.Fields{
@@ -633,13 +401,13 @@ func TestLogger_Audit_EventDelivered(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.eventCount())
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount())
 }
 
 func TestLogger_Audit_BufferFull(t *testing.T) {
 
-	metrics := newMockMetrics()
+	metrics := testhelper.NewMockMetrics()
 
 	// Tiny buffer + blocking output to force buffer full.
 	out := &blockingOutput{name: "blocking", blockCh: make(chan struct{})}
@@ -647,7 +415,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -668,7 +436,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	}
 
 	assert.True(t, bufferFullSeen, "should have seen ErrBufferFull")
-	assert.Greater(t, metrics.getBufferDrops(), 0, "should have recorded buffer drops")
+	assert.Greater(t, metrics.GetBufferDrops(), 0, "should have recorded buffer drops")
 }
 
 // blockingOutput blocks on Write until blockCh is closed.
@@ -686,10 +454,10 @@ func (b *blockingOutput) Name() string { return b.name }
 
 func TestLogger_Close_DrainsEvents(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -705,15 +473,15 @@ func TestLogger_Close_DrainsEvents(t *testing.T) {
 
 	// Close should drain all.
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 10, out.eventCount(), "Close should drain all pending events")
+	assert.Equal(t, 10, out.EventCount(), "Close should drain all pending events")
 }
 
 func TestLogger_Close_Idempotent(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -724,10 +492,10 @@ func TestLogger_Close_Idempotent(t *testing.T) {
 
 func TestLogger_Audit_AfterClose(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -750,7 +518,7 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 10, DrainTimeout: 10 * time.Millisecond},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -775,7 +543,7 @@ func TestLogger_Close_OutputError(t *testing.T) {
 	out := &errorOutput{name: "bad", closeErr: errors.New("close failed")}
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -801,7 +569,7 @@ func (e *errorOutput) Name() string         { return e.name }
 
 func TestLogger_EnableCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "read" is not in DefaultEnabled. Enable it.
@@ -809,12 +577,12 @@ func TestLogger_EnableCategory(t *testing.T) {
 
 	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
 func TestLogger_DisableCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "write" is in DefaultEnabled. Disable it.
@@ -830,13 +598,13 @@ func TestLogger_DisableCategory(t *testing.T) {
 	// Send an enabled event as sentinel to prove processing.
 	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.eventCount(), "disabled category should not deliver events")
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "disabled category should not deliver events")
 }
 
 func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "read" category is disabled. Enable one specific event.
@@ -844,7 +612,7 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 
 	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// config_read (same category, no override) should still be filtered.
 	err = logger.Audit("config_read", audit.Fields{"outcome": "success"})
@@ -854,13 +622,13 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 	// (schema_read + sentinel), not 3.
 	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(2, 2*time.Second))
-	assert.Equal(t, 2, out.eventCount(), "only overridden event + sentinel should be delivered")
+	require.True(t, out.WaitForEvents(2, 2*time.Second))
+	assert.Equal(t, 2, out.EventCount(), "only overridden event + sentinel should be delivered")
 }
 
 func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "write" category is enabled. Disable one specific event.
@@ -880,13 +648,13 @@ func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
 		"subject":  "test",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.eventCount(), "only non-overridden event should be delivered")
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "only non-overridden event should be delivered")
 }
 
 func TestLogger_Filter_InvalidCategory(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.EnableCategory("nonexistent")
@@ -899,7 +667,7 @@ func TestLogger_Filter_InvalidCategory(t *testing.T) {
 
 func TestLogger_Filter_InvalidEvent(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.EnableEvent("nonexistent")
@@ -916,24 +684,24 @@ func TestLogger_Filter_InvalidEvent(t *testing.T) {
 
 func TestLogger_EmitStartup(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.EmitStartup(audit.Fields{"app_name": "test-app"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	assert.Equal(t, "startup", ev["event_type"])
 	assert.Equal(t, "test-app", ev["app_name"])
 }
 
 func TestLogger_Close_AutoEmitsShutdown(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -944,24 +712,24 @@ func TestLogger_Close_AutoEmitsShutdown(t *testing.T) {
 	require.NoError(t, logger.Close())
 
 	// Should have startup + shutdown.
-	assert.Equal(t, 2, out.eventCount())
-	ev := out.getEvent(1)
+	assert.Equal(t, 2, out.EventCount())
+	ev := out.GetEvent(1)
 	assert.Equal(t, "shutdown", ev["event_type"])
 	assert.Equal(t, "test-app", ev["app_name"], "shutdown should reuse startup app_name")
 }
 
 func TestLogger_Close_NoStartupNoShutdown(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.eventCount(), "no shutdown without prior startup")
+	assert.Equal(t, 0, out.EventCount(), "no shutdown without prior startup")
 }
 
 // ---------------------------------------------------------------------------
@@ -970,7 +738,7 @@ func TestLogger_Close_NoStartupNoShutdown(t *testing.T) {
 
 func TestLogger_ConcurrentAudit(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	var wg sync.WaitGroup
@@ -987,12 +755,12 @@ func TestLogger_ConcurrentAudit(t *testing.T) {
 	wg.Wait()
 
 	// All 100 events should be delivered (buffer is 10k).
-	require.True(t, out.waitForEvents(100, 5*time.Second))
+	require.True(t, out.WaitForEvents(100, 5*time.Second))
 }
 
 func TestLogger_ConcurrentFilterMutation(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	var wg sync.WaitGroup
@@ -1017,10 +785,10 @@ func TestLogger_ConcurrentFilterMutation(t *testing.T) {
 
 func TestLogger_ConcurrentClose(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1048,8 +816,8 @@ func TestLogger_ConcurrentClose(t *testing.T) {
 
 func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 
-	out := newMockOutput("test-out")
-	metrics := newMockMetrics()
+	out := testhelper.NewMockOutput("test-out")
+	metrics := testhelper.NewMockMetrics()
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
@@ -1058,20 +826,20 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 		"actor_id": "bob",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Greater(t, metrics.events["test-out:success"], 0)
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Greater(t, metrics.Events["test-out:success"], 0)
 }
 
 func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 
-	metrics := newMockMetrics()
+	metrics := testhelper.NewMockMetrics()
 	out := &errorWriteOutput{name: "bad-write"}
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1086,10 +854,10 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	// Close drains all pending events.
 	require.NoError(t, logger.Close())
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Greater(t, metrics.outputErrors["bad-write"], 0)
-	assert.Greater(t, metrics.events["bad-write:error"], 0)
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Greater(t, metrics.OutputErrors["bad-write"], 0)
+	assert.Greater(t, metrics.Events["bad-write:error"], 0)
 }
 
 type errorWriteOutput struct {
@@ -1108,7 +876,7 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
 
@@ -1128,7 +896,7 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 func TestNewLogger_BufferSizeExceedsMax(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: audit.MaxBufferSize + 1},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1137,7 +905,7 @@ func TestNewLogger_BufferSizeExceedsMax(t *testing.T) {
 func TestNewLogger_DrainTimeoutExceedsMax(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, DrainTimeout: audit.MaxDrainTimeout + 1},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1149,7 +917,7 @@ func TestNewLogger_DrainTimeoutExceedsMax(t *testing.T) {
 
 func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true, ValidationMode: audit.ValidationPermissive}, out)
 
 	err := logger.Audit("auth_failure", audit.Fields{
@@ -1159,9 +927,9 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 		"active":   false, // false bool should be omitted
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	_, hasCount := ev["count"]
 	assert.False(t, hasCount, "OmitEmpty should omit zero int")
 	_, hasActive := ev["active"]
@@ -1174,10 +942,10 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 
 func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationPermissive},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1190,7 +958,7 @@ func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
 	require.NoError(t, logger.Close())
 
 	// Both startup and shutdown should have arrived.
-	assert.Equal(t, 2, out.eventCount())
+	assert.Equal(t, 2, out.EventCount())
 }
 
 // ---------------------------------------------------------------------------
@@ -1199,7 +967,7 @@ func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
 
 func TestLogger_Audit_SerializationFailure(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -1224,10 +992,10 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 		"actor_id": "sentinel",
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// Only the valid event should have been delivered.
-	assert.Equal(t, 1, out.eventCount())
+	assert.Equal(t, 1, out.EventCount())
 }
 
 // ---------------------------------------------------------------------------
@@ -1246,7 +1014,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 		DefaultEnabled: []string{"misc"},
 	}
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
@@ -1258,7 +1026,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	// nil fields should work when there are no required fields.
 	err = logger.Audit("no_req", nil)
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
 // ---------------------------------------------------------------------------
@@ -1267,10 +1035,10 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 
 func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1306,10 +1074,10 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 
 func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1330,7 +1098,7 @@ func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 
 func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
@@ -1345,11 +1113,11 @@ func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 
 func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 
-	out1 := newMockOutput("out1")
-	out2 := newMockOutput("out2")
+	out1 := testhelper.NewMockOutput("out1")
+	out2 := testhelper.NewMockOutput("out2")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out1, out2),
 	)
 	require.NoError(t, err)
@@ -1361,10 +1129,10 @@ func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.True(t, out1.waitForEvents(1, 2*time.Second))
-	require.True(t, out2.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out1.eventCount())
-	assert.Equal(t, 1, out2.eventCount())
+	require.True(t, out1.WaitForEvents(1, 2*time.Second))
+	require.True(t, out2.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out1.EventCount())
+	assert.Equal(t, 1, out2.EventCount())
 }
 
 // ---------------------------------------------------------------------------
@@ -1373,7 +1141,7 @@ func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 
 func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -1388,9 +1156,9 @@ func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
 		"active":   true,
 	})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	ev := out.getEvent(0)
+	ev := out.GetEvent(0)
 	assert.Equal(t, float64(42), ev["count"], "non-zero int should be included with OmitEmpty")
 	assert.Equal(t, true, ev["active"], "true bool should be included with OmitEmpty")
 }
@@ -1401,7 +1169,7 @@ func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
 
 func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{
 		Version:        1,
 		Enabled:        true,
@@ -1428,7 +1196,7 @@ func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
 	})
 	require.NoError(t, err)
 	// Only the sentinel arrives (the func event fails serialization).
-	require.True(t, out.waitForEvents(1, 2*time.Second))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
 // ---------------------------------------------------------------------------
@@ -1442,7 +1210,7 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1477,7 +1245,7 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 		DefaultEnabled: []string{}, // empty -- only lifecycle enabled
 	}
 
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
@@ -1493,8 +1261,8 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 	// Startup (lifecycle, always enabled) should work as sentinel.
 	err = logger.Audit("startup", audit.Fields{"app_name": "test"})
 	require.NoError(t, err)
-	require.True(t, out.waitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.eventCount(), "only lifecycle event should pass when DefaultEnabled is empty")
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "only lifecycle event should pass when DefaultEnabled is empty")
 }
 
 // ---------------------------------------------------------------------------
@@ -1502,37 +1270,37 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestAudit_UnknownEventType_RecordsValidationError(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
 	_ = logger.Audit("nonexistent", audit.Fields{})
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Equal(t, 1, metrics.validationErrors["nonexistent"])
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Equal(t, 1, metrics.ValidationErrors["nonexistent"])
 }
 
 func TestAudit_MissingRequiredField_RecordsValidationError(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
 	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Equal(t, 1, metrics.validationErrors["schema_register"])
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Equal(t, 1, metrics.ValidationErrors["schema_register"])
 }
 
 func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationStrict},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1545,28 +1313,28 @@ func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
 		"bogus":    "val",
 	})
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Equal(t, 1, metrics.validationErrors["auth_failure"])
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Equal(t, 1, metrics.ValidationErrors["auth_failure"])
 }
 
 func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
 	// "read" category is not in DefaultEnabled.
 	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Equal(t, 1, metrics.globalFiltered["schema_read"])
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Equal(t, 1, metrics.GlobalFiltered["schema_read"])
 }
 
 func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
@@ -1579,14 +1347,14 @@ func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
 		"subject":  "test",
 	})
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Equal(t, 1, metrics.globalFiltered["schema_register"])
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Equal(t, 1, metrics.GlobalFiltered["schema_register"])
 }
 
 func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
-	metrics := newMockMetrics()
-	out := newMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("test")
 	badFormatter := &stubFormatter{
 		fn: func(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
 			return nil, errors.New("format failed")
@@ -1594,7 +1362,7 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 	}
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(badFormatter),
 		audit.WithMetrics(metrics),
@@ -1611,19 +1379,19 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 	// serialization error metric.
 	require.NoError(t, logger.Close())
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Greater(t, metrics.serializationErrors["auth_failure"], 0)
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Greater(t, metrics.SerializationErrors["auth_failure"], 0)
 }
 
 func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
-	metrics := newMockMetrics()
+	metrics := testhelper.NewMockMetrics()
 	out := &blockingOutput{name: "stuck", blockCh: make(chan struct{})}
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1, DrainTimeout: 50 * time.Millisecond},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1641,9 +1409,9 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 
 	_ = logger.Close()
 
-	metrics.mu.Lock()
-	defer metrics.mu.Unlock()
-	assert.Greater(t, metrics.bufferDrops, 0, "emitShutdown should call RecordBufferDrop on buffer full")
+	metrics.Mu.Lock()
+	defer metrics.Mu.Unlock()
+	assert.Greater(t, metrics.BufferDrops, 0, "emitShutdown should call RecordBufferDrop on buffer full")
 }
 
 func TestAudit_NilMetrics_NoPanic(t *testing.T) {
@@ -1654,10 +1422,10 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 			return nil, errors.New("format failed")
 		},
 	}
-	out := newMockOutput("test")
+	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(badFormatter),
 		// No WithMetrics -- metrics is nil.
@@ -1679,14 +1447,270 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DeliveryReporter — writeToOutput skips core metrics when selfReports=true
+// ---------------------------------------------------------------------------
+
+// deliveryReporterOutput is a mock output that implements DeliveryReporter.
+// It reports its own delivery, so the core logger must NOT call RecordEvent
+// or RecordOutputError for it.
+type deliveryReporterOutput struct {
+	writeErrToReturn error
+	testhelper.MockOutput
+}
+
+func newDeliveryReporterOutput(name string) *deliveryReporterOutput {
+	return &deliveryReporterOutput{
+		MockOutput: *testhelper.NewMockOutput(name),
+	}
+}
+
+func (d *deliveryReporterOutput) ReportsDelivery() bool { return true }
+
+func (d *deliveryReporterOutput) Write(data []byte) error {
+	if d.writeErrToReturn != nil {
+		return d.writeErrToReturn
+	}
+	return d.MockOutput.Write(data) //nolint:wrapcheck // test helper, wrapping not needed
+}
+
+var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)
+var _ audit.Output = (*deliveryReporterOutput)(nil)
+
+func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
+	// When an output satisfies DeliveryReporter and ReportsDelivery()
+	// returns true, the core logger must NOT call RecordEvent on success.
+	metrics := testhelper.NewMockMetrics()
+	out := newDeliveryReporterOutput("self-reporting")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	// The self-reporting output received the event.
+	assert.Equal(t, 1, out.EventCount())
+
+	// The core logger must not have called RecordEvent for this output.
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "success"),
+		"core logger must not call RecordEvent(success) for DeliveryReporter outputs")
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "error"),
+		"core logger must not call RecordEvent(error) for DeliveryReporter outputs")
+}
+
+func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
+	// When a DeliveryReporter output fails on Write, the core logger must
+	// NOT call RecordEvent or RecordOutputError — the output is responsible.
+	metrics := testhelper.NewMockMetrics()
+	out := newDeliveryReporterOutput("self-reporting-fail")
+	out.writeErrToReturn = errors.New("delivery failed")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	// Core logger must not record any metrics for the self-reporting output.
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "success"),
+		"core logger must not call RecordEvent(success) for DeliveryReporter outputs")
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "error"),
+		"core logger must not call RecordEvent(error) for DeliveryReporter outputs")
+
+	metrics.Mu.Lock()
+	errCount := metrics.OutputErrors["self-reporting-fail"]
+	metrics.Mu.Unlock()
+	assert.Equal(t, 0, errCount,
+		"core logger must not call RecordOutputError for DeliveryReporter outputs")
+}
+
+func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.T) {
+	// A plain output (not DeliveryReporter) must have RecordEvent(success)
+	// called by the core logger on a successful write.
+	metrics := testhelper.NewMockMetrics()
+	out := testhelper.NewMockOutput("plain")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	}))
+	require.NoError(t, logger.Close())
+
+	assert.Greater(t, metrics.GetEventCount("plain", "success"), 0,
+		"core logger must call RecordEvent(success) for plain (non-DeliveryReporter) outputs")
+}
+
+// ---------------------------------------------------------------------------
+// isZeroValue — integer and float type branches
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
+	// Exercises the int32, float32, uint, uint64 branches in isZeroValue
+	// via the OmitEmpty path through the JSON formatter.
+	out := testhelper.NewMockOutput("test")
+	logger := newTestLogger(t, audit.Config{
+		Version:        1,
+		Enabled:        true,
+		OmitEmpty:      true,
+		ValidationMode: audit.ValidationPermissive,
+	}, out)
+
+	tests := []struct {
+		name    string
+		fields  audit.Fields
+		wantKey string
+		wantIn  bool
+	}{
+		{
+			name:    "zero int32 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int32(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero int32 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int32(7)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero float32 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero float32 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(3.14)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero uint omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero uint included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(99)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero uint64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero uint64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(1)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero int64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero int64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int64(42)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name:    "zero float64 omitted",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float64(0)},
+			wantKey: "val",
+			wantIn:  false,
+		},
+		{
+			name:    "non-zero float64 included",
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float64(2.71)},
+			wantKey: "val",
+			wantIn:  true,
+		},
+		{
+			name: "slice value not omitted (default branch)",
+			// A non-nil slice hits the default branch in isZeroValue, which
+			// returns false (not a zero value), so the field is included.
+			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": []string{"a"}},
+			wantKey: "val",
+			wantIn:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use a fresh output per subtest to avoid event ordering issues.
+			subOut := testhelper.NewMockOutput("sub-" + tt.name)
+			subLogger, err := audit.NewLogger(
+				audit.Config{
+					Version:        1,
+					Enabled:        true,
+					OmitEmpty:      true,
+					ValidationMode: audit.ValidationPermissive,
+				},
+				audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+				audit.WithOutputs(subOut),
+			)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, subLogger.Close()) })
+
+			require.NoError(t, subLogger.Audit("auth_failure", tt.fields))
+			require.True(t, subOut.WaitForEvents(1, 2*time.Second))
+
+			ev := subOut.GetEvent(0)
+			_, found := ev[tt.wantKey]
+			if tt.wantIn {
+				assert.True(t, found, "field %q should be present when non-zero", tt.wantKey)
+			} else {
+				assert.False(t, found, "field %q should be omitted when zero", tt.wantKey)
+			}
+		})
+	}
+
+	// Prevent unused warning for the outer logger.
+	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "ok", "actor_id": "x"}))
+	_ = out
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 
 func BenchmarkAudit(b *testing.B) {
-	out := newMockOutput("bench")
+	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -1708,10 +1732,10 @@ func BenchmarkAudit(b *testing.B) {
 }
 
 func BenchmarkAuditDisabledCategory(b *testing.B) {
-	out := newMockOutput("bench")
+	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -1731,7 +1755,7 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 func BenchmarkAuditDisabledLogger(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: false},
-		audit.WithTaxonomy(validTaxonomy()),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	if err != nil {
 		b.Fatal(err)

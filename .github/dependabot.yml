@@ -17,6 +17,42 @@ updates:
           - "minor"
           - "patch"
 
+  # File sub-module
+  - package-ecosystem: "gomod"
+    directory: "/file"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+
+  # Syslog sub-module
+  - package-ecosystem: "gomod"
+    directory: "/syslog"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+
+  # Webhook sub-module
+  - package-ecosystem: "gomod"
+    directory: "/webhook"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+
   # GitHub Actions — keeps SHA pins current
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -112,7 +112,7 @@ security:
 
 # --- Full local quality gate ---
 
-check: fmt vet-all lint-all test-all tidy check-replace check-todos
+check: fmt vet-all lint-all test-all tidy check-replace check-todos security
 	@echo ""
 	@echo "All checks passed."
 

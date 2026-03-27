@@ -104,6 +104,10 @@ linters:
     govet:
       enable-all: true
 
+  issues:
+    max-issues-per-linter: 0
+    max-same-issues: 0
+
   exclusions:
     rules:
       # Test files are allowed to use dot imports for testify.

@@ -21,8 +21,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
-	"gopkg.in/natefinch/lumberjack.v2"
+	"github.com/axonops/go-audit/internal/rotate"
 )
 
 const (
@@ -53,13 +54,13 @@ type FileConfig struct {
 }
 
 // FileOutput writes serialised audit events to a file with automatic
-// rotation via lumberjack. It supports size-based rotation, backup
-// retention, age-based cleanup, and optional gzip compression.
+// size-based rotation. It supports backup retention, age-based cleanup,
+// and optional gzip compression.
 //
 // FileOutput is safe for concurrent use, including concurrent calls
 // to [FileOutput.Write] and [FileOutput.Close].
 type FileOutput struct {
-	logger *lumberjack.Logger
+	writer *rotate.Writer
 	path   string
 	mu     sync.RWMutex
 	closed bool
@@ -73,6 +74,8 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 	cfg.Path = filepath.Clean(cfg.Path)
 
+	// Check parent directory exists early to provide a clear "audit:" error
+	// message. rotate.New performs the same check but with a "rotate:" prefix.
 	parentDir := filepath.Dir(cfg.Path)
 	if _, err := os.Lstat(parentDir); err != nil {
 		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, err)
@@ -91,8 +94,8 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 	}
 
 	applyFileDefaults(&cfg)
-	if err := validateFileLimits(&cfg); err != nil {
-		return nil, err
+	if validErr := validateFileLimits(&cfg); validErr != nil {
+		return nil, validErr
 	}
 
 	compress := true
@@ -100,21 +103,23 @@ func NewFileOutput(cfg FileConfig) (*FileOutput, error) {
 		compress = *cfg.Compress
 	}
 
-	// Set file permissions before lumberjack opens the file.
-	if err := ensureFilePermissions(cfg.Path, perm); err != nil {
-		return nil, err
-	}
-
-	lj := &lumberjack.Logger{
-		Filename:   cfg.Path,
-		MaxSize:    cfg.MaxSizeMB,
+	logPath := cfg.Path // capture for closure
+	rw, err := rotate.New(cfg.Path, rotate.Config{
+		MaxSize:    int64(cfg.MaxSizeMB) * 1024 * 1024,
+		MaxAge:     time.Duration(cfg.MaxAgeDays) * 24 * time.Hour,
+		Mode:       perm,
 		MaxBackups: cfg.MaxBackups,
-		MaxAge:     cfg.MaxAgeDays,
 		Compress:   compress,
-		LocalTime:  true,
+		OnError: func(err error) {
+			slog.Warn("audit: file output background error",
+				"path", logPath, "error", err)
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("audit: file output: %w", err)
 	}
 
-	return &FileOutput{logger: lj, path: cfg.Path}, nil
+	return &FileOutput{writer: rw, path: cfg.Path}, nil
 }
 
 // Write sends a serialised audit event to the file. Write returns
@@ -126,14 +131,14 @@ func (f *FileOutput) Write(data []byte) error {
 	if f.closed {
 		return ErrOutputClosed
 	}
-	if _, err := f.logger.Write(data); err != nil {
+	if _, err := f.writer.Write(data); err != nil {
 		return fmt.Errorf("audit: file output write: %w", err)
 	}
 	return nil
 }
 
-// Close closes the underlying lumberjack logger and marks the output
-// as closed. Close is idempotent and safe for concurrent use with
+// Close closes the underlying file writer and marks the output as
+// closed. Close is idempotent and safe for concurrent use with
 // [FileOutput.Write].
 func (f *FileOutput) Close() error {
 	f.mu.Lock()
@@ -142,7 +147,7 @@ func (f *FileOutput) Close() error {
 		return nil
 	}
 	f.closed = true
-	if err := f.logger.Close(); err != nil {
+	if err := f.writer.Close(); err != nil {
 		return fmt.Errorf("audit: file output close: %w", err)
 	}
 	return nil
@@ -197,37 +202,6 @@ func validateFileLimits(cfg *FileConfig) error {
 	if cfg.MaxAgeDays > MaxFileAgeDays {
 		return fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
 			ErrConfigInvalid, cfg.MaxAgeDays, MaxFileAgeDays)
-	}
-	return nil
-}
-
-// ensureFilePermissions creates or updates the file with the given
-// permissions. If the file does not exist, it is created. If it
-// exists, its permissions are updated via the file descriptor to
-// reduce symlink TOCTOU exposure. The Lstat-to-OpenFile window is
-// not fully atomic; O_NOFOLLOW would close it but is not portable.
-func ensureFilePermissions(path string, perm os.FileMode) error {
-	// Check for symlinks before opening to prevent following them.
-	if info, err := os.Lstat(path); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("audit: file output path %q is a symlink", path)
-		}
-	}
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, perm)
-	if err != nil {
-		return fmt.Errorf("audit: file output create %q: %w", path, err)
-	}
-
-	// Use f.Chmod on the file descriptor rather than os.Chmod on the
-	// path to avoid a second path resolution (symlink TOCTOU).
-	chmodErr := f.Chmod(perm)
-	closeErr := f.Close()
-	if chmodErr != nil {
-		return fmt.Errorf("audit: file output chmod %q: %w", path, chmodErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("audit: file output close %q: %w", path, closeErr)
 	}
 	return nil
 }

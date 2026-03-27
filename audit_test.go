@@ -29,11 +29,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m,
-		// lumberjack starts an internal goroutine for log rotation that
-		// shuts down asynchronously after Close returns.
-		goleak.IgnoreTopFunction("gopkg.in/natefinch/lumberjack%2ev2.(*Logger).millRun"),
-	)
+	goleak.VerifyTestMain(m)
 }
 
 // ---------------------------------------------------------------------------

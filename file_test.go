@@ -93,6 +93,9 @@ func TestFileOutput_Permissions(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
+	// File is created lazily on first Write.
+	require.NoError(t, out.Write([]byte("test\n")))
+
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
@@ -108,6 +111,9 @@ func TestFileOutput_CustomPermissions(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
+
+	// File is created lazily on first Write.
+	require.NoError(t, out.Write([]byte("test\n")))
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
@@ -274,10 +280,13 @@ func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
 	assert.NoError(t, out.Close())
 	wg.Wait()
 
-	// Verify no panic occurred. Content may be empty if Close() won
-	// the race against all write goroutines — that's valid behaviour.
-	_, err = os.ReadFile(path)
-	require.NoError(t, err)
+	// Verify no panic occurred. The file may not exist if Close() won
+	// the race against all write goroutines — the writer is lazy-open,
+	// so if no write succeeded before close, no file is created.
+	if _, statErr := os.Stat(path); statErr == nil {
+		_, err = os.ReadFile(path)
+		require.NoError(t, err)
+	}
 }
 
 func TestFileOutput_CompressFalse(t *testing.T) {
@@ -305,7 +314,12 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 	require.NoError(t, os.WriteFile(target, nil, 0o600))
 	require.NoError(t, os.Symlink(target, link))
 
-	_, err := audit.NewFileOutput(audit.FileConfig{Path: link})
+	// Construction succeeds — symlink check happens on first Write.
+	out, err := audit.NewFileOutput(audit.FileConfig{Path: link})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	err = out.Write([]byte("test\n"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "symlink")
 }

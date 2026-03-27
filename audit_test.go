@@ -1454,8 +1454,8 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 // It reports its own delivery, so the core logger must NOT call RecordEvent
 // or RecordOutputError for it.
 type deliveryReporterOutput struct {
-	testhelper.MockOutput
 	writeErrToReturn error
+	testhelper.MockOutput
 }
 
 func newDeliveryReporterOutput(name string) *deliveryReporterOutput {
@@ -1470,7 +1470,7 @@ func (d *deliveryReporterOutput) Write(data []byte) error {
 	if d.writeErrToReturn != nil {
 		return d.writeErrToReturn
 	}
-	return d.MockOutput.Write(data)
+	return d.MockOutput.Write(data) //nolint:wrapcheck // test helper, wrapping not needed
 }
 
 var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)

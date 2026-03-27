@@ -18,31 +18,10 @@ import (
 	"testing"
 
 	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/tests/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// testTaxonomy returns a taxonomy for route testing with categories
-// "write", "read", "security" and corresponding event types.
-func testTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"read":     {"user_get", "config_get"},
-			"security": {"auth_failure", "permission_denied"},
-		},
-		Events: map[string]audit.EventDef{
-			"user_create":       {Category: "write", Required: []string{"outcome"}},
-			"user_delete":       {Category: "write", Required: []string{"outcome"}},
-			"user_get":          {Category: "read", Required: []string{"outcome"}},
-			"config_get":        {Category: "read", Required: []string{"outcome"}},
-			"auth_failure":      {Category: "security", Required: []string{"outcome"}},
-			"permission_denied": {Category: "security", Required: []string{"outcome"}},
-		},
-		DefaultEnabled: []string{"write", "read", "security"},
-	}
-}
 
 func TestEventRoute_IsEmpty(t *testing.T) {
 	assert.True(t, (&audit.EventRoute{}).IsEmpty())
@@ -51,7 +30,7 @@ func TestEventRoute_IsEmpty(t *testing.T) {
 }
 
 func TestValidateEventRoute(t *testing.T) {
-	tax := testTaxonomy()
+	tax := testhelper.TestTaxonomy()
 
 	tests := []struct {
 		name    string

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/tests/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,9 +76,9 @@ func middlewareBuilder(hints *audit.Hints, transport *audit.TransportMetadata) (
 }
 
 // newMiddlewareTestLogger creates a Logger with a mockOutput for middleware tests.
-func newMiddlewareTestLogger(t *testing.T) (*audit.Logger, *mockOutput) {
+func newMiddlewareTestLogger(t *testing.T) (*audit.Logger, *testhelper.MockOutput) {
 	t.Helper()
-	out := newMockOutput("mw-test")
+	out := testhelper.NewMockOutput("mw-test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(middlewareTaxonomy()),
@@ -139,7 +140,7 @@ func TestMiddleware_BasicFlow(t *testing.T) {
 	// Wait for async delivery.
 	require.NoError(t, logger.Close())
 
-	assert.Equal(t, 1, out.eventCount())
+	assert.Equal(t, 1, out.EventCount())
 }
 
 func TestMiddleware_HintsPopulatedByHandler(t *testing.T) {
@@ -236,7 +237,7 @@ func TestMiddleware_SkipTrue(t *testing.T) {
 	mw(handler).ServeHTTP(rec, req)
 
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.eventCount())
+	assert.Equal(t, 0, out.EventCount())
 }
 
 func TestMiddleware_PanicRecovery(t *testing.T) {
@@ -259,7 +260,7 @@ func TestMiddleware_PanicRecovery(t *testing.T) {
 
 	// Audit event should still have been emitted before re-panic.
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 1, out.eventCount())
+	assert.Equal(t, 1, out.EventCount())
 }
 
 func TestMiddleware_TransportMetadata_Complete(t *testing.T) {
@@ -397,7 +398,7 @@ func TestMiddleware_ConcurrentRequests(t *testing.T) {
 	assert.Equal(t, int64(100), calls.Load())
 
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 100, out.eventCount())
+	assert.Equal(t, 100, out.EventCount())
 }
 
 func TestMiddleware_StatusCode_FromHandler(t *testing.T) {
@@ -468,7 +469,7 @@ func TestMiddleware_BuilderPanic_Recovered(t *testing.T) {
 
 	// Event should be skipped due to builder panic.
 	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.eventCount())
+	assert.Equal(t, 0, out.EventCount())
 }
 
 func TestMiddleware_RequestID_InvalidHeader_GeneratesUUID(t *testing.T) {
@@ -609,7 +610,7 @@ func TestMiddleware_Path_Truncated(t *testing.T) {
 
 func BenchmarkMiddleware(b *testing.B) {
 	taxonomy := middlewareTaxonomy()
-	out := newMockOutput("bench")
+	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1_000_000},
 		audit.WithTaxonomy(taxonomy),

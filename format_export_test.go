@@ -15,8 +15,16 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
+import "bytes"
+
 var (
 	CEFEscapeHeaderForTest   = cefEscapeHeader
 	CEFEscapeExtValueForTest = cefEscapeExtValue
 	ValidateExtKeyForTest    = validateExtKey
 )
+
+// WriteJSONStringForTest exposes writeJSONString for property-based
+// testing against encoding/json.Marshal.
+func WriteJSONStringForTest(buf *bytes.Buffer, s string) {
+	writeJSONString(buf, s)
+}

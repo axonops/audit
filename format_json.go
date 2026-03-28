@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // jsonBufPool caches bytes.Buffer instances for JSONFormatter.Format
@@ -191,3 +192,76 @@ func (e *jsonEncoder) writeField(key string, value any) {
 	}
 	e.buf.Write(data)
 }
+
+// writeJSONString writes the JSON-encoded form of s directly to buf,
+// producing byte-for-byte identical output to [encoding/json.Marshal]
+// for string values. This includes HTML-safe escaping of <, >, and &.
+//
+// Writing directly to the buffer eliminates the per-call allocation
+// that json.Marshal incurs for its return value.
+func writeJSONString(buf *bytes.Buffer, s string) {
+	buf.WriteByte('"')
+	start := 0
+	for i := 0; i < len(s); {
+		b := s[i]
+		if b >= utf8.RuneSelf {
+			r, size := utf8.DecodeRuneInString(s[i:])
+			if r == utf8.RuneError && size == 1 {
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\ufffd`)
+				i += size
+				start = i
+			} else {
+				i += size
+			}
+			continue
+		}
+		if jsonSafeASCII[b] {
+			i++
+			continue
+		}
+		buf.WriteString(s[start:i])
+		switch b {
+		case '"':
+			buf.WriteString(`\"`)
+		case '\\':
+			buf.WriteString(`\\`)
+		case '\b':
+			buf.WriteString(`\b`)
+		case '\f':
+			buf.WriteString(`\f`)
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\r':
+			buf.WriteString(`\r`)
+		case '\t':
+			buf.WriteString(`\t`)
+		default:
+			// Remaining control chars (0x00-0x1F) and HTML-special (<, >, &).
+			buf.WriteString(`\u00`)
+			buf.WriteByte(hexDigits[b>>4])
+			buf.WriteByte(hexDigits[b&0xf])
+		}
+		i++
+		start = i
+	}
+	buf.WriteString(s[start:])
+	buf.WriteByte('"')
+}
+
+const hexDigits = "0123456789abcdef"
+
+// jsonSafeASCII marks ASCII bytes safe to pass through writeJSONString
+// without escaping. Bytes with false entries need escaping.
+var jsonSafeASCII = func() [256]bool {
+	var t [256]bool
+	for i := 0x20; i < utf8.RuneSelf; i++ {
+		t[i] = true
+	}
+	t['"'] = false
+	t['\\'] = false
+	t['<'] = false  // HTML-safe escaping (matches json.Marshal)
+	t['>'] = false
+	t['&'] = false
+	return t
+}()

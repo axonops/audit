@@ -2023,6 +2023,146 @@ func BenchmarkAudit_PoolAmortised(b *testing.B) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Fan-out benchmarks — multi-output scenarios
+// ---------------------------------------------------------------------------
+
+// BenchmarkAudit_FanOut_SharedFormatter measures fan-out to 3 outputs
+// sharing the same default formatter. The formatCache should serialise
+// once and deliver the same []byte to all three outputs.
+func BenchmarkAudit_FanOut_SharedFormatter(b *testing.B) {
+	silenceSlog(b)
+	out1 := testhelper.NewMockOutput("out1")
+	out2 := testhelper.NewMockOutput("out2")
+	out3 := testhelper.NewMockOutput("out3")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out1, out2, out3),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+}
+
+// BenchmarkAudit_FanOut_MixedFormatters measures fan-out to 3 outputs
+// with 2 different formatters (JSON + CEF + JSON). The formatCache
+// should serialise once per unique formatter (2 serialisations, not 3).
+func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
+	silenceSlog(b)
+	out1 := testhelper.NewMockOutput("json1")
+	out2 := testhelper.NewMockOutput("cef")
+	out3 := testhelper.NewMockOutput("json2")
+	cefFmt := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out1, nil, nil),    // default JSON
+		audit.WithNamedOutput(out2, nil, cefFmt), // CEF
+		audit.WithNamedOutput(out3, nil, nil),    // default JSON (shared)
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+}
+
+// BenchmarkAudit_FanOut_FilteredOutputs measures fan-out to 3 outputs
+// where one output filters the event via an include-category route.
+// This exercises the per-output route matching + filtered-output
+// metrics path.
+func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
+	silenceSlog(b)
+	out1 := testhelper.NewMockOutput("all")
+	out2 := testhelper.NewMockOutput("write-only")
+	out3 := testhelper.NewMockOutput("security-only")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out1, nil, nil), // receives all events
+		audit.WithNamedOutput(out2, &audit.EventRoute{
+			IncludeCategories: []string{"write"},
+		}, nil), // receives only write events
+		audit.WithNamedOutput(out3, &audit.EventRoute{
+			IncludeCategories: []string{"security"},
+		}, nil), // receives only security events — filters schema_register
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// schema_register is "write" category — out1 and out2 receive it,
+		// out3 filters it.
+		_ = logger.Audit("schema_register", fields)
+	}
+}
+
+// BenchmarkAudit_FanOut_5Outputs measures fan-out to 5 outputs with
+// the same formatter — tests scaling beyond the typical 1-3 output case.
+func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
+	silenceSlog(b)
+	outputs := make([]audit.Output, 5)
+	for i := range outputs {
+		outputs[i] = testhelper.NewMockOutput("out" + string(rune('0'+i)))
+	}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(outputs...),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+}
+
 func BenchmarkCopyFields(b *testing.B) {
 	fields := audit.Fields{
 		"outcome":    "success",

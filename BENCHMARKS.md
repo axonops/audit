@@ -33,6 +33,15 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | Audit_EndToEnd | 613 | 698 | 3 | Large buffer, amortised caller cost |
 | AuditDisabledLogger | 1.1 | 0 | 0 | Config.Enabled=false |
 
+### Fan-Out (multi-output)
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|-----------|------:|-----:|----------:|-------|
+| FanOut_SharedFormatter | 630 | 1030 | 5 | 3 outputs, same formatter (serialise once) |
+| FanOut_MixedFormatters | 737 | 876 | 5 | 3 outputs, 2 formatters (JSON + CEF) |
+| FanOut_FilteredOutputs | 622 | 837 | 4 | 3 outputs, 1 filtered by route |
+| FanOut_5Outputs | 685 | 1249 | 5 | 5 outputs, same formatter |
+
 ### Caller-Side Helpers
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |
@@ -68,6 +77,7 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 - **CEFFormatter** at 2 allocs/op: 1 for the copy-before-return, 1 from allFieldKeysSortedSlow in benchmarks with non-precomputed EventDefs
 - **MatchesRoute** at 0 allocs/op is already optimal; O(n) scan is the concern for large lists
 - **CopyFields** at 2 allocs/op is the minimum (map header + bucket array)
+- **Fan-out** scales well: 3 outputs with shared formatter adds only ~56 ns (+10%) over 1 output. The formatCache serialises once and delivers the same `[]byte` to all outputs sharing a formatter. Route-filtered outputs add minimal overhead (~48 ns). Even 5 outputs adds only ~111 ns (+19%)
 
 ---
 

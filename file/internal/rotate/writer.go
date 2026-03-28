@@ -18,6 +18,7 @@
 package rotate
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,12 @@ import (
 	"sync"
 	"time"
 )
+
+// bufSize is the bufio.Writer buffer size. 32KB batches many small
+// audit events (~200-500 bytes each) into fewer write(2) syscalls.
+// MaxSize is treated as a soft limit — the file may exceed it by up
+// to bufSize before rotation triggers.
+const bufSize = 32 * 1024
 
 // Config controls the rotation behaviour of a [Writer].
 type Config struct {
@@ -73,6 +80,7 @@ type Writer struct {
 	// now is used for testing to control time.
 	now      func() time.Time
 	file     *os.File
+	bw       *bufio.Writer
 	millCh   chan struct{}
 	millDone chan struct{} // closed when the mill goroutine exits
 	filename string        // absolute, cleaned path
@@ -174,7 +182,7 @@ func (w *Writer) writeLocked(p []byte) (n int, rotated bool, err error) {
 		rotated = true
 	}
 
-	n, err = w.file.Write(p)
+	n, err = w.bw.Write(p)
 	w.size += int64(n)
 	if err != nil {
 		return n, rotated, fmt.Errorf("rotate: write: %w", err)
@@ -227,6 +235,7 @@ func (w *Writer) openExistingOrNew(writeLen int64) (bool, error) {
 	}
 
 	w.file = f
+	w.bw = bufio.NewWriterSize(f, bufSize)
 	w.size = info.Size()
 	return false, nil
 }
@@ -259,6 +268,7 @@ func (w *Writer) openNew() error {
 	}
 
 	w.file = f
+	w.bw = bufio.NewWriterSize(f, bufSize)
 	w.size = 0
 	w.mill()
 	return nil
@@ -272,10 +282,16 @@ func (w *Writer) rotate() error {
 	return w.openNew()
 }
 
-// closeFile closes the current file handle if open.
+// closeFile flushes buffered data and closes the current file handle.
 func (w *Writer) closeFile() error {
 	if w.file == nil {
 		return nil
+	}
+	if w.bw != nil {
+		if err := w.bw.Flush(); err != nil {
+			return fmt.Errorf("rotate: flush: %w", err)
+		}
+		w.bw = nil
 	}
 	err := w.file.Close()
 	w.file = nil
@@ -286,13 +302,19 @@ func (w *Writer) closeFile() error {
 	return nil
 }
 
-// Sync flushes the file's in-memory state to stable storage.
+// Sync flushes the buffered writer and the file's in-memory state to
+// stable storage.
 func (w *Writer) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.file == nil {
 		return nil
+	}
+	if w.bw != nil {
+		if err := w.bw.Flush(); err != nil {
+			return fmt.Errorf("rotate: flush: %w", err)
+		}
 	}
 	if err := w.file.Sync(); err != nil {
 		return fmt.Errorf("rotate: sync: %w", err)

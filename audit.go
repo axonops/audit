@@ -74,14 +74,14 @@ type Logger struct {
 	drainDone      chan struct{}
 	// entries and outputsByName are immutable after construction;
 	// safe to read without holding l.mu.
-	entries         []*outputEntry
-	outputsByName   map[string]*outputEntry
-	cfg             Config
-	wg              sync.WaitGroup
-	mu              sync.RWMutex
-	closeOnce       sync.Once
-	closed          atomic.Bool
-	startupEmitted  atomic.Bool
+	entries        []*outputEntry
+	outputsByName  map[string]*outputEntry
+	cfg            Config
+	wg             sync.WaitGroup
+	mu             sync.RWMutex
+	closeOnce      sync.Once
+	closed         atomic.Bool
+	startupEmitted atomic.Bool
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool

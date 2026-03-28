@@ -112,7 +112,10 @@ build: build-all
 # --- Benchmarks ---
 
 bench:
-	go test -bench=. -benchmem -count=5 -run='^$$' ./... | tee bench.txt
+	@for mod in $(MODULES); do \
+		echo "=== bench $$mod ==="; \
+		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./...) || exit 1; \
+	done | tee bench.txt
 
 bench-save: bench
 	cp bench.txt bench-baseline.txt

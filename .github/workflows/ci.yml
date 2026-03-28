@@ -250,11 +250,18 @@ jobs:
       - name: Compare against baseline
         if: hashFiles('bench-baseline.txt') != ''
         run: |
-          echo "## Benchmark Comparison" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          $(go env GOPATH)/bin/benchstat bench-baseline.txt bench.txt >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if $(go env GOPATH)/bin/benchstat bench-baseline.txt bench.txt > /tmp/benchstat.out 2>&1; then
+            echo "## Benchmark Comparison" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/benchstat.out >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Benchmark Comparison" >> "$GITHUB_STEP_SUMMARY"
+            echo "benchstat failed — baseline may be stale. Re-run \`make bench-save\` to update." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
+  # benchmark is deliberately excluded from ci-pass — it is informational
+  # (shows regressions in step summary) but does not gate merges.
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest

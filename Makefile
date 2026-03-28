@@ -1,6 +1,6 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-taxonomy \
+.PHONY: test test-all test-core test-file test-syslog test-webhook \
        test-integration test-bdd \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-taxonomy \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook \
        vet vet-all fmt fmt-check \
        build build-all bench coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -9,7 +9,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook taxonomy
+MODULES           := . file syslog webhook
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 GOLANGCI_LINT_VER := v2.1.6
@@ -44,10 +44,7 @@ test-syslog:
 test-webhook:
 	cd webhook && go test -race -v -count=1 ./...
 
-test-taxonomy:
-	cd taxonomy && go test -race -v -count=1 ./...
-
-test-all: test-core test-file test-syslog test-webhook test-taxonomy
+test-all: test-core test-file test-syslog test-webhook
 test: test-all
 
 # Integration tests (requires Docker)
@@ -73,10 +70,7 @@ lint-syslog:
 lint-webhook:
 	cd webhook && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-taxonomy:
-	cd taxonomy && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
-
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-taxonomy
+lint-all: lint-core lint-file lint-syslog lint-webhook
 lint: lint-all
 
 # --- Vet ---

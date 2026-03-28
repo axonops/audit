@@ -142,7 +142,7 @@ func MatchesRoute(route *EventRoute, eventType, category string) bool {
 
 // filterState tracks which categories and individual event types are
 // enabled. It is safe for concurrent use — reads are lock-free via
-// syncmap.Map (backed by sync.Map internally).
+// syncmap.SyncMap (backed by sync.Map internally).
 type filterState struct {
 	// enabledCategories tracks the enabled state of each category.
 	// Reads are lock-free for stable keys after initial population.

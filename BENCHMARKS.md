@@ -38,7 +38,7 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | Benchmark | ns/op | B/op | allocs/op | Notes |
 |-----------|------:|-----:|----------:|-------|
 | CopyFields | 164 | 336 | 2 | 6-field map copy |
-| FilterCheck | 14 | 0 | 0 | isEnabled under RLock |
+| FilterCheck | 22 | 0 | 0 | isEnabled lock-free (syncmap) |
 
 ### Formatters
 

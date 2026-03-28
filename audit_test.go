@@ -15,7 +15,6 @@
 package audit_test
 
 import (
-	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -857,9 +856,7 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	require.NoError(t, logger.Close())
 
 	assert.Greater(t, metrics.GetEventCount("bad-write", "error"), 0)
-	metrics.Mu.Lock()
-	defer metrics.Mu.Unlock()
-	assert.Greater(t, metrics.OutputErrors["bad-write"], 0)
+	assert.Greater(t, metrics.GetOutputErrorCount("bad-write"), 0)
 }
 
 type errorWriteOutput struct {
@@ -1152,14 +1149,11 @@ func TestLogger_EmitStartup_ValidationError_NoShutdown(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required fields")
 
-	// Close and verify no shutdown event was emitted.
+	// Close and verify no events were delivered at all — the startup
+	// event was rejected before enqueue, so nothing reached the output.
 	require.NoError(t, logger.Close())
-	for _, evt := range out.GetEvents() {
-		var m map[string]any
-		require.NoError(t, json.Unmarshal(evt, &m))
-		assert.NotEqual(t, "shutdown", m["event_type"],
-			"shutdown event should not be emitted when startup failed")
-	}
+	assert.Equal(t, 0, out.EventCount(),
+		"no events should be delivered when EmitStartup fails validation")
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ package audit_test
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -989,6 +990,10 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "rt="),
 			"framework rt should appear once, user collision skipped")
+		// Verify the framework value (epoch ms timestamp) survived, not the user value.
+		assert.Contains(t, output,
+			"rt="+strconv.FormatInt(testTime.UnixMilli(), 10))
+		assert.NotContains(t, output, "rt=10.0.0.1")
 	})
 
 	t.Run("act_collision", func(t *testing.T) {
@@ -1006,6 +1011,9 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "act="),
 			"framework act should appear once, user collision skipped")
+		// Verify the framework value (event type) survived, not the user value.
+		assert.Contains(t, output, "act=ev")
+		assert.NotContains(t, output, "act=alice")
 	})
 
 	t.Run("cn1_with_duration", func(t *testing.T) {

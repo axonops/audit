@@ -165,6 +165,13 @@ func (m *MockMetrics) WaitForMetric(key string, n int, timeout time.Duration) bo
 
 // --- Accessors ---
 
+// GetOutputErrorCount returns the count of output errors for the named output.
+func (m *MockMetrics) GetOutputErrorCount(output string) int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.OutputErrors[output]
+}
+
 // GetOutputFiltered returns the count of filtered events for the named output.
 func (m *MockMetrics) GetOutputFiltered(output string) int {
 	m.Mu.Lock()

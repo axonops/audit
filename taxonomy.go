@@ -42,6 +42,15 @@ type EventDef struct {
 	// validation mode, any field not in Required or Optional
 	// produces an error.
 	Optional []string
+
+	// Pre-computed fields populated by precomputeTaxonomy at
+	// registration time. These are read-only after construction
+	// and eliminate per-event allocations in validation and
+	// formatting.
+	knownFields    map[string]struct{} // union of Required + Optional
+	sortedRequired []string            // Required, sorted alphabetically
+	sortedOptional []string            // Optional, sorted alphabetically
+	sortedAllKeys  []string            // Required + Optional, merged, deduped, sorted
 }
 
 // Taxonomy defines the complete set of audit event types, their
@@ -60,7 +69,9 @@ type Taxonomy struct {
 
 	// Events maps event type names to their definitions. Every event
 	// type listed in Categories MUST have a corresponding entry here.
-	Events map[string]EventDef
+	// Pointers are used to avoid per-event heap escapes when passing
+	// definitions through the drain path.
+	Events map[string]*EventDef
 
 	// DefaultEnabled lists category names that are enabled at startup.
 	// Events in categories not listed here are silently discarded
@@ -112,7 +123,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 		t.Categories = make(map[string][]string)
 	}
 	if t.Events == nil {
-		t.Events = make(map[string]EventDef)
+		t.Events = make(map[string]*EventDef)
 	}
 
 	// Ensure lifecycle category exists.
@@ -122,7 +133,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
-		t.Events["startup"] = EventDef{
+		t.Events["startup"] = &EventDef{
 			Category: lifecycleCategory,
 			Required: []string{"app_name"},
 			Optional: []string{"version", "config"},
@@ -134,7 +145,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject shutdown if not already defined.
 	if _, ok := t.Events["shutdown"]; !ok {
-		t.Events["shutdown"] = EventDef{
+		t.Events["shutdown"] = &EventDef{
 			Category: lifecycleCategory,
 			Required: []string{"app_name"},
 			Optional: []string{"reason", "uptime_ms"},
@@ -148,6 +159,51 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	if !slices.Contains(t.DefaultEnabled, lifecycleCategory) {
 		t.DefaultEnabled = append(t.DefaultEnabled, lifecycleCategory)
 	}
+}
+
+// precomputeTaxonomy populates the pre-computed fields on every
+// EventDef in the taxonomy. These fields are derived from the
+// Required and Optional slices and are read-only after this call.
+// Must be called after validation succeeds.
+func precomputeTaxonomy(t *Taxonomy) {
+	for _, def := range t.Events {
+		precomputeEventDef(def)
+	}
+}
+
+// precomputeEventDef populates the pre-computed lookup structures
+// on a single EventDef: knownFields set, sorted field lists, and
+// merged sorted key list.
+func precomputeEventDef(def *EventDef) {
+	def.knownFields = make(map[string]struct{}, len(def.Required)+len(def.Optional))
+	for _, f := range def.Required {
+		def.knownFields[f] = struct{}{}
+	}
+	for _, f := range def.Optional {
+		def.knownFields[f] = struct{}{}
+	}
+
+	def.sortedRequired = sortedCopy(def.Required)
+	def.sortedOptional = sortedCopy(def.Optional)
+
+	// Build sorted all-keys from the already-deduped knownFields set.
+	all := make([]string, 0, len(def.knownFields))
+	for k := range def.knownFields {
+		all = append(all, k)
+	}
+	slices.Sort(all)
+	def.sortedAllKeys = all
+}
+
+// sortedCopy returns a sorted copy of the input slice.
+func sortedCopy(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	cp := make([]string, len(s))
+	copy(cp, s)
+	slices.Sort(cp)
+	return cp
 }
 
 // ValidateTaxonomy checks t for internal consistency. If any problems

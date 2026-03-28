@@ -53,13 +53,13 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 	enc.writeStringField("event_type", eventType)
 	jf.writeDuration(enc, fields)
 
-	// Required fields (sorted).
-	for _, k := range sortedFieldKeys(def.Required, fields, jf.OmitEmpty) {
+	// Required fields (sorted). Uses pre-sorted slice when available.
+	for _, k := range sortedFieldKeys(def.sortedRequired, def.Required, fields, jf.OmitEmpty) {
 		enc.writeField(k, fields[k])
 	}
 
-	// Optional fields (sorted).
-	for _, k := range sortedFieldKeys(def.Optional, fields, jf.OmitEmpty) {
+	// Optional fields (sorted). Uses pre-sorted slice when available.
+	for _, k := range sortedFieldKeys(def.sortedOptional, def.Optional, fields, jf.OmitEmpty) {
 		enc.writeField(k, fields[k])
 	}
 

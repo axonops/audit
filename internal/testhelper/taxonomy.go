@@ -26,7 +26,7 @@ func ValidTaxonomy() audit.Taxonomy {
 			"write":    {"schema_register", "schema_delete"},
 			"security": {"auth_failure"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"schema_read":     {Category: "read", Required: []string{"outcome"}, Optional: []string{"subject"}},
 			"config_read":     {Category: "read", Required: []string{"outcome"}},
 			"schema_register": {Category: "write", Required: []string{"outcome", "actor_id", "subject"}, Optional: []string{"schema_type"}},
@@ -47,7 +47,7 @@ func TestTaxonomy() audit.Taxonomy {
 			"read":     {"user_get", "config_get"},
 			"security": {"auth_failure", "permission_denied"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"user_create":       {Category: "write", Required: []string{"outcome"}},
 			"user_delete":       {Category: "write", Required: []string{"outcome"}},
 			"user_get":          {Category: "read", Required: []string{"outcome"}},

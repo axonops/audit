@@ -101,6 +101,7 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 		return Taxonomy{}, err
 	}
 
+	precomputeTaxonomy(&tax)
 	return tax, nil
 }
 
@@ -114,14 +115,13 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		categories[name] = cp
 	}
 
-	events := make(map[string]EventDef, len(yt.Events))
+	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
-		ed := EventDef{
+		events[name] = &EventDef{
 			Category: def.Category,
 			Required: copyStrings(def.Required),
 			Optional: copyStrings(def.Optional),
 		}
-		events[name] = ed
 	}
 
 	defaultEnabled := make([]string, len(yt.DefaultEnabled))

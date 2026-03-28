@@ -1009,7 +1009,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version:    1,
 		Categories: map[string][]string{"misc": {"no_req"}},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"no_req": {Category: "misc", Optional: []string{"info"}},
 		},
 		DefaultEnabled: []string{"misc"},
@@ -1290,7 +1290,7 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version:    1,
 		Categories: map[string][]string{"write": {"ev1"}},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"ev1": {Category: "write", Required: []string{"f1"}},
 		},
 		DefaultEnabled: []string{}, // empty -- only lifecycle enabled
@@ -1849,7 +1849,7 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 		Categories: map[string][]string{
 			"write": {"api_request"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"api_request": {
 				Category: "write",
 				Required: []string{"outcome", "actor_id", "method", "path"},

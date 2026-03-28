@@ -39,7 +39,7 @@ func middlewareTaxonomy() audit.Taxonomy {
 		Categories: map[string][]string{
 			"access": {"http_request"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"http_request": {
 				Category: "access",
 				Required: []string{"outcome"},

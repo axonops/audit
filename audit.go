@@ -177,7 +177,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
-	if err := l.validateFields(eventType, &def, fields); err != nil {
+	if err := l.validateFields(eventType, def, fields); err != nil {
 		// Only strict-mode rejections are validation errors. Warn-mode
 		// unknown fields return nil (event accepted) and are observable
 		// only via slog -- they are not validation errors.
@@ -522,7 +522,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			continue
 		}
 
-		data := l.formatCached(oe, entry, ts, &def, cache)
+		data := l.formatCached(oe, entry, ts, def, cache)
 		if data == nil {
 			continue
 		}
@@ -608,17 +608,10 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		return nil
 	}
 
-	known := make(map[string]bool, len(def.Required)+len(def.Optional))
-	for _, f := range def.Required {
-		known[f] = true
-	}
-	for _, f := range def.Optional {
-		known[f] = true
-	}
-
+	known := effectiveKnownFields(def)
 	var unknown []string
 	for k := range fields {
-		if !known[k] {
+		if _, ok := known[k]; !ok {
 			unknown = append(unknown, k)
 		}
 	}

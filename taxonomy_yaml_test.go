@@ -147,7 +147,7 @@ func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 		Categories: map[string][]string{
 			"ops": {"deploy"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"deploy": {Category: "ops", Required: []string{"outcome"}},
 		},
 	}

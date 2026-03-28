@@ -29,7 +29,7 @@ func ExampleNewLogger() {
 			"write":    {"user_create"},
 			"security": {"auth_failure"},
 		},
-		Events: map[string]audit.EventDef{
+		Events: map[string]*audit.EventDef{
 			"user_create":  {Category: "write", Required: []string{"outcome", "actor_id"}},
 			"auth_failure": {Category: "security", Required: []string{"outcome", "actor_id"}},
 		},
@@ -59,7 +59,7 @@ func ExampleLogger_Audit() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string][]string{"write": {"doc_create"}},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"doc_create": {Category: "write", Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
@@ -89,7 +89,7 @@ func ExampleLogger_MustHandle() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string][]string{"write": {"doc_create"}},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"doc_create": {Category: "write", Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
@@ -125,7 +125,7 @@ func ExampleLogger_EnableCategory() {
 				"read":  {"doc_read"},
 				"write": {"doc_create"},
 			},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"doc_read":   {Category: "read", Required: []string{"outcome"}},
 				"doc_create": {Category: "write", Required: []string{"outcome"}},
 			},
@@ -157,7 +157,7 @@ func ExampleLogger_Close() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string][]string{"write": {"doc_create"}},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"doc_create": {Category: "write", Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
@@ -196,7 +196,7 @@ func ExampleWithFormatter() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string][]string{"security": {"auth_failure"}},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"auth_failure": {Category: "security", Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"security"},
@@ -265,7 +265,7 @@ func ExampleLogger_SetOutputRoute() {
 				"write":    {"user_create"},
 				"security": {"auth_failure"},
 			},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"user_create":  {Category: "write", Required: []string{"outcome"}},
 				"auth_failure": {Category: "security", Required: []string{"outcome"}},
 			},

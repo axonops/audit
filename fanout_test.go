@@ -432,7 +432,7 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 				"write":    {"user_create"},
 				"security": {"auth_failure"},
 			},
-			Events: map[string]audit.EventDef{
+			Events: map[string]*audit.EventDef{
 				"user_create":  {Category: "write", Required: []string{"outcome"}},
 				"auth_failure": {Category: "security", Required: []string{"outcome"}},
 			},

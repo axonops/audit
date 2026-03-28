@@ -56,18 +56,27 @@ const (
 	TimestampUnixMillis TimestampFormat = "unix_ms"
 )
 
-// sortedFieldKeys returns the keys from fieldNames that exist in
-// fields, sorted alphabetically. If omitEmpty is true, zero-value
-// fields are excluded. Framework fields (timestamp, event_type) are
-// always skipped. duration_ms is only skipped if the value is a
-// [time.Duration] (already handled as a framework field); non-Duration
-// values pass through as regular fields.
-func sortedFieldKeys(fieldNames []string, fields Fields, omitEmpty bool) []string {
-	if len(fieldNames) == 0 {
+// sortedFieldKeys returns field keys filtered by framework field
+// exclusion and optionally by zero-value omission. When a pre-sorted
+// slice is available (non-nil), it is used directly. Otherwise the
+// fallback slice is sorted on the fly. When omitEmpty is false and no
+// framework fields are present, the pre-sorted slice is returned
+// directly (zero allocation).
+func sortedFieldKeys(sorted, fallback []string, fields Fields, omitEmpty bool) []string {
+	src := sorted
+	if src == nil {
+		src = sortedCopy(fallback)
+	}
+	if len(src) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(fieldNames))
-	for _, k := range fieldNames {
+	// Fast path: when omitEmpty is false and no framework fields
+	// appear in the list, return it directly (zero allocation).
+	if !omitEmpty && !containsFrameworkField(src, fields) {
+		return src
+	}
+	keys := make([]string, 0, len(src))
+	for _, k := range src {
 		if isFrameworkField(k, fields) {
 			continue
 		}
@@ -76,8 +85,18 @@ func sortedFieldKeys(fieldNames []string, fields Fields, omitEmpty bool) []strin
 		}
 		keys = append(keys, k)
 	}
-	slices.Sort(keys)
 	return keys
+}
+
+// containsFrameworkField reports whether any key in sorted is a
+// framework-managed field for the given fields map.
+func containsFrameworkField(sorted []string, fields Fields) bool {
+	for _, k := range sorted {
+		if isFrameworkField(k, fields) {
+			return true
+		}
+	}
+	return false
 }
 
 // isFrameworkField reports whether k is a framework-managed field that
@@ -102,21 +121,20 @@ func shouldOmit(k string, fields Fields) bool {
 
 // extraFieldKeys returns field keys that are not in the EventDef's
 // Required or Optional lists (i.e. extra fields from permissive mode),
-// sorted alphabetically.
+// sorted alphabetically. Uses the pre-computed knownFields set to
+// avoid per-call map allocation.
 func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
-	known := make(map[string]bool, len(def.Required)+len(def.Optional)+2)
-	for _, k := range def.Required {
-		known[k] = true
+	known := effectiveKnownFields(def)
+	capHint := len(fields) - len(known)
+	if capHint < 0 {
+		capHint = 0
 	}
-	for _, k := range def.Optional {
-		known[k] = true
-	}
-	known["timestamp"] = true
-	known["event_type"] = true
-
-	extra := make([]string, 0, len(fields))
+	extra := make([]string, 0, capHint)
 	for k, v := range fields {
-		if known[k] || isFrameworkField(k, fields) {
+		if _, ok := known[k]; ok {
+			continue
+		}
+		if isFrameworkField(k, fields) {
 			continue
 		}
 		if omitEmpty && isZeroValue(v) {
@@ -124,13 +142,74 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 		}
 		extra = append(extra, k)
 	}
+	if len(extra) == 0 {
+		return nil
+	}
 	slices.Sort(extra)
 	return extra
 }
 
+// effectiveKnownFields returns the pre-computed knownFields set or
+// builds one from Required + Optional if pre-computed fields are nil.
+func effectiveKnownFields(def *EventDef) map[string]struct{} {
+	if def.knownFields != nil {
+		return def.knownFields
+	}
+	known := make(map[string]struct{}, len(def.Required)+len(def.Optional))
+	for _, k := range def.Required {
+		known[k] = struct{}{}
+	}
+	for _, k := range def.Optional {
+		known[k] = struct{}{}
+	}
+	return known
+}
+
 // allFieldKeysSorted returns all field keys from the EventDef
 // (required + optional) plus any extra fields, sorted alphabetically.
+// When pre-computed fields are available and no extra fields are
+// present (the common case), sortedAllKeys is returned directly
+// (zero allocation). Falls back to building the list from scratch
+// when pre-computed fields are nil.
 func allFieldKeysSorted(def *EventDef, fields Fields) []string {
+	// Fall back to building from scratch if pre-computed fields
+	// are not available (e.g. EventDef constructed outside taxonomy
+	// registration).
+	if def.knownFields == nil {
+		return allFieldKeysSortedSlow(def, fields)
+	}
+
+	// Check if all field keys are known (common case).
+	hasExtra := false
+	for k := range fields {
+		if _, ok := def.knownFields[k]; !ok && !isFrameworkField(k, fields) {
+			hasExtra = true
+			break
+		}
+	}
+	if !hasExtra {
+		return def.sortedAllKeys
+	}
+
+	// Slow path: extra fields present, build a combined sorted list.
+	keys := make([]string, len(def.sortedAllKeys))
+	copy(keys, def.sortedAllKeys)
+	for k := range fields {
+		if _, ok := def.knownFields[k]; ok {
+			continue
+		}
+		if isFrameworkField(k, fields) {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// allFieldKeysSortedSlow builds the sorted key list from scratch when
+// pre-computed fields are not available.
+func allFieldKeysSortedSlow(def *EventDef, fields Fields) []string {
 	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
 	keys := make([]string, 0, len(def.Required)+len(def.Optional)+len(fields))
 	for _, k := range def.Required {

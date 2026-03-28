@@ -28,6 +28,7 @@
 //   - github.com/axonops/go-audit/file — file output with rotation
 //   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/go-audit/webhook — batched HTTP webhook
+//   - github.com/axonops/go-audit/yamlconfig — YAML-based taxonomy definition
 //
 // [StdoutOutput] ships with core and requires no additional import.
 //

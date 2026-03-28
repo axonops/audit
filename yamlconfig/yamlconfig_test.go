@@ -1,0 +1,623 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package yamlconfig_test
+
+import (
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/yamlconfig"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// validYAML is a complete, valid taxonomy YAML document.
+const validYAML = `
+version: 1
+categories:
+  read:
+    - schema_read
+    - config_read
+  write:
+    - schema_register
+    - schema_delete
+  security:
+    - auth_failure
+default_enabled:
+  - write
+  - security
+events:
+  schema_read:
+    category: read
+    required:
+      - outcome
+    optional:
+      - subject
+  config_read:
+    category: read
+    required:
+      - outcome
+  schema_register:
+    category: write
+    required:
+      - outcome
+      - actor_id
+      - subject
+    optional:
+      - schema_type
+  schema_delete:
+    category: write
+    required:
+      - outcome
+      - actor_id
+      - subject
+  auth_failure:
+    category: security
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - reason
+`
+
+// minimalYAML is a minimal valid taxonomy with one category and one event.
+const minimalYAML = `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+    required:
+      - outcome
+`
+
+func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(validYAML))
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, tax.Version)
+	assert.Len(t, tax.Categories["read"], 2)
+	assert.Len(t, tax.Categories["write"], 2)
+	assert.Len(t, tax.Categories["security"], 1)
+
+	assert.Contains(t, tax.Events, "schema_register")
+	assert.Equal(t, "write", tax.Events["schema_register"].Category)
+	assert.Equal(t, []string{"outcome", "actor_id", "subject"}, tax.Events["schema_register"].Required)
+	assert.Equal(t, []string{"schema_type"}, tax.Events["schema_register"].Optional)
+
+	assert.Contains(t, tax.DefaultEnabled, "write")
+	assert.Contains(t, tax.DefaultEnabled, "security")
+}
+
+func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(minimalYAML))
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, tax.Version)
+	assert.Contains(t, tax.Events, "deploy")
+	// Lifecycle events injected.
+	assert.Contains(t, tax.Events, "startup")
+	assert.Contains(t, tax.Events, "shutdown")
+	assert.Contains(t, tax.Categories, "lifecycle")
+}
+
+func TestParseTaxonomyYAML_OptionalFieldsOmitted(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{}, tax.Events["deploy"].Required)
+	assert.Equal(t, []string{}, tax.Events["deploy"].Optional)
+}
+
+func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
+	// Build the same taxonomy in Go code.
+	goTax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"ops": {"deploy"},
+		},
+		Events: map[string]audit.EventDef{
+			"deploy": {Category: "ops", Required: []string{"outcome"}, Optional: []string{}},
+		},
+		DefaultEnabled: []string{},
+	}
+	audit.InjectLifecycleEvents(&goTax)
+
+	yamlTax, err := yamlconfig.ParseTaxonomyYAML([]byte(minimalYAML))
+	require.NoError(t, err)
+
+	// Compare structurally (categories, events, version).
+	assert.Equal(t, goTax.Version, yamlTax.Version)
+	assert.Equal(t, goTax.Events["deploy"].Category, yamlTax.Events["deploy"].Category)
+	assert.Equal(t, goTax.Events["deploy"].Required, yamlTax.Events["deploy"].Required)
+	assert.Contains(t, yamlTax.Events, "startup")
+	assert.Contains(t, yamlTax.Events, "shutdown")
+}
+
+func TestParseTaxonomyYAML_DefaultEnabledEmpty(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+default_enabled: []
+events:
+  deploy:
+    category: ops
+    required:
+      - outcome
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	// lifecycle is always added to DefaultEnabled.
+	assert.Contains(t, tax.DefaultEnabled, "lifecycle")
+	// Original empty list should not contain "ops".
+	assert.NotContains(t, tax.DefaultEnabled, "ops")
+}
+
+// --- Input validation ---
+
+func TestParseTaxonomyYAML_NilInput(t *testing.T) {
+	_, err := yamlconfig.ParseTaxonomyYAML(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "input is empty")
+}
+
+func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "input is empty")
+}
+
+func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte("{{invalid yaml"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "yamlconfig:")
+}
+
+func TestParseTaxonomyYAML_TabsInYAML(t *testing.T) {
+	yml := "version: 1\n\tcategories:\n"
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "yamlconfig:")
+}
+
+func TestParseTaxonomyYAML_MultipleDocuments(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+    required:
+      - outcome
+---
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple YAML documents")
+}
+
+// --- Strict parsing ---
+
+func TestParseTaxonomyYAML_UnknownTopLevelKey(t *testing.T) {
+	yml := `
+version: 1
+bogus_key: true
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus_key")
+}
+
+func TestParseTaxonomyYAML_UnknownEventKey(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+    unknown_field: true
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown_field")
+}
+
+// --- Taxonomy validation (via audit.ValidateTaxonomy) ---
+
+func TestParseTaxonomyYAML_VersionZero(t *testing.T) {
+	yml := `
+version: 0
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "version is required")
+}
+
+func TestParseTaxonomyYAML_MissingVersion(t *testing.T) {
+	yml := `
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "version is required")
+}
+
+func TestParseTaxonomyYAML_VersionTooHigh(t *testing.T) {
+	yml := `
+version: 999
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "not supported")
+}
+
+func TestParseTaxonomyYAML_EventReferencesNonExistentCategory(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: nonexistent
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestParseTaxonomyYAML_DuplicateEventAcrossCategories(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+  admin:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "multiple categories")
+}
+
+func TestParseTaxonomyYAML_FieldInBothRequiredAndOptional(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+    required:
+      - outcome
+    optional:
+      - outcome
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "both Required and Optional")
+}
+
+func TestParseTaxonomyYAML_CategoryMemberNotInEvents(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+    - missing_event
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "not defined in Events")
+}
+
+func TestParseTaxonomyYAML_EventNotInAnyCategory(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+  orphan:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "not listed in Categories")
+}
+
+func TestParseTaxonomyYAML_DefaultEnabledNonExistentCategory(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+default_enabled:
+  - ops
+  - nonexistent
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestParseTaxonomyYAML_EmptyCategories(t *testing.T) {
+	// Empty categories + events still passes because lifecycle injection
+	// adds the lifecycle category with startup/shutdown events.
+	yml := `
+version: 1
+categories: {}
+events: {}
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.Contains(t, tax.Categories, "lifecycle")
+	assert.Contains(t, tax.Events, "startup")
+}
+
+// --- Edge cases ---
+
+func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("version: 1\ncategories:\n")
+
+	numCategories := 20
+	eventsPerCategory := 5
+	for i := range numCategories {
+		fmt.Fprintf(&b, "  cat_%d:\n", i)
+		for j := range eventsPerCategory {
+			fmt.Fprintf(&b, "    - ev_%d_%d\n", i, j)
+		}
+	}
+
+	b.WriteString("events:\n")
+	for i := range numCategories {
+		for j := range eventsPerCategory {
+			fmt.Fprintf(&b, "  ev_%d_%d:\n    category: cat_%d\n    required:\n      - outcome\n    optional:\n      - detail\n", i, j, i)
+		}
+	}
+
+	start := time.Now()
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(b.String()))
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Equal(t, numCategories*eventsPerCategory+2, len(tax.Events)) // +2 for lifecycle
+	assert.Less(t, elapsed, 100*time.Millisecond)
+}
+
+func TestParseTaxonomyYAML_LifecycleEventsUserDefined(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  lifecycle:
+    - startup
+    - shutdown
+  ops:
+    - deploy
+default_enabled:
+  - lifecycle
+  - ops
+events:
+  startup:
+    category: lifecycle
+    required:
+      - custom_startup_field
+  shutdown:
+    category: lifecycle
+    required:
+      - custom_shutdown_field
+  deploy:
+    category: ops
+    required:
+      - outcome
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	// User-defined lifecycle events should be preserved.
+	assert.Equal(t, []string{"custom_startup_field"}, tax.Events["startup"].Required)
+	assert.Equal(t, []string{"custom_shutdown_field"}, tax.Events["shutdown"].Required)
+}
+
+func TestParseTaxonomyYAML_EventWithEmptyRequiredOptional(t *testing.T) {
+	yml := `
+version: 1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+    required: []
+    optional: []
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{}, tax.Events["deploy"].Required)
+	assert.Equal(t, []string{}, tax.Events["deploy"].Optional)
+}
+
+// --- Security ---
+
+func TestParseTaxonomyYAML_NoFilesystemAccess(t *testing.T) {
+	// Parse all .go files in the package and verify no os.Open or
+	// os.ReadFile calls exist in non-test source.
+	fset := token.NewFileSet()
+	dir := "."
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if ident.Name == "os" {
+				method := sel.Sel.Name
+				assert.NotEqual(t, "Open", method, "package must not call os.Open")
+				assert.NotEqual(t, "ReadFile", method, "package must not call os.ReadFile")
+			}
+			return true
+		})
+	}
+}
+
+func TestParseTaxonomyYAML_YAMLAnchorBomb(t *testing.T) {
+	// yaml.v3 limits alias expansion, so this should not cause issues.
+	yml := `
+version: 1
+categories:
+  ops: &ops
+    - deploy
+events:
+  deploy:
+    category: ops
+    required: &req
+      - outcome
+    optional: *req
+`
+	// This should parse (anchors/aliases are valid YAML) but may fail
+	// validation if fields overlap. The point is it does not hang or OOM.
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	// outcome appears in both required and optional via alias.
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+}
+
+func TestParseTaxonomyYAML_FunctionSignatureIsByteSlice(t *testing.T) {
+	// Compile-time guarantee: ParseTaxonomyYAML only accepts []byte.
+	// This test exists for documentation; if the signature changed,
+	// the rest of this file would not compile.
+	var data []byte
+	_, _ = yamlconfig.ParseTaxonomyYAML(data)
+}
+
+func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{"version zero", "version: 0\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
+		{"missing version", "categories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
+		{"version too high", "version: 999\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
+		{"empty events map", "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: nonexistent\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := yamlconfig.ParseTaxonomyYAML([]byte(tt.yaml))
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid),
+				"expected ErrTaxonomyInvalid, got: %v", err)
+		})
+	}
+}

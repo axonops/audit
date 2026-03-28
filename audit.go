@@ -52,6 +52,15 @@ var (
 	ErrBufferFull = errors.New("audit: buffer full")
 )
 
+// auditEntryPool caches auditEntry instances to avoid per-Audit heap
+// allocation. Entries are retrieved in Audit(), sent through the
+// channel, processed by the drain goroutine, and returned to the pool
+// at the end of processEntry(). Fields are nilled before return to
+// prevent stale references from keeping caller data alive in the pool.
+var auditEntryPool = sync.Pool{
+	New: func() any { return new(auditEntry) },
+}
+
 // Logger is the core audit logger. It validates events against a
 // registered [Taxonomy], filters by category and per-event overrides,
 // and delivers events asynchronously to configured [Output]
@@ -187,10 +196,12 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return nil
 	}
 
-	entry := &auditEntry{
-		eventType: eventType,
-		fields:    copyFields(fields),
+	entry, ok := auditEntryPool.Get().(*auditEntry)
+	if !ok {
+		entry = new(auditEntry)
 	}
+	entry.eventType = eventType
+	entry.fields = copyFields(fields)
 	return l.enqueue(entry)
 }
 
@@ -493,6 +504,13 @@ func (l *Logger) drainRemaining() {
 // are serialised once per unique Formatter; per-output routes are
 // checked before delivery. Output failures are isolated.
 func (l *Logger) processEntry(entry *auditEntry) {
+	// Defers execute LIFO. The pool return must happen after the
+	// panic recovery, so it is declared first (executes last).
+	defer func() {
+		entry.eventType = ""
+		entry.fields = nil
+		auditEntryPool.Put(entry)
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("audit: panic in processEntry",

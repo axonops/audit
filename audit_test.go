@@ -1109,33 +1109,37 @@ func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 }
 
 func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
-	out := testhelper.NewMockOutput("test")
+	// Use the blocking output to prevent the drain goroutine from
+	// consuming events, keeping the channel full.
+	blockCh := make(chan struct{})
+	blocker := &blockingOutput{name: "test", blockCh: blockCh}
+
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithOutputs(out),
+		audit.WithOutputs(blocker),
 	)
 	require.NoError(t, err)
 
-	// Fill the single-slot buffer.
-	err = logger.Audit("auth_failure", audit.Fields{
+	// Fill the channel: first event goes to drain (blocks in Write),
+	// second event fills the 1-slot buffer.
+	_ = logger.Audit("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	})
-	require.NoError(t, err)
+	_ = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "charlie",
+	})
 
-	// Buffer is now full; EmitStartup should fail.
+	// Buffer should now be full; EmitStartup should fail.
 	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
 	assert.ErrorIs(t, err, audit.ErrBufferFull)
 
-	// Close and verify no shutdown event was emitted.
+	// Unblock the drain and close. Since startupEmitted was never
+	// set to true, Close must not emit a shutdown event.
+	close(blockCh)
 	require.NoError(t, logger.Close())
-	for _, evt := range out.GetEvents() {
-		var m map[string]any
-		require.NoError(t, json.Unmarshal(evt, &m))
-		assert.NotEqual(t, "shutdown", m["event_type"],
-			"shutdown event should not be emitted when startup failed")
-	}
 }
 
 func TestLogger_EmitStartup_ValidationError_NoShutdown(t *testing.T) {

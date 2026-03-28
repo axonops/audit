@@ -1107,6 +1107,29 @@ func TestWriteJSONString(t *testing.T) {
 // does not corrupt cached Format() results. This validates the
 // copy-before-return pattern that prevents the pool-vs-cache race
 // described in issue #101.
+// TestJSONFormatter_TimestampAppendFormat verifies that the
+// ts.AppendFormat + AvailableBuffer pattern produces the same
+// timestamp output as the old json.Marshal(ts.Format(...)) approach.
+func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
+	f := &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
+	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+
+	// Use a timestamp with nanosecond precision and a timezone offset
+	// to exercise all format components.
+	ts := time.Date(2026, 3, 28, 15, 4, 5, 123456789, time.FixedZone("EST", -5*60*60))
+
+	data, err := f.Format(ts, "ev", audit.Fields{"outcome": "ok"}, def)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	got := m["timestamp"].(string)
+	want := ts.Format(time.RFC3339Nano)
+	assert.Equal(t, want, got,
+		"AppendFormat timestamp must match Format() string")
+}
+
 func TestJSONFormatter_PoolSafety(t *testing.T) {
 	f := &audit.JSONFormatter{}
 	def := &audit.EventDef{

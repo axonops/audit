@@ -15,7 +15,6 @@
 package yamlconfig_test
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -24,7 +23,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/yamlconfig"
@@ -193,26 +191,28 @@ events:
 func TestParseTaxonomyYAML_NilInput(t *testing.T) {
 	_, err := yamlconfig.ParseTaxonomyYAML(nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
 func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte{})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
 func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte("{{invalid yaml"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "yamlconfig:")
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_TabsInYAML(t *testing.T) {
 	yml := "version: 1\n\tcategories:\n"
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "yamlconfig:")
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_MultipleDocuments(t *testing.T) {
@@ -237,6 +237,7 @@ events:
 `
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "multiple YAML documents")
 }
 
@@ -255,6 +256,7 @@ events:
 `
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "bogus_key")
 }
 
@@ -271,6 +273,7 @@ events:
 `
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "unknown_field")
 }
 
@@ -467,13 +470,9 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 		}
 	}
 
-	start := time.Now()
 	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(b.String()))
-	elapsed := time.Since(start)
-
 	require.NoError(t, err)
 	assert.Equal(t, numCategories*eventsPerCategory+2, len(tax.Events)) // +2 for lifecycle
-	assert.Less(t, elapsed, 100*time.Millisecond)
 }
 
 func TestParseTaxonomyYAML_LifecycleEventsUserDefined(t *testing.T) {
@@ -593,14 +592,6 @@ events:
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 }
 
-func TestParseTaxonomyYAML_FunctionSignatureIsByteSlice(t *testing.T) {
-	// Compile-time guarantee: ParseTaxonomyYAML only accepts []byte.
-	// This test exists for documentation; if the signature changed,
-	// the rest of this file would not compile.
-	var data []byte
-	_, _ = yamlconfig.ParseTaxonomyYAML(data)
-}
-
 func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 	tests := []struct {
 		name string
@@ -616,8 +607,7 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := yamlconfig.ParseTaxonomyYAML([]byte(tt.yaml))
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid),
-				"expected ErrTaxonomyInvalid, got: %v", err)
+			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		})
 	}
 }

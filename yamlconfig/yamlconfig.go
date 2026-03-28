@@ -16,12 +16,18 @@ package yamlconfig
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/axonops/go-audit"
 	"gopkg.in/yaml.v3"
 )
+
+// ErrInvalidInput is returned when the YAML input is structurally
+// unsuitable (empty, multi-document, or syntactically invalid).
+// Taxonomy validation errors wrap [audit.ErrTaxonomyInvalid] instead.
+var ErrInvalidInput = errors.New("yamlconfig: invalid input")
 
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
@@ -44,15 +50,20 @@ type yamlEventDef struct {
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
 //
-// Lifecycle events (startup, shutdown) are injected automatically if
-// not present. The taxonomy is validated with the same rules as
-// [audit.WithTaxonomy]; validation errors wrap [audit.ErrTaxonomyInvalid].
+// The returned Taxonomy is fully validated and lifecycle-injected.
+// Passing it to [audit.WithTaxonomy] is safe and idempotent; the
+// injection and validation will run again but produce no additional
+// errors.
+//
+// Input errors (empty, multi-document, invalid syntax) wrap
+// [ErrInvalidInput]. Taxonomy validation errors wrap
+// [audit.ErrTaxonomyInvalid].
 //
 // ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
 // Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
 func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 	if len(data) == 0 {
-		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: input is empty")
+		return audit.Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -60,13 +71,13 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: %w", err)
+		return audit.Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 
 	// Reject multi-document YAML.
 	var discard yaml.Node
 	if err := dec.Decode(&discard); err != io.EOF {
-		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: input contains multiple YAML documents")
+		return audit.Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	}
 
 	tax := convert(yt)

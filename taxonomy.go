@@ -101,16 +101,9 @@ var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 //
 // This function is called automatically by [WithTaxonomy]; it is
 // exported so that external packages (e.g. yamlconfig) can apply the
-// same injection before calling [ValidateTaxonomy].
+// same injection before calling [ValidateTaxonomy]. Calling it
+// multiple times is safe and idempotent.
 func InjectLifecycleEvents(t *Taxonomy) {
-	injectLifecycleEvents(t)
-}
-
-// injectLifecycleEvents adds the "lifecycle" category with "startup"
-// and "shutdown" events if they are not already defined. If the
-// consumer has already defined these events, their definitions are
-// preserved.
-func injectLifecycleEvents(t *Taxonomy) {
 	if t.Categories == nil {
 		t.Categories = make(map[string][]string)
 	}
@@ -161,13 +154,6 @@ func injectLifecycleEvents(t *Taxonomy) {
 // exported so that external packages (e.g. yamlconfig) can validate
 // a taxonomy constructed from external sources.
 func ValidateTaxonomy(t Taxonomy) error {
-	return validateTaxonomy(t)
-}
-
-// validateTaxonomy checks the taxonomy for internal consistency and
-// returns all problems found. The returned error wraps
-// [ErrTaxonomyInvalid].
-func validateTaxonomy(t Taxonomy) error {
 	var errs []string
 	errs = append(errs, checkTaxonomyVersion(t)...)
 	errs = append(errs, checkCategoryConsistency(t)...)

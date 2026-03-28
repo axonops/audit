@@ -457,13 +457,18 @@ func (l *Logger) emitShutdown() {
 			appName = s
 		}
 	}
-	entry := &auditEntry{
-		eventType: "shutdown",
-		fields:    Fields{"app_name": appName},
+	entry, ok := auditEntryPool.Get().(*auditEntry)
+	if !ok {
+		entry = new(auditEntry)
 	}
+	entry.eventType = "shutdown"
+	entry.fields = Fields{"app_name": appName}
 	select {
 	case l.ch <- entry:
 	default:
+		entry.eventType = ""
+		entry.fields = nil
+		auditEntryPool.Put(entry)
 		slog.Warn("audit: buffer full, dropping shutdown event",
 			"buffer_size", l.cfg.BufferSize)
 		if l.metrics != nil {

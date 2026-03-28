@@ -186,20 +186,10 @@ func precomputeEventDef(def *EventDef) {
 	def.sortedRequired = sortedCopy(def.Required)
 	def.sortedOptional = sortedCopy(def.Optional)
 
-	// Merge required + optional, dedup, sort.
-	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
-	all := make([]string, 0, len(def.Required)+len(def.Optional))
-	for _, k := range def.Required {
-		if !seen[k] {
-			seen[k] = true
-			all = append(all, k)
-		}
-	}
-	for _, k := range def.Optional {
-		if !seen[k] {
-			seen[k] = true
-			all = append(all, k)
-		}
+	// Build sorted all-keys from the already-deduped knownFields set.
+	all := make([]string, 0, len(def.knownFields))
+	for k := range def.knownFields {
+		all = append(all, k)
 	}
 	slices.Sort(all)
 	def.sortedAllKeys = all

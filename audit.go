@@ -608,9 +608,10 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		return nil
 	}
 
+	known := effectiveKnownFields(def)
 	var unknown []string
 	for k := range fields {
-		if _, ok := def.knownFields[k]; !ok {
+		if _, ok := known[k]; !ok {
 			unknown = append(unknown, k)
 		}
 	}

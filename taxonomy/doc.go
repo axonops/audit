@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package yamlconfig loads a YAML taxonomy definition and converts it
+// Package taxonomy loads a YAML taxonomy definition and converts it
 // into an [audit.Taxonomy] ready to pass to [audit.WithTaxonomy].
 // Use this package when you want to define your audit taxonomy in a
 // YAML file (or embedded asset) rather than constructing
@@ -26,14 +26,14 @@
 //	    _ "embed"
 //	    "log"
 //	    "github.com/axonops/go-audit"
-//	    "github.com/axonops/go-audit/yamlconfig"
+//	    "github.com/axonops/go-audit/taxonomy"
 //	)
 //
 //	//go:embed taxonomy.yaml
 //	var taxonomyYAML []byte
 //
 //	func main() {
-//	    tax, err := yamlconfig.ParseTaxonomyYAML(taxonomyYAML)
+//	    tax, err := taxonomy.ParseYAML(taxonomyYAML)
 //	    if err != nil {
 //	        log.Fatal(err)
 //	    }
@@ -72,13 +72,13 @@
 //
 // # Validation
 //
-// [ParseTaxonomyYAML] validates input in two stages.
+// [ParseYAML] validates input in two stages.
 //
 // Structural errors (empty input, input exceeding [MaxInputSize],
 // unknown YAML keys, YAML syntax errors, multi-document input) return
 // an error wrapping [ErrInvalidInput]:
 //
-//	if errors.Is(err, yamlconfig.ErrInvalidInput) { /* bad YAML */ }
+//	if errors.Is(err, taxonomy.ErrInvalidInput) { /* bad YAML */ }
 //
 // Semantic errors (invalid taxonomy version, unknown categories,
 // duplicate event assignments) return an error wrapping
@@ -89,13 +89,13 @@
 // # Dependency Isolation
 //
 // This package is a separate Go module
-// (github.com/axonops/go-audit/yamlconfig) so that the core audit
+// (github.com/axonops/go-audit/taxonomy) so that the core audit
 // package remains free of YAML dependencies. Import it only if
 // YAML-based taxonomy definition is required.
 //
 // Because it is a separate module, it is versioned independently of
 // github.com/axonops/go-audit. When upgrading the core module, verify
-// whether yamlconfig requires a corresponding update:
+// whether taxonomy requires a corresponding update:
 //
-//	go get github.com/axonops/go-audit/yamlconfig@latest
-package yamlconfig
+//	go get github.com/axonops/go-audit/taxonomy@latest
+package taxonomy

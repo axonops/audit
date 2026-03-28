@@ -1,6 +1,6 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-yamlconfig \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-taxonomy \
        test-integration test-bdd \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-yamlconfig \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-taxonomy \
        vet vet-all fmt fmt-check \
        build build-all bench coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -9,7 +9,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook yamlconfig
+MODULES           := . file syslog webhook taxonomy
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 GOLANGCI_LINT_VER := v2.1.6
@@ -44,10 +44,10 @@ test-syslog:
 test-webhook:
 	cd webhook && go test -race -v -count=1 ./...
 
-test-yamlconfig:
-	cd yamlconfig && go test -race -v -count=1 ./...
+test-taxonomy:
+	cd taxonomy && go test -race -v -count=1 ./...
 
-test-all: test-core test-file test-syslog test-webhook test-yamlconfig
+test-all: test-core test-file test-syslog test-webhook test-taxonomy
 test: test-all
 
 # Integration tests (requires Docker)
@@ -73,10 +73,10 @@ lint-syslog:
 lint-webhook:
 	cd webhook && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-yamlconfig:
-	cd yamlconfig && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+lint-taxonomy:
+	cd taxonomy && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-yamlconfig
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-taxonomy
 lint: lint-all
 
 # --- Vet ---

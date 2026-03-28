@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package yamlconfig
+package taxonomy
 
 import (
 	"bytes"
@@ -28,10 +28,10 @@ import (
 // unsuitable (empty, oversized, multi-document, or syntactically
 // invalid). Taxonomy validation errors wrap
 // [audit.ErrTaxonomyInvalid] instead.
-var ErrInvalidInput = errors.New("yamlconfig: invalid input")
+var ErrInvalidInput = errors.New("taxonomy: invalid input")
 
 // MaxInputSize is the maximum YAML input size accepted by
-// [ParseTaxonomyYAML]. Inputs exceeding this limit are rejected
+// [ParseYAML]. Inputs exceeding this limit are rejected
 // with [ErrInvalidInput].
 const MaxInputSize = 1 << 20 // 1 MiB
 
@@ -52,7 +52,7 @@ type yamlEventDef struct {
 	Optional []string `yaml:"optional"`
 }
 
-// ParseTaxonomyYAML parses a YAML document into an [audit.Taxonomy].
+// ParseYAML parses a YAML document into an [audit.Taxonomy].
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
 //
@@ -65,9 +65,9 @@ type yamlEventDef struct {
 // [ErrInvalidInput]. Taxonomy validation errors wrap
 // [audit.ErrTaxonomyInvalid].
 //
-// ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
+// ParseYAML accepts []byte only — no file paths, no readers.
 // Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
-func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
+func ParseYAML(data []byte) (audit.Taxonomy, error) {
 	if len(data) == 0 {
 		return audit.Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
 	}
@@ -95,11 +95,11 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 	audit.InjectLifecycleEvents(&tax)
 
 	if err := audit.MigrateTaxonomy(&tax); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: %w", err)
+		return audit.Taxonomy{}, fmt.Errorf("taxonomy: %w", err)
 	}
 
 	if err := audit.ValidateTaxonomy(tax); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: %w", err)
+		return audit.Taxonomy{}, fmt.Errorf("taxonomy: %w", err)
 	}
 
 	return tax, nil

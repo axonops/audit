@@ -140,39 +140,36 @@ func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
 	case TimestampUnixMillis:
 		e.buf.WriteString(strconv.FormatInt(ts.UnixMilli(), 10))
 	default:
-		data, err := json.Marshal(ts.Format(time.RFC3339Nano))
-		if err != nil && e.err == nil {
-			e.err = err
-		}
-		e.buf.Write(data)
+		// RFC3339Nano timestamps contain only ASCII characters safe in
+		// JSON (digits, colons, dashes, T, Z, dot, plus). Write between
+		// quotes without escaping, using AvailableBuffer to avoid a
+		// string allocation from ts.Format().
+		e.buf.WriteByte('"')
+		b := ts.AppendFormat(e.buf.AvailableBuffer(), time.RFC3339Nano)
+		_, _ = e.buf.Write(b)
+		e.buf.WriteByte('"')
 	}
 }
 
 func (e *jsonEncoder) writeStringField(key, value string) {
 	e.writeComma()
 	e.writeKey(key)
-	data, err := json.Marshal(value)
-	if err != nil && e.err == nil {
-		e.err = err
-	}
-	e.buf.Write(data)
+	writeJSONString(e.buf, value)
 }
 
 func (e *jsonEncoder) writeInt64Field(key string, value int64) {
 	e.writeComma()
 	e.writeKey(key)
-	e.buf.WriteString(strconv.FormatInt(value, 10))
+	b := strconv.AppendInt(e.buf.AvailableBuffer(), value, 10)
+	_, _ = e.buf.Write(b)
 }
 
 func (e *jsonEncoder) writeKey(key string) {
-	data, err := json.Marshal(key)
-	if err != nil && e.err == nil {
-		e.err = err
-	}
-	e.buf.Write(data)
+	writeJSONString(e.buf, key)
 	e.buf.WriteByte(':')
 }
 
+//nolint:cyclop // flat type switch over common field types; linear, not true complexity
 func (e *jsonEncoder) writeField(key string, value any) {
 	if e.omitEmpty && isZeroValue(value) {
 		return
@@ -186,11 +183,37 @@ func (e *jsonEncoder) writeField(key string, value any) {
 
 	e.writeComma()
 	e.writeKey(key)
-	data, err := json.Marshal(value)
-	if err != nil && e.err == nil {
-		e.err = err
+	switch v := value.(type) {
+	case string:
+		writeJSONString(e.buf, v)
+	case int:
+		b := strconv.AppendInt(e.buf.AvailableBuffer(), int64(v), 10)
+		_, _ = e.buf.Write(b)
+	case int64:
+		b := strconv.AppendInt(e.buf.AvailableBuffer(), v, 10)
+		_, _ = e.buf.Write(b)
+	case int32:
+		b := strconv.AppendInt(e.buf.AvailableBuffer(), int64(v), 10)
+		_, _ = e.buf.Write(b)
+	case float64:
+		// Fallback to json.Marshal for exact format matching.
+		data, err := json.Marshal(v)
+		if err != nil && e.err == nil {
+			e.err = err
+		}
+		e.buf.Write(data)
+	case bool:
+		e.buf.WriteString(strconv.FormatBool(v))
+	case nil:
+		e.buf.WriteString("null")
+	default:
+		// Fallback: json.Marshal for unknown types.
+		data, err := json.Marshal(v)
+		if err != nil && e.err == nil {
+			e.err = err
+		}
+		e.buf.Write(data)
 	}
-	e.buf.Write(data)
 }
 
 // writeJSONString writes the JSON-encoded form of s directly to buf,
@@ -209,6 +232,18 @@ func writeJSONString(buf *bytes.Buffer, s string) {
 			if r == utf8.RuneError && size == 1 {
 				buf.WriteString(s[start:i])
 				buf.WriteString(`\ufffd`)
+				i += size
+				start = i
+			} else if r == '\u2028' || r == '\u2029' {
+				// Line/paragraph separators must be escaped
+				// (matching json.Marshal).
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\u202`)
+				if r == '\u2028' {
+					buf.WriteByte('8')
+				} else {
+					buf.WriteByte('9')
+				}
 				i += size
 				start = i
 			} else {

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feature/**', 'fix/**', 'chore/**']
+    branches: [main, 'feature/**', 'fix/**', 'chore/**', 'refactor/**']
   pull_request:
     branches: [main]
   workflow_call: {}
@@ -32,6 +32,12 @@ jobs:
 
       - name: Set up go.work
         run: make workspace
+
+      - name: Cache Go tools
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install tools
         run: make install-tools
@@ -64,6 +70,12 @@ jobs:
 
       - name: Set up go.work
         run: make workspace
+
+      - name: Cache Go tools
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install tools
         run: make install-tools
@@ -171,6 +183,12 @@ jobs:
 
       - name: Set up go.work
         run: make workspace
+
+      - name: Cache Go tools
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install tools
         run: make install-tools

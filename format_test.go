@@ -1109,3 +1109,95 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 		_, _ = f.Format(ts, "schema_register", fields, def)
 	}
 }
+
+func BenchmarkJSONFormatter_Format_LargeEvent(b *testing.B) {
+	f := &audit.JSONFormatter{}
+	required := []string{"outcome", "actor_id", "method", "path", "source_ip"}
+	optional := []string{
+		"request_id", "user_agent", "subject", "schema_type", "version",
+		"cluster", "datacenter", "tenant_id", "session_id", "trace_id",
+		"span_id", "response_code", "content_type", "payload_size", "tags",
+	}
+	fields := audit.Fields{
+		"outcome":       "success",
+		"actor_id":      "alice",
+		"method":        "POST",
+		"path":          "/api/v1/schemas",
+		"source_ip":     "10.0.0.1",
+		"request_id":    "550e8400-e29b-41d4-a716-446655440000",
+		"user_agent":    "go-audit-client/1.0",
+		"subject":       "my-topic",
+		"schema_type":   "avro",
+		"version":       3,
+		"cluster":       "prod-us-east-1",
+		"datacenter":    "dc1",
+		"tenant_id":     "tenant-42",
+		"session_id":    "sess-abc123",
+		"trace_id":      "4bf92f3577b34da6a3ce929d0e0e4736",
+		"span_id":       "00f067aa0ba902b7",
+		"response_code": 200,
+		"content_type":  "application/json",
+		"payload_size":  1024,
+		"tags":          "production,critical",
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: required,
+		Optional: optional,
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "api_request", fields, def)
+	}
+}
+
+func BenchmarkCEFFormatter_Format_LargeEvent(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	required := []string{"outcome", "actor_id", "method", "path", "source_ip"}
+	optional := []string{
+		"request_id", "user_agent", "subject", "schema_type", "version",
+		"cluster", "datacenter", "tenant_id", "session_id", "trace_id",
+		"span_id", "response_code", "content_type", "payload_size", "tags",
+	}
+	fields := audit.Fields{
+		"outcome":       "success",
+		"actor_id":      "alice",
+		"method":        "POST",
+		"path":          "/api/v1/schemas",
+		"source_ip":     "10.0.0.1",
+		"request_id":    "550e8400-e29b-41d4-a716-446655440000",
+		"user_agent":    "go-audit-client/1.0",
+		"subject":       "my-topic",
+		"schema_type":   "avro",
+		"version":       3,
+		"cluster":       "prod-us-east-1",
+		"datacenter":    "dc1",
+		"tenant_id":     "tenant-42",
+		"session_id":    "sess-abc123",
+		"trace_id":      "4bf92f3577b34da6a3ce929d0e0e4736",
+		"span_id":       "00f067aa0ba902b7",
+		"response_code": 200,
+		"content_type":  "application/json",
+		"payload_size":  1024,
+		"tags":          "production,critical",
+	}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: required,
+		Optional: optional,
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "api_request", fields, def)
+	}
+}

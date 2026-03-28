@@ -1918,6 +1918,34 @@ func BenchmarkCopyFields(b *testing.B) {
 	}
 }
 
+func BenchmarkProcessEntry(b *testing.B) {
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: b.N + 100},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+	b.StopTimer()
+
+	// Drain all events before cleanup.
+	_ = logger.Close()
+}
+
 func BenchmarkFilterCheck(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(

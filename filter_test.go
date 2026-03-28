@@ -277,3 +277,51 @@ func TestMatchesRoute(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Route matching benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkMatchesRoute(b *testing.B) {
+	b.Run("empty_route", func(b *testing.B) {
+		route := audit.EventRoute{}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			audit.MatchesRoute(&route, "user_create", "write")
+		}
+	})
+
+	b.Run("include_categories", func(b *testing.B) {
+		route := audit.EventRoute{
+			IncludeCategories: []string{"write", "security", "admin", "read"},
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			audit.MatchesRoute(&route, "user_create", "write")
+		}
+	})
+
+	b.Run("exclude_categories", func(b *testing.B) {
+		route := audit.EventRoute{
+			ExcludeCategories: []string{"debug", "trace", "internal"},
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			audit.MatchesRoute(&route, "user_create", "write")
+		}
+	})
+
+	b.Run("include_event_types", func(b *testing.B) {
+		route := audit.EventRoute{
+			IncludeEventTypes: []string{"user_create", "user_delete", "schema_register", "auth_failure"},
+		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			audit.MatchesRoute(&route, "user_create", "write")
+		}
+	})
+}

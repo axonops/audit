@@ -537,7 +537,6 @@ const formatCacheSize = 4
 type formatCacheEntry struct {
 	f    Formatter
 	data []byte
-	ok   bool // true if this slot is populated (data may be nil on error)
 }
 
 // formatCache caches serialised output per unique formatter. For
@@ -564,7 +563,7 @@ func (c *formatCache) get(f Formatter) ([]byte, bool) {
 
 func (c *formatCache) put(f Formatter, data []byte) {
 	if c.n < formatCacheSize {
-		c.arr[c.n] = formatCacheEntry{f: f, data: data, ok: true}
+		c.arr[c.n] = formatCacheEntry{f: f, data: data}
 		c.n++
 		return
 	}

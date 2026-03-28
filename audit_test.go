@@ -1754,6 +1754,61 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// formatCache tests
+// ---------------------------------------------------------------------------
+
+// cacheTestFmt is a minimal Formatter for testing the cache.
+type cacheTestFmt struct{ id int }
+
+func (f *cacheTestFmt) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+	return []byte("data"), nil
+}
+
+func TestFormatCache_PutGet(t *testing.T) {
+	tests := []struct {
+		name       string
+		formatters int
+	}{
+		{name: "single_formatter", formatters: 1},
+		{name: "at_array_capacity", formatters: audit.FormatCacheSizeForTest},
+		{name: "overflow_to_map", formatters: audit.FormatCacheSizeForTest + 1},
+		{name: "well_beyond_capacity", formatters: 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc := &audit.FormatCacheForTest{}
+			fmts := make([]*cacheTestFmt, tt.formatters)
+			for i := range fmts {
+				fmts[i] = &cacheTestFmt{id: i}
+				fc.Put(fmts[i], []byte{byte(i)})
+			}
+
+			for i, f := range fmts {
+				data, ok := fc.Get(f)
+				assert.True(t, ok, "formatter %d should be found", i)
+				assert.Equal(t, []byte{byte(i)}, data)
+			}
+
+			unknown := &cacheTestFmt{id: 999}
+			_, ok := fc.Get(unknown)
+			assert.False(t, ok, "unknown formatter should not be found")
+		})
+	}
+}
+
+func TestFormatCache_NilData(t *testing.T) {
+	fc := &audit.FormatCacheForTest{}
+	f := &cacheTestFmt{id: 1}
+
+	fc.Put(f, nil)
+
+	data, ok := fc.Get(f)
+	assert.True(t, ok, "nil-data entry should be found (cached failure)")
+	assert.Nil(t, data, "data should be nil for cached failure")
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 

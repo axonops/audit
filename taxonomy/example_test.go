@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package yamlconfig_test
+package taxonomy_test
 
 import (
 	"errors"
 	"fmt"
 
 	"github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/yamlconfig"
+	"github.com/axonops/go-audit/taxonomy"
 )
 
-func ExampleParseTaxonomyYAML() {
+func ExampleParseYAML() {
 	// In production code, use //go:embed to load the YAML file.
 	data := []byte(`
 version: 1
@@ -48,7 +48,7 @@ events:
       - reason
 `)
 
-	tax, err := yamlconfig.ParseTaxonomyYAML(data)
+	tax, err := taxonomy.ParseYAML(data)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -60,7 +60,7 @@ events:
 	// events: 4
 }
 
-func ExampleParseTaxonomyYAML_validation() {
+func ExampleParseYAML_validation() {
 	// ParseTaxonomyYAML returns an error wrapping audit.ErrTaxonomyInvalid
 	// when the taxonomy is structurally inconsistent — here, the event's
 	// category does not match any key in categories.
@@ -74,7 +74,7 @@ events:
     category: nonexistent
 `)
 
-	_, err := yamlconfig.ParseTaxonomyYAML(data)
+	_, err := taxonomy.ParseYAML(data)
 	if errors.Is(err, audit.ErrTaxonomyInvalid) {
 		fmt.Println("taxonomy validation failed")
 	}

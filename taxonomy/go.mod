@@ -1,4 +1,4 @@
-module github.com/axonops/go-audit/yamlconfig
+module github.com/axonops/go-audit/taxonomy
 
 go 1.26.1
 

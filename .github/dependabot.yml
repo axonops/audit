@@ -70,7 +70,7 @@ updates:
 
   # Yamlconfig sub-module
   - package-ecosystem: "gomod"
-    directory: "/yamlconfig"
+    directory: "/taxonomy"
     schedule:
       interval: "weekly"
       day: "monday"

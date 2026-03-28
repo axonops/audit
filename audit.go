@@ -72,12 +72,10 @@ type Logger struct {
 	taxonomy       *Taxonomy
 	cancel         context.CancelFunc
 	drainDone      chan struct{}
-	// entries and outputsByName are immutable after construction;
-	// safe to read without holding l.mu.
+	// entries and outputsByName are immutable after construction.
 	entries        []*outputEntry
 	outputsByName  map[string]*outputEntry
 	cfg            Config
-	mu             sync.RWMutex
 	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
@@ -185,10 +183,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return err
 	}
 
-	l.mu.RLock()
-	enabled := l.filter.isEnabled(eventType, l.taxonomy)
-	l.mu.RUnlock()
-	if !enabled {
+	if !l.filter.isEnabled(eventType, l.taxonomy) {
 		if l.metrics != nil {
 			l.metrics.RecordFiltered(eventType)
 		}
@@ -285,9 +280,7 @@ func (l *Logger) EnableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.mu.Lock()
-	l.filter.enabledCategories[category] = true
-	l.mu.Unlock()
+	l.filter.enabledCategories.Store(category, true)
 	slog.Info("audit: category enabled", "category", category)
 	return nil
 }
@@ -300,9 +293,7 @@ func (l *Logger) DisableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.mu.Lock()
-	l.filter.enabledCategories[category] = false
-	l.mu.Unlock()
+	l.filter.enabledCategories.Store(category, false)
 	slog.Info("audit: category disabled", "category", category)
 	return nil
 }
@@ -315,9 +306,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.mu.Lock()
-	l.filter.eventOverrides[eventType] = true
-	l.mu.Unlock()
+	l.filter.eventOverrides.Store(eventType, true)
 	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
@@ -330,9 +319,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.mu.Lock()
-	l.filter.eventOverrides[eventType] = false
-	l.mu.Unlock()
+	l.filter.eventOverrides.Store(eventType, false)
 	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }

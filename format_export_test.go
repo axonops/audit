@@ -15,8 +15,49 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
+import (
+	"bytes"
+	"strings"
+)
+
 var (
 	CEFEscapeHeaderForTest   = cefEscapeHeader
 	CEFEscapeExtValueForTest = cefEscapeExtValue
 	ValidateExtKeyForTest    = validateExtKey
 )
+
+// CEFEscapeHeaderOldForTest is the original multi-pass implementation,
+// used only for property-based output equivalence testing.
+func CEFEscapeHeaderOldForTest(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `|`, `\|`)
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	return s
+}
+
+// CEFEscapeExtValueOldForTest is the original multi-pass implementation,
+// used only for property-based output equivalence testing.
+func CEFEscapeExtValueOldForTest(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `=`, `\=`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 {
+			return -1
+		}
+		return r
+	}, s)
+	return s
+}
+
+// WriteJSONStringForTest exposes writeJSONString for property-based
+// testing against encoding/json.Marshal.
+func WriteJSONStringForTest(buf *bytes.Buffer, s string) {
+	writeJSONString(buf, s)
+}
+
+// PrecomputeEventDefForTest exposes precomputeEventDef so benchmarks
+// can use precomputed EventDefs that match production conditions.
+var PrecomputeEventDefForTest = precomputeEventDef

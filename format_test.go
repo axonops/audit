@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -594,13 +595,36 @@ func TestCEFExtKeyValidation(t *testing.T) {
 	}
 }
 
+// TestCEFFormatter_PoolSafety verifies that the sync.Pool buffer reuse
+// does not corrupt cached Format() results.
+func TestCEFFormatter_PoolSafety(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+	ts := time.Now()
+
+	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
+	require.NoError(t, err)
+
+	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def)
+	require.NoError(t, err)
+
+	assert.Contains(t, string(result1), "outcome=first")
+	assert.Contains(t, string(result2), "outcome=second")
+	assert.NotEqual(t, result1, result2)
+}
+
 func TestCEFEscapeExtValue_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		escaped := audit.CEFEscapeExtValueForTest(s)
+		old := audit.CEFEscapeExtValueOldForTest(s)
+		// Output must be byte-for-byte identical to the old implementation.
+		if escaped != old {
+			return false
+		}
 		// No raw newlines or carriage returns in escaped output.
 		return !strings.Contains(escaped, "\n") && !strings.Contains(escaped, "\r")
 	}
-	if err := quick.Check(f, nil); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
 		t.Error(err)
 	}
 }
@@ -608,6 +632,11 @@ func TestCEFEscapeExtValue_QuickCheck(t *testing.T) {
 func TestCEFEscapeHeader_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		escaped := audit.CEFEscapeHeaderForTest(s)
+		old := audit.CEFEscapeHeaderOldForTest(s)
+		// Output must be byte-for-byte identical to the old implementation.
+		if escaped != old {
+			return false
+		}
 		// No raw newlines, carriage returns, or unescaped pipes.
 		if strings.Contains(escaped, "\n") || strings.Contains(escaped, "\r") {
 			return false
@@ -620,7 +649,7 @@ func TestCEFEscapeHeader_QuickCheck(t *testing.T) {
 		}
 		return true
 	}
-	if err := quick.Check(f, nil); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
 		t.Error(err)
 	}
 }
@@ -1059,6 +1088,119 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// writeJSONString tests
+// ---------------------------------------------------------------------------
+
+func TestWriteJSONString(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty", input: ""},
+		{name: "plain_ascii", input: "hello world"},
+		{name: "quotes", input: `say "hello"`},
+		{name: "backslash", input: `back\slash`},
+		{name: "newline", input: "line1\nline2"},
+		{name: "tab", input: "col1\tcol2"},
+		{name: "carriage_return", input: "line1\rline2"},
+		{name: "null_byte", input: "null\x00byte"},
+		{name: "all_control_chars", input: "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"},
+		{name: "html_lt", input: "<script>"},
+		{name: "html_gt", input: "value>other"},
+		{name: "html_amp", input: "a&b"},
+		{name: "html_mixed", input: `<a href="x&y">`},
+		{name: "utf8_emoji", input: "hello 🎉 world"},
+		{name: "utf8_cjk", input: "日本語テスト"},
+		{name: "utf8_accented", input: "café résumé"},
+		{name: "invalid_utf8", input: "bad\xfe\xffbyte"},
+		{name: "line_separator_u2028", input: "before\u2028after"},
+		{name: "paragraph_separator_u2029", input: "before\u2029after"},
+		{name: "mixed_special", input: "line1\nline2\t\"quoted\"\\back<html>&amp;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			audit.WriteJSONStringForTest(&buf, tt.input)
+			got := buf.Bytes()
+
+			want, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+
+			assert.Equal(t, string(want), string(got),
+				"writeJSONString output must match json.Marshal")
+		})
+	}
+}
+
+// TestJSONFormatter_TimestampAppendFormat verifies that the
+// ts.AppendFormat + AvailableBuffer pattern produces the same
+// timestamp output as the old json.Marshal(ts.Format(...)) approach.
+func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
+	f := &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
+	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+
+	// Use a timestamp with nanosecond precision and a timezone offset
+	// to exercise all format components.
+	ts := time.Date(2026, 3, 28, 15, 4, 5, 123456789, time.FixedZone("EST", -5*60*60))
+
+	data, err := f.Format(ts, "ev", audit.Fields{"outcome": "ok"}, def)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	got, ok := m["timestamp"].(string)
+	require.True(t, ok, "timestamp should be a string")
+	want := ts.Format(time.RFC3339Nano)
+	assert.Equal(t, want, got,
+		"AppendFormat timestamp must match Format() string")
+}
+
+// TestJSONFormatter_PoolSafety verifies that the sync.Pool buffer
+// reuse does not corrupt cached Format() results. This validates the
+// copy-before-return pattern that prevents the pool-vs-cache race
+// described in issue #101.
+func TestJSONFormatter_PoolSafety(t *testing.T) {
+	f := &audit.JSONFormatter{}
+	def := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	}
+	ts := time.Now()
+
+	// Call Format twice in succession. The second call should reuse
+	// the pooled buffer but must not corrupt the first result.
+	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
+	require.NoError(t, err)
+
+	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def)
+	require.NoError(t, err)
+
+	// Both results must be independent — the first must not have been
+	// overwritten by the second.
+	assert.Contains(t, string(result1), `"outcome":"first"`)
+	assert.Contains(t, string(result2), `"outcome":"second"`)
+	assert.NotEqual(t, result1, result2)
+}
+
+func TestWriteJSONString_QuickCheck(t *testing.T) {
+	f := func(s string) bool {
+		var buf bytes.Buffer
+		audit.WriteJSONStringForTest(&buf, s)
+
+		want, err := json.Marshal(s)
+		if err != nil {
+			return false
+		}
+		return bytes.Equal(buf.Bytes(), want)
+	}
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
+		t.Errorf("writeJSONString diverges from json.Marshal: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Formatter benchmarks
 // ---------------------------------------------------------------------------
 
@@ -1075,6 +1217,7 @@ func BenchmarkJSONFormatter_Format(b *testing.B) {
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
+	audit.PrecomputeEventDefForTest(def)
 	ts := time.Now()
 
 	b.ResetTimer()
@@ -1101,6 +1244,7 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
+	audit.PrecomputeEventDefForTest(def)
 	ts := time.Now()
 
 	b.ResetTimer()
@@ -1144,6 +1288,7 @@ func largeEventFixture() (audit.Fields, *audit.EventDef) {
 		"payload_size":  1024,
 		"tags":          "production,critical",
 	}
+	audit.PrecomputeEventDefForTest(def)
 	return fields, def
 }
 

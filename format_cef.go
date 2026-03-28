@@ -23,6 +23,18 @@ import (
 	"time"
 )
 
+// cefBufPool caches bytes.Buffer instances for CEFFormatter.Format.
+// The New function pre-grows to 256 bytes as a starting hint; the
+// buffer grows on first use and retains capacity, so after warm-up
+// the pool holds buffers large enough for the typical ~400-byte output.
+var cefBufPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(256)
+		return b
+	},
+}
+
 // defaultCEFFieldMappingEntries returns a new map containing the
 // built-in audit-field-to-CEF-extension-key mapping. Each call returns
 // a distinct map instance; callers may mutate the result without
@@ -127,8 +139,11 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	description := cf.description(eventType)
 	mapping := cf.fieldMapping()
 
-	var buf bytes.Buffer
-	buf.Grow(256)
+	buf, ok := cefBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
+	buf.Reset()
 
 	// Write header: CEF:0|vendor|product|version|eventType|description|severity|
 	buf.WriteString("CEF:0|")
@@ -149,10 +164,10 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	extStart := buf.Len()
 
 	// Timestamp as receipt time (epoch ms).
-	writeExtField(&buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
+	writeExtField(buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
 
 	// Event type as device action.
-	writeExtField(&buf, extStart, "act", eventType)
+	writeExtField(buf, extStart, "act", eventType)
 
 	// Build reserved key set from framework-emitted extension keys.
 	reserved := map[string]struct{}{
@@ -163,21 +178,27 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	// Duration if present as time.Duration.
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
-			writeExtField(&buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
-			writeExtField(&buf, extStart, "cn1Label", "durationMs")
+			writeExtField(buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
+			writeExtField(buf, extStart, "cn1Label", "durationMs")
 			reserved["cn1"] = struct{}{}
 			reserved["cn1Label"] = struct{}{}
 		}
 	}
 
 	// All fields via mapping.
-	if err := cf.writeFieldExtensions(&buf, extStart, fields, def, mapping, reserved); err != nil {
+	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved); err != nil {
+		cefBufPool.Put(buf)
 		return nil, err
 	}
 
 	buf.WriteByte('\n')
-	// Safe: buf is local and not reused; Bytes() is the sole reference.
-	return buf.Bytes(), nil
+
+	// Copy before returning the buffer to the pool. See jsonBufPool
+	// comment in format_json.go for the rationale.
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	cefBufPool.Put(buf)
+	return out, nil
 }
 
 // writeFieldExtensions writes all user-defined fields as CEF
@@ -253,34 +274,75 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 	return cf.resolvedMapping
 }
 
-// cefEscapeHeader escapes characters in CEF header fields.
-// Header fields use pipe (|) as delimiter -- pipes and backslashes
-// MUST be escaped. Backslash is escaped first to avoid double-escaping.
-// Newlines and carriage returns are replaced with spaces.
+// cefEscapeHeader escapes characters in CEF header fields using a
+// single-pass byte scanner. Escapes: \ -> \\, | -> \|, \n -> space,
+// \r -> space. Returns the original string unchanged when no escaping
+// is needed, avoiding allocation on the common path.
 func cefEscapeHeader(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `|`, `\|`)
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	return s
+	var buf strings.Builder
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			buf.WriteString(s[start:i])
+			buf.WriteString(`\\`)
+			start = i + 1
+		case '|':
+			buf.WriteString(s[start:i])
+			buf.WriteString(`\|`)
+			start = i + 1
+		case '\n', '\r':
+			buf.WriteString(s[start:i])
+			buf.WriteByte(' ')
+			start = i + 1
+		}
+	}
+	if start == 0 {
+		return s // no escaping needed; return original string (0 allocs)
+	}
+	buf.WriteString(s[start:])
+	return buf.String()
 }
 
-// cefEscapeExtValue escapes characters in CEF extension values.
-// Backslash is escaped first to avoid double-escaping. All C0 control
-// characters (0x00-0x1F) are stripped after newline/CR escaping.
+// cefEscapeExtValue escapes characters in CEF extension values using a
+// single-pass byte scanner. Escapes: \ -> \\, = -> \=, \n -> \n
+// (literal backslash-n), \r -> \r (literal backslash-r). Remaining C0
+// control characters (0x00-0x1F) are stripped.
 func cefEscapeExtValue(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `=`, `\=`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	// Strip remaining C0 control characters (0x00-0x1F).
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 {
-			return -1
+	var buf strings.Builder
+	start := 0
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x20 {
+			switch b {
+			case '\\':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\\`)
+				start = i + 1
+			case '=':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\=`)
+				start = i + 1
+			}
+			continue
 		}
-		return r
-	}, s)
-	return s
+		// C0 control character.
+		buf.WriteString(s[start:i])
+		switch b {
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\r':
+			buf.WriteString(`\r`)
+		default:
+			// Strip other control characters.
+		}
+		start = i + 1
+	}
+	if start == 0 {
+		return s // no escaping needed; return original string (0 allocs)
+	}
+	buf.WriteString(s[start:])
+	return buf.String()
 }
 
 // validateExtKey returns an error if the key is not a valid CEF

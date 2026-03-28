@@ -608,17 +608,9 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		return nil
 	}
 
-	known := make(map[string]bool, len(def.Required)+len(def.Optional))
-	for _, f := range def.Required {
-		known[f] = true
-	}
-	for _, f := range def.Optional {
-		known[f] = true
-	}
-
 	var unknown []string
 	for k := range fields {
-		if !known[k] {
+		if _, ok := def.knownFields[k]; !ok {
 			unknown = append(unknown, k)
 		}
 	}

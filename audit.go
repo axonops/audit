@@ -177,7 +177,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
-	if err := l.validateFields(eventType, &def, fields); err != nil {
+	if err := l.validateFields(eventType, def, fields); err != nil {
 		// Only strict-mode rejections are validation errors. Warn-mode
 		// unknown fields return nil (event accepted) and are observable
 		// only via slog -- they are not validation errors.
@@ -522,7 +522,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			continue
 		}
 
-		data := l.formatCached(oe, entry, ts, &def, cache)
+		data := l.formatCached(oe, entry, ts, def, cache)
 		if data == nil {
 			continue
 		}

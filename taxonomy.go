@@ -60,7 +60,9 @@ type Taxonomy struct {
 
 	// Events maps event type names to their definitions. Every event
 	// type listed in Categories MUST have a corresponding entry here.
-	Events map[string]EventDef
+	// Pointers are used to avoid per-event heap escapes when passing
+	// definitions through the drain path.
+	Events map[string]*EventDef
 
 	// DefaultEnabled lists category names that are enabled at startup.
 	// Events in categories not listed here are silently discarded
@@ -112,7 +114,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 		t.Categories = make(map[string][]string)
 	}
 	if t.Events == nil {
-		t.Events = make(map[string]EventDef)
+		t.Events = make(map[string]*EventDef)
 	}
 
 	// Ensure lifecycle category exists.
@@ -122,7 +124,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
-		t.Events["startup"] = EventDef{
+		t.Events["startup"] = &EventDef{
 			Category: lifecycleCategory,
 			Required: []string{"app_name"},
 			Optional: []string{"version", "config"},
@@ -134,7 +136,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject shutdown if not already defined.
 	if _, ok := t.Events["shutdown"]; !ok {
-		t.Events["shutdown"] = EventDef{
+		t.Events["shutdown"] = &EventDef{
 			Category: lifecycleCategory,
 			Required: []string{"app_name"},
 			Optional: []string{"reason", "uptime_ms"},

@@ -93,6 +93,8 @@
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional core instrumentation interface
+//   - [ValidateTaxonomy] — checks a [Taxonomy] for consistency; used by external parsers
+//   - [InjectLifecycleEvents] — adds startup/shutdown events to a [Taxonomy]; used by external parsers
 //
 // # Taxonomy
 //

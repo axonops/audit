@@ -93,6 +93,19 @@ const (
 // validation failures.
 var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 
+// InjectLifecycleEvents adds the "lifecycle" category with "startup"
+// and "shutdown" events to t if they are not already defined. If the
+// consumer has already defined these events, their definitions are
+// preserved. The lifecycle category is always added to
+// [Taxonomy.DefaultEnabled].
+//
+// This function is called automatically by [WithTaxonomy]; it is
+// exported so that external packages (e.g. yamlconfig) can apply the
+// same injection before calling [ValidateTaxonomy].
+func InjectLifecycleEvents(t *Taxonomy) {
+	injectLifecycleEvents(t)
+}
+
 // injectLifecycleEvents adds the "lifecycle" category with "startup"
 // and "shutdown" events if they are not already defined. If the
 // consumer has already defined these events, their definitions are
@@ -138,6 +151,17 @@ func injectLifecycleEvents(t *Taxonomy) {
 	if !slices.Contains(t.DefaultEnabled, lifecycleCategory) {
 		t.DefaultEnabled = append(t.DefaultEnabled, lifecycleCategory)
 	}
+}
+
+// ValidateTaxonomy checks the taxonomy for internal consistency and
+// returns all problems found. The returned error wraps
+// [ErrTaxonomyInvalid].
+//
+// This function is called automatically by [WithTaxonomy]; it is
+// exported so that external packages (e.g. yamlconfig) can validate
+// a taxonomy constructed from external sources.
+func ValidateTaxonomy(t Taxonomy) error {
+	return validateTaxonomy(t)
 }
 
 // validateTaxonomy checks the taxonomy for internal consistency and

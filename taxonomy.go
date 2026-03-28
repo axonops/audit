@@ -94,15 +94,19 @@ const (
 var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 
 // InjectLifecycleEvents adds the "lifecycle" category with "startup"
-// and "shutdown" events to t if they are not already defined. If the
-// consumer has already defined these events, their definitions are
-// preserved. The lifecycle category is always added to
-// [Taxonomy.DefaultEnabled].
+// and "shutdown" events to t if they are not already defined:
 //
-// This function is called automatically by [WithTaxonomy]; it is
-// exported so that external packages (e.g. yamlconfig) can apply the
-// same injection before calling [ValidateTaxonomy]. Calling it
-// multiple times is safe and idempotent.
+//   - startup:  required [app_name], optional [version, config]
+//   - shutdown: required [app_name], optional [reason, uptime_ms]
+//
+// If the consumer has already defined events with these names, their
+// definitions are preserved unchanged. The "lifecycle" category is
+// always added to [Taxonomy.DefaultEnabled].
+//
+// Calling InjectLifecycleEvents multiple times is safe and idempotent.
+// [WithTaxonomy] calls it automatically; it is exported so that
+// external taxonomy loaders (e.g. yamlconfig) can apply the same
+// injection before calling [ValidateTaxonomy].
 func InjectLifecycleEvents(t *Taxonomy) {
 	if t.Categories == nil {
 		t.Categories = make(map[string][]string)
@@ -146,13 +150,15 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	}
 }
 
-// ValidateTaxonomy checks the taxonomy for internal consistency and
-// returns all problems found. The returned error wraps
-// [ErrTaxonomyInvalid].
+// ValidateTaxonomy checks t for internal consistency. If any problems
+// are found, it returns a single error wrapping [ErrTaxonomyInvalid]
+// whose message lists every problem on a separate line, sorted for
+// deterministic output. Callers MUST use [errors.Is] to test for
+// [ErrTaxonomyInvalid]; do not parse the error string.
 //
 // This function is called automatically by [WithTaxonomy]; it is
-// exported so that external packages (e.g. yamlconfig) can validate
-// a taxonomy constructed from external sources.
+// exported so that external taxonomy loaders (e.g. yamlconfig) can
+// validate a taxonomy constructed from external sources.
 func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string
 	errs = append(errs, checkTaxonomyVersion(t)...)

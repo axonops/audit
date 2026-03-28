@@ -222,6 +222,7 @@ func TestValidateTaxonomy(t *testing.T) {
 		tax := audit.Taxonomy{Version: 1, Events: map[string]audit.EventDef{}}
 		err := audit.ValidateTaxonomy(tax)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		assert.Contains(t, err.Error(), "at least one category")
 	})
 }
@@ -253,6 +254,26 @@ func TestInjectLifecycleEvents(t *testing.T) {
 
 		assert.Equal(t, []string{"custom_field"}, tax.Events["startup"].Required)
 		assert.Equal(t, []string{"custom_field"}, tax.Events["shutdown"].Required)
+	})
+
+	t.Run("idempotent on repeated calls", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		audit.InjectLifecycleEvents(&tax)
+		first := tax
+
+		audit.InjectLifecycleEvents(&tax)
+
+		assert.Equal(t, first.Version, tax.Version)
+		assert.Equal(t, len(first.Events), len(tax.Events))
+		assert.Equal(t, len(first.Categories), len(tax.Categories))
+		// DefaultEnabled should not have duplicate "lifecycle".
+		count := 0
+		for _, cat := range tax.DefaultEnabled {
+			if cat == "lifecycle" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count, "lifecycle should appear exactly once in DefaultEnabled")
 	})
 
 	t.Run("handles nil maps", func(t *testing.T) {

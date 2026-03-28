@@ -93,6 +93,7 @@ events:
 `
 
 func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
+	t.Parallel()
 	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(validYAML))
 	require.NoError(t, err)
 
@@ -111,6 +112,7 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
+	t.Parallel()
 	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(minimalYAML))
 	require.NoError(t, err)
 
@@ -123,6 +125,7 @@ func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_OptionalFieldsOmitted(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -140,6 +143,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
+	t.Parallel()
 	// Build the same taxonomy in Go code.
 	goTax := audit.Taxonomy{
 		Version: 1,
@@ -164,6 +168,7 @@ func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_DefaultEnabledEmpty(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -188,6 +193,7 @@ events:
 // --- Input validation ---
 
 func TestParseTaxonomyYAML_NilInput(t *testing.T) {
+	t.Parallel()
 	_, err := yamlconfig.ParseTaxonomyYAML(nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
@@ -195,6 +201,7 @@ func TestParseTaxonomyYAML_NilInput(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
+	t.Parallel()
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
@@ -202,6 +209,7 @@ func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_OversizedInput(t *testing.T) {
+	t.Parallel()
 	data := make([]byte, yamlconfig.MaxInputSize+1)
 	for i := range data {
 		data[i] = ' '
@@ -213,12 +221,14 @@ func TestParseTaxonomyYAML_OversizedInput(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
+	t.Parallel()
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte("{{invalid yaml"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_TabsInYAML(t *testing.T) {
+	t.Parallel()
 	yml := "version: 1\n\tcategories:\n"
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -226,6 +236,7 @@ func TestParseTaxonomyYAML_TabsInYAML(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_MultipleDocuments(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -252,6 +263,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
+	t.Parallel()
 	yml := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n---\n{{broken"
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -262,6 +274,7 @@ func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
 // --- Strict parsing ---
 
 func TestParseTaxonomyYAML_UnknownTopLevelKey(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 bogus_key: true
@@ -279,6 +292,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_UnknownEventKey(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -298,6 +312,7 @@ events:
 // --- Taxonomy validation (via audit.ValidateTaxonomy) ---
 
 func TestParseTaxonomyYAML_VersionZero(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 0
 categories:
@@ -314,6 +329,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_MissingVersion(t *testing.T) {
+	t.Parallel()
 	yml := `
 categories:
   ops:
@@ -329,6 +345,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_VersionTooHigh(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 999
 categories:
@@ -345,6 +362,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_EventReferencesNonExistentCategory(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -361,6 +379,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_DuplicateEventAcrossCategories(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -379,6 +398,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_FieldInBothRequiredAndOptional(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -399,6 +419,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_CategoryMemberNotInEvents(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -416,6 +437,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_EventNotInAnyCategory(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -434,6 +456,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_DefaultEnabledNonExistentCategory(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -453,6 +476,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_EmptyCategories(t *testing.T) {
+	t.Parallel()
 	// Empty categories + events still passes because lifecycle injection
 	// adds the lifecycle category with startup/shutdown events.
 	yml := `
@@ -466,9 +490,88 @@ events: {}
 	assert.Contains(t, tax.Events, "startup")
 }
 
+// --- Additional edge cases from deep review ---
+
+func TestParseTaxonomyYAML_ExactMaxInputSize(t *testing.T) {
+	t.Parallel()
+	// Build a valid YAML that is exactly MaxInputSize bytes.
+	base := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"
+	padding := yamlconfig.MaxInputSize - len(base) - 1 // -1 for the newline
+	data := make([]byte, 0, yamlconfig.MaxInputSize)
+	data = append(data, []byte(base)...)
+	data = append(data, '\n')
+	for range padding {
+		data = append(data, ' ')
+	}
+	require.Equal(t, yamlconfig.MaxInputSize, len(data))
+
+	tax, err := yamlconfig.ParseTaxonomyYAML(data)
+	require.NoError(t, err)
+	assert.Equal(t, 1, tax.Version)
+}
+
+func TestParseTaxonomyYAML_WhitespaceOnly(t *testing.T) {
+	t.Parallel()
+	// Whitespace-only input is non-empty but contains no YAML content.
+	// yaml.v3 returns EOF, which wraps as ErrInvalidInput.
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte("   \n\n  "))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
+}
+
+func TestParseTaxonomyYAML_CommentsOnly(t *testing.T) {
+	t.Parallel()
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte("# just a comment\n"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
+}
+
+func TestParseTaxonomyYAML_NegativeVersion(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: -1
+categories:
+  ops:
+    - deploy
+events:
+  deploy:
+    category: ops
+`
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	assert.Contains(t, err.Error(), "no longer supported")
+}
+
+func TestParseTaxonomyYAML_MissingCategoriesKey(t *testing.T) {
+	t.Parallel()
+	// categories key absent entirely — lifecycle injection saves it.
+	yml := `
+version: 1
+events: {}
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.Contains(t, tax.Categories, "lifecycle")
+}
+
+func TestParseTaxonomyYAML_MissingEventsKey(t *testing.T) {
+	t.Parallel()
+	// events key absent entirely — lifecycle injection adds startup/shutdown.
+	yml := `
+version: 1
+categories: {}
+`
+	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.Contains(t, tax.Events, "startup")
+	assert.Contains(t, tax.Events, "shutdown")
+}
+
 // --- Edge cases ---
 
 func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("version: 1\ncategories:\n")
 
@@ -494,6 +597,7 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_LifecycleEventsUserDefined(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -528,6 +632,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_EventWithEmptyRequiredOptional(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 1
 categories:
@@ -549,6 +654,7 @@ events:
 // --- Security ---
 
 func TestParseTaxonomyYAML_NoFilesystemOrNetworkAccess(t *testing.T) {
+	t.Parallel()
 	// Parse all .go files in the package and verify no dangerous
 	// package calls exist in non-test source.
 	blockedPackages := map[string]bool{
@@ -591,6 +697,7 @@ func TestParseTaxonomyYAML_NoFilesystemOrNetworkAccess(t *testing.T) {
 }
 
 func TestParseTaxonomyYAML_YAMLAnchorBomb(t *testing.T) {
+	t.Parallel()
 	// yaml.v3 limits alias expansion, so this should not cause issues.
 	yml := `
 version: 1
@@ -613,6 +720,7 @@ events:
 }
 
 func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		yaml string

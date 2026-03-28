@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package yamlconfig provides YAML-based taxonomy definition for the
-// [github.com/axonops/go-audit] library. It converts a YAML document
-// into an [audit.Taxonomy] value ready for use with [audit.WithTaxonomy].
+// Package yamlconfig loads a YAML taxonomy definition and converts it
+// into an [audit.Taxonomy] ready to pass to [audit.WithTaxonomy].
+// Use this package when you want to define your audit taxonomy in a
+// YAML file (or embedded asset) rather than constructing
+// [audit.Taxonomy] in Go code.
 //
 // # Usage
 //
@@ -22,6 +24,7 @@
 //
 //	import (
 //	    _ "embed"
+//	    "log"
 //	    "github.com/axonops/go-audit"
 //	    "github.com/axonops/go-audit/yamlconfig"
 //	)
@@ -43,12 +46,12 @@
 //
 // # YAML Schema
 //
-// The YAML document MUST contain a single document with the following
-// top-level keys. Unknown keys are rejected.
+// The YAML document MUST be a single document with the following
+// top-level keys. Unknown keys at any level are rejected.
 //
 //	version: 1                     # REQUIRED. Schema version (currently only 1).
-//	categories:                    # REQUIRED. Map of category name → event type names
-//	                               # (may be empty; lifecycle events are injected).
+//	categories:                    # OPTIONAL. Map of category name → event type names.
+//	                               # If omitted, only lifecycle events are available.
 //	  write:
 //	    - schema_register
 //	    - schema_delete
@@ -57,8 +60,8 @@
 //	default_enabled:               # OPTIONAL. Categories enabled at startup.
 //	  - write
 //	  - security
-//	events:                        # REQUIRED. Map of event type name → definition
-//	                               # (may be empty; lifecycle events are injected).
+//	events:                        # OPTIONAL when categories is omitted; REQUIRED when
+//	                               # categories lists event type names.
 //	  schema_register:
 //	    category: write            # REQUIRED. Must match a key in categories.
 //	    required:                  # OPTIONAL. Fields that must be present.
@@ -69,15 +72,30 @@
 //
 // # Validation
 //
-// [ParseTaxonomyYAML] performs the same validation as [audit.WithTaxonomy]:
-// lifecycle events are injected, migration is applied, then the full
-// taxonomy is validated. Input errors (empty, oversized, multi-document,
-// or syntactically invalid YAML) wrap [ErrInvalidInput]. Taxonomy
-// validation errors wrap [audit.ErrTaxonomyInvalid].
+// [ParseTaxonomyYAML] validates input in two stages.
+//
+// Structural errors (empty input, input exceeding [MaxInputSize],
+// unknown YAML keys, YAML syntax errors, multi-document input) return
+// an error wrapping [ErrInvalidInput]:
+//
+//	if errors.Is(err, yamlconfig.ErrInvalidInput) { /* bad YAML */ }
+//
+// Semantic errors (invalid taxonomy version, unknown categories,
+// duplicate event assignments) return an error wrapping
+// [audit.ErrTaxonomyInvalid]:
+//
+//	if errors.Is(err, audit.ErrTaxonomyInvalid) { /* bad taxonomy */ }
 //
 // # Dependency Isolation
 //
-// This package is a separate Go module so that the core audit package
-// remains free of YAML dependencies. Import only if you need YAML-based
-// taxonomy definition.
+// This package is a separate Go module
+// (github.com/axonops/go-audit/yamlconfig) so that the core audit
+// package remains free of YAML dependencies. Import it only if
+// YAML-based taxonomy definition is required.
+//
+// Because it is a separate module, it is versioned independently of
+// github.com/axonops/go-audit. When upgrading the core module, verify
+// whether yamlconfig requires a corresponding update:
+//
+//	go get github.com/axonops/go-audit/yamlconfig@latest
 package yamlconfig

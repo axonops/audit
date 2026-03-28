@@ -57,9 +57,9 @@ type yamlEventDef struct {
 // definition. Unknown keys are rejected.
 //
 // The returned Taxonomy is fully migrated, validated, and
-// lifecycle-injected. Passing it to [audit.WithTaxonomy] is safe and
-// idempotent; migration, injection, and validation will run again but
-// produce no additional errors.
+// lifecycle-injected. Passing it to [audit.WithTaxonomy] is safe;
+// migration, injection, and validation run again inside WithTaxonomy
+// but produce no additional errors for a well-formed taxonomy.
 //
 // Input errors (empty, multi-document, invalid syntax) wrap
 // [ErrInvalidInput]. Taxonomy validation errors wrap

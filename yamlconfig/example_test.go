@@ -15,8 +15,10 @@
 package yamlconfig_test
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/yamlconfig"
 )
 
@@ -59,6 +61,9 @@ events:
 }
 
 func ExampleParseTaxonomyYAML_validation() {
+	// ParseTaxonomyYAML returns an error wrapping audit.ErrTaxonomyInvalid
+	// when the taxonomy is structurally inconsistent — here, the event's
+	// category does not match any key in categories.
 	data := []byte(`
 version: 1
 categories:
@@ -70,9 +75,9 @@ events:
 `)
 
 	_, err := yamlconfig.ParseTaxonomyYAML(data)
-	if err != nil {
-		fmt.Println("validation failed")
+	if errors.Is(err, audit.ErrTaxonomyInvalid) {
+		fmt.Println("taxonomy validation failed")
 	}
 	// Output:
-	// validation failed
+	// taxonomy validation failed
 }

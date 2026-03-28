@@ -10,6 +10,7 @@ before:
     - bash -c "cd file && go mod tidy"
     - bash -c "cd syslog && go mod tidy"
     - bash -c "cd webhook && go mod tidy"
+    - bash -c "cd yamlconfig && go mod tidy"
 
 changelog:
   use: github
@@ -30,9 +31,12 @@ changelog:
     - title: Bug Fixes
       regexp: '^fix'
       order: 2
+    - title: Security
+      regexp: '^sec'
+      order: 3
     - title: Refactoring
       regexp: '^refactor'
-      order: 3
+      order: 4
 
 checksum:
   name_template: 'checksums.txt'

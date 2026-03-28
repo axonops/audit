@@ -138,7 +138,10 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 		TLSClientConfig:       tlsCfg,
 		DisableKeepAlives:     true, // force fresh dial per request (DNS rebinding)
 		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: cfg.Timeout,
+		// Half the client timeout: detect slow-to-respond servers
+		// early, leaving room for body transfer within the overall
+		// http.Client.Timeout.
+		ResponseHeaderTimeout: cfg.Timeout / 2,
 	}
 
 	client := &http.Client{
@@ -212,20 +215,23 @@ func (w *Output) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.closed.Load() {
+	if !w.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	w.closed.Store(true)
 
 	// Cancel the context to stop the batch loop and abort in-flight
 	// HTTP requests. The batch goroutine will drain remaining events
 	// and do a final flush with a fresh short-deadline context.
 	w.cancel()
 
+	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
+	// final flush) plus 5s buffer for backoff and channel drain.
+	shutdownTimeout := 2*w.timeout + 5*time.Second
 	select {
 	case <-w.done:
-	case <-time.After(10 * time.Second):
-		slog.Error("audit: webhook batch goroutine did not exit after cancel")
+	case <-time.After(shutdownTimeout):
+		slog.Error("audit: webhook batch goroutine did not exit",
+			"timeout", shutdownTimeout)
 	}
 
 	w.client.CloseIdleConnections()

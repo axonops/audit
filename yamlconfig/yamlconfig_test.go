@@ -135,8 +135,8 @@ events:
 	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{}, tax.Events["deploy"].Required)
-	assert.Equal(t, []string{}, tax.Events["deploy"].Optional)
+	assert.Nil(t, tax.Events["deploy"].Required)
+	assert.Nil(t, tax.Events["deploy"].Optional)
 }
 
 func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
@@ -147,9 +147,8 @@ func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 			"ops": {"deploy"},
 		},
 		Events: map[string]audit.EventDef{
-			"deploy": {Category: "ops", Required: []string{"outcome"}, Optional: []string{}},
+			"deploy": {Category: "ops", Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{},
 	}
 	audit.InjectLifecycleEvents(&goTax)
 
@@ -250,6 +249,14 @@ events:
 	require.Error(t, err)
 	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "multiple YAML documents")
+}
+
+func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
+	yml := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n---\n{{broken"
+	_, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
+	assert.Contains(t, err.Error(), "trailing content")
 }
 
 // --- Strict parsing ---
@@ -535,15 +542,19 @@ events:
 	tax, err := yamlconfig.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{}, tax.Events["deploy"].Required)
-	assert.Equal(t, []string{}, tax.Events["deploy"].Optional)
+	assert.Empty(t, tax.Events["deploy"].Required)
+	assert.Empty(t, tax.Events["deploy"].Optional)
 }
 
 // --- Security ---
 
-func TestParseTaxonomyYAML_NoFilesystemAccess(t *testing.T) {
-	// Parse all .go files in the package and verify no os.Open or
-	// os.ReadFile calls exist in non-test source.
+func TestParseTaxonomyYAML_NoFilesystemOrNetworkAccess(t *testing.T) {
+	// Parse all .go files in the package and verify no dangerous
+	// package calls exist in non-test source.
+	blockedPackages := map[string]bool{
+		"os": true, "exec": true, "net": true, "http": true, "ioutil": true,
+	}
+
 	fset := token.NewFileSet()
 	dir := "."
 	entries, err := os.ReadDir(dir)
@@ -571,10 +582,8 @@ func TestParseTaxonomyYAML_NoFilesystemAccess(t *testing.T) {
 			if !ok {
 				return true
 			}
-			if ident.Name == "os" {
-				method := sel.Sel.Name
-				assert.NotEqual(t, "Open", method, "package must not call os.Open")
-				assert.NotEqual(t, "ReadFile", method, "package must not call os.ReadFile")
+			if blockedPackages[ident.Name] {
+				t.Errorf("package must not call %s.%s", ident.Name, sel.Sel.Name)
 			}
 			return true
 		})
@@ -611,7 +620,7 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 		{"version zero", "version: 0\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
 		{"missing version", "categories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
 		{"version too high", "version: 999\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
-		{"empty events map", "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: nonexistent\n"},
+		{"event references nonexistent category", "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: nonexistent\n"},
 	}
 
 	for _, tt := range tests {
@@ -620,5 +629,14 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		})
+	}
+}
+
+// --- Benchmarks ---
+
+func BenchmarkParseTaxonomyYAML(b *testing.B) {
+	data := []byte(validYAML)
+	for b.Loop() {
+		_, _ = yamlconfig.ParseTaxonomyYAML(data)
 	}
 }

@@ -266,6 +266,28 @@ func TestInjectLifecycleEvents(t *testing.T) {
 	})
 }
 
+func TestMigrateTaxonomy(t *testing.T) {
+	t.Run("valid version passes", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		err := audit.MigrateTaxonomy(&tax)
+		assert.NoError(t, err)
+	})
+
+	t.Run("version zero returns error", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 0}
+		err := audit.MigrateTaxonomy(&tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	})
+
+	t.Run("version too high returns error", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 999}
+		err := audit.MigrateTaxonomy(&tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	})
+}
+
 func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},

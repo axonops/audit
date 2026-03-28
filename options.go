@@ -30,7 +30,7 @@ type Option func(*Logger) error
 func WithTaxonomy(t Taxonomy) Option {
 	return func(l *Logger) error {
 		InjectLifecycleEvents(&t)
-		if err := migrateTaxonomy(&t); err != nil {
+		if err := MigrateTaxonomy(&t); err != nil {
 			return err
 		}
 		if err := ValidateTaxonomy(t); err != nil {

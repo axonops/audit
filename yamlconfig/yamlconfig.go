@@ -56,10 +56,10 @@ type yamlEventDef struct {
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
 //
-// The returned Taxonomy is fully validated and lifecycle-injected.
-// Passing it to [audit.WithTaxonomy] is safe and idempotent; the
-// injection and validation will run again but produce no additional
-// errors.
+// The returned Taxonomy is fully migrated, validated, and
+// lifecycle-injected. Passing it to [audit.WithTaxonomy] is safe and
+// idempotent; migration, injection, and validation will run again but
+// produce no additional errors.
 //
 // Input errors (empty, multi-document, invalid syntax) wrap
 // [ErrInvalidInput]. Taxonomy validation errors wrap
@@ -80,17 +80,23 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		return audit.Taxonomy{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
-	// Reject multi-document YAML.
+	// Reject multi-document YAML and trailing content.
 	var discard yaml.Node
-	if err := dec.Decode(&discard); !errors.Is(err, io.EOF) {
+	if err := dec.Decode(&discard); err == nil {
 		return audit.Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
+	} else if !errors.Is(err, io.EOF) {
+		return audit.Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err)
 	}
 
 	tax := convert(yt)
 	audit.InjectLifecycleEvents(&tax)
+
+	if err := audit.MigrateTaxonomy(&tax); err != nil {
+		return audit.Taxonomy{}, err
+	}
 
 	if err := audit.ValidateTaxonomy(tax); err != nil {
 		return audit.Taxonomy{}, err
@@ -100,7 +106,7 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 }
 
 // convert transforms the intermediate yamlTaxonomy into an
-// [audit.Taxonomy]. Nil slices are normalised to empty slices.
+// [audit.Taxonomy]. All maps and slices are defensively copied.
 func convert(yt yamlTaxonomy) audit.Taxonomy {
 	categories := make(map[string][]string, len(yt.Categories))
 	for name, events := range yt.Categories {
@@ -130,10 +136,10 @@ func convert(yt yamlTaxonomy) audit.Taxonomy {
 	}
 }
 
-// copyStrings returns a copy of s, or an empty non-nil slice if s is nil.
+// copyStrings returns a shallow copy of s. A nil input returns nil.
 func copyStrings(s []string) []string {
 	if s == nil {
-		return []string{}
+		return nil
 	}
 	cp := make([]string, len(s))
 	copy(cp, s)

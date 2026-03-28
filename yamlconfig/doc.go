@@ -47,7 +47,8 @@
 // top-level keys. Unknown keys are rejected.
 //
 //	version: 1                     # REQUIRED. Schema version (currently only 1).
-//	categories:                    # REQUIRED. Map of category name → event type names.
+//	categories:                    # REQUIRED. Map of category name → event type names
+//	                               # (may be empty; lifecycle events are injected).
 //	  write:
 //	    - schema_register
 //	    - schema_delete
@@ -56,7 +57,8 @@
 //	default_enabled:               # OPTIONAL. Categories enabled at startup.
 //	  - write
 //	  - security
-//	events:                        # REQUIRED. Map of event type name → definition.
+//	events:                        # REQUIRED. Map of event type name → definition
+//	                               # (may be empty; lifecycle events are injected).
 //	  schema_register:
 //	    category: write            # REQUIRED. Must match a key in categories.
 //	    required:                  # OPTIONAL. Fields that must be present.
@@ -68,8 +70,10 @@
 // # Validation
 //
 // [ParseTaxonomyYAML] performs the same validation as [audit.WithTaxonomy]:
-// lifecycle events are injected automatically, then the full taxonomy is
-// validated. All validation errors wrap [audit.ErrTaxonomyInvalid].
+// lifecycle events are injected, migration is applied, then the full
+// taxonomy is validated. Input errors (empty, oversized, multi-document,
+// or syntactically invalid YAML) wrap [ErrInvalidInput]. Taxonomy
+// validation errors wrap [audit.ErrTaxonomyInvalid].
 //
 // # Dependency Isolation
 //

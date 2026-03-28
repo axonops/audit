@@ -96,6 +96,7 @@
 //   - [Metrics] — optional core instrumentation interface
 //   - [ValidateTaxonomy] — checks a [Taxonomy] for consistency; used by external parsers
 //   - [InjectLifecycleEvents] — adds startup/shutdown events to a [Taxonomy]; used by external parsers
+//   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]; used by external parsers
 //
 // # Taxonomy
 //

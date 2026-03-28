@@ -121,14 +121,12 @@ func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Opti
 		if _, dup := l.outputsByName[name]; dup {
 			return fmt.Errorf("audit: duplicate output name %q", name)
 		}
-		var r EventRoute
-		if route != nil {
-			r = *route
-		}
 		oe := &outputEntry{
 			output:    output,
-			route:     r,
 			formatter: formatter,
+		}
+		if route != nil {
+			oe.setRoute(route)
 		}
 		l.entries = append(l.entries, oe)
 		l.outputsByName[name] = oe

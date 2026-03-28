@@ -65,20 +65,17 @@ var (
 type Logger struct {
 	startupAppName atomic.Value
 	closeErr       error
-	filter         filterState
+	filter         *filterState
 	metrics        Metrics
 	formatter      Formatter
 	ch             chan *auditEntry
 	taxonomy       *Taxonomy
 	cancel         context.CancelFunc
 	drainDone      chan struct{}
-	// entries and outputsByName are immutable after construction;
-	// safe to read without holding l.mu.
+	// entries and outputsByName are immutable after construction.
 	entries        []*outputEntry
 	outputsByName  map[string]*outputEntry
 	cfg            Config
-	wg             sync.WaitGroup
-	mu             sync.RWMutex
 	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
@@ -118,11 +115,8 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
-	// Validate per-output event routes against the taxonomy.
-	for _, oe := range l.entries {
-		if err := ValidateEventRoute(&oe.route, l.taxonomy); err != nil {
-			return nil, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
-		}
+	if err := l.validateOutputRoutes(); err != nil {
+		return nil, err
 	}
 
 	// Default formatter if WithFormatter was not called.
@@ -138,7 +132,6 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	l.cancel = cancel
 	l.ch = make(chan *auditEntry, cfg.BufferSize)
 	l.drainDone = make(chan struct{})
-	l.wg.Add(1)
 	go l.drainLoop(ctx)
 
 	slog.Info("audit: logger created",
@@ -187,10 +180,7 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 		return err
 	}
 
-	l.mu.RLock()
-	enabled := l.filter.isEnabled(eventType, l.taxonomy)
-	l.mu.RUnlock()
-	if !enabled {
+	if !l.filter.isEnabled(eventType, l.taxonomy) {
 		if l.metrics != nil {
 			l.metrics.RecordFiltered(eventType)
 		}
@@ -279,6 +269,21 @@ func (l *Logger) waitForDrain() {
 	}
 }
 
+// validateOutputRoutes checks all per-output event routes against
+// the taxonomy.
+func (l *Logger) validateOutputRoutes() error {
+	for _, oe := range l.entries {
+		route := oe.route.Load()
+		if route == nil {
+			continue
+		}
+		if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+			return fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
+		}
+	}
+	return nil
+}
+
 // EnableCategory enables all events in the named category. The
 // category MUST exist in the registered taxonomy. Per-event overrides
 // via [Logger.DisableEvent] take precedence over category state.
@@ -287,9 +292,7 @@ func (l *Logger) EnableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.mu.Lock()
-	l.filter.enabledCategories[category] = true
-	l.mu.Unlock()
+	l.filter.enabledCategories.Store(category, true)
 	slog.Info("audit: category enabled", "category", category)
 	return nil
 }
@@ -302,9 +305,7 @@ func (l *Logger) DisableCategory(category string) error {
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.mu.Lock()
-	l.filter.enabledCategories[category] = false
-	l.mu.Unlock()
+	l.filter.enabledCategories.Store(category, false)
 	slog.Info("audit: category disabled", "category", category)
 	return nil
 }
@@ -317,9 +318,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.mu.Lock()
-	l.filter.eventOverrides[eventType] = true
-	l.mu.Unlock()
+	l.filter.eventOverrides.Store(eventType, true)
 	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
@@ -332,9 +331,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.mu.Lock()
-	l.filter.eventOverrides[eventType] = false
-	l.mu.Unlock()
+	l.filter.eventOverrides.Store(eventType, false)
 	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
@@ -461,7 +458,6 @@ func (l *Logger) emitShutdown() {
 // drainLoop is the single goroutine that reads events from the async
 // channel, serialises them, and fans out to all outputs.
 func (l *Logger) drainLoop(ctx context.Context) {
-	defer l.wg.Done()
 	defer close(l.drainDone)
 	defer slog.Debug("audit: drain loop exiting")
 	slog.Debug("audit: drain loop started")

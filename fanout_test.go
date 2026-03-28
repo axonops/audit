@@ -600,3 +600,42 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 	assert.Equal(t, 0, badOut.EventCount(),
 		"bad output should receive nothing due to formatter error")
 }
+
+// TestFanout_ConcurrentEventOverrideAndAudit exercises the eventOverrides
+// syncmap under concurrent write+read. A writer goroutine toggles a
+// per-event override while reader goroutines call Audit. The race
+// detector verifies no data races on the syncmap.
+func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Writer: toggle per-event override on auth_failure.
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			_ = logger.DisableEvent("auth_failure")
+			_ = logger.EnableEvent("auth_failure")
+		}
+	}()
+
+	// Reader: audit auth_failure concurrently.
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+		}
+	}()
+
+	wg.Wait()
+	require.NoError(t, logger.Close())
+	// Count is non-deterministic due to concurrent enable/disable.
+	// The test passes iff the race detector reports no data race.
+}

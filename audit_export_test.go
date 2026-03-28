@@ -19,11 +19,8 @@ package audit
 var CopyFieldsForTest = copyFields
 
 // IsEnabledForTest checks whether the given event type is enabled in
-// the logger's current filter state. It acquires the read lock
-// internally, matching the production Audit() hot path.
+// the logger's current filter state. Lock-free, matching the
+// production Audit() hot path.
 func IsEnabledForTest(l *Logger, eventType string) bool {
-	l.mu.RLock()
-	enabled := l.filter.isEnabled(eventType, l.taxonomy)
-	l.mu.RUnlock()
-	return enabled
+	return l.filter.isEnabled(eventType, l.taxonomy)
 }

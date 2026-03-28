@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        module: [".", "file", "syslog", "webhook"]
+        module: [".", "file", "syslog", "webhook", "yamlconfig"]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook
+        run: go work init . file syslog webhook yamlconfig
 
       - name: Check gofmt
         run: |
@@ -84,7 +84,7 @@ jobs:
       - name: Reject replace directives
         run: |
           FAILED=0
-          for mod in . file syslog webhook; do
+          for mod in . file syslog webhook yamlconfig; do
             if grep -q "^replace " "$mod/go.mod" 2>/dev/null; then
               echo "ERROR: $mod/go.mod contains replace directive"
               FAILED=1
@@ -98,7 +98,7 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        module: [".", "file", "syslog", "webhook"]
+        module: [".", "file", "syslog", "webhook", "yamlconfig"]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -110,7 +110,7 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook
+        run: go work init . file syslog webhook yamlconfig
 
       - name: Run unit tests
         run: cd ${{ matrix.module }} && go test -race -count=1 -coverprofile=coverage.out ./...
@@ -138,7 +138,7 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook
+        run: go work init . file syslog webhook yamlconfig
 
       - name: Run integration tests
         run: |
@@ -160,19 +160,19 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook
+        run: go work init . file syslog webhook yamlconfig
 
       - name: Run govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          for mod in . file syslog webhook; do
+          for mod in . file syslog webhook yamlconfig; do
             echo "=== govulncheck $mod ==="
             (cd $mod && govulncheck ./...) || exit 1
           done
 
       - name: Verify go.sum integrity
         run: |
-          for mod in . file syslog webhook; do
+          for mod in . file syslog webhook yamlconfig; do
             echo "=== go mod verify $mod ==="
             (cd $mod && go mod verify) || exit 1
           done
@@ -202,14 +202,14 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook
+        run: go work init . file syslog webhook yamlconfig
 
       - name: Build all modules
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          for mod in . file syslog webhook; do
+          for mod in . file syslog webhook yamlconfig; do
             echo "=== build $mod ==="
             (cd $mod && go build ./...) || exit 1
           done

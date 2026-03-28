@@ -1,7 +1,7 @@
-.PHONY: test-core test-file test-syslog test-webhook test-all test-integration test-bdd \
+.PHONY: test-core test-file test-syslog test-webhook test-yamlconfig test-all test-integration test-bdd \
        lint-all vet-all fmt build-all bench coverage tidy check-replace check-todos check clean
 
-MODULES := . file syslog webhook
+MODULES := . file syslog webhook yamlconfig
 
 # --- Per-module test targets ---
 
@@ -17,7 +17,10 @@ test-syslog:
 test-webhook:
 	cd webhook && go test -race -v -count=1 ./...
 
-test-all: test-core test-file test-syslog test-webhook
+test-yamlconfig:
+	cd yamlconfig && go test -race -v -count=1 ./...
+
+test-all: test-core test-file test-syslog test-webhook test-yamlconfig
 
 # Integration tests (requires Docker)
 test-integration:

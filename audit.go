@@ -117,7 +117,11 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 
 	// Validate per-output event routes against the taxonomy.
 	for _, oe := range l.entries {
-		if err := ValidateEventRoute(&oe.route, l.taxonomy); err != nil {
+		route := oe.route.Load()
+		if route == nil {
+			continue
+		}
+		if err := ValidateEventRoute(route, l.taxonomy); err != nil {
 			return nil, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
 		}
 	}

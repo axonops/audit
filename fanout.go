@@ -16,7 +16,7 @@ package audit
 
 import (
 	"slices"
-	"sync"
+	"sync/atomic"
 )
 
 // Event flow through the fan-out engine:
@@ -36,21 +36,21 @@ import (
 
 // outputEntry bundles an [Output] with its per-output [EventRoute] and
 // optional [Formatter] override. The route may be changed at runtime
-// via [Logger.SetOutputRoute]; the mutex protects concurrent access.
+// via [Logger.SetOutputRoute]; access is lock-free via atomic.Pointer.
 type outputEntry struct {
 	output    Output
 	formatter Formatter // nil = use logger's default formatter
-	route     EventRoute
-	mu        sync.RWMutex
+	route     atomic.Pointer[EventRoute]
 }
 
 // matchesEvent reports whether the event should be delivered to this
-// output based on its current route.
+// output based on its current route. Lock-free — single atomic load.
 func (oe *outputEntry) matchesEvent(eventType, category string) bool {
-	oe.mu.RLock()
-	route := oe.route
-	oe.mu.RUnlock()
-	return MatchesRoute(&route, eventType, category)
+	route := oe.route.Load()
+	if route == nil {
+		return true // nil route = all events
+	}
+	return MatchesRoute(route, eventType, category)
 }
 
 // effectiveFormatter returns the per-output formatter if set, or the
@@ -62,28 +62,29 @@ func (oe *outputEntry) effectiveFormatter(defaultFmt Formatter) Formatter {
 	return defaultFmt
 }
 
-// setRoute replaces the output's event route under a write lock.
-// Slices are deep-copied to prevent the caller from mutating backing
-// arrays after the call returns.
+// setRoute atomically replaces the output's event route. Slices are
+// deep-copied into a new EventRoute to prevent the caller from
+// mutating backing arrays after the call returns.
 func (oe *outputEntry) setRoute(route *EventRoute) {
-	oe.mu.Lock()
-	oe.route = EventRoute{
+	cp := &EventRoute{
 		IncludeCategories: slices.Clone(route.IncludeCategories),
 		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
 	}
-	oe.mu.Unlock()
+	oe.route.Store(cp)
 }
 
 // getRoute returns a deep copy of the output's current event route.
 func (oe *outputEntry) getRoute() EventRoute {
-	oe.mu.RLock()
-	defer oe.mu.RUnlock()
+	route := oe.route.Load()
+	if route == nil {
+		return EventRoute{}
+	}
 	return EventRoute{
-		IncludeCategories: slices.Clone(oe.route.IncludeCategories),
-		IncludeEventTypes: slices.Clone(oe.route.IncludeEventTypes),
-		ExcludeCategories: slices.Clone(oe.route.ExcludeCategories),
-		ExcludeEventTypes: slices.Clone(oe.route.ExcludeEventTypes),
+		IncludeCategories: slices.Clone(route.IncludeCategories),
+		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
+		ExcludeCategories: slices.Clone(route.ExcludeCategories),
+		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
 	}
 }

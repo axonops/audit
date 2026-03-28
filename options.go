@@ -29,11 +29,11 @@ type Option func(*Logger) error
 // shutdown) are injected automatically if not already present.
 func WithTaxonomy(t Taxonomy) Option {
 	return func(l *Logger) error {
-		injectLifecycleEvents(&t)
-		if err := migrateTaxonomy(&t); err != nil {
+		InjectLifecycleEvents(&t)
+		if err := MigrateTaxonomy(&t); err != nil {
 			return err
 		}
-		if err := validateTaxonomy(t); err != nil {
+		if err := ValidateTaxonomy(t); err != nil {
 			return err
 		}
 		l.taxonomy = &t

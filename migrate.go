@@ -44,10 +44,15 @@ func migrateConfig(c *Config) error {
 	return nil
 }
 
-// migrateTaxonomy applies backwards-compatible migrations to older
-// taxonomy versions. For v0.1.0 only version 1 exists, so this is
-// scaffolding.
-func migrateTaxonomy(t *Taxonomy) error {
+// MigrateTaxonomy applies backwards-compatible migrations to older
+// taxonomy versions. It returns an error wrapping [ErrTaxonomyInvalid]
+// if the version is unsupported.
+//
+// This function is called automatically by [WithTaxonomy]; it is
+// exported so that external packages (e.g. yamlconfig) can apply
+// migration before calling [ValidateTaxonomy]. For v0.1.0 only
+// version 1 exists, so this is scaffolding.
+func MigrateTaxonomy(t *Taxonomy) error {
 	if t.Version == 0 {
 		return fmt.Errorf("%w: taxonomy version is required -- set version: 1", ErrTaxonomyInvalid)
 	}

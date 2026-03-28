@@ -203,6 +203,112 @@ func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 	assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid))
 }
 
+func TestValidateTaxonomy(t *testing.T) {
+	t.Run("valid taxonomy passes", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		audit.InjectLifecycleEvents(&tax)
+		err := audit.ValidateTaxonomy(tax)
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid taxonomy returns ErrTaxonomyInvalid", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 0}
+		err := audit.ValidateTaxonomy(tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	})
+
+	t.Run("empty categories returns error", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 1, Events: map[string]audit.EventDef{}}
+		err := audit.ValidateTaxonomy(tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+		assert.Contains(t, err.Error(), "at least one category")
+	})
+}
+
+func TestInjectLifecycleEvents(t *testing.T) {
+	t.Run("injects startup and shutdown", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		audit.InjectLifecycleEvents(&tax)
+
+		assert.Contains(t, tax.Categories, "lifecycle")
+		assert.Contains(t, tax.Events, "startup")
+		assert.Contains(t, tax.Events, "shutdown")
+		assert.Contains(t, tax.DefaultEnabled, "lifecycle")
+	})
+
+	t.Run("preserves consumer-defined lifecycle events", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		tax.Categories["lifecycle"] = []string{"startup", "shutdown"}
+		tax.Events["startup"] = audit.EventDef{
+			Category: "lifecycle",
+			Required: []string{"custom_field"},
+		}
+		tax.Events["shutdown"] = audit.EventDef{
+			Category: "lifecycle",
+			Required: []string{"custom_field"},
+		}
+
+		audit.InjectLifecycleEvents(&tax)
+
+		assert.Equal(t, []string{"custom_field"}, tax.Events["startup"].Required)
+		assert.Equal(t, []string{"custom_field"}, tax.Events["shutdown"].Required)
+	})
+
+	t.Run("idempotent on repeated calls", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		audit.InjectLifecycleEvents(&tax)
+		first := tax
+
+		audit.InjectLifecycleEvents(&tax)
+
+		assert.Equal(t, first.Version, tax.Version)
+		assert.Equal(t, len(first.Events), len(tax.Events))
+		assert.Equal(t, len(first.Categories), len(tax.Categories))
+		// DefaultEnabled should not have duplicate "lifecycle".
+		count := 0
+		for _, cat := range tax.DefaultEnabled {
+			if cat == "lifecycle" {
+				count++
+			}
+		}
+		assert.Equal(t, 1, count, "lifecycle should appear exactly once in DefaultEnabled")
+	})
+
+	t.Run("handles nil maps", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 1}
+		audit.InjectLifecycleEvents(&tax)
+
+		assert.NotNil(t, tax.Categories)
+		assert.NotNil(t, tax.Events)
+		assert.Contains(t, tax.Events, "startup")
+		assert.Contains(t, tax.Events, "shutdown")
+	})
+}
+
+func TestMigrateTaxonomy(t *testing.T) {
+	t.Run("valid version passes", func(t *testing.T) {
+		tax := testhelper.ValidTaxonomy()
+		err := audit.MigrateTaxonomy(&tax)
+		assert.NoError(t, err)
+	})
+
+	t.Run("version zero returns error", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 0}
+		err := audit.MigrateTaxonomy(&tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	})
+
+	t.Run("version too high returns error", func(t *testing.T) {
+		tax := audit.Taxonomy{Version: 999}
+		err := audit.MigrateTaxonomy(&tax)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	})
+}
+
 func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},

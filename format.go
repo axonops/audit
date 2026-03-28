@@ -124,17 +124,7 @@ func shouldOmit(k string, fields Fields) bool {
 // sorted alphabetically. Uses the pre-computed knownFields set to
 // avoid per-call map allocation.
 func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
-	// Fall back to building known set if pre-computed fields unavailable.
-	known := def.knownFields
-	if known == nil {
-		known = make(map[string]struct{}, len(def.Required)+len(def.Optional))
-		for _, k := range def.Required {
-			known[k] = struct{}{}
-		}
-		for _, k := range def.Optional {
-			known[k] = struct{}{}
-		}
-	}
+	known := effectiveKnownFields(def)
 	capHint := len(fields) - len(known)
 	if capHint < 0 {
 		capHint = 0
@@ -157,6 +147,22 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 	}
 	slices.Sort(extra)
 	return extra
+}
+
+// effectiveKnownFields returns the pre-computed knownFields set or
+// builds one from Required + Optional if pre-computed fields are nil.
+func effectiveKnownFields(def *EventDef) map[string]struct{} {
+	if def.knownFields != nil {
+		return def.knownFields
+	}
+	known := make(map[string]struct{}, len(def.Required)+len(def.Optional))
+	for _, k := range def.Required {
+		known[k] = struct{}{}
+	}
+	for _, k := range def.Optional {
+		known[k] = struct{}{}
+	}
+	return known
 }
 
 // allFieldKeysSorted returns all field keys from the EventDef

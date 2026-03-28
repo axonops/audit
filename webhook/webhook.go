@@ -135,9 +135,9 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 			Timeout: 30 * time.Second,
 			Control: ssrf.NewDialControl(ssrfOpts...),
 		}).DialContext,
-		TLSClientConfig:       tlsCfg,
-		DisableKeepAlives:     true, // force fresh dial per request (DNS rebinding)
-		TLSHandshakeTimeout:   10 * time.Second,
+		TLSClientConfig:     tlsCfg,
+		DisableKeepAlives:   true, // force fresh dial per request (DNS rebinding)
+		TLSHandshakeTimeout: 10 * time.Second,
 		// Half the client timeout: detect slow-to-respond servers
 		// early, leaving room for body transfer within the overall
 		// http.Client.Timeout.

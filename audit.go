@@ -405,8 +405,10 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 // EmitStartup emits a startup lifecycle event. The "app_name" field
 // is required by the default lifecycle taxonomy; omitting it returns a
 // validation error. [Logger.Close] will automatically emit a
-// corresponding shutdown event if EmitStartup was called, using the
-// same app_name.
+// corresponding shutdown event only if EmitStartup returned nil; a
+// failed EmitStartup (validation error, [ErrBufferFull], or
+// [ErrClosed]) leaves the shutdown flag unset and Close will not
+// emit a shutdown event.
 //
 // EmitStartup MUST be called before [Logger.Close]; calling it after
 // returns [ErrClosed]. On a disabled logger (where [Config.Enabled] is

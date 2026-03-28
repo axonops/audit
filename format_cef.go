@@ -17,7 +17,6 @@ package audit
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -183,8 +182,8 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 
 // writeFieldExtensions writes all user-defined fields as CEF
 // extensions into buf, starting at extStart. Fields whose mapped
-// extension key collides with a reserved framework key are skipped
-// with a slog warning.
+// extension key collides with a reserved framework key are silently
+// skipped.
 func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string, reserved map[string]struct{}) error {
 	allKeys := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
@@ -196,9 +195,11 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 			continue
 		}
 		extKey := mapFieldKey(k, mapping)
+		// Skip fields whose mapped key collides with a framework-
+		// emitted extension key (rt, act, cn1, cn1Label). Collision
+		// is a consumer mapping misconfiguration; it is silently
+		// skipped to avoid per-event log flooding.
 		if _, dup := reserved[extKey]; dup {
-			slog.Warn("audit: cef: skipping field with reserved extension key",
-				"field", k, "ext_key", extKey)
 			continue
 		}
 		if err := validateExtKey(extKey); err != nil {

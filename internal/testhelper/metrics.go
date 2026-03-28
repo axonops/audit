@@ -37,10 +37,13 @@ type MockMetrics struct {
 	SerializationErrors map[string]int // eventType -> count
 	FileRotations       map[string]int // path -> count
 	SyslogReconnects    map[string]int // "address:success|failure" -> count
-	EventCh             chan struct{}  // signalled on every RecordEvent call
-	Mu                  sync.Mutex
-	BufferDrops         int
-	WebhookDrops        int
+	// EventCh is signalled (non-blocking) on every RecordEvent call.
+	// It is buffered to 1000 entries and is consumed internally by
+	// [MockMetrics.WaitForMetric]; consumers do not need to read it.
+	EventCh      chan struct{}
+	Mu           sync.Mutex
+	BufferDrops  int
+	WebhookDrops int
 }
 
 // NewMockMetrics creates a ready-to-use MockMetrics.
@@ -138,8 +141,11 @@ func (m *MockMetrics) RecordSyslogReconnect(address string, success bool) {
 	m.SyslogReconnects[key]++
 }
 
-// WaitForMetric blocks until the event metric for key reaches at least
-// n, or timeout expires. Returns true if the condition was met.
+// WaitForMetric blocks until the event metric for key reaches at least n,
+// or until timeout expires. The key format is "outputName:status" — the
+// same string [MockMetrics.RecordEvent] indexes into Events (e.g.
+// "test-out:success"). Returns true if the count reached n within the
+// deadline; returns false on timeout.
 func (m *MockMetrics) WaitForMetric(key string, n int, timeout time.Duration) bool {
 	deadline := time.After(timeout)
 	for {

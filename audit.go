@@ -205,7 +205,9 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	return l.enqueue(entry)
 }
 
-// enqueue attempts a non-blocking send to the async channel.
+// enqueue attempts a non-blocking send to the async channel. On
+// buffer-full, the entry is returned to the pool to avoid leaking
+// pooled objects.
 func (l *Logger) enqueue(entry *auditEntry) error {
 	select {
 	case l.ch <- entry:
@@ -217,6 +219,10 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
+		// Return dropped entry to pool.
+		entry.eventType = ""
+		entry.fields = nil
+		auditEntryPool.Put(entry)
 		return ErrBufferFull
 	}
 }

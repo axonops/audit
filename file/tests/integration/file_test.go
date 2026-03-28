@@ -212,6 +212,9 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 
 	assert.Zero(t, writeErrors.Load(), "expected no write errors")
 
+	// Close flushes the buffered writer so file contents are visible.
+	require.NoError(t, out.Close())
+
 	// Read the file and verify every line is valid JSON.
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)

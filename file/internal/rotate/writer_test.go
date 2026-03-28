@@ -159,6 +159,9 @@ func TestWriter_Write_Appends(t *testing.T) {
 	_, err = w.Write([]byte("line2\n"))
 	require.NoError(t, err)
 
+	// Sync flushes the bufio.Writer so file contents are visible.
+	require.NoError(t, w.Sync())
+
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "line1\nline2\n", string(data))
@@ -184,6 +187,8 @@ func TestWriter_Write_RotatesOnSize(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.Write(payload) // 60 > 50 → rotate
 	require.NoError(t, err)
+
+	require.NoError(t, w.Sync())
 
 	// Active file should contain only the last write.
 	data, err := os.ReadFile(path)
@@ -214,6 +219,8 @@ func TestWriter_Write_OversizedPayload(t *testing.T) {
 	// Next write should trigger rotation.
 	_, err = w.Write([]byte("C"))
 	require.NoError(t, err)
+
+	require.NoError(t, w.Sync())
 
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)

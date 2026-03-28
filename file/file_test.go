@@ -39,10 +39,12 @@ func TestFileOutput_Write(t *testing.T) {
 
 	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
 	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
 	require.NoError(t, out.Write(data))
+
+	// Close flushes the buffered writer so file contents are visible.
+	require.NoError(t, out.Close())
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -133,10 +135,10 @@ func TestFileOutput_DefaultConfig(t *testing.T) {
 	// All zero-value fields should get sensible defaults.
 	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
 	// Verify the output is functional.
 	require.NoError(t, out.Write([]byte("test\n")))
+	require.NoError(t, out.Close())
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -256,6 +258,8 @@ func TestFileOutput_MultipleWrites(t *testing.T) {
 		data := []byte(fmt.Sprintf(`{"n":%d}`+"\n", i))
 		require.NoError(t, out.Write(data))
 	}
+
+	require.NoError(t, out.Close())
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)

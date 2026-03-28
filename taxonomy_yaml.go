@@ -101,6 +101,7 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 		return Taxonomy{}, err
 	}
 
+	precomputeTaxonomy(&tax)
 	return tax, nil
 }
 

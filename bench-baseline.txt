@@ -1,0 +1,84 @@
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/go-audit
+cpu: AMD Ryzen 9 7950X 16-Core Processor            
+BenchmarkAudit-32                              	 1430128	       824.5 ns/op	     902 B/op	      15 allocs/op
+BenchmarkAudit-32                              	 1448282	       833.1 ns/op	     871 B/op	      14 allocs/op
+BenchmarkAudit-32                              	 1438576	       843.1 ns/op	     873 B/op	      14 allocs/op
+BenchmarkAudit-32                              	 1426896	       839.6 ns/op	     871 B/op	      14 allocs/op
+BenchmarkAudit-32                              	 1443399	       843.1 ns/op	     870 B/op	      14 allocs/op
+BenchmarkAuditDisabledCategory-32              	13946599	        85.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledCategory-32              	14033958	        85.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledCategory-32              	13695420	        85.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledCategory-32              	13923434	        85.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledCategory-32              	13667892	        85.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledLogger-32                	903897068	         1.422 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledLogger-32                	841141149	         1.369 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledLogger-32                	891795010	         1.427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledLogger-32                	858267518	         1.427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAuditDisabledLogger-32                	899142476	         1.406 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAudit_RealisticFields-32              	  863467	      1503 ns/op	    2107 B/op	      25 allocs/op
+BenchmarkAudit_RealisticFields-32              	 1000000	      1486 ns/op	    2065 B/op	      24 allocs/op
+BenchmarkAudit_RealisticFields-32              	 1000000	      1487 ns/op	    2063 B/op	      24 allocs/op
+BenchmarkAudit_RealisticFields-32              	 1000000	      1481 ns/op	    2058 B/op	      24 allocs/op
+BenchmarkAudit_RealisticFields-32              	 1000000	      1497 ns/op	    2067 B/op	      24 allocs/op
+BenchmarkAudit_Parallel-32                     	 4249851	       241.5 ns/op	     388 B/op	       5 allocs/op
+BenchmarkAudit_Parallel-32                     	 5945073	       207.2 ns/op	     401 B/op	       5 allocs/op
+BenchmarkAudit_Parallel-32                     	 5078179	       218.6 ns/op	     402 B/op	       5 allocs/op
+BenchmarkAudit_Parallel-32                     	 5401429	       193.8 ns/op	     422 B/op	       5 allocs/op
+BenchmarkAudit_Parallel-32                     	 5357908	       217.7 ns/op	     399 B/op	       5 allocs/op
+BenchmarkCopyFields-32                         	 7912266	       168.3 ns/op	     336 B/op	       2 allocs/op
+BenchmarkCopyFields-32                         	 8418493	       154.8 ns/op	     336 B/op	       2 allocs/op
+BenchmarkCopyFields-32                         	 8335777	       143.2 ns/op	     336 B/op	       2 allocs/op
+BenchmarkCopyFields-32                         	 8196066	       202.3 ns/op	     336 B/op	       2 allocs/op
+BenchmarkCopyFields-32                         	 8509297	       164.2 ns/op	     336 B/op	       2 allocs/op
+BenchmarkProcessEntry-32                       	--- FAIL: BenchmarkProcessEntry-32
+    audit_test.go:1947: audit: config validation failed: buffer_size 1000100 exceeds maximum 1000000
+BenchmarkProcessEntry-32                       	--- FAIL: BenchmarkProcessEntry-32
+    audit_test.go:1947: audit: config validation failed: buffer_size 1000100 exceeds maximum 1000000
+BenchmarkProcessEntry-32                       	--- FAIL: BenchmarkProcessEntry-32
+    audit_test.go:1947: audit: config validation failed: buffer_size 1000100 exceeds maximum 1000000
+BenchmarkProcessEntry-32                       	--- FAIL: BenchmarkProcessEntry-32
+    audit_test.go:1947: audit: config validation failed: buffer_size 1000100 exceeds maximum 1000000
+BenchmarkProcessEntry-32                       	--- FAIL: BenchmarkProcessEntry-32
+    audit_test.go:1947: audit: config validation failed: buffer_size 1000100 exceeds maximum 1000000
+BenchmarkFilterCheck-32                        	88122771	        14.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                        	88545620	        13.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                        	89528340	        13.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                        	89083969	        13.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                        	83082400	        13.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32           	796782987	         1.497 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32           	804585482	         1.492 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32           	798699360	         1.496 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32           	792546464	         1.495 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32           	802652014	         1.492 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32    	427862584	         2.813 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32    	428543252	         2.827 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32    	426619849	         2.827 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32    	425137819	         2.798 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32    	424112468	         2.798 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32    	179358759	         6.701 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32    	178867147	         6.711 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32    	175420730	         6.764 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32    	178247402	         6.749 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32    	178054644	         6.717 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32   	347593970	         3.368 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32   	358721268	         3.381 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32   	353300439	         3.438 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32   	358130997	         3.359 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32   	350597884	         3.382 ns/op	       0 B/op	       0 allocs/op
+BenchmarkJSONFormatter_Format-32               	  914952	      1267 ns/op	     985 B/op	      26 allocs/op
+BenchmarkJSONFormatter_Format-32               	  963264	      1209 ns/op	     985 B/op	      26 allocs/op
+BenchmarkJSONFormatter_Format-32               	  924118	      1207 ns/op	     985 B/op	      26 allocs/op
+BenchmarkJSONFormatter_Format-32               	  858502	      1209 ns/op	     985 B/op	      26 allocs/op
+BenchmarkJSONFormatter_Format-32               	  935868	      1223 ns/op	     985 B/op	      26 allocs/op
+BenchmarkCEFFormatter_Format-32                	 1647649	       732.8 ns/op	     400 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format-32                	 1639675	       727.4 ns/op	     400 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format-32                	 1655461	       755.0 ns/op	     400 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format-32                	 1645516	       726.0 ns/op	     400 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format-32                	 1619432	       745.9 ns/op	     400 B/op	       3 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32    	  262820	      4571 ns/op	    4775 B/op	      79 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32    	  255457	      5145 ns/op	    4775 B/op	      79 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32    	  260028	      5082 ns/op	    4775 B/op	      79 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32    	  259016	      5665 ns/op	    4775 B/op	      79 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32    	  259268	      5261 ns/op	    4775 B/op	      79 allocs/op

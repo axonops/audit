@@ -16,6 +16,8 @@ package audit_test
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1755,7 +1757,18 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 // Benchmarks
 // ---------------------------------------------------------------------------
 
+// silenceSlog suppresses slog output during benchmarks so that
+// logger creation messages do not pollute benchmark output. The
+// previous handler is restored via b.Cleanup.
+func silenceSlog(b *testing.B) {
+	b.Helper()
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	b.Cleanup(func() { slog.SetDefault(prev) })
+}
+
 func BenchmarkAudit(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -1781,6 +1794,7 @@ func BenchmarkAudit(b *testing.B) {
 }
 
 func BenchmarkAuditDisabledCategory(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -1802,6 +1816,7 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 }
 
 func BenchmarkAuditDisabledLogger(b *testing.B) {
+	silenceSlog(b)
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: false},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -1828,6 +1843,7 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkAudit_RealisticFields(b *testing.B) {
+	silenceSlog(b)
 	taxonomy := audit.Taxonomy{
 		Version: 1,
 		Categories: map[string][]string{
@@ -1874,6 +1890,7 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 }
 
 func BenchmarkAudit_Parallel(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -1919,6 +1936,7 @@ func BenchmarkCopyFields(b *testing.B) {
 }
 
 func BenchmarkProcessEntry(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: b.N + 100},
@@ -1947,6 +1965,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 }
 
 func BenchmarkFilterCheck(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},

@@ -217,6 +217,44 @@ jobs:
       - name: Build all platforms
         run: make build-all
 
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work
+        run: make workspace
+
+      - name: Cache Go tools
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install tools
+        run: make install-tools
+
+      - name: Run benchmarks
+        run: make bench
+
+      - name: Compare against baseline
+        if: hashFiles('bench-baseline.txt') != ''
+        run: |
+          echo "## Benchmark Comparison" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          $(go env GOPATH)/bin/benchstat bench-baseline.txt bench.txt >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest

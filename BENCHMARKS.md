@@ -1,0 +1,74 @@
+# Benchmark Results
+
+This file tracks benchmark results over time to detect performance regressions and measure optimisation impact.
+
+## How to Use
+
+```bash
+make bench           # Run benchmarks, save to bench.txt
+make bench-save      # Run + save as bench-baseline.txt (committed)
+make bench-compare   # Run + compare against bench-baseline.txt via benchstat
+```
+
+The CI pipeline runs `make bench` on every PR and compares against `bench-baseline.txt` when present.
+
+---
+
+## Current Baseline
+
+**Date:** 2026-03-28
+**Commit:** ad18b6f (perf/missing-benchmarks branch)
+**Go:** 1.26.1
+**CPU:** AMD Ryzen 9 7950X 16-Core (32 threads)
+**OS:** Linux 6.14.0
+
+### Core Audit Path
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|-----------|------:|-----:|----------:|-------|
+| Audit | 840 | 871 | 14 | 3 fields, enabled category |
+| Audit_RealisticFields | 1487 | 2065 | 24 | 10 fields, production-like |
+| Audit_Parallel | 218 | 401 | 5 | 100 goroutines, per-op amortised |
+| AuditDisabledCategory | 86 | 0 | 0 | Fast-path exit |
+| AuditDisabledLogger | 1.4 | 0 | 0 | Config.Enabled=false |
+
+### Caller-Side Helpers
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|-----------|------:|-----:|----------:|-------|
+| CopyFields | 164 | 336 | 2 | 6-field map copy |
+| FilterCheck | 14 | 0 | 0 | isEnabled under RLock |
+
+### Formatters
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|-----------|------:|-----:|----------:|-------|
+| JSONFormatter_Format | 1209 | 985 | 26 | 4 fields |
+| JSONFormatter_Format_LargeEvent | 5145 | 4775 | 79 | 20 fields |
+| CEFFormatter_Format | 733 | 400 | 3 | 4 fields |
+| CEFFormatter_Format_LargeEvent | ~2600 | ~1700 | ~7 | 20 fields (est.) |
+
+### Route Matching
+
+| Benchmark | ns/op | allocs/op | Notes |
+|-----------|------:|----------:|-------|
+| MatchesRoute/empty_route | 1.5 | 0 | Trivial pass-through |
+| MatchesRoute/include_categories | 2.8 | 0 | 4-entry include list |
+| MatchesRoute/exclude_categories | 6.7 | 0 | 3-entry exclude list |
+| MatchesRoute/include_event_types | 3.4 | 0 | 4-entry include list |
+
+### Key Observations
+
+- **JSONFormatter** at 26 allocs/op (4 fields) and 79 allocs/op (20 fields) is the primary optimisation target
+- **Audit_RealisticFields** at 24 allocs/op shows the real per-request cost with production field counts
+- **FilterCheck** at 0 allocs/op is already optimal; contention is the concern (see Audit_Parallel)
+- **MatchesRoute** at 0 allocs/op is already optimal; O(n) scan is the concern for large lists
+- **CopyFields** at 2 allocs/op is the minimum (map header + bucket array)
+
+---
+
+## History
+
+| Date | Commit | Change | Audit allocs | JSON allocs |
+|------|--------|--------|-------------:|------------:|
+| 2026-03-28 | ad18b6f | Initial baseline (10 new benchmarks) | 14 | 26 |

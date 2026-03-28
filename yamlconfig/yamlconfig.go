@@ -25,9 +25,15 @@ import (
 )
 
 // ErrInvalidInput is returned when the YAML input is structurally
-// unsuitable (empty, multi-document, or syntactically invalid).
-// Taxonomy validation errors wrap [audit.ErrTaxonomyInvalid] instead.
+// unsuitable (empty, oversized, multi-document, or syntactically
+// invalid). Taxonomy validation errors wrap
+// [audit.ErrTaxonomyInvalid] instead.
 var ErrInvalidInput = errors.New("yamlconfig: invalid input")
+
+// MaxInputSize is the maximum YAML input size accepted by
+// [ParseTaxonomyYAML]. Inputs exceeding this limit are rejected
+// with [ErrInvalidInput].
+const MaxInputSize = 1 << 20 // 1 MiB
 
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
@@ -64,6 +70,9 @@ type yamlEventDef struct {
 func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 	if len(data) == 0 {
 		return audit.Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
+	}
+	if len(data) > MaxInputSize {
+		return audit.Taxonomy{}, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxInputSize)
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))

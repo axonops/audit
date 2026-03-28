@@ -202,6 +202,17 @@ func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
+func TestParseTaxonomyYAML_OversizedInput(t *testing.T) {
+	data := make([]byte, yamlconfig.MaxInputSize+1)
+	for i := range data {
+		data[i] = ' '
+	}
+	_, err := yamlconfig.ParseTaxonomyYAML(data)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, yamlconfig.ErrInvalidInput)
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
 func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
 	_, err := yamlconfig.ParseTaxonomyYAML([]byte("{{invalid yaml"))
 	require.Error(t, err)

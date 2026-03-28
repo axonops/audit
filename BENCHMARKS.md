@@ -26,11 +26,11 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |
 |-----------|------:|-----:|----------:|-------|
-| Audit | 535 | 713 | 4 | 3 fields, enabled category |
-| Audit_RealisticFields | 800 | 1100 | 6 | 10 fields, production-like |
-| Audit_Parallel | 195 | 400 | 5 | 100 goroutines, per-op amortised |
-| AuditDisabledCategory | 67 | 0 | 0 | Fast-path exit (syncmap) |
-| Audit_EndToEnd | 580 | 720 | 4 | Large buffer, amortised caller cost |
+| Audit | 578 | 704 | 3 | 3 fields, enabled category, pooled entry |
+| Audit_RealisticFields | 913 | 1232 | 5 | 10 fields, production-like |
+| Audit_Parallel | 192 | 395 | 4 | 100 goroutines, per-op amortised |
+| AuditDisabledCategory | 66 | 0 | 0 | Fast-path exit (syncmap) |
+| Audit_EndToEnd | 613 | 698 | 3 | Large buffer, amortised caller cost |
 | AuditDisabledLogger | 1.1 | 0 | 0 | Config.Enabled=false |
 
 ### Caller-Side Helpers
@@ -78,4 +78,5 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | 2026-03-28 | ad18b6f | Initial baseline (10 new benchmarks) | 14 | 26 |
 | 2026-03-28 | c2711e7 | *EventDef pointers + pre-computed fields (#109, #107) | 13 | 25 |
 | 2026-03-28 | 21e6828 | Lock-free filter (syncmap) + atomic route (#100, #110) | 14 | 25 |
-| 2026-03-28 | 636db3e | Buffer pooling + writeJSONString + CEF single-pass (#101) | ~8 | **1** |
+| 2026-03-28 | 636db3e | Buffer pooling + writeJSONString + CEF single-pass (#101) | ~4 | **1** |
+| 2026-03-28 | — | sync.Pool for auditEntry + fix flaky test (#112) | **3** | 1 |

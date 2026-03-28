@@ -442,12 +442,21 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 }
 
 // blockingOutput blocks on Write until blockCh is closed.
+// enteredCh is signalled (once) when Write is first entered, allowing
+// tests to synchronise on the drain goroutine reaching the blocking point.
 type blockingOutput struct {
-	blockCh chan struct{}
-	name    string
+	blockCh   chan struct{}
+	enteredCh chan struct{}
+	name      string
 }
 
 func (b *blockingOutput) Write(_ []byte) error {
+	if b.enteredCh != nil {
+		select {
+		case b.enteredCh <- struct{}{}:
+		default:
+		}
+	}
 	<-b.blockCh
 	return nil
 }
@@ -1109,10 +1118,10 @@ func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 }
 
 func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
-	// Use the blocking output to prevent the drain goroutine from
-	// consuming events, keeping the channel full.
+	// Use a blocking output with an enteredCh signal to synchronise.
 	blockCh := make(chan struct{})
-	blocker := &blockingOutput{name: "test", blockCh: blockCh}
+	enteredCh := make(chan struct{}, 1)
+	blocker := &blockingOutput{name: "test", blockCh: blockCh, enteredCh: enteredCh}
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
@@ -1121,18 +1130,23 @@ func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Fill the channel: first event goes to drain (blocks in Write),
-	// second event fills the 1-slot buffer.
+	// First event: drain goroutine picks it up and blocks in Write.
 	_ = logger.Audit("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	})
+
+	// Wait for the drain goroutine to enter Write (blocking).
+	// This guarantees the channel slot is free for the second event.
+	<-enteredCh
+
+	// Second event fills the 1-slot buffer (drain is blocked).
 	_ = logger.Audit("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "charlie",
 	})
 
-	// Buffer should now be full; EmitStartup should fail.
+	// Buffer is now full; EmitStartup should fail.
 	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
 	assert.ErrorIs(t, err, audit.ErrBufferFull)
 
@@ -1971,6 +1985,42 @@ func BenchmarkAudit_Parallel(b *testing.B) {
 			_ = logger.Audit("schema_register", fields)
 		}
 	})
+}
+
+// BenchmarkAudit_PoolAmortised measures the Audit path under sustained
+// load where the auditEntry pool is warm. Uses a large buffer and
+// extended benchtime to demonstrate amortised pool benefit. The pool
+// reduces GC pressure by reusing auditEntry structs rather than
+// allocating and discarding them on every call.
+func BenchmarkAudit_PoolAmortised(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	// Warm the pool with a few iterations before measuring.
+	for range 1000 {
+		_ = logger.Audit("schema_register", fields)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
 }
 
 func BenchmarkCopyFields(b *testing.B) {

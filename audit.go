@@ -508,7 +508,10 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	def := l.taxonomy.Events[entry.eventType]
 	category := def.Category
 
-	cache := make(map[Formatter][]byte)
+	// Stack-allocated cache for up to 4 unique formatters. Avoids a
+	// per-event map allocation for the common case of 1-3 outputs
+	// sharing the same formatter.
+	var fc formatCache
 
 	for _, oe := range l.entries {
 		if !oe.matchesEvent(entry.eventType, category) {
@@ -518,7 +521,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			continue
 		}
 
-		data := l.formatCached(oe, entry, ts, def, cache)
+		data := l.formatCached(oe, entry, ts, def, &fc)
 		if data == nil {
 			continue
 		}
@@ -526,12 +529,56 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}
 }
 
+// formatCacheSize is the number of unique formatters cached on the
+// stack before falling back to a heap-allocated map.
+const formatCacheSize = 4
+
+// formatCacheEntry pairs a formatter with its serialised output.
+type formatCacheEntry struct {
+	f    Formatter
+	data []byte
+}
+
+// formatCache caches serialised output per unique formatter. For
+// deployments with <= 4 unique formatters (the vast majority), the
+// array is stack-allocated. Falls back to a heap map for larger counts.
+type formatCache struct {
+	m   map[Formatter][]byte // overflow; nil until needed
+	arr [formatCacheSize]formatCacheEntry
+	n   int
+}
+
+func (c *formatCache) get(f Formatter) ([]byte, bool) {
+	for i := range c.n {
+		if c.arr[i].f == f {
+			return c.arr[i].data, true
+		}
+	}
+	if c.m != nil {
+		data, ok := c.m[f]
+		return data, ok
+	}
+	return nil, false
+}
+
+func (c *formatCache) put(f Formatter, data []byte) {
+	if c.n < formatCacheSize {
+		c.arr[c.n] = formatCacheEntry{f: f, data: data}
+		c.n++
+		return
+	}
+	if c.m == nil {
+		c.m = make(map[Formatter][]byte)
+	}
+	c.m[f] = data
+}
+
 // formatCached returns the serialised bytes for the output's formatter,
 // using the cache to avoid redundant serialisation. Returns nil if
 // serialisation failed.
-func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache map[Formatter][]byte) []byte {
+func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache *formatCache) []byte {
 	f := oe.effectiveFormatter(l.formatter)
-	if data, ok := cache[f]; ok {
+	if data, ok := cache.get(f); ok {
 		return data // may be nil if serialisation failed
 	}
 	data, err := f.Format(ts, entry.eventType, entry.fields, def)
@@ -542,10 +589,10 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 		if l.metrics != nil {
 			l.metrics.RecordSerializationError(entry.eventType)
 		}
-		cache[f] = nil // mark as failed
+		cache.put(f, nil) // mark as failed
 		return nil
 	}
-	cache[f] = data
+	cache.put(f, data)
 	return data
 }
 

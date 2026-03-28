@@ -24,3 +24,22 @@ var CopyFieldsForTest = copyFields
 func IsEnabledForTest(l *Logger, eventType string) bool {
 	return l.filter.isEnabled(eventType, l.taxonomy)
 }
+
+// FormatCacheSizeForTest exposes the array capacity constant.
+const FormatCacheSizeForTest = formatCacheSize
+
+// FormatCacheForTest wraps formatCache with exported methods for
+// black-box testing.
+type FormatCacheForTest struct {
+	C formatCache
+}
+
+// Get delegates to the unexported formatCache.get.
+func (w *FormatCacheForTest) Get(f Formatter) ([]byte, bool) {
+	return w.C.get(f)
+}
+
+// Put delegates to the unexported formatCache.put.
+func (w *FormatCacheForTest) Put(f Formatter, data []byte) {
+	w.C.put(f, data)
+}

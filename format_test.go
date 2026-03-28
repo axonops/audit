@@ -1131,10 +1131,6 @@ func TestWriteJSONString(t *testing.T) {
 	}
 }
 
-// TestJSONFormatter_PoolSafety verifies that the sync.Pool buffer reuse
-// does not corrupt cached Format() results. This validates the
-// copy-before-return pattern that prevents the pool-vs-cache race
-// described in issue #101.
 // TestJSONFormatter_TimestampAppendFormat verifies that the
 // ts.AppendFormat + AvailableBuffer pattern produces the same
 // timestamp output as the old json.Marshal(ts.Format(...)) approach.
@@ -1159,6 +1155,10 @@ func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
 		"AppendFormat timestamp must match Format() string")
 }
 
+// TestJSONFormatter_PoolSafety verifies that the sync.Pool buffer
+// reuse does not corrupt cached Format() results. This validates the
+// copy-before-return pattern that prevents the pool-vs-cache race
+// described in issue #101.
 func TestJSONFormatter_PoolSafety(t *testing.T) {
 	f := &audit.JSONFormatter{}
 	def := &audit.EventDef{

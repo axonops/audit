@@ -24,7 +24,9 @@ import (
 )
 
 // cefBufPool caches bytes.Buffer instances for CEFFormatter.Format.
-// Pre-grown to 256 bytes (typical CEF output is ~400 bytes).
+// The New function pre-grows to 256 bytes as a starting hint; the
+// buffer grows on first use and retains capacity, so after warm-up
+// the pool holds buffers large enough for the typical ~400-byte output.
 var cefBufPool = sync.Pool{
 	New: func() any {
 		b := new(bytes.Buffer)
@@ -274,7 +276,8 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 
 // cefEscapeHeader escapes characters in CEF header fields using a
 // single-pass byte scanner. Escapes: \ -> \\, | -> \|, \n -> space,
-// \r -> space. Writes directly to buf to avoid string allocation.
+// \r -> space. Returns the original string unchanged when no escaping
+// is needed, avoiding allocation on the common path.
 func cefEscapeHeader(s string) string {
 	var buf strings.Builder
 	start := 0

@@ -26,9 +26,10 @@ import (
 
 // jsonBufPool caches bytes.Buffer instances for JSONFormatter.Format
 // to avoid per-call heap allocation of the output buffer. Buffers are
-// Reset before return to the pool. The pooled buffer's internal byte
-// slice grows to the typical output size and is reused across calls,
-// eliminating repeated growth allocations.
+// Reset on retrieval from the pool (before each Format call) to ensure
+// a clean slate. The pooled buffer's internal byte slice grows to the
+// typical output size and is reused across calls, eliminating repeated
+// growth allocations.
 var jsonBufPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
 }
@@ -221,7 +222,9 @@ func (e *jsonEncoder) writeField(key string, value any) {
 
 // writeJSONString writes the JSON-encoded form of s directly to buf,
 // producing byte-for-byte identical output to [encoding/json.Marshal]
-// for string values. This includes HTML-safe escaping of <, >, and &.
+// for string values. This includes HTML-safe escaping of <, >, and &,
+// and JavaScript-safe escaping of U+2028/U+2029 line/paragraph
+// separators. Invalid UTF-8 is replaced with \ufffd.
 //
 // Writing directly to the buffer eliminates the per-call allocation
 // that json.Marshal incurs for its return value.

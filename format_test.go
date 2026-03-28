@@ -1215,6 +1215,7 @@ func BenchmarkJSONFormatter_Format(b *testing.B) {
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
+	audit.PrecomputeEventDefForTest(def)
 	ts := time.Now()
 
 	b.ResetTimer()
@@ -1241,6 +1242,7 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
+	audit.PrecomputeEventDefForTest(def)
 	ts := time.Now()
 
 	b.ResetTimer()
@@ -1284,6 +1286,7 @@ func largeEventFixture() (audit.Fields, *audit.EventDef) {
 		"payload_size":  1024,
 		"tags":          "production,critical",
 	}
+	audit.PrecomputeEventDefForTest(def)
 	return fields, def
 }
 

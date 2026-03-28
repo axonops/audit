@@ -30,3 +30,7 @@ var (
 func WriteJSONStringForTest(buf *bytes.Buffer, s string) {
 	writeJSONString(buf, s)
 }
+
+// PrecomputeEventDefForTest exposes precomputeEventDef so benchmarks
+// can use precomputed EventDefs that match production conditions.
+var PrecomputeEventDefForTest = precomputeEventDef

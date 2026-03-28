@@ -27,6 +27,7 @@ install-tools:
 # --- Workspace ---
 
 workspace:
+	@rm -f go.work go.work.sum
 	go work init $(MODULES)
 
 # --- Per-module test targets ---
@@ -89,6 +90,7 @@ vet: vet-all
 
 # --- Format ---
 
+# gofmt ships with the Go toolchain — not installed to GOBIN.
 fmt:
 	gofmt -s -w .
 	$(GOBIN)/goimports -w .
@@ -140,10 +142,10 @@ tidy-check:
 		 cp go.mod go.mod.bak && (cp go.sum go.sum.bak 2>/dev/null; true) && \
 		 go mod tidy && \
 		 diff -q go.mod go.mod.bak > /dev/null 2>&1 && \
-		 ([ ! -f go.sum.bak ] || diff -q go.sum go.sum.bak > /dev/null 2>&1) || \
-		 (echo "ERROR: go mod tidy produced changes in $$mod"; \
-		  mv go.mod.bak go.mod; (mv go.sum.bak go.sum 2>/dev/null; true); exit 1); \
-		 rm -f go.mod.bak go.sum.bak) || exit 1; \
+		 ([ ! -f go.sum.bak ] || diff -q go.sum go.sum.bak > /dev/null 2>&1) && \
+		 rm -f go.mod.bak go.sum.bak || \
+		 { echo "ERROR: go mod tidy produced changes in $$mod"; \
+		   mv go.mod.bak go.mod 2>/dev/null; mv go.sum.bak go.sum 2>/dev/null; exit 1; }) || exit 1; \
 	done
 
 verify:

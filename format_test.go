@@ -967,6 +967,89 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid extension key")
 }
 
+func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
+	baseDef := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"source_ip", "actor_id"},
+	}
+
+	t.Run("rt_collision", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"source_ip": "rt"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":   "ok",
+			"source_ip": "10.0.0.1",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "rt="),
+			"framework rt should appear once, user collision skipped")
+	})
+
+	t.Run("act_collision", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "act"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":  "ok",
+			"actor_id": "alice",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "act="),
+			"framework act should appear once, user collision skipped")
+	})
+
+	t.Run("cn1_with_duration", func(t *testing.T) {
+		def := &audit.EventDef{
+			Category: "write",
+			Required: []string{"outcome"},
+			Optional: []string{"actor_id", "duration_ms"},
+		}
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "cn1"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":     "ok",
+			"actor_id":    "alice",
+			"duration_ms": 500 * time.Millisecond,
+		}, def)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "cn1="),
+			"framework cn1 (duration) should appear once, user collision skipped")
+	})
+
+	t.Run("cn1_without_duration", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "cn1"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":  "ok",
+			"actor_id": "alice",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "cn1="),
+			"cn1 not reserved when duration_ms absent, consumer mapping permitted")
+		assert.Contains(t, output, "cn1=alice")
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Formatter benchmarks
 // ---------------------------------------------------------------------------

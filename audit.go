@@ -370,9 +370,9 @@ func (l *Logger) ClearOutputRoute(outputName string) error {
 	return nil
 }
 
-// GetOutputRoute returns a copy of the current per-output event route
+// OutputRoute returns a copy of the current per-output event route
 // for the named output. An unknown output name returns an error.
-func (l *Logger) GetOutputRoute(outputName string) (EventRoute, error) {
+func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 	oe, ok := l.outputsByName[outputName]
 	if !ok {
 		return EventRoute{}, fmt.Errorf("audit: unknown output %q", outputName)

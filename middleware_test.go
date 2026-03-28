@@ -123,7 +123,7 @@ func TestMiddleware_BasicFlow(t *testing.T) {
 	logger, out := newMiddlewareTestLogger(t)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		require.NotNil(t, hints)
 		hints.Outcome = "success"
 		w.WriteHeader(http.StatusOK)
@@ -156,7 +156,7 @@ func TestMiddleware_HintsPopulatedByHandler(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		hints.Outcome = "success"
 		hints.ActorID = "user-42"
 		hints.ActorType = "user"
@@ -200,7 +200,7 @@ func TestMiddleware_HintsExtra(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		hints.Extra = map[string]any{
 			"tenant_id": "t-123",
 			"org":       "acme",
@@ -244,7 +244,7 @@ func TestMiddleware_PanicRecovery(t *testing.T) {
 	logger, out := newMiddlewareTestLogger(t)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		hints.Outcome = "error"
 		panic("handler exploded")
 	})
@@ -372,7 +372,7 @@ func TestMiddleware_ConcurrentRequests(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		hints.Outcome = "success"
 		hints.ActorID = r.Header.Get("X-Actor")
 		w.WriteHeader(http.StatusOK)
@@ -525,10 +525,10 @@ func TestMiddleware_NilLoggerNilBuilder_NoPanic(t *testing.T) {
 	})
 }
 
-func TestMiddleware_NilLogger_GetHintsReturnsNil(t *testing.T) {
+func TestMiddleware_NilLogger_HintsFromContextReturnsNil(t *testing.T) {
 	var hintsInHandler *audit.Hints
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hintsInHandler = audit.GetHints(r.Context())
+		hintsInHandler = audit.HintsFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -539,7 +539,7 @@ func TestMiddleware_NilLogger_GetHintsReturnsNil(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	mw(handler).ServeHTTP(rec, req)
 
-	assert.Nil(t, hintsInHandler, "GetHints should return nil when logger is nil")
+	assert.Nil(t, hintsInHandler, "HintsFromContext should return nil when logger is nil")
 }
 
 func TestMiddleware_HintsError_PassedToBuilder(t *testing.T) {
@@ -552,7 +552,7 @@ func TestMiddleware_HintsError_PassedToBuilder(t *testing.T) {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		hints.Error = "permission denied"
 		w.WriteHeader(http.StatusForbidden)
 	})

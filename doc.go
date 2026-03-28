@@ -89,7 +89,7 @@
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
-//   - [Hints] — per-request mutable audit metadata; populated by handlers via [GetHints]
+//   - [Hints] — per-request mutable audit metadata; populated by handlers via [HintsFromContext]
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional core instrumentation interface

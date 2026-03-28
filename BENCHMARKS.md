@@ -30,6 +30,7 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | Audit_RealisticFields | 1487 | 2065 | 24 | 10 fields, production-like |
 | Audit_Parallel | 218 | 401 | 5 | 100 goroutines, per-op amortised |
 | AuditDisabledCategory | 86 | 0 | 0 | Fast-path exit |
+| Audit_EndToEnd | 875 | 881 | 14 | Large buffer, amortised caller cost |
 | AuditDisabledLogger | 1.4 | 0 | 0 | Config.Enabled=false |
 
 ### Caller-Side Helpers
@@ -46,7 +47,7 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | JSONFormatter_Format | 1209 | 985 | 26 | 4 fields |
 | JSONFormatter_Format_LargeEvent | 5145 | 4775 | 79 | 20 fields |
 | CEFFormatter_Format | 733 | 400 | 3 | 4 fields |
-| CEFFormatter_Format_LargeEvent | ~2600 | ~1700 | ~7 | 20 fields (est.) |
+| CEFFormatter_Format_LargeEvent | 3290 | 3456 | 10 | 20 fields |
 
 ### Route Matching
 

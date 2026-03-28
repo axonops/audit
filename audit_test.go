@@ -1935,11 +1935,16 @@ func BenchmarkCopyFields(b *testing.B) {
 	}
 }
 
-func BenchmarkProcessEntry(b *testing.B) {
+// BenchmarkAudit_EndToEnd measures the full Audit() path including
+// enqueue with a large buffer. Events that overflow are silently
+// dropped — the benchmark measures the amortised caller-side cost
+// under sustained load. Drain-path (format + write) cost is measured
+// separately by the formatter benchmarks.
+func BenchmarkAudit_EndToEnd(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: b.N + 100},
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -1960,7 +1965,6 @@ func BenchmarkProcessEntry(b *testing.B) {
 	}
 	b.StopTimer()
 
-	// Drain all events before cleanup.
 	_ = logger.Close()
 }
 

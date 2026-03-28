@@ -38,10 +38,10 @@ const MaxInputSize = 1 << 20 // 1 MiB
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
 type yamlTaxonomy struct {
-	Version        int                     `yaml:"version"`
 	Categories     map[string][]string     `yaml:"categories"`
 	Events         map[string]yamlEventDef `yaml:"events"`
 	DefaultEnabled []string                `yaml:"default_enabled"`
+	Version        int                     `yaml:"version"`
 }
 
 // yamlEventDef is the intermediate representation of a single event
@@ -80,7 +80,7 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		return audit.Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 
 	// Reject multi-document YAML and trailing content.
@@ -88,18 +88,18 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 	if err := dec.Decode(&discard); err == nil {
 		return audit.Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	} else if !errors.Is(err, io.EOF) {
-		return audit.Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err)
+		return audit.Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %w", ErrInvalidInput, err)
 	}
 
 	tax := convert(yt)
 	audit.InjectLifecycleEvents(&tax)
 
 	if err := audit.MigrateTaxonomy(&tax); err != nil {
-		return audit.Taxonomy{}, err
+		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: %w", err)
 	}
 
 	if err := audit.ValidateTaxonomy(tax); err != nil {
-		return audit.Taxonomy{}, err
+		return audit.Taxonomy{}, fmt.Errorf("yamlconfig: %w", err)
 	}
 
 	return tax, nil

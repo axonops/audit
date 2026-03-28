@@ -733,6 +733,7 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := yamlconfig.ParseTaxonomyYAML([]byte(tt.yaml))
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)

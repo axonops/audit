@@ -16,6 +16,8 @@ package audit_test
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1755,7 +1757,18 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 // Benchmarks
 // ---------------------------------------------------------------------------
 
+// silenceSlog suppresses slog output during benchmarks so that
+// logger creation messages do not pollute benchmark output. The
+// previous handler is restored via b.Cleanup.
+func silenceSlog(b *testing.B) {
+	b.Helper()
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	b.Cleanup(func() { slog.SetDefault(prev) })
+}
+
 func BenchmarkAudit(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -1781,6 +1794,7 @@ func BenchmarkAudit(b *testing.B) {
 }
 
 func BenchmarkAuditDisabledCategory(b *testing.B) {
+	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -1802,6 +1816,7 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 }
 
 func BenchmarkAuditDisabledLogger(b *testing.B) {
+	silenceSlog(b)
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: false},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -1820,5 +1835,155 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = logger.Audit("auth_failure", fields)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional benchmarks — caller path
+// ---------------------------------------------------------------------------
+
+func BenchmarkAudit_RealisticFields(b *testing.B) {
+	silenceSlog(b)
+	taxonomy := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"write": {"api_request"},
+		},
+		Events: map[string]audit.EventDef{
+			"api_request": {
+				Category: "write",
+				Required: []string{"outcome", "actor_id", "method", "path"},
+				Optional: []string{"source_ip", "request_id", "user_agent", "subject", "schema_type", "version"},
+			},
+		},
+		DefaultEnabled: []string{"write"},
+	}
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"method":      "POST",
+		"path":        "/api/v1/schemas",
+		"source_ip":   "10.0.0.1",
+		"request_id":  "550e8400-e29b-41d4-a716-446655440000",
+		"user_agent":  "go-audit-client/1.0",
+		"subject":     "my-topic",
+		"schema_type": "avro",
+		"version":     1,
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("api_request", fields)
+	}
+}
+
+func BenchmarkAudit_Parallel(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.SetParallelism(100)
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = logger.Audit("schema_register", fields)
+		}
+	})
+}
+
+func BenchmarkCopyFields(b *testing.B) {
+	fields := audit.Fields{
+		"outcome":    "success",
+		"actor_id":   "alice",
+		"source_ip":  "10.0.0.1",
+		"request_id": "550e8400-e29b-41d4-a716-446655440000",
+		"method":     "POST",
+		"path":       "/api/v1/schemas",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = audit.CopyFieldsForTest(fields)
+	}
+}
+
+// BenchmarkAudit_EndToEnd measures the full Audit() path including
+// enqueue with a large buffer. Events that overflow are silently
+// dropped — the benchmark measures the amortised caller-side cost
+// under sustained load. Drain-path (format + write) cost is measured
+// separately by the formatter benchmarks.
+func BenchmarkAudit_EndToEnd(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.Audit("schema_register", fields)
+	}
+	b.StopTimer()
+
+	_ = logger.Close()
+}
+
+func BenchmarkFilterCheck(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = audit.IsEnabledForTest(logger, "schema_register")
 	}
 }

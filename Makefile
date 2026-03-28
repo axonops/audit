@@ -2,7 +2,7 @@
        test-integration test-bdd \
        lint lint-all lint-core lint-file lint-syslog lint-webhook \
        vet vet-all fmt fmt-check \
-       build build-all bench coverage \
+       build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
        security release-check check clean \
        install-tools workspace
@@ -22,6 +22,7 @@ install-tools:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/vuln/cmd/govulncheck@latest
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/tools/cmd/goimports@latest
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@latest
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@latest
 	@echo "Tools installed to $(GOBIN)"
 
 # --- Workspace ---
@@ -111,7 +112,22 @@ build: build-all
 # --- Benchmarks ---
 
 bench:
-	go test -bench=. -benchmem -count=3 ./... | tee bench.txt
+	@for mod in $(MODULES); do \
+		echo "=== bench $$mod ==="; \
+		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./...) || exit 1; \
+	done | tee bench.txt
+
+bench-save: bench
+	cp bench.txt bench-baseline.txt
+	@echo "Baseline saved to bench-baseline.txt"
+
+bench-compare: bench
+	@if [ -f bench-baseline.txt ]; then \
+		$(GOBIN)/benchstat bench-baseline.txt bench.txt; \
+	else \
+		echo "No bench-baseline.txt found. Run 'make bench-save' first."; \
+		exit 1; \
+	fi
 
 # --- Coverage ---
 

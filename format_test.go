@@ -1124,7 +1124,8 @@ func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(data, &m))
 
-	got := m["timestamp"].(string)
+	got, ok := m["timestamp"].(string)
+	require.True(t, ok, "timestamp should be a string")
 	want := ts.Format(time.RFC3339Nano)
 	assert.Equal(t, want, got,
 		"AppendFormat timestamp must match Format() string")
@@ -1162,7 +1163,7 @@ func TestWriteJSONString_QuickCheck(t *testing.T) {
 		if err != nil {
 			return false
 		}
-		return string(buf.Bytes()) == string(want)
+		return bytes.Equal(buf.Bytes(), want)
 	}
 	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
 		t.Errorf("writeJSONString diverges from json.Marshal: %v", err)

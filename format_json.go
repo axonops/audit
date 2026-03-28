@@ -54,7 +54,10 @@ type JSONFormatter struct {
 
 // Format serialises a single audit event as a JSON line.
 func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
-	buf := jsonBufPool.Get().(*bytes.Buffer)
+	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
 	buf.Reset()
 	buf.WriteByte('{')
 
@@ -169,7 +172,7 @@ func (e *jsonEncoder) writeKey(key string) {
 	e.buf.WriteByte(':')
 }
 
-//nolint:cyclop // flat type switch over common field types; linear, not true complexity
+//nolint:cyclop,gocyclo // flat type switch over common field types; linear, not true complexity
 func (e *jsonEncoder) writeField(key string, value any) {
 	if e.omitEmpty && isZeroValue(value) {
 		return
@@ -222,33 +225,17 @@ func (e *jsonEncoder) writeField(key string, value any) {
 //
 // Writing directly to the buffer eliminates the per-call allocation
 // that json.Marshal incurs for its return value.
+//
+//nolint:gocyclo,cyclop // single-pass byte scanner; complexity is inherent in JSON escaping rules
 func writeJSONString(buf *bytes.Buffer, s string) {
 	buf.WriteByte('"')
 	start := 0
 	for i := 0; i < len(s); {
 		b := s[i]
 		if b >= utf8.RuneSelf {
-			r, size := utf8.DecodeRuneInString(s[i:])
-			if r == utf8.RuneError && size == 1 {
-				buf.WriteString(s[start:i])
-				buf.WriteString(`\ufffd`)
-				i += size
-				start = i
-			} else if r == '\u2028' || r == '\u2029' {
-				// Line/paragraph separators must be escaped
-				// (matching json.Marshal).
-				buf.WriteString(s[start:i])
-				buf.WriteString(`\u202`)
-				if r == '\u2028' {
-					buf.WriteByte('8')
-				} else {
-					buf.WriteByte('9')
-				}
-				i += size
-				start = i
-			} else {
-				i += size
-			}
+			start = writeJSONMultibyte(buf, s, i, start)
+			_, size := utf8.DecodeRuneInString(s[i:])
+			i += size
 			continue
 		}
 		if jsonSafeASCII[b] {
@@ -284,6 +271,28 @@ func writeJSONString(buf *bytes.Buffer, s string) {
 	buf.WriteByte('"')
 }
 
+// writeJSONMultibyte handles multi-byte UTF-8 sequences in
+// writeJSONString. Returns the updated start position.
+func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) int {
+	r, size := utf8.DecodeRuneInString(s[i:])
+	switch {
+	case r == utf8.RuneError && size == 1:
+		buf.WriteString(s[start:i])
+		buf.WriteString(`\ufffd`)
+		return i + size
+	case r == '\u2028':
+		buf.WriteString(s[start:i])
+		buf.WriteString(`\u2028`)
+		return i + size
+	case r == '\u2029':
+		buf.WriteString(s[start:i])
+		buf.WriteString(`\u2029`)
+		return i + size
+	default:
+		return start // no escape needed; continue accumulating
+	}
+}
+
 const hexDigits = "0123456789abcdef"
 
 // jsonSafeASCII marks ASCII bytes safe to pass through writeJSONString
@@ -295,7 +304,7 @@ var jsonSafeASCII = func() [256]bool {
 	}
 	t['"'] = false
 	t['\\'] = false
-	t['<'] = false  // HTML-safe escaping (matches json.Marshal)
+	t['<'] = false // HTML-safe escaping (matches json.Marshal)
 	t['>'] = false
 	t['&'] = false
 	return t

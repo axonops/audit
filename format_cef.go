@@ -137,7 +137,10 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	description := cf.description(eventType)
 	mapping := cf.fieldMapping()
 
-	buf := cefBufPool.Get().(*bytes.Buffer)
+	buf, ok := cefBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
 	buf.Reset()
 
 	// Write header: CEF:0|vendor|product|version|eventType|description|severity|

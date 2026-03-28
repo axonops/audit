@@ -23,6 +23,16 @@ import (
 	"time"
 )
 
+// cefBufPool caches bytes.Buffer instances for CEFFormatter.Format.
+// Pre-grown to 256 bytes (typical CEF output is ~400 bytes).
+var cefBufPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(256)
+		return b
+	},
+}
+
 // defaultCEFFieldMappingEntries returns a new map containing the
 // built-in audit-field-to-CEF-extension-key mapping. Each call returns
 // a distinct map instance; callers may mutate the result without
@@ -127,8 +137,8 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	description := cf.description(eventType)
 	mapping := cf.fieldMapping()
 
-	var buf bytes.Buffer
-	buf.Grow(256)
+	buf := cefBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
 
 	// Write header: CEF:0|vendor|product|version|eventType|description|severity|
 	buf.WriteString("CEF:0|")
@@ -149,10 +159,10 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	extStart := buf.Len()
 
 	// Timestamp as receipt time (epoch ms).
-	writeExtField(&buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
+	writeExtField(buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
 
 	// Event type as device action.
-	writeExtField(&buf, extStart, "act", eventType)
+	writeExtField(buf, extStart, "act", eventType)
 
 	// Build reserved key set from framework-emitted extension keys.
 	reserved := map[string]struct{}{
@@ -163,21 +173,27 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	// Duration if present as time.Duration.
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
-			writeExtField(&buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
-			writeExtField(&buf, extStart, "cn1Label", "durationMs")
+			writeExtField(buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
+			writeExtField(buf, extStart, "cn1Label", "durationMs")
 			reserved["cn1"] = struct{}{}
 			reserved["cn1Label"] = struct{}{}
 		}
 	}
 
 	// All fields via mapping.
-	if err := cf.writeFieldExtensions(&buf, extStart, fields, def, mapping, reserved); err != nil {
+	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved); err != nil {
+		cefBufPool.Put(buf)
 		return nil, err
 	}
 
 	buf.WriteByte('\n')
-	// Safe: buf is local and not reused; Bytes() is the sole reference.
-	return buf.Bytes(), nil
+
+	// Copy before returning the buffer to the pool. See jsonBufPool
+	// comment in format_json.go for the rationale.
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	cefBufPool.Put(buf)
+	return out, nil
 }
 
 // writeFieldExtensions writes all user-defined fields as CEF

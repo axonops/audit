@@ -19,8 +19,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 )
+
+// jsonBufPool caches bytes.Buffer instances for JSONFormatter.Format
+// to avoid per-call heap allocation of the output buffer. Buffers are
+// Reset before return to the pool. The pooled buffer's internal byte
+// slice grows to the typical output size and is reused across calls,
+// eliminating repeated growth allocations.
+var jsonBufPool = sync.Pool{
+	New: func() any { return new(bytes.Buffer) },
+}
 
 // JSONFormatter serialises audit events as line-delimited JSON.
 //
@@ -43,10 +53,11 @@ type JSONFormatter struct {
 
 // Format serialises a single audit event as a JSON line.
 func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
-	var buf bytes.Buffer
+	buf := jsonBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
 	buf.WriteByte('{')
 
-	enc := &jsonEncoder{buf: &buf, omitEmpty: jf.OmitEmpty}
+	enc := &jsonEncoder{buf: buf, omitEmpty: jf.OmitEmpty}
 
 	// Framework fields first.
 	enc.writeTimestamp(ts, jf.tsFormat())
@@ -72,9 +83,18 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 	buf.WriteByte('\n')
 
 	if enc.err != nil {
+		jsonBufPool.Put(buf)
 		return nil, fmt.Errorf("audit: json format: %w", enc.err)
 	}
-	return buf.Bytes(), nil
+
+	// Copy before returning the buffer to the pool. formatCached in
+	// audit.go stores Format() results in a cache spanning multiple
+	// output Write() calls — returning a slice backed by the pooled
+	// buffer would cause corruption when the buffer is reused.
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	jsonBufPool.Put(buf)
+	return out, nil
 }
 
 func (jf *JSONFormatter) tsFormat() TimestampFormat {

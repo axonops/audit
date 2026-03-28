@@ -82,6 +82,8 @@ type Logger struct {
 	closeOnce       sync.Once
 	closed          atomic.Bool
 	startupEmitted  atomic.Bool
+	// usedWithOutputs is set during construction when WithOutputs is
+	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool
 }
 

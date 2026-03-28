@@ -140,7 +140,9 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 		TLSHandshakeTimeout: 10 * time.Second,
 		// Half the client timeout: detect slow-to-respond servers
 		// early, leaving room for body transfer within the overall
-		// http.Client.Timeout.
+		// http.Client.Timeout. Zero result for very small timeouts
+		// is harmless: http.Client.Timeout still enforces the
+		// overall deadline.
 		ResponseHeaderTimeout: cfg.Timeout / 2,
 	}
 

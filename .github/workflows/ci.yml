@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feature/**']
+    branches: [main, 'feature/**', 'fix/**', 'chore/**']
   pull_request:
     branches: [main]
   workflow_call: {}
@@ -16,13 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint (${{ matrix.module }})
+  hygiene:
+    name: Hygiene
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      matrix:
-        module: [".", "file", "syslog", "webhook", "yamlconfig"]
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,29 +31,48 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook yamlconfig
+        run: make workspace
 
-      - name: Check gofmt
-        run: |
-          DIFF=$(cd ${{ matrix.module }} && gofmt -l .)
-          if [ -n "$DIFF" ]; then
-            echo "Files not formatted in ${{ matrix.module }}:"
-            echo "$DIFF"
-            exit 1
-          fi
+      - name: Install tools
+        run: make install-tools
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Check module tidiness
+        run: make tidy-check
+
+      - name: Check orphaned TODOs
+        run: make check-todos
+
+      - name: Check replace directives
+        run: make check-replace
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work
+        run: make workspace
+
+      - name: Install tools
+        run: make install-tools
 
       - name: Run go vet
-        run: cd ${{ matrix.module }} && go vet ./...
+        run: make vet-all
 
-      # goinstall builds golangci-lint from source with the Go 1.26
-      # toolchain since prebuilt binaries do not yet support Go 1.26.
-      # Switch back to install-mode: binary when available.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
-        with:
-          version: v2.1.6
-          install-mode: goinstall
-          working-directory: ${{ matrix.module }}
+        run: make lint-all
 
   validate-release:
     name: Validate GoReleaser Config
@@ -73,32 +89,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  check-replace:
-    name: No Replace Directives
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Reject replace directives
-        run: |
-          FAILED=0
-          for mod in . file syslog webhook yamlconfig; do
-            if grep -q "^replace " "$mod/go.mod" 2>/dev/null; then
-              echo "ERROR: $mod/go.mod contains replace directive"
-              FAILED=1
-            fi
-          done
-          if [ "$FAILED" -eq 1 ]; then exit 1; fi
-
   test:
     name: Test (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       matrix:
-        module: [".", "file", "syslog", "webhook", "yamlconfig"]
+        include:
+          - module: "."
+            target: test-core
+            flag: core
+          - module: file
+            target: test-file
+            flag: file
+          - module: syslog
+            target: test-syslog
+            flag: syslog
+          - module: webhook
+            target: test-webhook
+            flag: webhook
+          - module: yamlconfig
+            target: test-yamlconfig
+            flag: yamlconfig
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -110,16 +122,19 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook yamlconfig
+        run: make workspace
 
       - name: Run unit tests
+        run: make ${{ matrix.target }}
+
+      - name: Generate coverage
         run: cd ${{ matrix.module }} && go test -race -count=1 -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           files: ${{ matrix.module }}/coverage.out
-          flags: ${{ matrix.module == '.' && 'core' || matrix.module }}
+          flags: ${{ matrix.flag }}
           fail_ci_if_error: false
 
   integration:
@@ -138,12 +153,10 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook yamlconfig
+        run: make workspace
 
       - name: Run integration tests
-        run: |
-          cd file && go test -race -count=1 -tags=integration ./tests/integration/...
-          cd ../syslog && go test -race -count=1 -tags=integration ./tests/integration/...
+        run: make test-integration
 
   security:
     name: Security Scan
@@ -160,37 +173,22 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook yamlconfig
+        run: make workspace
+
+      - name: Install tools
+        run: make install-tools
 
       - name: Run govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          for mod in . file syslog webhook yamlconfig; do
-            echo "=== govulncheck $mod ==="
-            (cd $mod && govulncheck ./...) || exit 1
-          done
+        run: make security
 
       - name: Verify go.sum integrity
-        run: |
-          for mod in . file syslog webhook yamlconfig; do
-            echo "=== go mod verify $mod ==="
-            (cd $mod && go mod verify) || exit 1
-          done
+        run: make verify
 
   cross-build:
-    name: Cross Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    name: Cross Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint]
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -202,22 +200,15 @@ jobs:
           cache: true
 
       - name: Set up go.work
-        run: go work init . file syslog webhook yamlconfig
+        run: make workspace
 
-      - name: Build all modules
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          for mod in . file syslog webhook yamlconfig; do
-            echo "=== build $mod ==="
-            (cd $mod && go build ./...) || exit 1
-          done
+      - name: Build all platforms
+        run: make build-all
 
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
-    needs: [lint, test, integration, security, cross-build, check-replace, validate-release]
+    needs: [hygiene, lint, test, integration, security, cross-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed

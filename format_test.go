@@ -205,6 +205,24 @@ func TestJSONFormatter_TimestampUnixMillis(t *testing.T) {
 	assert.Equal(t, float64(testTime.UnixMilli()), ts)
 }
 
+func TestJSONFormatter_UnrecognisedTimestampFormat(t *testing.T) {
+	f := &audit.JSONFormatter{Timestamp: audit.TimestampFormat("bogus")}
+	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m), "output must be valid JSON")
+
+	ts, ok := m["timestamp"].(string)
+	require.True(t, ok, "timestamp should be a string (RFC3339Nano fallback)")
+	parsed, err := time.Parse(time.RFC3339Nano, ts)
+	require.NoError(t, err, "timestamp should parse as RFC3339Nano")
+	assert.Equal(t, testTime, parsed)
+}
+
 func TestJSONFormatter_OmitEmptyTrue(t *testing.T) {
 	f := &audit.JSONFormatter{OmitEmpty: true}
 	data, err := f.Format(testTime, "schema_register", audit.Fields{

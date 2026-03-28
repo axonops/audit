@@ -80,8 +80,9 @@ type Logger struct {
 	wg             sync.WaitGroup
 	mu             sync.RWMutex
 	closeOnce      sync.Once
-	closed         atomic.Bool
-	startupEmitted atomic.Bool
+	closed          atomic.Bool
+	startupEmitted  atomic.Bool
+	usedWithOutputs bool
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration

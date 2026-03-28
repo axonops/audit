@@ -172,6 +172,19 @@ func TestFanout_WithOutputs_AfterWithNamedOutput_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot be used with WithNamedOutput")
 }
 
+func TestFanout_WithNamedOutput_AfterWithOutputs_Error(t *testing.T) {
+	out1 := testhelper.NewMockOutput("plain")
+	out2 := testhelper.NewMockOutput("named")
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out1),
+		audit.WithNamedOutput(out2, &audit.EventRoute{}, nil), // should error
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used with WithOutputs")
+}
+
 func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	_, err := audit.NewLogger(

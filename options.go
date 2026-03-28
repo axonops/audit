@@ -92,6 +92,7 @@ func WithOutputs(outputs ...Output) Option {
 		}
 		l.entries = entries
 		l.outputsByName = byName
+		l.usedWithOutputs = true
 		return nil
 	}
 }
@@ -106,6 +107,9 @@ func WithOutputs(outputs ...Output) Option {
 // the taxonomy after all options have been applied.
 func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Option {
 	return func(l *Logger) error {
+		if l.usedWithOutputs {
+			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
+		}
 		name := output.Name()
 		if l.outputsByName == nil {
 			l.outputsByName = make(map[string]*outputEntry)

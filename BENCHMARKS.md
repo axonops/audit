@@ -74,3 +74,4 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 |------|--------|--------|-------------:|------------:|
 | 2026-03-28 | ad18b6f | Initial baseline (10 new benchmarks) | 14 | 26 |
 | 2026-03-28 | c2711e7 | *EventDef pointers + pre-computed fields (#109, #107) | 13 | 25 |
+| 2026-03-28 | 21e6828 | Lock-free filter (syncmap) + atomic route (#100, #110) | 14 | 25 |

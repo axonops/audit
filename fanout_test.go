@@ -600,3 +600,41 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 	assert.Equal(t, 0, badOut.EventCount(),
 		"bad output should receive nothing due to formatter error")
 }
+
+func TestFanout_ConcurrentRouteUpdate(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithNamedOutput(out, nil, nil),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// Concurrently update routes while sending events.
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Writer goroutine: toggle route on/off.
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = logger.SetOutputRoute("test", &audit.EventRoute{
+				IncludeCategories: []string{"write"},
+			})
+			_ = logger.ClearOutputRoute("test")
+		}
+	}()
+
+	// Reader goroutine: send events.
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = logger.Audit("user_create", audit.Fields{"outcome": "success"})
+		}
+	}()
+
+	wg.Wait()
+	// No assertion on event count — the test verifies no race or panic
+	// under concurrent route mutation and event delivery.
+}

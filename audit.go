@@ -65,7 +65,7 @@ var (
 type Logger struct {
 	startupAppName atomic.Value
 	closeErr       error
-	filter         filterState
+	filter         *filterState
 	metrics        Metrics
 	formatter      Formatter
 	ch             chan *auditEntry
@@ -115,15 +115,8 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
-	// Validate per-output event routes against the taxonomy.
-	for _, oe := range l.entries {
-		route := oe.route.Load()
-		if route == nil {
-			continue
-		}
-		if err := ValidateEventRoute(route, l.taxonomy); err != nil {
-			return nil, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
-		}
+	if err := l.validateOutputRoutes(); err != nil {
+		return nil, err
 	}
 
 	// Default formatter if WithFormatter was not called.
@@ -274,6 +267,21 @@ func (l *Logger) waitForDrain() {
 			"drain_timeout", l.cfg.DrainTimeout,
 			"buffer_remaining", len(l.ch))
 	}
+}
+
+// validateOutputRoutes checks all per-output event routes against
+// the taxonomy.
+func (l *Logger) validateOutputRoutes() error {
+	for _, oe := range l.entries {
+		route := oe.route.Load()
+		if route == nil {
+			continue
+		}
+		if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+			return fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
+		}
+	}
+	return nil
 }
 
 // EnableCategory enables all events in the named category. The

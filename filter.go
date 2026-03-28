@@ -157,8 +157,8 @@ type filterState struct {
 
 // newFilterState initialises a filterState from the taxonomy's
 // DefaultEnabled list and the full set of categories.
-func newFilterState(t *Taxonomy) filterState {
-	var f filterState
+func newFilterState(t *Taxonomy) *filterState {
+	f := &filterState{}
 	for cat := range t.Categories {
 		f.enabledCategories.Store(cat, false)
 	}

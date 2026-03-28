@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taxonomy
+package audit
 
 import (
 	"bytes"
@@ -20,20 +20,19 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/axonops/go-audit"
 	"gopkg.in/yaml.v3"
 )
 
-// ErrInvalidInput is returned when the YAML input is structurally
-// unsuitable (empty, oversized, multi-document, or syntactically
-// invalid). Taxonomy validation errors wrap
-// [audit.ErrTaxonomyInvalid] instead.
-var ErrInvalidInput = errors.New("taxonomy: invalid input")
+// ErrInvalidInput is returned when the YAML input to
+// [ParseTaxonomyYAML] is structurally unsuitable (empty, oversized,
+// multi-document, or syntactically invalid). Taxonomy validation
+// errors wrap [ErrTaxonomyInvalid] instead.
+var ErrInvalidInput = errors.New("audit: invalid input")
 
-// MaxInputSize is the maximum YAML input size accepted by
-// [ParseYAML]. Inputs exceeding this limit are rejected
+// MaxTaxonomyInputSize is the maximum YAML input size accepted by
+// [ParseTaxonomyYAML]. Inputs exceeding this limit are rejected
 // with [ErrInvalidInput].
-const MaxInputSize = 1 << 20 // 1 MiB
+const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
@@ -52,27 +51,27 @@ type yamlEventDef struct {
 	Optional []string `yaml:"optional"`
 }
 
-// ParseYAML parses a YAML document into an [audit.Taxonomy].
+// ParseTaxonomyYAML parses a YAML document into a [Taxonomy].
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
 //
 // The returned Taxonomy is fully migrated, validated, and
-// lifecycle-injected. Passing it to [audit.WithTaxonomy] is safe;
+// lifecycle-injected. Passing it to [WithTaxonomy] is safe;
 // migration, injection, and validation run again inside WithTaxonomy
 // but produce no additional errors for a well-formed taxonomy.
 //
-// Input errors (empty, multi-document, invalid syntax) wrap
+// Input errors (empty, oversized, multi-document, invalid syntax) wrap
 // [ErrInvalidInput]. Taxonomy validation errors wrap
-// [audit.ErrTaxonomyInvalid].
+// [ErrTaxonomyInvalid].
 //
-// ParseYAML accepts []byte only — no file paths, no readers.
+// ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
 // Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
-func ParseYAML(data []byte) (audit.Taxonomy, error) {
+func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 	if len(data) == 0 {
-		return audit.Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
+		return Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
 	}
-	if len(data) > MaxInputSize {
-		return audit.Taxonomy{}, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxInputSize)
+	if len(data) > MaxTaxonomyInputSize {
+		return Taxonomy{}, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxTaxonomyInputSize)
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -80,34 +79,34 @@ func ParseYAML(data []byte) (audit.Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		return Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
 
 	// Reject multi-document YAML and trailing content.
 	var discard yaml.Node
 	if err := dec.Decode(&discard); err == nil {
-		return audit.Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
+		return Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	} else if !errors.Is(err, io.EOF) {
-		return audit.Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %w", ErrInvalidInput, err)
+		return Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %w", ErrInvalidInput, err)
 	}
 
-	tax := convert(yt)
-	audit.InjectLifecycleEvents(&tax)
+	tax := convertYAMLTaxonomy(yt)
+	InjectLifecycleEvents(&tax)
 
-	if err := audit.MigrateTaxonomy(&tax); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("taxonomy: %w", err)
+	if err := MigrateTaxonomy(&tax); err != nil {
+		return Taxonomy{}, err
 	}
 
-	if err := audit.ValidateTaxonomy(tax); err != nil {
-		return audit.Taxonomy{}, fmt.Errorf("taxonomy: %w", err)
+	if err := ValidateTaxonomy(tax); err != nil {
+		return Taxonomy{}, err
 	}
 
 	return tax, nil
 }
 
-// convert transforms the intermediate yamlTaxonomy into an
-// [audit.Taxonomy]. All maps and slices are defensively copied.
-func convert(yt yamlTaxonomy) audit.Taxonomy {
+// convertYAMLTaxonomy transforms the intermediate yamlTaxonomy into a
+// [Taxonomy]. All maps and slices are defensively copied.
+func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	categories := make(map[string][]string, len(yt.Categories))
 	for name, events := range yt.Categories {
 		cp := make([]string, len(events))
@@ -115,9 +114,9 @@ func convert(yt yamlTaxonomy) audit.Taxonomy {
 		categories[name] = cp
 	}
 
-	events := make(map[string]audit.EventDef, len(yt.Events))
+	events := make(map[string]EventDef, len(yt.Events))
 	for name, def := range yt.Events {
-		ed := audit.EventDef{
+		ed := EventDef{
 			Category: def.Category,
 			Required: copyStrings(def.Required),
 			Optional: copyStrings(def.Optional),
@@ -128,7 +127,7 @@ func convert(yt yamlTaxonomy) audit.Taxonomy {
 	defaultEnabled := make([]string, len(yt.DefaultEnabled))
 	copy(defaultEnabled, yt.DefaultEnabled)
 
-	return audit.Taxonomy{
+	return Taxonomy{
 		Version:        yt.Version,
 		Categories:     categories,
 		Events:         events,

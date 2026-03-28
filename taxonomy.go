@@ -105,7 +105,7 @@ var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 //
 // Calling InjectLifecycleEvents multiple times is safe and idempotent.
 // [WithTaxonomy] calls it automatically; it is exported so that
-// external taxonomy loaders (e.g. taxonomy) can apply the same
+// [ParseTaxonomyYAML] can apply the same
 // injection before calling [ValidateTaxonomy].
 func InjectLifecycleEvents(t *Taxonomy) {
 	if t.Categories == nil {
@@ -157,7 +157,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 // [ErrTaxonomyInvalid]; do not parse the error string.
 //
 // This function is called automatically by [WithTaxonomy]; it is
-// exported so that external taxonomy loaders (e.g. taxonomy) can
+// exported so that [ParseTaxonomyYAML] and other callers can
 // validate a taxonomy constructed from external sources.
 func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string

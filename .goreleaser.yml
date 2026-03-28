@@ -10,7 +10,6 @@ before:
     - bash -c "cd file && go mod tidy"
     - bash -c "cd syslog && go mod tidy"
     - bash -c "cd webhook && go mod tidy"
-    - bash -c "cd taxonomy && go mod tidy"
 
 changelog:
   use: github

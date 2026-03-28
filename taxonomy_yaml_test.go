@@ -12,20 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package taxonomy_test
+package audit_test
 
 import (
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/taxonomy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,7 +91,7 @@ events:
 
 func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 	t.Parallel()
-	tax, err := taxonomy.ParseYAML([]byte(validYAML))
+	tax, err := audit.ParseTaxonomyYAML([]byte(validYAML))
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, tax.Version)
@@ -113,7 +110,7 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 
 func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
 	t.Parallel()
-	tax, err := taxonomy.ParseYAML([]byte(minimalYAML))
+	tax, err := audit.ParseTaxonomyYAML([]byte(minimalYAML))
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, tax.Version)
@@ -135,7 +132,7 @@ events:
   deploy:
     category: ops
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
 	assert.Nil(t, tax.Events["deploy"].Required)
@@ -156,7 +153,7 @@ func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 	}
 	audit.InjectLifecycleEvents(&goTax)
 
-	yamlTax, err := taxonomy.ParseYAML([]byte(minimalYAML))
+	yamlTax, err := audit.ParseTaxonomyYAML([]byte(minimalYAML))
 	require.NoError(t, err)
 
 	// Compare structurally (categories, events, version).
@@ -181,7 +178,7 @@ events:
     required:
       - outcome
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
 	// lifecycle is always added to DefaultEnabled.
@@ -194,45 +191,45 @@ events:
 
 func TestParseTaxonomyYAML_NilInput(t *testing.T) {
 	t.Parallel()
-	_, err := taxonomy.ParseYAML(nil)
+	_, err := audit.ParseTaxonomyYAML(nil)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
 func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
 	t.Parallel()
-	_, err := taxonomy.ParseYAML([]byte{})
+	_, err := audit.ParseTaxonomyYAML([]byte{})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
 func TestParseTaxonomyYAML_OversizedInput(t *testing.T) {
 	t.Parallel()
-	data := make([]byte, taxonomy.MaxInputSize+1)
+	data := make([]byte, audit.MaxTaxonomyInputSize+1)
 	for i := range data {
 		data[i] = ' '
 	}
-	_, err := taxonomy.ParseYAML(data)
+	_, err := audit.ParseTaxonomyYAML(data)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
 func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
 	t.Parallel()
-	_, err := taxonomy.ParseYAML([]byte("{{invalid yaml"))
+	_, err := audit.ParseTaxonomyYAML([]byte("{{invalid yaml"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_TabsInYAML(t *testing.T) {
 	t.Parallel()
 	yml := "version: 1\n\tcategories:\n"
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_MultipleDocuments(t *testing.T) {
@@ -256,18 +253,18 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "multiple YAML documents")
 }
 
 func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
 	t.Parallel()
 	yml := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n---\n{{broken"
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "trailing content")
 }
 
@@ -285,9 +282,9 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "bogus_key")
 }
 
@@ -303,9 +300,9 @@ events:
     category: ops
     unknown_field: true
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "unknown_field")
 }
 
@@ -322,7 +319,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "version is required")
@@ -338,7 +335,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "version is required")
@@ -355,7 +352,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "not supported")
@@ -372,7 +369,7 @@ events:
   deploy:
     category: nonexistent
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "does not exist")
@@ -391,7 +388,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "multiple categories")
@@ -412,7 +409,7 @@ events:
     optional:
       - outcome
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "both Required and Optional")
@@ -430,7 +427,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "not defined in Events")
@@ -449,7 +446,7 @@ events:
   orphan:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "not listed in Categories")
@@ -469,7 +466,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "does not exist")
@@ -484,7 +481,7 @@ version: 1
 categories: {}
 events: {}
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 	assert.Contains(t, tax.Categories, "lifecycle")
 	assert.Contains(t, tax.Events, "startup")
@@ -496,16 +493,16 @@ func TestParseTaxonomyYAML_ExactMaxInputSize(t *testing.T) {
 	t.Parallel()
 	// Build a valid YAML that is exactly MaxInputSize bytes.
 	base := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"
-	padding := taxonomy.MaxInputSize - len(base) - 1 // -1 for the newline
-	data := make([]byte, 0, taxonomy.MaxInputSize)
+	padding := audit.MaxTaxonomyInputSize - len(base) - 1 // -1 for the newline
+	data := make([]byte, 0, audit.MaxTaxonomyInputSize)
 	data = append(data, []byte(base)...)
 	data = append(data, '\n')
 	for range padding {
 		data = append(data, ' ')
 	}
-	require.Equal(t, taxonomy.MaxInputSize, len(data))
+	require.Equal(t, audit.MaxTaxonomyInputSize, len(data))
 
-	tax, err := taxonomy.ParseYAML(data)
+	tax, err := audit.ParseTaxonomyYAML(data)
 	require.NoError(t, err)
 	assert.Equal(t, 1, tax.Version)
 }
@@ -514,16 +511,16 @@ func TestParseTaxonomyYAML_WhitespaceOnly(t *testing.T) {
 	t.Parallel()
 	// Whitespace-only input is non-empty but contains no YAML content.
 	// yaml.v3 returns EOF, which wraps as ErrInvalidInput.
-	_, err := taxonomy.ParseYAML([]byte("   \n\n  "))
+	_, err := audit.ParseTaxonomyYAML([]byte("   \n\n  "))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_CommentsOnly(t *testing.T) {
 	t.Parallel()
-	_, err := taxonomy.ParseYAML([]byte("# just a comment\n"))
+	_, err := audit.ParseTaxonomyYAML([]byte("# just a comment\n"))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, taxonomy.ErrInvalidInput)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 }
 
 func TestParseTaxonomyYAML_NegativeVersion(t *testing.T) {
@@ -537,7 +534,7 @@ events:
   deploy:
     category: ops
 `
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	assert.Contains(t, err.Error(), "no longer supported")
@@ -550,7 +547,7 @@ func TestParseTaxonomyYAML_MissingCategoriesKey(t *testing.T) {
 version: 1
 events: {}
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 	assert.Contains(t, tax.Categories, "lifecycle")
 }
@@ -562,7 +559,7 @@ func TestParseTaxonomyYAML_MissingEventsKey(t *testing.T) {
 version: 1
 categories: {}
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 	assert.Contains(t, tax.Events, "startup")
 	assert.Contains(t, tax.Events, "shutdown")
@@ -591,7 +588,7 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 		}
 	}
 
-	tax, err := taxonomy.ParseYAML([]byte(b.String()))
+	tax, err := audit.ParseTaxonomyYAML([]byte(b.String()))
 	require.NoError(t, err)
 	assert.Equal(t, numCategories*eventsPerCategory+2, len(tax.Events)) // +2 for lifecycle
 }
@@ -623,7 +620,7 @@ events:
     required:
       - outcome
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
 	// User-defined lifecycle events should be preserved.
@@ -644,7 +641,7 @@ events:
     required: []
     optional: []
 `
-	tax, err := taxonomy.ParseYAML([]byte(yml))
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
 
 	assert.Empty(t, tax.Events["deploy"].Required)
@@ -653,47 +650,35 @@ events:
 
 // --- Security ---
 
-func TestParseTaxonomyYAML_NoFilesystemOrNetworkAccess(t *testing.T) {
+func TestParseTaxonomyYAML_NoYAMLFilesystemOrNetworkAccess(t *testing.T) {
 	t.Parallel()
-	// Parse all .go files in the package and verify no dangerous
-	// package calls exist in non-test source.
+	// Verify taxonomy_yaml.go does not call dangerous packages.
 	blockedPackages := map[string]bool{
 		"os": true, "exec": true, "net": true, "http": true, "ioutil": true,
 	}
 
 	fset := token.NewFileSet()
-	dir := "."
-	entries, err := os.ReadDir(dir)
+	f, err := parser.ParseFile(fset, "taxonomy_yaml.go", nil, 0)
 	require.NoError(t, err)
 
-	for _, entry := range entries {
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		path := filepath.Join(dir, name)
-		f, err := parser.ParseFile(fset, path, nil, 0)
-		require.NoError(t, err)
-
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			ident, ok := sel.X.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			if blockedPackages[ident.Name] {
-				t.Errorf("package must not call %s.%s", ident.Name, sel.Sel.Name)
-			}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
 			return true
-		})
-	}
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if blockedPackages[ident.Name] {
+			t.Errorf("taxonomy_yaml.go must not call %s.%s", ident.Name, sel.Sel.Name)
+		}
+		return true
+	})
 }
 
 func TestParseTaxonomyYAML_YAMLAnchorBomb(t *testing.T) {
@@ -713,7 +698,7 @@ events:
 `
 	// This should parse (anchors/aliases are valid YAML) but may fail
 	// validation if fields overlap. The point is it does not hang or OOM.
-	_, err := taxonomy.ParseYAML([]byte(yml))
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	// outcome appears in both required and optional via alias.
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
@@ -734,7 +719,7 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := taxonomy.ParseYAML([]byte(tt.yaml))
+			_, err := audit.ParseTaxonomyYAML([]byte(tt.yaml))
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		})
@@ -746,6 +731,6 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 func BenchmarkParseTaxonomyYAML(b *testing.B) {
 	data := []byte(validYAML)
 	for b.Loop() {
-		_, _ = taxonomy.ParseYAML(data)
+		_, _ = audit.ParseTaxonomyYAML(data)
 	}
 }

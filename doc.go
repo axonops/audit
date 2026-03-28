@@ -28,7 +28,6 @@
 //   - github.com/axonops/go-audit/file — file output with rotation
 //   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/go-audit/webhook — batched HTTP webhook
-//   - github.com/axonops/go-audit/taxonomy — YAML-based taxonomy definition
 //
 // [StdoutOutput] ships with core and requires no additional import.
 //
@@ -94,9 +93,11 @@
 //   - [TransportMetadata] — HTTP transport fields captured by the middleware
 //   - [EventBuilder] — callback that transforms hints + transport into an audit event
 //   - [Metrics] — optional core instrumentation interface
-//   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency; exported for external taxonomy loaders such as taxonomy
-//   - [InjectLifecycleEvents] — adds the "lifecycle" category with startup/shutdown events; exported for external taxonomy loaders
-//   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]; exported for external taxonomy loaders
+//   - [ParseTaxonomyYAML] — parses a YAML document into a [Taxonomy]; use with //go:embed
+//   - [ErrInvalidInput] — sentinel for YAML structural errors (vs [ErrTaxonomyInvalid] for semantic errors)
+//   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency
+//   - [InjectLifecycleEvents] — adds the "lifecycle" category with startup/shutdown events
+//   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
 // # Taxonomy
 //

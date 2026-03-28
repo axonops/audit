@@ -49,7 +49,7 @@ func migrateConfig(c *Config) error {
 // if the version is unsupported.
 //
 // This function is called automatically by [WithTaxonomy]; it is
-// exported so that external packages (e.g. taxonomy) can apply
+// exported so that [ParseTaxonomyYAML] and other callers can apply
 // migration before calling [ValidateTaxonomy]. For v0.1.0 only
 // version 1 exists, so this is scaffolding.
 func MigrateTaxonomy(t *Taxonomy) error {

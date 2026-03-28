@@ -85,7 +85,7 @@ func ParseTaxonomyYAML(data []byte) (audit.Taxonomy, error) {
 
 	// Reject multi-document YAML.
 	var discard yaml.Node
-	if err := dec.Decode(&discard); err != io.EOF {
+	if err := dec.Decode(&discard); !errors.Is(err, io.EOF) {
 		return audit.Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	}
 

@@ -412,13 +412,16 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 // false), EmitStartup returns nil immediately and no shutdown event
 // will be emitted by Close.
 func (l *Logger) EmitStartup(fields Fields) error {
+	if err := l.Audit("startup", fields); err != nil {
+		return err
+	}
 	if appName, ok := fields["app_name"]; ok {
 		if s, ok := appName.(string); ok {
 			l.startupAppName.Store(s)
 		}
 	}
 	l.startupEmitted.Store(true)
-	return l.Audit("startup", fields)
+	return nil
 }
 
 // emitShutdown enqueues a shutdown lifecycle event directly to the

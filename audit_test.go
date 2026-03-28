@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -1105,6 +1106,55 @@ func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required fields")
 	assert.Contains(t, err.Error(), "app_name")
+}
+
+func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// Fill the single-slot buffer.
+	err = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	require.NoError(t, err)
+
+	// Buffer is now full; EmitStartup should fail.
+	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
+	assert.ErrorIs(t, err, audit.ErrBufferFull)
+
+	// Close and verify no shutdown event was emitted.
+	require.NoError(t, logger.Close())
+	for _, evt := range out.GetEvents() {
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(evt, &m))
+		assert.NotEqual(t, "shutdown", m["event_type"],
+			"shutdown event should not be emitted when startup failed")
+	}
+}
+
+func TestLogger_EmitStartup_ValidationError_NoShutdown(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
+
+	// EmitStartup without required "app_name" field.
+	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required fields")
+
+	// Close and verify no shutdown event was emitted.
+	require.NoError(t, logger.Close())
+	for _, evt := range out.GetEvents() {
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(evt, &m))
+		assert.NotEqual(t, "shutdown", m["event_type"],
+			"shutdown event should not be emitted when startup failed")
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -77,7 +77,6 @@ type Logger struct {
 	entries        []*outputEntry
 	outputsByName  map[string]*outputEntry
 	cfg            Config
-	wg             sync.WaitGroup
 	mu             sync.RWMutex
 	closeOnce      sync.Once
 	closed         atomic.Bool
@@ -138,7 +137,6 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	l.cancel = cancel
 	l.ch = make(chan *auditEntry, cfg.BufferSize)
 	l.drainDone = make(chan struct{})
-	l.wg.Add(1)
 	go l.drainLoop(ctx)
 
 	slog.Info("audit: logger created",
@@ -461,7 +459,6 @@ func (l *Logger) emitShutdown() {
 // drainLoop is the single goroutine that reads events from the async
 // channel, serialises them, and fans out to all outputs.
 func (l *Logger) drainLoop(ctx context.Context) {
-	defer l.wg.Done()
 	defer close(l.drainDone)
 	defer slog.Debug("audit: drain loop exiting")
 	slog.Debug("audit: drain loop started")

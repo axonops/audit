@@ -828,9 +828,10 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	metrics.Mu.Lock()
-	defer metrics.Mu.Unlock()
-	assert.Greater(t, metrics.Events["test-out:success"], 0)
+	// Wait for the metric to be recorded — RecordEvent fires after
+	// Write returns, so WaitForEvents alone is insufficient.
+	require.True(t, metrics.WaitForMetric("test-out:success", 1, 2*time.Second),
+		"timed out waiting for success metric")
 }
 
 func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
@@ -851,13 +852,11 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Close drains all pending events.
+	// Close drains all pending events and completes metric recording.
 	require.NoError(t, logger.Close())
 
-	metrics.Mu.Lock()
-	defer metrics.Mu.Unlock()
-	assert.Greater(t, metrics.OutputErrors["bad-write"], 0)
-	assert.Greater(t, metrics.Events["bad-write:error"], 0)
+	assert.Greater(t, metrics.GetEventCount("bad-write", "error"), 0)
+	assert.Greater(t, metrics.GetOutputErrorCount("bad-write"), 0)
 }
 
 type errorWriteOutput struct {
@@ -1105,6 +1104,56 @@ func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required fields")
 	assert.Contains(t, err.Error(), "app_name")
+}
+
+func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
+	// Use the blocking output to prevent the drain goroutine from
+	// consuming events, keeping the channel full.
+	blockCh := make(chan struct{})
+	blocker := &blockingOutput{name: "test", blockCh: blockCh}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(blocker),
+	)
+	require.NoError(t, err)
+
+	// Fill the channel: first event goes to drain (blocks in Write),
+	// second event fills the 1-slot buffer.
+	_ = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "bob",
+	})
+	_ = logger.Audit("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "charlie",
+	})
+
+	// Buffer should now be full; EmitStartup should fail.
+	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
+	assert.ErrorIs(t, err, audit.ErrBufferFull)
+
+	// Unblock the drain and close. Since startupEmitted was never
+	// set to true, Close must not emit a shutdown event.
+	close(blockCh)
+	require.NoError(t, logger.Close())
+}
+
+func TestLogger_EmitStartup_ValidationError_NoShutdown(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
+
+	// EmitStartup without required "app_name" field.
+	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required fields")
+
+	// Close and verify no events were delivered at all — the startup
+	// event was rejected before enqueue, so nothing reached the output.
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 0, out.EventCount(),
+		"no events should be delivered when EmitStartup fails validation")
 }
 
 // ---------------------------------------------------------------------------

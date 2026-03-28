@@ -92,6 +92,7 @@ func WithOutputs(outputs ...Output) Option {
 		}
 		l.entries = entries
 		l.outputsByName = byName
+		l.usedWithOutputs = true
 		return nil
 	}
 }
@@ -101,11 +102,17 @@ func WithOutputs(outputs ...Output) Option {
 // events are delivered to this output. If formatter is nil, the
 // logger's default formatter is used.
 //
+// WithNamedOutput MUST NOT be combined with [WithOutputs]; if
+// [WithOutputs] was already applied, WithNamedOutput returns an error.
+//
 // Output names MUST be unique across all outputs; duplicate names
 // cause [NewLogger] to return an error. Routes are validated against
 // the taxonomy after all options have been applied.
 func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Option {
 	return func(l *Logger) error {
+		if l.usedWithOutputs {
+			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
+		}
 		name := output.Name()
 		if l.outputsByName == nil {
 			l.outputsByName = make(map[string]*outputEntry)

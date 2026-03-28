@@ -114,10 +114,11 @@ func (e *jsonEncoder) writeComma() {
 func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
 	e.writeComma()
 	e.buf.WriteString(`"timestamp":`)
+	//nolint:exhaustive // unrecognised TimestampFormat values fall back to RFC3339Nano
 	switch format {
 	case TimestampUnixMillis:
 		e.buf.WriteString(strconv.FormatInt(ts.UnixMilli(), 10))
-	case TimestampRFC3339Nano:
+	default:
 		data, err := json.Marshal(ts.Format(time.RFC3339Nano))
 		if err != nil && e.err == nil {
 			e.err = err

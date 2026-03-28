@@ -177,7 +177,7 @@ func ValidateTaxonomy(t Taxonomy) error {
 // checkTaxonomyVersion validates the taxonomy version field.
 func checkTaxonomyVersion(t Taxonomy) []string {
 	if t.Version == 0 {
-		return []string{"taxonomy version is required -- set version: 1"}
+		return []string{"taxonomy version is required: set version to 1"}
 	}
 	if t.Version > currentTaxonomyVersion {
 		return []string{fmt.Sprintf(

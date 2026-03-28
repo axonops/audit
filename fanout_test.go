@@ -172,6 +172,19 @@ func TestFanout_WithOutputs_AfterWithNamedOutput_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot be used with WithNamedOutput")
 }
 
+func TestFanout_WithNamedOutput_AfterWithOutputs_Error(t *testing.T) {
+	out1 := testhelper.NewMockOutput("plain")
+	out2 := testhelper.NewMockOutput("named")
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out1),
+		audit.WithNamedOutput(out2, &audit.EventRoute{}, nil), // should error
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be used with WithOutputs")
+}
+
 func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	_, err := audit.NewLogger(
@@ -312,7 +325,7 @@ func TestFanout_ClearOutputRoute_UnknownOutput(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown output")
 }
 
-func TestFanout_GetOutputRoute(t *testing.T) {
+func TestFanout_OutputRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	route := audit.EventRoute{IncludeCategories: []string{"security"}}
 	logger, err := audit.NewLogger(
@@ -323,18 +336,18 @@ func TestFanout_GetOutputRoute(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	got, err := logger.GetOutputRoute("test")
+	got, err := logger.OutputRoute("test")
 	require.NoError(t, err)
 	assert.Equal(t, route.IncludeCategories, got.IncludeCategories)
 
 	// Mutating the returned route must not affect the stored route.
 	got.IncludeCategories = append(got.IncludeCategories, "write")
-	got2, err := logger.GetOutputRoute("test")
+	got2, err := logger.OutputRoute("test")
 	require.NoError(t, err)
 	assert.Len(t, got2.IncludeCategories, 1, "stored route should not be mutated")
 }
 
-func TestFanout_GetOutputRoute_UnknownOutput(t *testing.T) {
+func TestFanout_OutputRoute_UnknownOutput(t *testing.T) {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
@@ -342,12 +355,12 @@ func TestFanout_GetOutputRoute_UnknownOutput(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	_, err = logger.GetOutputRoute("nonexistent")
+	_, err = logger.OutputRoute("nonexistent")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown output")
 }
 
-func TestFanout_GetOutputRoute_ReflectsSetAndClear(t *testing.T) {
+func TestFanout_OutputRoute_ReflectsSetAndClear(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -360,13 +373,13 @@ func TestFanout_GetOutputRoute_ReflectsSetAndClear(t *testing.T) {
 	// Set a route.
 	newRoute := audit.EventRoute{IncludeCategories: []string{"write"}}
 	require.NoError(t, logger.SetOutputRoute("test", &newRoute))
-	got, err := logger.GetOutputRoute("test")
+	got, err := logger.OutputRoute("test")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"write"}, got.IncludeCategories)
 
 	// Clear.
 	require.NoError(t, logger.ClearOutputRoute("test"))
-	got, err = logger.GetOutputRoute("test")
+	got, err = logger.OutputRoute("test")
 	require.NoError(t, err)
 	assert.True(t, got.IsEmpty())
 }

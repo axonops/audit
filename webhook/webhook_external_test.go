@@ -470,6 +470,36 @@ func TestWebhookOutput_CloseIdempotent(t *testing.T) {
 	assert.NoError(t, out.Close())
 }
 
+func TestWebhookOutput_CloseShutdownTimeout_ExceedsHTTPTimeout(t *testing.T) {
+	// Server delays 150ms — longer than the 100ms HTTP timeout but
+	// shorter than the shutdown timeout (2*100ms+5s = 5.2s).
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		w.WriteHeader(200)
+	})
+	out, err := webhook.New(&webhook.Config{
+		URL:                srv.url(),
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      50 * time.Millisecond,
+		Timeout:            100 * time.Millisecond,
+		MaxRetries:         0,
+	}, nil, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"test"}`)))
+
+	start := time.Now()
+	assert.NoError(t, out.Close())
+	elapsed := time.Since(start)
+
+	// Close should complete — the shutdown timeout (2*100ms+5s)
+	// is much larger than the 150ms server delay.
+	assert.Less(t, elapsed, 3*time.Second,
+		"Close should not take excessively long")
+}
+
 func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 	// Slow server keeps the batch goroutine busy.
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {

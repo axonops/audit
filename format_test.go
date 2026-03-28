@@ -17,6 +17,7 @@ package audit_test
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -203,6 +204,24 @@ func TestJSONFormatter_TimestampUnixMillis(t *testing.T) {
 	ts, ok := m["timestamp"].(float64)
 	require.True(t, ok, "timestamp should be a number for unix_ms")
 	assert.Equal(t, float64(testTime.UnixMilli()), ts)
+}
+
+func TestJSONFormatter_UnrecognisedTimestampFormat(t *testing.T) {
+	f := &audit.JSONFormatter{Timestamp: audit.TimestampFormat("bogus")}
+	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+	})
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m), "output must be valid JSON")
+
+	ts, ok := m["timestamp"].(string)
+	require.True(t, ok, "timestamp should be a string (RFC3339Nano fallback)")
+	parsed, err := time.Parse(time.RFC3339Nano, ts)
+	require.NoError(t, err, "timestamp should parse as RFC3339Nano")
+	assert.Equal(t, testTime, parsed)
 }
 
 func TestJSONFormatter_OmitEmptyTrue(t *testing.T) {
@@ -947,6 +966,96 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid extension key")
+}
+
+func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
+	baseDef := &audit.EventDef{
+		Category: "write",
+		Required: []string{"outcome"},
+		Optional: []string{"source_ip", "actor_id"},
+	}
+
+	t.Run("rt_collision", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"source_ip": "rt"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":   "ok",
+			"source_ip": "10.0.0.1",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "rt="),
+			"framework rt should appear once, user collision skipped")
+		// Verify the framework value (epoch ms timestamp) survived, not the user value.
+		assert.Contains(t, output,
+			"rt="+strconv.FormatInt(testTime.UnixMilli(), 10))
+		assert.NotContains(t, output, "rt=10.0.0.1")
+	})
+
+	t.Run("act_collision", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "act"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":  "ok",
+			"actor_id": "alice",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "act="),
+			"framework act should appear once, user collision skipped")
+		// Verify the framework value (event type) survived, not the user value.
+		assert.Contains(t, output, "act=ev")
+		assert.NotContains(t, output, "act=alice")
+	})
+
+	t.Run("cn1_with_duration", func(t *testing.T) {
+		def := &audit.EventDef{
+			Category: "write",
+			Required: []string{"outcome"},
+			Optional: []string{"actor_id", "duration_ms"},
+		}
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "cn1"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":     "ok",
+			"actor_id":    "alice",
+			"duration_ms": 500 * time.Millisecond,
+		}, def)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "cn1="),
+			"framework cn1 (duration) should appear once, user collision skipped")
+	})
+
+	t.Run("cn1_without_duration", func(t *testing.T) {
+		f := &audit.CEFFormatter{
+			Vendor:       "V",
+			Product:      "P",
+			Version:      "1",
+			FieldMapping: map[string]string{"actor_id": "cn1"},
+		}
+		data, err := f.Format(testTime, "ev", audit.Fields{
+			"outcome":  "ok",
+			"actor_id": "alice",
+		}, baseDef)
+		require.NoError(t, err)
+		output := string(data)
+		assert.Equal(t, 1, strings.Count(output, "cn1="),
+			"cn1 not reserved when duration_ms absent, consumer mapping permitted")
+		assert.Contains(t, output, "cn1=alice")
+	})
 }
 
 // ---------------------------------------------------------------------------

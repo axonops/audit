@@ -43,7 +43,7 @@ const (
 type hintsKey struct{}
 
 // Hints carries mutable, per-request audit metadata through the
-// request context. Handlers retrieve it with [GetHints] and populate
+// request context. Handlers retrieve it with [HintsFromContext] and populate
 // domain-specific fields (actor, target, outcome). The middleware
 // reads these fields after the handler returns and passes them to the
 // [EventBuilder] callback.
@@ -129,9 +129,9 @@ type TransportMetadata struct {
 //   - skip: if true, no audit event is emitted for this request
 type EventBuilder func(hints *Hints, transport *TransportMetadata) (eventType string, fields Fields, skip bool)
 
-// GetHints retrieves the [Hints] from the request context. Returns
+// HintsFromContext retrieves the [Hints] from the request context. Returns
 // nil if the request was not wrapped by [Middleware].
-func GetHints(ctx context.Context) *Hints {
+func HintsFromContext(ctx context.Context) *Hints {
 	h, _ := ctx.Value(hintsKey{}).(*Hints)
 	return h
 }

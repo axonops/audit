@@ -29,8 +29,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetHints_NilWithoutMiddleware(t *testing.T) {
-	h := audit.GetHints(context.Background())
+func TestHintsFromContext_NilWithoutMiddleware(t *testing.T) {
+	h := audit.HintsFromContext(context.Background())
 	assert.Nil(t, h)
 }
 

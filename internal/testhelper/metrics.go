@@ -37,9 +37,13 @@ type MockMetrics struct {
 	SerializationErrors map[string]int // eventType -> count
 	FileRotations       map[string]int // path -> count
 	SyslogReconnects    map[string]int // "address:success|failure" -> count
-	Mu                  sync.Mutex
-	BufferDrops         int
-	WebhookDrops        int
+	// EventCh is signalled (non-blocking) on every RecordEvent call.
+	// It is buffered to 1000 entries and is consumed internally by
+	// [MockMetrics.WaitForMetric]; consumers do not need to read it.
+	EventCh      chan struct{}
+	Mu           sync.Mutex
+	BufferDrops  int
+	WebhookDrops int
 }
 
 // NewMockMetrics creates a ready-to-use MockMetrics.
@@ -53,6 +57,7 @@ func NewMockMetrics() *MockMetrics {
 		ValidationErrors:    make(map[string]int),
 		GlobalFiltered:      make(map[string]int),
 		SerializationErrors: make(map[string]int),
+		EventCh:             make(chan struct{}, 1000),
 	}
 }
 
@@ -62,6 +67,10 @@ func (m *MockMetrics) RecordEvent(output, status string) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.Events[output+":"+status]++
+	select {
+	case m.EventCh <- struct{}{}:
+	default:
+	}
 }
 
 func (m *MockMetrics) RecordOutputError(output string) {
@@ -132,7 +141,36 @@ func (m *MockMetrics) RecordSyslogReconnect(address string, success bool) {
 	m.SyslogReconnects[key]++
 }
 
+// WaitForMetric blocks until the event metric for key reaches at least n,
+// or until timeout expires. The key format is "outputName:status" — the
+// same string [MockMetrics.RecordEvent] indexes into Events (e.g.
+// "test-out:success"). Returns true if the count reached n within the
+// deadline; returns false on timeout.
+func (m *MockMetrics) WaitForMetric(key string, n int, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		m.Mu.Lock()
+		v := m.Events[key]
+		m.Mu.Unlock()
+		if v >= n {
+			return true
+		}
+		select {
+		case <-m.EventCh:
+		case <-deadline:
+			return false
+		}
+	}
+}
+
 // --- Accessors ---
+
+// GetOutputErrorCount returns the count of output errors for the named output.
+func (m *MockMetrics) GetOutputErrorCount(output string) int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.OutputErrors[output]
+}
 
 // GetOutputFiltered returns the count of filtered events for the named output.
 func (m *MockMetrics) GetOutputFiltered(output string) int {

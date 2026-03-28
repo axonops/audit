@@ -82,6 +82,9 @@ type Logger struct {
 	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
+	// usedWithOutputs is set during construction when WithOutputs is
+	// applied; prevents mixing WithOutputs and WithNamedOutput.
+	usedWithOutputs bool
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
@@ -112,7 +115,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	}
 
 	if l.taxonomy == nil {
-		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
+		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
 	// Validate per-output event routes against the taxonomy.
@@ -369,9 +372,9 @@ func (l *Logger) ClearOutputRoute(outputName string) error {
 	return nil
 }
 
-// GetOutputRoute returns a copy of the current per-output event route
+// OutputRoute returns a copy of the current per-output event route
 // for the named output. An unknown output name returns an error.
-func (l *Logger) GetOutputRoute(outputName string) (EventRoute, error) {
+func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 	oe, ok := l.outputsByName[outputName]
 	if !ok {
 		return EventRoute{}, fmt.Errorf("audit: unknown output %q", outputName)
@@ -404,21 +407,26 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 // EmitStartup emits a startup lifecycle event. The "app_name" field
 // is required by the default lifecycle taxonomy; omitting it returns a
 // validation error. [Logger.Close] will automatically emit a
-// corresponding shutdown event if EmitStartup was called, using the
-// same app_name.
+// corresponding shutdown event only if EmitStartup returned nil; a
+// failed EmitStartup (validation error, [ErrBufferFull], or
+// [ErrClosed]) leaves the shutdown flag unset and Close will not
+// emit a shutdown event.
 //
 // EmitStartup MUST be called before [Logger.Close]; calling it after
 // returns [ErrClosed]. On a disabled logger (where [Config.Enabled] is
 // false), EmitStartup returns nil immediately and no shutdown event
 // will be emitted by Close.
 func (l *Logger) EmitStartup(fields Fields) error {
+	if err := l.Audit("startup", fields); err != nil {
+		return err
+	}
 	if appName, ok := fields["app_name"]; ok {
 		if s, ok := appName.(string); ok {
 			l.startupAppName.Store(s)
 		}
 	}
 	l.startupEmitted.Store(true)
-	return l.Audit("startup", fields)
+	return nil
 }
 
 // emitShutdown enqueues a shutdown lifecycle event directly to the

@@ -64,10 +64,10 @@ func ExampleMiddleware() {
 	// Output: middleware created
 }
 
-func ExampleGetHints() {
+func ExampleHintsFromContext() {
 	// Inside an HTTP handler wrapped by Middleware:
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hints := audit.GetHints(r.Context())
+		hints := audit.HintsFromContext(r.Context())
 		if hints != nil {
 			hints.ActorID = "user-42"
 			hints.Outcome = "success"

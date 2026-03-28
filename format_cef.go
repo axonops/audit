@@ -154,16 +154,24 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	// Event type as device action.
 	writeExtField(&buf, extStart, "act", eventType)
 
+	// Build reserved key set from framework-emitted extension keys.
+	reserved := map[string]struct{}{
+		"rt":  {},
+		"act": {},
+	}
+
 	// Duration if present as time.Duration.
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
 			writeExtField(&buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
 			writeExtField(&buf, extStart, "cn1Label", "durationMs")
+			reserved["cn1"] = struct{}{}
+			reserved["cn1Label"] = struct{}{}
 		}
 	}
 
 	// All fields via mapping.
-	if err := cf.writeFieldExtensions(&buf, extStart, fields, def, mapping); err != nil {
+	if err := cf.writeFieldExtensions(&buf, extStart, fields, def, mapping, reserved); err != nil {
 		return nil, err
 	}
 
@@ -173,8 +181,10 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 }
 
 // writeFieldExtensions writes all user-defined fields as CEF
-// extensions into buf, starting at extStart.
-func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string) error {
+// extensions into buf, starting at extStart. Fields whose mapped
+// extension key collides with a reserved framework key are silently
+// skipped.
+func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string, reserved map[string]struct{}) error {
 	allKeys := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
 		if isFrameworkField(k, fields) {
@@ -185,6 +195,13 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 			continue
 		}
 		extKey := mapFieldKey(k, mapping)
+		// Skip fields whose mapped key collides with a framework-
+		// emitted extension key (rt, act, cn1, cn1Label). Collision
+		// is a consumer mapping misconfiguration; it is silently
+		// skipped to avoid per-event log flooding.
+		if _, dup := reserved[extKey]; dup {
+			continue
+		}
 		if err := validateExtKey(extKey); err != nil {
 			return fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
 		}

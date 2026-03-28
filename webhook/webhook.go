@@ -99,6 +99,7 @@ type Output struct {
 	cancel         context.CancelFunc
 	client         *http.Client
 	url            string
+	name           string // cached from url.Parse at construction
 	batchSize      int
 	maxRetries     int
 	flushIvl       time.Duration
@@ -166,6 +167,7 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 	w := &Output{
 		client:         client,
 		url:            cfg.URL,
+		name:           webhookName(cfg.URL),
 		headers:        headers,
 		metrics:        metrics,
 		webhookMetrics: webhookMetrics,
@@ -246,8 +248,15 @@ func (w *Output) Close() error {
 func (w *Output) ReportsDelivery() bool { return true }
 
 // Name returns the human-readable identifier for this output.
+// The name is cached at construction time to avoid per-call url.Parse.
 func (w *Output) Name() string {
-	if u, err := url.Parse(w.url); err == nil {
+	return w.name
+}
+
+// webhookName parses the URL and returns "webhook:<host>" or "webhook"
+// if parsing fails.
+func webhookName(rawURL string) string {
+	if u, err := url.Parse(rawURL); err == nil {
 		return "webhook:" + u.Host
 	}
 	return "webhook"

@@ -37,6 +37,7 @@ type MockMetrics struct {
 	SerializationErrors map[string]int // eventType -> count
 	FileRotations       map[string]int // path -> count
 	SyslogReconnects    map[string]int // "address:success|failure" -> count
+	EventCh             chan struct{}  // signalled on every RecordEvent call
 	Mu                  sync.Mutex
 	BufferDrops         int
 	WebhookDrops        int
@@ -53,6 +54,7 @@ func NewMockMetrics() *MockMetrics {
 		ValidationErrors:    make(map[string]int),
 		GlobalFiltered:      make(map[string]int),
 		SerializationErrors: make(map[string]int),
+		EventCh:             make(chan struct{}, 1000),
 	}
 }
 
@@ -62,6 +64,10 @@ func (m *MockMetrics) RecordEvent(output, status string) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.Events[output+":"+status]++
+	select {
+	case m.EventCh <- struct{}{}:
+	default:
+	}
 }
 
 func (m *MockMetrics) RecordOutputError(output string) {
@@ -130,6 +136,25 @@ func (m *MockMetrics) RecordSyslogReconnect(address string, success bool) {
 		key += "failure"
 	}
 	m.SyslogReconnects[key]++
+}
+
+// WaitForMetric blocks until the event metric for key reaches at least
+// n, or timeout expires. Returns true if the condition was met.
+func (m *MockMetrics) WaitForMetric(key string, n int, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		m.Mu.Lock()
+		v := m.Events[key]
+		m.Mu.Unlock()
+		if v >= n {
+			return true
+		}
+		select {
+		case <-m.EventCh:
+		case <-deadline:
+			return false
+		}
+	}
 }
 
 // --- Accessors ---

@@ -829,9 +829,10 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	metrics.Mu.Lock()
-	defer metrics.Mu.Unlock()
-	assert.Greater(t, metrics.Events["test-out:success"], 0)
+	// Wait for the metric to be recorded — RecordEvent fires after
+	// Write returns, so WaitForEvents alone is insufficient.
+	require.True(t, metrics.WaitForMetric("test-out:success", 1, 2*time.Second),
+		"timed out waiting for success metric")
 }
 
 func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
@@ -852,13 +853,13 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Close drains all pending events.
+	// Close drains all pending events and completes metric recording.
 	require.NoError(t, logger.Close())
 
+	assert.Greater(t, metrics.GetEventCount("bad-write", "error"), 0)
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
 	assert.Greater(t, metrics.OutputErrors["bad-write"], 0)
-	assert.Greater(t, metrics.Events["bad-write:error"], 0)
 }
 
 type errorWriteOutput struct {

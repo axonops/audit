@@ -451,7 +451,7 @@ func buildSyslogTLSConfig(cfg *Config) (*tls.Config, error) {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, fmt.Errorf("loading client certificate: %w", err)
+			return nil, fmt.Errorf("audit: syslog tls: load client certificate: %w", err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
@@ -459,11 +459,11 @@ func buildSyslogTLSConfig(cfg *Config) (*tls.Config, error) {
 	if cfg.TLSCA != "" {
 		caCert, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, fmt.Errorf("reading ca certificate: %w", err)
+			return nil, fmt.Errorf("audit: syslog tls: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to parse ca certificate")
+			return nil, fmt.Errorf("audit: syslog tls: parse ca certificate: invalid pem block")
 		}
 		tlsCfg.RootCAs = pool
 	}

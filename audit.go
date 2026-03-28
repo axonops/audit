@@ -112,7 +112,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	}
 
 	if l.taxonomy == nil {
-		return nil, fmt.Errorf("audit: taxonomy is required -- use WithTaxonomy")
+		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
 	// Validate per-output event routes against the taxonomy.

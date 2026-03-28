@@ -18,9 +18,11 @@ package audit
 import "bytes"
 
 var (
-	CEFEscapeHeaderForTest   = cefEscapeHeader
-	CEFEscapeExtValueForTest = cefEscapeExtValue
-	ValidateExtKeyForTest    = validateExtKey
+	CEFEscapeHeaderForTest      = cefEscapeHeader
+	CEFEscapeHeaderOldForTest   = cefEscapeHeaderOld
+	CEFEscapeExtValueForTest    = cefEscapeExtValue
+	CEFEscapeExtValueOldForTest = cefEscapeExtValueOld
+	ValidateExtKeyForTest       = validateExtKey
 )
 
 // WriteJSONStringForTest exposes writeJSONString for property-based

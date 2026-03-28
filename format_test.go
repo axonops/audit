@@ -595,13 +595,36 @@ func TestCEFExtKeyValidation(t *testing.T) {
 	}
 }
 
+// TestCEFFormatter_PoolSafety verifies that the sync.Pool buffer reuse
+// does not corrupt cached Format() results.
+func TestCEFFormatter_PoolSafety(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+	ts := time.Now()
+
+	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
+	require.NoError(t, err)
+
+	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def)
+	require.NoError(t, err)
+
+	assert.Contains(t, string(result1), "outcome=first")
+	assert.Contains(t, string(result2), "outcome=second")
+	assert.NotEqual(t, result1, result2)
+}
+
 func TestCEFEscapeExtValue_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		escaped := audit.CEFEscapeExtValueForTest(s)
+		old := audit.CEFEscapeExtValueOldForTest(s)
+		// Output must be byte-for-byte identical to the old implementation.
+		if escaped != old {
+			return false
+		}
 		// No raw newlines or carriage returns in escaped output.
 		return !strings.Contains(escaped, "\n") && !strings.Contains(escaped, "\r")
 	}
-	if err := quick.Check(f, nil); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
 		t.Error(err)
 	}
 }
@@ -609,6 +632,11 @@ func TestCEFEscapeExtValue_QuickCheck(t *testing.T) {
 func TestCEFEscapeHeader_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		escaped := audit.CEFEscapeHeaderForTest(s)
+		old := audit.CEFEscapeHeaderOldForTest(s)
+		// Output must be byte-for-byte identical to the old implementation.
+		if escaped != old {
+			return false
+		}
 		// No raw newlines, carriage returns, or unescaped pipes.
 		if strings.Contains(escaped, "\n") || strings.Contains(escaped, "\r") {
 			return false
@@ -621,7 +649,7 @@ func TestCEFEscapeHeader_QuickCheck(t *testing.T) {
 		}
 		return true
 	}
-	if err := quick.Check(f, nil); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
 		t.Error(err)
 	}
 }

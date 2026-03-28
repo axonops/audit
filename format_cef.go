@@ -272,11 +272,79 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 	return cf.resolvedMapping
 }
 
-// cefEscapeHeader escapes characters in CEF header fields.
-// Header fields use pipe (|) as delimiter -- pipes and backslashes
-// MUST be escaped. Backslash is escaped first to avoid double-escaping.
-// Newlines and carriage returns are replaced with spaces.
+// cefEscapeHeader escapes characters in CEF header fields using a
+// single-pass byte scanner. Escapes: \ -> \\, | -> \|, \n -> space,
+// \r -> space. Writes directly to buf to avoid string allocation.
 func cefEscapeHeader(s string) string {
+	var buf strings.Builder
+	start := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			buf.WriteString(s[start:i])
+			buf.WriteString(`\\`)
+			start = i + 1
+		case '|':
+			buf.WriteString(s[start:i])
+			buf.WriteString(`\|`)
+			start = i + 1
+		case '\n', '\r':
+			buf.WriteString(s[start:i])
+			buf.WriteByte(' ')
+			start = i + 1
+		}
+	}
+	if start == 0 {
+		return s // no escaping needed; return original string (0 allocs)
+	}
+	buf.WriteString(s[start:])
+	return buf.String()
+}
+
+// cefEscapeExtValue escapes characters in CEF extension values using a
+// single-pass byte scanner. Escapes: \ -> \\, = -> \=, \n -> \n
+// (literal backslash-n), \r -> \r (literal backslash-r). Remaining C0
+// control characters (0x00-0x1F) are stripped.
+func cefEscapeExtValue(s string) string {
+	var buf strings.Builder
+	start := 0
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x20 {
+			switch b {
+			case '\\':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\\`)
+				start = i + 1
+			case '=':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\=`)
+				start = i + 1
+			}
+			continue
+		}
+		// C0 control character.
+		buf.WriteString(s[start:i])
+		switch b {
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\r':
+			buf.WriteString(`\r`)
+		default:
+			// Strip other control characters.
+		}
+		start = i + 1
+	}
+	if start == 0 {
+		return s // no escaping needed; return original string (0 allocs)
+	}
+	buf.WriteString(s[start:])
+	return buf.String()
+}
+
+// cefEscapeHeaderOld is the original multi-pass implementation,
+// retained for property-based output equivalence testing.
+func cefEscapeHeaderOld(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `|`, `\|`)
 	s = strings.ReplaceAll(s, "\n", " ")
@@ -284,15 +352,13 @@ func cefEscapeHeader(s string) string {
 	return s
 }
 
-// cefEscapeExtValue escapes characters in CEF extension values.
-// Backslash is escaped first to avoid double-escaping. All C0 control
-// characters (0x00-0x1F) are stripped after newline/CR escaping.
-func cefEscapeExtValue(s string) string {
+// cefEscapeExtValueOld is the original multi-pass implementation,
+// retained for property-based output equivalence testing.
+func cefEscapeExtValueOld(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `=`, `\=`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	s = strings.ReplaceAll(s, "\r", `\r`)
-	// Strip remaining C0 control characters (0x00-0x1F).
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 {
 			return -1

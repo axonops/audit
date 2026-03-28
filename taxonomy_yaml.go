@@ -79,15 +79,15 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return Taxonomy{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
+		return Taxonomy{}, fmt.Errorf("%w: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
 	}
 
 	// Reject multi-document YAML and trailing content.
-	var discard yaml.Node
+	var discard any
 	if err := dec.Decode(&discard); err == nil {
 		return Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	} else if !errors.Is(err, io.EOF) {
-		return Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %w", ErrInvalidInput, err)
+		return Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error
 	}
 
 	tax := convertYAMLTaxonomy(yt)

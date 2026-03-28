@@ -24,7 +24,7 @@
 // Output backends live in separate Go modules so consumers import only
 // what they need:
 //
-//   - github.com/axonops/go-audit — core (this package, stdlib only)
+//   - github.com/axonops/go-audit — core (this package; depends on gopkg.in/yaml.v3 for [ParseTaxonomyYAML])
 //   - github.com/axonops/go-audit/file — file output with rotation
 //   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/go-audit/webhook — batched HTTP webhook

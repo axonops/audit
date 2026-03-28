@@ -345,32 +345,6 @@ func cefEscapeExtValue(s string) string {
 	return buf.String()
 }
 
-// cefEscapeHeaderOld is the original multi-pass implementation,
-// retained for property-based output equivalence testing.
-func cefEscapeHeaderOld(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `|`, `\|`)
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	return s
-}
-
-// cefEscapeExtValueOld is the original multi-pass implementation,
-// retained for property-based output equivalence testing.
-func cefEscapeExtValueOld(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `=`, `\=`)
-	s = strings.ReplaceAll(s, "\n", `\n`)
-	s = strings.ReplaceAll(s, "\r", `\r`)
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 {
-			return -1
-		}
-		return r
-	}, s)
-	return s
-}
-
 // validateExtKey returns an error if the key is not a valid CEF
 // extension key name (must match [a-zA-Z0-9_]+).
 func validateExtKey(key string) error {

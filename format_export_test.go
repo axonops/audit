@@ -15,15 +15,42 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+)
 
 var (
-	CEFEscapeHeaderForTest      = cefEscapeHeader
-	CEFEscapeHeaderOldForTest   = cefEscapeHeaderOld
-	CEFEscapeExtValueForTest    = cefEscapeExtValue
-	CEFEscapeExtValueOldForTest = cefEscapeExtValueOld
-	ValidateExtKeyForTest       = validateExtKey
+	CEFEscapeHeaderForTest   = cefEscapeHeader
+	CEFEscapeExtValueForTest = cefEscapeExtValue
+	ValidateExtKeyForTest    = validateExtKey
 )
+
+// CEFEscapeHeaderOldForTest is the original multi-pass implementation,
+// used only for property-based output equivalence testing.
+func CEFEscapeHeaderOldForTest(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `|`, `\|`)
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	return s
+}
+
+// CEFEscapeExtValueOldForTest is the original multi-pass implementation,
+// used only for property-based output equivalence testing.
+func CEFEscapeExtValueOldForTest(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `=`, `\=`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 {
+			return -1
+		}
+		return r
+	}, s)
+	return s
+}
 
 // WriteJSONStringForTest exposes writeJSONString for property-based
 // testing against encoding/json.Marshal.

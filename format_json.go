@@ -236,8 +236,8 @@ func writeJSONString(buf *bytes.Buffer, s string) {
 	for i := 0; i < len(s); {
 		b := s[i]
 		if b >= utf8.RuneSelf {
-			start = writeJSONMultibyte(buf, s, i, start)
-			_, size := utf8.DecodeRuneInString(s[i:])
+			var size int
+			start, size = writeJSONMultibyte(buf, s, i, start)
 			i += size
 			continue
 		}
@@ -275,24 +275,25 @@ func writeJSONString(buf *bytes.Buffer, s string) {
 }
 
 // writeJSONMultibyte handles multi-byte UTF-8 sequences in
-// writeJSONString. Returns the updated start position.
-func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) int {
+// writeJSONString. Returns the updated start position and the rune
+// size in bytes (avoiding a redundant DecodeRuneInString in the caller).
+func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) (newStart, size int) {
 	r, size := utf8.DecodeRuneInString(s[i:])
 	switch {
 	case r == utf8.RuneError && size == 1:
 		buf.WriteString(s[start:i])
 		buf.WriteString(`\ufffd`)
-		return i + size
+		return i + size, size
 	case r == '\u2028':
 		buf.WriteString(s[start:i])
 		buf.WriteString(`\u2028`)
-		return i + size
+		return i + size, size
 	case r == '\u2029':
 		buf.WriteString(s[start:i])
 		buf.WriteString(`\u2029`)
-		return i + size
+		return i + size, size
 	default:
-		return start // no escape needed; continue accumulating
+		return start, size // no escape needed; continue accumulating
 	}
 }
 

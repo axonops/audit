@@ -1113,6 +1113,8 @@ func TestWriteJSONString(t *testing.T) {
 		{name: "utf8_cjk", input: "日本語テスト"},
 		{name: "utf8_accented", input: "café résumé"},
 		{name: "invalid_utf8", input: "bad\xfe\xffbyte"},
+		{name: "line_separator_u2028", input: "before\u2028after"},
+		{name: "paragraph_separator_u2029", input: "before\u2029after"},
 		{name: "mixed_special", input: "line1\nline2\t\"quoted\"\\back<html>&amp;"},
 	}
 

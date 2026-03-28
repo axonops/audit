@@ -26,7 +26,7 @@ import (
 // then enforces the configured permissions via Chmod on the file
 // descriptor.
 func safeOpen(name string, flag int, mode os.FileMode) (*os.File, error) {
-	f, err := os.OpenFile(name, flag|syscall.O_NOFOLLOW, mode)
+	f, err := os.OpenFile(name, flag|syscall.O_NOFOLLOW, mode) //nolint:gosec // G304: path is controlled by the FileOutput config, not user input
 	if err != nil {
 		return nil, fmt.Errorf("rotate: open %q: %w", name, err)
 	}

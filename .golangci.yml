@@ -42,6 +42,7 @@ linters:
     - cyclop        # alternative complexity checker
     - noctx         # http.NewRequest without context
     - rowserrcheck  # sql.Rows.Err() checked
+    - gosec         # security checks (crypto, file permissions, etc.)
     # Note: contextcheck is not a standard golangci-lint v2 linter
     # and is omitted. Context propagation is enforced by noctx and
     # manual review.
@@ -128,6 +129,20 @@ linters:
         linters:
           - revive
         text: "exported"
+
+      # Test files and internal helpers use file paths and TLS configs
+      # that gosec flags as unsafe — these are controlled test fixtures.
+      - path: _test\.go
+        linters:
+          - gosec
+
+      - path: internal/testhelper/
+        linters:
+          - gosec
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 formatters:
   enable:

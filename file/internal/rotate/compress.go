@@ -26,7 +26,7 @@ import (
 func gzipCopy(dst io.Writer, src io.Reader) error {
 	gz := gzip.NewWriter(dst)
 	if _, err := io.Copy(gz, src); err != nil {
-		gz.Close() //nolint:errcheck // error path
+		gz.Close() //nolint:errcheck,gosec // error path
 		return fmt.Errorf("rotate: compress copy: %w", err)
 	}
 	if err := gz.Close(); err != nil {
@@ -59,13 +59,13 @@ func compressFile(src, dst string, mode os.FileMode) error {
 	}
 
 	if copyErr := gzipCopy(out, in); copyErr != nil {
-		out.Close()    //nolint:errcheck // error path
-		os.Remove(dst) //nolint:errcheck // best-effort cleanup of partial dest on error path
+		out.Close()    //nolint:errcheck,gosec // error path
+		os.Remove(dst) //nolint:errcheck,gosec // best-effort cleanup of partial dest on error path
 		return copyErr
 	}
 
 	if closeErr := out.Close(); closeErr != nil {
-		os.Remove(dst) //nolint:errcheck // best-effort cleanup of partial dest on error path
+		os.Remove(dst) //nolint:errcheck,gosec // best-effort cleanup of partial dest on error path
 		return fmt.Errorf("rotate: compress close dest: %w", closeErr)
 	}
 

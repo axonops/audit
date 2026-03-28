@@ -42,7 +42,7 @@ type TLSPolicy struct {
 // security-sensitive configurations (e.g. weak ciphers enabled).
 func (p *TLSPolicy) Apply(cfg *tls.Config) (result *tls.Config, warnings []string) {
 	if cfg == nil {
-		cfg = &tls.Config{}
+		cfg = &tls.Config{} //nolint:gosec // G402: MinVersion is set immediately below based on policy
 	}
 
 	// Nil receiver = zero value = TLS 1.3 only.

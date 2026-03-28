@@ -601,40 +601,41 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 		"bad output should receive nothing due to formatter error")
 }
 
-func TestFanout_ConcurrentRouteUpdate(t *testing.T) {
+// TestFanout_ConcurrentEventOverrideAndAudit exercises the eventOverrides
+// syncmap under concurrent write+read. A writer goroutine toggles a
+// per-event override while reader goroutines call Audit. The race
+// detector verifies no data races on the syncmap.
+func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
-		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
-	// Concurrently update routes while sending events.
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Writer goroutine: toggle route on/off.
+	// Writer: toggle per-event override on auth_failure.
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			_ = logger.SetOutputRoute("test", &audit.EventRoute{
-				IncludeCategories: []string{"write"},
-			})
-			_ = logger.ClearOutputRoute("test")
+		for range 100 {
+			_ = logger.DisableEvent("auth_failure")
+			_ = logger.EnableEvent("auth_failure")
 		}
 	}()
 
-	// Reader goroutine: send events.
+	// Reader: audit auth_failure concurrently.
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			_ = logger.Audit("user_create", audit.Fields{"outcome": "success"})
+		for range 100 {
+			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
 		}
 	}()
 
 	wg.Wait()
-	// No assertion on event count — the test verifies no race or panic
-	// under concurrent route mutation and event delivery.
+	require.NoError(t, logger.Close())
+	// Count is non-deterministic due to concurrent enable/disable.
+	// The test passes iff the race detector reports no data race.
 }

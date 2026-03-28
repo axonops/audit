@@ -1987,3 +1987,72 @@ func BenchmarkFilterCheck(b *testing.B) {
 		_ = audit.IsEnabledForTest(logger, "schema_register")
 	}
 }
+
+// BenchmarkFilterCheck_Parallel measures filter check throughput under
+// heavy read contention. This is the scenario where sync.Map outperforms
+// RWMutex — hundreds of concurrent readers avoid cache-line bouncing on
+// the RWMutex reader counter.
+func BenchmarkFilterCheck_Parallel(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	b.SetParallelism(100)
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = audit.IsEnabledForTest(logger, "schema_register")
+		}
+	})
+}
+
+// BenchmarkFilterCheck_ReadWriteContention measures filter check
+// throughput while a writer goroutine continuously toggles a category.
+// This simulates the production scenario of runtime filter changes
+// during sustained audit traffic.
+func BenchmarkFilterCheck_ReadWriteContention(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	// Background writer toggling a category throughout the benchmark.
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				_ = logger.DisableCategory("read")
+				_ = logger.EnableCategory("read")
+			}
+		}
+	}()
+	b.Cleanup(func() { close(done) })
+
+	b.SetParallelism(100)
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = audit.IsEnabledForTest(logger, "schema_register")
+		}
+	})
+}

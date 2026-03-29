@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"github.com/cucumber/godog"
 
@@ -45,6 +46,7 @@ func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMiddlewareGivenSteps(ctx, tc)
 	registerMiddlewareWhenSteps(ctx, tc)
 	registerMiddlewareThenSteps(ctx, tc)
+	registerMiddlewarePathSteps(ctx, tc)
 }
 
 func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -131,6 +133,30 @@ func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		}
 		if tc.LastHTTPResp.StatusCode != status {
 			return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
+		}
+		return nil
+	})
+}
+
+func registerMiddlewarePathSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a GET request to a path with (\d+) characters$`, func(length int) error {
+		path := "/" + strings.Repeat("a", length-1)
+		return sendTestRequest(tc, "GET", path, nil)
+	})
+	ctx.Step(`^the file event path field should be at most (\d+) characters$`, func(maxLen int) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		path, ok := events[0]["path"].(string)
+		if !ok {
+			return fmt.Errorf("path field is not a string: %v", events[0]["path"])
+		}
+		if len(path) > maxLen {
+			return fmt.Errorf("path length %d exceeds max %d", len(path), maxLen)
 		}
 		return nil
 	})

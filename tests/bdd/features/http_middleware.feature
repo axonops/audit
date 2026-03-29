@@ -90,3 +90,11 @@ Feature: HTTP Middleware
     When I send a GET request to "/api/resource"
     And I close the logger
     Then the file event should have field "status_code" with value "200"
+
+  # --- Path truncation ---
+
+  Scenario: Long path is truncated
+    Given an HTTP test server with audit middleware
+    When I send a GET request to a path with 3000 characters
+    And I close the logger
+    Then the file event path field should be at most 2048 characters

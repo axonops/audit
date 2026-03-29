@@ -78,7 +78,10 @@ Feature: Metrics Interface
     When I audit event "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
-    Then the audit call should return an error containing "unknown"
+    Then the audit call should return an error matching:
+      """
+      audit: unknown event type "nonexistent_event"
+      """
 
   Scenario: Nil metrics with filtered event does not panic
     Given a filtering taxonomy with only "write" enabled

@@ -53,7 +53,7 @@ Feature: Multi-Output Fan-Out
 
   Scenario: Duplicate output name rejected
     When I try to create a logger with duplicate output names
-    Then the logger construction should fail with an error containing "duplicate"
+    Then the logger construction should fail with an error containing "duplicate output name"
 
   Scenario: Duplicate file destination rejected
     When I try to create a logger with two file outputs to the same path

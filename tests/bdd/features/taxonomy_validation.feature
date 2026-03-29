@@ -316,7 +316,10 @@ Feature: Taxonomy Validation
       | outcome    | success |
       | actor_id   | alice   |
       | extra_info | bonus   |
-    Then the audit call should return an error containing "unknown"
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" has unknown fields: [extra_info]
+      """
 
   Scenario: Unknown fields accepted with warning in warn mode
     Given a standard test taxonomy
@@ -345,8 +348,10 @@ Feature: Taxonomy Validation
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
-    Then the audit call should return an error containing "missing required"
-    And the error should mention "actor_id"
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" missing required fields: [actor_id]
+      """
 
     Examples:
       | mode       |

@@ -16,6 +16,7 @@ package steps
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -61,6 +62,25 @@ func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		if tc.LastErr.Error() != expected {
 			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+		}
+		return nil
+	})
+
+	ctx.Step(`^the logger construction should fail wrapping "([^"]*)"$`, func(sentinel string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error wrapping %q, got nil", sentinel)
+		}
+		switch sentinel {
+		case "ErrDuplicateDestination":
+			if !errors.Is(tc.LastErr, audit.ErrDuplicateDestination) {
+				return fmt.Errorf("expected ErrDuplicateDestination, got:\n  %q", tc.LastErr.Error())
+			}
+		case "ErrConfigInvalid":
+			if !errors.Is(tc.LastErr, audit.ErrConfigInvalid) {
+				return fmt.Errorf("expected ErrConfigInvalid, got:\n  %q", tc.LastErr.Error())
+			}
+		default:
+			return fmt.Errorf("unknown sentinel: %s", sentinel)
 		}
 		return nil
 	})

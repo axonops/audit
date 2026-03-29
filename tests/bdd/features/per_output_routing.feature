@@ -46,7 +46,7 @@ Feature: Per-Output Event Routing
 
   Scenario: Mixed include and exclude on same route is rejected
     When I try to create a logger with mixed include and exclude route
-    Then the logger construction should fail with an error containing "include or exclude"
+    Then the logger construction should fail with an error containing "EventRoute must use either include or exclude, not both"
 
   Scenario: Route referencing unknown category is rejected
     When I try to create a logger with route referencing unknown category

@@ -171,6 +171,34 @@ jobs:
         if: always()
         run: make test-infra-down
 
+  bdd:
+    name: BDD Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work
+        run: make workspace
+
+      - name: Start test infrastructure
+        run: make test-infra-up
+
+      - name: Run BDD tests
+        run: make test-bdd
+
+      - name: Stop test infrastructure
+        if: always()
+        run: make test-infra-down
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -272,7 +300,7 @@ jobs:
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
-    needs: [hygiene, lint, test, integration, security, cross-build, validate-release]
+    needs: [hygiene, lint, test, integration, bdd, security, cross-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed

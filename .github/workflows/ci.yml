@@ -161,8 +161,15 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
+      - name: Start test infrastructure
+        run: make test-infra-up
+
       - name: Run integration tests
         run: make test-integration
+
+      - name: Stop test infrastructure
+        if: always()
+        run: make test-infra-down
 
   security:
     name: Security Scan

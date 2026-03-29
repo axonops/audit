@@ -139,6 +139,13 @@ Feature: Webhook Output
       audit: config validation failed: webhook max_retries 50 exceeds maximum 20
       """
 
+  Scenario: BufferSize exceeding maximum rejected with exact error
+    When I try to create a webhook output with buffer size 2000000
+    Then the webhook construction should fail with exact error:
+      """
+      audit: config validation failed: webhook buffer_size 2000000 exceeds maximum 1000000
+      """
+
   # --- Complete payload verification ---
 
   Scenario: All event fields present in webhook delivery

@@ -179,6 +179,17 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
+	ctx.Step(`^I try to create a webhook output with buffer size (\d+)$`, func(bufSize int) error {
+		_, err := webhook.New(&webhook.Config{
+			URL:                "https://example.com/events",
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			BufferSize:         bufSize,
+		}, nil, nil)
+		tc.LastErr = err
+		return nil
+	})
+
 	ctx.Step(`^I try to create a webhook output with max retries (\d+)$`, func(maxRetries int) error {
 		_, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",

@@ -39,7 +39,12 @@ import (
 	"github.com/axonops/go-audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // marker generates a unique test marker.
 func marker(t *testing.T) string {
@@ -48,11 +53,6 @@ func marker(t *testing.T) string {
 	_, err := rand.Read(b)
 	require.NoError(t, err)
 	return "FANOUT_" + hex.EncodeToString(b)
-}
-
-func certPath(name string) string {
-	// Repo root relative path — tests run from repo root.
-	return filepath.Join("tests", "testdata", "certs", name)
 }
 
 const webhookURL = "http://localhost:8080"
@@ -170,6 +170,7 @@ func TestFanOut_AllOutputs(t *testing.T) {
 		audit.WithNamedOutput(webhookOut, nil, nil),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
 
 	// Send an event.
 	err = logger.Audit("user_create", audit.Fields{

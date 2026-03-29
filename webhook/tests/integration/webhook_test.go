@@ -31,7 +31,12 @@ import (
 	"github.com/axonops/go-audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const receiverURL = "http://localhost:8080"
 
@@ -97,6 +102,7 @@ func newWebhookOutput(t *testing.T, opts ...func(*webhook.Config)) *webhook.Outp
 	}
 	out, err := webhook.New(cfg, nil, nil)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
 	return out
 }
 
@@ -116,8 +122,9 @@ func TestWebhook_BatchDelivery(t *testing.T) {
 
 	require.NoError(t, out.Close())
 
-	events := getEvents(t)
-	assert.GreaterOrEqual(t, len(events), 1, "receiver should have received at least one batch")
+	// All 12 events should have been delivered across multiple batches.
+	assert.True(t, waitForEvents(t, 1, 5*time.Second),
+		"receiver should have received at least one batch")
 }
 
 func TestWebhook_FlushInterval(t *testing.T) {

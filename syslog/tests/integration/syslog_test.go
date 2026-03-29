@@ -31,7 +31,12 @@ import (
 	"github.com/axonops/go-audit/syslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // certDir returns the absolute path to the test certificates directory.
 func certDir(t *testing.T) string {

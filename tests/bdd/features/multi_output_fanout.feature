@@ -53,6 +53,12 @@ Feature: Multi-Output Fan-Out
 
   # --- Formatters ---
 
+  Scenario: Shared formatter delivers identical content to both outputs
+    Given a logger with two file outputs sharing the same formatter
+    When I audit a "user_create" event in category "write" with marker "shared_fmt"
+    And I close the logger
+    Then both files should contain identical content
+
   Scenario: Mixed formatters per output
     Given a logger with file output using JSON and webhook output using CEF
     When I audit a uniquely marked "user_create" event

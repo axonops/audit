@@ -64,6 +64,7 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	registerFanoutGivenOutputSteps(ctx, tc)
 	registerFanoutGivenRoutingSteps(ctx, tc)
 	registerFanoutGivenRuntimeSteps(ctx, tc)
+	registerFanoutGivenSharedFmtSteps(ctx, tc)
 	registerFanoutGivenMultiOutputSteps(ctx, tc)
 }
 
@@ -147,6 +148,66 @@ func registerFanoutGivenRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			&audit.EventRoute{IncludeCategories: []string{cat}},
 		)
 	})
+}
+
+func registerFanoutGivenSharedFmtSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with two file outputs sharing the same formatter$`, func() error {
+		return createSharedFormatterLogger(tc)
+	})
+	ctx.Step(`^both files should contain identical content$`, func() error {
+		return assertFilesIdentical(tc, "file-a", "file-b")
+	})
+}
+
+func createSharedFormatterLogger(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	pathA := filepath.Join(dir, "a.log")
+	pathB := filepath.Join(dir, "b.log")
+	tc.FilePaths["file-a"] = pathA
+	tc.FilePaths["file-b"] = pathB
+
+	fA, err := file.New(file.Config{Path: pathA}, nil)
+	if err != nil {
+		return fmt.Errorf("create file a: %w", err)
+	}
+	fB, err := file.New(file.Config{Path: pathB}, nil)
+	if err != nil {
+		return fmt.Errorf("create file b: %w", err)
+	}
+
+	// Both outputs share the default JSON formatter (nil = logger default).
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(fA, nil, nil),
+		audit.WithNamedOutput(fB, nil, nil),
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+func assertFilesIdentical(tc *AuditTestContext, nameA, nameB string) error {
+	rawA, err := readRawFile(tc, nameA)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", nameA, err)
+	}
+	rawB, err := readRawFile(tc, nameB)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", nameB, err)
+	}
+	if rawA != rawB {
+		return fmt.Errorf("files %s and %s differ:\n  %s: %d bytes\n  %s: %d bytes",
+			nameA, nameB, nameA, len(rawA), nameB, len(rawB))
+	}
+	return nil
 }
 
 func registerFanoutGivenMultiOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

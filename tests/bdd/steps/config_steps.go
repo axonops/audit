@@ -54,6 +54,17 @@ func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: false})
 	})
 
+	ctx.Step(`^the logger construction should fail with an error matching:$`, func(doc *godog.DocString) error {
+		expected := strings.TrimSpace(doc.Content)
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+		}
+		if tc.LastErr.Error() != expected {
+			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+		}
+		return nil
+	})
+
 	ctx.Step(`^the logger construction should fail with an error$`, func() error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected construction error, got nil")

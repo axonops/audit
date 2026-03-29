@@ -4,45 +4,60 @@ Feature: Config Versioning
   version so that mismatched versions fail fast with a clear error instead
   of producing undefined behaviour.
 
-  Scenario: Config version 0 is rejected
+  Scenario: Config version 0 is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with config version 0
-    Then the logger construction should fail with an error containing "version"
+    Then the logger construction should fail with an error matching:
+      """
+      audit: config validation failed: config version is required: set version to 1
+      """
 
   Scenario: Config version 1 succeeds
     Given a standard test taxonomy
     When I create a logger with config version 1
     Then the logger should be created successfully
 
-  Scenario: Unknown future config version is rejected
+  Scenario: Unknown future config version is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with config version 999
-    Then the logger construction should fail with an error containing "version"
+    Then the logger construction should fail with an error matching:
+      """
+      audit: config validation failed: config version 999 is not supported by this library version (max: 1), upgrade the library
+      """
 
-  Scenario: Negative config version is rejected
+  Scenario: Negative config version is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with config version -1
-    Then the logger construction should fail with an error containing "version"
+    Then the logger construction should fail with an error matching:
+      """
+      audit: config validation failed: config version -1 is no longer supported, minimum supported is 1
+      """
 
   Scenario: BufferSize defaults to 10000 when zero
     Given a standard test taxonomy
     When I create a logger with config version 1 and buffer size 0
     Then the logger should be created successfully
 
-  Scenario: BufferSize exceeding maximum is rejected
+  Scenario: BufferSize exceeding maximum is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with config version 1 and buffer size 2000000
-    Then the logger construction should fail with an error
+    Then the logger construction should fail with an error matching:
+      """
+      audit: config validation failed: buffer_size 2000000 exceeds maximum 1000000
+      """
 
   Scenario: DrainTimeout defaults when zero
     Given a standard test taxonomy
     When I create a logger with config version 1 and drain timeout 0
     Then the logger should be created successfully
 
-  Scenario: DrainTimeout exceeding maximum is rejected
+  Scenario: DrainTimeout exceeding maximum is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with config version 1 and drain timeout 120s
-    Then the logger construction should fail with an error
+    Then the logger construction should fail with an error matching:
+      """
+      audit: config validation failed: drain_timeout 2m0s exceeds maximum 1m0s
+      """
 
   Scenario: Disabled config returns no-op logger
     Given a standard test taxonomy
@@ -53,4 +68,7 @@ Feature: Config Versioning
     Given a standard test taxonomy
     And a logger with stdout output
     When I audit event "user_create" with required fields and an unknown field "extra"
-    Then the audit call should return an error containing "unknown"
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" has unknown fields: [extra]
+      """

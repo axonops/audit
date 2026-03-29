@@ -234,6 +234,21 @@ Feature: Webhook Output
     And I close the logger again
     Then the second close should return no error
 
+  # --- HTTPS / TLS ---
+
+  Scenario: Webhook over HTTPS with custom CA validates server
+    Given a local HTTPS webhook receiver
+    And a logger with webhook output to the HTTPS receiver with custom CA
+    When I audit a uniquely marked webhook "user_create" event
+    Then the HTTPS webhook receiver should have at least 1 event within 5 seconds
+
+  Scenario: Webhook HTTPS with wrong CA drops events
+    Given a local HTTPS webhook receiver
+    And mock webhook metrics are configured
+    And a logger with webhook output to the HTTPS receiver with wrong CA and metrics
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook metrics should have recorded at least 1 drop within 5 seconds
+
   # --- Webhook-specific metrics ---
 
   Scenario: Webhook flush records RecordWebhookFlush metric

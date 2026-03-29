@@ -17,9 +17,12 @@ package steps
 import (
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +37,61 @@ func registerWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerWebhookGivenSteps(ctx, tc)
 	registerWebhookWhenSteps(ctx, tc)
 	registerWebhookThenSteps(ctx, tc)
+}
+
+// tlsWebhookReceiver is a local HTTPS server that captures events.
+type tlsWebhookReceiver struct {
+	server *httptest.Server
+	events []json.RawMessage
+	mu     sync.Mutex
+}
+
+func newTLSWebhookReceiver() *tlsWebhookReceiver {
+	r := &tlsWebhookReceiver{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /events", func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		r.mu.Lock()
+		// Split NDJSON lines.
+		for _, line := range strings.Split(string(body), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				r.events = append(r.events, json.RawMessage(line))
+			}
+		}
+		r.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+	r.server = httptest.NewTLSServer(mux)
+	return r
+}
+
+func (r *tlsWebhookReceiver) eventCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.events)
+}
+
+func (r *tlsWebhookReceiver) close() {
+	r.server.Close()
+}
+
+// caFile writes the TLS server's CA certificate to a temp file and returns the path.
+func (r *tlsWebhookReceiver) caFile() (string, error) {
+	cert := r.server.Certificate()
+	if cert == nil {
+		return "", fmt.Errorf("no server certificate")
+	}
+	f, err := os.CreateTemp("", "bdd-ca-*.pem")
+	if err != nil {
+		return "", fmt.Errorf("create temp file: %w", err)
+	}
+	if err := pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}); err != nil {
+		_ = f.Close()
+		return "", fmt.Errorf("encode PEM: %w", err)
+	}
+	_ = f.Close()
+	return f.Name(), nil
 }
 
 // MockWebhookMetrics captures webhook.Metrics calls.
@@ -118,9 +176,58 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	ctx.Step(`^the webhook receiver is reconfigured to return status (\d+)$`, func(status int) error {
 		return configureWebhook(tc.WebhookURL, status, 0)
 	})
+
+	ctx.Step(`^a local HTTPS webhook receiver$`, func() error {
+		r := newTLSWebhookReceiver()
+		tc.TLSReceiver = r
+		tc.AddCleanup(func() { r.close() })
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook output to the HTTPS receiver with custom CA$`, func() error {
+		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no TLS webhook receiver configured")
+		}
+		caPath, err := r.caFile()
+		if err != nil {
+			return fmt.Errorf("get CA file: %w", err)
+		}
+		tc.AddCleanup(func() { _ = os.Remove(caPath) })
+
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			TLSCA:              caPath,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            5 * time.Second,
+		}
+		out, err := webhook.New(cfg, nil, nil)
+		if err != nil {
+			tc.LastErr = err
+			return nil //nolint:nilerr // scenario may assert on tc.LastErr
+		}
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
 }
 
 func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerWebhookWhenAuditSteps(ctx, tc)
+	registerWebhookWhenConstructionSteps(ctx, tc)
+}
+
+func registerWebhookWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit a uniquely marked webhook "([^"]*)" event$`, func(eventType string) error {
 		return auditMarkedWebhookEvent(tc, eventType, "default")
 	})
@@ -144,6 +251,31 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
+	ctx.Step(`^I rapidly audit (\d+) webhook events measuring time$`, func(count int) error {
+		start := time.Now()
+		for i := range count {
+			_ = tc.Logger.Audit("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": fmt.Sprintf("rapid_%d", i),
+			})
+		}
+		tc.AuditDuration = time.Since(start)
+		return nil
+	})
+
+	ctx.Step(`^all (\d+) audit calls should complete within (\d+) seconds$`, func(count, secs int) error {
+		if tc.AuditDuration == 0 {
+			return fmt.Errorf("no audit duration recorded")
+		}
+		maxDuration := time.Duration(secs) * time.Second
+		if tc.AuditDuration > maxDuration {
+			return fmt.Errorf("%d audit calls took %v (max %v) — suggests blocking", count, tc.AuditDuration, maxDuration)
+		}
+		return nil
+	})
+}
+
+func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a webhook output to "([^"]*)" without AllowInsecureHTTP$`, func(url string) error {
 		_, err := webhook.New(&webhook.Config{
 			URL:                url,
@@ -187,29 +319,6 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
-	ctx.Step(`^I rapidly audit (\d+) webhook events measuring time$`, func(count int) error {
-		start := time.Now()
-		for i := range count {
-			_ = tc.Logger.Audit("user_create", audit.Fields{
-				"outcome":  "success",
-				"actor_id": fmt.Sprintf("rapid_%d", i),
-			})
-		}
-		tc.AuditDuration = time.Since(start)
-		return nil
-	})
-
-	ctx.Step(`^all (\d+) audit calls should complete within (\d+) seconds$`, func(count, secs int) error {
-		if tc.AuditDuration == 0 {
-			return fmt.Errorf("no audit duration recorded")
-		}
-		maxDuration := time.Duration(secs) * time.Second
-		if tc.AuditDuration > maxDuration {
-			return fmt.Errorf("%d audit calls took %v (max %v) — suggests blocking", count, tc.AuditDuration, maxDuration)
-		}
-		return nil
-	})
-
 	ctx.Step(`^I try to create a webhook output with buffer size (\d+)$`, func(bufSize int) error {
 		_, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",
@@ -229,6 +338,40 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 			MaxRetries:         maxRetries,
 		}, nil, nil)
 		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook output to the HTTPS receiver with wrong CA and metrics$`, func() error {
+		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no TLS webhook receiver configured")
+		}
+		// Use invalid.crt — a valid PEM but different CA than the server's.
+		// BDD tests run from tests/bdd/ so certs are at ../testdata/certs.
+		wrongCA := "../testdata/certs/invalid.crt"
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			TLSCA:              wrongCA,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            2 * time.Second,
+			MaxRetries:         1,
+		}
+		out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+		if err != nil {
+			return fmt.Errorf("create webhook output: %w", err)
+		}
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
 		return nil
 	})
 }
@@ -262,12 +405,54 @@ func registerWebhookThenCountSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 }
 
 func registerWebhookThenAssertSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerWebhookThenBodySteps(ctx, tc)
+	registerWebhookThenMetricsAndErrorSteps(ctx, tc)
+}
+
+func registerWebhookThenBodySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the received webhook event should have header "([^"]*)" with value "([^"]*)"$`, func(n, v string) error { return assertWebhookHeader(tc, n, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertWebhookBodyField(tc, f, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)"$`, func(f string) error { return assertWebhookBodyFieldPresent(tc, f) })
+	ctx.Step(`^the HTTPS webhook receiver should have at least (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
+		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no TLS webhook receiver configured")
+		}
+		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+		for time.Now().Before(deadline) {
+			if r.eventCount() >= n {
+				return nil
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		return fmt.Errorf("wanted >= %d HTTPS webhook events, got %d after %ds", n, r.eventCount(), timeout)
+	})
+}
+
+func registerWebhookThenMetricsAndErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the webhook metrics should have recorded at least (\d+) flush$`, func(n int) error { return assertWebhookFlushCount(tc, n) })
 	ctx.Step(`^the webhook construction should fail with exact error:$`, func(doc *godog.DocString) error { return assertWebhookExactError(tc, strings.TrimSpace(doc.Content)) })
 	ctx.Step(`^the webhook construction should fail with an error$`, func() error { return assertWebhookAnyError(tc) })
+
+	ctx.Step(`^the webhook metrics should have recorded at least (\d+) drops? within (\d+) seconds$`, func(minDrops, timeout int) error {
+		if tc.WebhookMetrics == nil {
+			return fmt.Errorf("no webhook metrics configured")
+		}
+		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+		for time.Now().Before(deadline) {
+			tc.WebhookMetrics.mu.Lock()
+			drops := tc.WebhookMetrics.drops
+			tc.WebhookMetrics.mu.Unlock()
+			if drops >= minDrops {
+				return nil
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		tc.WebhookMetrics.mu.Lock()
+		defer tc.WebhookMetrics.mu.Unlock()
+		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.drops, timeout)
+	})
+
 	ctx.Step(`^the webhook construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)

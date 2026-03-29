@@ -51,7 +51,8 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	Markers   map[string]string // logical name -> unique marker string
 
 	// Docker infrastructure.
-	WebhookURL string // "http://localhost:8080"
+	WebhookURL  string // "http://localhost:8080"
+	TLSReceiver any    // *tlsWebhookReceiver for HTTPS webhook tests
 
 	// Middleware state.
 	TestServer   *httptest.Server

@@ -148,7 +148,7 @@ func TestFileOutput_DefaultConfig(t *testing.T) {
 func TestFileOutput_InvalidConfig(t *testing.T) {
 	dir := t.TempDir()
 
-	tests := []struct {
+	tests := []struct { //nolint:govet // test struct
 		name    string
 		wantErr string
 		cfg     file.Config
@@ -471,4 +471,37 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 	err = out.Write([]byte("test\n"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "symlink")
+}
+
+func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "absolute", path: filepath.Join(dir, "audit.log")},
+		{name: "relative_dot", path: filepath.Join(dir, ".", "audit.log")},
+		{name: "relative_dotdot", path: filepath.Join(dir, "sub", "..", "audit.log")},
+	}
+
+	// All paths should produce the same DestinationKey.
+	var keys []string
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := file.New(file.Config{Path: tt.path}, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = out.Close() })
+
+			key := out.DestinationKey()
+			assert.NotEmpty(t, key)
+			keys = append(keys, key)
+		})
+	}
+
+	// All keys must be equal.
+	for i := 1; i < len(keys); i++ {
+		assert.Equal(t, keys[0], keys[i],
+			"paths %q and %q should produce the same key", tests[0].path, tests[i].path)
+	}
 }

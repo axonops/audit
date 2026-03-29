@@ -1768,6 +1768,76 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// DestinationKeyer dedup tests
+// ---------------------------------------------------------------------------
+
+// destKeyOutput is a mock output that implements DestinationKeyer.
+type destKeyOutput struct {
+	name string
+	key  string
+}
+
+func (d *destKeyOutput) Write(_ []byte) error { return nil }
+func (d *destKeyOutput) Close() error         { return nil }
+func (d *destKeyOutput) Name() string         { return d.name }
+func (d *destKeyOutput) DestinationKey() string {
+	return d.key
+}
+
+func TestWithOutputs_DuplicateDestination_ReturnsError(t *testing.T) {
+	o1 := &destKeyOutput{name: "out1", key: "/var/log/audit.log"}
+	o2 := &destKeyOutput{name: "out2", key: "/var/log/audit.log"}
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(o1, o2),
+	)
+	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
+	assert.Contains(t, err.Error(), "out1")
+	assert.Contains(t, err.Error(), "out2")
+}
+
+func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
+	o1 := &destKeyOutput{name: "out1", key: "localhost:514"}
+	o2 := &destKeyOutput{name: "out2", key: "localhost:514"}
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(o1, nil, nil),
+		audit.WithNamedOutput(o2, nil, nil),
+	)
+	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
+	assert.Contains(t, err.Error(), "out1")
+	assert.Contains(t, err.Error(), "out2")
+}
+
+func TestWithOutputs_EmptyDestinationKey_NoCollision(t *testing.T) {
+	// Outputs returning empty DestinationKey opt out of dedup.
+	o1 := &destKeyOutput{name: "out1", key: ""}
+	o2 := &destKeyOutput{name: "out2", key: ""}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(o1, o2),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+}
+
+func TestWithOutputs_MixedTypes_NoFalsePositive(t *testing.T) {
+	// destKeyOutput + MockOutput (no DestinationKeyer) should not collide.
+	o1 := &destKeyOutput{name: "keyed", key: "/var/log/audit.log"}
+	o2 := testhelper.NewMockOutput("unkeyed")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(o1, o2),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+}
+
+// ---------------------------------------------------------------------------
 // formatCache tests
 // ---------------------------------------------------------------------------
 

@@ -27,8 +27,11 @@ import (
 	"github.com/axonops/go-audit/file/internal/rotate"
 )
 
-// Compile-time assertion that Output implements audit.Output.
-var _ audit.Output = (*Output)(nil)
+// Compile-time assertions.
+var (
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+)
 
 const (
 	// MaxSizeMB is the maximum allowed value for [Config.MaxSizeMB].
@@ -60,13 +63,41 @@ type Metrics interface {
 }
 
 // Config holds configuration for [Output].
+//
+//nolint:govet // field order: logical grouping (required, then optional, then pointer)
 type Config struct {
-	Compress    *bool
-	Path        string
+	// Path is the filesystem path for the audit log file. REQUIRED.
+	// Relative paths are resolved to absolute at construction time.
+	// The parent directory must exist when [New] is called.
+	Path string
+
+	// Permissions is the octal file mode string (e.g. "0600") applied
+	// to created files. Empty defaults to "0600" (owner read/write).
+	// Values granting group or world write access produce a slog
+	// warning. Values above 0o777 cause [New] to return an error;
+	// this error does not wrap [audit.ErrConfigInvalid].
 	Permissions string
-	MaxSizeMB   int
-	MaxBackups  int
-	MaxAgeDays  int
+
+	// MaxSizeMB is the maximum size in megabytes of a single log file
+	// before rotation. Zero defaults to 100. Values above [MaxSizeMB]
+	// (10,240 = 10 GB) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	MaxSizeMB int
+
+	// MaxBackups is the maximum number of rotated backup files to
+	// retain. Zero defaults to 5. Values above [MaxBackups] (100)
+	// cause [New] to return an error wrapping [audit.ErrConfigInvalid].
+	MaxBackups int
+
+	// MaxAgeDays is the maximum age in days of rotated backup files
+	// before deletion. Zero defaults to 30. Values above [MaxAgeDays]
+	// (365) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	MaxAgeDays int
+
+	// Compress enables gzip compression of rotated backup files.
+	// When nil, defaults to true.
+	Compress *bool
 }
 
 // Output writes serialised audit events to a file with automatic
@@ -82,6 +113,21 @@ type Output struct {
 	closed bool
 }
 
+// resolvePath normalises the path to an absolute form, resolving
+// symlinks in the parent directory when possible. Falls back to
+// filepath.Abs if symlink resolution fails (e.g. parent doesn't exist).
+func resolvePath(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err == nil {
+		return filepath.Join(resolved, filepath.Base(path)), nil
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("audit: file output path: %w", err)
+	}
+	return abs, nil
+}
+
 // New creates a new [Output] from the given config.
 // It validates the path, permissions, and parent directory existence.
 // The fileMetrics parameter is optional (may be nil).
@@ -89,13 +135,17 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
-	cfg.Path = filepath.Clean(cfg.Path)
+	var err error
+	cfg.Path, err = resolvePath(cfg.Path)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check parent directory exists early to provide a clear "audit:" error
 	// message. rotate.New performs the same check but with a "rotate:" prefix.
 	parentDir := filepath.Dir(cfg.Path)
-	if _, err := os.Lstat(parentDir); err != nil {
-		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, err)
+	if _, statErr := os.Lstat(parentDir); statErr != nil {
+		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, statErr)
 	}
 
 	perm, err := parsePermissions(cfg.Permissions)
@@ -179,6 +229,12 @@ func (f *Output) Close() error {
 // Name returns the human-readable identifier for this output.
 func (f *Output) Name() string {
 	return "file:" + f.path
+}
+
+// DestinationKey returns the absolute filesystem path,
+// enabling duplicate destination detection via [audit.DestinationKeyer].
+func (f *Output) DestinationKey() string {
+	return f.path
 }
 
 // parsePermissions parses an octal permission string. An empty string

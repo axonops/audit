@@ -73,19 +73,25 @@ func WithFormatter(f Formatter) Option {
 // [WithNamedOutput] to configure per-output event routes or formatters.
 //
 // WithOutputs MUST NOT be combined with [WithNamedOutput]; mixing the
-// two returns an error. If no outputs are configured, events are
-// validated and filtered but silently discarded.
+// two returns an error. Duplicate output destinations are also
+// detected: if two outputs implement [DestinationKeyer] and return
+// the same key, WithOutputs returns an error. If no outputs are
+// configured, events are validated and filtered but silently discarded.
 func WithOutputs(outputs ...Output) Option {
 	return func(l *Logger) error {
 		if len(l.entries) > 0 {
 			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput")
 		}
 		byName := make(map[string]*outputEntry, len(outputs))
+		byDest := make(map[string]string) // destination key → output name
 		entries := make([]*outputEntry, len(outputs))
 		for i, o := range outputs {
 			name := o.Name()
 			if _, dup := byName[name]; dup {
 				return fmt.Errorf("audit: duplicate output name %q", name)
+			}
+			if err := checkDestinationDup(o, name, byDest); err != nil {
+				return err
 			}
 			oe := &outputEntry{output: o}
 			entries[i] = oe
@@ -107,7 +113,8 @@ func WithOutputs(outputs ...Output) Option {
 // [WithOutputs] was already applied, WithNamedOutput returns an error.
 //
 // Output names MUST be unique across all outputs; duplicate names
-// cause [NewLogger] to return an error. Routes are validated against
+// cause [NewLogger] to return an error. Duplicate destinations are
+// also detected via [DestinationKeyer]. Routes are validated against
 // the taxonomy after all options have been applied.
 func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Option {
 	return func(l *Logger) error {
@@ -118,8 +125,14 @@ func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Opti
 		if l.outputsByName == nil {
 			l.outputsByName = make(map[string]*outputEntry)
 		}
+		if l.destKeys == nil {
+			l.destKeys = make(map[string]string)
+		}
 		if _, dup := l.outputsByName[name]; dup {
 			return fmt.Errorf("audit: duplicate output name %q", name)
+		}
+		if err := checkDestinationDup(output, name, l.destKeys); err != nil {
+			return err
 		}
 		oe := &outputEntry{
 			output:    output,
@@ -132,4 +145,24 @@ func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Opti
 		l.outputsByName[name] = oe
 		return nil
 	}
+}
+
+// checkDestinationDup checks whether the output's destination key
+// collides with a previously registered output. If the output does not
+// implement [DestinationKeyer], the check is skipped. On collision,
+// returns an error naming both outputs and the conflicting key.
+func checkDestinationDup(o Output, name string, seen map[string]string) error {
+	dk, ok := o.(DestinationKeyer)
+	if !ok {
+		return nil
+	}
+	key := dk.DestinationKey()
+	if key == "" {
+		return nil
+	}
+	if existing, dup := seen[key]; dup {
+		return fmt.Errorf("%w: outputs %q and %q share %q", ErrDuplicateDestination, existing, name, key)
+	}
+	seen[key] = name
+	return nil
 }

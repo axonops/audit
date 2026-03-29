@@ -50,6 +50,11 @@ var (
 	// this as a drop notification. Increasing [Config.BufferSize] or
 	// reducing event emission rate will reduce frequency.
 	ErrBufferFull = errors.New("audit: buffer full")
+
+	// ErrDuplicateDestination is returned by [WithOutputs] or
+	// [WithNamedOutput] when two outputs implement [DestinationKeyer]
+	// and return the same key.
+	ErrDuplicateDestination = errors.New("audit: duplicate destination")
 )
 
 // auditEntryPool caches auditEntry instances to avoid per-Audit heap
@@ -71,6 +76,8 @@ var auditEntryPool = sync.Pool{
 // the slog default handler to control this output.
 //
 // A Logger is safe for concurrent use by multiple goroutines.
+//
+//nolint:govet // field order: logical grouping over alignment optimisation
 type Logger struct {
 	startupAppName atomic.Value
 	closeErr       error
@@ -88,6 +95,10 @@ type Logger struct {
 	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
+	// destKeys tracks destination keys during construction to detect
+	// duplicate output destinations. Only used by WithNamedOutput;
+	// WithOutputs uses a local map.
+	destKeys map[string]string
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool
@@ -119,6 +130,9 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 			return nil, err
 		}
 	}
+
+	// Release construction-only state.
+	l.destKeys = nil
 
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")

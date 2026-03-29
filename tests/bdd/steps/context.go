@@ -26,6 +26,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -57,8 +58,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	LastHTTPResp *http.Response
 
 	// Metrics capture.
-	MockMetrics *MockMetrics
-	FileMetrics *MockFileMetrics
+	MockMetrics   *MockMetrics
+	FileMetrics   *MockFileMetrics
+	AuditDuration time.Duration // measured duration for timing assertions
 
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
@@ -100,6 +102,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.LastHTTPResp = nil
 	tc.MockMetrics = nil
 	tc.FileMetrics = nil
+	tc.AuditDuration = 0
 	tc.cleanups = nil
 }
 

@@ -91,12 +91,6 @@ Feature: Syslog Output
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain "audit"
 
-  Scenario: Default facility is "local0"
-    Given a logger with syslog output on "tcp" to "localhost:5514"
-    When I audit a uniquely marked "user_create" event
-    And I close the logger
-    Then the syslog server should contain the marker within 10 seconds
-
   # --- UDP edge cases ---
 
   Scenario: UDP large payload accepted without panic
@@ -117,6 +111,21 @@ Feature: Syslog Output
     When I close the logger
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error containing "closed"
+
+  # --- Syslog-specific metrics ---
+
+  Scenario: Nil syslog metrics does not panic during delivery
+    Given a logger with syslog output on "tcp" to "localhost:5514"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the marker within 10 seconds
+
+  Scenario: Close is idempotent
+    Given a logger with syslog output on "tcp" to "localhost:5514"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    And I close the logger again
+    Then the second close should return no error
 
   # --- Complete payload verification ---
 

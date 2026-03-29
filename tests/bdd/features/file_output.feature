@@ -58,9 +58,9 @@ Feature: File Output
     And I close the logger
     Then the file should have permissions "0640"
 
-  Scenario: Symlink path is rejected
+  Scenario: Symlink path is rejected at construction
     When I try to create a file output with a symlink path
-    Then the file output should reject the symlink
+    Then the file output construction should fail with an error
 
   # --- Rotation ---
 

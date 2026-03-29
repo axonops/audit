@@ -310,10 +310,17 @@ Feature: Taxonomy Validation
     Then the event should be delivered successfully
     And the output should contain field "extra_info" with value "bonus"
 
-  Scenario: Missing required field fails in all validation modes
+  Scenario Outline: Missing required field fails in all validation modes
     Given a standard test taxonomy
-    And a logger with stdout output and validation mode "permissive"
+    And a logger with stdout output and validation mode "<mode>"
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
     Then the audit call should return an error containing "missing required"
+    And the error should mention "actor_id"
+
+    Examples:
+      | mode       |
+      | strict     |
+      | warn       |
+      | permissive |

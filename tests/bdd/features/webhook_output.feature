@@ -155,12 +155,20 @@ Feature: Webhook Output
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
+  Scenario: No retry on 404 not found
+    Given the webhook receiver is configured to return status 404
+    And a logger with webhook output configured for batch size 1 and max retries 5
+    When I audit a uniquely marked webhook "user_create" event "no_retry_404"
+    And the webhook receiver is reconfigured to return status 200
+    And I audit a uniquely marked webhook "user_create" event "sentinel_404"
+    Then the webhook receiver should have exactly 2 events within 5 seconds
+
   # --- Buffer management ---
 
-  Scenario: Buffer overflow drops event without blocking
+  Scenario: Buffer overflow is non-blocking
     Given a logger with webhook output configured for batch size 100 and flush interval 60s
-    When I rapidly audit 200 webhook events
-    Then the audit calls should not have blocked
+    When I rapidly audit 200 webhook events measuring time
+    Then all 200 audit calls should complete within 2 seconds
 
   # --- Close idempotent ---
 

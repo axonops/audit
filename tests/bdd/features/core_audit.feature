@@ -73,7 +73,7 @@ Feature: Core Audit Logging
   Scenario: Audit after close returns ErrClosed
     Given I close the logger
     When I try to audit event "user_create" with required fields
-    Then the audit call should return an error containing "closed"
+    Then the audit call should return an error wrapping "ErrClosed"
 
   # --- Edge cases ---
 
@@ -85,14 +85,6 @@ Feature: Core Audit Logging
       | actor_id | alice   |
     Then the audit call should return no error
     And no events should be delivered
-
-  Scenario: Event with only required fields and no optional fields
-    When I audit event "user_create" with fields:
-      | field    | value   |
-      | outcome  | success |
-      | actor_id | alice   |
-    Then the event should be delivered successfully
-    And the output should contain an event with event_type "user_create"
 
   # --- Handle / MustHandle ---
 

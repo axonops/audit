@@ -151,18 +151,26 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
-	ctx.Step(`^I rapidly audit (\d+) webhook events$`, func(count int) error {
+	ctx.Step(`^I rapidly audit (\d+) webhook events measuring time$`, func(count int) error {
+		start := time.Now()
 		for i := range count {
 			_ = tc.Logger.Audit("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": fmt.Sprintf("rapid_%d", i),
 			})
 		}
+		tc.AuditDuration = time.Since(start)
 		return nil
 	})
 
-	ctx.Step(`^the audit calls should not have blocked$`, func() error {
-		// If we got here, the calls didn't block (they returned immediately).
+	ctx.Step(`^all (\d+) audit calls should complete within (\d+) seconds$`, func(count, secs int) error {
+		if tc.AuditDuration == 0 {
+			return fmt.Errorf("no audit duration recorded")
+		}
+		maxDuration := time.Duration(secs) * time.Second
+		if tc.AuditDuration > maxDuration {
+			return fmt.Errorf("%d audit calls took %v (max %v) — suggests blocking", count, tc.AuditDuration, maxDuration)
+		}
 		return nil
 	})
 

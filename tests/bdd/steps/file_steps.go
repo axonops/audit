@@ -85,19 +85,6 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		return nil
 	})
-	ctx.Step(`^the file output should reject the symlink$`, func() error {
-		// Symlink rejection happens at write time (lazy open), not construction.
-		// file.New succeeds, but the first Write via the drain goroutine fails.
-		// We verify the symlink was created correctly and the output was constructed.
-		if tc.LastErr != nil {
-			// Construction rejected it — that's fine too.
-			return nil
-		}
-		// Construction succeeded — symlink will be rejected at write time
-		// by the rotate package's safeOpen/safeStat. This is tested at the
-		// unit level; at BDD level we verify the output was created.
-		return nil
-	})
 	ctx.Step(`^more than one file should exist in the output directory$`, func() error { return assertMultipleFilesInDir(tc) })
 	ctx.Step(`^a \.gz backup file should exist in the output directory$`, func() error { return assertGzFileExists(tc) })
 	ctx.Step(`^no \.gz files should exist in the output directory$`, func() error { return assertNoGzFiles(tc) })
@@ -183,8 +170,24 @@ func trySymlinkFileOutput(tc *AuditTestContext) error {
 	if err := os.Symlink(real, link); err != nil {
 		return fmt.Errorf("create symlink: %w", err)
 	}
-	_, err = file.New(file.Config{Path: link}, nil)
-	tc.LastErr = err
+	// file.New may succeed (lazy open), but the symlink is rejected
+	// at write time by the rotate package's safeOpen. Create the
+	// output and attempt a write to trigger the rejection.
+	out, err := file.New(file.Config{Path: link}, nil)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // construction rejected it
+	}
+	// Try writing — the symlink should be rejected by safeOpen.
+	writeErr := out.Write([]byte(`{"test":"symlink"}\n`))
+	_ = out.Close()
+	if writeErr != nil {
+		tc.LastErr = writeErr
+		return nil //nolint:nilerr // write rejected the symlink
+	}
+	// If neither construction nor write rejected it, that's unexpected
+	// but we store nil error so the Then step can report failure.
+	tc.LastErr = nil
 	return nil
 }
 

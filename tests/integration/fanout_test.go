@@ -69,6 +69,18 @@ func resetWebhook(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
+// configureWebhook sets the webhook receiver's response behaviour.
+func configureWebhook(t *testing.T, statusCode int, delayMS int) {
+	t.Helper()
+	body := fmt.Sprintf(`{"status_code":%d,"delay_ms":%d}`, statusCode, delayMS)
+	resp, err := http.Post(webhookURL+"/configure", "application/json",
+		strings.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"configure endpoint should accept the configuration")
+}
+
 // getWebhookEvents returns stored webhook events.
 func getWebhookEvents(t *testing.T) []map[string]any {
 	t.Helper()
@@ -283,6 +295,63 @@ func TestFanOut_EventRouting(t *testing.T) {
 			"webhook should NOT receive write events")
 	}
 	assert.True(t, found, "webhook should receive the security event")
+}
+
+func TestFanOut_PartialFailure(t *testing.T) {
+	resetWebhook(t)
+	configureWebhook(t, 503, 0) // webhook returns 503
+	m := marker(t)
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "audit.log")
+
+	fileOut, err := file.New(file.Config{Path: filePath}, nil)
+	require.NoError(t, err)
+
+	syslogOut, err := syslog.New(&syslog.Config{
+		Network:  "tcp",
+		Address:  "localhost:5514",
+		Facility: "local0",
+		AppName:  "fanout-partial",
+	}, nil)
+	require.NoError(t, err)
+
+	webhookOut, err := webhook.New(&webhook.Config{
+		URL:                webhookURL + "/events",
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		MaxRetries:         1,
+	}, nil, nil)
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithNamedOutput(fileOut, nil, nil),
+		audit.WithNamedOutput(syslogOut, nil, nil),
+		audit.WithNamedOutput(webhookOut, nil, nil),
+	)
+	require.NoError(t, err)
+
+	// Send event while webhook is failing.
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"marker":   m,
+	})
+	require.NoError(t, err)
+
+	// Close flushes file and syslog despite webhook failure.
+	require.NoError(t, logger.Close())
+
+	data, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), m, "file should receive event despite webhook failure")
+
+	assert.True(t, waitForSyslogMarker(t, m, 10*time.Second),
+		"syslog should receive event despite webhook failure")
 }
 
 func TestFanOut_MixedFormatters(t *testing.T) {

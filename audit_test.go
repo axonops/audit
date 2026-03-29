@@ -1893,6 +1893,113 @@ func TestFormatCache_NilData(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Field completeness tests
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"security": {"auth_check"},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_check": {
+				Category: "security",
+				Required: []string{"outcome", "actor_id", "actor_type"},
+				Optional: []string{"target_type", "target_id", "reason", "source_ip", "user_agent", "request_id"},
+			},
+		},
+		DefaultEnabled: []string{"security"},
+	}
+
+	out := testhelper.NewMockOutput("field-test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	fields := audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"actor_type":  "user",
+		"target_type": "schema",
+		"target_id":   "my-topic-value",
+		"reason":      "valid_credentials",
+		"source_ip":   "192.168.1.100",
+		"user_agent":  "test-client/1.0",
+		"request_id":  "req-12345",
+	}
+	require.NoError(t, logger.Audit("auth_check", fields))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+
+	// Auto-populated fields.
+	assert.Contains(t, record, "timestamp")
+	assert.NotEmpty(t, record["timestamp"], "timestamp must not be empty")
+	assert.Equal(t, "auth_check", record["event_type"])
+
+	// All required fields present with correct values.
+	for _, f := range tax.Events["auth_check"].Required {
+		assert.Contains(t, record, f, "required field %q must be present", f)
+	}
+
+	// All optional fields we provided present with correct values.
+	for _, f := range tax.Events["auth_check"].Optional {
+		assert.Contains(t, record, f, "provided optional field %q must be present", f)
+		assert.Equal(t, fields[f], record[f], "field %q value mismatch", f)
+	}
+}
+
+func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"security": {"auth_check"},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_check": {
+				Category: "security",
+				Required: []string{"outcome", "actor_id"},
+				Optional: []string{"reason", "source_ip", "user_agent"},
+			},
+		},
+		DefaultEnabled: []string{"security"},
+	}
+
+	out := testhelper.NewMockOutput("field-test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, OmitEmpty: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// Send event with only required fields — optional fields omitted.
+	require.NoError(t, logger.Audit("auth_check", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+
+	// Required fields must be present.
+	assert.Equal(t, "success", record["outcome"])
+	assert.Equal(t, "alice", record["actor_id"])
+
+	// Optional fields not provided should be absent (OmitEmpty=true).
+	for _, f := range tax.Events["auth_check"].Optional {
+		assert.NotContains(t, record, f,
+			"omitted optional field %q should not appear in output", f)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 

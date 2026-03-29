@@ -29,7 +29,12 @@ import (
 )
 
 func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	// Given steps
+	registerFileGivenSteps(ctx, tc)
+	registerFileWhenSteps(ctx, tc)
+	registerFileThenSteps(ctx, tc)
+}
+
+func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output at a temporary path$`, func() error {
 		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
 	})
@@ -81,7 +86,9 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 	ctx.Step(`^a logger with no outputs$`, func() error { return createNoOutputLogger(tc) })
 
-	// When steps
+}
+
+func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit (\d+) events rapidly$`, func(n int) error { return auditNEvents(tc, n) })
 	ctx.Step(`^I audit (\d+) events from (\d+) concurrent goroutines$`, func(total, goroutines int) error {
 		return auditConcurrent(tc, total, goroutines)
@@ -110,7 +117,9 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
-	// Then steps
+}
+
+func registerFileThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file should contain exactly (\d+) events$`, func(n int) error { return assertFileEventCount(tc, "default", n) })
 	ctx.Step(`^the file should contain an event with event_type "([^"]*)"$`, func(et string) error { return assertFileHasEventType(tc, et) })
 	ctx.Step(`^every event in the file should be valid JSON$`, func() error { return assertFileAllValidJSON(tc) })

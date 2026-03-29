@@ -54,7 +54,7 @@ func registerLifecycleWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 			}
 		}
 		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
-		return nil
+		return nil //nolint:nilerr // scenario asserts on tc.LastErr
 	})
 
 	ctx.Step(`^I emit startup without app name$`, func() error {

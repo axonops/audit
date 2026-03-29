@@ -33,12 +33,26 @@ Feature: Taxonomy Validation
         - write
         - security
       """
-    And a logger with stdout output
+    Then the taxonomy should contain category "write"
+    And the taxonomy should contain category "security"
+    And the taxonomy should contain category "lifecycle"
+    And the taxonomy should contain event type "user_create"
+    And the taxonomy should contain event type "auth_failure"
+    And the taxonomy should contain event type "startup"
+    And the taxonomy should contain event type "shutdown"
+    And the taxonomy event "user_create" should require field "outcome"
+    And the taxonomy event "user_create" should require field "actor_id"
+    Given a logger with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    Then the event should be delivered successfully
+    Then the output should contain an event matching:
+      | field      | value       |
+      | event_type | user_create |
+      | outcome    | success     |
+      | actor_id   | alice       |
+      | marker     |             |
 
   Scenario: Minimal taxonomy with one category and one event
     Given a taxonomy from YAML:
@@ -54,19 +68,31 @@ Feature: Taxonomy Validation
       default_enabled:
         - ops
       """
-    And a logger with stdout output
+    Then the taxonomy should contain category "ops"
+    And the taxonomy should contain event type "health_check"
+    And the taxonomy event "health_check" should require field "outcome"
+    Given a logger with stdout output
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
-    Then the event should be delivered successfully
+    Then the output should contain an event matching:
+      | field      | value        |
+      | event_type | health_check |
+      | outcome    | success      |
 
   Scenario: Empty YAML input is rejected
     When I try to parse taxonomy from empty YAML
-    Then the taxonomy parse should fail with an error containing "empty"
+    Then the taxonomy parse should fail with exact error:
+      """
+      audit: invalid input: input is empty
+      """
 
   Scenario: Oversized YAML input is rejected
     When I try to parse taxonomy from YAML exceeding 1 MiB
-    Then the taxonomy parse should fail with an error containing "exceeds"
+    Then the taxonomy parse should fail with exact error:
+      """
+      audit: invalid input: input size 1048577 exceeds maximum 1048576 bytes
+      """
 
   Scenario: Invalid YAML syntax is rejected
     When I try to parse taxonomy from YAML:
@@ -75,7 +101,7 @@ Feature: Taxonomy Validation
       categories:
         write: [
       """
-    Then the taxonomy parse should fail with an error containing "yaml"
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
 
   Scenario: Multi-document YAML is rejected
     When I try to parse taxonomy from YAML:
@@ -93,7 +119,10 @@ Feature: Taxonomy Validation
       ---
       version: 2
       """
-    Then the taxonomy parse should fail with an error containing "multiple"
+    Then the taxonomy parse should fail with exact error:
+      """
+      audit: invalid input: input contains multiple YAML documents
+      """
 
   Scenario: Unknown top-level keys are rejected
     When I try to parse taxonomy from YAML:
@@ -110,7 +139,7 @@ Feature: Taxonomy Validation
         - write
       unknown_key: true
       """
-    Then the taxonomy parse should fail with an error containing "unknown_key"
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
 
   # --- Structural validation ---
 
@@ -127,7 +156,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "version"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Version 0 is rejected
     When I try to parse taxonomy from YAML:
@@ -143,7 +172,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "version"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Unsupported future version is rejected
     When I try to parse taxonomy from YAML:
@@ -159,7 +188,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "version"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Event in multiple categories is rejected
     When I try to parse taxonomy from YAML:
@@ -177,7 +206,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "multiple categories"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Category member not defined in events is rejected
     When I try to parse taxonomy from YAML:
@@ -194,7 +223,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "nonexistent_event"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Field in both required and optional is rejected
     When I try to parse taxonomy from YAML:
@@ -211,7 +240,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error containing "both Required and Optional"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: DefaultEnabled references unknown category is rejected
     When I try to parse taxonomy from YAML:
@@ -228,7 +257,7 @@ Feature: Taxonomy Validation
         - write
         - nonexistent_category
       """
-    Then the taxonomy parse should fail with an error containing "nonexistent_category"
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   # --- Lifecycle event injection ---
 

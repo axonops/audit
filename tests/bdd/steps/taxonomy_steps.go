@@ -15,6 +15,7 @@
 package steps
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -66,11 +67,46 @@ func registerTaxonomyWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 }
 
 func registerTaxonomyThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the taxonomy parse should fail with exact error:$`, func(doc *godog.DocString) error {
+		return assertTaxonomyParseExactError(tc, strings.TrimSpace(doc.Content))
+	})
+	ctx.Step(`^the taxonomy parse should fail wrapping "([^"]*)"$`, func(sentinel string) error {
+		return assertTaxonomyParseSentinel(tc, sentinel)
+	})
 	ctx.Step(`^the taxonomy parse should fail with an error$`, func() error { return assertTaxonomyParseError(tc) })
 	ctx.Step(`^the taxonomy parse should fail with an error containing "([^"]*)"$`, func(s string) error { return assertTaxonomyParseErrorContaining(tc, s) })
 	ctx.Step(`^the taxonomy should contain event type "([^"]*)"$`, func(et string) error { return assertTaxonomyHasEvent(tc, et) })
 	ctx.Step(`^the taxonomy should contain category "([^"]*)"$`, func(c string) error { return assertTaxonomyHasCategory(tc, c) })
 	ctx.Step(`^the taxonomy event "([^"]*)" should require field "([^"]*)"$`, func(et, f string) error { return assertTaxonomyEventRequires(tc, et, f) })
+}
+
+func assertTaxonomyParseSentinel(tc *AuditTestContext, sentinel string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error wrapping %q, got nil", sentinel)
+	}
+	switch sentinel {
+	case "ErrInvalidInput":
+		if !errors.Is(tc.LastErr, audit.ErrInvalidInput) {
+			return fmt.Errorf("expected ErrInvalidInput, got:\n  %q", tc.LastErr.Error())
+		}
+	case "ErrTaxonomyInvalid":
+		if !errors.Is(tc.LastErr, audit.ErrTaxonomyInvalid) {
+			return fmt.Errorf("expected ErrTaxonomyInvalid, got:\n  %q", tc.LastErr.Error())
+		}
+	default:
+		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	return nil
+}
+
+func assertTaxonomyParseExactError(tc *AuditTestContext, expected string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+	}
+	if tc.LastErr.Error() != expected {
+		return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+	}
+	return nil
 }
 
 func assertTaxonomyParseError(tc *AuditTestContext) error {

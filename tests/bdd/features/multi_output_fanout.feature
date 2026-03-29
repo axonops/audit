@@ -103,6 +103,12 @@ Feature: Multi-Output Fan-Out
     And I close the logger
     Then the file should contain the marker
 
+  Scenario: Panic in output Write does not crash logger
+    Given a logger with file output and a panicking output
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the file should contain the marker
+
   # --- Routing diversity ---
 
   Scenario: Different events routed to different file outputs

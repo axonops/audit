@@ -157,6 +157,10 @@ Feature: Syslog Output
     And I close the logger
     Then the syslog server should contain the second marker within 15 seconds
 
+  Scenario: Max retries exceeded returns error
+    When I try to create a syslog output on "tcp" to "localhost:59999"
+    Then the syslog construction should fail with an error containing "dial"
+
   # --- Syslog-specific metrics ---
 
   Scenario: Nil syslog metrics does not panic during delivery

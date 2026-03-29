@@ -21,6 +21,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/cucumber/godog"
 
@@ -48,6 +49,7 @@ func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMiddlewareWhenSteps(ctx, tc)
 	registerMiddlewareThenSteps(ctx, tc)
 	registerMiddlewareRequestIDSteps(ctx, tc)
+	registerMiddlewareUTF8Steps(ctx, tc)
 	registerMiddlewareExactLenSteps(ctx, tc)
 	registerMiddlewareTruncationSteps(ctx, tc)
 	registerMiddlewarePathSteps(ctx, tc)
@@ -81,6 +83,10 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 	ctx.Step(`^an HTTP test server with audit middleware that skips GET requests$`, func() error {
 		return createTestServer(tc, http.StatusOK, false, true)
+	})
+
+	ctx.Step(`^an HTTP test server with panicking builder and audit middleware$`, func() error {
+		return createPanicBuilderServer(tc)
 	})
 
 	ctx.Step(`^an HTTPS test server with audit middleware$`, func() error {
@@ -217,6 +223,33 @@ func registerMiddlewareRequestIDSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 	})
 }
 
+func registerMiddlewareUTF8Steps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a GET request to "([^"]*)" with a User-Agent ending in multibyte at 512$`, func(path string) error {
+		// Create a UA that is 511 ASCII chars + a 3-byte UTF-8 char (e.g., café's é)
+		// This makes total 514 bytes. Truncation at 512 would split the multibyte
+		// char, so the library should back up to 511.
+		ua := strings.Repeat("A", 511) + "é" // é is 2 bytes in UTF-8 = 513 total
+		return sendTestRequest(tc, "GET", path, map[string]string{"User-Agent": ua})
+	})
+	ctx.Step(`^the file event user_agent should be valid UTF-8$`, func() error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		ua, ok := events[0]["user_agent"].(string)
+		if !ok {
+			return fmt.Errorf("user_agent is not a string: %v", events[0]["user_agent"])
+		}
+		if !utf8.ValidString(ua) {
+			return fmt.Errorf("user_agent is not valid UTF-8: %q", ua)
+		}
+		return nil
+	})
+}
+
 func registerMiddlewareExactLenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file event user_agent field should be exactly (\d+) characters$`, func(exactLen int) error {
 		events, err := readFileEvents(tc, "default")
@@ -302,6 +335,21 @@ func sendTestRequest(tc *AuditTestContext, method, path string, headers map[stri
 	}
 	_ = resp.Body.Close()
 	tc.LastHTTPResp = resp
+	return nil
+}
+
+func createPanicBuilderServer(tc *AuditTestContext) error {
+	panicBuilder := func(_ *audit.Hints, _ *audit.TransportMetadata) (string, audit.Fields, bool) {
+		panic("intentional builder panic")
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.Middleware(tc.Logger, panicBuilder)
+	tc.TestServer = httptest.NewServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
 }
 

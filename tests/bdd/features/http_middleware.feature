@@ -151,6 +151,12 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file should contain events
 
+  Scenario: Builder panic is recovered and logged
+    Given an HTTP test server with panicking builder and audit middleware
+    When I send a GET request to "/api/resource"
+    And I close the logger
+    Then the file should have no events
+
   Scenario: Concurrent requests get independent audit events
     Given an HTTP test server with audit middleware
     When I send 10 concurrent GET requests to "/api/resource"
@@ -168,6 +174,12 @@ Feature: HTTP Middleware
     When I send a GET request to "/api/resource" with a 1000-char User-Agent
     And I close the logger
     Then the file event user_agent field should be at most 512 characters
+
+  Scenario: Multibyte UTF-8 not split at truncation boundary
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with a User-Agent ending in multibyte at 512
+    And I close the logger
+    Then the file event user_agent should be valid UTF-8
 
   Scenario: Long path is truncated
     Given an HTTP test server with audit middleware

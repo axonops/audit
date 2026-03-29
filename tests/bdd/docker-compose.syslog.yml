@@ -13,10 +13,10 @@ services:
   syslog-ng:
     image: balabit/syslog-ng:4.2.0
     ports:
-      - "5514:5514"   # TCP plain
-      - "5515:5515/udp" # UDP
-      - "6514:6514"   # TCP+TLS
-      - "6515:6515"   # TCP+mTLS
+      - "127.0.0.1:5514:5514"     # TCP plain
+      - "127.0.0.1:5515:5515/udp" # UDP
+      - "127.0.0.1:6514:6514"     # TCP+TLS
+      - "127.0.0.1:6515:6515"     # TCP+mTLS
     volumes:
       - ./docker/syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
       - ../testdata/certs/server.crt:/etc/syslog-ng/certs/server.crt:ro

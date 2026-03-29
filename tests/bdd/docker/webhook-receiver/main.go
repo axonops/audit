@@ -65,18 +65,30 @@ func main() {
 	}
 }
 
+const (
+	maxBodySize = 1 << 20 // 1 MiB
+	maxEvents   = 10_000
+)
+
 // POST /events — store received event. Delay is applied before
 // acquiring the lock so concurrent requests are not serialised.
 func (s *server) handlePostEvents(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	delay := s.cfg.Delay
 	statusCode := s.cfg.StatusCode
+	eventCount := len(s.events)
 	s.mu.Unlock()
+
+	if eventCount >= maxEvents {
+		http.Error(w, "event store full", http.StatusInsufficientStorage)
+		return
+	}
 
 	if delay > 0 {
 		time.Sleep(delay)
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	var body json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		body = json.RawMessage(fmt.Sprintf("%q", "decode error"))
@@ -126,6 +138,7 @@ func (s *server) handleReset(w http.ResponseWriter, _ *http.Request) {
 //
 //	{"status_code": 503, "delay_ms": 500}
 func (s *server) handleConfigure(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	var req struct {
 		StatusCode int `json:"status_code"`
 		DelayMS    int `json:"delay_ms"`

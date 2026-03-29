@@ -73,6 +73,13 @@ Feature: Syslog Output
       audit: syslog tls_cert and tls_key must both be set or both empty
       """
 
+  Scenario: TLS key without cert is rejected with exact error
+    When I try to create a syslog output with TLS key but no cert
+    Then the syslog construction should fail with exact error:
+      """
+      audit: syslog tls_cert and tls_key must both be set or both empty
+      """
+
   # --- Config validation ---
 
   Scenario: Empty address is rejected with exact error

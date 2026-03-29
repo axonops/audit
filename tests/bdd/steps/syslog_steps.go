@@ -108,6 +108,19 @@ func registerSyslogWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+	ctx.Step(`^I try to create a syslog output with TLS key but no cert$`, func() error {
+		certs := certDir()
+		_, err := syslog.New(&syslog.Config{
+			Network: "tcp+tls",
+			Address: "localhost:6514",
+			TLSCA:   filepath.Join(certs, "ca.crt"),
+			TLSKey:  filepath.Join(certs, "client.key"),
+			// No TLSCert
+		}, nil)
+		tc.LastErr = err
+		return nil
+	})
+
 	ctx.Step(`^I try to create a syslog output with empty address$`, func() error {
 		_, err := syslog.New(&syslog.Config{Network: "tcp", Address: ""}, nil)
 		tc.LastErr = err

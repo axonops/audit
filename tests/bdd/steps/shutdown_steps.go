@@ -17,5 +17,13 @@ package steps
 import "github.com/cucumber/godog"
 
 // registerShutdownSteps registers step definitions for shutdown scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerShutdownSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+// Most shutdown steps reuse file_steps and audit_steps; this file
+// registers any shutdown-specific steps not covered elsewhere.
+func registerShutdownSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {
+	// All shutdown scenarios use steps from audit_steps.go and file_steps.go:
+	// - "I close the logger" (audit_steps)
+	// - "I close the logger again" (file_steps)
+	// - "the second close should return no error" (file_steps)
+	// - "the file should contain exactly N events" (file_steps)
+	// - "the audit call should return an error containing" (audit_steps)
+}

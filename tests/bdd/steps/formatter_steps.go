@@ -14,8 +14,344 @@
 
 package steps
 
-import "github.com/cucumber/godog"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-// registerFormatterSteps registers step definitions for formatter scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerFormatterSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/file"
+)
+
+func registerFormatterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerFormatterGivenSteps(ctx, tc)
+	registerFormatterWhenSteps(ctx, tc)
+	registerFormatterThenSteps(ctx, tc)
+}
+
+func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with file output using JSON formatter$`, func() error {
+		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
+	})
+
+	ctx.Step(`^a logger with file output using JSON formatter and OmitEmpty (true|false)$`, func(val string) error {
+		cfg := audit.Config{Version: 1, Enabled: true, OmitEmpty: val == "true"}
+		return createFileLogger(tc, cfg, file.Config{})
+	})
+
+	ctx.Step(`^a logger with file output using CEF formatter with vendor "([^"]*)" product "([^"]*)" version "([^"]*)"$`, func(vendor, product, version string) error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, "audit.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := file.New(file.Config{Path: path}, nil)
+		if err != nil {
+			return fmt.Errorf("create file output: %w", err)
+		}
+
+		cefFmt := &audit.CEFFormatter{
+			Vendor:  vendor,
+			Product: product,
+			Version: version,
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithNamedOutput(fileOut, nil, cefFmt),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a logger with two file outputs using JSON and CEF formatters$`, func() error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		jsonPath := filepath.Join(dir, "json.log")
+		cefPath := filepath.Join(dir, "cef.log")
+		tc.FilePaths["json"] = jsonPath
+		tc.FilePaths["cef"] = cefPath
+
+		jsonOut, err := file.New(file.Config{Path: jsonPath}, nil)
+		if err != nil {
+			return fmt.Errorf("create json file: %w", err)
+		}
+
+		cefOut, err := file.New(file.Config{Path: cefPath}, nil)
+		if err != nil {
+			return fmt.Errorf("create cef file: %w", err)
+		}
+
+		cefFmt := &audit.CEFFormatter{Vendor: "Test", Product: "BDD", Version: "1.0"}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithNamedOutput(jsonOut, nil, nil),   // default JSON
+			audit.WithNamedOutput(cefOut, nil, cefFmt), // CEF
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+}
+
+func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I audit event "([^"]*)" with a duration field$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["duration_ms"] = 150 * time.Millisecond
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
+	ctx.Step(`^I audit event "([^"]*)" with a field containing a newline$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "before\n{\"injected\":true}"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+}
+
+func registerFormatterThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerFormatterFileAssertionSteps(ctx, tc)
+	registerFormatterJSONSteps(ctx, tc)
+	registerFormatterCEFSteps(ctx, tc)
+}
+
+func registerFormatterFileAssertionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the file should contain an event matching:$`, func(t *godog.Table) error { return assertFileEventMatching(tc, t) })
+	ctx.Step(`^the first JSON event should have "([^"]*)" before "([^"]*)"$`, func(a, b string) error { return assertJSONFieldOrder(tc, a, b) })
+}
+
+func registerFormatterJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the first JSON event timestamp should match RFC3339Nano format$`, func() error { return assertTimestampRFC3339Nano(tc) })
+	ctx.Step(`^the first JSON event should not contain key "([^"]*)"$`, func(k string) error { return assertFirstEventKeyAbsent(tc, k) })
+	ctx.Step(`^the first JSON event should contain key "([^"]*)"$`, func(k string) error { return assertFirstEventKeyPresent(tc, k) })
+	ctx.Step(`^the first JSON event "([^"]*)" field should be an integer$`, func(f string) error { return assertFirstEventFieldIsInt(tc, f) })
+	ctx.Step(`^the file should contain exactly (\d+) event$`, func(n int) error { return assertFileEventCount(tc, "default", n) })
+	ctx.Step(`^the file should contain a line starting with "([^"]*)"$`, func(p string) error { return assertFileLineStartsWith(tc, "default", p) })
+}
+
+func registerFormatterCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the CEF line should contain "([^"]*)"$`, func(s string) error { return assertCEFContains(tc, s) })
+	ctx.Step(`^the CEF line should have severity (\d+)$`, func(s int) error { return assertCEFSeverity(tc, s) })
+	ctx.Step(`^the JSON file should contain valid JSON$`, func() error { return assertNamedFileHasJSON(tc, "json") })
+	ctx.Step(`^the CEF file should contain a line starting with "([^"]*)"$`, func(p string) error { return assertFileLineStartsWith(tc, "cef", p) })
+}
+
+// --- Formatter assertion helpers ---
+
+func assertFileEventMatching(tc *AuditTestContext, table *godog.Table) error {
+	expected := tableToStringMap(table)
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if match, _ := eventContainsAllFields(e, expected); match {
+			return nil
+		}
+	}
+	return fmt.Errorf("no event matching expected fields in file (%d events)", len(events))
+}
+
+func assertJSONFieldOrder(tc *AuditTestContext, first, second string) error {
+	raw, err := readFirstLine(tc, "default")
+	if err != nil {
+		return err
+	}
+	firstIdx := strings.Index(raw, `"`+first+`"`)
+	secondIdx := strings.Index(raw, `"`+second+`"`)
+	if firstIdx < 0 {
+		return fmt.Errorf("field %q not found in JSON", first)
+	}
+	if secondIdx < 0 {
+		return fmt.Errorf("field %q not found in JSON", second)
+	}
+	if firstIdx >= secondIdx {
+		return fmt.Errorf("field %q (pos %d) should appear before %q (pos %d)", first, firstIdx, second, secondIdx)
+	}
+	return nil
+}
+
+func assertTimestampRFC3339Nano(tc *AuditTestContext) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	ts, ok := events[0]["timestamp"].(string)
+	if !ok {
+		return fmt.Errorf("timestamp field is not a string: %v", events[0]["timestamp"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+		return fmt.Errorf("timestamp %q does not match RFC3339Nano: %w", ts, err)
+	}
+	return nil
+}
+
+func assertFirstEventKeyAbsent(tc *AuditTestContext, key string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	if _, exists := events[0][key]; exists {
+		return fmt.Errorf("expected key %q to be absent, but it exists with value %v", key, events[0][key])
+	}
+	return nil
+}
+
+func assertFirstEventKeyPresent(tc *AuditTestContext, key string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	if _, exists := events[0][key]; !exists {
+		return fmt.Errorf("expected key %q to be present, but it is absent", key)
+	}
+	return nil
+}
+
+func assertFirstEventFieldIsInt(tc *AuditTestContext, field string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	val, ok := events[0][field]
+	if !ok {
+		return fmt.Errorf("field %q not found", field)
+	}
+	f, ok := val.(float64)
+	if !ok {
+		return fmt.Errorf("field %q is %T, not a number", field, val)
+	}
+	if f != float64(int64(f)) {
+		return fmt.Errorf("field %q is %v, not an integer", field, f)
+	}
+	return nil
+}
+
+func assertFileLineStartsWith(tc *AuditTestContext, name, prefix string) error {
+	raw, err := readRawFile(tc, name)
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			return nil
+		}
+	}
+	return fmt.Errorf("no line starting with %q in file %q", prefix, name)
+}
+
+func assertCEFContains(tc *AuditTestContext, substr string) error {
+	raw, err := readRawFile(tc, "default")
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(raw, substr) {
+		return fmt.Errorf("CEF output does not contain %q", substr)
+	}
+	return nil
+}
+
+func assertCEFSeverity(tc *AuditTestContext, severity int) error {
+	raw, err := readRawFile(tc, "default")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "CEF:0|") {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 8)
+		if len(parts) < 8 {
+			return fmt.Errorf("CEF line has fewer than 8 pipe-delimited parts")
+		}
+		if parts[6] == fmt.Sprintf("%d", severity) {
+			return nil
+		}
+		return fmt.Errorf("CEF severity is %q, expected %d", parts[6], severity)
+	}
+	return fmt.Errorf("no CEF line found in output")
+}
+
+func assertNamedFileHasJSON(tc *AuditTestContext, name string) error {
+	events, err := readFileEvents(tc, name)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("%s file contains no events", name)
+	}
+	return nil
+}
+
+// --- File reading helpers ---
+
+// readFirstLine reads the first line of a named file output.
+func readFirstLine(tc *AuditTestContext, name string) (string, error) {
+	raw, err := readRawFile(tc, name)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line, nil
+		}
+	}
+	return "", fmt.Errorf("file is empty")
+}
+
+// readRawFile reads the raw content of a named file output.
+func readRawFile(tc *AuditTestContext, name string) (string, error) {
+	// Close logger to flush pending events.
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+
+	path, ok := tc.FilePaths[name]
+	if !ok {
+		return "", fmt.Errorf("no file output named %q", name)
+	}
+
+	data, err := os.ReadFile(path) //nolint:gosec // G304: test helper reads from controlled temp path
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read file %q: %w", path, err)
+	}
+	return string(data), nil
+}

@@ -1,0 +1,39 @@
+@core @lifecycle
+Feature: Lifecycle Events
+  As a library consumer, I want the logger to emit startup and shutdown
+  events so that I have a complete audit trail of application lifecycle.
+
+  Lifecycle events ("startup" and "shutdown") are automatically injected
+  into the taxonomy if not already defined. The shutdown event is only
+  emitted if EmitStartup was called successfully.
+
+  Background:
+    Given a standard test taxonomy
+
+  Scenario: Startup event is emitted with app name
+    Given a logger with file output at a temporary path
+    When I emit startup with app name "my-service"
+    And I close the logger
+    Then the file should contain an event with event_type "startup"
+    And the file should contain an event with event_type "startup" and field "app_name" with value "my-service"
+
+  Scenario: Shutdown event is emitted automatically after startup
+    Given a logger with file output at a temporary path
+    When I emit startup with app name "my-service"
+    And I close the logger
+    Then the file should contain an event with event_type "shutdown"
+    And the file should contain an event with event_type "shutdown" and field "app_name" with value "my-service"
+
+  Scenario: No shutdown event without prior startup
+    Given a logger with file output at a temporary path
+    When I close the logger
+    Then the file should not contain an event with event_type "shutdown"
+
+  Scenario: Startup and shutdown events both present in output
+    Given a logger with file output at a temporary path
+    When I emit startup with app name "lifecycle-test"
+    And I audit event "user_create" with required fields
+    And I close the logger
+    Then the file should contain an event with event_type "startup"
+    And the file should contain an event with event_type "user_create"
+    And the file should contain an event with event_type "shutdown"

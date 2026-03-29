@@ -14,8 +14,105 @@
 
 package steps
 
-import "github.com/cucumber/godog"
+import (
+	"fmt"
+	"strings"
 
-// registerTaxonomySteps registers step definitions for taxonomy scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerTaxonomySteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+)
+
+func registerTaxonomySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerTaxonomyGivenSteps(ctx, tc)
+	registerTaxonomyWhenSteps(ctx, tc)
+	registerTaxonomyThenSteps(ctx, tc)
+}
+
+func registerTaxonomyGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a taxonomy from YAML:$`, func(yamlDoc *godog.DocString) error {
+		tax, err := audit.ParseTaxonomyYAML([]byte(yamlDoc.Content))
+		if err != nil {
+			tc.LastErr = err
+			return nil //nolint:nilerr // scenario may assert on tc.LastErr
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
+}
+
+func registerTaxonomyWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I try to parse taxonomy from YAML:$`, func(yamlDoc *godog.DocString) error {
+		_, err := audit.ParseTaxonomyYAML([]byte(yamlDoc.Content))
+		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^I try to parse taxonomy from empty YAML$`, func() error {
+		_, err := audit.ParseTaxonomyYAML(nil)
+		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^I try to parse taxonomy from YAML exceeding 1 MiB$`, func() error {
+		oversized := make([]byte, 1<<20+1)
+		for i := range oversized {
+			oversized[i] = 'x'
+		}
+		_, err := audit.ParseTaxonomyYAML(oversized)
+		tc.LastErr = err
+		return nil
+	})
+}
+
+func registerTaxonomyThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the taxonomy parse should fail with an error$`, func() error { return assertTaxonomyParseError(tc) })
+	ctx.Step(`^the taxonomy parse should fail with an error containing "([^"]*)"$`, func(s string) error { return assertTaxonomyParseErrorContaining(tc, s) })
+	ctx.Step(`^the taxonomy should contain event type "([^"]*)"$`, func(et string) error { return assertTaxonomyHasEvent(tc, et) })
+	ctx.Step(`^the taxonomy should contain category "([^"]*)"$`, func(c string) error { return assertTaxonomyHasCategory(tc, c) })
+	ctx.Step(`^the taxonomy event "([^"]*)" should require field "([^"]*)"$`, func(et, f string) error { return assertTaxonomyEventRequires(tc, et, f) })
+}
+
+func assertTaxonomyParseError(tc *AuditTestContext) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected taxonomy parse error, got nil")
+	}
+	return nil
+}
+
+func assertTaxonomyParseErrorContaining(tc *AuditTestContext, substr string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected taxonomy parse error containing %q, got nil", substr)
+	}
+	if !strings.Contains(tc.LastErr.Error(), substr) {
+		return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+	}
+	return nil
+}
+
+func assertTaxonomyHasEvent(tc *AuditTestContext, eventType string) error {
+	if _, ok := tc.Taxonomy.Events[eventType]; !ok {
+		return fmt.Errorf("taxonomy does not contain event type %q", eventType)
+	}
+	return nil
+}
+
+func assertTaxonomyHasCategory(tc *AuditTestContext, category string) error {
+	if _, ok := tc.Taxonomy.Categories[category]; !ok {
+		return fmt.Errorf("taxonomy does not contain category %q", category)
+	}
+	return nil
+}
+
+func assertTaxonomyEventRequires(tc *AuditTestContext, eventType, field string) error {
+	def, ok := tc.Taxonomy.Events[eventType]
+	if !ok {
+		return fmt.Errorf("event type %q not found in taxonomy", eventType)
+	}
+	for _, f := range def.Required {
+		if f == field {
+			return nil
+		}
+	}
+	return fmt.Errorf("event %q does not require field %q (required: %v)", eventType, field, def.Required)
+}

@@ -14,8 +14,113 @@
 
 package steps
 
-import "github.com/cucumber/godog"
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"time"
 
-// registerConfigSteps registers step definitions for config scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerConfigSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+)
+
+func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I try to create a logger with config version (\-?\d+)$`, func(version int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true})
+	})
+
+	ctx.Step(`^I create a logger with config version (\d+)$`, func(version int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true})
+	})
+
+	ctx.Step(`^I create a logger with config version (\d+) and buffer size (\d+)$`, func(version, bufSize int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, BufferSize: bufSize})
+	})
+
+	ctx.Step(`^I try to create a logger with config version (\d+) and buffer size (\d+)$`, func(version, bufSize int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, BufferSize: bufSize})
+	})
+
+	ctx.Step(`^I create a logger with config version (\d+) and drain timeout (\d+)$`, func(version int, timeout int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, DrainTimeout: time.Duration(timeout)})
+	})
+
+	ctx.Step(`^I try to create a logger with config version (\d+) and drain timeout (\d+)s$`, func(version int, secs int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, DrainTimeout: time.Duration(secs) * time.Second})
+	})
+
+	ctx.Step(`^I create a disabled logger with config version (\d+)$`, func(version int) error {
+		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: false})
+	})
+
+	ctx.Step(`^the logger construction should fail with an error$`, func() error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected construction error, got nil")
+		}
+		return nil
+	})
+
+	ctx.Step(`^the logger construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected construction error containing %q, got nil", substr)
+		}
+		if !strings.Contains(tc.LastErr.Error(), substr) {
+			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the logger should be created successfully$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected successful creation, got: %w", tc.LastErr)
+		}
+		if tc.Logger == nil {
+			return fmt.Errorf("logger is nil after successful creation")
+		}
+		return nil
+	})
+
+	ctx.Step(`^the logger should handle audit calls without error$`, func() error {
+		// Disabled logger returns nil from Audit without delivering.
+		if tc.Logger == nil {
+			// No-op logger (Enabled=false) returns nil from NewLogger.
+			return nil
+		}
+		err := tc.Logger.Audit("user_create", audit.Fields{
+			"outcome":  "success",
+			"actor_id": "test",
+		})
+		if err != nil {
+			return fmt.Errorf("expected no error from disabled logger, got: %w", err)
+		}
+		return nil
+	})
+}
+
+// tryCreateLogger creates a logger with the given config and stores it
+// in the test context. If creation fails, the error is stored in tc.LastErr
+// without failing the step (the scenario may assert on the error).
+func tryCreateLogger(tc *AuditTestContext, cfg audit.Config) error {
+	buf := &bytes.Buffer{}
+	tc.StdoutBuf = buf
+
+	stdoutOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	if err != nil {
+		return fmt.Errorf("create stdout output: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(stdoutOut),
+	}
+
+	logger, err := audit.NewLogger(cfg, opts...)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}

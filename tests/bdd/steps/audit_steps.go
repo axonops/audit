@@ -43,7 +43,7 @@ events:
   user_create:
     category: write
     required: [outcome, actor_id]
-    optional: [marker, target_id, target_type, reason, source_ip, user_agent, request_id]
+    optional: [marker, target_id, target_type, reason, source_ip, user_agent, request_id, duration_ms]
   user_update:
     category: write
     required: [outcome, actor_id]

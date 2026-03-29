@@ -14,8 +14,45 @@
 
 package steps
 
-import "github.com/cucumber/godog"
+import (
+	"fmt"
 
-// registerLifecycleSteps registers step definitions for lifecycle scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerLifecycleSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+)
+
+func registerLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I emit startup with app name "([^"]*)"$`, func(appName string) error {
+		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{
+			"app_name": appName,
+		})
+		return nil
+	})
+
+	ctx.Step(`^the file should contain an event with event_type "([^"]*)" and field "([^"]*)" with value "([^"]*)"$`, func(eventType, field, value string) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			if e["event_type"] == eventType && fmt.Sprintf("%v", e[field]) == value {
+				return nil
+			}
+		}
+		return fmt.Errorf("no event with event_type=%q and %s=%q in file (%d events)", eventType, field, value, len(events))
+	})
+
+	ctx.Step(`^the file should not contain an event with event_type "([^"]*)"$`, func(eventType string) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			if e["event_type"] == eventType {
+				return fmt.Errorf("found unexpected event with event_type %q", eventType)
+			}
+		}
+		return nil
+	})
+}

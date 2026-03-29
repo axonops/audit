@@ -93,6 +93,12 @@ Feature: HTTP Middleware
 
   # --- Path truncation ---
 
+  Scenario: Concurrent requests get independent audit events
+    Given an HTTP test server with audit middleware
+    When I send 10 concurrent GET requests to "/api/resource"
+    And I close the logger
+    Then the file should contain exactly 10 events
+
   Scenario: Long User-Agent is truncated to 512 characters
     Given an HTTP test server with audit middleware
     When I send a GET request to "/api/resource" with a 1000-char User-Agent

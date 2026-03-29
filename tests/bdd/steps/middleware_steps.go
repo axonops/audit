@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
 
@@ -95,6 +96,19 @@ func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 	ctx.Step(`^I send a (GET|POST|PUT|DELETE) request to "([^"]*)" with header "([^"]*)" = "([^"]*)"$`, func(method, path, hdr, val string) error {
 		return sendTestRequest(tc, method, path, map[string]string{hdr: val})
 	})
+	ctx.Step(`^I send (\d+) concurrent (GET|POST) requests to "([^"]*)"$`, func(count int, method, path string) error {
+		var wg sync.WaitGroup
+		for range count {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = sendTestRequest(tc, method, path, nil)
+			}()
+		}
+		wg.Wait()
+		return nil
+	})
+
 	ctx.Step(`^I send a (GET|POST|PUT|DELETE) request to "([^"]*)"$`, func(method, path string) error {
 		return sendTestRequest(tc, method, path, nil)
 	})

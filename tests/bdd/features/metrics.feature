@@ -98,6 +98,13 @@ Feature: Metrics Interface
     And I close the logger
     And the metrics should not have recorded a success event for webhook output
 
+  Scenario: Output write failure records output error metric
+    Given mock metrics are configured
+    And a logger with error output and metrics
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the metrics should have recorded an output error for "error-output"
+
   Scenario: Nil metrics with filtered event does not panic
     Given a filtering taxonomy with only "write" enabled
     And a logger with stdout output

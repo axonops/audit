@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -27,6 +28,19 @@ import (
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/syslog"
 )
+
+// MockSyslogMetrics captures syslog.Metrics calls.
+type MockSyslogMetrics struct {
+	mu         sync.Mutex
+	reconnects int
+}
+
+// RecordSyslogReconnect satisfies syslog.Metrics.
+func (m *MockSyslogMetrics) RecordSyslogReconnect(_ string, _ bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.reconnects++
+}
 
 func registerSyslogSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerSyslogGivenSteps(ctx, tc)
@@ -49,6 +63,17 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 
 	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with max retries (\d+)$`, func(network, address string, retries int) error {
 		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, MaxRetries: retries})
+	})
+
+	ctx.Step(`^mock syslog metrics are configured$`, func() error {
+		tc.SyslogMetrics = &MockSyslogMetrics{}
+		return nil
+	})
+
+	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with metrics and max retries (\d+)$`, func(network, address string, retries int) error {
+		return createSyslogLoggerWithMetrics(tc, &syslog.Config{
+			Network: network, Address: address, MaxRetries: retries,
+		})
 	})
 
 	ctx.Step(`^a logger with syslog TLS output to "([^"]*)" with CA cert$`, func(address string) error {
@@ -228,6 +253,17 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return assertSyslogConstructionExactError(tc, strings.TrimSpace(doc.Content))
 	})
 	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(s string) error { return assertSyslogConstructionError(tc, s) })
+	ctx.Step(`^the syslog metrics should have recorded at least (\d+) reconnect$`, func(minCount int) error {
+		if tc.SyslogMetrics == nil {
+			return fmt.Errorf("no syslog metrics configured")
+		}
+		tc.SyslogMetrics.mu.Lock()
+		defer tc.SyslogMetrics.mu.Unlock()
+		if tc.SyslogMetrics.reconnects < minCount {
+			return fmt.Errorf("expected >= %d syslog reconnects, got %d", minCount, tc.SyslogMetrics.reconnects)
+		}
+		return nil
+	})
 }
 
 func assertSyslogDefaultMarker(tc *AuditTestContext, timeoutSec int) error {
@@ -295,6 +331,35 @@ func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
 		cfg.Facility = "local0"
 	}
 	out, err := syslog.New(cfg, nil)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(out),
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+// createSyslogLoggerWithMetrics creates a logger with syslog output and metrics.
+func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) error {
+	if cfg.Facility == "" {
+		cfg.Facility = "local0"
+	}
+	var sm syslog.Metrics
+	if tc.SyslogMetrics != nil {
+		sm = tc.SyslogMetrics
+	}
+	out, err := syslog.New(cfg, sm)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

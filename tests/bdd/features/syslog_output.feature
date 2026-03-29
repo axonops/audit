@@ -64,6 +64,8 @@ Feature: Syslog Output
 
   Scenario: Invalid CA certificate rejected at construction
     When I try to create a syslog output on "tcp+tls" to "localhost:6514" with invalid CA
+    # Error message comes from Go crypto/tls and varies by platform;
+    # substring match is intentional here.
     Then the syslog construction should fail with an error containing "certificate"
 
   Scenario: TLS cert without key is rejected with exact error
@@ -165,6 +167,13 @@ Feature: Syslog Output
 
   Scenario: Nil syslog metrics does not panic during delivery
     Given a logger with syslog output on "tcp" to "localhost:5514"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the marker within 10 seconds
+
+  Scenario: Syslog metrics configured during delivery does not panic
+    Given mock syslog metrics are configured
+    And a logger with syslog output on "tcp" to "localhost:5514" with metrics and max retries 10
     When I audit a uniquely marked "user_create" event
     And I close the logger
     Then the syslog server should contain the marker within 10 seconds

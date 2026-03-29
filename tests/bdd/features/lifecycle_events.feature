@@ -57,6 +57,13 @@ Feature: Lifecycle Events
     When I fill the buffer and emit startup with app name "full-buffer"
     Then the startup call should return an error wrapping "ErrBufferFull"
 
+  Scenario: EmitStartup called twice succeeds and uses last app name
+    Given a logger with file output at a temporary path
+    When I emit startup with app name "first-name"
+    And I emit startup with app name "second-name"
+    And I close the logger
+    Then the file should contain an event with event_type "shutdown" and field "app_name" with value "second-name"
+
   Scenario: Failed EmitStartup means no shutdown on close
     Given a logger with file output at a temporary path
     When I emit startup without app name

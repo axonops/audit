@@ -163,6 +163,22 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		tc.AddCleanup(func() { _ = logger.Close() })
 		return nil
 	})
+
+	ctx.Step(`^a logger with error output and metrics$`, func() error {
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithNamedOutput(&errorOutput{}, nil, nil),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
 }
 
 func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -254,6 +270,9 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	})
 	ctx.Step(`^the metrics should have recorded an output filtered event$`, func() error {
 		return assertMetricsOutputFiltered(tc)
+	})
+	ctx.Step(`^the metrics should have recorded an output error for "([^"]*)"$`, func(output string) error {
+		return assertMetricsOutputError(tc, output)
 	})
 }
 
@@ -375,6 +394,19 @@ func assertMetricsOutputFiltered(tc *AuditTestContext) error {
 	}
 	if total == 0 {
 		return fmt.Errorf("expected at least 1 RecordOutputFiltered, got 0 (all: %v)", tc.MockMetrics.OutputFiltered)
+	}
+	return nil
+}
+
+func assertMetricsOutputError(tc *AuditTestContext, output string) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	count := tc.MockMetrics.OutputErrors[output]
+	if count == 0 {
+		return fmt.Errorf("expected RecordOutputError for %q, got 0 (all: %v)", output, tc.MockMetrics.OutputErrors)
 	}
 	return nil
 }

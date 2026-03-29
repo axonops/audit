@@ -14,8 +14,166 @@
 
 package steps
 
-import "github.com/cucumber/godog"
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 
-// registerMiddlewareSteps registers step definitions for middleware scenarios.
-// Step definitions will be added as feature files are implemented.
-func registerMiddlewareSteps(_ *godog.ScenarioContext, _ *AuditTestContext) {}
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+)
+
+// middlewareTaxonomyYAML extends the standard taxonomy with an HTTP
+// event type for middleware scenarios.
+const middlewareTaxonomyYAML = `
+version: 1
+categories:
+  http:
+    - api_request
+events:
+  api_request:
+    category: http
+    required: [outcome]
+    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id]
+default_enabled:
+  - http
+`
+
+func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerMiddlewareGivenSteps(ctx, tc)
+	registerMiddlewareWhenSteps(ctx, tc)
+	registerMiddlewareThenSteps(ctx, tc)
+}
+
+func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a middleware test taxonomy$`, func() error {
+		tax, err := audit.ParseTaxonomyYAML([]byte(middlewareTaxonomyYAML))
+		if err != nil {
+			return fmt.Errorf("parse middleware taxonomy: %w", err)
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
+
+	ctx.Step(`^an HTTP test server with audit middleware$`, func() error {
+		return createTestServer(tc, http.StatusOK, false, false)
+	})
+
+	ctx.Step(`^an HTTP test server with audit middleware returning status (\d+)$`, func(status int) error {
+		return createTestServer(tc, status, false, false)
+	})
+
+	ctx.Step(`^an HTTP test server with audit middleware that sets actor_id$`, func() error {
+		return createTestServer(tc, http.StatusOK, true, false)
+	})
+
+	ctx.Step(`^an HTTP test server with audit middleware that skips GET requests$`, func() error {
+		return createTestServer(tc, http.StatusOK, false, true)
+	})
+
+	ctx.Step(`^an HTTP test server with nil logger middleware$`, func() error {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		mw := audit.Middleware(nil, defaultEventBuilder)
+		tc.TestServer = httptest.NewServer(mw(handler))
+		tc.AddCleanup(func() { tc.TestServer.Close() })
+		return nil
+	})
+}
+
+func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a (GET|POST|PUT|DELETE) request to "([^"]*)"$`, func(method, path string) error {
+		if tc.TestServer == nil {
+			return fmt.Errorf("test server not created")
+		}
+		req, err := http.NewRequestWithContext(context.Background(), method, tc.TestServer.URL+path, http.NoBody)
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		resp, err := testHTTPClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("send request: %w", err)
+		}
+		_ = resp.Body.Close()
+		tc.LastHTTPResp = resp
+		return nil
+	})
+}
+
+func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the file event should have field "([^"]*)" with value "([^"]*)"$`, func(field, value string) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			if fmt.Sprintf("%v", e[field]) == value {
+				return nil
+			}
+		}
+		return fmt.Errorf("no file event with %s=%q (%d events)", field, value, len(events))
+	})
+
+	ctx.Step(`^the response status should be (\d+)$`, func(status int) error {
+		if tc.LastHTTPResp == nil {
+			return fmt.Errorf("no HTTP response recorded")
+		}
+		if tc.LastHTTPResp.StatusCode != status {
+			return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
+		}
+		return nil
+	})
+}
+
+// --- Middleware helpers ---
+
+var defaultEventBuilder = func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+	fields := audit.Fields{
+		"outcome":     "success",
+		"method":      transport.Method,
+		"path":        transport.Path,
+		"status_code": transport.StatusCode,
+		"source_ip":   transport.ClientIP,
+		"user_agent":  transport.UserAgent,
+		"request_id":  transport.RequestID,
+	}
+	if hints != nil && hints.ActorID != "" {
+		fields["actor_id"] = hints.ActorID
+	}
+	return "api_request", fields, false
+}
+
+func createTestServer(tc *AuditTestContext, status int, setActorID, skipGET bool) error {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		if skipGET && transport.Method == "GET" {
+			return "", nil, true
+		}
+		fields := audit.Fields{
+			"outcome":     "success",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+		}
+		if setActorID {
+			fields["actor_id"] = "handler-actor"
+		}
+		return "api_request", fields, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if setActorID {
+			if hints := audit.HintsFromContext(r.Context()); hints != nil {
+				hints.ActorID = "handler-actor"
+			}
+		}
+		w.WriteHeader(status)
+	})
+
+	mw := audit.Middleware(tc.Logger, builder)
+	tc.TestServer = httptest.NewServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
+	return nil
+}

@@ -255,7 +255,7 @@ func createWebhookLoggerFromConfig(tc *AuditTestContext, cfg *webhook.Config) er
 
 func auditMarkedWebhookEvent(tc *AuditTestContext, eventType, name string) error {
 	if tc.Logger == nil {
-		return fmt.Errorf("logger is nil (construction may have failed: %v)", tc.LastErr)
+		return fmt.Errorf("logger is nil (construction may have failed: %w)", tc.LastErr)
 	}
 	m := marker("WH")
 	tc.Markers[name] = m
@@ -277,7 +277,9 @@ func configureWebhook(baseURL string, statusCode, delayMS int) error {
 	if err != nil {
 		return fmt.Errorf("configure webhook: %w", err)
 	}
-	_ = resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		return fmt.Errorf("configure webhook close body: %w", err)
+	}
 	return nil
 }
 
@@ -291,7 +293,7 @@ func getWebhookEvents(baseURL string) ([]webhookEvent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get events: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read events: %w", err)
@@ -304,7 +306,7 @@ func getWebhookEvents(baseURL string) ([]webhookEvent, error) {
 }
 
 // webhookEvent represents an event stored by the webhook receiver.
-type webhookEvent struct {
+type webhookEvent struct { //nolint:govet // fieldalignment: JSON field order matches receiver API
 	Body    json.RawMessage   `json:"body"`
 	Headers map[string]string `json:"headers"`
 	Time    time.Time         `json:"time"`

@@ -132,64 +132,60 @@ func registerSyslogWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the syslog server should contain the marker within (\d+) seconds$`, func(timeout int) error {
-		m, ok := tc.Markers["default"]
+	ctx.Step(`^the syslog server should contain the marker within (\d+) seconds$`, func(t int) error { return assertSyslogDefaultMarker(tc, t) })
+	ctx.Step(`^the syslog server should contain "([^"]*)" within (\d+) seconds$`, func(text string, t int) error { return assertSyslogContains(text, time.Duration(t)*time.Second) })
+	ctx.Step(`^the syslog server should contain all (\d+) markers within (\d+) seconds$`, func(c, t int) error { return assertSyslogAllMarkers(tc, c, t) })
+	ctx.Step(`^the syslog line with the marker should contain "([^"]*)"$`, func(text string) error { return assertSyslogMarkerLineContains(tc, text) })
+	ctx.Step(`^the syslog line with the marker should contain the current year$`, func() error { return assertSyslogMarkerLineContains(tc, time.Now().Format("2006")) })
+	ctx.Step(`^the syslog line with "([^"]*)" should contain "([^"]*)"$`, assertSyslogLineContainsBoth)
+	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(s string) error { return assertSyslogConstructionError(tc, s) })
+}
+
+func assertSyslogDefaultMarker(tc *AuditTestContext, timeoutSec int) error {
+	m, ok := tc.Markers["default"]
+	if !ok {
+		return fmt.Errorf("no default marker set")
+	}
+	return assertSyslogContains(m, time.Duration(timeoutSec)*time.Second)
+}
+
+func assertSyslogAllMarkers(tc *AuditTestContext, count, timeoutSec int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	for i := range count {
+		key := fmt.Sprintf("multi_%d", i)
+		m, ok := tc.Markers[key]
 		if !ok {
-			return fmt.Errorf("no default marker set")
+			return fmt.Errorf("no marker with key %q", key)
 		}
-		return assertSyslogContains(m, time.Duration(timeout)*time.Second)
-	})
-
-	ctx.Step(`^the syslog server should contain "([^"]*)" within (\d+) seconds$`, func(text string, timeout int) error {
-		return assertSyslogContains(text, time.Duration(timeout)*time.Second)
-	})
-
-	ctx.Step(`^the syslog server should contain all (\d+) markers within (\d+) seconds$`, func(count, timeout int) error {
-		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-		for i := range count {
-			key := fmt.Sprintf("multi_%d", i)
-			m, ok := tc.Markers[key]
-			if !ok {
-				return fmt.Errorf("no marker with key %q", key)
-			}
-			remaining := time.Until(deadline)
-			if remaining <= 0 {
-				return fmt.Errorf("timeout waiting for marker %d (%s)", i, m)
-			}
-			if err := assertSyslogContains(m, remaining); err != nil {
-				return fmt.Errorf("marker %d: %w", i, err)
-			}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("timeout waiting for marker %d (%s)", i, m)
 		}
-		return nil
-	})
-
-	ctx.Step(`^the syslog line with the marker should contain "([^"]*)"$`, func(text string) error {
-		return assertSyslogMarkerLineContains(tc, text)
-	})
-
-	ctx.Step(`^the syslog line with the marker should contain the current year$`, func() error {
-		return assertSyslogMarkerLineContains(tc, time.Now().Format("2006"))
-	})
-
-	ctx.Step(`^the syslog line with "([^"]*)" should contain "([^"]*)"$`, func(searchMarker, text string) error {
-		log := readSyslogLogFromDocker()
-		for _, line := range strings.Split(log, "\n") {
-			if strings.Contains(line, searchMarker) && strings.Contains(line, text) {
-				return nil
-			}
+		if err := assertSyslogContains(m, remaining); err != nil {
+			return fmt.Errorf("marker %d: %w", i, err)
 		}
-		return fmt.Errorf("no syslog line containing both %q and %q", searchMarker, text)
-	})
+	}
+	return nil
+}
 
-	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected syslog construction error containing %q, got nil", substr)
+func assertSyslogLineContainsBoth(searchMarker, text string) error {
+	log := readSyslogLogFromDocker()
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, searchMarker) && strings.Contains(line, text) {
+			return nil
 		}
-		if !strings.Contains(tc.LastErr.Error(), substr) {
-			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
-		}
-		return nil
-	})
+	}
+	return fmt.Errorf("no syslog line containing both %q and %q", searchMarker, text)
+}
+
+func assertSyslogConstructionError(tc *AuditTestContext, substr string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected syslog construction error containing %q, got nil", substr)
+	}
+	if !strings.Contains(tc.LastErr.Error(), substr) {
+		return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+	}
+	return nil
 }
 
 // --- Internal helpers ---

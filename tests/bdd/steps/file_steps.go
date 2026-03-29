@@ -93,6 +93,23 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I close the logger again$`, func() error { return closeLoggerAgain(tc) })
 	ctx.Step(`^the second close should return no error$`, func() error { return assertLastErrNil(tc) })
 	ctx.Step(`^the file should have permissions "([^"]*)"$`, func(perms string) error { return assertFilePermissions(tc, perms) })
+	ctx.Step(`^I close the logger from (\d+) goroutines concurrently$`, func(count int) error {
+		var wg sync.WaitGroup
+		for range count {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = tc.Logger.Close()
+			}()
+		}
+		wg.Wait()
+		return nil
+	})
+	ctx.Step(`^no panic should have occurred$`, func() error {
+		// If we got here, no panic occurred.
+		return nil
+	})
+
 	ctx.Step(`^the file output construction should fail with error:$`, func(doc *godog.DocString) error {
 		expected := strings.TrimSpace(doc.Content)
 		if tc.LastErr == nil {

@@ -48,6 +48,12 @@ Feature: Graceful Shutdown
     Then the file should contain exactly 50 events
     And every event in the file should be valid JSON
 
+  Scenario: Concurrent close calls are safe
+    Given a logger with file output at a temporary path
+    When I audit event "user_create" with required fields
+    And I close the logger from 5 goroutines concurrently
+    Then no panic should have occurred
+
   Scenario: Close with multiple outputs closes all
     Given a logger with file and syslog outputs
     When I audit a uniquely marked "user_create" event

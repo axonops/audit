@@ -112,8 +112,9 @@ openssl req -new -x509 -key "$CERT_DIR/invalid.key" \
   -subj "/CN=invalid-cert/O=Untrusted/OU=Testing" \
   -sha256 2>/dev/null
 
-# --- Cleanup intermediate files ---
+# --- Cleanup intermediate files and tighten key permissions ---
 rm -f "$CERT_DIR"/*.csr "$CERT_DIR"/*.cnf "$CERT_DIR"/*.srl
+chmod 600 "$CERT_DIR"/*.key
 
 echo "=== Done. Generated files: ==="
 ls -la "$CERT_DIR"/*.crt "$CERT_DIR"/*.key

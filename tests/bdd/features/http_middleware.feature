@@ -105,6 +105,12 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event should have field "request_id" present
 
+  Scenario: Too-long request ID replaced with generated UUID
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with a 200-char X-Request-Id
+    And I close the logger
+    Then the file event request_id should be shorter than 200 characters
+
   Scenario: Concurrent requests get independent audit events
     Given an HTTP test server with audit middleware
     When I send 10 concurrent GET requests to "/api/resource"

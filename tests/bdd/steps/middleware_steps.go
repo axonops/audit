@@ -47,6 +47,7 @@ func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMiddlewareGivenSteps(ctx, tc)
 	registerMiddlewareWhenSteps(ctx, tc)
 	registerMiddlewareThenSteps(ctx, tc)
+	registerMiddlewareRequestIDSteps(ctx, tc)
 	registerMiddlewareTruncationSteps(ctx, tc)
 	registerMiddlewarePathSteps(ctx, tc)
 }
@@ -155,6 +156,30 @@ func assertHTTPStatus(tc *AuditTestContext, status int) error {
 		return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
 	}
 	return nil
+}
+
+func registerMiddlewareRequestIDSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a GET request to "([^"]*)" with a (\d+)-char X-Request-Id$`, func(path string, length int) error {
+		longID := strings.Repeat("x", length)
+		return sendTestRequest(tc, "GET", path, map[string]string{"X-Request-Id": longID})
+	})
+	ctx.Step(`^the file event request_id should be shorter than (\d+) characters$`, func(maxLen int) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		rid, ok := events[0]["request_id"].(string)
+		if !ok {
+			return fmt.Errorf("request_id is not a string: %v", events[0]["request_id"])
+		}
+		if len(rid) >= maxLen {
+			return fmt.Errorf("request_id length %d not shorter than %d (value: %q)", len(rid), maxLen, rid)
+		}
+		return nil
+	})
 }
 
 func registerMiddlewareTruncationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

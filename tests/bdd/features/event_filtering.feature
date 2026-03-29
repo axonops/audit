@@ -18,7 +18,12 @@ Feature: Event Filtering
   Scenario: Events in enabled categories are delivered
     When I audit event "user_create" with required fields
     Then the event should be delivered successfully
-    And the output should contain an event with event_type "user_create"
+    And the output should contain an event matching:
+      | field      | value       |
+      | event_type | user_create |
+      | outcome    | success     |
+      | actor_id   | test-actor  |
+      | marker     |             |
 
   Scenario: Events in disabled categories are silently discarded
     When I audit event "auth_failure" with required fields
@@ -29,7 +34,12 @@ Feature: Event Filtering
     Given I enable category "security"
     When I audit event "auth_failure" with required fields
     Then the event should be delivered successfully
-    And the output should contain an event with event_type "auth_failure"
+    And the output should contain an event matching:
+      | field      | value        |
+      | event_type | auth_failure |
+      | outcome    | success      |
+      | actor_id   | test-actor   |
+      | marker     |              |
 
   Scenario: Disabling an enabled category stops delivery
     Given I disable category "write"
@@ -65,18 +75,30 @@ Feature: Event Filtering
 
   # --- Error handling ---
 
-  Scenario: Enabling unknown category returns error
+  Scenario: Enabling unknown category returns exact error
     When I try to enable category "nonexistent"
-    Then the operation should return an error containing "unknown"
+    Then the operation should return an error matching:
+      """
+      audit: unknown category "nonexistent"
+      """
 
-  Scenario: Disabling unknown category returns error
+  Scenario: Disabling unknown category returns exact error
     When I try to disable category "nonexistent"
-    Then the operation should return an error containing "unknown"
+    Then the operation should return an error matching:
+      """
+      audit: unknown category "nonexistent"
+      """
 
-  Scenario: Enabling unknown event type returns error
+  Scenario: Enabling unknown event type returns exact error
     When I try to enable event "nonexistent_event"
-    Then the operation should return an error containing "unknown"
+    Then the operation should return an error matching:
+      """
+      audit: unknown event type "nonexistent_event"
+      """
 
-  Scenario: Disabling unknown event type returns error
+  Scenario: Disabling unknown event type returns exact error
     When I try to disable event "nonexistent_event"
-    Then the operation should return an error containing "unknown"
+    Then the operation should return an error matching:
+      """
+      audit: unknown event type "nonexistent_event"
+      """

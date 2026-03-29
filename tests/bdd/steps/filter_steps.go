@@ -150,6 +150,17 @@ func registerFilterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFilterThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the operation should return an error matching:$`, func(doc *godog.DocString) error {
+		expected := strings.TrimSpace(doc.Content)
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+		}
+		if tc.LastErr.Error() != expected {
+			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+		}
+		return nil
+	})
+
 	ctx.Step(`^the operation should return an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)

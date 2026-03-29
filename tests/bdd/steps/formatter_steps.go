@@ -30,6 +30,7 @@ import (
 func registerFormatterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerFormatterGivenSteps(ctx, tc)
 	registerFormatterGivenExtraSteps(ctx, tc)
+	registerFormatterGivenCustomSeveritySteps(ctx, tc)
 	registerFormatterGivenSeveritySteps(ctx, tc)
 	registerFormatterWhenSteps(ctx, tc)
 	registerFormatterThenSteps(ctx, tc)
@@ -156,6 +157,45 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 	})
 }
 
+func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with file output using CEF formatter with custom severity function$`, func() error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, "audit.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := file.New(file.Config{Path: path}, nil)
+		if err != nil {
+			return fmt.Errorf("create file: %w", err)
+		}
+
+		cefFmt := &audit.CEFFormatter{
+			Vendor: "Test", Product: "Test", Version: "1.0",
+			SeverityFunc: func(eventType string) int {
+				if eventType == "auth_failure" {
+					return 8
+				}
+				return 5
+			},
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithNamedOutput(fileOut, nil, cefFmt),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+}
+
 func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output using CEF formatter with severity below (\d+)$`, func(_ int) error {
 		dir, err := tc.EnsureFileDir()
@@ -239,6 +279,13 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a tab character$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\ttab\tafter"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
+	ctx.Step(`^I audit event "([^"]*)" with a field containing invalid UTF-8$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "bad\xfe\xffbyte"
 		tc.LastErr = tc.Logger.Audit(eventType, fields)
 		return nil
 	})

@@ -120,6 +120,22 @@ Feature: Event Formatters
     And I close the logger
     Then the CEF line should have severity 5
 
+  Scenario: CEF custom severity function maps event types
+    Given a logger with file output using CEF formatter with custom severity function
+    When I audit event "auth_failure" with required fields
+    And I close the logger
+    Then the CEF line should have severity 8
+
+  Scenario: CEF extension fields use default mapping
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    And I close the logger
+    Then the CEF line should contain "suser=alice"
+    And the CEF line should contain "outcome=success"
+
   Scenario: CEF header escapes pipe characters
     Given a logger with file output using CEF formatter with vendor "Axon|Ops" product "Test" version "1.0"
     When I audit event "user_create" with required fields
@@ -187,6 +203,13 @@ Feature: Event Formatters
   Scenario: JSON escapes U+2029 paragraph separator
     Given a logger with file output using JSON formatter
     When I audit event "user_create" with a field containing U+2029
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should contain exactly 1 event
+
+  Scenario: JSON replaces invalid UTF-8 with replacement character
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with a field containing invalid UTF-8
     And I close the logger
     Then every event in the file should be valid JSON
     And the file should contain exactly 1 event

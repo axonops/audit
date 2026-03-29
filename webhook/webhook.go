@@ -256,10 +256,18 @@ func (w *Output) Name() string {
 	return w.name
 }
 
-// DestinationKey returns the full webhook URL, enabling duplicate
-// destination detection via [audit.DestinationKeyer].
+// DestinationKey returns the webhook URL with query parameters and
+// fragment stripped, enabling duplicate destination detection via
+// [audit.DestinationKeyer]. Query parameters are stripped to avoid
+// leaking auth tokens in error messages if two outputs collide.
 func (w *Output) DestinationKey() string {
-	return w.url
+	u, err := url.Parse(w.url)
+	if err != nil {
+		return w.url
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 // webhookName parses the URL and returns "webhook:<host>" or "webhook"

@@ -91,6 +91,10 @@ Feature: Multi-Output Fan-Out
     And the webhook event body should contain field "target_id" with value "user-42"
     And the webhook event body should contain field "timestamp"
 
+  Scenario: Duplicate syslog destination rejected
+    When I try to create a logger with two syslog outputs to the same address
+    Then the logger construction should fail with an error containing "duplicate"
+
   # --- Panic recovery ---
 
   Scenario: Panic in per-output formatter does not crash logger

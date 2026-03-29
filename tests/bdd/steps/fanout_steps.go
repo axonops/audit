@@ -162,6 +162,9 @@ func registerFanoutWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit (?:a|an) "([^"]*)" event in category "[^"]*" with marker "([^"]*)"$`, func(eventType, m string) error {
 		return auditEventWithMarker(tc, eventType, m)
 	})
+	ctx.Step(`^I try to create a logger with two syslog outputs to the same address$`, func() error {
+		return tryDuplicateSyslogAddress(tc)
+	})
 	ctx.Step(`^I try to create a logger with duplicate output names$`, func() error {
 		return tryDuplicateOutputNames(tc)
 	})
@@ -295,6 +298,24 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 		audit.WithNamedOutput(f, &audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
 		}, nil),
+	)
+	tc.LastErr = err
+	return nil
+}
+
+func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
+	s1, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"}, nil)
+	if err != nil {
+		return fmt.Errorf("create syslog 1: %w", err)
+	}
+	s2, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"}, nil)
+	if err != nil {
+		return fmt.Errorf("create syslog 2: %w", err)
+	}
+	_, err = audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(s1, s2),
 	)
 	tc.LastErr = err
 	return nil

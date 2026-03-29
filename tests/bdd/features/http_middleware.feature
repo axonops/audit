@@ -131,6 +131,12 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file should contain exactly 10 events
 
+  Scenario: User-Agent at exactly 512 chars is not truncated
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with a 512-char User-Agent
+    And I close the logger
+    Then the file event user_agent field should be exactly 512 characters
+
   Scenario: Long User-Agent is truncated to 512 characters
     Given an HTTP test server with audit middleware
     When I send a GET request to "/api/resource" with a 1000-char User-Agent

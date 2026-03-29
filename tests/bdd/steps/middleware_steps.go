@@ -48,6 +48,7 @@ func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMiddlewareWhenSteps(ctx, tc)
 	registerMiddlewareThenSteps(ctx, tc)
 	registerMiddlewareRequestIDSteps(ctx, tc)
+	registerMiddlewareExactLenSteps(ctx, tc)
 	registerMiddlewareTruncationSteps(ctx, tc)
 	registerMiddlewarePathSteps(ctx, tc)
 }
@@ -203,6 +204,26 @@ func registerMiddlewareRequestIDSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		}
 		if len(rid) >= maxLen {
 			return fmt.Errorf("request_id length %d not shorter than %d (value: %q)", len(rid), maxLen, rid)
+		}
+		return nil
+	})
+}
+
+func registerMiddlewareExactLenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the file event user_agent field should be exactly (\d+) characters$`, func(exactLen int) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		ua, ok := events[0]["user_agent"].(string)
+		if !ok {
+			return fmt.Errorf("user_agent is not a string: %v", events[0]["user_agent"])
+		}
+		if len(ua) != exactLen {
+			return fmt.Errorf("user_agent length %d, expected exactly %d", len(ua), exactLen)
 		}
 		return nil
 	})

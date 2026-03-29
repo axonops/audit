@@ -236,6 +236,12 @@ Feature: Event Formatters
     And I close the logger
     Then the CEF line should have severity 10
 
+  Scenario: CEF header escapes backslash characters
+    Given a logger with file output using CEF formatter with vendor "Axon\Ops" product "Test" version "1.0"
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the CEF line should contain "Axon\\Ops"
+
   Scenario: CEF extension escapes equals sign
     Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
     When I audit event "user_create" with fields:

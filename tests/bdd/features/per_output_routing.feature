@@ -82,6 +82,17 @@ Feature: Per-Output Event Routing
 
   # --- Exclude event types ---
 
+  Scenario: Exclude single event type removes only that event
+    Given a logger with file receiving all events and webhook excluding event types "user_create"
+    When I audit a "user_create" event in category "write" with marker "exc_single_w"
+    And I audit a "config_update" event in category "write" with marker "exc_single_c"
+    And I audit an "auth_failure" event in category "security" with marker "exc_single_s"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "exc_single_w"
+    And the file should contain "exc_single_c"
+    And the file should contain "exc_single_s"
+
   Scenario: Exclude event types removes specific events
     Given a logger with file receiving all events and webhook excluding event types "user_create"
     When I audit a "user_create" event in category "write" with marker "excevt_w"

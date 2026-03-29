@@ -42,6 +42,13 @@ Feature: Webhook Output
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
+  Scenario: Retry on 504 gateway timeout
+    Given the webhook receiver is configured to return status 504
+    And a logger with webhook output configured for batch size 1 and max retries 3
+    When I audit a uniquely marked webhook "user_create" event
+    And the webhook receiver is reconfigured to return status 200
+    Then the webhook receiver should have at least 1 event within 10 seconds
+
   Scenario: No retry on 400 bad request
     Given the webhook receiver is configured to return status 400
     And a logger with webhook output configured for batch size 1 and max retries 5

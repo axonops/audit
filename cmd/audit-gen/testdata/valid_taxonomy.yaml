@@ -1,0 +1,46 @@
+version: 1
+categories:
+  read:
+    - schema_read
+    - config_read
+  write:
+    - schema_register
+    - schema_delete
+  security:
+    - auth_failure
+default_enabled:
+  - write
+  - security
+events:
+  schema_read:
+    category: read
+    required:
+      - outcome
+    optional:
+      - subject
+  config_read:
+    category: read
+    required:
+      - outcome
+  schema_register:
+    category: write
+    required:
+      - outcome
+      - actor_id
+      - subject
+    optional:
+      - schema_type
+  schema_delete:
+    category: write
+    required:
+      - outcome
+      - actor_id
+      - subject
+  auth_failure:
+    category: security
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - reason
+      - client_ip

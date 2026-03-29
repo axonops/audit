@@ -1,0 +1,67 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package main
+
+import "strings"
+
+// acronyms maps lowercase tokens to their canonical all-caps Go form.
+var acronyms = map[string]string{
+	"api":  "API",
+	"ca":   "CA",
+	"cpu":  "CPU",
+	"db":   "DB",
+	"dns":  "DNS",
+	"http": "HTTP",
+	"id":   "ID",
+	"io":   "IO",
+	"ip":   "IP",
+	"ms":   "MS",
+	"os":   "OS",
+	"sql":  "SQL",
+	"ssh":  "SSH",
+	"tcp":  "TCP",
+	"tls":  "TLS",
+	"udp":  "UDP",
+	"uri":  "URI",
+	"url":  "URL",
+}
+
+// toPascalCase converts a snake_case identifier to PascalCase,
+// applying Go acronym conventions for known suffixes.
+//
+// Examples:
+//
+//	schema_register → SchemaRegister
+//	actor_id        → ActorID
+//	source_ip       → SourceIP
+//	outcome         → Outcome
+func toPascalCase(s string) string {
+	parts := strings.Split(s, "_")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		lower := strings.ToLower(p)
+		if upper, ok := acronyms[lower]; ok {
+			b.WriteString(upper)
+		} else {
+			b.WriteString(strings.ToUpper(p[:1]))
+			b.WriteString(strings.ToLower(p[1:]))
+		}
+	}
+	return b.String()
+}

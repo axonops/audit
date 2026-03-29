@@ -42,6 +42,10 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, AppName: appName})
 	})
 
+	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with facility "([^"]*)"$`, func(network, address, facility string) error {
+		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Facility: facility})
+	})
+
 	ctx.Step(`^a logger with syslog TLS output to "([^"]*)" with CA cert$`, func(address string) error {
 		certs := certDir()
 		return createSyslogLogger(tc, &syslog.Config{

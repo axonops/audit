@@ -110,6 +110,20 @@ Feature: Syslog Output
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain "audit"
 
+  Scenario Outline: Valid facility names are accepted
+    Given a logger with syslog output on "tcp" to "localhost:5514" with facility "<facility>"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the marker within 10 seconds
+
+    Examples:
+      | facility |
+      | local0   |
+      | local1   |
+      | local7   |
+      | auth     |
+      | daemon   |
+
   # --- UDP edge cases ---
 
   Scenario: UDP large payload accepted without panic

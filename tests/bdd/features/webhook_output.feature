@@ -26,6 +26,15 @@ Feature: Webhook Output
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
+  Scenario: Timer resets after batch flush
+    Given a logger with webhook output configured for batch size 2 and flush interval 300ms
+    When I audit a uniquely marked webhook "user_create" event "timer1"
+    And I audit a uniquely marked webhook "user_create" event "timer2"
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    When I audit a uniquely marked webhook "user_create" event "timer3"
+    And I audit a uniquely marked webhook "user_create" event "timer4"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+
   # --- Retry logic ---
 
   Scenario: Retry on 503 response with eventual delivery

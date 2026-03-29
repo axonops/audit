@@ -73,6 +73,18 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event should have field "source_ip" with value "10.0.0.55"
 
+  Scenario: PUT request captures correct method
+    Given an HTTP test server with audit middleware
+    When I send a PUT request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "method" with value "PUT"
+
+  Scenario: DELETE request captures correct method
+    Given an HTTP test server with audit middleware
+    When I send a DELETE request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "method" with value "DELETE"
+
   # --- Request ID ---
 
   Scenario: Request ID extracted from header

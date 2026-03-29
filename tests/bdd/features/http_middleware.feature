@@ -61,6 +61,12 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event should have field "source_ip" with value "192.168.1.1"
 
+  Scenario: Client IP falls back to X-Real-IP
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with header "X-Real-IP" = "10.0.0.55"
+    And I close the logger
+    Then the file event should have field "source_ip" with value "10.0.0.55"
+
   # --- Request ID ---
 
   Scenario: Request ID extracted from header

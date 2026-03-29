@@ -93,6 +93,12 @@ Feature: HTTP Middleware
 
   # --- Path truncation ---
 
+  Scenario: Invalid request ID header replaced with generated UUID
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with header "X-Request-Id" = "has\nnewline"
+    And I close the logger
+    Then the file event should have field "request_id" present
+
   Scenario: Concurrent requests get independent audit events
     Given an HTTP test server with audit middleware
     When I send 10 concurrent GET requests to "/api/resource"

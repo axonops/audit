@@ -106,6 +106,30 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		return nil
 	})
 
+	ctx.Step(`^a logger with panicking formatter and metrics$`, func() error {
+		buf := &bytes.Buffer{}
+		tc.StdoutBuf = buf
+
+		stdoutOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+		if err != nil {
+			return fmt.Errorf("create stdout: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithFormatter(&panicFormatter{}),
+			audit.WithOutputs(stdoutOut),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
 }
 
 func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -189,6 +213,9 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(minCount int) error {
 		return assertMetricsBufferDrops(tc, minCount)
 	})
+	ctx.Step(`^the metrics should have recorded a serialization error$`, func() error {
+		return assertMetricsSerializationError(tc)
+	})
 	ctx.Step(`^the metrics should have recorded an output filtered event$`, func() error {
 		return assertMetricsOutputFiltered(tc)
 	})
@@ -263,6 +290,22 @@ func assertMetricsBufferDrops(tc *AuditTestContext, minCount int) error {
 	defer tc.MockMetrics.mu.Unlock()
 	if tc.MockMetrics.BufferDrops < minCount {
 		return fmt.Errorf("expected >= %d buffer drops, got %d", minCount, tc.MockMetrics.BufferDrops)
+	}
+	return nil
+}
+
+func assertMetricsSerializationError(tc *AuditTestContext) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	total := 0
+	for _, v := range tc.MockMetrics.SerializationErrs {
+		total += v
+	}
+	if total == 0 {
+		return fmt.Errorf("expected at least 1 serialization error, got 0")
 	}
 	return nil
 }

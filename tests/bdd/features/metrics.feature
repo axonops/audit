@@ -83,6 +83,13 @@ Feature: Metrics Interface
       audit: unknown event type "nonexistent_event"
       """
 
+  Scenario: Serialization error records serialization metric
+    Given mock metrics are configured
+    And a logger with panicking formatter and metrics
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the metrics should have recorded a serialization error
+
   Scenario: Nil metrics with filtered event does not panic
     Given a filtering taxonomy with only "write" enabled
     And a logger with stdout output

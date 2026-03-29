@@ -36,11 +36,12 @@ import (
 // A fresh context is created for every scenario in BeforeScenario.
 type AuditTestContext struct { //nolint:govet // fieldalignment: readability preferred over packing
 	// Logger state.
-	Logger   *audit.Logger
-	LastErr  error
-	Taxonomy audit.Taxonomy
-	Config   audit.Config
-	Options  []audit.Option
+	Logger      *audit.Logger
+	EventHandle *audit.EventType
+	LastErr     error
+	Taxonomy    audit.Taxonomy
+	Config      audit.Config
+	Options     []audit.Option
 
 	// Output capture.
 	StdoutBuf *bytes.Buffer     // in-memory output for non-Docker scenarios
@@ -86,6 +87,7 @@ func (tc *AuditTestContext) Cleanup() {
 // Reset prepares the context for a new scenario.
 func (tc *AuditTestContext) Reset() {
 	tc.Logger = nil
+	tc.EventHandle = nil
 	tc.LastErr = nil
 	tc.Taxonomy = audit.Taxonomy{}
 	tc.Config = audit.Config{}

@@ -44,3 +44,10 @@ Feature: Graceful Shutdown
     And I close the logger
     Then the file should contain exactly 50 events
     And every event in the file should be valid JSON
+
+  Scenario: Close with multiple outputs closes all
+    Given a logger with file and syslog outputs
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the file should contain the marker
+    And the syslog server should contain the marker within 10 seconds

@@ -154,10 +154,36 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		tc.LastErr = tc.Logger.Audit(eventType, fields)
 		return nil
 	})
+
+	ctx.Step(`^I get a handle for event type "([^"]*)"$`, func(eventType string) error {
+		h, err := tc.Logger.Handle(eventType)
+		if err != nil {
+			tc.LastErr = err
+			return nil //nolint:nilerr // scenario may assert on error
+		}
+		tc.EventHandle = h
+		return nil
+	})
+
+	ctx.Step(`^I try to get a handle for event type "([^"]*)"$`, func(eventType string) error {
+		_, err := tc.Logger.Handle(eventType)
+		tc.LastErr = err
+		return nil
+	})
+
+	ctx.Step(`^I audit via handle with fields:$`, func(table *godog.Table) error {
+		if tc.EventHandle == nil {
+			return fmt.Errorf("no event handle set")
+		}
+		fields := tableToFields(table)
+		tc.LastErr = tc.EventHandle.Audit(fields)
+		return nil
+	})
 }
 
 func registerAuditThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerAuditThenErrorSteps(ctx, tc)
+	registerAuditThenHandleSteps(ctx, tc)
 	registerAuditThenOutputSteps(ctx, tc)
 }
 
@@ -196,6 +222,64 @@ func registerAuditThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+}
+
+func registerAuditThenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the handle should be valid$`, func() error {
+		if tc.EventHandle == nil {
+			return fmt.Errorf("handle is nil")
+		}
+		return nil
+	})
+	ctx.Step(`^the handle name should be "([^"]*)"$`, func(name string) error {
+		if tc.EventHandle == nil {
+			return fmt.Errorf("handle is nil")
+		}
+		if tc.EventHandle.Name() != name {
+			return fmt.Errorf("handle name: want %q, got %q", name, tc.EventHandle.Name())
+		}
+		return nil
+	})
+	ctx.Step(`^the handle should return an error$`, func() error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected handle error, got nil")
+		}
+		return nil
+	})
+	ctx.Step(`^the output event should not contain key "([^"]*)"$`, func(key string) error {
+		return assertStdoutFirstEventKeyAbsent(tc, key)
+	})
+	ctx.Step(`^the output event should contain key "([^"]*)"$`, func(key string) error {
+		return assertStdoutFirstEventKeyPresent(tc, key)
+	})
+}
+
+func assertStdoutFirstEventKeyAbsent(tc *AuditTestContext, key string) error {
+	events, err := getStdoutEvents(tc)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in stdout")
+	}
+	if _, exists := events[0][key]; exists {
+		return fmt.Errorf("expected key %q absent, but found with value %v", key, events[0][key])
+	}
+	return nil
+}
+
+func assertStdoutFirstEventKeyPresent(tc *AuditTestContext, key string) error {
+	events, err := getStdoutEvents(tc)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in stdout")
+	}
+	if _, exists := events[0][key]; !exists {
+		return fmt.Errorf("expected key %q present, but not found", key)
+	}
+	return nil
 }
 
 func registerAuditThenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

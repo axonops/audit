@@ -52,3 +52,41 @@ Feature: HTTP Middleware
     Given an HTTP test server with nil logger middleware
     When I send a GET request to "/api/resource"
     Then the response status should be 200
+
+  # --- Client IP extraction ---
+
+  Scenario: Client IP extracted from X-Forwarded-For
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with header "X-Forwarded-For" = "10.0.0.1, 192.168.1.1"
+    And I close the logger
+    Then the file event should have field "source_ip" with value "192.168.1.1"
+
+  # --- Request ID ---
+
+  Scenario: Request ID extracted from header
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with header "X-Request-Id" = "req-abc-123"
+    And I close the logger
+    Then the file event should have field "request_id" with value "req-abc-123"
+
+  Scenario: Request ID generated when header missing
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "request_id" present
+
+  # --- User-Agent ---
+
+  Scenario: User-Agent captured in audit event
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource" with header "User-Agent" = "test-agent/1.0"
+    And I close the logger
+    Then the file event should have field "user_agent" with value "test-agent/1.0"
+
+  # --- Default status ---
+
+  Scenario: Default status 200 if handler writes nothing
+    Given an HTTP test server with audit middleware returning no explicit status
+    When I send a GET request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "status_code" with value "200"

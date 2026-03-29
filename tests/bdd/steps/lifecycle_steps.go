@@ -16,6 +16,7 @@ package steps
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cucumber/godog"
 
@@ -41,6 +42,26 @@ func registerLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			}
 		}
 		return fmt.Errorf("no event with event_type=%q and %s=%q in file (%d events)", eventType, field, value, len(events))
+	})
+
+	ctx.Step(`^I emit startup without app name$`, func() error {
+		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{})
+		return nil
+	})
+
+	ctx.Step(`^I try to emit startup with app name "([^"]*)"$`, func(appName string) error {
+		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
+		return nil
+	})
+
+	ctx.Step(`^the startup call should return an error containing "([^"]*)"$`, func(substr string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected startup error containing %q, got nil", substr)
+		}
+		if !strings.Contains(tc.LastErr.Error(), substr) {
+			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+		}
+		return nil
 	})
 
 	ctx.Step(`^the file should not contain an event with event_type "([^"]*)"$`, func(eventType string) error {

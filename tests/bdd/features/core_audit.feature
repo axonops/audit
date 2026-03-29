@@ -93,3 +93,44 @@ Feature: Core Audit Logging
       | actor_id | alice   |
     Then the event should be delivered successfully
     And the output should contain an event with event_type "user_create"
+
+  # --- Handle / MustHandle ---
+
+  Scenario: Handle returns valid event type for registered event
+    When I get a handle for event type "user_create"
+    Then the handle should be valid
+    And the handle name should be "user_create"
+
+  Scenario: Handle returns error for unregistered event type
+    When I try to get a handle for event type "nonexistent"
+    Then the handle should return an error
+
+  Scenario: Audit via handle delivers same event as Audit method
+    When I get a handle for event type "user_create"
+    And I audit via handle with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the output should contain an event matching:
+      | field      | value       |
+      | event_type | user_create |
+      | outcome    | success     |
+      | actor_id   | alice       |
+
+  # --- OmitEmpty ---
+
+  Scenario: OmitEmpty true omits zero-value optional fields
+    Given a logger with stdout output and OmitEmpty "true"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the output event should not contain key "marker"
+
+  Scenario: OmitEmpty false includes zero-value optional fields
+    Given a logger with stdout output and OmitEmpty "false"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the output event should contain key "marker"

@@ -37,3 +37,20 @@ Feature: Lifecycle Events
     Then the file should contain an event with event_type "startup"
     And the file should contain an event with event_type "user_create"
     And the file should contain an event with event_type "shutdown"
+
+  Scenario: EmitStartup missing app_name returns validation error
+    Given a logger with file output at a temporary path
+    When I emit startup without app name
+    Then the startup call should return an error containing "missing required"
+
+  Scenario: EmitStartup after Close returns ErrClosed
+    Given a logger with file output at a temporary path
+    When I close the logger
+    And I try to emit startup with app name "too-late"
+    Then the startup call should return an error containing "closed"
+
+  Scenario: Failed EmitStartup means no shutdown on close
+    Given a logger with file output at a temporary path
+    When I emit startup without app name
+    And I close the logger
+    Then the file should not contain an event with event_type "shutdown"

@@ -73,6 +73,10 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return createTestServer(tc, http.StatusOK, false, true)
 	})
 
+	ctx.Step(`^an HTTP test server with audit middleware returning no explicit status$`, func() error {
+		return createTestServer(tc, 0, false, false) // 0 = don't call WriteHeader
+	})
+
 	ctx.Step(`^an HTTP test server with nil logger middleware$`, func() error {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -85,21 +89,11 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 }
 
 func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a (GET|POST|PUT|DELETE) request to "([^"]*)" with header "([^"]*)" = "([^"]*)"$`, func(method, path, hdr, val string) error {
+		return sendTestRequest(tc, method, path, map[string]string{hdr: val})
+	})
 	ctx.Step(`^I send a (GET|POST|PUT|DELETE) request to "([^"]*)"$`, func(method, path string) error {
-		if tc.TestServer == nil {
-			return fmt.Errorf("test server not created")
-		}
-		req, err := http.NewRequestWithContext(context.Background(), method, tc.TestServer.URL+path, http.NoBody)
-		if err != nil {
-			return fmt.Errorf("create request: %w", err)
-		}
-		resp, err := testHTTPClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("send request: %w", err)
-		}
-		_ = resp.Body.Close()
-		tc.LastHTTPResp = resp
-		return nil
+		return sendTestRequest(tc, method, path, nil)
 	})
 }
 
@@ -117,6 +111,20 @@ func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return fmt.Errorf("no file event with %s=%q (%d events)", field, value, len(events))
 	})
 
+	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(field string) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		if _, ok := events[0][field]; !ok {
+			return fmt.Errorf("field %q not present in event", field)
+		}
+		return nil
+	})
+
 	ctx.Step(`^the response status should be (\d+)$`, func(status int) error {
 		if tc.LastHTTPResp == nil {
 			return fmt.Errorf("no HTTP response recorded")
@@ -126,6 +134,26 @@ func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		}
 		return nil
 	})
+}
+
+func sendTestRequest(tc *AuditTestContext, method, path string, headers map[string]string) error {
+	if tc.TestServer == nil {
+		return fmt.Errorf("test server not created")
+	}
+	req, err := http.NewRequestWithContext(context.Background(), method, tc.TestServer.URL+path, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := testHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	_ = resp.Body.Close()
+	tc.LastHTTPResp = resp
+	return nil
 }
 
 // --- Middleware helpers ---
@@ -156,6 +184,9 @@ func createTestServer(tc *AuditTestContext, status int, setActorID, skipGET bool
 			"method":      transport.Method,
 			"path":        transport.Path,
 			"status_code": transport.StatusCode,
+			"source_ip":   transport.ClientIP,
+			"user_agent":  transport.UserAgent,
+			"request_id":  transport.RequestID,
 		}
 		if setActorID {
 			fields["actor_id"] = "handler-actor"
@@ -169,7 +200,10 @@ func createTestServer(tc *AuditTestContext, status int, setActorID, skipGET bool
 				hints.ActorID = "handler-actor"
 			}
 		}
-		w.WriteHeader(status)
+		if status > 0 {
+			w.WriteHeader(status)
+		}
+		// status=0 means don't call WriteHeader (default 200)
 	})
 
 	mw := audit.Middleware(tc.Logger, builder)

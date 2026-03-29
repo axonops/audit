@@ -46,6 +46,7 @@ func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMiddlewareGivenSteps(ctx, tc)
 	registerMiddlewareWhenSteps(ctx, tc)
 	registerMiddlewareThenSteps(ctx, tc)
+	registerMiddlewareTruncationSteps(ctx, tc)
 	registerMiddlewarePathSteps(ctx, tc)
 }
 
@@ -133,6 +134,30 @@ func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		}
 		if tc.LastHTTPResp.StatusCode != status {
 			return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
+		}
+		return nil
+	})
+}
+
+func registerMiddlewareTruncationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I send a GET request to "([^"]*)" with a (\d+)-char User-Agent$`, func(path string, length int) error {
+		ua := strings.Repeat("A", length)
+		return sendTestRequest(tc, "GET", path, map[string]string{"User-Agent": ua})
+	})
+	ctx.Step(`^the file event user_agent field should be at most (\d+) characters$`, func(maxLen int) error {
+		events, err := readFileEvents(tc, "default")
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return fmt.Errorf("no events in file")
+		}
+		ua, ok := events[0]["user_agent"].(string)
+		if !ok {
+			return fmt.Errorf("user_agent field is not a string: %v", events[0]["user_agent"])
+		}
+		if len(ua) > maxLen {
+			return fmt.Errorf("user_agent length %d exceeds max %d", len(ua), maxLen)
 		}
 		return nil
 	})

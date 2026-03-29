@@ -1155,6 +1155,34 @@ func TestSyslogOutput_WriteUDP(t *testing.T) {
 	require.NoError(t, out.Close())
 }
 
+func TestSyslogOutput_WriteUDP_NoOctetCountFraming(t *testing.T) {
+	// RFC 5425 octet-count framing must NOT be applied to UDP datagrams.
+	// A framed message starts with a decimal length: "NN <message>".
+	// A bare RFC 5424 message starts with "<" (the PRI field).
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "udp",
+		Address: conn.LocalAddr().String(),
+	}, nil)
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+
+	require.NoError(t, out.Write([]byte(`{"event":"framing_check"}`)))
+
+	buf := make([]byte, 8192)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+	n, _, readErr := conn.ReadFrom(buf)
+	require.NoError(t, readErr)
+
+	msg := string(buf[:n])
+	assert.True(t, strings.HasPrefix(msg, "<"),
+		"UDP datagram must start with PRI '<', not an octet-count prefix; got: %q", msg[:min(n, 40)])
+	assert.Contains(t, msg, "framing_check")
+}
+
 func TestSyslogOutput_WriteUDP_LargePayload(t *testing.T) {
 	// Start a UDP listener.
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")

@@ -129,11 +129,12 @@ func TestSyslog_TCP_MultipleEvents(t *testing.T) {
 // --- UDP (port 5515) ---
 
 func TestSyslog_UDP_SendAndReceive(t *testing.T) {
-	t.Skip("Known bug: srslog UDP packets not received by syslog-ng — see TODO(#133)") //nolint:gocritic
 	m := marker(t)
+	// Use 127.0.0.1 explicitly — Docker maps UDP to IPv4 only;
+	// "localhost" may resolve to ::1 on dual-stack hosts.
 	out, err := syslog.New(&syslog.Config{
 		Network:  "udp",
-		Address:  "localhost:5515",
+		Address:  "127.0.0.1:5515",
 		Facility: "local0",
 		AppName:  "go-audit-test",
 	}, nil)

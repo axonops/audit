@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -509,6 +510,21 @@ func TestSyslogOutput_Name(t *testing.T) {
 	assert.Contains(t, out.Name(), srv.addr())
 }
 
+func TestSyslogOutput_DestinationKey(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+
+	assert.Equal(t, srv.addr(), out.DestinationKey(),
+		"DestinationKey must return the configured address")
+}
+
 func TestSyslogOutput_ImplementsOutput(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
@@ -972,6 +988,146 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing
 		// TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServerDown.
 		t.Log("reconnect success test skipped: port could not be rebound fast enough")
 	}
+}
+
+// hostileSyslogServer accepts TCP connections. In normal mode it reads
+// and discards data. After SetHostile is called, new connections receive
+// an immediate TCP RST (SetLinger(0) + Close). The listener stays up
+// the entire time so that srslog.Dial always succeeds.
+type hostileSyslogServer struct { //nolint:govet // fieldalignment: test helper, readability preferred
+	listener net.Listener
+	hostile  atomic.Bool
+	conns    []net.Conn
+	connsMu  sync.Mutex
+	done     chan struct{}
+	wg       sync.WaitGroup
+}
+
+func newHostileSyslogServer(t *testing.T) *hostileSyslogServer {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	s := &hostileSyslogServer{listener: ln, done: make(chan struct{})}
+	s.wg.Add(1)
+	go s.acceptLoop()
+	return s
+}
+
+func (s *hostileSyslogServer) acceptLoop() {
+	defer s.wg.Done()
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return
+		}
+		if s.hostile.Load() {
+			rstClose(conn)
+		} else {
+			s.trackAndRead(conn)
+		}
+	}
+}
+
+func (s *hostileSyslogServer) trackAndRead(conn net.Conn) {
+	s.connsMu.Lock()
+	s.conns = append(s.conns, conn)
+	s.connsMu.Unlock()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		buf := make([]byte, 4096)
+		for {
+			_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			_, err := conn.Read(buf)
+			if err == nil {
+				continue
+			}
+			select {
+			case <-s.done:
+				return
+			default:
+			}
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
+			return
+		}
+	}()
+}
+
+func (s *hostileSyslogServer) addr() string { return s.listener.Addr().String() }
+
+// SetHostile switches the server to hostile mode and RST-closes all
+// existing connections. New connections will also be RST-closed.
+func (s *hostileSyslogServer) SetHostile() {
+	s.hostile.Store(true)
+	s.connsMu.Lock()
+	for _, c := range s.conns {
+		rstClose(c)
+	}
+	s.conns = nil
+	s.connsMu.Unlock()
+}
+
+func (s *hostileSyslogServer) close() {
+	close(s.done)
+	_ = s.listener.Close()
+	s.connsMu.Lock()
+	for _, c := range s.conns {
+		_ = c.Close()
+	}
+	s.connsMu.Unlock()
+	s.wg.Wait()
+}
+
+// rstClose sends a TCP RST by setting linger to 0 before closing.
+func rstClose(conn net.Conn) {
+	if tc, ok := conn.(*net.TCPConn); ok {
+		_ = tc.SetLinger(0)
+	}
+	_ = conn.Close()
+}
+
+func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
+	// Verify the branch where connect() succeeds but the retry write
+	// on the new connection fails (syslog.go:380-381).
+	srv := newHostileSyslogServer(t)
+	defer srv.close()
+	addr := srv.addr()
+
+	m := newMockMetrics()
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    addr,
+		MaxRetries: 5,
+	}, m)
+	require.NoError(t, err)
+
+	// Establish a live connection with a successful write.
+	require.NoError(t, out.Write([]byte(`{"n":1}`)))
+
+	// Switch to hostile: RST existing connections + RST new ones.
+	srv.SetHostile()
+
+	// Drive writes — reconnect Dial succeeds (listener up) but retry
+	// write fails (hostile RST).
+	var reconnectSuccess bool
+	for range 20 {
+		_ = out.Write([]byte(`{"n":2}`))
+		if m.getSyslogReconnectCount(addr, true) > 0 {
+			reconnectSuccess = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_ = out.Close()
+
+	assert.True(t, reconnectSuccess,
+		"RecordSyslogReconnect(address, true) must be called — "+
+			"connect() succeeds because listener stays up, but retry write "+
+			"fails because hostile server RSTs the connection")
 }
 
 func TestSyslogOutput_SyslogMetrics_InterfaceAssertion(t *testing.T) {

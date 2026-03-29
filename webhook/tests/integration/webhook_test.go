@@ -35,7 +35,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		// HTTP default transport keeps idle connection goroutines open.
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).readLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).writeLoop"),
+	)
 }
 
 const receiverURL = "http://localhost:8080"
@@ -156,14 +160,18 @@ func TestWebhook_RetryOn5xx(t *testing.T) {
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_test"}`)))
 
-	// Wait for at least 1 retry attempt.
-	time.Sleep(1 * time.Second)
+	// Poll until the receiver has received at least 1 request (even
+	// though it returns 503, it stores the event body).
+	assert.True(t, waitForEvents(t, 1, 10*time.Second),
+		"receiver should have received at least 1 attempt")
 
-	// Now configure 200 so the retry succeeds.
+	// Now reset events and configure 200 so the next retry succeeds.
+	resetReceiver(t)
 	configureReceiver(t, 200, 0)
 
+	// The webhook will keep retrying — eventually one succeeds.
 	assert.True(t, waitForEvents(t, 1, 10*time.Second),
-		"event should eventually arrive after retry")
+		"event should eventually arrive after retry succeeds")
 
 	require.NoError(t, out.Close())
 }

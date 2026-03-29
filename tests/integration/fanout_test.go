@@ -43,7 +43,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).readLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).writeLoop"),
+	)
 }
 
 // marker generates a unique test marker.
@@ -63,6 +66,7 @@ func resetWebhook(t *testing.T) {
 	resp, err := http.Post(webhookURL+"/reset", "", nil)
 	require.NoError(t, err)
 	resp.Body.Close()
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
 // getWebhookEvents returns stored webhook events.

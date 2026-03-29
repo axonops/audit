@@ -66,23 +66,35 @@ Feature: Syslog Output
     When I try to create a syslog output on "tcp+tls" to "localhost:6514" with invalid CA
     Then the syslog construction should fail with an error containing "certificate"
 
-  Scenario: TLS cert without key is rejected
+  Scenario: TLS cert without key is rejected with exact error
     When I try to create a syslog output with TLS cert but no key
-    Then the syslog construction should fail with an error containing "both be set"
+    Then the syslog construction should fail with exact error:
+      """
+      audit: syslog tls_cert and tls_key must both be set or both empty
+      """
 
   # --- Config validation ---
 
-  Scenario: Empty address is rejected
+  Scenario: Empty address is rejected with exact error
     When I try to create a syslog output with empty address
-    Then the syslog construction should fail with an error containing "address"
+    Then the syslog construction should fail with exact error:
+      """
+      audit: syslog address must not be empty
+      """
 
-  Scenario: Invalid network type is rejected
+  Scenario: Invalid network type is rejected with exact error
     When I try to create a syslog output on "invalid" to "localhost:5514"
-    Then the syslog construction should fail with an error containing "network"
+    Then the syslog construction should fail with exact error:
+      """
+      audit: syslog network "invalid" must be tcp, udp, or tcp+tls
+      """
 
-  Scenario: Invalid facility is rejected
+  Scenario: Invalid facility is rejected with exact error
     When I try to create a syslog output with facility "bogus"
-    Then the syslog construction should fail with an error containing "facility"
+    Then the syslog construction should fail with exact error:
+      """
+      audit: syslog facility "bogus": audit: unknown syslog facility "bogus"
+      """
 
   Scenario: Default app name is "audit"
     Given a logger with syslog output on "tcp" to "localhost:5514"

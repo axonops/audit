@@ -138,6 +138,9 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the syslog line with the marker should contain "([^"]*)"$`, func(text string) error { return assertSyslogMarkerLineContains(tc, text) })
 	ctx.Step(`^the syslog line with the marker should contain the current year$`, func() error { return assertSyslogMarkerLineContains(tc, time.Now().Format("2006")) })
 	ctx.Step(`^the syslog line with "([^"]*)" should contain "([^"]*)"$`, assertSyslogLineContainsBoth)
+	ctx.Step(`^the syslog construction should fail with exact error:$`, func(doc *godog.DocString) error {
+		return assertSyslogConstructionExactError(tc, strings.TrimSpace(doc.Content))
+	})
 	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(s string) error { return assertSyslogConstructionError(tc, s) })
 }
 
@@ -176,6 +179,16 @@ func assertSyslogLineContainsBoth(searchMarker, text string) error {
 		}
 	}
 	return fmt.Errorf("no syslog line containing both %q and %q", searchMarker, text)
+}
+
+func assertSyslogConstructionExactError(tc *AuditTestContext, expected string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+	}
+	if tc.LastErr.Error() != expected {
+		return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+	}
+	return nil
 }
 
 func assertSyslogConstructionError(tc *AuditTestContext, substr string) error {

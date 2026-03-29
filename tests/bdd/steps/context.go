@@ -57,6 +57,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	TestServer   *httptest.Server
 	LastHTTPResp *http.Response
 
+	// Route query result.
+	QueriedRoute *audit.EventRoute
+
 	// Metrics capture.
 	MockMetrics   *MockMetrics
 	FileMetrics   *MockFileMetrics
@@ -100,6 +103,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.Markers = make(map[string]string)
 	tc.TestServer = nil
 	tc.LastHTTPResp = nil
+	tc.QueriedRoute = nil
 	tc.MockMetrics = nil
 	tc.FileMetrics = nil
 	tc.AuditDuration = 0

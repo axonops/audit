@@ -38,6 +38,12 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event should have field "actor_id" with value "handler-actor"
 
+  Scenario: Handler populates hints Extra fields
+    Given an HTTP test server with audit middleware that sets Extra hints
+    When I send a GET request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "custom_field" with value "custom_value"
+
   # --- Skip ---
 
   Scenario: Skip true prevents audit event

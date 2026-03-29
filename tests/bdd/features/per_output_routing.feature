@@ -82,6 +82,17 @@ Feature: Per-Output Event Routing
 
   # --- Empty route ---
 
+  Scenario: Exclude multiple categories delivers union of exclusions
+    Given a logger with file receiving all events and webhook excluding categories "write" and "read"
+    When I audit a "user_create" event in category "write" with marker "exc_multi_w"
+    And I audit a "user_get" event in category "read" with marker "exc_multi_r"
+    And I audit an "auth_failure" event in category "security" with marker "exc_multi_s"
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the file should contain "exc_multi_w"
+    And the file should contain "exc_multi_r"
+    And the file should contain "exc_multi_s"
+
   Scenario: Empty route delivers all globally enabled events
     Given a logger with file and webhook both receiving all events
     When I audit a "user_create" event in category "write" with marker "empty_w"
@@ -121,6 +132,11 @@ Feature: Per-Output Event Routing
     And the file should contain "multi_inc_w"
     And the file should contain "multi_inc_s"
     And the file should contain "multi_inc_r"
+
+  Scenario: OutputRoute returns current route
+    Given a logger with file receiving all events and webhook receiving only "security"
+    When I query the webhook output route
+    Then the route should include category "security"
 
   Scenario: Unknown output name in SetOutputRoute returns error
     Given a logger with file receiving all events and webhook receiving only "security"

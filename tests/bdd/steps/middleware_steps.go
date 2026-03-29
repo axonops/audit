@@ -38,7 +38,7 @@ events:
   api_request:
     category: http
     required: [outcome]
-    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id]
+    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id, custom_field]
 default_enabled:
   - http
 `
@@ -72,6 +72,10 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 	ctx.Step(`^an HTTP test server with audit middleware that sets actor_id$`, func() error {
 		return createTestServer(tc, http.StatusOK, true, false)
+	})
+
+	ctx.Step(`^an HTTP test server with audit middleware that sets Extra hints$`, func() error {
+		return createTestServerWithExtra(tc)
 	})
 
 	ctx.Step(`^an HTTP test server with audit middleware that skips GET requests$`, func() error {
@@ -247,6 +251,38 @@ func sendTestRequest(tc *AuditTestContext, method, path string, headers map[stri
 	}
 	_ = resp.Body.Close()
 	tc.LastHTTPResp = resp
+	return nil
+}
+
+func createTestServerWithExtra(tc *AuditTestContext) error {
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		fields := audit.Fields{
+			"outcome":     "success",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+			"source_ip":   transport.ClientIP,
+			"user_agent":  transport.UserAgent,
+			"request_id":  transport.RequestID,
+		}
+		if hints != nil && hints.Extra != nil {
+			for k, v := range hints.Extra {
+				fields[k] = v
+			}
+		}
+		return "api_request", fields, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hints := audit.HintsFromContext(r.Context()); hints != nil {
+			hints.Extra = map[string]any{"custom_field": "custom_value"}
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := audit.Middleware(tc.Logger, builder)
+	tc.TestServer = httptest.NewServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
 }
 

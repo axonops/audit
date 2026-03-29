@@ -61,6 +61,13 @@ func registerFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerFanoutGivenOutputSteps(ctx, tc)
+	registerFanoutGivenRoutingSteps(ctx, tc)
+	registerFanoutGivenRuntimeSteps(ctx, tc)
+	registerFanoutGivenMultiOutputSteps(ctx, tc)
+}
+
+func registerFanoutGivenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file and webhook outputs$`, func() error {
 		return createFanoutLogger(tc, true, false, true, nil, nil)
 	})
@@ -83,6 +90,9 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		cefFmt := &audit.CEFFormatter{Vendor: "Test", Product: "BDD", Version: "1.0"}
 		return createFanoutLogger(tc, true, false, true, cefFmt, nil)
 	})
+}
+
+func registerFanoutGivenRoutingSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a routing taxonomy with write, read, and security categories$`, func() error {
 		tax, err := audit.ParseTaxonomyYAML([]byte(routingTaxonomyYAML))
 		if err != nil {
@@ -109,9 +119,15 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 			IncludeEventTypes: strings.Split(types, ","),
 		})
 	})
+	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
+		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat1, cat2}})
+	})
 	ctx.Step(`^a logger with file receiving all events and webhook excluding event types "([^"]*)"$`, func(types string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{ExcludeEventTypes: strings.Split(types, ",")})
 	})
+}
+
+func registerFanoutGivenRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file and webhook both receiving all events$`, func() error {
 		return createRoutedLogger(tc, nil) // nil route = all events
 	})
@@ -125,12 +141,13 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 			&audit.EventRoute{IncludeCategories: []string{cat}},
 		)
 	})
-	ctx.Step(`^a logger with two file outputs where security goes to file-a and write goes to file-b$`, func() error {
-		return createDualFileRoutedLogger(tc)
-	})
-	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error {
-		return createTripleRoutedLogger(tc)
-	})
+}
+
+func registerFanoutGivenMultiOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with two file outputs where security goes to file-a and write goes to file-b$`, func() error { return createDualFileRoutedLogger(tc) })
+	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error { return createTripleRoutedLogger(tc) })
+	ctx.Step(`^I query the webhook output route$`, func() error { return queryWebhookRoute(tc) })
+	ctx.Step(`^the route should include category "([^"]*)"$`, func(cat string) error { return assertRouteIncludesCategory(tc, cat) })
 	ctx.Step(`^I try to set route for unknown output "([^"]*)"$`, func(name string) error {
 		tc.LastErr = tc.Logger.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: []string{"write"}})
 		return nil
@@ -311,6 +328,29 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	)
 	tc.LastErr = err
 	return nil
+}
+
+func queryWebhookRoute(tc *AuditTestContext) error {
+	u := strings.TrimPrefix(tc.WebhookURL, "http://")
+	u = strings.TrimPrefix(u, "https://")
+	route, err := tc.Logger.OutputRoute("webhook:" + u)
+	if err != nil {
+		return fmt.Errorf("OutputRoute: %w", err)
+	}
+	tc.QueriedRoute = &route
+	return nil
+}
+
+func assertRouteIncludesCategory(tc *AuditTestContext, cat string) error {
+	if tc.QueriedRoute == nil {
+		return fmt.Errorf("no route queried")
+	}
+	for _, c := range tc.QueriedRoute.IncludeCategories {
+		if c == cat {
+			return nil
+		}
+	}
+	return fmt.Errorf("route does not include category %q (includes: %v)", cat, tc.QueriedRoute.IncludeCategories)
 }
 
 func tryDuplicateSyslogAddress(tc *AuditTestContext) error {

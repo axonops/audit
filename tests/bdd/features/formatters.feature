@@ -200,6 +200,13 @@ Feature: Event Formatters
 
   # --- JSON encoding edge cases ---
 
+  Scenario: JSON handles long string values without truncation
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with a 10000-character field value
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should contain exactly 1 event
+
   Scenario: JSON escapes U+2028 line separator
     Given a logger with file output using JSON formatter
     When I audit event "user_create" with a field containing U+2028

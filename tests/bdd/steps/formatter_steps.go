@@ -30,6 +30,7 @@ import (
 func registerFormatterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerFormatterGivenSteps(ctx, tc)
 	registerFormatterGivenExtraSteps(ctx, tc)
+	registerFormatterGivenSeveritySteps(ctx, tc)
 	registerFormatterWhenSteps(ctx, tc)
 	registerFormatterThenSteps(ctx, tc)
 }
@@ -155,6 +156,40 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 	})
 }
 
+func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with file output using CEF formatter with severity below (\d+)$`, func(_ int) error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, "audit.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := file.New(file.Config{Path: path}, nil)
+		if err != nil {
+			return fmt.Errorf("create file: %w", err)
+		}
+
+		cefFmt := &audit.CEFFormatter{
+			Vendor: "Test", Product: "Test", Version: "1.0",
+			SeverityFunc: func(_ string) int { return -5 },
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithNamedOutput(fileOut, nil, cefFmt),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+}
+
 func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output using CEF formatter with severity above (\d+)$`, func(above int) error {
 		dir, err := tc.EnsureFileDir()
@@ -208,6 +243,13 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		return nil
 	})
 
+	ctx.Step(`^I audit event "([^"]*)" with a field containing null bytes$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "before\x00after"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
 	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2028$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\u2028after"
@@ -250,6 +292,7 @@ func registerFormatterJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^the first JSON event "([^"]*)" field should be an integer$`, func(f string) error { return assertFirstEventFieldIsInt(tc, f) })
 	ctx.Step(`^the file should contain exactly (\d+) event$`, func(n int) error { return assertFileEventCount(tc, "default", n) })
 	ctx.Step(`^the file should contain a line starting with "([^"]*)"$`, func(p string) error { return assertFileLineStartsWith(tc, "default", p) })
+	ctx.Step(`^every event in the file should have exactly (\d+) line$`, func(n int) error { return assertFileExactlyNLines(tc, "default", n) })
 }
 
 func registerFormatterEdgeCaseSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -392,6 +435,23 @@ func assertFirstEventFieldIsInt(tc *AuditTestContext, field string) error {
 	}
 	if f != float64(int64(f)) {
 		return fmt.Errorf("field %q is %v, not an integer", field, f)
+	}
+	return nil
+}
+
+func assertFileExactlyNLines(tc *AuditTestContext, name string, n int) error {
+	raw, err := readRawFile(tc, name)
+	if err != nil {
+		return err
+	}
+	lines := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines++
+		}
+	}
+	if lines != n {
+		return fmt.Errorf("expected %d non-empty lines in file %q, got %d", n, name, lines)
 	}
 	return nil
 }

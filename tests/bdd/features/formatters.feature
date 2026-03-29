@@ -128,6 +128,19 @@ Feature: Event Formatters
 
   # --- Per-output formatter ---
 
+  Scenario: CEF null bytes are stripped from values
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with a field containing null bytes
+    And I close the logger
+    Then the file should contain a line starting with "CEF:0|"
+    And every event in the file should have exactly 1 line
+
+  Scenario: CEF severity below 0 clamped to 0
+    Given a logger with file output using CEF formatter with severity below 0
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the CEF line should have severity 0
+
   Scenario: Per-output formatter overrides default
     Given a logger with two file outputs using JSON and CEF formatters
     When I audit event "user_create" with required fields

@@ -171,6 +171,12 @@ Feature: Event Formatters
     Then the file should contain a line starting with "CEF:0|"
     And every event in the file should have exactly 1 line
 
+  Scenario: CEF invalid extension key causes serialization error without crash
+    Given a logger with file output using CEF formatter with invalid field mapping
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then no panic should have occurred
+
   Scenario: Per-output formatter overrides default
     Given a logger with two file outputs using JSON and CEF formatters
     When I audit event "user_create" with required fields

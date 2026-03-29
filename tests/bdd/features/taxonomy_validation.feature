@@ -279,6 +279,22 @@ Feature: Taxonomy Validation
     And the taxonomy should contain event type "shutdown"
     And the taxonomy should contain category "lifecycle"
 
+  Scenario: Lifecycle category added to DefaultEnabled automatically
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          category: write
+          required: [outcome]
+      default_enabled:
+        - write
+      """
+    Then the taxonomy default enabled should include "lifecycle"
+
   Scenario: User-defined lifecycle events are preserved
     Given a taxonomy from YAML:
       """

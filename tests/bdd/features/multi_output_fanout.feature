@@ -114,6 +114,12 @@ Feature: Multi-Output Fan-Out
 
   # --- Panic recovery ---
 
+  Scenario: Output write error logged but other outputs continue
+    Given a logger with file output and an error-returning output
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the file should contain the marker
+
   Scenario: Panic in per-output formatter does not crash logger
     Given a logger with file output and a panicking formatter on a second output
     When I audit a uniquely marked "user_create" event

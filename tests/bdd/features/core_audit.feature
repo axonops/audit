@@ -129,6 +129,13 @@ Feature: Core Audit Logging
     When I audit event "ping" with nil fields
     Then the event should be delivered successfully
 
+  Scenario: Empty fields map with required fields returns error
+    When I audit event "user_create" with empty fields
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" missing required fields: [actor_id, outcome]
+      """
+
   # --- MustHandle ---
 
   Scenario: MustHandle returns valid handle for registered event

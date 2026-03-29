@@ -81,6 +81,9 @@ func registerFanoutGivenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 	ctx.Step(`^a logger with file, syslog, and webhook outputs$`, func() error {
 		return createFanoutLogger(tc, true, true, true, nil, nil)
 	})
+	ctx.Step(`^a logger with file output and an error-returning output$`, func() error {
+		return createErrorOutputLogger(tc)
+	})
 	ctx.Step(`^a logger with file output and a panicking output$`, func() error {
 		return createPanicOutputLogger(tc)
 	})
@@ -520,6 +523,41 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+// errorOutput returns an error on every Write call.
+type errorOutput struct{}
+
+func (e *errorOutput) Write(_ []byte) error { return fmt.Errorf("intentional write error") }
+func (e *errorOutput) Close() error         { return nil }
+func (e *errorOutput) Name() string         { return "error-output" }
+
+func createErrorOutputLogger(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "audit.log")
+	tc.FilePaths["default"] = path
+
+	fileOut, err := file.New(file.Config{Path: path}, nil)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(fileOut, nil, nil),
+		audit.WithNamedOutput(&errorOutput{}, nil, nil),
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
 	tc.AddCleanup(func() { _ = logger.Close() })

@@ -52,6 +52,10 @@ Feature: Per-Output Event Routing
     When I try to create a logger with route referencing unknown category
     Then the logger construction should fail with an error
 
+  Scenario: Route referencing unknown event type is rejected
+    When I try to create a logger with route referencing unknown event type
+    Then the logger construction should fail with an error
+
   # --- Include union ---
 
   Scenario: Include categories and event types form union

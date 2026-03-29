@@ -166,6 +166,9 @@ func registerFanoutWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a logger with route referencing unknown category$`, func() error {
 		return tryUnknownCategoryRoute(tc)
 	})
+	ctx.Step(`^I try to create a logger with route referencing unknown event type$`, func() error {
+		return tryUnknownEventTypeRoute(tc)
+	})
 }
 
 func registerFanoutThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -283,6 +286,26 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, &audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
+		}, nil),
+	)
+	tc.LastErr = err
+	return nil
+}
+
+func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	f, err := file.New(file.Config{Path: filepath.Join(dir, "unknown_evt.log")}, nil)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	_, err = audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(f, &audit.EventRoute{
+			IncludeEventTypes: []string{"nonexistent_event"},
 		}, nil),
 	)
 	tc.LastErr = err

@@ -15,14 +15,26 @@
 package steps
 
 import (
+	"bytes"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/webhook"
 )
 
 func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerMetricsGivenSteps(ctx, tc)
+	registerMetricsWhenSteps(ctx, tc)
+	registerMetricsThenSteps(ctx, tc)
+}
+
+func registerMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^mock metrics are configured$`, func() error {
 		tc.MockMetrics = NewMockMetrics()
 		return nil
@@ -31,6 +43,58 @@ func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with stdout output and metrics$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
 		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true})
+	})
+
+	ctx.Step(`^a logger with stdout output and metrics in strict mode$`, func() error {
+		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
+		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationStrict})
+	})
+
+	ctx.Step(`^a logger with stdout output and metrics in warn mode$`, func() error {
+		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
+		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationWarn})
+	})
+
+	ctx.Step(`^a logger with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
+		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
+		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, BufferSize: bufSize})
+	})
+
+	ctx.Step(`^a logger with file and stdout outputs and metrics$`, func() error {
+		buf := &bytes.Buffer{}
+		tc.StdoutBuf = buf
+
+		stdoutOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+		if err != nil {
+			return fmt.Errorf("create stdout: %w", err)
+		}
+
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, "metrics.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := file.New(file.Config{Path: path}, nil)
+		if err != nil {
+			return fmt.Errorf("create file: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithNamedOutput(stdoutOut, nil, nil),
+			audit.WithNamedOutput(fileOut, nil, nil),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
 	})
 
 	ctx.Step(`^a filtering taxonomy with only "write" enabled$`, func() error {
@@ -42,45 +106,167 @@ func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
-	ctx.Step(`^the metrics should have recorded event "([^"]*)" for output "([^"]*)"$`, func(status, output string) error {
-		// Close to flush async events through the pipeline.
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+	ctx.Step(`^a logger with routed outputs and metrics where webhook excludes "([^"]*)"$`, func(excludeCat string) error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
 		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		key := output + ":" + status
-		count := tc.MockMetrics.Events[key]
-		if count == 0 {
-			return fmt.Errorf("expected RecordEvent(%q, %q) to be called, got 0 (all events: %v)", output, status, tc.MockMetrics.Events)
+		path := filepath.Join(dir, "audit.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &bytes.Buffer{}})
+		if err != nil {
+			return fmt.Errorf("create stdout: %w", err)
+		}
+
+		whOut, err := webhook.New(&webhook.Config{
+			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
+			AllowPrivateRanges: true, BatchSize: 1,
+			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
+		}, nil, nil)
+		if err != nil {
+			return fmt.Errorf("create webhook: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithNamedOutput(fileOut, nil, nil),
+			audit.WithNamedOutput(whOut, &audit.EventRoute{ExcludeCategories: []string{excludeCat}}, nil),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+}
+
+func registerMetricsWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I fill the logger buffer beyond capacity$`, func() error {
+		// Send more events than buffer can hold. Some will be dropped.
+		for range 100 {
+			_ = tc.Logger.Audit("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "overflow",
+			})
 		}
 		return nil
 	})
+}
 
+func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the metrics should have recorded event "([^"]*)" for output "([^"]*)"$`, func(status, output string) error {
+		return assertMetricsEvent(tc, output, status)
+	})
+	ctx.Step(`^the metrics should have recorded at least (\d+) success events$`, func(min int) error {
+		return assertMetricsTotalSuccessEvents(tc, min)
+	})
 	ctx.Step(`^the metrics should have recorded a validation error$`, func() error {
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		total := 0
-		for _, v := range tc.MockMetrics.ValidationErrors {
+		return assertMetricsValidationError(tc, true)
+	})
+	ctx.Step(`^the metrics should not have recorded a validation error$`, func() error {
+		return assertMetricsValidationError(tc, false)
+	})
+	ctx.Step(`^the metrics should have recorded a filtered event "([^"]*)"$`, func(et string) error {
+		return assertMetricsFiltered(tc, et)
+	})
+	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(min int) error {
+		return assertMetricsBufferDrops(tc, min)
+	})
+	ctx.Step(`^the metrics should have recorded an output filtered event$`, func() error {
+		return assertMetricsOutputFiltered(tc)
+	})
+}
+
+// --- Metrics assertion helpers ---
+
+func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	key := output + ":" + status
+	if tc.MockMetrics.Events[key] == 0 {
+		return fmt.Errorf("expected RecordEvent(%q, %q), got 0 (all: %v)", output, status, tc.MockMetrics.Events)
+	}
+	return nil
+}
+
+func assertMetricsTotalSuccessEvents(tc *AuditTestContext, min int) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	total := 0
+	for k, v := range tc.MockMetrics.Events {
+		if strings.HasSuffix(k, ":success") {
 			total += v
 		}
-		if total == 0 {
-			return fmt.Errorf("expected at least one RecordValidationError call, got 0")
-		}
-		return nil
-	})
+	}
+	if total < min {
+		return fmt.Errorf("expected >= %d success events, got %d", min, total)
+	}
+	return nil
+}
 
-	ctx.Step(`^the metrics should have recorded a filtered event "([^"]*)"$`, func(eventType string) error {
-		// Close to flush to ensure metrics are recorded.
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
-		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		count := tc.MockMetrics.Filtered[eventType]
-		if count == 0 {
-			return fmt.Errorf("expected RecordFiltered(%q) to be called, got 0 (all filtered: %v)", eventType, tc.MockMetrics.Filtered)
-		}
-		return nil
-	})
+func assertMetricsValidationError(tc *AuditTestContext, expectPresent bool) error {
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	total := 0
+	for _, v := range tc.MockMetrics.ValidationErrors {
+		total += v
+	}
+	if expectPresent && total == 0 {
+		return fmt.Errorf("expected validation error, got 0")
+	}
+	if !expectPresent && total > 0 {
+		return fmt.Errorf("expected no validation error, got %d", total)
+	}
+	return nil
+}
+
+func assertMetricsFiltered(tc *AuditTestContext, eventType string) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	if tc.MockMetrics.Filtered[eventType] == 0 {
+		return fmt.Errorf("expected RecordFiltered(%q), got 0 (all: %v)", eventType, tc.MockMetrics.Filtered)
+	}
+	return nil
+}
+
+func assertMetricsBufferDrops(tc *AuditTestContext, min int) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	if tc.MockMetrics.BufferDrops < min {
+		return fmt.Errorf("expected >= %d buffer drops, got %d", min, tc.MockMetrics.BufferDrops)
+	}
+	return nil
+}
+
+func assertMetricsOutputFiltered(tc *AuditTestContext) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	total := 0
+	for _, v := range tc.MockMetrics.OutputFiltered {
+		total += v
+	}
+	if total == 0 {
+		return fmt.Errorf("expected at least 1 RecordOutputFiltered, got 0 (all: %v)", tc.MockMetrics.OutputFiltered)
+	}
+	return nil
 }

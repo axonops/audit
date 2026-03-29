@@ -15,6 +15,7 @@
 package steps
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +47,30 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		compress := false
 		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb, Compress: &compress})
 	})
+	ctx.Step(`^a logger with file output configured for (\d+) MB max size and max backups (\d+)$`, func(mb, backups int) error {
+		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb, MaxBackups: backups})
+	})
+	ctx.Step(`^at most (\d+) files should exist in the output directory$`, func(maxFiles int) error {
+		if tc.Logger != nil {
+			_ = tc.Logger.Close()
+		}
+		dir := tc.FileDir
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return fmt.Errorf("read dir: %w", err)
+		}
+		count := 0
+		for _, e := range entries {
+			if !e.IsDir() {
+				count++
+			}
+		}
+		if count > maxFiles {
+			return fmt.Errorf("expected at most %d files, got %d", maxFiles, count)
+		}
+		return nil
+	})
+
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size with file metrics$`, func(mb int) error {
 		tc.FileMetrics = &MockFileMetrics{}
 		return createFileLoggerWithMetrics(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb}, tc.FileMetrics)
@@ -185,13 +210,15 @@ func auditConcurrent(tc *AuditTestContext, total, goroutines int) error {
 
 func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	// Each event is roughly 200 bytes. Write enough to exceed target.
+	// Tolerate ErrBufferFull — the drain goroutine may not keep up.
 	targetBytes := mb * 1024 * 1024
 	eventSize := 200
 	count := (targetBytes / eventSize) + 100
 	for i := range count {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rot_%d_padding_data_for_size", i)
-		if err := tc.Logger.Audit("user_create", fields); err != nil {
+		err := tc.Logger.Audit("user_create", fields)
+		if err != nil && !errors.Is(err, audit.ErrBufferFull) {
 			return fmt.Errorf("write event %d: %w", i, err)
 		}
 	}

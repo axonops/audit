@@ -24,7 +24,7 @@ Feature: Graceful Shutdown
     Given a logger with stdout output
     When I close the logger
     And I try to audit event "user_create" with required fields
-    Then the audit call should return an error containing "closed"
+    Then the audit call should return an error wrapping "ErrClosed"
 
   Scenario: Close with zero outputs completes successfully
     Given a logger with no outputs

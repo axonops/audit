@@ -110,7 +110,7 @@ Feature: Syslog Output
     Given a logger with syslog output on "tcp" to "localhost:5514"
     When I close the logger
     And I try to audit event "user_create" with required fields
-    Then the audit call should return an error containing "closed"
+    Then the audit call should return an error wrapping "ErrClosed"
 
   # --- Syslog-specific metrics ---
 

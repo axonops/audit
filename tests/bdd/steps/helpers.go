@@ -73,21 +73,81 @@ func parseJSONLines(data []byte) ([]map[string]any, error) {
 	return events, nil
 }
 
-// eventContainsAllFields checks if the event map contains all expected
-// field/value pairs. Returns true on match, or false with a description
-// of the first mismatch.
-func eventContainsAllFields(event map[string]any, expected map[string]string) (match bool, mismatch string) {
+// eventMatchesExactly checks that the event map contains ALL expected
+// field/value pairs and NO unexpected fields (except auto-populated ones
+// like timestamp). Values are compared as strings after JSON decoding.
+// The allowExtra parameter lists fields that are allowed but not required
+// (e.g., "timestamp" which is auto-populated).
+func eventMatchesExactly(event map[string]any, expected map[string]string, allowExtra []string) (match bool, mismatch string) {
+	// Check all expected fields are present with correct values.
 	for field, want := range expected {
 		got, exists := event[field]
 		if !exists {
 			return false, fmt.Sprintf("field %q not found in event", field)
 		}
-		gotStr := fmt.Sprintf("%v", got)
+		gotStr := formatFieldValue(got)
+		if want != gotStr {
+			return false, fmt.Sprintf("field %q: want %q, got %q", field, want, gotStr)
+		}
+	}
+
+	// Check no unexpected fields are present.
+	allowed := make(map[string]bool, len(expected)+len(allowExtra))
+	for k := range expected {
+		allowed[k] = true
+	}
+	for _, k := range allowExtra {
+		allowed[k] = true
+	}
+	for k := range event {
+		if !allowed[k] {
+			return false, fmt.Sprintf("unexpected field %q in event (value: %v)", k, event[k])
+		}
+	}
+
+	return true, ""
+}
+
+// eventContainsFields checks that the event has all expected fields with
+// correct values. Does NOT reject extra fields. Used for scenarios where
+// we verify specific fields but the full set may vary (e.g., syslog line
+// content checks).
+func eventContainsFields(event map[string]any, expected map[string]string) (match bool, mismatch string) {
+	for field, want := range expected {
+		got, exists := event[field]
+		if !exists {
+			return false, fmt.Sprintf("field %q not found in event", field)
+		}
+		gotStr := formatFieldValue(got)
 		if want != gotStr {
 			return false, fmt.Sprintf("field %q: want %q, got %q", field, want, gotStr)
 		}
 	}
 	return true, ""
+}
+
+// formatFieldValue converts a JSON-decoded value to a string for comparison.
+// Handles float64 (JSON numbers) by formatting integers without decimal.
+func formatFieldValue(v any) string {
+	switch val := v.(type) {
+	case float64:
+		// JSON numbers decode as float64. Format integers without decimal.
+		if val == float64(int64(val)) {
+			return fmt.Sprintf("%d", int64(val))
+		}
+		return fmt.Sprintf("%g", val)
+	case string:
+		return val
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }
 
 // --- Mock metrics ---

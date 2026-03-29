@@ -47,7 +47,7 @@ Feature: Lifecycle Events
     Given a logger with file output at a temporary path
     When I close the logger
     And I try to emit startup with app name "too-late"
-    Then the startup call should return an error containing "closed"
+    Then the startup call should return an error wrapping "ErrClosed"
 
   Scenario: Failed EmitStartup means no shutdown on close
     Given a logger with file output at a temporary path

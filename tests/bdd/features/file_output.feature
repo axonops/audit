@@ -102,7 +102,7 @@ Feature: File Output
     Given a logger with file output at a temporary path
     When I close the logger
     And I try to audit event "user_create" with required fields
-    Then the audit call should return an error containing "closed"
+    Then the audit call should return an error wrapping "ErrClosed"
 
   # --- File-specific metrics ---
 

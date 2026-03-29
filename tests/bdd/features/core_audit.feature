@@ -20,12 +20,20 @@ Feature: Core Audit Logging
       | actor_id | alice   |
     Then the event should be delivered successfully
     And the output should contain an event matching:
-      | field      | value       |
-      | event_type | user_create |
-      | outcome    | success     |
-      | actor_id   | alice       |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      |             |
+      | target_id   |             |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
-  Scenario: Emit event with required and optional fields
+  Scenario: Emit event with required and optional fields — complete payload
     When I audit event "user_create" with fields:
       | field     | value       |
       | outcome   | success     |
@@ -33,42 +41,57 @@ Feature: Core Audit Logging
       | marker    | bdd-test-1  |
       | target_id | user-42     |
     Then the event should be delivered successfully
-    And the output should contain field "marker" with value "bdd-test-1"
-    And the output should contain field "target_id" with value "user-42"
+    And the output should contain an event matching:
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      | bdd-test-1  |
+      | target_id   | user-42     |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
-  Scenario: Auto-populated fields are always present
+  Scenario: Auto-populated fields are always present with correct values
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
     Then the event should be delivered successfully
-    And the output should contain an event with field "timestamp"
-    And the output should contain an event with field "event_type"
     And the output should contain an event with event_type "user_create"
+    And the output event timestamp should be a valid RFC3339 value
 
   # --- Error paths ---
 
-  Scenario: Unknown event type returns error
+  Scenario: Unknown event type returns error with exact message
     When I audit event "nonexistent_event" with fields:
       | field    | value   |
       | outcome  | success |
-    Then the audit call should return an error containing "unknown event type"
-    And the error should mention "nonexistent_event"
+    Then the audit call should return an error matching:
+      """
+      audit: unknown event type "nonexistent_event"
+      """
 
-  Scenario: Missing a single required field returns error
+  Scenario: Missing a single required field returns exact error
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
-    Then the audit call should return an error containing "missing required fields"
-    And the error should mention "actor_id"
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" missing required fields: [actor_id]
+      """
 
-  Scenario: Missing multiple required fields returns error
+  Scenario: Missing multiple required fields returns exact error
     When I audit event "user_create" with fields:
       | field  | value  |
       | marker | test-1 |
-    Then the audit call should return an error containing "missing required fields"
-    And the error should mention "outcome"
-    And the error should mention "actor_id"
+    Then the audit call should return an error matching:
+      """
+      audit: event "user_create" missing required fields: [actor_id, outcome]
+      """
 
   Scenario: Audit after close returns ErrClosed
     Given I close the logger
@@ -95,7 +118,7 @@ Feature: Core Audit Logging
 
   Scenario: Handle returns error for unregistered event type
     When I try to get a handle for event type "nonexistent"
-    Then the handle should return an error
+    Then the handle should return an error wrapping "ErrHandleNotFound"
 
   Scenario: Audit via handle delivers same event as Audit method
     When I get a handle for event type "user_create"
@@ -104,10 +127,18 @@ Feature: Core Audit Logging
       | outcome  | success |
       | actor_id | alice   |
     Then the output should contain an event matching:
-      | field      | value       |
-      | event_type | user_create |
-      | outcome    | success     |
-      | actor_id   | alice       |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      |             |
+      | target_id   |             |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
   # --- OmitEmpty ---
 
@@ -117,12 +148,28 @@ Feature: Core Audit Logging
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    Then the output event should not contain key "marker"
+    Then the output should contain an event matching:
+      | field      | value       |
+      | event_type | user_create |
+      | outcome    | success     |
+      | actor_id   | alice       |
 
-  Scenario: OmitEmpty false includes zero-value optional fields
+  Scenario: OmitEmpty false includes zero-value optional fields as null
     Given a logger with stdout output and OmitEmpty "false"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    Then the output event should contain key "marker"
+    Then the output should contain an event matching:
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      |             |
+      | target_id   |             |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |

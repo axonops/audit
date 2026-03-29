@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -202,6 +203,27 @@ func registerAuditThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+	ctx.Step(`^the audit call should return an error matching:$`, func(doc *godog.DocString) error {
+		expected := strings.TrimSpace(doc.Content)
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+		}
+		if tc.LastErr.Error() != expected {
+			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+		}
+		return nil
+	})
+
+	ctx.Step(`^the audit call should return error "([^"]*)"$`, func(exact string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error %q, got nil", exact)
+		}
+		if tc.LastErr.Error() != exact {
+			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", exact, tc.LastErr.Error())
+		}
+		return nil
+	})
+
 	ctx.Step(`^the audit call should return an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)
@@ -246,12 +268,47 @@ func registerAuditThenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		}
 		return nil
 	})
+	ctx.Step(`^the handle should return an error wrapping "([^"]*)"$`, func(sentinel string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected handle error wrapping %q, got nil", sentinel)
+		}
+		switch sentinel {
+		case "ErrHandleNotFound":
+			if !errors.Is(tc.LastErr, audit.ErrHandleNotFound) {
+				return fmt.Errorf("expected ErrHandleNotFound, got: %q", tc.LastErr.Error())
+			}
+		default:
+			return fmt.Errorf("unknown sentinel: %s", sentinel)
+		}
+		return nil
+	})
+	ctx.Step(`^the output event timestamp should be a valid RFC3339 value$`, func() error {
+		return assertStdoutTimestampValid(tc)
+	})
 	ctx.Step(`^the output event should not contain key "([^"]*)"$`, func(key string) error {
 		return assertStdoutFirstEventKeyAbsent(tc, key)
 	})
 	ctx.Step(`^the output event should contain key "([^"]*)"$`, func(key string) error {
 		return assertStdoutFirstEventKeyPresent(tc, key)
 	})
+}
+
+func assertStdoutTimestampValid(tc *AuditTestContext) error {
+	events, err := getStdoutEvents(tc)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in stdout")
+	}
+	ts, ok := events[0]["timestamp"].(string)
+	if !ok {
+		return fmt.Errorf("timestamp is not a string: %v", events[0]["timestamp"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+		return fmt.Errorf("timestamp %q is not valid RFC3339Nano: %w", ts, err)
+	}
+	return nil
 }
 
 func assertStdoutFirstEventKeyAbsent(tc *AuditTestContext, key string) error {
@@ -349,9 +406,16 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 	if err != nil {
 		return err
 	}
+	// Auto-populated fields that are allowed but not required in the table.
+	autoFields := []string{"timestamp"}
 	for _, e := range events {
-		if match, _ := eventContainsAllFields(e, expected); match {
+		match, mismatch := eventMatchesExactly(e, expected, autoFields)
+		if match {
 			return nil
+		}
+		// If only one event, report the mismatch directly.
+		if len(events) == 1 {
+			return fmt.Errorf("event does not match: %s", mismatch)
 		}
 	}
 	return fmt.Errorf("no event matching expected fields in %d events", len(events))

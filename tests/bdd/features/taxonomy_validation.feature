@@ -75,7 +75,7 @@ Feature: Taxonomy Validation
       categories:
         write: [
       """
-    Then the taxonomy parse should fail with an error
+    Then the taxonomy parse should fail with an error containing "yaml"
 
   Scenario: Multi-document YAML is rejected
     When I try to parse taxonomy from YAML:
@@ -93,7 +93,7 @@ Feature: Taxonomy Validation
       ---
       version: 2
       """
-    Then the taxonomy parse should fail with an error
+    Then the taxonomy parse should fail with an error containing "multiple"
 
   Scenario: Unknown top-level keys are rejected
     When I try to parse taxonomy from YAML:
@@ -110,7 +110,7 @@ Feature: Taxonomy Validation
         - write
       unknown_key: true
       """
-    Then the taxonomy parse should fail with an error
+    Then the taxonomy parse should fail with an error containing "unknown_key"
 
   # --- Structural validation ---
 
@@ -194,7 +194,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail with an error
+    Then the taxonomy parse should fail with an error containing "nonexistent_event"
 
   Scenario: Field in both required and optional is rejected
     When I try to parse taxonomy from YAML:
@@ -228,7 +228,7 @@ Feature: Taxonomy Validation
         - write
         - nonexistent_category
       """
-    Then the taxonomy parse should fail with an error
+    Then the taxonomy parse should fail with an error containing "nonexistent_category"
 
   # --- Lifecycle event injection ---
 

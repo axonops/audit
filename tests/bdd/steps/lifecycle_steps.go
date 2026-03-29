@@ -15,6 +15,7 @@
 package steps
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -60,6 +61,21 @@ func registerLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		if !strings.Contains(tc.LastErr.Error(), substr) {
 			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the startup call should return an error wrapping "([^"]*)"$`, func(sentinel string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected startup error wrapping %q, got nil", sentinel)
+		}
+		switch sentinel {
+		case "ErrClosed":
+			if !errors.Is(tc.LastErr, audit.ErrClosed) {
+				return fmt.Errorf("expected ErrClosed, got: %w", tc.LastErr)
+			}
+		default:
+			return fmt.Errorf("unknown sentinel: %s", sentinel)
 		}
 		return nil
 	})

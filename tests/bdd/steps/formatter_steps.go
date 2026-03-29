@@ -226,7 +226,7 @@ func assertFileEventMatching(tc *AuditTestContext, table *godog.Table) error {
 		return err
 	}
 	for _, e := range events {
-		if match, _ := eventContainsAllFields(e, expected); match {
+		if match, _ := eventContainsFields(e, expected); match {
 			return nil
 		}
 	}

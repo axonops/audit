@@ -184,4 +184,4 @@ Feature: Webhook Output
     Given a logger with webhook output configured for batch size 1
     When I close the logger
     And I try to audit event "user_create" with required fields
-    Then the audit call should return an error containing "closed"
+    Then the audit call should return an error wrapping "ErrClosed"

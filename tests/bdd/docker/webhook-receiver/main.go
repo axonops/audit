@@ -16,6 +16,7 @@ import (
 	"time"
 )
 
+//nolint:govet // test utility; field order matches JSON output readability
 type event struct {
 	Body    json.RawMessage   `json:"body"`
 	Headers map[string]string `json:"headers"`
@@ -50,8 +51,15 @@ func main() {
 	mux.HandleFunc("POST /configure", s.handleConfigure)
 	mux.HandleFunc("GET /health", s.handleHealth)
 
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	log.Printf("webhook-receiver listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

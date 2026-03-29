@@ -110,3 +110,51 @@ Feature: Event Formatters
     And I close the logger
     Then the JSON file should contain valid JSON
     And the CEF file should contain a line starting with "CEF:0|"
+
+  # --- JSON encoding edge cases ---
+
+  Scenario: JSON escapes HTML-unsafe characters
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with fields:
+      | field    | value       |
+      | outcome  | success     |
+      | actor_id | alice       |
+      | marker   | <script>&   |
+    And I close the logger
+    Then the file should not contain raw "<script>"
+    And every event in the file should be valid JSON
+
+  Scenario: JSON escapes control characters
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with a field containing a tab character
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should contain exactly 1 event
+
+  # --- CEF additional scenarios ---
+
+  Scenario: CEF severity clamped to 0-10 range
+    Given a logger with file output using CEF formatter with severity above 10
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the CEF line should have severity 10
+
+  Scenario: CEF extension escapes equals sign
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value     |
+      | outcome  | a=b       |
+      | actor_id | alice     |
+    And I close the logger
+    Then the file should contain a line starting with "CEF:0|"
+    And the CEF line should contain "a\=b"
+
+  Scenario: CEF extension escapes backslash
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value     |
+      | outcome  | a\b       |
+      | actor_id | alice     |
+    And I close the logger
+    Then the file should contain a line starting with "CEF:0|"
+    And the CEF line should contain "a\\b"

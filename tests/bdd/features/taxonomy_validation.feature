@@ -306,6 +306,27 @@ Feature: Taxonomy Validation
     Then the taxonomy should contain event type "startup"
     And the taxonomy event "startup" should require field "version"
 
+  # --- Additional structural validation ---
+
+  Scenario: Event not listed in its declared category is rejected
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_update
+      events:
+        user_create:
+          category: write
+          required: [outcome]
+        user_update:
+          category: write
+          required: [outcome]
+      default_enabled:
+        - write
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+
   # --- Validation modes ---
 
   Scenario: Unknown fields rejected in strict mode

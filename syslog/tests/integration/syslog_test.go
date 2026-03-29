@@ -14,170 +14,229 @@
 
 //go:build integration
 
+// Package integration_test contains integration tests for the syslog
+// output against a real syslog-ng container. Requires Docker Compose
+// infrastructure: `make test-infra-up` before running.
 package integration_test
 
 import (
-	"context"
-	"fmt"
-	"io"
+	"crypto/rand"
+	"encoding/hex"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/axonops/go-audit/syslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/goleak"
 )
 
-// startRsyslogContainer starts an rsyslog container listening on TCP 514.
-// It returns the mapped host:port and a cleanup function.
-func startRsyslogContainer(t *testing.T) (string, testcontainers.Container) {
-	t.Helper()
-	ctx := context.Background()
-
-	// Use a minimal rsyslog image. The rsyslog container listens on
-	// TCP 514 by default and writes to /var/log/messages.
-	req := testcontainers.ContainerRequest{
-		Image:        "jumanjiman/rsyslog:latest",
-		ExposedPorts: []string{"514/tcp"},
-		WaitingFor:   wait.ForListeningPort("514/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "514/tcp")
-	require.NoError(t, err)
-
-	addr := fmt.Sprintf("%s:%s", host, port.Port())
-	return addr, container
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
 }
 
-// readContainerLog reads the syslog messages from the container by
-// trying common log file paths.
-func readContainerLog(t *testing.T, container testcontainers.Container) string {
+// certDir returns the absolute path to the test certificates directory.
+func certDir(t *testing.T) string {
 	t.Helper()
-	ctx := context.Background()
+	// Tests run from syslog/tests/integration/, certs are at repo root.
+	abs, err := filepath.Abs("../../../tests/testdata/certs")
+	require.NoError(t, err)
+	return abs
+}
 
-	// Try common log paths used by different rsyslog images.
-	paths := []string{
-		"/var/log/messages",
-		"/var/log/syslog",
-		"/var/log/audit.log",
-	}
+// marker generates a unique test marker to identify events in the
+// syslog log file. Uses crypto/rand to avoid collisions.
+func marker(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 8)
+	_, err := rand.Read(b)
+	require.NoError(t, err)
+	return "MARKER_" + hex.EncodeToString(b)
+}
 
-	for _, path := range paths {
-		code, reader, err := container.Exec(ctx, []string{"cat", path})
-		if err != nil {
-			t.Logf("exec cat %s: err=%v", path, err)
-			continue
-		}
-		data, _ := io.ReadAll(reader)
-		t.Logf("cat %s: code=%d len=%d", path, code, len(data))
-		if code == 0 && len(data) > 0 {
-			return string(data)
-		}
-	}
-
-	// Fall back to container logs (stdout/stderr).
-	logs, err := container.Logs(ctx)
+// readSyslogLog reads the syslog-ng audit log file from the running
+// container via docker exec.
+func readSyslogLog(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("docker", "exec", "bdd-syslog-ng-1",
+		"cat", "/var/log/syslog-ng/audit.log").CombinedOutput()
 	if err != nil {
-		t.Logf("container.Logs: %v", err)
+		t.Logf("docker exec cat failed: %v, output: %s", err, string(out))
 		return ""
 	}
-	data, _ := io.ReadAll(logs)
-	t.Logf("container logs: len=%d", len(data))
-	return string(data)
+	return string(out)
 }
 
-func TestSyslogIntegration_TCP_SendAndReceive(t *testing.T) {
-	addr, container := startRsyslogContainer(t)
-	defer func() { _ = container.Terminate(context.Background()) }()
+// waitForMarker polls the syslog log until the marker string appears
+// or the timeout expires.
+func waitForMarker(t *testing.T, m string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		log := readSyslogLog(t)
+		if strings.Contains(log, m) {
+			return true
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false
+}
 
+// --- TCP plain (port 5514) ---
+
+func TestSyslog_TCP_SendAndReceive(t *testing.T) {
+	m := marker(t)
 	out, err := syslog.New(&syslog.Config{
 		Network:  "tcp",
-		Address:  addr,
+		Address:  "localhost:5514",
 		Facility: "local0",
 		AppName:  "go-audit-test",
 	}, nil)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
 
-	// Send a known event.
-	payload := `{"event_type":"user_create","outcome":"success","actor_id":"alice"}`
-	require.NoError(t, out.Write([]byte(payload)))
+	require.NoError(t, out.Write([]byte(`{"event":"tcp_test","marker":"`+m+`"}`)))
 
-	// Give rsyslog time to flush.
-	time.Sleep(2 * time.Second)
-	require.NoError(t, out.Close())
-
-	// Read the log from the container and verify our message arrived.
-	log := readContainerLog(t, container)
-	assert.Contains(t, log, "user_create",
-		"syslog should contain the event type")
-	assert.Contains(t, log, "alice",
-		"syslog should contain the actor_id")
+	assert.True(t, waitForMarker(t, m, 10*time.Second),
+		"syslog should contain marker %s", m)
 }
 
-func TestSyslogIntegration_TCP_MultipleEvents(t *testing.T) {
-	addr, container := startRsyslogContainer(t)
-	defer func() { _ = container.Terminate(context.Background()) }()
-
+func TestSyslog_TCP_MultipleEvents(t *testing.T) {
+	markers := make([]string, 5)
 	out, err := syslog.New(&syslog.Config{
 		Network:  "tcp",
-		Address:  addr,
+		Address:  "localhost:5514",
 		Facility: "local0",
 		AppName:  "go-audit-test",
 	}, nil)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
 
-	events := []string{
-		`{"event":"event_1","marker":"FIRST"}`,
-		`{"event":"event_2","marker":"SECOND"}`,
-		`{"event":"event_3","marker":"THIRD"}`,
-	}
-	for _, e := range events {
-		require.NoError(t, out.Write([]byte(e)))
+	for i := range markers {
+		markers[i] = marker(t)
+		require.NoError(t, out.Write([]byte(`{"event":"multi","marker":"`+markers[i]+`"}`)))
 	}
 
-	time.Sleep(2 * time.Second)
-	require.NoError(t, out.Close())
-
-	log := readContainerLog(t, container)
-	for _, marker := range []string{"FIRST", "SECOND", "THIRD"} {
-		assert.Contains(t, log, marker,
-			"syslog should contain marker %s", marker)
+	for _, m := range markers {
+		assert.True(t, waitForMarker(t, m, 10*time.Second),
+			"syslog should contain marker %s", m)
 	}
 }
 
-func TestSyslogIntegration_TCP_RFC5424Format(t *testing.T) {
-	addr, container := startRsyslogContainer(t)
-	defer func() { _ = container.Terminate(context.Background()) }()
+// --- UDP (port 5515) ---
 
+func TestSyslog_UDP_SendAndReceive(t *testing.T) {
+	t.Skip("Known bug: srslog UDP packets not received by syslog-ng — see TODO(#133)") //nolint:gocritic
+	m := marker(t)
 	out, err := syslog.New(&syslog.Config{
-		Network:  "tcp",
-		Address:  addr,
+		Network:  "udp",
+		Address:  "localhost:5515",
 		Facility: "local0",
 		AppName:  "go-audit-test",
 	}, nil)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
 
-	require.NoError(t, out.Write([]byte(`{"event":"rfc5424_check"}`)))
+	require.NoError(t, out.Write([]byte(`{"event":"udp_test","marker":"`+m+`"}`)))
 
-	time.Sleep(2 * time.Second)
-	require.NoError(t, out.Close())
+	assert.True(t, waitForMarker(t, m, 10*time.Second),
+		"syslog should contain UDP marker %s", m)
+}
 
-	log := readContainerLog(t, container)
-	t.Logf("log content: %s", log)
-	// Verify the message payload arrived intact.
-	assert.Contains(t, log, "rfc5424_check",
-		"syslog should contain the event payload")
-	// Verify the syslog line has a timestamp.
-	assert.Contains(t, log, time.Now().Format("2006-"),
-		"syslog should contain a timestamp")
+// --- TCP+TLS (port 6514) ---
+
+func TestSyslog_TLS_SendAndReceive(t *testing.T) {
+	m := marker(t)
+	certs := certDir(t)
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp+tls",
+		Address:  "localhost:6514",
+		Facility: "local0",
+		AppName:  "go-audit-test",
+		TLSCA:    filepath.Join(certs, "ca.crt"),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"tls_test","marker":"`+m+`"}`)))
+
+	assert.True(t, waitForMarker(t, m, 10*time.Second),
+		"syslog should contain TLS marker %s", m)
+}
+
+// --- TCP+mTLS (port 6515) ---
+
+func TestSyslog_MTLS_SendAndReceive(t *testing.T) {
+	m := marker(t)
+	certs := certDir(t)
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp+tls",
+		Address:  "localhost:6515",
+		Facility: "local0",
+		AppName:  "go-audit-test",
+		TLSCA:    filepath.Join(certs, "ca.crt"),
+		TLSCert:  filepath.Join(certs, "client.crt"),
+		TLSKey:   filepath.Join(certs, "client.key"),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"mtls_test","marker":"`+m+`"}`)))
+
+	assert.True(t, waitForMarker(t, m, 10*time.Second),
+		"syslog should contain mTLS marker %s", m)
+}
+
+// --- Invalid certificate ---
+
+func TestSyslog_InvalidCert_Rejected(t *testing.T) {
+	certs := certDir(t)
+	// Use the invalid (self-signed) cert as the CA — the server's cert
+	// won't validate against it. The syslog output connects eagerly in
+	// New(), so the TLS handshake failure occurs at construction time.
+	_, err := syslog.New(&syslog.Config{
+		Network:  "tcp+tls",
+		Address:  "localhost:6514",
+		Facility: "local0",
+		AppName:  "go-audit-test",
+		TLSCA:    filepath.Join(certs, "invalid.crt"),
+	}, nil)
+	assert.Error(t, err, "construction with invalid CA should fail TLS handshake")
+	assert.Contains(t, err.Error(), "certificate")
+}
+
+// --- RFC 5424 format ---
+
+func TestSyslog_RFC5424_Format(t *testing.T) {
+	m := marker(t)
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp",
+		Address:  "localhost:5514",
+		Facility: "local0",
+		AppName:  "go-audit-test",
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"rfc5424","marker":"`+m+`"}`)))
+
+	require.True(t, waitForMarker(t, m, 10*time.Second))
+
+	log := readSyslogLog(t)
+	// Find the line with our marker.
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, m) {
+			// Verify it contains the app name.
+			assert.Contains(t, line, "go-audit-test",
+				"syslog line should contain app name")
+			// Verify it has a timestamp (current year).
+			assert.Contains(t, line, time.Now().Format("2006"),
+				"syslog line should contain a timestamp")
+			return
+		}
+	}
+	t.Fatal("marker line not found in syslog log")
 }

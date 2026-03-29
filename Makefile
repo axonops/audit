@@ -49,10 +49,12 @@ test-webhook:
 test-all: test-core test-file test-syslog test-webhook
 test: test-all
 
-# Integration tests (requires Docker)
+# Integration tests (requires Docker: make test-infra-up first)
 test-integration:
 	cd file && go test -race -v -count=1 -tags=integration ./tests/integration/...
 	cd syslog && go test -race -v -count=1 -tags=integration ./tests/integration/...
+	cd webhook && go test -race -v -count=1 -tags=integration ./tests/integration/...
+	go test -race -v -count=1 -tags=integration ./tests/integration/...
 
 # BDD tests (requires Docker)
 test-bdd:

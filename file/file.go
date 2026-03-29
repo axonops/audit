@@ -61,12 +61,37 @@ type Metrics interface {
 
 // Config holds configuration for [Output].
 type Config struct {
-	Compress    *bool
-	Path        string
+	// Path is the filesystem path for the audit log file. Required.
+	// Relative paths are resolved to absolute at construction time.
+	// The parent directory must exist when [New] is called.
+	Path string
+
+	// Permissions is the octal file mode string (e.g. "0600") applied
+	// to created files. Empty defaults to "0600" (owner read/write).
+	// Values granting group or world write access produce a slog
+	// warning. Values above 0o777 cause [New] to return an error.
 	Permissions string
-	MaxSizeMB   int
-	MaxBackups  int
-	MaxAgeDays  int
+
+	// MaxSizeMB is the maximum size in megabytes of a single log file
+	// before rotation. Zero defaults to 100. Values above [MaxSizeMB]
+	// (10,240 = 10 GB) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	MaxSizeMB int
+
+	// MaxBackups is the maximum number of rotated backup files to
+	// retain. Zero defaults to 5. Values above [MaxBackups] (100)
+	// cause [New] to return an error wrapping [audit.ErrConfigInvalid].
+	MaxBackups int
+
+	// MaxAgeDays is the maximum age in days of rotated backup files
+	// before deletion. Zero defaults to 30. Values above [MaxAgeDays]
+	// (365) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	MaxAgeDays int
+
+	// Compress enables gzip compression of rotated backup files.
+	// When nil, defaults to true.
+	Compress *bool
 }
 
 // Output writes serialised audit events to a file with automatic

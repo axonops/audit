@@ -43,12 +43,15 @@ type Output interface {
 }
 
 // DestinationKeyer is an optional interface that [Output] implementations
-// may satisfy to enable duplicate destination detection at construction
+// MAY satisfy to enable duplicate destination detection at construction
 // time. When two outputs return the same key from DestinationKey,
 // [WithOutputs] and [WithNamedOutput] return an error.
 //
+// Returning an empty string from DestinationKey opts out of duplicate
+// detection for that output.
+//
 // Key format conventions by output type:
-//   - File: absolute cleaned filesystem path
+//   - File: absolute filesystem path
 //   - Syslog: network address (host:port)
 //   - Webhook: full URL
 //

@@ -73,8 +73,10 @@ func WithFormatter(f Formatter) Option {
 // [WithNamedOutput] to configure per-output event routes or formatters.
 //
 // WithOutputs MUST NOT be combined with [WithNamedOutput]; mixing the
-// two returns an error. If no outputs are configured, events are
-// validated and filtered but silently discarded.
+// two returns an error. Duplicate output destinations are also
+// detected: if two outputs implement [DestinationKeyer] and return
+// the same key, WithOutputs returns an error. If no outputs are
+// configured, events are validated and filtered but silently discarded.
 func WithOutputs(outputs ...Output) Option {
 	return func(l *Logger) error {
 		if len(l.entries) > 0 {
@@ -111,7 +113,8 @@ func WithOutputs(outputs ...Output) Option {
 // [WithOutputs] was already applied, WithNamedOutput returns an error.
 //
 // Output names MUST be unique across all outputs; duplicate names
-// cause [NewLogger] to return an error. Routes are validated against
+// cause [NewLogger] to return an error. Duplicate destinations are
+// also detected via [DestinationKeyer]. Routes are validated against
 // the taxonomy after all options have been applied.
 func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Option {
 	return func(l *Logger) error {

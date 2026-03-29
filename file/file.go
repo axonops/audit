@@ -66,7 +66,7 @@ type Metrics interface {
 //
 //nolint:govet // field order: logical grouping (required, then optional, then pointer)
 type Config struct {
-	// Path is the filesystem path for the audit log file. Required.
+	// Path is the filesystem path for the audit log file. REQUIRED.
 	// Relative paths are resolved to absolute at construction time.
 	// The parent directory must exist when [New] is called.
 	Path string
@@ -74,7 +74,8 @@ type Config struct {
 	// Permissions is the octal file mode string (e.g. "0600") applied
 	// to created files. Empty defaults to "0600" (owner read/write).
 	// Values granting group or world write access produce a slog
-	// warning. Values above 0o777 cause [New] to return an error.
+	// warning. Values above 0o777 cause [New] to return an error;
+	// this error does not wrap [audit.ErrConfigInvalid].
 	Permissions string
 
 	// MaxSizeMB is the maximum size in megabytes of a single log file
@@ -215,7 +216,7 @@ func (f *Output) Name() string {
 	return "file:" + f.path
 }
 
-// DestinationKey returns the absolute cleaned filesystem path,
+// DestinationKey returns the absolute filesystem path,
 // enabling duplicate destination detection via [audit.DestinationKeyer].
 func (f *Output) DestinationKey() string {
 	return f.path

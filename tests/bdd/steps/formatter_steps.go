@@ -208,6 +208,20 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		return nil
 	})
 
+	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2028$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "before\u2028after"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
+	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2029$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "before\u2029after"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a newline$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\n{\"injected\":true}"

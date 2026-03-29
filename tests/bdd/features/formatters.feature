@@ -155,6 +155,22 @@ Feature: Event Formatters
     Then every event in the file should be valid JSON
     And the file should contain exactly 1 event
 
+  # --- JSON encoding edge cases ---
+
+  Scenario: JSON escapes U+2028 line separator
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with a field containing U+2028
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should contain exactly 1 event
+
+  Scenario: JSON escapes U+2029 paragraph separator
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with a field containing U+2029
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should contain exactly 1 event
+
   # --- CEF additional scenarios ---
 
   Scenario: CEF severity clamped to 0-10 range

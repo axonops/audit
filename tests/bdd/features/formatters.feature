@@ -191,6 +191,17 @@ Feature: Event Formatters
     Then the file should not contain raw "<script>"
     And every event in the file should be valid JSON
 
+  Scenario: JSON HTML-safe escaping of angle brackets and ampersand
+    Given a logger with file output using JSON formatter
+    When I audit event "user_create" with fields:
+      | field    | value          |
+      | outcome  | success        |
+      | actor_id | alice          |
+      | marker   | <b>bold&amp;</b> |
+    And I close the logger
+    Then every event in the file should be valid JSON
+    And the file should not contain raw "<b>"
+
   Scenario: JSON escapes control characters
     Given a logger with file output using JSON formatter
     When I audit event "user_create" with a field containing a tab character

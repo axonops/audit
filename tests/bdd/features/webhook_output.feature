@@ -81,6 +81,12 @@ Feature: Webhook Output
     Then the webhook receiver should have at least 1 event within 5 seconds
     And the received webhook event should have header "X-Audit-Source" with value "bdd-test"
 
+  Scenario: Authorization header delivered to receiver
+    Given a logger with webhook output with custom header "Authorization" = "Bearer test-token-123"
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And the received webhook event should have header "Authorization" with value "Bearer test-token-123"
+
   Scenario: Content-Type is application/x-ndjson
     Given a logger with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event

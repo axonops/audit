@@ -79,6 +79,16 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I close the logger again$`, func() error { return closeLoggerAgain(tc) })
 	ctx.Step(`^the second close should return no error$`, func() error { return assertLastErrNil(tc) })
 	ctx.Step(`^the file should have permissions "([^"]*)"$`, func(perms string) error { return assertFilePermissions(tc, perms) })
+	ctx.Step(`^the file output construction should fail with error:$`, func(doc *godog.DocString) error {
+		expected := strings.TrimSpace(doc.Content)
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+		}
+		if tc.LastErr.Error() != expected {
+			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+		}
+		return nil
+	})
 	ctx.Step(`^the file output construction should fail with an error$`, func() error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected file output construction error, got nil")

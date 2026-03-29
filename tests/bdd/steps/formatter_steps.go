@@ -225,9 +225,14 @@ func assertFileEventMatching(tc *AuditTestContext, table *godog.Table) error {
 	if err != nil {
 		return err
 	}
+	autoFields := []string{"timestamp"}
 	for _, e := range events {
-		if match, _ := eventContainsFields(e, expected); match {
+		match, mismatch := eventMatchesExactly(e, expected, autoFields)
+		if match {
 			return nil
+		}
+		if len(events) == 1 {
+			return fmt.Errorf("file event does not match: %s", mismatch)
 		}
 	}
 	return fmt.Errorf("no event matching expected fields in file (%d events)", len(events))

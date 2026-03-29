@@ -23,12 +23,18 @@ Feature: File Output
     And I close the logger
     Then every event in the file should be valid JSON
     And the file should contain an event matching:
-      | field      | value       |
-      | event_type | user_create |
-      | outcome    | success     |
-      | actor_id   | alice       |
-      | marker     | file_test   |
-      | target_id  | user-42     |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      | file_test   |
+      | target_id   | user-42     |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
   Scenario: Multiple writes produce one event per line
     Given a logger with file output at a temporary path
@@ -84,9 +90,12 @@ Feature: File Output
 
   # --- Config validation ---
 
-  Scenario: Empty path is rejected
+  Scenario: Empty path is rejected with exact error
     When I try to create a file output with empty path
-    Then the file output construction should fail with an error
+    Then the file output construction should fail with error:
+      """
+      audit: file output path must not be empty
+      """
 
   Scenario: MaxSizeMB exceeding limit is rejected
     When I try to create a file output with MaxSizeMB 20000

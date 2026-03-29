@@ -17,10 +17,18 @@ Feature: Event Formatters
     And I close the logger
     Then every event in the file should be valid JSON
     And the file should contain an event matching:
-      | field      | value       |
-      | event_type | user_create |
-      | outcome    | success     |
-      | actor_id   | alice       |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      |             |
+      | target_id   |             |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
   Scenario: JSON formatter produces deterministic field ordering
     Given a logger with file output using JSON formatter
@@ -70,8 +78,18 @@ Feature: Event Formatters
       | actor_id | café☕   |
     And I close the logger
     Then the file should contain an event matching:
-      | field    | value   |
-      | actor_id | café☕  |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | café☕      |
+      | marker      |             |
+      | target_id   |             |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
 
   Scenario: JSON prevents newline injection in values
     Given a logger with file output using JSON formatter

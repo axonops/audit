@@ -72,14 +72,24 @@ Feature: Multi-Output Fan-Out
     Then the webhook receiver should have at least 1 event within 5 seconds
     And I close the logger
     And the file should contain an event matching:
-      | field      | value       |
-      | event_type | user_create |
-      | outcome    | success     |
-      | actor_id   | alice       |
-      | marker     | fanout_all  |
-      | target_id  | user-42     |
+      | field       | value       |
+      | event_type  | user_create |
+      | outcome     | success     |
+      | actor_id    | alice       |
+      | marker      | fanout_all  |
+      | target_id   | user-42     |
+      | target_type |             |
+      | reason      |             |
+      | source_ip   |             |
+      | user_agent  |             |
+      | request_id  |             |
+      | duration_ms |             |
     And the webhook event body should contain field "event_type" with value "user_create"
+    And the webhook event body should contain field "outcome" with value "success"
+    And the webhook event body should contain field "actor_id" with value "alice"
     And the webhook event body should contain field "marker" with value "fanout_all"
+    And the webhook event body should contain field "target_id" with value "user-42"
+    And the webhook event body should contain field "timestamp"
 
   # --- Routing diversity ---
 

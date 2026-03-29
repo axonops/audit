@@ -57,6 +57,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 
 	// Metrics capture.
 	MockMetrics *MockMetrics
+	FileMetrics *MockFileMetrics
 
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
@@ -96,6 +97,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.TestServer = nil
 	tc.LastHTTPResp = nil
 	tc.MockMetrics = nil
+	tc.FileMetrics = nil
 	tc.cleanups = nil
 }
 

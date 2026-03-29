@@ -92,34 +92,52 @@ Feature: Webhook Output
 
   Scenario: HTTP URL rejected unless AllowInsecureHTTP is true
     When I try to create a webhook output to "http://localhost:8080/events" without AllowInsecureHTTP
-    Then the webhook construction should fail with an error
+    Then the webhook construction should fail with exact error:
+      """
+      audit: webhook url must be https (got "http"); set AllowInsecureHTTP for testing
+      """
 
   Scenario: AllowInsecureHTTP permits http URLs
     Given a logger with webhook output to "http://localhost:8080/events" with AllowInsecureHTTP
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
-  Scenario: Embedded credentials in URL rejected
+  Scenario: Embedded credentials in URL rejected with exact error
     When I try to create a webhook output to "https://user:pass@example.com/events"
-    Then the webhook construction should fail with an error containing "credentials"
+    Then the webhook construction should fail with exact error:
+      """
+      audit: webhook url must not contain credentials; use Headers for auth
+      """
 
-  Scenario: Header CRLF injection rejected
+  Scenario: Header CRLF injection rejected with exact error
     When I try to create a webhook output with header containing CRLF
-    Then the webhook construction should fail with an error
+    Then the webhook construction should fail with exact error:
+      """
+      audit: webhook header value for "X-Bad" contains invalid characters
+      """
 
   # --- Config validation ---
 
-  Scenario: Empty URL rejected
+  Scenario: Empty URL rejected with exact error
     When I try to create a webhook output to ""
-    Then the webhook construction should fail with an error containing "url"
+    Then the webhook construction should fail with exact error:
+      """
+      audit: webhook url must not be empty
+      """
 
-  Scenario: BatchSize exceeding maximum rejected
+  Scenario: BatchSize exceeding maximum rejected with exact error
     When I try to create a webhook output with batch size 20000
-    Then the webhook construction should fail with an error
+    Then the webhook construction should fail with exact error:
+      """
+      audit: config validation failed: webhook batch_size 20000 exceeds maximum 10000
+      """
 
-  Scenario: MaxRetries exceeding maximum rejected
+  Scenario: MaxRetries exceeding maximum rejected with exact error
     When I try to create a webhook output with max retries 50
-    Then the webhook construction should fail with an error
+    Then the webhook construction should fail with exact error:
+      """
+      audit: config validation failed: webhook max_retries 50 exceeds maximum 20
+      """
 
   # --- Complete payload verification ---
 

@@ -220,7 +220,6 @@ generate-certs:
 # --- Test infrastructure (Docker) ---
 
 COMPOSE_DIR := tests/bdd
-COMPOSE_BASE := -f $(COMPOSE_DIR)/docker-compose.base.yml
 
 test-infra-up:
 	docker network create audit-test 2>/dev/null || true

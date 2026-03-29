@@ -1,6 +1,0 @@
-# Base Docker Compose configuration for go-audit integration tests.
-# Defines the shared network used by all test services.
-
-networks:
-  audit-test:
-    driver: bridge

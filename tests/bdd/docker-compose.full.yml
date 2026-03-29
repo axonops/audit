@@ -1,9 +1,9 @@
 # Full test infrastructure for go-audit integration and BDD tests.
 # Combines syslog-ng and webhook receiver for fan-out testing.
 #
-# Usage:
-#   docker compose -f docker-compose.full.yml up -d
-#   docker compose -f docker-compose.full.yml down -v
+# Usage (from repo root):
+#   make test-infra-up    # creates network + starts all services
+#   make test-infra-down  # stops services + removes network
 
 include:
   - docker-compose.syslog.yml

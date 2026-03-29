@@ -52,11 +52,12 @@ func main() {
 	mux.HandleFunc("GET /health", s.handleHealth)
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	log.Printf("webhook-receiver listening on :%s", port)
 	if err := srv.ListenAndServe(); err != nil {
@@ -64,18 +65,20 @@ func main() {
 	}
 }
 
-// POST /events — store received event.
+// POST /events — store received event. Delay is applied before
+// acquiring the lock so concurrent requests are not serialised.
 func (s *server) handlePostEvents(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	delay := s.cfg.Delay
+	statusCode := s.cfg.StatusCode
+	s.mu.Unlock()
 
-	if s.cfg.Delay > 0 {
-		time.Sleep(s.cfg.Delay)
+	if delay > 0 {
+		time.Sleep(delay)
 	}
 
 	var body json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		// Store raw body as a string if not valid JSON.
 		body = json.RawMessage(fmt.Sprintf("%q", "decode error"))
 	}
 
@@ -84,24 +87,29 @@ func (s *server) handlePostEvents(w http.ResponseWriter, r *http.Request) {
 		headers[k] = r.Header.Get(k)
 	}
 
+	s.mu.Lock()
 	s.events = append(s.events, event{
 		Body:    body,
 		Headers: headers,
 		Time:    time.Now(),
 	})
+	s.mu.Unlock()
 
-	w.WriteHeader(s.cfg.StatusCode)
+	w.WriteHeader(statusCode)
 }
 
 // GET /events — return all stored events.
 func (s *server) handleGetEvents(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	data, err := json.Marshal(s.events)
+	s.mu.Unlock()
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(s.events); err != nil {
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
 }
 
 // POST /reset — clear stored events.

@@ -5,6 +5,8 @@ COPY main.go .
 RUN CGO_ENABLED=0 go build -o webhook-receiver .
 
 FROM alpine:3.21
+RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /app/webhook-receiver /usr/local/bin/
+USER app
 EXPOSE 8080
 ENTRYPOINT ["webhook-receiver"]

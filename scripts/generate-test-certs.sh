@@ -26,10 +26,28 @@ echo "=== Generating test certificates in $CERT_DIR ==="
 # --- 1. Test CA ---
 echo "--- CA certificate ---"
 openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/ca.key" 2>/dev/null
+
+cat > "$CERT_DIR/ca.cnf" <<EOF
+[req]
+distinguished_name = req_dn
+x509_extensions = v3_ca
+prompt = no
+
+[req_dn]
+CN = go-audit Test CA
+O = AxonOps
+OU = Testing
+
+[v3_ca]
+basicConstraints = critical, CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+EOF
+
 openssl req -new -x509 -key "$CERT_DIR/ca.key" \
   -out "$CERT_DIR/ca.crt" \
   -days "$DAYS" \
-  -subj "/CN=go-audit Test CA/O=AxonOps/OU=Testing" \
+  -config "$CERT_DIR/ca.cnf" \
   -sha256 2>/dev/null
 
 # --- 2. Server certificate (signed by CA) ---
@@ -48,6 +66,8 @@ CN = localhost
 
 [v3_req]
 subjectAltName = DNS:localhost,IP:127.0.0.1,IP:::1
+keyUsage = digitalSignature
+extendedKeyUsage = serverAuth
 EOF
 
 openssl req -new -key "$CERT_DIR/server.key" \
@@ -69,12 +89,19 @@ openssl req -new -key "$CERT_DIR/client.key" \
   -out "$CERT_DIR/client.csr" \
   -subj "/CN=test-client/O=AxonOps/OU=Testing" 2>/dev/null
 
+cat > "$CERT_DIR/client.cnf" <<EOF
+[v3_client]
+keyUsage = digitalSignature
+extendedKeyUsage = clientAuth
+EOF
+
 openssl x509 -req -in "$CERT_DIR/client.csr" \
   -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
   -CAcreateserial \
   -out "$CERT_DIR/client.crt" \
   -days "$DAYS" \
-  -sha256 2>/dev/null
+  -sha256 \
+  -extfile "$CERT_DIR/client.cnf" -extensions v3_client 2>/dev/null
 
 # --- 4. Invalid certificate (self-signed, NOT signed by CA) ---
 echo "--- Invalid certificate (self-signed) ---"

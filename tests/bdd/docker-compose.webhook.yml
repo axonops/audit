@@ -1,0 +1,28 @@
+# Webhook receiver service for go-audit integration tests.
+#
+# Endpoints:
+#   POST /events    — store received audit events
+#   GET  /events    — return all stored events as JSON
+#   POST /reset     — clear stored events
+#   POST /configure — set response status code and delay
+#   GET  /health    — readiness probe
+
+services:
+  webhook-receiver:
+    build:
+      context: ./docker/webhook-receiver
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - audit-test
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+networks:
+  audit-test:
+    external: true

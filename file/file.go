@@ -113,6 +113,21 @@ type Output struct {
 	closed bool
 }
 
+// resolvePath normalises the path to an absolute form, resolving
+// symlinks in the parent directory when possible. Falls back to
+// filepath.Abs if symlink resolution fails (e.g. parent doesn't exist).
+func resolvePath(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err == nil {
+		return filepath.Join(resolved, filepath.Base(path)), nil
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("audit: file output path: %w", err)
+	}
+	return abs, nil
+}
+
 // New creates a new [Output] from the given config.
 // It validates the path, permissions, and parent directory existence.
 // The fileMetrics parameter is optional (may be nil).
@@ -120,11 +135,11 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
-	abs, err := filepath.Abs(cfg.Path)
+	var err error
+	cfg.Path, err = resolvePath(cfg.Path)
 	if err != nil {
-		return nil, fmt.Errorf("audit: file output path: %w", err)
+		return nil, err
 	}
-	cfg.Path = abs
 
 	// Check parent directory exists early to provide a clear "audit:" error
 	// message. rotate.New performs the same check but with a "rotate:" prefix.

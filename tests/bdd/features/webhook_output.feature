@@ -139,6 +139,37 @@ Feature: Webhook Output
     And the webhook event body should contain field "target_id" with value "user-42"
     And the webhook event body should contain field "timestamp"
 
+  # --- Retry on other 5xx ---
+
+  Scenario: Retry on 500 internal server error
+    Given the webhook receiver is configured to return status 500
+    And a logger with webhook output configured for batch size 1 and max retries 3
+    When I audit a uniquely marked webhook "user_create" event
+    And the webhook receiver is reconfigured to return status 200
+    Then the webhook receiver should have at least 1 event within 10 seconds
+
+  Scenario: Retry on 502 bad gateway
+    Given the webhook receiver is configured to return status 502
+    And a logger with webhook output configured for batch size 1 and max retries 3
+    When I audit a uniquely marked webhook "user_create" event
+    And the webhook receiver is reconfigured to return status 200
+    Then the webhook receiver should have at least 1 event within 10 seconds
+
+  # --- Buffer management ---
+
+  Scenario: Buffer overflow drops event without blocking
+    Given a logger with webhook output configured for batch size 100 and flush interval 60s
+    When I rapidly audit 200 webhook events
+    Then the audit calls should not have blocked
+
+  # --- Close idempotent ---
+
+  Scenario: Close is idempotent
+    Given a logger with webhook output configured for batch size 1
+    When I close the logger
+    And I close the logger again
+    Then the second close should return no error
+
   # --- Lifecycle ---
 
   Scenario: Write after close returns error

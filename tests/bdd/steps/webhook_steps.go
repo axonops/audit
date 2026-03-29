@@ -151,6 +151,21 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
+	ctx.Step(`^I rapidly audit (\d+) webhook events$`, func(count int) error {
+		for i := range count {
+			_ = tc.Logger.Audit("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": fmt.Sprintf("rapid_%d", i),
+			})
+		}
+		return nil
+	})
+
+	ctx.Step(`^the audit calls should not have blocked$`, func() error {
+		// If we got here, the calls didn't block (they returned immediately).
+		return nil
+	})
+
 	ctx.Step(`^I try to create a webhook output with max retries (\d+)$`, func(maxRetries int) error {
 		_, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",

@@ -80,3 +80,25 @@ Feature: Multi-Output Fan-Out
       | target_id  | user-42     |
     And the webhook event body should contain field "event_type" with value "user_create"
     And the webhook event body should contain field "marker" with value "fanout_all"
+
+  # --- Routing diversity ---
+
+  Scenario: Different events routed to different file outputs
+    Given a logger with two file outputs where security goes to file-a and write goes to file-b
+    When I audit a "user_create" event in category "write" with marker "div_w"
+    And I audit an "auth_failure" event in category "security" with marker "div_s"
+    And I close the logger
+    Then file "security" should contain "div_s"
+    And file "security" should not contain "div_w"
+    And file "write" should contain "div_w"
+    And file "write" should not contain "div_s"
+
+  Scenario: Three outputs with different routes verify distribution
+    Given a logger with file getting all, syslog getting security, and webhook getting write
+    When I audit a "user_create" event in category "write" with marker "dist_w"
+    And I audit an "auth_failure" event in category "security" with marker "dist_s"
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the file should contain "dist_w"
+    And the file should contain "dist_s"
+    And the syslog server should contain "dist_s" within 10 seconds

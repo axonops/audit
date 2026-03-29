@@ -116,8 +116,27 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 			&audit.EventRoute{IncludeCategories: []string{cat}},
 		)
 	})
+	ctx.Step(`^a logger with two file outputs where security goes to file-a and write goes to file-b$`, func() error {
+		return createDualFileRoutedLogger(tc)
+	})
+	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error {
+		return createTripleRoutedLogger(tc)
+	})
 	ctx.Step(`^I disable category "([^"]*)"$`, func(cat string) error {
 		return tc.Logger.DisableCategory(cat)
+	})
+	ctx.Step(`^file "([^"]*)" should contain "([^"]*)"$`, func(name, text string) error {
+		return assertFileContainsText(tc, name, text)
+	})
+	ctx.Step(`^file "([^"]*)" should not contain "([^"]*)"$`, func(name, text string) error {
+		raw, err := readRawFile(tc, name)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(raw, text) {
+			return fmt.Errorf("file %q unexpectedly contains %q", name, text)
+		}
+		return nil
 	})
 	ctx.Step(`^the file should not contain "([^"]*)"$`, func(text string) error {
 		raw, err := readRawFile(tc, "default")
@@ -332,6 +351,84 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+func createDualFileRoutedLogger(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	secPath := filepath.Join(dir, "security.log")
+	writePath := filepath.Join(dir, "write.log")
+	tc.FilePaths["security"] = secPath
+	tc.FilePaths["write"] = writePath
+
+	secOut, err := file.New(file.Config{Path: secPath}, nil)
+	if err != nil {
+		return fmt.Errorf("create security file: %w", err)
+	}
+	writeOut, err := file.New(file.Config{Path: writePath}, nil)
+	if err != nil {
+		return fmt.Errorf("create write file: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(secOut, &audit.EventRoute{IncludeCategories: []string{"security"}}, nil),
+		audit.WithNamedOutput(writeOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+func createTripleRoutedLogger(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "audit.log")
+	tc.FilePaths["default"] = path
+
+	fileOut, err := file.New(file.Config{Path: path}, nil)
+	if err != nil {
+		return fmt.Errorf("create file output: %w", err)
+	}
+	syslogOut, err := syslog.New(&syslog.Config{
+		Network: "tcp", Address: "localhost:5514",
+		Facility: "local0", AppName: "bdd-triple",
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("create syslog output: %w", err)
+	}
+	webhookOut, err := webhook.New(&webhook.Config{
+		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
+		AllowPrivateRanges: true, BatchSize: 1,
+		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
+	}, nil, nil)
+	if err != nil {
+		return fmt.Errorf("create webhook output: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(fileOut, nil, nil), // all events
+		audit.WithNamedOutput(syslogOut, &audit.EventRoute{IncludeCategories: []string{"security"}}, nil), // security only
+		audit.WithNamedOutput(webhookOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),   // write only
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
 	tc.AddCleanup(func() { _ = logger.Close() })

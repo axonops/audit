@@ -191,7 +191,7 @@ func TestWebhook_ShutdownFlush(t *testing.T) {
 	resetReceiver(t)
 
 	out := newWebhookOutput(t, func(c *webhook.Config) {
-		c.BatchSize = 100 // large batch — won't trigger size-based flush
+		c.BatchSize = 100                 // large batch — won't trigger size-based flush
 		c.FlushInterval = 1 * time.Minute // long interval — won't trigger timer flush
 	})
 

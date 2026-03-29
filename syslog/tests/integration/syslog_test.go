@@ -124,7 +124,7 @@ func TestSyslog_TCP_MultipleEvents(t *testing.T) {
 // --- UDP (port 5515) ---
 
 func TestSyslog_UDP_SendAndReceive(t *testing.T) {
-	t.Skip("Known bug: srslog UDP packets not received by syslog-ng — see TODO(#133)")  //nolint:gocritic
+	t.Skip("Known bug: srslog UDP packets not received by syslog-ng — see TODO(#133)") //nolint:gocritic
 	m := marker(t)
 	out, err := syslog.New(&syslog.Config{
 		Network:  "udp",

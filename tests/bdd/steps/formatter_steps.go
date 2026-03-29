@@ -39,6 +39,34 @@ func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
 	})
 
+	ctx.Step(`^a logger with file output using JSON formatter with unix millis timestamps$`, func() error {
+		dir, err := tc.EnsureFileDir()
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, "audit.log")
+		tc.FilePaths["default"] = path
+
+		fileOut, err := file.New(file.Config{Path: path}, nil)
+		if err != nil {
+			return fmt.Errorf("create file: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithFormatter(&audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis}),
+			audit.WithOutputs(fileOut),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
 	ctx.Step(`^a logger with file output using JSON formatter and OmitEmpty (true|false)$`, func(val string) error {
 		cfg := audit.Config{Version: 1, Enabled: true, OmitEmpty: val == "true"}
 		return createFileLogger(tc, cfg, file.Config{})
@@ -190,6 +218,7 @@ func registerFormatterFileAssertionSteps(ctx *godog.ScenarioContext, tc *AuditTe
 
 func registerFormatterJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the first JSON event timestamp should match RFC3339Nano format$`, func() error { return assertTimestampRFC3339Nano(tc) })
+	ctx.Step(`^the first JSON event timestamp should be a numeric value$`, func() error { return assertTimestampNumeric(tc) })
 	ctx.Step(`^the first JSON event should not contain key "([^"]*)"$`, func(k string) error { return assertFirstEventKeyAbsent(tc, k) })
 	ctx.Step(`^the first JSON event should contain key "([^"]*)"$`, func(k string) error { return assertFirstEventKeyPresent(tc, k) })
 	ctx.Step(`^the first JSON event "([^"]*)" field should be an integer$`, func(f string) error { return assertFirstEventFieldIsInt(tc, f) })
@@ -253,6 +282,22 @@ func assertJSONFieldOrder(tc *AuditTestContext, first, second string) error {
 	}
 	if firstIdx >= secondIdx {
 		return fmt.Errorf("field %q (pos %d) should appear before %q (pos %d)", first, firstIdx, second, secondIdx)
+	}
+	return nil
+}
+
+func assertTimestampNumeric(tc *AuditTestContext) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	ts := events[0]["timestamp"]
+	// Unix millis timestamps are JSON numbers (float64 after decode).
+	if _, ok := ts.(float64); !ok {
+		return fmt.Errorf("timestamp should be numeric (unix millis), got %T: %v", ts, ts)
 	}
 	return nil
 }

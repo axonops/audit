@@ -46,6 +46,12 @@ Feature: Event Formatters
     And I close the logger
     Then the first JSON event timestamp should match RFC3339Nano format
 
+  Scenario: JSON timestamp can use Unix milliseconds format
+    Given a logger with file output using JSON formatter with unix millis timestamps
+    When I audit event "user_create" with required fields
+    And I close the logger
+    Then the first JSON event timestamp should be a numeric value
+
   Scenario: JSON OmitEmpty true omits zero-value optional fields
     Given a logger with file output using JSON formatter and OmitEmpty true
     When I audit event "user_create" with fields:

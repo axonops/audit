@@ -306,6 +306,20 @@ Feature: Taxonomy Validation
     Then the taxonomy should contain event type "startup"
     And the taxonomy event "startup" should require field "version"
 
+  Scenario: Tabs in YAML are rejected
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+      	write:
+      	  - user_create
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+
+  Scenario: Trailing content after YAML document is rejected
+    When I try to parse taxonomy YAML with trailing garbage
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+
   # --- Additional structural validation ---
 
   Scenario: Event not listed in its declared category is rejected

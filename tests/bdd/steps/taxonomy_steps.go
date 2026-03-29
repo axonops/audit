@@ -55,6 +55,23 @@ func registerTaxonomyWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		return nil
 	})
 
+	ctx.Step(`^I try to parse taxonomy YAML with trailing garbage$`, func() error {
+		yamlWithGarbage := `version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    category: write
+    required: [outcome]
+default_enabled:
+  - write
+` + "\nsome trailing garbage that is not valid YAML"
+		_, err := audit.ParseTaxonomyYAML([]byte(yamlWithGarbage))
+		tc.LastErr = err
+		return nil
+	})
+
 	ctx.Step(`^I try to parse taxonomy from YAML exceeding 1 MiB$`, func() error {
 		oversized := make([]byte, 1<<20+1)
 		for i := range oversized {

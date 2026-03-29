@@ -38,10 +38,13 @@ Feature: Lifecycle Events
     And the file should contain an event with event_type "user_create"
     And the file should contain an event with event_type "shutdown"
 
-  Scenario: EmitStartup missing app_name returns validation error
+  Scenario: EmitStartup missing app_name returns exact error
     Given a logger with file output at a temporary path
     When I emit startup without app name
-    Then the startup call should return an error containing "missing required"
+    Then the startup call should return an error matching:
+      """
+      audit: event "startup" missing required fields: [app_name]
+      """
 
   Scenario: EmitStartup after Close returns ErrClosed
     Given a logger with file output at a temporary path

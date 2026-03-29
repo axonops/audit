@@ -309,7 +309,11 @@ func (s *Output) connect() error {
 	}
 
 	w.SetFormatter(srslog.RFC5424Formatter)
-	w.SetFramer(srslog.RFC5425MessageLengthFramer)
+	// RFC 5425 octet-counting framing is TCP-only; UDP (RFC 5426)
+	// uses one-message-per-datagram with no framing prefix.
+	if s.network != "udp" {
+		w.SetFramer(srslog.RFC5425MessageLengthFramer)
+	}
 	w.SetHostname(s.hostname)
 	s.writer = w
 	return nil

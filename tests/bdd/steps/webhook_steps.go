@@ -108,6 +108,11 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
+	ctx.Step(`^I wait (\d+) seconds for retries to exhaust$`, func(secs int) error {
+		time.Sleep(time.Duration(secs) * time.Second)
+		return nil
+	})
+
 	ctx.Step(`^I try to create a webhook output to "([^"]*)" without AllowInsecureHTTP$`, func(url string) error {
 		_, err := webhook.New(&webhook.Config{
 			URL:                url,

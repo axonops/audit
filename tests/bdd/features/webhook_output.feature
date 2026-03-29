@@ -181,6 +181,15 @@ Feature: Webhook Output
     And I audit a uniquely marked webhook "user_create" event "sentinel_404"
     Then the webhook receiver should have exactly 2 events within 5 seconds
 
+  Scenario: Retries exhausted drops batch and continues
+    Given the webhook receiver is configured to return status 503
+    And a logger with webhook output configured for batch size 1 and max retries 1
+    When I audit a uniquely marked webhook "user_create" event "exhausted"
+    And I wait 3 seconds for retries to exhaust
+    And the webhook receiver is reconfigured to return status 200
+    And I audit a uniquely marked webhook "user_create" event "after_exhaust"
+    Then the webhook receiver should have at least 1 event within 10 seconds
+
   # --- Buffer management ---
 
   Scenario: Buffer overflow is non-blocking

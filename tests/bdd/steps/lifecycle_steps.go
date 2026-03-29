@@ -22,11 +22,19 @@ import (
 	"github.com/cucumber/godog"
 
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/file"
 )
 
 func registerLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLifecycleGivenSteps(ctx, tc)
 	registerLifecycleWhenSteps(ctx, tc)
 	registerLifecycleThenSteps(ctx, tc)
+}
+
+func registerLifecycleGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with file output at a temporary path and buffer size (\d+)$`, func(bufSize int) error {
+		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true, BufferSize: bufSize}, file.Config{})
+	})
 }
 
 func registerLifecycleWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -34,6 +42,21 @@ func registerLifecycleWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
 		return nil
 	})
+	ctx.Step(`^I fill the buffer and emit startup with app name "([^"]*)"$`, func(appName string) error {
+		// Fill the buffer to capacity then try EmitStartup.
+		for range 100 {
+			err := tc.Logger.Audit("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "filler",
+			})
+			if err != nil {
+				break // buffer full
+			}
+		}
+		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
+		return nil
+	})
+
 	ctx.Step(`^I emit startup without app name$`, func() error {
 		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{})
 		return nil
@@ -111,6 +134,10 @@ func assertStartupSentinel(tc *AuditTestContext, sentinel string) error {
 	case "ErrClosed":
 		if !errors.Is(tc.LastErr, audit.ErrClosed) {
 			return fmt.Errorf("expected ErrClosed, got: %w", tc.LastErr)
+		}
+	case "ErrBufferFull":
+		if !errors.Is(tc.LastErr, audit.ErrBufferFull) {
+			return fmt.Errorf("expected ErrBufferFull, got: %w", tc.LastErr)
 		}
 	default:
 		return fmt.Errorf("unknown sentinel: %s", sentinel)

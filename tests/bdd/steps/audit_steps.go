@@ -147,6 +147,11 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+	ctx.Step(`^I audit event "([^"]*)" with nil fields$`, func(eventType string) error {
+		tc.LastErr = tc.Logger.Audit(eventType, nil)
+		return nil
+	})
+
 	ctx.Step(`^I close the logger$`, func() error {
 		if tc.Logger == nil {
 			return nil

@@ -52,6 +52,11 @@ Feature: Lifecycle Events
     And I try to emit startup with app name "too-late"
     Then the startup call should return an error wrapping "ErrClosed"
 
+  Scenario: EmitStartup on full buffer returns ErrBufferFull
+    Given a logger with file output at a temporary path and buffer size 1
+    When I fill the buffer and emit startup with app name "full-buffer"
+    Then the startup call should return an error wrapping "ErrBufferFull"
+
   Scenario: Failed EmitStartup means no shutdown on close
     Given a logger with file output at a temporary path
     When I emit startup without app name

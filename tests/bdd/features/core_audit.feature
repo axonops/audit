@@ -109,6 +109,26 @@ Feature: Core Audit Logging
     Then the audit call should return no error
     And no events should be delivered
 
+  # --- Nil/empty fields ---
+
+  Scenario: Nil fields map accepted when event has no required fields
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        ops:
+          - ping
+      events:
+        ping:
+          category: ops
+          required: []
+      default_enabled:
+        - ops
+      """
+    And a logger with stdout output
+    When I audit event "ping" with nil fields
+    Then the event should be delivered successfully
+
   # --- MustHandle ---
 
   Scenario: MustHandle returns valid handle for registered event

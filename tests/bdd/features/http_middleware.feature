@@ -117,6 +117,14 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event request_id should be shorter than 200 characters
 
+  # --- Panic recovery ---
+
+  Scenario: Handler panic produces audit event and re-raises
+    Given an HTTP test server with panicking handler and audit middleware
+    When I send a GET request to "/api/panic" expecting panic
+    And I close the logger
+    Then the file should contain events
+
   Scenario: Concurrent requests get independent audit events
     Given an HTTP test server with audit middleware
     When I send 10 concurrent GET requests to "/api/resource"

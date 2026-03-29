@@ -82,6 +82,18 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return createTestServer(tc, http.StatusOK, false, true)
 	})
 
+	ctx.Step(`^an HTTP test server with panicking handler and audit middleware$`, func() error {
+		return createPanicHandlerServer(tc)
+	})
+
+	ctx.Step(`^I send a GET request to "([^"]*)" expecting panic$`, func(path string) error {
+		// The middleware recovers the panic, so the HTTP response will be
+		// written (500 status). httptest.Server handles panics by closing
+		// the connection. We catch the error.
+		_ = sendTestRequest(tc, "GET", path, nil)
+		return nil
+	})
+
 	ctx.Step(`^an HTTP test server with audit middleware returning no explicit status$`, func() error {
 		return createTestServer(tc, 0, false, false) // 0 = don't call WriteHeader
 	})
@@ -261,6 +273,26 @@ func sendTestRequest(tc *AuditTestContext, method, path string, headers map[stri
 	}
 	_ = resp.Body.Close()
 	tc.LastHTTPResp = resp
+	return nil
+}
+
+func createPanicHandlerServer(tc *AuditTestContext) error {
+	builder := func(_ *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "api_request", audit.Fields{
+			"outcome":     "failure",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+		}, false
+	}
+
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("intentional handler panic")
+	})
+
+	mw := audit.Middleware(tc.Logger, builder)
+	tc.TestServer = httptest.NewServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
 }
 

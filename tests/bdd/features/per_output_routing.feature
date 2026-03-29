@@ -111,6 +111,25 @@ Feature: Per-Output Event Routing
     And I close the logger
     And the file should contain "clear_w"
 
+  Scenario: Include multiple categories delivers union
+    Given a logger with file receiving all events and webhook including categories "write" and "security"
+    When I audit a "user_create" event in category "write" with marker "multi_inc_w"
+    And I audit an "auth_failure" event in category "security" with marker "multi_inc_s"
+    And I audit a "user_get" event in category "read" with marker "multi_inc_r"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "multi_inc_w"
+    And the file should contain "multi_inc_s"
+    And the file should contain "multi_inc_r"
+
+  Scenario: Unknown output name in SetOutputRoute returns error
+    Given a logger with file receiving all events and webhook receiving only "security"
+    When I try to set route for unknown output "nonexistent"
+    Then the operation should return an error matching:
+      """
+      audit: unknown output "nonexistent"
+      """
+
   # --- Global filter precedence ---
 
   Scenario: Global filter takes precedence over per-output route

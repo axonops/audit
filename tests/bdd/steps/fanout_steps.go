@@ -97,6 +97,9 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)"$`, func(cat string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat}})
 	})
+	ctx.Step(`^a logger with file receiving all events and webhook including categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
+		return createRoutedLogger(tc, &audit.EventRoute{IncludeCategories: []string{cat1, cat2}})
+	})
 	ctx.Step(`^a logger with file receiving all events and webhook including categories "([^"]*)" and event types "([^"]*)"$`, func(cats, types string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{
 			IncludeCategories: strings.Split(cats, ","),
@@ -124,6 +127,10 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	})
 	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error {
 		return createTripleRoutedLogger(tc)
+	})
+	ctx.Step(`^I try to set route for unknown output "([^"]*)"$`, func(name string) error {
+		tc.LastErr = tc.Logger.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: []string{"write"}})
+		return nil
 	})
 	ctx.Step(`^I clear the webhook output route$`, func() error {
 		u := strings.TrimPrefix(tc.WebhookURL, "http://")

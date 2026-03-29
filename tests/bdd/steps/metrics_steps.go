@@ -37,6 +37,7 @@ func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerMetricsGivenBasicSteps(ctx, tc)
 	registerMetricsGivenAdvancedSteps(ctx, tc)
+	registerMetricsGivenWebhookSteps(ctx, tc)
 	registerMetricsGivenFilterSteps(ctx, tc)
 }
 
@@ -95,6 +96,34 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(stdoutOut, nil, nil),
 			audit.WithNamedOutput(fileOut, nil, nil),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
+}
+
+func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with webhook output and metrics$`, func() error {
+		w, err := webhook.New(&webhook.Config{
+			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
+			AllowPrivateRanges: true, BatchSize: 1,
+			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
+		}, tc.MockMetrics, nil)
+		if err != nil {
+			return fmt.Errorf("create webhook: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithOutputs(w),
 		}
 
 		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
@@ -213,6 +242,9 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(minCount int) error {
 		return assertMetricsBufferDrops(tc, minCount)
 	})
+	ctx.Step(`^the metrics should not have recorded a success event for webhook output$`, func() error {
+		return assertMetricsNoWebhookCoreSuccess(tc)
+	})
 	ctx.Step(`^the metrics should have recorded a serialization error$`, func() error {
 		return assertMetricsSerializationError(tc)
 	})
@@ -306,6 +338,23 @@ func assertMetricsSerializationError(tc *AuditTestContext) error {
 	}
 	if total == 0 {
 		return fmt.Errorf("expected at least 1 serialization error, got 0")
+	}
+	return nil
+}
+
+func assertMetricsNoWebhookCoreSuccess(tc *AuditTestContext) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.MockMetrics.mu.Lock()
+	defer tc.MockMetrics.mu.Unlock()
+	// Webhook output implements DeliveryReporter, so core metrics
+	// (RecordEvent) should NOT be called for webhook outputs.
+	// Check that no "webhook:*:success" key exists.
+	for k, v := range tc.MockMetrics.Events {
+		if strings.Contains(k, "webhook") && strings.HasSuffix(k, ":success") && v > 0 {
+			return fmt.Errorf("expected no core success metrics for webhook, but found %q=%d", k, v)
+		}
 	}
 	return nil
 }

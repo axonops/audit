@@ -107,7 +107,17 @@ func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = sendTestRequest(tc, method, path, nil)
+				// Don't use sendTestRequest — it writes tc.LastHTTPResp
+				// which races across goroutines. Make the request directly.
+				req, reqErr := http.NewRequestWithContext(context.Background(), method, tc.TestServer.URL+path, http.NoBody)
+				if reqErr != nil {
+					return
+				}
+				resp, doErr := testHTTPClient.Do(req)
+				if doErr != nil {
+					return
+				}
+				_ = resp.Body.Close()
 			}()
 		}
 		wg.Wait()

@@ -90,6 +90,14 @@ Feature: Metrics Interface
     And I close the logger
     Then the metrics should have recorded a serialization error
 
+  Scenario: DeliveryReporter output records its own delivery metrics
+    Given mock metrics are configured
+    And a logger with webhook output and metrics
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the metrics should have recorded at least 1 success events
+
   Scenario: Nil metrics with filtered event does not panic
     Given a filtering taxonomy with only "write" enabled
     And a logger with stdout output

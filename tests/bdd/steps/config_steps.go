@@ -27,6 +27,11 @@ import (
 )
 
 func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerConfigWhenSteps(ctx, tc)
+	registerConfigThenSteps(ctx, tc)
+}
+
+func registerConfigWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a logger with config version (\-?\d+)$`, func(version int) error {
 		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true})
 	})
@@ -55,51 +60,20 @@ func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: false})
 	})
 
+}
+
+func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the logger construction should fail with an error matching:$`, func(doc *godog.DocString) error {
-		expected := strings.TrimSpace(doc.Content)
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
-		}
-		if tc.LastErr.Error() != expected {
-			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
-		}
-		return nil
+		return assertConstructionExactError(tc, strings.TrimSpace(doc.Content))
 	})
-
-	ctx.Step(`^the logger construction should fail wrapping "([^"]*)"$`, func(sentinel string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected error wrapping %q, got nil", sentinel)
-		}
-		switch sentinel {
-		case "ErrDuplicateDestination":
-			if !errors.Is(tc.LastErr, audit.ErrDuplicateDestination) {
-				return fmt.Errorf("expected ErrDuplicateDestination, got:\n  %q", tc.LastErr.Error())
-			}
-		case "ErrConfigInvalid":
-			if !errors.Is(tc.LastErr, audit.ErrConfigInvalid) {
-				return fmt.Errorf("expected ErrConfigInvalid, got:\n  %q", tc.LastErr.Error())
-			}
-		default:
-			return fmt.Errorf("unknown sentinel: %s", sentinel)
-		}
-		return nil
+	ctx.Step(`^the logger construction should fail wrapping "([^"]*)"$`, func(s string) error {
+		return assertConstructionSentinel(tc, s)
 	})
-
 	ctx.Step(`^the logger construction should fail with an error$`, func() error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected construction error, got nil")
-		}
-		return nil
+		return assertConstructionFailed(tc)
 	})
-
-	ctx.Step(`^the logger construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected construction error containing %q, got nil", substr)
-		}
-		if !strings.Contains(tc.LastErr.Error(), substr) {
-			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
-		}
-		return nil
+	ctx.Step(`^the logger construction should fail with an error containing "([^"]*)"$`, func(s string) error {
+		return assertConstructionErrorContaining(tc, s)
 	})
 
 	ctx.Step(`^the logger should be created successfully$`, func() error {
@@ -153,5 +127,51 @@ func tryCreateLogger(tc *AuditTestContext, cfg audit.Config) error {
 	}
 	tc.Logger = logger
 	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+func assertConstructionExactError(tc *AuditTestContext, expected string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+	}
+	if tc.LastErr.Error() != expected {
+		return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+	}
+	return nil
+}
+
+func assertConstructionSentinel(tc *AuditTestContext, sentinel string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error wrapping %q, got nil", sentinel)
+	}
+	switch sentinel {
+	case "ErrDuplicateDestination":
+		if !errors.Is(tc.LastErr, audit.ErrDuplicateDestination) {
+			return fmt.Errorf("expected ErrDuplicateDestination, got:\n  %q", tc.LastErr.Error())
+		}
+	case "ErrConfigInvalid":
+		if !errors.Is(tc.LastErr, audit.ErrConfigInvalid) {
+			return fmt.Errorf("expected ErrConfigInvalid, got:\n  %q", tc.LastErr.Error())
+		}
+	default:
+		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	return nil
+}
+
+func assertConstructionFailed(tc *AuditTestContext) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected construction error, got nil")
+	}
+	return nil
+}
+
+func assertConstructionErrorContaining(tc *AuditTestContext, substr string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected construction error containing %q, got nil", substr)
+	}
+	if !strings.Contains(tc.LastErr.Error(), substr) {
+		return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+	}
 	return nil
 }

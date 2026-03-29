@@ -111,6 +111,11 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerAuditWhenBasicSteps(ctx, tc)
+	registerAuditWhenHandleSteps(ctx, tc)
+}
+
+func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit event "([^"]*)" with fields:$`, func(eventType string, table *godog.Table) error {
 		fields := tableToFields(table)
 		tc.LastErr = tc.Logger.Audit(eventType, fields)
@@ -172,6 +177,9 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+}
+
+func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I must-handle event type "([^"]*)"$`, func(eventType string) error {
 		defer func() {
 			if r := recover(); r != nil {
@@ -232,6 +240,11 @@ func registerAuditThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerAuditThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerAuditThenExactErrorSteps(ctx, tc)
+	registerAuditThenContainingErrorSteps(ctx, tc)
+}
+
+func registerAuditThenExactErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the event should be delivered successfully$`, func() error {
 		if tc.LastErr != nil {
 			return fmt.Errorf("expected no error, got: %w", tc.LastErr)
@@ -267,6 +280,9 @@ func registerAuditThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+}
+
+func registerAuditThenContainingErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the audit call should return an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)

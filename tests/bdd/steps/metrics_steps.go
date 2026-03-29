@@ -35,6 +35,12 @@ func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerMetricsGivenBasicSteps(ctx, tc)
+	registerMetricsGivenAdvancedSteps(ctx, tc)
+	registerMetricsGivenFilterSteps(ctx, tc)
+}
+
+func registerMetricsGivenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^mock metrics are configured$`, func() error {
 		tc.MockMetrics = NewMockMetrics()
 		return nil
@@ -60,6 +66,9 @@ func registerMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, BufferSize: bufSize})
 	})
 
+}
+
+func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file and stdout outputs and metrics$`, func() error {
 		buf := &bytes.Buffer{}
 		tc.StdoutBuf = buf
@@ -97,6 +106,9 @@ func registerMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		return nil
 	})
 
+}
+
+func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a filtering taxonomy with only "write" enabled$`, func() error {
 		tax, err := audit.ParseTaxonomyYAML([]byte(filteringTaxonomyYAML))
 		if err != nil {
@@ -162,8 +174,8 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^the metrics should have recorded event "([^"]*)" for output "([^"]*)"$`, func(status, output string) error {
 		return assertMetricsEvent(tc, output, status)
 	})
-	ctx.Step(`^the metrics should have recorded at least (\d+) success events$`, func(min int) error {
-		return assertMetricsTotalSuccessEvents(tc, min)
+	ctx.Step(`^the metrics should have recorded at least (\d+) success events$`, func(minCount int) error {
+		return assertMetricsTotalSuccessEvents(tc, minCount)
 	})
 	ctx.Step(`^the metrics should have recorded a validation error$`, func() error {
 		return assertMetricsValidationError(tc, true)
@@ -174,8 +186,8 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^the metrics should have recorded a filtered event "([^"]*)"$`, func(et string) error {
 		return assertMetricsFiltered(tc, et)
 	})
-	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(min int) error {
-		return assertMetricsBufferDrops(tc, min)
+	ctx.Step(`^the metrics should have recorded at least (\d+) buffer drop$`, func(minCount int) error {
+		return assertMetricsBufferDrops(tc, minCount)
 	})
 	ctx.Step(`^the metrics should have recorded an output filtered event$`, func() error {
 		return assertMetricsOutputFiltered(tc)
@@ -197,7 +209,7 @@ func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
 	return nil
 }
 
-func assertMetricsTotalSuccessEvents(tc *AuditTestContext, min int) error {
+func assertMetricsTotalSuccessEvents(tc *AuditTestContext, minCount int) error {
 	if tc.Logger != nil {
 		_ = tc.Logger.Close()
 	}
@@ -209,8 +221,8 @@ func assertMetricsTotalSuccessEvents(tc *AuditTestContext, min int) error {
 			total += v
 		}
 	}
-	if total < min {
-		return fmt.Errorf("expected >= %d success events, got %d", min, total)
+	if total < minCount {
+		return fmt.Errorf("expected >= %d success events, got %d", minCount, total)
 	}
 	return nil
 }
@@ -243,14 +255,14 @@ func assertMetricsFiltered(tc *AuditTestContext, eventType string) error {
 	return nil
 }
 
-func assertMetricsBufferDrops(tc *AuditTestContext, min int) error {
+func assertMetricsBufferDrops(tc *AuditTestContext, minCount int) error {
 	if tc.Logger != nil {
 		_ = tc.Logger.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
-	if tc.MockMetrics.BufferDrops < min {
-		return fmt.Errorf("expected >= %d buffer drops, got %d", min, tc.MockMetrics.BufferDrops)
+	if tc.MockMetrics.BufferDrops < minCount {
+		return fmt.Errorf("expected >= %d buffer drops, got %d", minCount, tc.MockMetrics.BufferDrops)
 	}
 	return nil
 }

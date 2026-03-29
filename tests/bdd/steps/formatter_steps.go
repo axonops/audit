@@ -35,6 +35,12 @@ func registerFormatterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerFormatterGivenJSONSteps(ctx, tc)
+	registerFormatterGivenCEFSteps(ctx, tc)
+	registerFormatterGivenMultiSteps(ctx, tc)
+}
+
+func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output using JSON formatter$`, func() error {
 		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
 	})
@@ -72,6 +78,9 @@ func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return createFileLogger(tc, cfg, file.Config{})
 	})
 
+}
+
+func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output using CEF formatter with vendor "([^"]*)" product "([^"]*)" version "([^"]*)"$`, func(vendor, product, version string) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
@@ -105,6 +114,9 @@ func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+}
+
+func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with two file outputs using JSON and CEF formatters$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {

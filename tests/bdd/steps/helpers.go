@@ -108,24 +108,6 @@ func eventMatchesExactly(event map[string]any, expected map[string]string, allow
 	return true, ""
 }
 
-// eventContainsFields checks that the event has all expected fields with
-// correct values. Does NOT reject extra fields. Used for scenarios where
-// we verify specific fields but the full set may vary (e.g., syslog line
-// content checks).
-func eventContainsFields(event map[string]any, expected map[string]string) (match bool, mismatch string) {
-	for field, want := range expected {
-		got, exists := event[field]
-		if !exists {
-			return false, fmt.Sprintf("field %q not found in event", field)
-		}
-		gotStr := formatFieldValue(got)
-		if want != gotStr {
-			return false, fmt.Sprintf("field %q: want %q, got %q", field, want, gotStr)
-		}
-	}
-	return true, ""
-}
-
 // formatFieldValue converts a JSON-decoded value to a string for comparison.
 // Handles float64 (JSON numbers) by formatting integers without decimal.
 func formatFieldValue(v any) string {

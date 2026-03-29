@@ -25,82 +25,95 @@ import (
 )
 
 func registerLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLifecycleWhenSteps(ctx, tc)
+	registerLifecycleThenSteps(ctx, tc)
+}
+
+func registerLifecycleWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I emit startup with app name "([^"]*)"$`, func(appName string) error {
-		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{
-			"app_name": appName,
-		})
+		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
 		return nil
 	})
-
-	ctx.Step(`^the file should contain an event with event_type "([^"]*)" and field "([^"]*)" with value "([^"]*)"$`, func(eventType, field, value string) error {
-		events, err := readFileEvents(tc, "default")
-		if err != nil {
-			return err
-		}
-		for _, e := range events {
-			if e["event_type"] == eventType && fmt.Sprintf("%v", e[field]) == value {
-				return nil
-			}
-		}
-		return fmt.Errorf("no event with event_type=%q and %s=%q in file (%d events)", eventType, field, value, len(events))
-	})
-
 	ctx.Step(`^I emit startup without app name$`, func() error {
 		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{})
 		return nil
 	})
-
 	ctx.Step(`^I try to emit startup with app name "([^"]*)"$`, func(appName string) error {
 		tc.LastErr = tc.Logger.EmitStartup(audit.Fields{"app_name": appName})
 		return nil
 	})
+}
 
-	ctx.Step(`^the startup call should return an error matching:$`, func(doc *godog.DocString) error {
-		expected := strings.TrimSpace(doc.Content)
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
-		}
-		if tc.LastErr.Error() != expected {
-			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
-		}
-		return nil
-	})
+func registerLifecycleThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the file should contain an event with event_type "([^"]*)" and field "([^"]*)" with value "([^"]*)"$`,
+		func(et, f, v string) error { return assertFileEventTypeAndField(tc, et, f, v) })
+	ctx.Step(`^the file should not contain an event with event_type "([^"]*)"$`,
+		func(et string) error { return assertFileEventTypeAbsent(tc, et) })
+	ctx.Step(`^the startup call should return an error matching:$`,
+		func(doc *godog.DocString) error { return assertStartupExactError(tc, strings.TrimSpace(doc.Content)) })
+	ctx.Step(`^the startup call should return an error containing "([^"]*)"$`,
+		func(s string) error { return assertStartupErrorContaining(tc, s) })
+	ctx.Step(`^the startup call should return an error wrapping "([^"]*)"$`,
+		func(s string) error { return assertStartupSentinel(tc, s) })
+}
 
-	ctx.Step(`^the startup call should return an error containing "([^"]*)"$`, func(substr string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected startup error containing %q, got nil", substr)
+func assertFileEventTypeAndField(tc *AuditTestContext, eventType, field, value string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if e["event_type"] == eventType && formatFieldValue(e[field]) == value {
+			return nil
 		}
-		if !strings.Contains(tc.LastErr.Error(), substr) {
-			return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
-		}
-		return nil
-	})
+	}
+	return fmt.Errorf("no event with event_type=%q and %s=%q in file (%d events)", eventType, field, value, len(events))
+}
 
-	ctx.Step(`^the startup call should return an error wrapping "([^"]*)"$`, func(sentinel string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected startup error wrapping %q, got nil", sentinel)
+func assertFileEventTypeAbsent(tc *AuditTestContext, eventType string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if e["event_type"] == eventType {
+			return fmt.Errorf("found unexpected event with event_type %q", eventType)
 		}
-		switch sentinel {
-		case "ErrClosed":
-			if !errors.Is(tc.LastErr, audit.ErrClosed) {
-				return fmt.Errorf("expected ErrClosed, got: %w", tc.LastErr)
-			}
-		default:
-			return fmt.Errorf("unknown sentinel: %s", sentinel)
-		}
-		return nil
-	})
+	}
+	return nil
+}
 
-	ctx.Step(`^the file should not contain an event with event_type "([^"]*)"$`, func(eventType string) error {
-		events, err := readFileEvents(tc, "default")
-		if err != nil {
-			return err
+func assertStartupExactError(tc *AuditTestContext, expected string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+	}
+	if tc.LastErr.Error() != expected {
+		return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+	}
+	return nil
+}
+
+func assertStartupErrorContaining(tc *AuditTestContext, substr string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected startup error containing %q, got nil", substr)
+	}
+	if !strings.Contains(tc.LastErr.Error(), substr) {
+		return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
+	}
+	return nil
+}
+
+func assertStartupSentinel(tc *AuditTestContext, sentinel string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected startup error wrapping %q, got nil", sentinel)
+	}
+	switch sentinel {
+	case "ErrClosed":
+		if !errors.Is(tc.LastErr, audit.ErrClosed) {
+			return fmt.Errorf("expected ErrClosed, got: %w", tc.LastErr)
 		}
-		for _, e := range events {
-			if e["event_type"] == eventType {
-				return fmt.Errorf("found unexpected event with event_type %q", eventType)
-			}
-		}
-		return nil
-	})
+	default:
+		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	return nil
 }

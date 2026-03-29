@@ -115,42 +115,46 @@ func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 }
 
 func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the file event should have field "([^"]*)" with value "([^"]*)"$`, func(field, value string) error {
-		events, err := readFileEvents(tc, "default")
-		if err != nil {
-			return err
-		}
-		for _, e := range events {
-			if fmt.Sprintf("%v", e[field]) == value {
-				return nil
-			}
-		}
-		return fmt.Errorf("no file event with %s=%q (%d events)", field, value, len(events))
-	})
+	ctx.Step(`^the file event should have field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertFileEventFieldValue(tc, f, v) })
+	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(f string) error { return assertFileEventFieldExists(tc, f) })
+	ctx.Step(`^the response status should be (\d+)$`, func(s int) error { return assertHTTPStatus(tc, s) })
+}
 
-	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(field string) error {
-		events, err := readFileEvents(tc, "default")
-		if err != nil {
-			return err
+func assertFileEventFieldValue(tc *AuditTestContext, field, value string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if formatFieldValue(e[field]) == value {
+			return nil
 		}
-		if len(events) == 0 {
-			return fmt.Errorf("no events in file")
-		}
-		if _, ok := events[0][field]; !ok {
-			return fmt.Errorf("field %q not present in event", field)
-		}
-		return nil
-	})
+	}
+	return fmt.Errorf("no file event with %s=%q (%d events)", field, value, len(events))
+}
 
-	ctx.Step(`^the response status should be (\d+)$`, func(status int) error {
-		if tc.LastHTTPResp == nil {
-			return fmt.Errorf("no HTTP response recorded")
-		}
-		if tc.LastHTTPResp.StatusCode != status {
-			return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
-		}
-		return nil
-	})
+func assertFileEventFieldExists(tc *AuditTestContext, field string) error {
+	events, err := readFileEvents(tc, "default")
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("no events in file")
+	}
+	if _, ok := events[0][field]; !ok {
+		return fmt.Errorf("field %q not present in event", field)
+	}
+	return nil
+}
+
+func assertHTTPStatus(tc *AuditTestContext, status int) error {
+	if tc.LastHTTPResp == nil {
+		return fmt.Errorf("no HTTP response recorded")
+	}
+	if tc.LastHTTPResp.StatusCode != status {
+		return fmt.Errorf("expected status %d, got %d", status, tc.LastHTTPResp.StatusCode)
+	}
+	return nil
 }
 
 func registerMiddlewareTruncationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

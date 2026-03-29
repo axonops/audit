@@ -186,18 +186,18 @@ func trySymlinkFileOutput(tc *AuditTestContext) error {
 	if err != nil {
 		return err
 	}
-	real := filepath.Join(dir, "real.log")
-	link := filepath.Join(dir, "link.log")
-	if err := os.WriteFile(real, nil, 0o600); err != nil {
-		return fmt.Errorf("create real file: %w", err)
+	realPath := filepath.Join(dir, "real.log")
+	linkPath := filepath.Join(dir, "link.log")
+	if writeErr := os.WriteFile(realPath, nil, 0o600); writeErr != nil {
+		return fmt.Errorf("create real file: %w", writeErr)
 	}
-	if err := os.Symlink(real, link); err != nil {
-		return fmt.Errorf("create symlink: %w", err)
+	if linkErr := os.Symlink(realPath, linkPath); linkErr != nil {
+		return fmt.Errorf("create symlink: %w", linkErr)
 	}
 	// file.New may succeed (lazy open), but the symlink is rejected
 	// at write time by the rotate package's safeOpen. Create the
 	// output and attempt a write to trigger the rejection.
-	out, err := file.New(file.Config{Path: link}, nil)
+	out, err := file.New(file.Config{Path: linkPath}, nil)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // construction rejected it

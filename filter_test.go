@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/axonops/go-audit"
@@ -32,7 +33,7 @@ func TestEventRoute_IsEmpty(t *testing.T) {
 func TestValidateEventRoute(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
-	tests := []struct {
+	tests := []struct { //nolint:govet // test struct field order matches readability
 		name    string
 		wantErr string
 		route   audit.EventRoute
@@ -131,7 +132,7 @@ func TestValidateEventRoute(t *testing.T) {
 }
 
 func TestMatchesRoute(t *testing.T) {
-	tests := []struct {
+	tests := []struct { //nolint:govet // test struct
 		name      string
 		eventType string
 		category  string
@@ -318,6 +319,20 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		route := audit.EventRoute{
 			IncludeEventTypes: []string{"user_create", "user_delete", "schema_register", "auth_failure"},
 		}
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			audit.MatchesRoute(&route, "user_create", "write")
+		}
+	})
+
+	b.Run("include_20_categories", func(b *testing.B) {
+		cats := make([]string, 20)
+		for i := range cats {
+			cats[i] = fmt.Sprintf("category_%02d", i)
+		}
+		cats[15] = "write" // match is near the end
+		route := audit.EventRoute{IncludeCategories: cats}
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

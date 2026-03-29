@@ -70,6 +70,20 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 	ctx.Step(`^I try to create a file output at "([^"]*)"$`, func(path string) error { return tryFileOutputWithPath(tc, path) })
+	ctx.Step(`^I try to create a file output with MaxBackups (\d+)$`, func(mb int) error {
+		_, err := file.New(file.Config{Path: "/tmp/test.log", MaxBackups: mb}, nil)
+		tc.LastErr = err
+		return nil
+	})
+	ctx.Step(`^I try to create a file output with permissions "([^"]*)"$`, func(perms string) error {
+		dir, dirErr := tc.EnsureFileDir()
+		if dirErr != nil {
+			return dirErr
+		}
+		_, err := file.New(file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms}, nil)
+		tc.LastErr = err
+		return nil
+	})
 
 	// Then steps
 	ctx.Step(`^the file should contain exactly (\d+) events$`, func(n int) error { return assertFileEventCount(tc, "default", n) })

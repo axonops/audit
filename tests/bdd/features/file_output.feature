@@ -105,6 +105,14 @@ Feature: File Output
     When I try to create a file output at "/nonexistent/dir/audit.log"
     Then the file output construction should fail with an error
 
+  Scenario: MaxBackups exceeding limit is rejected
+    When I try to create a file output with MaxBackups 200
+    Then the file output construction should fail with an error
+
+  Scenario: Invalid permissions string is rejected
+    When I try to create a file output with permissions "notoctal"
+    Then the file output construction should fail with an error
+
   # --- Lifecycle ---
 
   Scenario: Write after close returns error
@@ -112,6 +120,13 @@ Feature: File Output
     When I close the logger
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
+
+  Scenario: Close is idempotent
+    Given a logger with file output at a temporary path
+    When I audit event "user_create" with required fields
+    And I close the logger
+    And I close the logger again
+    Then the second close should return no error
 
   # --- File-specific metrics ---
 

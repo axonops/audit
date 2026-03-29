@@ -1792,8 +1792,7 @@ func TestWithOutputs_DuplicateDestination_ReturnsError(t *testing.T) {
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(o1, o2),
 	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "same destination")
+	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
 	assert.Contains(t, err.Error(), "out1")
 	assert.Contains(t, err.Error(), "out2")
 }
@@ -1807,8 +1806,22 @@ func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
 		audit.WithNamedOutput(o1, nil, nil),
 		audit.WithNamedOutput(o2, nil, nil),
 	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "same destination")
+	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
+	assert.Contains(t, err.Error(), "out1")
+	assert.Contains(t, err.Error(), "out2")
+}
+
+func TestWithOutputs_EmptyDestinationKey_NoCollision(t *testing.T) {
+	// Outputs returning empty DestinationKey opt out of dedup.
+	o1 := &destKeyOutput{name: "out1", key: ""}
+	o2 := &destKeyOutput{name: "out2", key: ""}
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(o1, o2),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
 }
 
 func TestWithOutputs_MixedTypes_NoFalsePositive(t *testing.T) {

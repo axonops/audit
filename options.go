@@ -161,7 +161,7 @@ func checkDestinationDup(o Output, name string, seen map[string]string) error {
 		return nil
 	}
 	if existing, dup := seen[key]; dup {
-		return fmt.Errorf("audit: outputs %q and %q share the same destination %q", existing, name, key)
+		return fmt.Errorf("%w: outputs %q and %q share %q", ErrDuplicateDestination, existing, name, key)
 	}
 	seen[key] = name
 	return nil

@@ -50,6 +50,11 @@ var (
 	// this as a drop notification. Increasing [Config.BufferSize] or
 	// reducing event emission rate will reduce frequency.
 	ErrBufferFull = errors.New("audit: buffer full")
+
+	// ErrDuplicateDestination is returned by [WithOutputs] or
+	// [WithNamedOutput] when two outputs implement [DestinationKeyer]
+	// and return the same key.
+	ErrDuplicateDestination = errors.New("audit: duplicate destination")
 )
 
 // auditEntryPool caches auditEntry instances to avoid per-Audit heap
@@ -92,7 +97,7 @@ type Logger struct {
 	startupEmitted atomic.Bool
 	// destKeys tracks destination keys during construction to detect
 	// duplicate output destinations. Only used by WithNamedOutput;
-	// WithOutputs uses a local map. Nil after construction.
+	// WithOutputs uses a local map.
 	destKeys map[string]string
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
@@ -125,6 +130,9 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 			return nil, err
 		}
 	}
+
+	// Release construction-only state.
+	l.destKeys = nil
 
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")

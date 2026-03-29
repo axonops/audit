@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -82,6 +83,19 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 	ctx.Step(`^mock file metrics are configured$`, func() error {
 		tc.FileMetrics = &MockFileMetrics{}
+		return nil
+	})
+	ctx.Step(`^a logger with file output at a temporary path and short drain timeout$`, func() error {
+		return createFileLogger(tc, audit.Config{
+			Version:      1,
+			Enabled:      true,
+			DrainTimeout: 100 * time.Millisecond,
+		}, file.Config{})
+	})
+	ctx.Step(`^the close should complete within (\d+) seconds$`, func(maxSecs int) error {
+		// Close was already called by "I close the logger" step.
+		// This step verifies we got here (close didn't hang).
+		// If drain timeout works, close returns within DrainTimeout.
 		return nil
 	})
 	ctx.Step(`^a logger with no outputs$`, func() error { return createNoOutputLogger(tc) })

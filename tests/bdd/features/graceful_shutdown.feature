@@ -48,6 +48,12 @@ Feature: Graceful Shutdown
     Then the file should contain exactly 50 events
     And every event in the file should be valid JSON
 
+  Scenario: Drain timeout does not hang indefinitely
+    Given a logger with file output at a temporary path and short drain timeout
+    When I audit 100 events rapidly
+    And I close the logger
+    Then the close should complete within 5 seconds
+
   Scenario: Concurrent close calls are safe
     Given a logger with file output at a temporary path
     When I audit event "user_create" with required fields

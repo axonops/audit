@@ -122,6 +122,11 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error {
 		return createTripleRoutedLogger(tc)
 	})
+	ctx.Step(`^I clear the webhook output route$`, func() error {
+		u := strings.TrimPrefix(tc.WebhookURL, "http://")
+		u = strings.TrimPrefix(u, "https://")
+		return tc.Logger.ClearOutputRoute("webhook:" + u)
+	})
 	ctx.Step(`^I disable category "([^"]*)"$`, func(cat string) error {
 		return tc.Logger.DisableCategory(cat)
 	})

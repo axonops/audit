@@ -103,6 +103,14 @@ Feature: Per-Output Event Routing
     Then the webhook receiver should have at least 2 events within 5 seconds
     And I close the logger
 
+  Scenario: ClearOutputRoute resets to all events
+    Given a logger with file receiving all events and webhook receiving only "security"
+    When I clear the webhook output route
+    And I audit a "user_create" event in category "write" with marker "clear_w"
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the file should contain "clear_w"
+
   # --- Global filter precedence ---
 
   Scenario: Global filter takes precedence over per-output route

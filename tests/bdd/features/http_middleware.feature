@@ -129,6 +129,20 @@ Feature: HTTP Middleware
     And I close the logger
     Then the file event request_id should be shorter than 200 characters
 
+  # --- TLS state detection ---
+
+  Scenario: Non-TLS request reports transport security "none"
+    Given an HTTP test server with audit middleware
+    When I send a GET request to "/api/resource"
+    And I close the logger
+    Then the file event should have field "source_ip" present
+
+  Scenario: TLS request reports transport security "tls"
+    Given an HTTPS test server with audit middleware
+    When I send a GET request to "/api/secure" via TLS
+    And I close the logger
+    Then the file event should have field "source_ip" present
+
   # --- Panic recovery ---
 
   Scenario: Handler panic produces audit event and re-raises

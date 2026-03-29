@@ -16,6 +16,7 @@ package steps
 
 import (
 	"fmt"
+	"net"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,10 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Facility: facility})
 	})
 
+	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with max retries (\d+)$`, func(network, address string, retries int) error {
+		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, MaxRetries: retries})
+	})
+
 	ctx.Step(`^a logger with syslog TLS output to "([^"]*)" with CA cert$`, func(address string) error {
 		certs := certDir()
 		return createSyslogLogger(tc, &syslog.Config{
@@ -68,6 +73,12 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 func registerSyslogWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerSyslogWhenBasicSteps(ctx, tc)
+	registerSyslogWhenReconnectSteps(ctx, tc)
+	registerSyslogWhenValidationSteps(ctx, tc)
+}
+
+func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit (\d+) uniquely marked events$`, func(count int) error {
 		for i := range count {
 			m := marker("BDD")
@@ -112,6 +123,64 @@ func registerSyslogWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+}
+
+func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I restart the syslog-ng process$`, func() error {
+		// Kill and restart syslog-ng inside the Docker container.
+		out, err := exec.Command("docker", "exec", "bdd-syslog-ng-1",
+			"sh", "-c", "kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null; syslog-ng --no-caps -F &").CombinedOutput()
+		if err != nil {
+			// syslog-ng may restart automatically, or PID file may not exist.
+			// Log but don't fail — the restart may happen via container health check.
+			_ = out
+		}
+		return nil
+	})
+
+	ctx.Step(`^I wait for syslog-ng to be ready$`, func() error {
+		// Poll until syslog-ng accepts TCP connections on port 5514.
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			conn, err := net.DialTimeout("tcp", "localhost:5514", 1*time.Second)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		return fmt.Errorf("syslog-ng not ready after 15 seconds")
+	})
+
+	ctx.Step(`^I audit a second uniquely marked "([^"]*)" event$`, func(eventType string) error {
+		m := marker("BDD2")
+		tc.Markers["second"] = m
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = m
+		// The first write after restart may fail and trigger reconnect.
+		// Retry a few times to allow reconnection.
+		for range 10 {
+			err := tc.Logger.Audit(eventType, fields)
+			if err == nil {
+				return nil
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
+	ctx.Step(`^the syslog server should contain the second marker within (\d+) seconds$`, func(timeout int) error {
+		m, ok := tc.Markers["second"]
+		if !ok {
+			return fmt.Errorf("no second marker set")
+		}
+		return assertSyslogContains(m, time.Duration(timeout)*time.Second)
+	})
+
+}
+
+func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a syslog output with TLS key but no cert$`, func() error {
 		certs := certDir()
 		_, err := syslog.New(&syslog.Config{

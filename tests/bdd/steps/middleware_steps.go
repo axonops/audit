@@ -83,6 +83,14 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return createTestServer(tc, http.StatusOK, false, true)
 	})
 
+	ctx.Step(`^an HTTPS test server with audit middleware$`, func() error {
+		return createTLSTestServer(tc, http.StatusOK)
+	})
+
+	ctx.Step(`^I send a GET request to "([^"]*)" via TLS$`, func(path string) error {
+		return sendTLSTestRequest(tc, "GET", path)
+	})
+
 	ctx.Step(`^an HTTP test server with panicking handler and audit middleware$`, func() error {
 		return createPanicHandlerServer(tc)
 	})
@@ -289,6 +297,50 @@ func sendTestRequest(tc *AuditTestContext, method, path string, headers map[stri
 		req.Header.Set(k, v)
 	}
 	resp, err := testHTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	_ = resp.Body.Close()
+	tc.LastHTTPResp = resp
+	return nil
+}
+
+func createTLSTestServer(tc *AuditTestContext, status int) error {
+	builder := func(_ *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "api_request", audit.Fields{
+			"outcome":     "success",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+			"source_ip":   transport.ClientIP,
+			"user_agent":  transport.UserAgent,
+			"request_id":  transport.RequestID,
+		}, false
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if status > 0 {
+			w.WriteHeader(status)
+		}
+	})
+
+	mw := audit.Middleware(tc.Logger, builder)
+	tc.TestServer = httptest.NewTLSServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
+	return nil
+}
+
+func sendTLSTestRequest(tc *AuditTestContext, method, path string) error {
+	if tc.TestServer == nil {
+		return fmt.Errorf("test server not created")
+	}
+	// Use the test server's TLS client which trusts the self-signed cert.
+	client := tc.TestServer.Client()
+	req, err := http.NewRequestWithContext(context.Background(), method, tc.TestServer.URL+path, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
 	}

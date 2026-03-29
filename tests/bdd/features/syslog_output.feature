@@ -145,6 +145,18 @@ Feature: Syslog Output
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
 
+  # --- Reconnection ---
+
+  Scenario: Syslog reconnects after server process restart
+    Given a logger with syslog output on "tcp" to "localhost:5514" with max retries 10
+    When I audit a uniquely marked "user_create" event
+    Then the syslog server should contain the marker within 10 seconds
+    When I restart the syslog-ng process
+    And I wait for syslog-ng to be ready
+    And I audit a second uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the second marker within 15 seconds
+
   # --- Syslog-specific metrics ---
 
   Scenario: Nil syslog metrics does not panic during delivery

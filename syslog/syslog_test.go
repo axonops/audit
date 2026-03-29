@@ -319,6 +319,32 @@ func (s *mockSyslogServer) waitForData(timeout time.Duration) bool {
 	}
 }
 
+// waitForContent polls until the joined message buffer contains all
+// specified substrings, or the timeout expires. Unlike waitForData
+// (which returns after the first chunk), this is safe for multi-message
+// assertions where TCP coalescing may delay later reads.
+func (s *mockSyslogServer) waitForContent(substrings []string, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		all := strings.Join(s.getMessages(), "\n")
+		found := true
+		for _, sub := range substrings {
+			if !strings.Contains(all, sub) {
+				found = false
+				break
+			}
+		}
+		if found {
+			return true
+		}
+		select {
+		case <-deadline:
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Construction validation
 // ---------------------------------------------------------------------------
@@ -451,19 +477,15 @@ func TestSyslogOutput_WriteMultiple(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
+	expected := make([]string, 5)
 	for i := range 5 {
-		data := []byte(fmt.Sprintf(`{"n":%d}`, i))
-		require.NoError(t, out.Write(data))
+		expected[i] = fmt.Sprintf(`{"n":%d}`, i)
+		require.NoError(t, out.Write([]byte(expected[i])))
 	}
 
-	require.True(t, srv.waitForData(2*time.Second), "server should receive data")
+	require.True(t, srv.waitForContent(expected, 2*time.Second),
+		"server should receive all 5 events")
 	require.NoError(t, out.Close())
-
-	// Messages may be coalesced in TCP reads; check the content.
-	all := strings.Join(srv.getMessages(), "\n")
-	for i := range 5 {
-		assert.Contains(t, all, fmt.Sprintf(`{"n":%d}`, i))
-	}
 }
 
 func TestSyslogOutput_CloseIdempotent(t *testing.T) {

@@ -43,8 +43,11 @@ import (
 )
 
 // Compile-time assertions.
-var _ audit.Output = (*Output)(nil)
-var _ audit.DeliveryReporter = (*Output)(nil)
+var (
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DeliveryReporter = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+)
 
 // Metrics is an optional interface for webhook-specific
 // instrumentation. Pass an implementation to [New] to
@@ -251,6 +254,12 @@ func (w *Output) ReportsDelivery() bool { return true }
 // The name is cached at construction time to avoid per-call url.Parse.
 func (w *Output) Name() string {
 	return w.name
+}
+
+// DestinationKey returns the full webhook URL, enabling duplicate
+// destination detection via [audit.DestinationKeyer].
+func (w *Output) DestinationKey() string {
+	return w.url
 }
 
 // webhookName parses the URL and returns "webhook:<host>" or "webhook"

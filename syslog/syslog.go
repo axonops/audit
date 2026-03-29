@@ -35,7 +35,10 @@ import (
 )
 
 // Compile-time assertion: Output satisfies audit.Output.
-var _ audit.Output = (*Output)(nil)
+var (
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+)
 
 // Metrics is an optional interface for syslog-specific
 // instrumentation. Pass an implementation to [New] to
@@ -282,6 +285,12 @@ func (s *Output) Close() error {
 // Name returns the human-readable identifier for this output.
 func (s *Output) Name() string {
 	return "syslog:" + s.address
+}
+
+// DestinationKey returns the syslog server address, enabling
+// duplicate destination detection via [audit.DestinationKeyer].
+func (s *Output) DestinationKey() string {
+	return s.address
 }
 
 // connect establishes a connection to the syslog server.

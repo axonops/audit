@@ -27,8 +27,11 @@ import (
 	"github.com/axonops/go-audit/file/internal/rotate"
 )
 
-// Compile-time assertion that Output implements audit.Output.
-var _ audit.Output = (*Output)(nil)
+// Compile-time assertions.
+var (
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+)
 
 const (
 	// MaxSizeMB is the maximum allowed value for [Config.MaxSizeMB].
@@ -60,6 +63,8 @@ type Metrics interface {
 }
 
 // Config holds configuration for [Output].
+//
+//nolint:govet // field order: logical grouping (required, then optional, then pointer)
 type Config struct {
 	// Path is the filesystem path for the audit log file. Required.
 	// Relative paths are resolved to absolute at construction time.
@@ -114,13 +119,17 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
-	cfg.Path = filepath.Clean(cfg.Path)
+	abs, err := filepath.Abs(cfg.Path)
+	if err != nil {
+		return nil, fmt.Errorf("audit: file output path: %w", err)
+	}
+	cfg.Path = abs
 
 	// Check parent directory exists early to provide a clear "audit:" error
 	// message. rotate.New performs the same check but with a "rotate:" prefix.
 	parentDir := filepath.Dir(cfg.Path)
-	if _, err := os.Lstat(parentDir); err != nil {
-		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, err)
+	if _, statErr := os.Lstat(parentDir); statErr != nil {
+		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, statErr)
 	}
 
 	perm, err := parsePermissions(cfg.Permissions)
@@ -204,6 +213,12 @@ func (f *Output) Close() error {
 // Name returns the human-readable identifier for this output.
 func (f *Output) Name() string {
 	return "file:" + f.path
+}
+
+// DestinationKey returns the absolute cleaned filesystem path,
+// enabling duplicate destination detection via [audit.DestinationKeyer].
+func (f *Output) DestinationKey() string {
+	return f.path
 }
 
 // parsePermissions parses an octal permission string. An empty string

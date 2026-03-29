@@ -71,6 +71,8 @@ var auditEntryPool = sync.Pool{
 // the slog default handler to control this output.
 //
 // A Logger is safe for concurrent use by multiple goroutines.
+//
+//nolint:govet // field order: logical grouping over alignment optimisation
 type Logger struct {
 	startupAppName atomic.Value
 	closeErr       error
@@ -88,6 +90,10 @@ type Logger struct {
 	closeOnce      sync.Once
 	closed         atomic.Bool
 	startupEmitted atomic.Bool
+	// destKeys tracks destination keys during construction to detect
+	// duplicate output destinations. Only used by WithNamedOutput;
+	// WithOutputs uses a local map. Nil after construction.
+	destKeys map[string]string
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool

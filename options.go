@@ -81,11 +81,15 @@ func WithOutputs(outputs ...Output) Option {
 			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput")
 		}
 		byName := make(map[string]*outputEntry, len(outputs))
+		byDest := make(map[string]string) // destination key → output name
 		entries := make([]*outputEntry, len(outputs))
 		for i, o := range outputs {
 			name := o.Name()
 			if _, dup := byName[name]; dup {
 				return fmt.Errorf("audit: duplicate output name %q", name)
+			}
+			if err := checkDestinationDup(o, name, byDest); err != nil {
+				return err
 			}
 			oe := &outputEntry{output: o}
 			entries[i] = oe
@@ -118,8 +122,14 @@ func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Opti
 		if l.outputsByName == nil {
 			l.outputsByName = make(map[string]*outputEntry)
 		}
+		if l.destKeys == nil {
+			l.destKeys = make(map[string]string)
+		}
 		if _, dup := l.outputsByName[name]; dup {
 			return fmt.Errorf("audit: duplicate output name %q", name)
+		}
+		if err := checkDestinationDup(output, name, l.destKeys); err != nil {
+			return err
 		}
 		oe := &outputEntry{
 			output:    output,
@@ -132,4 +142,24 @@ func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Opti
 		l.outputsByName[name] = oe
 		return nil
 	}
+}
+
+// checkDestinationDup checks whether the output's destination key
+// collides with a previously registered output. If the output does not
+// implement [DestinationKeyer], the check is skipped. On collision,
+// returns an error naming both outputs and the conflicting key.
+func checkDestinationDup(o Output, name string, seen map[string]string) error {
+	dk, ok := o.(DestinationKeyer)
+	if !ok {
+		return nil
+	}
+	key := dk.DestinationKey()
+	if key == "" {
+		return nil
+	}
+	if existing, dup := seen[key]; dup {
+		return fmt.Errorf("audit: outputs %q and %q share the same destination %q", existing, name, key)
+	}
+	seen[key] = name
+	return nil
 }

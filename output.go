@@ -42,6 +42,22 @@ type Output interface {
 	Name() string
 }
 
+// DestinationKeyer is an optional interface that [Output] implementations
+// may satisfy to enable duplicate destination detection at construction
+// time. When two outputs return the same key from DestinationKey,
+// [WithOutputs] and [WithNamedOutput] return an error.
+//
+// Key format conventions by output type:
+//   - File: absolute cleaned filesystem path
+//   - Syslog: network address (host:port)
+//   - Webhook: full URL
+//
+// Outputs that do not implement this interface (e.g. [StdoutOutput])
+// are silently skipped during destination dedup.
+type DestinationKeyer interface {
+	DestinationKey() string
+}
+
 // DeliveryReporter is an optional interface that [Output] implementations
 // may satisfy to indicate they handle their own delivery metrics
 // reporting. When satisfied and [DeliveryReporter.ReportsDelivery]

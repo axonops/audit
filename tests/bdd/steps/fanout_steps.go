@@ -73,6 +73,9 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^a logger with file, syslog, and webhook outputs$`, func() error {
 		return createFanoutLogger(tc, true, true, true, nil, nil)
 	})
+	ctx.Step(`^a logger with file output and a panicking formatter on a second output$`, func() error {
+		return createPanicFormatterLogger(tc)
+	})
 	ctx.Step(`^a logger with file output using JSON and webhook output using CEF$`, func() error {
 		cefFmt := &audit.CEFFormatter{Vendor: "Test", Product: "BDD", Version: "1.0"}
 		return createFanoutLogger(tc, true, false, true, cefFmt, nil)
@@ -379,6 +382,48 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+// panicFormatter panics on every Format call.
+type panicFormatter struct{}
+
+func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+	panic("intentional panic in formatter")
+}
+
+// devNullOutput discards all writes.
+type devNullOutput struct{}
+
+func (d *devNullOutput) Write(_ []byte) error { return nil }
+func (d *devNullOutput) Close() error         { return nil }
+func (d *devNullOutput) Name() string         { return "devnull" }
+
+func createPanicFormatterLogger(tc *AuditTestContext) error {
+	dir, err := tc.EnsureFileDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "audit.log")
+	tc.FilePaths["default"] = path
+
+	fileOut, err := file.New(file.Config{Path: path}, nil)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(fileOut, nil, nil),                        // normal file
+		audit.WithNamedOutput(&devNullOutput{}, nil, &panicFormatter{}), // panicking formatter
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
 	tc.AddCleanup(func() { _ = logger.Close() })

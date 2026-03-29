@@ -91,6 +91,14 @@ Feature: Multi-Output Fan-Out
     And the webhook event body should contain field "target_id" with value "user-42"
     And the webhook event body should contain field "timestamp"
 
+  # --- Panic recovery ---
+
+  Scenario: Panic in per-output formatter does not crash logger
+    Given a logger with file output and a panicking formatter on a second output
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the file should contain the marker
+
   # --- Routing diversity ---
 
   Scenario: Different events routed to different file outputs

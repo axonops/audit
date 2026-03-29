@@ -109,6 +109,24 @@ Feature: Core Audit Logging
     Then the audit call should return no error
     And no events should be delivered
 
+  # --- MustHandle ---
+
+  Scenario: MustHandle returns valid handle for registered event
+    When I must-handle event type "user_create"
+    Then the handle should be valid
+    And the handle name should be "user_create"
+
+  Scenario: MustHandle panics for unregistered event type
+    When I must-handle event type "nonexistent"
+    Then the must-handle should have panicked
+
+  # --- ErrBufferFull ---
+
+  Scenario: Buffer full returns ErrBufferFull
+    Given a logger with stdout output and buffer size 1
+    When I fill the buffer and audit one more event
+    Then the audit call should return an error wrapping "ErrBufferFull"
+
   # --- Handle / MustHandle ---
 
   Scenario: Handle returns valid event type for registered event

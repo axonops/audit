@@ -172,6 +172,49 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+	ctx.Step(`^I must-handle event type "([^"]*)"$`, func(eventType string) error {
+		defer func() {
+			if r := recover(); r != nil {
+				tc.LastErr = fmt.Errorf("%v", r)
+			}
+		}()
+		h := tc.Logger.MustHandle(eventType)
+		tc.EventHandle = h
+		return nil
+	})
+
+	ctx.Step(`^the must-handle should have panicked$`, func() error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected MustHandle to panic, but it did not")
+		}
+		return nil
+	})
+
+	ctx.Step(`^I fill the buffer and audit one more event$`, func() error {
+		// The logger has buffer size 1. The drain goroutine processes
+		// events async, so we need to fill the buffer faster than drain.
+		// Send events in a tight loop until we get ErrBufferFull.
+		for range 1000 {
+			err := tc.Logger.Audit("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "overflow",
+			})
+			if err != nil {
+				tc.LastErr = err
+				return nil //nolint:nilerr // scenario asserts on tc.LastErr
+			}
+		}
+		return fmt.Errorf("never got ErrBufferFull after 1000 attempts")
+	})
+
+	ctx.Step(`^a logger with stdout output and buffer size (\d+)$`, func(bufSize int) error {
+		return createStdoutLogger(tc, audit.Config{
+			Version:    1,
+			Enabled:    true,
+			BufferSize: bufSize,
+		})
+	})
+
 	ctx.Step(`^I audit via handle with fields:$`, func(table *godog.Table) error {
 		if tc.EventHandle == nil {
 			return fmt.Errorf("no event handle set")

@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -33,6 +34,27 @@ func registerWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerWebhookGivenSteps(ctx, tc)
 	registerWebhookWhenSteps(ctx, tc)
 	registerWebhookThenSteps(ctx, tc)
+}
+
+// MockWebhookMetrics captures webhook.Metrics calls.
+type MockWebhookMetrics struct {
+	mu      sync.Mutex
+	flushes int
+	drops   int
+}
+
+// RecordWebhookDrop satisfies webhook.Metrics.
+func (m *MockWebhookMetrics) RecordWebhookDrop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.drops++
+}
+
+// RecordWebhookFlush satisfies webhook.Metrics.
+func (m *MockWebhookMetrics) RecordWebhookFlush(_ int, _ time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.flushes++
 }
 
 func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -78,6 +100,15 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			BatchSize:     1,
 			FlushInterval: 100 * time.Millisecond,
 		})
+	})
+
+	ctx.Step(`^mock webhook metrics are configured$`, func() error {
+		tc.WebhookMetrics = &MockWebhookMetrics{}
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook output and webhook metrics configured for batch size (\d+)$`, func(batchSize int) error {
+		return createWebhookLoggerWithWebhookMetrics(tc, batchSize)
 	})
 
 	ctx.Step(`^the webhook receiver is configured to return status (\d+)$`, func(status int) error {
@@ -203,6 +234,11 @@ func registerWebhookWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 func registerWebhookThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerWebhookThenCountSteps(ctx, tc)
+	registerWebhookThenAssertSteps(ctx, tc)
+}
+
+func registerWebhookThenCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the webhook receiver should have at least (\d+) event within (\d+) seconds$`, func(n, timeout int) error {
 		return assertWebhookEventCount(tc, n, time.Duration(timeout)*time.Second)
 	})
@@ -223,36 +259,15 @@ func registerWebhookThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return assertWebhookExactCount(tc, n, time.Duration(timeout)*time.Second)
 	})
 
-	ctx.Step(`^the received webhook event should have header "([^"]*)" with value "([^"]*)"$`, func(name, value string) error {
-		return assertWebhookHeader(tc, name, value)
-	})
+}
 
-	ctx.Step(`^the webhook event body should contain field "([^"]*)" with value "([^"]*)"$`, func(field, value string) error {
-		return assertWebhookBodyField(tc, field, value)
-	})
-
-	ctx.Step(`^the webhook event body should contain field "([^"]*)"$`, func(field string) error {
-		return assertWebhookBodyFieldPresent(tc, field)
-	})
-
-	ctx.Step(`^the webhook construction should fail with exact error:$`, func(doc *godog.DocString) error {
-		expected := strings.TrimSpace(doc.Content)
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
-		}
-		if tc.LastErr.Error() != expected {
-			return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
-		}
-		return nil
-	})
-
-	ctx.Step(`^the webhook construction should fail with an error$`, func() error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected webhook construction error, got nil")
-		}
-		return nil
-	})
-
+func registerWebhookThenAssertSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the received webhook event should have header "([^"]*)" with value "([^"]*)"$`, func(n, v string) error { return assertWebhookHeader(tc, n, v) })
+	ctx.Step(`^the webhook event body should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertWebhookBodyField(tc, f, v) })
+	ctx.Step(`^the webhook event body should contain field "([^"]*)"$`, func(f string) error { return assertWebhookBodyFieldPresent(tc, f) })
+	ctx.Step(`^the webhook metrics should have recorded at least (\d+) flush$`, func(n int) error { return assertWebhookFlushCount(tc, n) })
+	ctx.Step(`^the webhook construction should fail with exact error:$`, func(doc *godog.DocString) error { return assertWebhookExactError(tc, strings.TrimSpace(doc.Content)) })
+	ctx.Step(`^the webhook construction should fail with an error$`, func() error { return assertWebhookAnyError(tc) })
 	ctx.Step(`^the webhook construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)
@@ -272,6 +287,36 @@ func createWebhookLogger(tc *AuditTestContext, cfg *webhook.Config) error {
 	cfg.AllowPrivateRanges = true
 	cfg.Timeout = 5 * time.Second
 	return createWebhookLoggerFromConfig(tc, cfg)
+}
+
+func createWebhookLoggerWithWebhookMetrics(tc *AuditTestContext, batchSize int) error {
+	cfg := &webhook.Config{
+		URL:                tc.WebhookURL + "/events",
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          batchSize,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            5 * time.Second,
+	}
+
+	out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(out),
+	}
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
 }
 
 func createWebhookLoggerWithURL(tc *AuditTestContext, url string, cfg *webhook.Config) error {
@@ -360,6 +405,38 @@ type webhookEvent struct { //nolint:govet // fieldalignment: JSON field order ma
 	Body    json.RawMessage   `json:"body"`
 	Headers map[string]string `json:"headers"`
 	Time    time.Time         `json:"time"`
+}
+
+func assertWebhookFlushCount(tc *AuditTestContext, minFlush int) error {
+	if tc.WebhookMetrics == nil {
+		return fmt.Errorf("no webhook metrics configured")
+	}
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+	}
+	tc.WebhookMetrics.mu.Lock()
+	defer tc.WebhookMetrics.mu.Unlock()
+	if tc.WebhookMetrics.flushes < minFlush {
+		return fmt.Errorf("expected >= %d webhook flushes, got %d", minFlush, tc.WebhookMetrics.flushes)
+	}
+	return nil
+}
+
+func assertWebhookExactError(tc *AuditTestContext, expected string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error:\n  %q\ngot: nil", expected)
+	}
+	if tc.LastErr.Error() != expected {
+		return fmt.Errorf("expected error:\n  %q\ngot:\n  %q", expected, tc.LastErr.Error())
+	}
+	return nil
+}
+
+func assertWebhookAnyError(tc *AuditTestContext) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected webhook construction error, got nil")
+	}
+	return nil
 }
 
 func assertWebhookEventCount(tc *AuditTestContext, minCount int, timeout time.Duration) error {

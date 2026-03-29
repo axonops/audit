@@ -219,6 +219,21 @@ Feature: Webhook Output
     And I close the logger again
     Then the second close should return no error
 
+  # --- Webhook-specific metrics ---
+
+  Scenario: Webhook flush records RecordWebhookFlush metric
+    Given mock webhook metrics are configured
+    And a logger with webhook output and webhook metrics configured for batch size 1
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the webhook metrics should have recorded at least 1 flush
+
+  Scenario: Nil webhook metrics does not panic
+    Given a logger with webhook output configured for batch size 1
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook receiver should have at least 1 event within 5 seconds
+
   # --- Lifecycle ---
 
   Scenario: Write after close returns error

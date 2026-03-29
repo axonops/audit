@@ -1,0 +1,11 @@
+version: 1
+categories:
+  ops:
+    - health_check
+events:
+  health_check:
+    category: ops
+    required:
+      - outcome
+default_enabled:
+  - ops

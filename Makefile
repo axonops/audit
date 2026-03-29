@@ -1,6 +1,6 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-audit-gen \
        test-integration test-bdd \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-audit-gen \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -10,7 +10,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook
+MODULES           := . file syslog webhook cmd/audit-gen
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 GOLANGCI_LINT_VER := v2.1.6
@@ -46,7 +46,10 @@ test-syslog:
 test-webhook:
 	cd webhook && go test -race -v -count=1 ./...
 
-test-all: test-core test-file test-syslog test-webhook
+test-audit-gen:
+	cd cmd/audit-gen && go test -race -v -count=1 ./...
+
+test-all: test-core test-file test-syslog test-webhook test-audit-gen
 test: test-all
 
 # Integration tests (requires Docker: make test-infra-up first)
@@ -74,7 +77,10 @@ lint-syslog:
 lint-webhook:
 	cd webhook && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook
+lint-audit-gen:
+	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-audit-gen
 lint: lint-all
 
 # --- Vet ---

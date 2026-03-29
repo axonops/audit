@@ -130,6 +130,9 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event$`, func(eventType string) error {
+		if tc.Logger == nil {
+			return fmt.Errorf("logger is nil (construction may have failed: %v)", tc.LastErr)
+		}
 		m := marker("BDD")
 		tc.Markers["default"] = m
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)

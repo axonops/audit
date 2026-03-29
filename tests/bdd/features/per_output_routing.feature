@@ -31,6 +31,17 @@ Feature: Per-Output Event Routing
     And the file should contain "route_evt_w"
     And the file should contain "route_evt_s"
 
+  Scenario: Include multiple event types delivers union
+    Given a logger with file receiving all events and webhook including event types "auth_failure,permission_denied"
+    When I audit a "user_create" event in category "write" with marker "multi_evt_w"
+    And I audit an "auth_failure" event in category "security" with marker "multi_evt_af"
+    And I audit a "permission_denied" event in category "security" with marker "multi_evt_pd"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "multi_evt_w"
+    And the file should contain "multi_evt_af"
+    And the file should contain "multi_evt_pd"
+
   # --- Exclude mode ---
 
   Scenario: Exclude categories removes matching events from output

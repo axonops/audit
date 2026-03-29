@@ -31,6 +31,17 @@ Feature: Multi-Output Fan-Out
     And the file should contain the marker
     And the syslog server should contain the marker within 10 seconds
 
+  Scenario: Multiple events delivered to all outputs
+    Given a logger with file and webhook outputs
+    When I audit a "user_create" event in category "write" with marker "multi_all_1"
+    And I audit a "user_create" event in category "write" with marker "multi_all_2"
+    And I audit a "user_create" event in category "write" with marker "multi_all_3"
+    Then the webhook receiver should have at least 3 events within 5 seconds
+    And I close the logger
+    And the file should contain "multi_all_1"
+    And the file should contain "multi_all_2"
+    And the file should contain "multi_all_3"
+
   # --- Failure isolation ---
 
   Scenario: Webhook failure does not block file delivery

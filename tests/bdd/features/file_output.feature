@@ -76,6 +76,12 @@ Feature: File Output
     And I close the logger
     Then more than one file should exist in the output directory
 
+  Scenario: Rotated backup has timestamp in filename
+    Given a logger with file output configured for 1 MB max size
+    When I write enough events to exceed 1 MB
+    And I close the logger
+    Then a backup file with a timestamp pattern should exist in the output directory
+
   Scenario: Compressed backups have .gz extension
     Given a logger with file output configured for 1 MB max size with compression
     When I write enough events to exceed 1 MB

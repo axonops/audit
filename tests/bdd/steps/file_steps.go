@@ -120,6 +120,11 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFileThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerFileThenBasicSteps(ctx, tc)
+	registerFileThenValidationSteps(ctx, tc)
+}
+
+func registerFileThenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file should contain exactly (\d+) events$`, func(n int) error { return assertFileEventCount(tc, "default", n) })
 	ctx.Step(`^the file should contain an event with event_type "([^"]*)"$`, func(et string) error { return assertFileHasEventType(tc, et) })
 	ctx.Step(`^every event in the file should be valid JSON$`, func() error { return assertFileAllValidJSON(tc) })
@@ -144,6 +149,30 @@ func registerFileThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+	ctx.Step(`^a backup file with a timestamp pattern should exist in the output directory$`, func() error {
+		if tc.Logger != nil {
+			_ = tc.Logger.Close()
+		}
+		entries, readErr := os.ReadDir(tc.FileDir)
+		if readErr != nil {
+			return fmt.Errorf("read dir: %w", readErr)
+		}
+		// Backup files have format: audit-YYYY-MM-DDTHH-MM-SS.SSS.log
+		for _, e := range entries {
+			name := e.Name()
+			if name != "audit.log" && strings.Contains(name, "audit") && len(name) > 15 {
+				return nil // Found a backup with timestamp
+			}
+		}
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		return fmt.Errorf("no backup file with timestamp found (files: %v)", names)
+	})
+}
+
+func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file output construction should fail with error:$`, func(doc *godog.DocString) error {
 		expected := strings.TrimSpace(doc.Content)
 		if tc.LastErr == nil {

@@ -92,11 +92,18 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			DrainTimeout: 100 * time.Millisecond,
 		}, file.Config{})
 	})
-	ctx.Step(`^the close should complete within (\d+) seconds$`, func(maxSecs int) error {
-		// Close was already called by "I close the logger" step.
-		// This step verifies we got here (close didn't hang).
-		// If drain timeout works, close returns within DrainTimeout.
-		return nil
+	ctx.Step(`^closing the logger should complete within (\d+) seconds$`, func(maxSecs int) error {
+		if tc.Logger == nil {
+			return fmt.Errorf("no logger to close")
+		}
+		done := make(chan error, 1)
+		go func() { done <- tc.Logger.Close() }()
+		select {
+		case <-done:
+			return nil
+		case <-time.After(time.Duration(maxSecs) * time.Second):
+			return fmt.Errorf("Close() did not return within %d seconds", maxSecs)
+		}
 	})
 	ctx.Step(`^a logger with no outputs$`, func() error { return createNoOutputLogger(tc) })
 

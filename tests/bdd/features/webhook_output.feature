@@ -247,7 +247,9 @@ Feature: Webhook Output
     And mock webhook metrics are configured
     And a logger with webhook output to the HTTPS receiver with wrong CA and metrics
     When I audit a uniquely marked webhook "user_create" event
+    And I close the logger
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
+    And the HTTPS webhook receiver should have received 0 events
 
   # --- Webhook-specific metrics ---
 

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +51,11 @@ func newTLSWebhookReceiver() *tlsWebhookReceiver {
 	r := &tlsWebhookReceiver{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /events", func(w http.ResponseWriter, req *http.Request) {
-		body, _ := io.ReadAll(req.Body)
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			http.Error(w, "read body: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		r.mu.Lock()
 		// Split NDJSON lines.
 		for _, line := range strings.Split(string(body), "\n") {
@@ -347,8 +352,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			return fmt.Errorf("no TLS webhook receiver configured")
 		}
 		// Use invalid.crt — a valid PEM but different CA than the server's.
-		// BDD tests run from tests/bdd/ so certs are at ../testdata/certs.
-		wrongCA := "../testdata/certs/invalid.crt"
+		wrongCA := filepath.Join(certDir(), "invalid.crt")
 		cfg := &webhook.Config{
 			URL:                r.server.URL + "/events",
 			TLSCA:              wrongCA,
@@ -426,6 +430,18 @@ func registerWebhookThenBodySteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			time.Sleep(200 * time.Millisecond)
 		}
 		return fmt.Errorf("wanted >= %d HTTPS webhook events, got %d after %ds", n, r.eventCount(), timeout)
+	})
+
+	ctx.Step(`^the HTTPS webhook receiver should have received (\d+) events$`, func(expected int) error {
+		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no TLS webhook receiver configured")
+		}
+		got := r.eventCount()
+		if got != expected {
+			return fmt.Errorf("wanted exactly %d HTTPS webhook events, got %d", expected, got)
+		}
+		return nil
 	})
 }
 

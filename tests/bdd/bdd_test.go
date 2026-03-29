@@ -28,11 +28,23 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/cucumber/godog/colors"
+	"go.uber.org/goleak"
 
 	"github.com/axonops/go-audit/tests/bdd/steps"
 )
 
 func TestFeatures(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		// HTTP transport persistent connection goroutines linger
+		// briefly after httptest.Server.Close() and webhook HTTP
+		// clients. These are harmless and cleaned up by the
+		// runtime's connection pool.
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).writeLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*persistConn).readLoop"),
+		goleak.IgnoreAnyFunction("net/http.(*conn).serve"),
+		goleak.IgnoreAnyFunction("internal/poll.runtime_pollWait"),
+		goleak.IgnoreAnyFunction("crypto/tls.(*Conn).Read"),
+	)
 	opts := godog.Options{
 		Output:      colors.Colored(os.Stdout),
 		Format:      "pretty",

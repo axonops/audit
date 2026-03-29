@@ -110,6 +110,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.WebhookMetrics = nil
 	tc.FileMetrics = nil
 	tc.AuditDuration = 0
+	tc.TLSReceiver = nil
 	tc.cleanups = nil
 }
 

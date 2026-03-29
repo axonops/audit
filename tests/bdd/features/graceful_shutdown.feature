@@ -51,8 +51,7 @@ Feature: Graceful Shutdown
   Scenario: Drain timeout does not hang indefinitely
     Given a logger with file output at a temporary path and short drain timeout
     When I audit 100 events rapidly
-    And I close the logger
-    Then the close should complete within 5 seconds
+    Then closing the logger should complete within 5 seconds
 
   Scenario: Concurrent close calls are safe
     Given a logger with file output at a temporary path

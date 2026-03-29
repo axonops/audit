@@ -60,7 +60,9 @@ func configureReceiver(t *testing.T, statusCode int, delayMS int) {
 	resp, err := http.Post(receiverURL+"/configure", "application/json",
 		strings.NewReader(body))
 	require.NoError(t, err)
-	resp.Body.Close()
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"configure endpoint should accept the configuration")
 }
 
 // getEvents returns the events stored in the webhook receiver.
@@ -198,6 +200,43 @@ func TestWebhook_CustomHeaders(t *testing.T) {
 	require.True(t, ok, "event should have headers")
 	assert.Equal(t, "integration-test", headers["X-Audit-Source"],
 		"custom header should be received")
+
+	require.NoError(t, out.Close())
+}
+
+func TestWebhook_NoRetryOn4xx(t *testing.T) {
+	resetReceiver(t)
+	configureReceiver(t, 400, 0) // return 400 Bad Request
+
+	out := newWebhookOutput(t, func(c *webhook.Config) {
+		c.BatchSize = 1
+		c.MaxRetries = 5 // high retry count — should NOT be used for 4xx
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"no_retry_4xx","marker":"first"}`)))
+
+	// Wait for the single delivery attempt.
+	assert.True(t, waitForEvents(t, 1, 5*time.Second),
+		"receiver should store the initial attempt")
+
+	// Verify the received event is ours.
+	events := getEvents(t)
+	require.GreaterOrEqual(t, len(events), 1)
+
+	// Switch to 200 and send a sentinel event. When the sentinel arrives,
+	// we know the output has processed the 4xx response fully. If retries
+	// had occurred, additional events would appear before the sentinel.
+	configureReceiver(t, 200, 0)
+	require.NoError(t, out.Write([]byte(`{"event":"sentinel","marker":"second"}`)))
+
+	// Wait for the sentinel event to arrive.
+	assert.True(t, waitForEvents(t, 2, 5*time.Second),
+		"sentinel event should arrive")
+
+	// Exactly 2 events: the 4xx attempt + the sentinel. No retries.
+	finalEvents := getEvents(t)
+	assert.Equal(t, 2, len(finalEvents),
+		"expected exactly 2 events (initial 4xx attempt + sentinel), got %d", len(finalEvents))
 
 	require.NoError(t, out.Close())
 }

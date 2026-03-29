@@ -111,11 +111,15 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 
 func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with webhook output and metrics$`, func() error {
+		// Pass nil for core metrics to the webhook output — it self-reports
+		// delivery via DeliveryReporter. The core logger's global metrics
+		// (tc.MockMetrics) should NOT record for webhook because
+		// ReportsDelivery() returns true.
 		w, err := webhook.New(&webhook.Config{
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, tc.MockMetrics, nil)
+		}, nil, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}

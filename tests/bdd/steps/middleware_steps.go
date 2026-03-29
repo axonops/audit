@@ -39,7 +39,7 @@ events:
   api_request:
     category: http
     required: [outcome]
-    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id, custom_field]
+    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id, transport_security, custom_field]
 default_enabled:
   - http
 `
@@ -356,13 +356,14 @@ func createPanicBuilderServer(tc *AuditTestContext) error {
 func createTLSTestServer(tc *AuditTestContext, status int) error {
 	builder := func(_ *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 		return "api_request", audit.Fields{
-			"outcome":     "success",
-			"method":      transport.Method,
-			"path":        transport.Path,
-			"status_code": transport.StatusCode,
-			"source_ip":   transport.ClientIP,
-			"user_agent":  transport.UserAgent,
-			"request_id":  transport.RequestID,
+			"outcome":            "success",
+			"method":             transport.Method,
+			"path":               transport.Path,
+			"status_code":        transport.StatusCode,
+			"source_ip":          transport.ClientIP,
+			"user_agent":         transport.UserAgent,
+			"request_id":         transport.RequestID,
+			"transport_security": transport.TransportSecurity,
 		}, false
 	}
 
@@ -453,13 +454,14 @@ func createTestServerWithExtra(tc *AuditTestContext) error {
 
 var defaultEventBuilder = func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
 	fields := audit.Fields{
-		"outcome":     "success",
-		"method":      transport.Method,
-		"path":        transport.Path,
-		"status_code": transport.StatusCode,
-		"source_ip":   transport.ClientIP,
-		"user_agent":  transport.UserAgent,
-		"request_id":  transport.RequestID,
+		"outcome":            "success",
+		"method":             transport.Method,
+		"path":               transport.Path,
+		"status_code":        transport.StatusCode,
+		"source_ip":          transport.ClientIP,
+		"user_agent":         transport.UserAgent,
+		"request_id":         transport.RequestID,
+		"transport_security": transport.TransportSecurity,
 	}
 	if hints != nil && hints.ActorID != "" {
 		fields["actor_id"] = hints.ActorID
@@ -473,13 +475,14 @@ func createTestServer(tc *AuditTestContext, status int, setActorID, skipGET bool
 			return "", nil, true
 		}
 		fields := audit.Fields{
-			"outcome":     "success",
-			"method":      transport.Method,
-			"path":        transport.Path,
-			"status_code": transport.StatusCode,
-			"source_ip":   transport.ClientIP,
-			"user_agent":  transport.UserAgent,
-			"request_id":  transport.RequestID,
+			"outcome":            "success",
+			"method":             transport.Method,
+			"path":               transport.Path,
+			"status_code":        transport.StatusCode,
+			"source_ip":          transport.ClientIP,
+			"user_agent":         transport.UserAgent,
+			"request_id":         transport.RequestID,
+			"transport_security": transport.TransportSecurity,
 		}
 		if setActorID {
 			fields["actor_id"] = "handler-actor"

@@ -124,6 +124,28 @@ Feature: Webhook Output
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
+  Scenario: Private range blocked by default drops events
+    Given a local HTTP webhook receiver
+    And mock webhook metrics are configured
+    And a logger with webhook output to the local receiver without AllowPrivateRanges
+    When I audit a uniquely marked webhook "user_create" event
+    And I close the logger
+    Then the webhook metrics should have recorded at least 1 drop within 5 seconds
+
+  Scenario: AllowPrivateRanges permits private addresses
+    Given a local HTTP webhook receiver
+    And a logger with webhook output to the local receiver with AllowPrivateRanges
+    When I audit a uniquely marked webhook "user_create" event
+    Then the local webhook receiver should have at least 1 event within 5 seconds
+
+  Scenario: Redirect is rejected and not followed
+    Given a local HTTP webhook receiver configured to redirect
+    And mock webhook metrics are configured
+    And a logger with webhook output to the redirecting receiver with metrics
+    When I audit a uniquely marked webhook "user_create" event
+    And I close the logger
+    Then the webhook metrics should have recorded at least 1 drop within 5 seconds
+
   Scenario: Embedded credentials in URL rejected with exact error
     When I try to create a webhook output to "https://user:pass@example.com/events"
     Then the webhook construction should fail with exact error:

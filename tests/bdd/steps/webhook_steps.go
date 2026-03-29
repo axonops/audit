@@ -99,6 +99,52 @@ func (r *tlsWebhookReceiver) caFile() (string, error) {
 	return f.Name(), nil
 }
 
+// localWebhookReceiver is a plain HTTP server that captures events,
+// used for SSRF and redirect tests that don't need Docker.
+type localWebhookReceiver struct {
+	server   *httptest.Server
+	events   []json.RawMessage
+	redirect bool
+	mu       sync.Mutex
+}
+
+func newLocalWebhookReceiver(redirect bool) *localWebhookReceiver {
+	r := &localWebhookReceiver{redirect: redirect}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /events", func(w http.ResponseWriter, req *http.Request) {
+		if r.redirect {
+			http.Redirect(w, req, "/other", http.StatusMovedPermanently)
+			return
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			http.Error(w, "read body: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		r.mu.Lock()
+		for _, line := range strings.Split(string(body), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				r.events = append(r.events, json.RawMessage(line))
+			}
+		}
+		r.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+	r.server = httptest.NewServer(mux)
+	return r
+}
+
+func (r *localWebhookReceiver) eventCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.events)
+}
+
+func (r *localWebhookReceiver) close() {
+	r.server.Close()
+}
+
 // MockWebhookMetrics captures webhook.Metrics calls.
 type MockWebhookMetrics struct {
 	mu      sync.Mutex
@@ -212,6 +258,71 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		if err != nil {
 			tc.LastErr = err
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr
+		}
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
+	registerWebhookGivenSSRFSteps(ctx, tc)
+}
+
+func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a local HTTP webhook receiver$`, func() error {
+		r := newLocalWebhookReceiver(false)
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.close() })
+		return nil
+	})
+
+	ctx.Step(`^a local HTTP webhook receiver configured to redirect$`, func() error {
+		r := newLocalWebhookReceiver(true)
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.close() })
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook output to the local receiver without AllowPrivateRanges$`, func() error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		return createWebhookLoggerSSRF(tc, r.server.URL+"/events", false)
+	})
+
+	ctx.Step(`^a logger with webhook output to the local receiver with AllowPrivateRanges$`, func() error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		return createWebhookLoggerSSRF(tc, r.server.URL+"/events", true)
+	})
+
+	ctx.Step(`^a logger with webhook output to the redirecting receiver with metrics$`, func() error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            2 * time.Second,
+			MaxRetries:         1,
+		}
+		out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+		if err != nil {
+			return fmt.Errorf("create webhook output: %w", err)
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -410,6 +521,7 @@ func registerWebhookThenCountSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 
 func registerWebhookThenAssertSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerWebhookThenBodySteps(ctx, tc)
+	registerWebhookThenLocalReceiverSteps(ctx, tc)
 	registerWebhookThenMetricsAndErrorSteps(ctx, tc)
 }
 
@@ -417,19 +529,23 @@ func registerWebhookThenBodySteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the received webhook event should have header "([^"]*)" with value "([^"]*)"$`, func(n, v string) error { return assertWebhookHeader(tc, n, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertWebhookBodyField(tc, f, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)"$`, func(f string) error { return assertWebhookBodyFieldPresent(tc, f) })
+}
+
+func registerWebhookThenLocalReceiverSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the HTTPS webhook receiver should have at least (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
 		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no TLS webhook receiver configured")
 		}
-		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-		for time.Now().Before(deadline) {
-			if r.eventCount() >= n {
-				return nil
-			}
-			time.Sleep(200 * time.Millisecond)
+		return pollReceiverCount("HTTPS", r.eventCount, n, timeout)
+	})
+
+	ctx.Step(`^the local webhook receiver should have at least (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
 		}
-		return fmt.Errorf("wanted >= %d HTTPS webhook events, got %d after %ds", n, r.eventCount(), timeout)
+		return pollReceiverCount("local", r.eventCount, n, timeout)
 	})
 
 	ctx.Step(`^the HTTPS webhook receiver should have received (\d+) events$`, func(expected int) error {
@@ -735,4 +851,48 @@ func mapKeys(m map[string]any) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func pollReceiverCount(label string, countFn func() int, minCount, timeoutSecs int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		if countFn() >= minCount {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("wanted >= %d %s webhook events, got %d after %ds", minCount, label, countFn(), timeoutSecs)
+}
+
+func createWebhookLoggerSSRF(tc *AuditTestContext, url string, allowPrivate bool) error {
+	cfg := &webhook.Config{
+		URL:                url,
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: allowPrivate,
+		BatchSize:          1,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            2 * time.Second,
+		MaxRetries:         1,
+	}
+	// Avoid passing typed nil pointer as interface (would bypass nil check).
+	var wm webhook.Metrics
+	if tc.WebhookMetrics != nil {
+		wm = tc.WebhookMetrics
+	}
+	out, err := webhook.New(cfg, nil, wm)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(out),
+	}
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
 }

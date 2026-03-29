@@ -51,8 +51,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	Markers   map[string]string // logical name -> unique marker string
 
 	// Docker infrastructure.
-	WebhookURL  string // "http://localhost:8080"
-	TLSReceiver any    // *tlsWebhookReceiver for HTTPS webhook tests
+	WebhookURL    string // "http://localhost:8080"
+	TLSReceiver   any    // *tlsWebhookReceiver for HTTPS webhook tests
+	LocalReceiver any    // *localWebhookReceiver for SSRF/redirect tests
 
 	// Middleware state.
 	TestServer   *httptest.Server
@@ -111,6 +112,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.FileMetrics = nil
 	tc.AuditDuration = 0
 	tc.TLSReceiver = nil
+	tc.LocalReceiver = nil
 	tc.cleanups = nil
 }
 

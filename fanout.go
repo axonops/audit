@@ -72,6 +72,7 @@ func (oe *outputEntry) setRoute(route *EventRoute) {
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
 	}
+	buildRouteSets(cp)
 	oe.route.Store(cp)
 }
 

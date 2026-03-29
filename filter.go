@@ -36,6 +36,8 @@ import (
 // Setting both include and exclude fields on the same route is a
 // bootstrap error. An empty route (all fields nil/empty) delivers all
 // globally-enabled events.
+//
+//nolint:govet // field order: exported fields first for API clarity, then pre-computed sets
 type EventRoute struct {
 	// IncludeCategories lists category names to allow. Events whose
 	// category is in this list are delivered. Mutually exclusive with
@@ -56,6 +58,15 @@ type EventRoute struct {
 	// type is in this list are skipped regardless of category.
 	// Mutually exclusive with IncludeCategories and IncludeEventTypes.
 	ExcludeEventTypes []string
+
+	// Pre-computed sets for O(1) lookup, populated by buildRouteSets.
+	// Nil when the route was constructed without buildRouteSets (e.g.
+	// direct struct literal in tests); MatchesRoute falls back to
+	// slices.Contains in that case.
+	includeCatSet map[string]struct{}
+	includeEvtSet map[string]struct{}
+	excludeCatSet map[string]struct{}
+	excludeEvtSet map[string]struct{}
 }
 
 // IsEmpty reports whether all route fields are empty, meaning the
@@ -119,25 +130,60 @@ func checkEventTypes(unknown, evts []string, taxonomy *Taxonomy) []string {
 	return unknown
 }
 
+// buildRouteSets populates the pre-computed lookup sets on the route
+// for O(1) matching in MatchesRoute. Called by setRoute in fanout.go.
+func buildRouteSets(r *EventRoute) {
+	r.includeCatSet = toSet(r.IncludeCategories)
+	r.includeEvtSet = toSet(r.IncludeEventTypes)
+	r.excludeCatSet = toSet(r.ExcludeCategories)
+	r.excludeEvtSet = toSet(r.ExcludeEventTypes)
+}
+
+// toSet converts a string slice to a set. Returns nil for empty slices.
+func toSet(ss []string) map[string]struct{} {
+	if len(ss) == 0 {
+		return nil
+	}
+	m := make(map[string]struct{}, len(ss))
+	for _, s := range ss {
+		m[s] = struct{}{}
+	}
+	return m
+}
+
 // MatchesRoute reports whether an event should be delivered to an
 // output with the given route. eventType is the event name, category
 // is its taxonomy category. An empty route matches all events.
+//
+// When pre-computed sets are available (route created via setRoute),
+// lookups are O(1). Falls back to slices.Contains for routes
+// constructed as direct struct literals.
 func MatchesRoute(route *EventRoute, eventType, category string) bool {
 	if route.IsEmpty() {
 		return true
 	}
 
 	if route.isIncludeMode() {
-		return slices.Contains(route.IncludeCategories, category) ||
-			slices.Contains(route.IncludeEventTypes, eventType)
+		return inSet(route.includeCatSet, route.IncludeCategories, category) ||
+			inSet(route.includeEvtSet, route.IncludeEventTypes, eventType)
 	}
 
 	// Exclude mode.
-	if slices.Contains(route.ExcludeCategories, category) ||
-		slices.Contains(route.ExcludeEventTypes, eventType) {
+	if inSet(route.excludeCatSet, route.ExcludeCategories, category) ||
+		inSet(route.excludeEvtSet, route.ExcludeEventTypes, eventType) {
 		return false
 	}
 	return true
+}
+
+// inSet checks membership using the pre-computed set if available,
+// falling back to slices.Contains for routes without pre-computed sets.
+func inSet(set map[string]struct{}, fallback []string, key string) bool {
+	if set != nil {
+		_, ok := set[key]
+		return ok
+	}
+	return slices.Contains(fallback, key)
 }
 
 // filterState tracks which categories and individual event types are

@@ -125,6 +125,19 @@ Feature: Per-Output Event Routing
     Then the webhook receiver should have at least 2 events within 5 seconds
     And I close the logger
 
+  Scenario: Exclude event types and categories form union
+    Given a logger with file receiving all events and webhook excluding categories "read" and event types "config_update"
+    When I audit a "user_create" event in category "write" with marker "exc_union_w"
+    And I audit a "config_update" event in category "write" with marker "exc_union_cu"
+    And I audit a "user_get" event in category "read" with marker "exc_union_r"
+    And I audit an "auth_failure" event in category "security" with marker "exc_union_s"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "exc_union_w"
+    And the file should contain "exc_union_cu"
+    And the file should contain "exc_union_r"
+    And the file should contain "exc_union_s"
+
   Scenario: ClearOutputRoute resets to all events
     Given a logger with file receiving all events and webhook receiving only "security"
     When I clear the webhook output route

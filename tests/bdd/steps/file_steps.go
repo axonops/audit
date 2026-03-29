@@ -193,7 +193,7 @@ func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 	ctx.Step(`^a \.gz backup file should exist in the output directory$`, func() error { return assertGzFileExists(tc) })
 	ctx.Step(`^no \.gz files should exist in the output directory$`, func() error { return assertNoGzFiles(tc) })
 	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(field string) error { return assertFileEventFieldPresent(tc, field) })
-	ctx.Step(`^the file metrics should have recorded at least (\d+) rotation$`, func(n int) error { return assertFileRotationCount(tc, n) })
+	ctx.Step(`^the file metrics should have recorded at least (\d+) rotations?$`, func(n int) error { return assertFileRotationCount(tc, n) })
 }
 
 // --- Extracted step implementations ---

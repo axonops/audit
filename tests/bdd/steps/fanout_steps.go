@@ -122,6 +122,12 @@ func registerFanoutGivenRoutingSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat1, cat2}})
 	})
+	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)" and event types "([^"]*)"$`, func(cat, types string) error {
+		return createRoutedLogger(tc, &audit.EventRoute{
+			ExcludeCategories: []string{cat},
+			ExcludeEventTypes: strings.Split(types, ","),
+		})
+	})
 	ctx.Step(`^a logger with file receiving all events and webhook excluding event types "([^"]*)"$`, func(types string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{ExcludeEventTypes: strings.Split(types, ",")})
 	})

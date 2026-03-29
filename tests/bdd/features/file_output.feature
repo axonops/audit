@@ -149,6 +149,13 @@ Feature: File Output
     And I close the logger
     Then at most 3 files should exist in the output directory
 
+  Scenario: Multiple rotations trigger multiple metric callbacks
+    Given mock file metrics are configured
+    And a logger with file output configured for 1 MB max size with file metrics
+    When I write enough events to exceed 3 MB
+    And I close the logger
+    Then the file metrics should have recorded at least 2 rotations
+
   Scenario: Nil file metrics does not panic on rotation
     Given a logger with file output configured for 1 MB max size
     When I write enough events to exceed 1 MB

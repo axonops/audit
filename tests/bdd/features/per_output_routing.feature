@@ -51,3 +51,59 @@ Feature: Per-Output Event Routing
   Scenario: Route referencing unknown category is rejected
     When I try to create a logger with route referencing unknown category
     Then the logger construction should fail with an error
+
+  # --- Include union ---
+
+  Scenario: Include categories and event types form union
+    Given a logger with file receiving all events and webhook including categories "write" and event types "auth_failure"
+    When I audit a "user_create" event in category "write" with marker "union_w"
+    And I audit an "auth_failure" event in category "security" with marker "union_s"
+    And I audit a "permission_denied" event in category "security" with marker "union_p"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "union_w"
+    And the file should contain "union_s"
+    And the file should contain "union_p"
+
+  # --- Exclude event types ---
+
+  Scenario: Exclude event types removes specific events
+    Given a logger with file receiving all events and webhook excluding event types "user_create"
+    When I audit a "user_create" event in category "write" with marker "excevt_w"
+    And I audit an "auth_failure" event in category "security" with marker "excevt_s"
+    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the logger
+    And the file should contain "excevt_w"
+    And the file should contain "excevt_s"
+
+  # --- Empty route ---
+
+  Scenario: Empty route delivers all globally enabled events
+    Given a logger with file and webhook both receiving all events
+    When I audit a "user_create" event in category "write" with marker "empty_w"
+    And I audit an "auth_failure" event in category "security" with marker "empty_s"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+    And the file should contain "empty_w"
+    And the file should contain "empty_s"
+
+  # --- Runtime changes ---
+
+  Scenario: SetOutputRoute changes routing at runtime
+    Given a logger with file and webhook both receiving all events
+    When I audit a "user_create" event in category "write" with marker "pre_route"
+    And the webhook receiver should have at least 1 event within 5 seconds
+    And I set the webhook output route to include only "security"
+    And I audit an "auth_failure" event in category "security" with marker "post_route_s"
+    And I audit a "user_create" event in category "write" with marker "post_route_w"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+    And I close the logger
+
+  # --- Global filter precedence ---
+
+  Scenario: Global filter takes precedence over per-output route
+    Given a logger with file receiving all events and webhook receiving only "security"
+    When I disable category "security"
+    And I audit an "auth_failure" event in category "security" with marker "global_sec"
+    And I close the logger
+    Then the file should not contain "global_sec"

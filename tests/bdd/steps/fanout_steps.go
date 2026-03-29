@@ -94,6 +94,41 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)"$`, func(cat string) error {
 		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat}})
 	})
+	ctx.Step(`^a logger with file receiving all events and webhook including categories "([^"]*)" and event types "([^"]*)"$`, func(cats, types string) error {
+		return createRoutedLogger(tc, &audit.EventRoute{
+			IncludeCategories: strings.Split(cats, ","),
+			IncludeEventTypes: strings.Split(types, ","),
+		})
+	})
+	ctx.Step(`^a logger with file receiving all events and webhook excluding event types "([^"]*)"$`, func(types string) error {
+		return createRoutedLogger(tc, &audit.EventRoute{ExcludeEventTypes: strings.Split(types, ",")})
+	})
+	ctx.Step(`^a logger with file and webhook both receiving all events$`, func() error {
+		return createRoutedLogger(tc, nil) // nil route = all events
+	})
+	ctx.Step(`^I set the webhook output route to include only "([^"]*)"$`, func(cat string) error {
+		// Webhook output name is "webhook:<host:port>" (from url.Parse).
+		// tc.WebhookURL is "http://localhost:8080", so name is "webhook:localhost:8080".
+		u := strings.TrimPrefix(tc.WebhookURL, "http://")
+		u = strings.TrimPrefix(u, "https://")
+		return tc.Logger.SetOutputRoute(
+			"webhook:"+u,
+			&audit.EventRoute{IncludeCategories: []string{cat}},
+		)
+	})
+	ctx.Step(`^I disable category "([^"]*)"$`, func(cat string) error {
+		return tc.Logger.DisableCategory(cat)
+	})
+	ctx.Step(`^the file should not contain "([^"]*)"$`, func(text string) error {
+		raw, err := readRawFile(tc, "default")
+		if err != nil {
+			return err
+		}
+		if strings.Contains(raw, text) {
+			return fmt.Errorf("file unexpectedly contains %q", text)
+		}
+		return nil
+	})
 }
 
 func registerFanoutWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

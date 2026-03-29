@@ -1,0 +1,40 @@
+# syslog-ng service for go-audit integration tests.
+#
+# Listeners:
+#   5514 — TCP plain
+#   5515 — UDP
+#   6514 — TCP+TLS (server cert from test CA)
+#   6515 — TCP+mTLS (require client cert verified against test CA)
+#
+# Received messages are written to the syslog-logs volume at
+# /var/log/syslog-ng/audit.log for test verification.
+
+services:
+  syslog-ng:
+    image: balabit/syslog-ng:4.2.0
+    ports:
+      - "127.0.0.1:5514:5514"     # TCP plain
+      - "127.0.0.1:5515:5515/udp" # UDP
+      - "127.0.0.1:6514:6514"     # TCP+TLS
+      - "127.0.0.1:6515:6515"     # TCP+mTLS
+    volumes:
+      - ./docker/syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
+      - ../testdata/certs/server.crt:/etc/syslog-ng/certs/server.crt:ro
+      - ../testdata/certs/server.key:/etc/syslog-ng/certs/server.key:ro
+      - ../testdata/certs/ca.crt:/etc/syslog-ng/certs/ca.crt:ro
+      - syslog-logs:/var/log/syslog-ng
+    networks:
+      - audit-test
+    healthcheck:
+      test: ["CMD-SHELL", "syslog-ng-ctl stats || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  syslog-logs:
+
+networks:
+  audit-test:
+    external: true

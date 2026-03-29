@@ -5,7 +5,8 @@
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
        security release-check check clean \
-       install-tools workspace generate-certs
+       install-tools workspace generate-certs \
+       test-infra-up test-infra-down test-infra-logs
 
 # --- Configuration ---
 
@@ -215,3 +216,19 @@ clean:
 
 generate-certs:
 	scripts/generate-test-certs.sh
+
+# --- Test infrastructure (Docker) ---
+
+COMPOSE_DIR := tests/bdd
+
+test-infra-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.full.yml up -d --build --wait
+	@echo "Test infrastructure is ready."
+
+test-infra-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.full.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-logs:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.full.yml logs

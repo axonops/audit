@@ -5,7 +5,7 @@
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
        security release-check check clean \
-       install-tools workspace
+       install-tools workspace generate-certs
 
 # --- Configuration ---
 
@@ -210,3 +210,8 @@ clean:
 		rm -f $$mod/coverage.out $$mod/coverage.html; \
 	done
 	rm -f bench.txt
+
+# --- Certificate generation ---
+
+generate-certs:
+	scripts/generate-test-certs.sh

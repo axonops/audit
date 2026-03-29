@@ -164,6 +164,13 @@ Feature: Event Formatters
     Then the file should contain a line starting with "CEF:0|"
     And every event in the file should have exactly 1 line
 
+  Scenario: CEF control characters stripped from extension values
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with a field containing control characters
+    And I close the logger
+    Then the file should contain a line starting with "CEF:0|"
+    And every event in the file should have exactly 1 line
+
   Scenario: Per-output formatter overrides default
     Given a logger with two file outputs using JSON and CEF formatters
     When I audit event "user_create" with required fields

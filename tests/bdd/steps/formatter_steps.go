@@ -283,6 +283,13 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		return nil
 	})
 
+	ctx.Step(`^I audit event "([^"]*)" with a field containing control characters$`, func(eventType string) error {
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = "before\x01\x02\x03after"
+		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		return nil
+	})
+
 	ctx.Step(`^I audit event "([^"]*)" with a field containing invalid UTF-8$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "bad\xfe\xffbyte"

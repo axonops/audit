@@ -52,7 +52,7 @@ const MaxOutputCount = 100
 
 // LoadResult holds the outputs and options produced by [Load], ready
 // to be passed to [audit.NewLogger].
-type LoadResult struct {
+type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 	// Options contains one [audit.WithNamedOutput] per configured
 	// output, plus an optional [audit.WithFormatter] for the default
 	// formatter. Pass these directly to [audit.NewLogger].
@@ -69,7 +69,7 @@ type LoadResult struct {
 
 // NamedOutput pairs a constructed output with its config-level name
 // and resolved formatter and route.
-type NamedOutput struct {
+type NamedOutput struct { //nolint:govet // fieldalignment: readability preferred
 	Name      string
 	Output    audit.Output
 	Route     *audit.EventRoute
@@ -89,7 +89,7 @@ type NamedOutput struct {
 // Environment variable substitution (${VAR} and ${VAR:-default}) runs
 // on string values in the parsed YAML tree, NOT on raw bytes. This
 // prevents YAML injection via env var values.
-func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*LoadResult, error) {
+func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8 phases
 	// Phase 1: Size check.
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrOutputConfigInvalid)
@@ -103,7 +103,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	var doc yaml.Node
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrOutputConfigInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
 	}
 
 	// Phase 3: Reject multi-document.
@@ -111,74 +111,27 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	if err := dec.Decode(&discard); err == nil {
 		return nil, fmt.Errorf("%w: multiple YAML documents", ErrOutputConfigInvalid)
 	} else if !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%w: trailing content: %v", ErrOutputConfigInvalid, err)
+		return nil, fmt.Errorf("%w: trailing content: %w", ErrOutputConfigInvalid, err)
 	}
 
-	// Phase 4: Walk root mapping node manually to extract fields
-	// while preserving the outputs node as raw yaml.Node.
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
-		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
-	}
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%w: expected a YAML mapping at top level", ErrOutputConfigInvalid)
-	}
-
-	var (
-		version        int
-		defaultFmtNode *yaml.Node
-		outputsNode    *yaml.Node
-	)
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key := root.Content[i].Value
-		val := root.Content[i+1]
-		switch key {
-		case "version":
-			if err := val.Decode(&version); err != nil {
-				return nil, fmt.Errorf("%w: version: %v", ErrOutputConfigInvalid, err)
-			}
-		case "default_formatter":
-			defaultFmtNode = val
-		case "outputs":
-			outputsNode = val
-		default:
-			return nil, fmt.Errorf("%w: unknown top-level key %q", ErrOutputConfigInvalid, key)
-		}
-	}
-
-	// Phase 5: Validate version.
-	if version != 1 {
-		return nil, fmt.Errorf("%w: unsupported version %d (expected 1)",
-			ErrOutputConfigInvalid, version)
-	}
-
-	// Phase 6: Resolve default formatter (with env var expansion).
-	var defaultFmt audit.Formatter
-	if defaultFmtNode != nil {
-		if err := expandEnvInNode(defaultFmtNode, "default_formatter"); err != nil {
-			return nil, fmt.Errorf("%w: default_formatter: %v",
-				ErrOutputConfigInvalid, err)
-		}
-		var err error
-		defaultFmt, err = buildFormatter(defaultFmtNode)
-		if err != nil {
-			return nil, fmt.Errorf("%w: default_formatter: %v",
-				ErrOutputConfigInvalid, err)
-		}
+	// Phase 4-6: Parse top-level fields, validate version, resolve formatter.
+	top, err := parseTopLevel(&doc)
+	if err != nil {
+		return nil, err
 	}
 
 	// Phase 7: Process outputs from the raw YAML node (preserves order,
 	// detects duplicate names).
-	if outputsNode == nil {
+	if top.outputsNode == nil {
 		return nil, fmt.Errorf("%w: at least one output is required",
 			ErrOutputConfigInvalid)
 	}
-	if outputsNode.Kind != yaml.MappingNode {
+	if top.outputsNode.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("%w: outputs must be a YAML mapping",
 			ErrOutputConfigInvalid)
 	}
 
-	outputNodes := outputsNode.Content
+	outputNodes := top.outputsNode.Content
 	if len(outputNodes) == 0 {
 		return nil, fmt.Errorf("%w: at least one output is required",
 			ErrOutputConfigInvalid)
@@ -217,7 +170,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		no, err := buildOutput(name, valueNode, taxonomy, coreMetrics)
 		if err != nil {
 			closeAll(outputs)
-			return nil, fmt.Errorf("%w: %v", ErrOutputConfigInvalid, err)
+			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
 		}
 		if no == nil {
 			continue // enabled: false
@@ -234,10 +187,10 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	// Phase 8: Build Options slice.
 	result := &LoadResult{
 		Outputs:          outputs,
-		DefaultFormatter: defaultFmt,
+		DefaultFormatter: top.defaultFmt,
 	}
-	if defaultFmt != nil {
-		result.Options = append(result.Options, audit.WithFormatter(defaultFmt))
+	if top.defaultFmt != nil {
+		result.Options = append(result.Options, audit.WithFormatter(top.defaultFmt))
 	}
 	for i := range outputs {
 		result.Options = append(result.Options,
@@ -245,6 +198,63 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	}
 
 	return result, nil
+}
+
+// topLevel holds parsed top-level YAML fields.
+type topLevel struct {
+	outputsNode *yaml.Node
+	defaultFmt  audit.Formatter
+}
+
+// parseTopLevel extracts and validates top-level YAML fields.
+func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop // YAML field dispatch
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("%w: expected a YAML mapping at top level", ErrOutputConfigInvalid)
+	}
+
+	var (
+		version        int
+		defaultFmtNode *yaml.Node
+		result         topLevel
+	)
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key := root.Content[i].Value
+		val := root.Content[i+1]
+		switch key {
+		case "version":
+			if err := val.Decode(&version); err != nil {
+				return nil, fmt.Errorf("%w: version: %w", ErrOutputConfigInvalid, err)
+			}
+		case "default_formatter":
+			defaultFmtNode = val
+		case "outputs":
+			result.outputsNode = val
+		default:
+			return nil, fmt.Errorf("%w: unknown top-level key %q", ErrOutputConfigInvalid, key)
+		}
+	}
+
+	if version != 1 {
+		return nil, fmt.Errorf("%w: unsupported version %d (expected 1)",
+			ErrOutputConfigInvalid, version)
+	}
+
+	if defaultFmtNode != nil {
+		if err := expandEnvInNode(defaultFmtNode, "default_formatter"); err != nil {
+			return nil, fmt.Errorf("%w: default_formatter: %w", ErrOutputConfigInvalid, err)
+		}
+		var err error
+		result.defaultFmt, err = buildFormatter(defaultFmtNode)
+		if err != nil {
+			return nil, fmt.Errorf("%w: default_formatter: %w", ErrOutputConfigInvalid, err)
+		}
+	}
+
+	return &result, nil
 }
 
 // yamlRoute maps to [audit.EventRoute] fields.
@@ -256,7 +266,7 @@ type yamlRoute struct {
 }
 
 // outputFields holds parsed fields from a single output YAML node.
-type outputFields struct {
+type outputFields struct { //nolint:govet // fieldalignment: readability preferred
 	typeName       string
 	enabled        bool
 	routeNode      *yaml.Node
@@ -274,8 +284,8 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMet
 	if !fields.enabled {
 		return nil, nil //nolint:nilnil // nil signals disabled output
 	}
-	if err := expandOutputEnvVars(name, fields); err != nil {
-		return nil, err
+	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
+		return nil, expandErr
 	}
 	output, err := invokeFactory(name, fields, coreMetrics)
 	if err != nil {
@@ -292,7 +302,7 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMet
 	return &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter}, nil
 }
 
-func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) {
+func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { //nolint:gocognit,gocyclo,cyclop // YAML field extraction with validation
 	if node.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("output %q: expected a YAML mapping", name)
 	}

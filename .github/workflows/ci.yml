@@ -149,6 +149,9 @@ jobs:
           - module: webhook
             target: test-webhook
             flag: webhook
+          - module: outputconfig
+            target: test-outputconfig
+            flag: outputconfig
           - module: cmd/audit-gen
             target: test-audit-gen
             flag: audit-gen

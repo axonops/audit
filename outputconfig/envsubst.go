@@ -41,7 +41,7 @@ func expandEnvInNode(node *yaml.Node, fieldPath string) error {
 	return expandEnvInNodeVisited(node, fieldPath, make(map[*yaml.Node]bool))
 }
 
-func expandEnvInNodeVisited(node *yaml.Node, fieldPath string, visited map[*yaml.Node]bool) error {
+func expandEnvInNodeVisited(node *yaml.Node, fieldPath string, visited map[*yaml.Node]bool) error { //nolint:gocognit,gocyclo,cyclop // tree walking is inherently complex
 	if node == nil || visited[node] {
 		return nil
 	}
@@ -102,7 +102,7 @@ func expandEnvInNodeVisited(node *yaml.Node, fieldPath string, visited map[*yaml
 
 // expandEnvString expands ${VAR} and ${VAR:-default} in a single string.
 // Returns an error if a variable is unset and has no default.
-func expandEnvString(s, fieldPath string) (string, error) {
+func expandEnvString(s, fieldPath string) (string, error) { //nolint:gocognit,gocyclo,cyclop // string parsing with escape handling
 	if !strings.Contains(s, "${") {
 		return s, nil
 	}

@@ -25,7 +25,7 @@ import (
 // yamlFormatterConfig is the YAML representation of a formatter.
 // CEF SeverityFunc, DescriptionFunc, and FieldMapping are NOT
 // configurable via YAML — they require Go code.
-type yamlFormatterConfig struct {
+type yamlFormatterConfig struct { //nolint:govet // fieldalignment: readability preferred
 	Type      string `yaml:"type"`
 	Timestamp string `yaml:"timestamp"`
 	OmitEmpty bool   `yaml:"omit_empty"`
@@ -55,15 +55,15 @@ func buildFormatter(node *yaml.Node) (audit.Formatter, error) {
 
 	switch cfg.Type {
 	case "json", "":
-		return buildJSONFormatter(cfg)
+		return buildJSONFormatter(&cfg)
 	case "cef":
-		return buildCEFFormatter(cfg)
+		return buildCEFFormatter(&cfg)
 	default:
 		return nil, fmt.Errorf("formatter: unknown type %q (valid: json, cef)", cfg.Type)
 	}
 }
 
-func buildJSONFormatter(cfg yamlFormatterConfig) (*audit.JSONFormatter, error) {
+func buildJSONFormatter(cfg *yamlFormatterConfig) (*audit.JSONFormatter, error) {
 	// Reject CEF-specific fields on a JSON formatter.
 	if cfg.Vendor != "" || cfg.Product != "" || cfg.Version != "" {
 		return nil, fmt.Errorf("formatter: json does not support vendor/product/version options")
@@ -85,7 +85,7 @@ func buildJSONFormatter(cfg yamlFormatterConfig) (*audit.JSONFormatter, error) {
 	}, nil
 }
 
-func buildCEFFormatter(cfg yamlFormatterConfig) (*audit.CEFFormatter, error) {
+func buildCEFFormatter(cfg *yamlFormatterConfig) (*audit.CEFFormatter, error) {
 	// Reject JSON-specific fields on a CEF formatter.
 	if cfg.Timestamp != "" {
 		return nil, fmt.Errorf("formatter: cef does not support timestamp option (got %q)", cfg.Timestamp)

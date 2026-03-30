@@ -1,0 +1,72 @@
+name: Security Scan
+
+# Scheduled scan for newly disclosed vulnerabilities in dependencies.
+# Runs weekly on Monday at 06:00 UTC regardless of code changes.
+# Complements the per-push govulncheck in ci.yml.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  govulncheck:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work
+        run: make workspace
+
+      - name: Cache Go tools
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ~/go/bin
+          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install tools
+        run: make install-tools
+
+      - name: Run govulncheck
+        id: scan
+        run: |
+          set +e
+          make security > /tmp/vulncheck.txt 2>&1
+          EXIT_CODE=$?
+          cat /tmp/vulncheck.txt
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Create issue on vulnerability
+        if: steps.scan.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY="## Scheduled govulncheck found vulnerabilities
+
+          \`\`\`
+          $(cat /tmp/vulncheck.txt)
+          \`\`\`
+
+          **Action required**: Review the vulnerabilities above, update affected
+          dependencies, and verify with \`make security\`.
+
+          This issue was created automatically by the weekly security scan workflow."
+
+          gh issue create \
+            --title "security: govulncheck found vulnerabilities ($(date +%Y-%m-%d))" \
+            --label "security" \
+            --body "$BODY"

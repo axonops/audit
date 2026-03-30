@@ -1,0 +1,16 @@
+version: 1
+default_formatter:
+  type: json
+  timestamp: rfc3339nano
+outputs:
+  console:
+    type: stdout
+  audit_log:
+    type: file
+    file:
+      path: "${AUDIT_TEST_DIR}/audit.log"
+      permissions: "0600"
+    route:
+      include_categories:
+        - write
+        - security

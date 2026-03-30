@@ -17,6 +17,7 @@ package main
 import "strings"
 
 // acronyms maps lowercase tokens to their canonical all-caps Go form.
+// This map is read-only after initialisation.
 var acronyms = map[string]string{
 	"api":  "API",
 	"ca":   "CA",

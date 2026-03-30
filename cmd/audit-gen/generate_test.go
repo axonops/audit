@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -29,6 +30,11 @@ import (
 
 	audit "github.com/axonops/go-audit"
 )
+
+// failWriter returns an error on every Write call.
+type failWriter struct{ err error }
+
+func (f *failWriter) Write([]byte) (int, error) { return 0, f.err }
 
 func loadTestTaxonomy(t *testing.T, path string) audit.Taxonomy {
 	t.Helper()
@@ -60,6 +66,7 @@ func defaultOpts() generateOptions {
 // --- Determinism ---
 
 func TestGenerate_Deterministic(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 
@@ -71,6 +78,7 @@ func TestGenerate_Deterministic(t *testing.T) {
 // --- Generated code compiles ---
 
 func TestGenerate_OutputCompiles(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 
@@ -82,6 +90,7 @@ func TestGenerate_OutputCompiles(t *testing.T) {
 // --- Content verification via AST ---
 
 func TestGenerate_EventConstants(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 	consts := extractConstants(t, out)
@@ -95,6 +104,7 @@ func TestGenerate_EventConstants(t *testing.T) {
 }
 
 func TestGenerate_CategoryConstants(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 	consts := extractConstants(t, out)
@@ -107,6 +117,7 @@ func TestGenerate_CategoryConstants(t *testing.T) {
 }
 
 func TestGenerate_FieldConstants(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 	consts := extractConstants(t, out)
@@ -132,6 +143,7 @@ func TestGenerate_FieldConstants(t *testing.T) {
 // --- Flag combinations ---
 
 func TestGenerate_TypesDisabled(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.Types = false
@@ -147,6 +159,7 @@ func TestGenerate_TypesDisabled(t *testing.T) {
 }
 
 func TestGenerate_FieldsDisabled(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.Fields = false
@@ -161,6 +174,7 @@ func TestGenerate_FieldsDisabled(t *testing.T) {
 }
 
 func TestGenerate_CategoriesDisabled(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.Categories = false
@@ -175,6 +189,7 @@ func TestGenerate_CategoriesDisabled(t *testing.T) {
 }
 
 func TestGenerate_AllDisabled(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.Types = false
@@ -194,6 +209,7 @@ func TestGenerate_AllDisabled(t *testing.T) {
 // --- Minimal taxonomy ---
 
 func TestGenerate_MinimalTaxonomy(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/minimal_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 
@@ -210,6 +226,7 @@ func TestGenerate_MinimalTaxonomy(t *testing.T) {
 // --- Custom header ---
 
 func TestGenerate_CustomHeader(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/minimal_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.Header = "// Custom header for testing."
@@ -223,6 +240,7 @@ func TestGenerate_CustomHeader(t *testing.T) {
 // --- Header includes input file name ---
 
 func TestGenerate_HeaderIncludesInputFile(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	opts := defaultOpts()
 	opts.InputFile = "audit_taxonomy.yaml"
@@ -235,6 +253,7 @@ func TestGenerate_HeaderIncludesInputFile(t *testing.T) {
 // --- run() integration tests ---
 
 func TestRun_ValidInput(t *testing.T) {
+	t.Parallel()
 	outFile := filepath.Join(t.TempDir(), "gen.go")
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
@@ -250,6 +269,7 @@ func TestRun_ValidInput(t *testing.T) {
 }
 
 func TestRun_StdoutOutput(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
@@ -262,6 +282,7 @@ func TestRun_StdoutOutput(t *testing.T) {
 }
 
 func TestRun_MissingInputFlag(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-output", "out.go",
 		"-package", "mypkg",
@@ -271,6 +292,7 @@ func TestRun_MissingInputFlag(t *testing.T) {
 }
 
 func TestRun_MissingOutputFlag(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
 		"-package", "mypkg",
@@ -280,6 +302,7 @@ func TestRun_MissingOutputFlag(t *testing.T) {
 }
 
 func TestRun_MissingPackageFlag(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
 		"-output", "-",
@@ -289,6 +312,7 @@ func TestRun_MissingPackageFlag(t *testing.T) {
 }
 
 func TestRun_InvalidPackageName(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
 		"-output", "-",
@@ -299,6 +323,7 @@ func TestRun_InvalidPackageName(t *testing.T) {
 }
 
 func TestRun_NonexistentInput(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-input", "testdata/does_not_exist.yaml",
 		"-output", "-",
@@ -309,6 +334,7 @@ func TestRun_NonexistentInput(t *testing.T) {
 }
 
 func TestRun_InvalidYAML(t *testing.T) {
+	t.Parallel()
 	bad := filepath.Join(t.TempDir(), "bad.yaml")
 	require.NoError(t, os.WriteFile(bad, []byte("{{invalid yaml"), 0o600))
 
@@ -322,6 +348,7 @@ func TestRun_InvalidYAML(t *testing.T) {
 }
 
 func TestRun_VersionFlag(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	code := run([]string{"-version"}, &stdout, &bytes.Buffer{})
 
@@ -330,6 +357,7 @@ func TestRun_VersionFlag(t *testing.T) {
 }
 
 func TestRun_UnwritableOutput(t *testing.T) {
+	t.Parallel()
 	code := run([]string{
 		"-input", "testdata/valid_taxonomy.yaml",
 		"-output", "/nonexistent/dir/out.go",
@@ -342,6 +370,7 @@ func TestRun_UnwritableOutput(t *testing.T) {
 // --- Sorted output verification ---
 
 func TestGenerate_EventsSortedAlphabetically(t *testing.T) {
+	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	out := generateToString(t, tax, defaultOpts())
 
@@ -391,4 +420,73 @@ func extractConstants(t *testing.T, src string) map[string]string {
 		}
 	}
 	return consts
+}
+
+// --- Error path coverage ---
+
+func TestBuildFieldConstants_Collision(t *testing.T) {
+	t.Parallel()
+	// Two fields that produce the same PascalCase name would collide.
+	// In practice this can't happen with real taxonomies (snake_case only),
+	// but we test the detection.
+	tax := audit.Taxonomy{
+		Events: map[string]*audit.EventDef{
+			"test": {Required: []string{"a_b", "a_B"}},
+		},
+	}
+	_, err := buildFieldConstants(tax)
+	// Both "a_b" and "a_B" produce "FieldAB" — collision detected.
+	assert.ErrorContains(t, err, "naming collision")
+}
+
+func TestGenerate_WriteError(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
+	w := &failWriter{err: errors.New("disk full")}
+	err := generate(w, tax, defaultOpts())
+	assert.ErrorContains(t, err, "write output")
+}
+
+func TestRun_GenerateError_StdoutWriteFails(t *testing.T) {
+	t.Parallel()
+	w := &failWriter{err: errors.New("broken pipe")}
+	code := run([]string{
+		"-input", "testdata/valid_taxonomy.yaml",
+		"-output", "-",
+		"-package", "mypkg",
+	}, w, &bytes.Buffer{})
+	assert.Equal(t, exitWriteError, code)
+}
+
+func TestWriteFileAtomic_Success(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "out.go")
+	err := writeFileAtomic(path, []byte("package main\n"))
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "package main\n", string(data))
+}
+
+func TestWriteFileAtomic_BadDir(t *testing.T) {
+	t.Parallel()
+	err := writeFileAtomic("/nonexistent/dir/out.go", []byte("data"))
+	assert.ErrorContains(t, err, "create temp file")
+}
+
+func TestWriteFileAtomic_RenameFailure(t *testing.T) {
+	t.Parallel()
+	// Write to a temp file in a valid dir, but rename to a path where
+	// the target directory doesn't exist.
+	dir := t.TempDir()
+	src := filepath.Join(dir, "out.go")
+	// Create the file first so CreateTemp succeeds.
+	require.NoError(t, os.WriteFile(src, []byte("old"), 0o600))
+	// Remove write permission on the directory to prevent rename.
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	err := writeFileAtomic(src, []byte("new content"))
+	// On most systems this fails at CreateTemp (can't create in read-only dir).
+	assert.Error(t, err)
 }

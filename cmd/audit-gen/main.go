@@ -29,6 +29,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"go/token"
@@ -134,7 +135,7 @@ func execute(cfg cliConfig, stdout, stderr io.Writer) int {
 		opts.InputFile = "" // custom header overrides auto-generated one
 	}
 
-	var buf bytesBuffer
+	var buf bytes.Buffer
 	if err := generate(&buf, tax, opts); err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: generate: %v\n", err)
 		return exitWriteError
@@ -180,18 +181,4 @@ func writeFileAtomic(path string, data []byte) error {
 		return fmt.Errorf("rename to %s: %w", path, err)
 	}
 	return nil
-}
-
-// bytesBuffer wraps bytes.Buffer to satisfy io.Writer without importing bytes.
-type bytesBuffer struct {
-	data []byte
-}
-
-func (b *bytesBuffer) Write(p []byte) (int, error) {
-	b.data = append(b.data, p...)
-	return len(p), nil
-}
-
-func (b *bytesBuffer) Bytes() []byte {
-	return b.data
 }

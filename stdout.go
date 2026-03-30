@@ -21,6 +21,16 @@ import (
 	"sync"
 )
 
+func init() {
+	RegisterOutputFactory("stdout", func(name string, _ []byte, _ Metrics) (Output, error) {
+		out, err := NewStdoutOutput(StdoutConfig{})
+		if err != nil {
+			return nil, err
+		}
+		return WrapOutput(out, name), nil
+	})
+}
+
 // StdoutConfig holds configuration for [StdoutOutput].
 type StdoutConfig struct {
 	// Writer is the destination for audit events. When nil, [os.Stdout]

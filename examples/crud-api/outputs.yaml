@@ -39,16 +39,13 @@ outputs:
       include_categories:
         - security
 
-  # The webhook output is created programmatically in audit_setup.go
-  # because the dev environment uses plain HTTP (AllowInsecureHTTP),
-  # which cannot be set via YAML — by design, insecure options require
-  # the programmatic API. In production with HTTPS, you would add:
-  #
-  #   webhook_siem:
-  #     type: webhook
-  #     webhook:
-  #       url: "https://siem.example.com/events"
-  #       batch_size: 50
-  #       flush_interval: "5s"
-  #       timeout: "10s"
-  #       max_retries: 3
+  webhook_siem:
+    type: webhook
+    webhook:
+      url: "${WEBHOOK_URL:-http://localhost:8081/events}"
+      batch_size: 50
+      flush_interval: "5s"
+      timeout: "10s"
+      max_retries: 3
+      allow_insecure_http: true   # dev only — use HTTPS in production
+      allow_private_ranges: true  # dev only — localhost webhook receiver

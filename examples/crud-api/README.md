@@ -4,10 +4,8 @@ A complete REST API with Postgres, five audit outputs, Prometheus
 metrics, HTTP middleware, lifecycle events, and graceful shutdown.
 
 This is the capstone example: it demonstrates every major go-audit
-feature in a realistic application. Four outputs are configured in
-`outputs.yaml`; the webhook output is created programmatically because
-its dev-mode HTTP URL requires `AllowInsecureHTTP`, which is not yet
-available in YAML config (see [#181](https://github.com/axonops/go-audit/issues/181)).
+feature in a realistic application, with all five outputs configured
+in `outputs.yaml`.
 
 ## What You'll Learn
 
@@ -43,7 +41,7 @@ available in YAML config (see [#181](https://github.com/axonops/go-audit/issues/
 
 ### Output Configuration
 
-Four outputs are configured in `outputs.yaml`:
+All five outputs are configured in `outputs.yaml`:
 
 ```yaml
 version: 1
@@ -86,25 +84,17 @@ outputs:
     route:
       include_categories:
         - security
-```
 
-The fifth output (webhook) is created programmatically in
-`audit_setup.go` because the dev environment uses plain HTTP and
-`allow_insecure_http` is not yet available in YAML config
-([#181](https://github.com/axonops/go-audit/issues/181)). In production
-with HTTPS, you would add it to `outputs.yaml`:
-
-```yaml
   webhook_siem:
     type: webhook
     webhook:
-      url: "https://siem.example.com/events"
+      url: "${WEBHOOK_URL:-http://localhost:8081/events}"
       batch_size: 50
       flush_interval: "5s"
       timeout: "10s"
       max_retries: 3
-      headers:
-        Authorization: "Splunk ${HEC_TOKEN}"
+      allow_insecure_http: true   # dev only — use HTTPS in production
+      allow_private_ranges: true  # dev only — localhost webhook receiver
 ```
 
 | Output | Route | Format | Purpose |

@@ -126,10 +126,11 @@ build: build-all
 # --- Benchmarks ---
 
 bench:
-	@set -o pipefail; for mod in $(MODULES); do \
-		echo "=== bench $$mod ==="; \
-		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./...) || exit 1; \
-	done | tee bench.txt
+	@rm -f bench.txt
+	@for mod in $(MODULES); do \
+		echo "=== bench $$mod ===" | tee -a bench.txt; \
+		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./... | tee -a $(CURDIR)/bench.txt) || exit 1; \
+	done
 
 bench-save: bench
 	cp bench.txt bench-baseline.txt

@@ -17,6 +17,7 @@ package outputconfig_test
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -516,6 +517,7 @@ func TestLoad_TwoTypeConfigBlocks_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unexpected key")
+	assert.Contains(t, err.Error(), "type-specific config block")
 }
 
 func TestLoad_RouteUnknownField_Rejected(t *testing.T) {
@@ -626,4 +628,37 @@ outputs:
 	require.NoError(t, err)
 	assert.Contains(t, string(writesData), "user_create")
 	assert.NotContains(t, string(writesData), "user_read")
+}
+
+// spyOutput tracks whether Close was called, for resource leak tests.
+type spyOutput struct {
+	closed atomic.Bool
+}
+
+func (s *spyOutput) Write([]byte) error { return nil }
+func (s *spyOutput) Close() error       { s.closed.Store(true); return nil }
+func (s *spyOutput) Name() string       { return "spy" }
+
+func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
+	spy := &spyOutput{}
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		return spy, nil
+	})
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: [nonexistent]\n")
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.True(t, spy.closed.Load(), "output must be closed when buildRoute fails")
+}
+
+func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
+	spy := &spyOutput{}
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		return spy, nil
+	})
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\noutputs:\n  leak:\n    type: spy\n    formatter:\n      type: protobuf\n")
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.True(t, spy.closed.Load(), "output must be closed when buildOutputFormatter fails")
 }

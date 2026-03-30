@@ -293,10 +293,12 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMet
 	}
 	route, err := buildRoute(name, fields.routeNode, taxonomy)
 	if err != nil {
+		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
 	formatter, err := buildOutputFormatter(name, fields.formatterNode)
 	if err != nil {
+		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
 	return &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter}, nil
@@ -325,7 +327,7 @@ func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { 
 			f.formatterNode = val
 		default:
 			if f.typeConfigNode != nil {
-				return nil, fmt.Errorf("output %q: unexpected key %q", name, key)
+				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', and one type-specific config block are allowed", name, key)
 			}
 			f.typeConfigNode = val
 		}

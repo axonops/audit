@@ -68,6 +68,23 @@ updates:
           - "minor"
           - "patch"
 
+  # audit-gen CLI tool
+  - package-ecosystem: "gomod"
+    directory: "/cmd/audit-gen"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
   # GitHub Actions — keeps SHA pins current
   - package-ecosystem: "github-actions"
     directory: "/"

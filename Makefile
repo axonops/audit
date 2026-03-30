@@ -5,7 +5,7 @@
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
        security release-check check clean \
-       install-tools workspace generate-certs \
+       install-tools install-benchstat workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs
 
 # --- Configuration ---
@@ -26,6 +26,11 @@ install-tools:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@latest
 	@echo "Tools installed to $(GOBIN)"
 
+install-benchstat:
+	@echo "Installing benchstat with GOTOOLCHAIN=$(GO_TOOLCHAIN)..."
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@latest
+	@echo "benchstat installed to $(GOBIN)"
+
 # --- Workspace ---
 
 workspace:
@@ -35,19 +40,19 @@ workspace:
 # --- Per-module test targets ---
 
 test-core:
-	cd . && go test -race -v -count=1 ./...
+	cd . && go test -race -v -count=1 -coverprofile=coverage.out $$(go list ./... | grep -v /tests/ | grep -v /internal/testhelper)
 
 test-file:
-	cd file && go test -race -v -count=1 ./...
+	cd file && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
 test-syslog:
-	cd syslog && go test -race -v -count=1 ./...
+	cd syslog && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
 test-webhook:
-	cd webhook && go test -race -v -count=1 ./...
+	cd webhook && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
 test-audit-gen:
-	cd cmd/audit-gen && go test -race -v -count=1 ./...
+	cd cmd/audit-gen && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
 test-all: test-core test-file test-syslog test-webhook test-audit-gen
 test: test-all
@@ -121,10 +126,11 @@ build: build-all
 # --- Benchmarks ---
 
 bench:
+	@rm -f bench.txt
 	@for mod in $(MODULES); do \
-		echo "=== bench $$mod ==="; \
-		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./...) || exit 1; \
-	done | tee bench.txt
+		echo "=== bench $$mod ===" | tee -a bench.txt; \
+		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./... | tee -a $(CURDIR)/bench.txt) || exit 1; \
+	done
 
 bench-save: bench
 	cp bench.txt bench-baseline.txt
@@ -207,7 +213,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all tidy-check verify check-replace check-todos release-check security
+check: fmt-check vet-all lint-all test-all build-all tidy-check verify check-replace check-todos release-check security
 	@echo ""
 	@echo "All checks passed."
 

@@ -15,6 +15,18 @@ concurrency:
 permissions:
   contents: read
 
+# Job dependency chain (fail-fast ordering):
+#   hygiene (fmt, tidy, replace, todos) — no deps, runs immediately
+#   validate-release — no deps, runs immediately (independent)
+#   lint (vet, golangci-lint) — needs: hygiene
+#   security (govulncheck, go mod verify) — needs: hygiene
+#   test x5 matrix — needs: lint (transitively: hygiene)
+#   cross-build — needs: lint (transitively: hygiene)
+#   integration — needs: test (transitively: lint, hygiene)
+#   bdd — needs: test (transitively: lint, hygiene)
+#   benchmark — needs: test (transitively: lint, hygiene)
+#   ci-pass — explicit needs for all required jobs (always() aggregation)
+
 jobs:
   hygiene:
     name: Hygiene
@@ -58,6 +70,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [hygiene]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -98,13 +111,12 @@ jobs:
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           args: check
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     name: Test (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [lint]
     strategy:
       matrix:
         include:
@@ -137,7 +149,7 @@ jobs:
         run: make workspace
 
       - name: Run unit tests with coverage
-        run: cd ${{ matrix.module }} && go test -race -v -count=1 -coverprofile=coverage.out ./...
+        run: make ${{ matrix.target }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
@@ -150,7 +162,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, test]
+    needs: [test]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -178,7 +190,7 @@ jobs:
     name: BDD Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [lint, test]
+    needs: [test]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -206,6 +218,7 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [hygiene]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -273,14 +286,8 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
-      - name: Cache Go tools
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
-
-      - name: Install tools
-        run: make install-tools
+      - name: Install benchstat
+        run: make install-benchstat
 
       - name: Run benchmarks
         run: make bench

@@ -46,9 +46,10 @@ type yamlTaxonomy struct {
 // yamlEventDef is the intermediate representation of a single event
 // definition within the YAML taxonomy.
 type yamlEventDef struct {
-	Category string   `yaml:"category"`
-	Required []string `yaml:"required"`
-	Optional []string `yaml:"optional"`
+	Category    string   `yaml:"category"`
+	Description string   `yaml:"description"`
+	Required    []string `yaml:"required"`
+	Optional    []string `yaml:"optional"`
 }
 
 // ParseTaxonomyYAML parses a YAML document into a [Taxonomy].
@@ -118,9 +119,10 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
 		events[name] = &EventDef{
-			Category: def.Category,
-			Required: copyStrings(def.Required),
-			Optional: copyStrings(def.Optional),
+			Category:    def.Category,
+			Description: def.Description,
+			Required:    copyStrings(def.Required),
+			Optional:    copyStrings(def.Optional),
 		}
 	}
 

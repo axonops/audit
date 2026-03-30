@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"text/template"
 
 	audit "github.com/axonops/go-audit"
@@ -45,6 +46,7 @@ type constantDef struct {
 	Name        string // Go identifier, e.g. EventSchemaRegister
 	Value       string // Original string, e.g. "schema_register"
 	QuotedValue string // Go string literal, e.g. `"schema_register"`
+	Comment     string // Non-empty → emitted as // comment above the constant
 }
 
 // templateData is the data passed to the Go template.
@@ -69,7 +71,8 @@ package {{ .Package }}
 // to get compile-time safety.
 const (
 {{- range .Events }}
-	{{ .Name }} = {{ .QuotedValue }}
+{{ if .Comment }}	// {{ .Comment }}
+{{ end }}	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
 {{ end }}{{ if .HasCategories }}
@@ -127,7 +130,7 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 
 	if opts.Types {
 		var err error
-		data.Events, err = buildConstants("Event", sortedKeys(tax.Events))
+		data.Events, err = buildEventConstants(tax)
 		if err != nil {
 			return templateData{}, err
 		}
@@ -153,6 +156,44 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 	}
 
 	return data, nil
+}
+
+// buildEventConstants creates event constant entries with optional
+// description comments from the taxonomy.
+func buildEventConstants(tax audit.Taxonomy) ([]constantDef, error) {
+	keys := sortedKeys(tax.Events)
+	nameToKey := make(map[string]string, len(keys))
+	defs := make([]constantDef, 0, len(keys))
+	for _, k := range keys {
+		if !validKey.MatchString(k) {
+			return nil, fmt.Errorf("taxonomy key %q contains characters unsafe for code generation", k)
+		}
+		name := "Event" + toPascalCase(k)
+		if prev, ok := nameToKey[name]; ok {
+			return nil, fmt.Errorf("naming collision: %q and %q both produce constant %q", prev, k, name)
+		}
+		nameToKey[name] = k
+
+		comment := sanitiseComment(tax.Events[k].Description)
+		if comment != "" {
+			comment = name + " — " + comment
+		}
+
+		defs = append(defs, constantDef{
+			Name:        name,
+			Value:       k,
+			QuotedValue: strconv.Quote(k),
+			Comment:     comment,
+		})
+	}
+	return defs, nil
+}
+
+// sanitiseComment collapses newlines and trims whitespace from a
+// description for use as a single-line Go comment.
+func sanitiseComment(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.TrimSpace(s)
 }
 
 // buildConstants creates constantDef entries from sorted keys with a

@@ -33,6 +33,13 @@ type EventDef struct {
 	// [Taxonomy.Categories].
 	Category string
 
+	// Description is an optional human-readable explanation of what
+	// this event type represents. It is informational metadata only
+	// — it has no effect on validation, routing, or serialisation.
+	// When present, [audit-gen] emits it as a Go comment above the
+	// generated constant.
+	Description string
+
 	// Required lists field names that must be present in every
 	// [Logger.Audit] call for this event type. Missing required
 	// fields always produce an error regardless of validation mode.
@@ -134,9 +141,10 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
 		t.Events["startup"] = &EventDef{
-			Category: lifecycleCategory,
-			Required: []string{"app_name"},
-			Optional: []string{"version", "config"},
+			Category:    lifecycleCategory,
+			Description: "Application started",
+			Required:    []string{"app_name"},
+			Optional:    []string{"version", "config"},
 		}
 		if !slices.Contains(t.Categories[lifecycleCategory], "startup") {
 			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "startup")
@@ -146,9 +154,10 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	// Inject shutdown if not already defined.
 	if _, ok := t.Events["shutdown"]; !ok {
 		t.Events["shutdown"] = &EventDef{
-			Category: lifecycleCategory,
-			Required: []string{"app_name"},
-			Optional: []string{"reason", "uptime_ms"},
+			Category:    lifecycleCategory,
+			Description: "Application shutting down",
+			Required:    []string{"app_name"},
+			Optional:    []string{"reason", "uptime_ms"},
 		}
 		if !slices.Contains(t.Categories[lifecycleCategory], "shutdown") {
 			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "shutdown")

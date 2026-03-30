@@ -108,4 +108,5 @@ bench.txt
 CLAUDE.md
 .claude/
 mem.prof
-audit-gen
+# Built audit-gen binary (not the source directory)
+/audit-gen

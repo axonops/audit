@@ -507,3 +507,100 @@ func TestWriteFileAtomic_RenameFailure(t *testing.T) {
 	// On most systems this fails at CreateTemp (can't create in read-only dir).
 	assert.Error(t, err)
 }
+
+// --- Description comment tests ---
+
+func TestGenerate_DescriptionAsComment(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
+	out := generateToString(t, tax, defaultOpts())
+
+	// Events with descriptions should have comments.
+	assert.Contains(t, out, "// EventSchemaRegister — A new schema version was registered in the registry")
+	assert.Contains(t, out, "// EventAuthFailure — An authentication attempt failed")
+
+	// Events without descriptions should NOT have comments.
+	assert.NotContains(t, out, "// EventSchemaRead")
+	assert.NotContains(t, out, "// EventConfigRead")
+
+	// Must still compile.
+	fset := token.NewFileSet()
+	_, err := parser.ParseFile(fset, "generated.go", out, parser.AllErrors)
+	assert.NoError(t, err)
+}
+
+func TestGenerate_NoCommentWhenEmpty(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, "testdata/minimal_taxonomy.yaml")
+	out := generateToString(t, tax, defaultOpts())
+
+	// The health_check event has no description — should have no comment.
+	// Lifecycle events (startup/shutdown) get descriptions from InjectLifecycleEvents,
+	// so they will have comments. Only check user-defined events.
+	assert.NotContains(t, out, "// EventHealthCheck")
+}
+
+func TestGenerate_MultiLineDescription(t *testing.T) {
+	t.Parallel()
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string][]string{"test": {"multi_line"}},
+		Events: map[string]*audit.EventDef{
+			"multi_line": {
+				Category:    "test",
+				Description: "First line\nSecond line\n\tTabbed",
+				Required:    []string{"outcome"},
+			},
+		},
+		DefaultEnabled: []string{"test"},
+	}
+
+	out := generateToString(t, tax, defaultOpts())
+
+	// Multi-line should be collapsed to single line.
+	assert.Contains(t, out, "// EventMultiLine — First line Second line Tabbed")
+	assert.NotContains(t, out, "Second line\n")
+}
+
+func TestGenerate_WhitespaceOnlyDescription(t *testing.T) {
+	t.Parallel()
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string][]string{"test": {"blank_desc"}},
+		Events: map[string]*audit.EventDef{
+			"blank_desc": {
+				Category:    "test",
+				Description: "   \t\n  ",
+				Required:    []string{"outcome"},
+			},
+		},
+		DefaultEnabled: []string{"test"},
+	}
+
+	out := generateToString(t, tax, defaultOpts())
+
+	// Whitespace-only treated as empty — no comment.
+	assert.NotContains(t, out, "// EventBlankDesc")
+}
+
+func TestSanitiseComment(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"simple", "A schema was registered", "A schema was registered"},
+		{"newlines", "First\nSecond\nThird", "First Second Third"},
+		{"tabs", "Has\ttabs", "Has tabs"},
+		{"whitespace only", "   \t\n  ", ""},
+		{"empty", "", ""},
+		{"leading trailing", "  hello world  ", "hello world"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, sanitiseComment(tt.input))
+		})
+	}
+}

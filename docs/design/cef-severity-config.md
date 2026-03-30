@@ -1,14 +1,42 @@
-# Design: CEF Severity, Description, and Field Mapping Configuration
+# Design: Event Severity in Taxonomy
 
 **Issue:** #179
 **Status:** Recommendation ready for review
 **Date:** 2026-03-30
 
-## What This Is About
+## Problem
 
-When go-audit formats events as CEF (Common Event Format) for SIEM tools
-like Splunk, ArcSight, or QRadar, each event gets a **severity** number
-(0–10) that tells the SIEM how important it is:
+Audit events need a severity level (0–10) for SIEM integration. CEF
+uses this in the header, and SIEM dashboards, alerts, and correlation
+rules all key off it. Currently there's no way to declare severity — the
+`CEFFormatter` has a `SeverityFunc` callback that must be written in Go.
+
+## Recommendation: Add Severity to EventDef
+
+Severity is a property of the event, not the formatter. An
+`auth_failure` is severity 8 whether it's output as JSON, CEF, or
+anything else. Put it where events are defined — in the taxonomy:
+
+```yaml
+events:
+  auth_failure:
+    category: security
+    description: "An authentication attempt failed"
+    severity: 8
+    required:
+      - outcome
+      - actor_id
+
+  user_create:
+    category: write
+    description: "A new user account was created"
+    severity: 3
+    required:
+      - outcome
+      - actor_id
+```
+
+### CEF Severity Levels
 
 | Range | Label | Example events |
 |-------|-------|----------------|
@@ -17,388 +45,90 @@ like Splunk, ArcSight, or QRadar, each event gets a **severity** number
 | 7–8 | High | Auth failure, privilege escalation |
 | 9–10 | Very High | Data exfiltration, admin override |
 
-SIEM dashboards, alerts, and correlation rules all key off this number.
-Getting it wrong means security teams either get flooded with false
-alarms (everything is severity 8) or miss real threats (everything is
-severity 5).
+### Go Changes
 
-Today, severity is configured via a Go function (`SeverityFunc`) on
-`CEFFormatter`. This can't be set from YAML, which means any application
-using YAML output config has to drop into Go code just to set severity
-levels. The same problem exists for `DescriptionFunc` (human-readable
-event descriptions) and `FieldMapping` (translating field names to CEF
-extension keys).
-
-## Current State
-
-### CEFFormatter struct (`format_cef.go:85-126`)
+Add `Severity` to `EventDef` in `taxonomy.go`:
 
 ```go
-type CEFFormatter struct {
-    SeverityFunc    func(eventType string) int      // nil = all events severity 5
-    DescriptionFunc func(eventType string) string   // nil = use event type name
-    FieldMapping    map[string]string               // nil = DefaultCEFFieldMapping
-    Vendor          string
-    Product         string
-    Version         string
-    OmitEmpty       bool
+type EventDef struct {
+    Category    string
+    Description string
+    Severity    int      // 0-10; default 5 if omitted
+    Required    []string
+    Optional    []string
 }
 ```
 
-### What the YAML config supports today (`outputconfig/formatter.go:28-35`)
+The CEF formatter reads `def.Severity` directly:
 
 ```go
-type yamlFormatterConfig struct {
-    Type      string `yaml:"type"`
-    Timestamp string `yaml:"timestamp"`
-    OmitEmpty bool   `yaml:"omit_empty"`
-    Vendor    string `yaml:"vendor"`
-    Product   string `yaml:"product"`
-    Version   string `yaml:"version"`
+func (cf *CEFFormatter) severity(def *EventDef) int {
+    if cf.SeverityFunc != nil {
+        return clamp(cf.SeverityFunc(def.Category)) // backwards compat
+    }
+    if def != nil && def.Severity > 0 {
+        return def.Severity
+    }
+    return 5 // default
 }
 ```
 
-**Missing from YAML:** severity mapping, description mapping, field
-mapping. A developer who wants security events at severity 8 and
-everything else at 3 must write Go code.
+`SeverityFunc` is kept for backwards compatibility but becomes
+unnecessary for new code. The formatter's `Format` method already
+receives `*EventDef` — no interface change needed.
 
-## Options Evaluated
+### YAML Parsing
 
-### Option A — Event Type Severity Map
+`ParseTaxonomyYAML` already parses `EventDef` fields. Add `Severity`
+to the YAML struct with validation (0–10, default 5 if omitted).
 
-Map individual event types to severity levels, with a default for
-unlisted types.
+### Validation
 
-**YAML:**
-```yaml
-formatter:
-  type: cef
-  vendor: "MyCompany"
-  product: "MyApp"
-  version: "1.0"
-  default_severity: 3
-  severity:
-    auth_failure: 8
-    auth_success: 7
-    config_change: 6
-    user_delete: 5
-```
+`ValidateTaxonomy` should validate severity is in range 0–10. Values
+outside this range return an error.
 
-**Go struct change:**
-```go
-type CEFFormatter struct {
-    // ... existing fields ...
-    DefaultSeverity int            // default 5; used when event type not in SeverityMap
-    SeverityMap     map[string]int // event type → severity (0-10)
-    SeverityFunc    func(eventType string) int // still supported; takes precedence over map
-}
-```
+### What About DescriptionFunc?
 
-**Pros:** Precise per-event-type control. Simple to understand.
-**Cons:** Verbose when you have many event types in the same category
-that should all have the same severity.
+Same logic applies. The taxonomy already has `Description` on
+`EventDef`. The CEF formatter should use `def.Description` as the
+default CEF description instead of the event type name. The
+`DescriptionFunc` callback becomes unnecessary for most consumers.
 
-### Option B — Category Severity Map
+### What About FieldMapping?
 
-Map categories to severity levels instead of individual event types.
+`FieldMapping` is different — it's genuinely a formatter concern (how
+audit field names translate to CEF extension keys), not an event
+property. It should stay on the formatter and be added to the YAML
+formatter config as `field_mapping: map[string]string`. This is a
+separate, smaller change.
 
-**YAML:**
-```yaml
-formatter:
-  type: cef
-  vendor: "MyCompany"
-  product: "MyApp"
-  version: "1.0"
-  default_severity: 3
-  severity_by_category:
-    security: 8
-    admin: 6
-    write: 4
-    read: 2
-```
-
-**Go struct change:**
-```go
-type CEFFormatter struct {
-    // ... existing fields ...
-    DefaultSeverity    int               // default 5
-    SeveritByCategory  map[string]int    // category → severity
-    SeverityFunc       func(eventType string) int // precedence over map
-}
-```
-
-**Pros:** Concise — one entry covers all events in a category.
-Categories are how go-audit groups events, so this is natural.
-**Cons:** Can't distinguish `auth_failure` (severity 8) from
-`auth_success` (severity 4) if they're in the same `security` category.
-Requires the formatter to know the taxonomy (to resolve event type →
-category), which it currently doesn't.
-
-### Option C — Default + Overrides
-
-A `default_severity` with per-event-type overrides. Simpler variant of
-Option A.
-
-**YAML:**
-```yaml
-formatter:
-  type: cef
-  vendor: "MyCompany"
-  product: "MyApp"
-  version: "1.0"
-  default_severity: 5
-  severity_overrides:
-    auth_failure: 8
-    data_export: 9
-```
-
-**Go struct change:** Same as Option A (just different YAML key names).
-
-**Pros:** Clear mental model — "everything is severity 5 unless I
-override it."
-**Cons:** Functionally identical to Option A with different naming. The
-word "overrides" implies there's a base to override, which is just the
-default.
-
-### Option D — Hybrid (Category + Event Type)
-
-Both category-level and event-type-level severity, with event type
-taking precedence.
-
-**YAML:**
-```yaml
-formatter:
-  type: cef
-  vendor: "MyCompany"
-  product: "MyApp"
-  version: "1.0"
-  default_severity: 3
-  severity_by_category:
-    security: 7
-    admin: 6
-  severity:
-    auth_failure: 9    # overrides category "security" (7) for this specific event
-    data_export: 10
-```
-
-**Resolution order:** event type map → category map → default severity.
-
-**Go struct change:**
-```go
-type CEFFormatter struct {
-    // ... existing fields ...
-    DefaultSeverity    int               // default 5
-    SeverityMap        map[string]int    // event type → severity (highest precedence)
-    SeverityByCategory map[string]int    // category → severity
-    SeverityFunc       func(eventType string) int // Go code; highest precedence of all
-}
-```
-
-**Pros:** Maximum flexibility. Categories set the baseline, individual
-events can override. Matches how security teams think: "security events
-are high, but auth_failure is critical."
-**Cons:** Three levels of precedence (func → event → category → default)
-is complex. Requires the formatter to know the taxonomy to resolve
-categories. More ways to misconfigure.
-
-## Recommendation: Option A — Event Type Severity Map
-
-**Why Option A over the others:**
-
-1. **YAML round-trip capability** — fully expressible in YAML, no Go
-   code needed for the common case. ✓
-
-2. **Consistency with existing patterns** — the `yamlFormatterConfig`
-   uses flat fields. A `severity` map and `default_severity` int fit
-   naturally. No new concepts like "category resolution" are needed. ✓
-
-3. **Go API ergonomics** — adding `DefaultSeverity int` and
-   `SeverityMap map[string]int` to `CEFFormatter` is clean. The existing
-   `SeverityFunc` still works for programmatic consumers. When both are
-   set, `SeverityFunc` takes precedence (documented). ✓
-
-4. **Simplicity** — one map, one default, one precedence rule. Category
-   mapping (Options B/D) requires the formatter to receive taxonomy
-   context, which is a bigger architectural change. ✓
-
-5. **Sufficient for real use** — most applications have 10-50 event
-   types. A map entry per event type is manageable. If a future
-   application has 500 event types and needs category-level mapping, it
-   can use `SeverityFunc` in Go.
-
-**Why not Option B (category)?** The CEF formatter doesn't currently
-receive category information — it gets `eventType string` and `Fields`.
-Adding category awareness would require changing the `Formatter`
-interface signature or passing taxonomy context, which is a much larger
-change for a narrow benefit.
-
-**Why not Option D (hybrid)?** Same category-awareness problem, plus
-three-level precedence is hard to debug when severity isn't what you
-expect.
-
-## What About DescriptionFunc and FieldMapping?
-
-### DescriptionFunc → `descriptions` map
-
-Same pattern as severity. Add a `descriptions` map and
-`default_description` to the YAML config:
-
-```yaml
-formatter:
-  type: cef
-  descriptions:
-    auth_failure: "Authentication attempt failed"
-    user_create: "New user account created"
-```
-
-**Go struct change:**
-```go
-type CEFFormatter struct {
-    // ... existing ...
-    DescriptionMap map[string]string  // event type → description
-    // DescriptionFunc still works; takes precedence
-}
-```
-
-When `DescriptionMap` has an entry, use it. When `DescriptionFunc` is
-set, it takes precedence. When neither is set, use the event type name
-(current default).
-
-**However:** The taxonomy already has a `Description` field on
-`EventDef`. The formatter receives `*EventDef` in its `Format` method.
-A simpler approach: if `DescriptionFunc` is nil and no `DescriptionMap`
-entry exists, use `def.Description` from the taxonomy. This means
-developers who already write descriptions in their `taxonomy.yaml` get
-CEF descriptions for free — no extra config.
-
-**Recommendation:** Use `def.Description` as the default fallback (free
-win), add `descriptions` map for overrides, keep `DescriptionFunc` for
-programmatic use. Three-level resolution: func → map → taxonomy
-description → event type name.
-
-### FieldMapping → `field_mapping` in YAML
-
-This is already a `map[string]string` on the Go struct. It should be
-trivially addable to YAML:
-
-```yaml
-formatter:
-  type: cef
-  field_mapping:
-    target_id: duser
-    department: cs1
-    department_label: cs1Label
-```
-
-**Go struct change:** None — `FieldMapping` is already
-`map[string]string`. Only the YAML config struct needs the field:
-
-```go
-type yamlFormatterConfig struct {
-    // ... existing ...
-    DefaultSeverity int               `yaml:"default_severity"`
-    Severity        map[string]int    `yaml:"severity"`
-    Descriptions    map[string]string `yaml:"descriptions"`
-    FieldMapping    map[string]string `yaml:"field_mapping"`
-}
-```
-
-**Recommendation:** Add `field_mapping` to YAML. No Go API change
-needed.
-
-## Impact Assessment
-
-### Files to change
+## Impact
 
 | File | Change |
 |------|--------|
-| `format_cef.go` | Add `DefaultSeverity int`, `SeverityMap map[string]int`, `DescriptionMap map[string]string` to `CEFFormatter`. Update `severity()` method to check `SeverityMap` before returning default. Update `description()` to check `DescriptionMap` then `def.Description`. |
-| `outputconfig/formatter.go` | Add `default_severity`, `severity`, `descriptions`, `field_mapping` to `yamlFormatterConfig`. Update `buildCEFFormatter` to map YAML fields to the new struct fields. Add validation: severity values must be 0–10. |
-| `format_cef_test.go` | Add tests for `SeverityMap`, `DescriptionMap`, and the precedence rules (func > map > default). |
-| `outputconfig/formatter_test.go` | Add tests for YAML round-trip of new fields. |
+| `taxonomy.go` | Add `Severity int` to `EventDef` |
+| `taxonomy_yaml.go` | Parse `severity` field from YAML |
+| `taxonomy.go` | Validate severity 0–10 in `ValidateTaxonomy` |
+| `format_cef.go` | Read `def.Severity` in `severity()` method; use `def.Description` in `description()` method |
+| `cmd/audit-gen` | Include `Severity` in generated comments or constants if useful |
+| `outputconfig/formatter.go` | Add `field_mapping` to `yamlFormatterConfig` (separate from severity) |
 
-### Functions to change
+## What This Replaces
 
-- `CEFFormatter.severity()` — check `SeverityMap[eventType]` before
-  `SeverityFunc` before default
-- `CEFFormatter.description()` — check `DescriptionMap[eventType]`
-  before `DescriptionFunc` before `def.Description` before event type
-  name
-- `buildCEFFormatter()` in `outputconfig/formatter.go` — map new YAML
-  fields to `CEFFormatter` struct
-- `CEFFormatter.Format()` — no change needed (it calls `severity()` and
-  `description()` which handle the new fields internally)
-
-### Precedence rules (documented in godoc)
-
-**Severity:** `SeverityFunc` → `SeverityMap[eventType]` →
-`DefaultSeverity` → 5
-
-**Description:** `DescriptionFunc` → `DescriptionMap[eventType]` →
-`def.Description` → event type name
-
-**Field mapping:** `FieldMapping` (merged with `DefaultCEFFieldMapping`)
-— unchanged behaviour, just now settable from YAML.
-
-## Comparable Libraries
-
-### Splunk CIM
-
-Splunk's Common Information Model uses **lookup tables** (CSV files) to
-map raw severity values to normalised labels. The mapping is defined in
-`props.conf`:
-
-```
-LOOKUP-severity = severity_lookup severity_id OUTPUT severity
-```
-
-This is a static table approach — equivalent to our Option A
-(`SeverityMap`). Splunk does not use functions for severity mapping.
-
-### ArcSight CEF Producer
-
-The original ArcSight CEF spec (revision 25, 2018) defines severity as
-part of the CEF header:
-
-```
-CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extensions
-```
-
-Severity is set by the **producing application** at emit time — there is
-no "severity mapping configuration" in the CEF spec itself. Each
-application hard-codes or configures its own severity per event type.
-ArcSight's connector framework allows severity to be remapped on
-ingestion via connector configuration files, but this is
-consumer-side, not producer-side.
-
-Our approach (producer-side severity mapping via YAML) is more
-developer-friendly than the ArcSight pattern (remap on ingestion) and
-aligns with how Splunk handles it (lookup tables).
+- `SeverityFunc` on `CEFFormatter` — kept for backwards compatibility,
+  but no longer needed when severity is in the taxonomy
+- `DescriptionFunc` on `CEFFormatter` — kept, but `def.Description`
+  is the natural default
+- The entire "severity map" / "severity by category" design — severity
+  is just a field on the event definition, not a mapping layer
 
 ## Follow-Up Issues
 
-If this recommendation is accepted:
-
-1. **feat: add SeverityMap and DefaultSeverity to CEFFormatter** —
-   implement the Go struct changes in `format_cef.go`
-2. **feat: add severity, descriptions, and field_mapping to CEF YAML
-   config** — implement the YAML config changes in
-   `outputconfig/formatter.go`
-3. **feat: use taxonomy description as CEF description fallback** —
-   update `CEFFormatter.description()` to check `def.Description`
-4. **docs: update formatters and crud-api examples with CEF severity
-   config** — demonstrate the new YAML fields
-
-## Trade-Offs
-
-- **Category-level severity is not supported in YAML.** A developer who
-  wants "all security events = severity 8" must list each security event
-  type individually. This is acceptable for 10-50 event types; if it
-  becomes painful at scale, we can add `severity_by_category` later
-  (but that requires passing taxonomy context to the formatter).
-- **SeverityFunc still exists** for programmatic consumers who need
-  computed severity (e.g., severity based on field values, not just event
-  type). The YAML approach covers the static mapping case only.
-- **No migration needed.** All new fields have sensible defaults
-  (`DefaultSeverity` = 5, `SeverityMap` = nil, `DescriptionMap` = nil,
-  `FieldMapping` = nil). Existing code continues to work unchanged.
+1. **feat: add severity field to EventDef** — taxonomy.go, validation,
+   YAML parsing
+2. **feat: CEF formatter uses def.Severity and def.Description** —
+   format_cef.go changes
+3. **feat: add field_mapping to CEF YAML config** —
+   outputconfig/formatter.go
+4. **docs: update examples with severity in taxonomy** — taxonomy.yaml
+   files in examples

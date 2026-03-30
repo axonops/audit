@@ -356,6 +356,25 @@ func TestRun_VersionFlag(t *testing.T) {
 	assert.Contains(t, stdout.String(), "audit-gen")
 }
 
+func TestRun_OversizedInput(t *testing.T) {
+	t.Parallel()
+	big := filepath.Join(t.TempDir(), "big.yaml")
+	data := make([]byte, maxInputSize+1)
+	for i := range data {
+		data[i] = 'x'
+	}
+	require.NoError(t, os.WriteFile(big, data, 0o600))
+
+	var stderr bytes.Buffer
+	code := run([]string{
+		"-input", big,
+		"-output", "-",
+		"-package", "mypkg",
+	}, &bytes.Buffer{}, &stderr)
+	assert.Equal(t, exitYAMLError, code)
+	assert.Contains(t, stderr.String(), "exceeds maximum")
+}
+
 func TestRun_UnwritableOutput(t *testing.T) {
 	t.Parallel()
 	code := run([]string{
@@ -424,19 +443,17 @@ func extractConstants(t *testing.T, src string) map[string]string {
 
 // --- Error path coverage ---
 
-func TestBuildFieldConstants_Collision(t *testing.T) {
+func TestBuildConstants_Collision(t *testing.T) {
 	t.Parallel()
-	// Two fields that produce the same PascalCase name would collide.
-	// In practice this can't happen with real taxonomies (snake_case only),
-	// but we test the detection.
-	tax := audit.Taxonomy{
-		Events: map[string]*audit.EventDef{
-			"test": {Required: []string{"a_b", "a_B"}},
-		},
-	}
-	_, err := buildFieldConstants(tax)
-	// Both "a_b" and "a_B" produce "FieldAB" — collision detected.
+	// Two keys that produce the same PascalCase name.
+	_, err := buildConstants("Field", []string{"a_b", "a__b"})
 	assert.ErrorContains(t, err, "naming collision")
+}
+
+func TestBuildConstants_InvalidKey(t *testing.T) {
+	t.Parallel()
+	_, err := buildConstants("Event", []string{"valid_key", "Invalid-Key"})
+	assert.ErrorContains(t, err, "unsafe for code generation")
 }
 
 func TestGenerate_WriteError(t *testing.T) {

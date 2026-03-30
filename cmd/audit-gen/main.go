@@ -110,7 +110,20 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 	}, -1 // -1 signals "continue"
 }
 
+// maxInputSize is the maximum taxonomy file size (matches audit.MaxTaxonomyInputSize).
+const maxInputSize = 1 << 20 // 1 MiB
+
 func execute(cfg cliConfig, stdout, stderr io.Writer) int {
+	info, err := os.Stat(cfg.input)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "audit-gen: read input: %v\n", err)
+		return exitYAMLError
+	}
+	if info.Size() > maxInputSize {
+		_, _ = fmt.Fprintf(stderr, "audit-gen: input file size %d exceeds maximum %d bytes\n", info.Size(), maxInputSize)
+		return exitYAMLError
+	}
+
 	data, err := os.ReadFile(cfg.input)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: read input: %v\n", err)
@@ -175,6 +188,10 @@ func writeFileAtomic(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil { //nolint:gosec // generated Go source files need standard 0644 permissions
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)

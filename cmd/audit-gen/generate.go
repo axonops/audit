@@ -19,11 +19,16 @@ import (
 	"fmt"
 	"go/format"
 	"io"
+	"regexp"
 	"sort"
+	"strconv"
 	"text/template"
 
 	audit "github.com/axonops/go-audit"
 )
+
+// validKey matches safe taxonomy identifiers for code generation.
+var validKey = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // generateOptions controls which constant groups are emitted.
 type generateOptions struct {
@@ -37,8 +42,9 @@ type generateOptions struct {
 
 // constantDef represents a single generated constant.
 type constantDef struct {
-	Name  string // Go identifier, e.g. EventSchemaRegister
-	Value string // Original string, e.g. "schema_register"
+	Name        string // Go identifier, e.g. EventSchemaRegister
+	Value       string // Original string, e.g. "schema_register"
+	QuotedValue string // Go string literal, e.g. `"schema_register"`
 }
 
 // templateData is the data passed to the Go template.
@@ -63,7 +69,7 @@ package {{ .Package }}
 // to get compile-time safety.
 const (
 {{- range .Events }}
-	{{ .Name }} = "{{ .Value }}"
+	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
 {{ end }}{{ if .HasCategories }}
@@ -71,7 +77,7 @@ const (
 // Logger.DisableCategory.
 const (
 {{- range .Categories }}
-	{{ .Name }} = "{{ .Value }}"
+	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
 {{ end }}{{ if .HasFields }}
@@ -79,7 +85,7 @@ const (
 // compile-time typo prevention.
 const (
 {{- range .Fields }}
-	{{ .Name }} = "{{ .Value }}"
+	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
 {{ end }}`
@@ -120,18 +126,26 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 	}
 
 	if opts.Types {
-		data.Events = buildEventConstants(tax)
+		var err error
+		data.Events, err = buildConstants("Event", sortedKeys(tax.Events))
+		if err != nil {
+			return templateData{}, err
+		}
 		data.HasEvents = len(data.Events) > 0
 	}
 
 	if opts.Categories {
-		data.Categories = buildCategoryConstants(tax)
+		var err error
+		data.Categories, err = buildConstants("Category", sortedKeys(tax.Categories))
+		if err != nil {
+			return templateData{}, err
+		}
 		data.HasCategories = len(data.Categories) > 0
 	}
 
 	if opts.Fields {
 		var err error
-		data.Fields, err = buildFieldConstants(tax)
+		data.Fields, err = buildConstants("Field", collectFieldNames(tax))
 		if err != nil {
 			return templateData{}, err
 		}
@@ -141,36 +155,32 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 	return data, nil
 }
 
-func buildEventConstants(tax audit.Taxonomy) []constantDef {
-	keys := sortedKeys(tax.Events)
+// buildConstants creates constantDef entries from sorted keys with a
+// prefix. It validates keys for code-generation safety and detects
+// naming collisions.
+func buildConstants(prefix string, keys []string) ([]constantDef, error) {
+	nameToKey := make(map[string]string, len(keys))
 	defs := make([]constantDef, 0, len(keys))
 	for _, k := range keys {
+		if !validKey.MatchString(k) {
+			return nil, fmt.Errorf("taxonomy key %q contains characters unsafe for code generation", k)
+		}
+		name := prefix + toPascalCase(k)
+		if prev, ok := nameToKey[name]; ok {
+			return nil, fmt.Errorf("naming collision: %q and %q both produce constant %q", prev, k, name)
+		}
+		nameToKey[name] = k
 		defs = append(defs, constantDef{
-			Name:  "Event" + toPascalCase(k),
-			Value: k,
+			Name:        name,
+			Value:       k,
+			QuotedValue: strconv.Quote(k),
 		})
 	}
-	return defs
+	return defs, nil
 }
 
-func buildCategoryConstants(tax audit.Taxonomy) []constantDef {
-	keys := make([]string, 0, len(tax.Categories))
-	for k := range tax.Categories {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	defs := make([]constantDef, 0, len(keys))
-	for _, k := range keys {
-		defs = append(defs, constantDef{
-			Name:  "Category" + toPascalCase(k),
-			Value: k,
-		})
-	}
-	return defs
-}
-
-func buildFieldConstants(tax audit.Taxonomy) ([]constantDef, error) {
+// collectFieldNames returns all unique field names from the taxonomy, sorted.
+func collectFieldNames(tax audit.Taxonomy) []string {
 	seen := make(map[string]struct{})
 	for _, def := range tax.Events {
 		for _, f := range def.Required {
@@ -180,25 +190,12 @@ func buildFieldConstants(tax audit.Taxonomy) ([]constantDef, error) {
 			seen[f] = struct{}{}
 		}
 	}
-
 	keys := make([]string, 0, len(seen))
 	for k := range seen {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	// Detect naming collisions.
-	nameToKey := make(map[string]string, len(keys))
-	defs := make([]constantDef, 0, len(keys))
-	for _, k := range keys {
-		name := "Field" + toPascalCase(k)
-		if prev, ok := nameToKey[name]; ok {
-			return nil, fmt.Errorf("naming collision: fields %q and %q both produce constant %q", prev, k, name)
-		}
-		nameToKey[name] = k
-		defs = append(defs, constantDef{Name: name, Value: k})
-	}
-	return defs, nil
+	return keys
 }
 
 func sortedKeys[V any](m map[string]V) []string {

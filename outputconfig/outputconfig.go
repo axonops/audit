@@ -76,6 +76,38 @@ type NamedOutput struct { //nolint:govet // fieldalignment: readability preferre
 	Formatter audit.Formatter
 }
 
+// String returns a safe representation of LoadResult that never
+// includes credentials, header values, or resolved environment
+// variable values.
+func (r *LoadResult) String() string {
+	if r == nil {
+		return "<nil>"
+	}
+	names := make([]string, len(r.Outputs))
+	for i, o := range r.Outputs {
+		names[i] = o.Name
+	}
+	return fmt.Sprintf("LoadResult{outputs: [%s], options: %d}",
+		strings.Join(names, ", "), len(r.Options))
+}
+
+// String returns a safe representation of NamedOutput that never
+// includes credentials, header values, or resolved environment
+// variable values.
+func (o *NamedOutput) String() string {
+	if o == nil {
+		return "<nil>"
+	}
+	outputName := "<nil>"
+	if o.Output != nil {
+		outputName = o.Output.Name()
+	}
+	hasRoute := o.Route != nil
+	hasFormatter := o.Formatter != nil
+	return fmt.Sprintf("NamedOutput{name: %q, output: %q, route: %t, formatter: %t}",
+		o.Name, outputName, hasRoute, hasFormatter)
+}
+
 // Load parses a YAML output configuration, constructs all outputs via
 // the registry, validates routes against the taxonomy, and returns
 // [audit.Option] values ready for [audit.NewLogger].

@@ -662,3 +662,35 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildOutputFormatter fails")
 }
+
+func TestLoadResult_String_NoCredentials(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\noutputs:\n  console:\n    type: stdout\n")
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	s := result.String()
+	assert.Contains(t, s, "console")
+	assert.Contains(t, s, "options: 1")
+	assert.NotContains(t, s, "Authorization")
+	assert.NotContains(t, s, "Bearer")
+}
+
+func TestLoadResult_String_Nil(t *testing.T) {
+	var r *outputconfig.LoadResult
+	assert.Equal(t, "<nil>", r.String())
+}
+
+func TestNamedOutput_String_NoCredentials(t *testing.T) {
+	no := &outputconfig.NamedOutput{
+		Name: "test_output",
+	}
+	s := no.String()
+	assert.Contains(t, s, "test_output")
+	assert.NotContains(t, s, "Authorization")
+}
+
+func TestNamedOutput_String_Nil(t *testing.T) {
+	var no *outputconfig.NamedOutput
+	assert.Equal(t, "<nil>", no.String())
+}

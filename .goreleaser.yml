@@ -6,6 +6,10 @@ builds:
     binary: audit-gen
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    env:
+      - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}}
 

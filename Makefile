@@ -13,22 +13,32 @@
 MODULES           := . file syslog webhook cmd/audit-gen
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
+
+# Tool versions — pinned for supply chain safety. To update:
+#   1. Change the version constant below
+#   2. Run: make install-tools
+#   3. Verify: make check
+#   4. Commit the Makefile change (CI cache auto-invalidates via hashFiles)
 GOLANGCI_LINT_VER := v2.1.6
+GOVULNCHECK_VER   := v1.1.4
+GOIMPORTS_VER     := v0.43.0
+GORELEASER_VER    := v2.15.0
+BENCHSTAT_VER     := v0.0.0-20260312031701-16a31bc5fbd0
 
 # --- Tool management ---
 
 install-tools:
 	@echo "Installing tools with GOTOOLCHAIN=$(GO_TOOLCHAIN)..."
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VER)
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/vuln/cmd/govulncheck@latest
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/tools/cmd/goimports@latest
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@latest
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@latest
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
 	@echo "Tools installed to $(GOBIN)"
 
 install-benchstat:
 	@echo "Installing benchstat with GOTOOLCHAIN=$(GO_TOOLCHAIN)..."
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@latest
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
 	@echo "benchstat installed to $(GOBIN)"
 
 # --- Workspace ---

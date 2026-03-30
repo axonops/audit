@@ -29,6 +29,8 @@ permissions:
 #   dependency-review — PR-only, blocks PRs adding vulnerable dependencies
 
 jobs:
+  # Requires Dependency Graph enabled in repo settings:
+  # https://github.com/axonops/go-audit/settings/security_analysis
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest

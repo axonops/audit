@@ -728,6 +728,89 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 
 // --- Benchmarks ---
 
+func TestParseTaxonomyYAML_WithDescription(t *testing.T) {
+	yaml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    category: write
+    description: "A new user account was created"
+    required: [outcome]
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
+	require.NoError(t, err)
+	assert.Equal(t, "A new user account was created", tax.Events["user_create"].Description)
+}
+
+func TestParseTaxonomyYAML_WithoutDescription(t *testing.T) {
+	yaml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    category: write
+    required: [outcome]
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
+	require.NoError(t, err)
+	assert.Equal(t, "", tax.Events["user_create"].Description)
+}
+
+func TestInjectLifecycleEvents_SetsDescriptions(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string][]string{"write": {"user_create"}},
+		Events: map[string]*audit.EventDef{
+			"user_create": {Category: "write", Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"write"},
+	}
+	audit.InjectLifecycleEvents(&tax)
+	assert.Equal(t, "Application started", tax.Events["startup"].Description)
+	assert.Equal(t, "Application shutting down", tax.Events["shutdown"].Description)
+}
+
+func TestPrecomputeTaxonomy_DescriptionNotInKnownFields(t *testing.T) {
+	yaml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    category: write
+    description: "Should not appear in knownFields"
+    required: [outcome]
+    optional: [actor_id]
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
+	require.NoError(t, err)
+
+	// Create a logger and audit an event — the description should not
+	// be treated as a field name. An event with only outcome + actor_id
+	// should pass strict validation (no unknown fields).
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "strict"},
+		audit.WithTaxonomy(tax),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})
+	assert.NoError(t, err, "description should not be in knownFields set")
+}
+
 func BenchmarkParseTaxonomyYAML(b *testing.B) {
 	data := []byte(validYAML)
 	for b.Loop() {

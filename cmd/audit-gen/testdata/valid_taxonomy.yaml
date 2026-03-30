@@ -24,6 +24,7 @@ events:
       - outcome
   schema_register:
     category: write
+    description: "A new schema version was registered in the registry"
     required:
       - outcome
       - actor_id
@@ -32,12 +33,14 @@ events:
       - schema_type
   schema_delete:
     category: write
+    description: "A schema was permanently deleted"
     required:
       - outcome
       - actor_id
       - subject
   auth_failure:
     category: security
+    description: "An authentication attempt failed"
     required:
       - outcome
       - actor_id

@@ -1,0 +1,172 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package outputconfig
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	audit "github.com/axonops/go-audit"
+	"gopkg.in/yaml.v3"
+)
+
+func formatterNode(t *testing.T, yamlStr string) *yaml.Node {
+	t.Helper()
+	var doc yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &doc))
+	// doc is DocumentNode → Content[0] is the actual node.
+	return doc.Content[0]
+}
+
+func TestBuildFormatter_Nil_ReturnsNil(t *testing.T) {
+	f, err := buildFormatter(nil)
+	assert.NoError(t, err)
+	assert.Nil(t, f)
+}
+
+func TestBuildFormatter_EmptyScalar_ReturnsNil(t *testing.T) {
+	node := &yaml.Node{Kind: yaml.ScalarNode, Value: ""}
+	f, err := buildFormatter(node)
+	assert.NoError(t, err)
+	assert.Nil(t, f)
+}
+
+func TestBuildFormatter_JSON_Default(t *testing.T) {
+	node := formatterNode(t, "type: json\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	jf, ok := f.(*audit.JSONFormatter)
+	require.True(t, ok)
+	assert.Equal(t, audit.TimestampRFC3339Nano, jf.Timestamp)
+	assert.False(t, jf.OmitEmpty)
+}
+
+func TestBuildFormatter_JSON_EmptyType_DefaultsToJSON(t *testing.T) {
+	node := formatterNode(t, "timestamp: unix_ms\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+
+	jf, ok := f.(*audit.JSONFormatter)
+	require.True(t, ok)
+	assert.Equal(t, audit.TimestampUnixMillis, jf.Timestamp)
+}
+
+func TestBuildFormatter_JSON_UnixMs(t *testing.T) {
+	node := formatterNode(t, "type: json\ntimestamp: unix_ms\nomit_empty: true\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+
+	jf, ok := f.(*audit.JSONFormatter)
+	require.True(t, ok)
+	assert.Equal(t, audit.TimestampUnixMillis, jf.Timestamp)
+	assert.True(t, jf.OmitEmpty)
+}
+
+func TestBuildFormatter_JSON_InvalidTimestamp_Error(t *testing.T) {
+	node := formatterNode(t, "type: json\ntimestamp: epoch_seconds\n")
+	_, err := buildFormatter(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown timestamp format")
+	assert.Contains(t, err.Error(), "epoch_seconds")
+}
+
+func TestBuildFormatter_CEF_WithVendorProduct(t *testing.T) {
+	node := formatterNode(t, "type: cef\nvendor: AxonOps\nproduct: SchemaRegistry\nversion: \"1.0\"\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+
+	cf, ok := f.(*audit.CEFFormatter)
+	require.True(t, ok)
+	assert.Equal(t, "AxonOps", cf.Vendor)
+	assert.Equal(t, "SchemaRegistry", cf.Product)
+	assert.Equal(t, "1.0", cf.Version)
+}
+
+func TestBuildFormatter_CEF_OmitEmpty(t *testing.T) {
+	node := formatterNode(t, "type: cef\nomit_empty: true\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+
+	cf, ok := f.(*audit.CEFFormatter)
+	require.True(t, ok)
+	assert.True(t, cf.OmitEmpty)
+}
+
+func TestBuildFormatter_CEF_NoSeverityFunc(t *testing.T) {
+	// SeverityFunc is not configurable via YAML.
+	node := formatterNode(t, "type: cef\nvendor: Test\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+
+	cf, ok := f.(*audit.CEFFormatter)
+	require.True(t, ok)
+	assert.Nil(t, cf.SeverityFunc, "SeverityFunc should be nil (not configurable via YAML)")
+}
+
+func TestBuildFormatter_CEF_Defaults(t *testing.T) {
+	node := formatterNode(t, "type: cef\n")
+	f, err := buildFormatter(node)
+	require.NoError(t, err)
+
+	cf, ok := f.(*audit.CEFFormatter)
+	require.True(t, ok)
+	assert.Empty(t, cf.Vendor)
+	assert.Empty(t, cf.Product)
+	assert.Empty(t, cf.Version)
+	assert.False(t, cf.OmitEmpty)
+	assert.Nil(t, cf.SeverityFunc)
+	assert.Nil(t, cf.DescriptionFunc)
+	assert.Nil(t, cf.FieldMapping)
+}
+
+func TestBuildFormatter_CEF_RejectsTimestamp(t *testing.T) {
+	node := formatterNode(t, "type: cef\ntimestamp: unix_ms\nvendor: Test\n")
+	_, err := buildFormatter(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cef does not support timestamp")
+}
+
+func TestBuildFormatter_JSON_RejectsVendorProductVersion(t *testing.T) {
+	node := formatterNode(t, "type: json\nvendor: AxonOps\n")
+	_, err := buildFormatter(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json does not support vendor")
+}
+
+func TestBuildFormatter_UnknownType_Error(t *testing.T) {
+	node := formatterNode(t, "type: protobuf\n")
+	_, err := buildFormatter(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown type")
+	assert.Contains(t, err.Error(), "protobuf")
+}
+
+func TestBuildFormatter_InvalidYAML_Error(t *testing.T) {
+	// Pass a sequence node where a mapping is expected.
+	node := &yaml.Node{
+		Kind: yaml.SequenceNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.ScalarNode, Value: "item"},
+		},
+	}
+	_, err := buildFormatter(node)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "formatter")
+}

@@ -1,0 +1,35 @@
+version: 1
+
+categories:
+  write:
+    - user_create
+  read:
+    - user_read
+  security:
+    - auth_failure
+
+default_enabled:
+  - write
+  - read
+  - security
+
+events:
+  user_create:
+    category: write
+    description: "A new user account was created"
+    required:
+      - outcome
+      - actor_id
+
+  user_read:
+    category: read
+    description: "A user profile was viewed"
+    required:
+      - outcome
+
+  auth_failure:
+    category: security
+    description: "An authentication attempt failed"
+    required:
+      - outcome
+      - actor_id

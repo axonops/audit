@@ -1,16 +1,19 @@
 # Basic Audit Example
 
 The minimum viable audit event: create a logger, emit an event, and see
-what happens when validation fails.
+what happens when validation catches a missing field.
+
+This example uses Go code to set everything up so you can see how the
+library works under the hood. From the next example onwards, you'll
+define your events and outputs in YAML files instead — that's how you'd
+use go-audit in a real application.
 
 ## What You'll Learn
 
-- Creating an `audit.Taxonomy` with categories and event definitions
-- Configuring `audit.Config` with `Version` and `Enabled`
-- Using `audit.NewStdoutOutput` for console output
-- Building a logger with `audit.NewLogger`, `WithTaxonomy`, and `WithOutputs`
-- Emitting events with `logger.Audit(eventType, fields)`
-- How required-field validation works in strict mode
+- Defining an audit taxonomy (what events your application can produce)
+- Creating a logger and emitting events
+- How required-field validation works
+- Why the logger is asynchronous and what `Close()` does
 
 ## Prerequisites
 
@@ -21,6 +24,114 @@ what happens when validation fails.
 | File | Purpose |
 |------|---------|
 | `main.go` | Logger setup, event emission, validation error |
+
+## Key Concepts
+
+### The Taxonomy
+
+Every application that uses go-audit starts by defining a **taxonomy** —
+the list of events it can produce, grouped into categories, with
+required fields for each:
+
+```go
+tax := audit.Taxonomy{
+    Version: 1,
+    Categories: map[string][]string{
+        "write":    {"user_create", "user_delete"},
+        "security": {"auth_failure"},
+    },
+    Events: map[string]*audit.EventDef{
+        "user_create": {
+            Category: "write",
+            Required: []string{"outcome", "actor_id"},
+        },
+        // ...
+    },
+    DefaultEnabled: []string{"write", "security"},
+}
+```
+
+Think of the taxonomy as a contract: "these are the audit events we
+produce, and each one always includes these fields." If your code tries
+to emit an event without a required field, the library rejects it
+immediately. This is intentional — audit logging is a compliance
+function, and silently dropping fields is worse than failing loudly.
+
+**Categories** let you group related events. You can enable or disable
+entire categories at runtime — useful if you need to turn off verbose
+`read` events in a high-throughput environment without touching your
+code.
+
+In production, you wouldn't define the taxonomy in Go code like this.
+You'd write it in a YAML file and use `audit-gen` to generate type-safe
+constants. The [Code Generation](../code-generation/) example shows how.
+
+### Creating the Logger
+
+```go
+stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+if err != nil {
+    log.Fatalf("create stdout output: %v", err)
+}
+
+logger, err := audit.NewLogger(
+    audit.Config{Version: 1, Enabled: true},
+    audit.WithTaxonomy(tax),
+    audit.WithOutputs(stdout),
+)
+```
+
+`NewLogger` takes a config struct and a set of options. `WithTaxonomy`
+tells the logger what events are valid. `WithOutputs` tells it where to
+send them.
+
+`Config.Enabled` is a kill switch — when `false`, `Audit()` does nothing
+and returns `nil`. This lets you wire audit logging into your application
+unconditionally and toggle it via configuration.
+
+### Emitting Events
+
+```go
+err := logger.Audit("user_create", audit.Fields{
+    "outcome":  "success",
+    "actor_id": "alice",
+})
+```
+
+`Audit()` validates the fields against the taxonomy, serializes the
+event to JSON, and **enqueues it to an internal buffer**. The actual
+write to stdout happens asynchronously on a background goroutine.
+
+This means `Audit()` is fast — it doesn't block on I/O. The trade-off:
+output may appear slightly after the `fmt.Println` that precedes it in
+your code.
+
+### Validation Errors
+
+```go
+err = logger.Audit("user_create", audit.Fields{
+    "outcome": "success",
+    // actor_id intentionally omitted
+})
+// err: audit: event "user_create" missing required fields: [actor_id]
+```
+
+The event is rejected before it enters the buffer. No partial events
+reach your outputs.
+
+### Closing the Logger
+
+```go
+defer func() {
+    if err := logger.Close(); err != nil {
+        log.Printf("close logger: %v", err)
+    }
+}()
+```
+
+`Close()` waits for buffered events to flush, then shuts down the
+background goroutine and closes all outputs. Without `Close()`, buffered
+events may be lost.
 
 ## Run It
 
@@ -35,34 +146,14 @@ go run .
 
 --- Invalid event (missing required field) ---
 Validation error: audit: event "user_create" missing required fields: [actor_id]
-{"timestamp":"2026-03-30T12:00:00.000Z","event_type":"user_create","actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
 ```
 
-The JSON event line may appear after both print statements because the
-logger is **asynchronous** -- `Audit()` enqueues the event and returns
-immediately. The drain goroutine writes it to stdout shortly after. The
-invalid event returns an error synchronously because validation happens
-before enqueueing.
-
-## What's Happening
-
-1. **Taxonomy** defines what events exist, which category they belong to,
-   and which fields are required. The logger validates every `Audit()` call
-   against the taxonomy.
-
-2. **StdoutOutput** writes JSON-formatted events to standard output. Each
-   event is a single line (NDJSON format).
-
-3. **Config** sets `Version: 1` (required) and `Enabled: true`. When
-   `Enabled` is false, the logger becomes a no-op.
-
-4. **Validation** is strict by default. Missing a required field returns
-   an error immediately. You can change this with `ValidationMode: "warn"`
-   or `"permissive"`.
-
-5. **Close** flushes any buffered events and releases resources. Always
-   defer it.
+The JSON event appears after both print statements because `Audit()`
+enqueues asynchronously — the background goroutine writes to stdout
+after the caller's next statement has already executed.
 
 ## Next
 
-[File Output](../file-output/) -- write events to a log file with rotation.
+[Code Generation](../code-generation/) — define your events in YAML and
+generate type-safe Go constants.

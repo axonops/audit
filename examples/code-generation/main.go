@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Code-generation demonstrates the audit-gen workflow: define events in
-// a YAML taxonomy, generate type-safe Go constants, and use them to
-// eliminate string-literal errors at compile time.
+// Code-generation demonstrates the recommended go-audit workflow:
+// define events in a YAML taxonomy, generate type-safe Go constants
+// with audit-gen, and configure outputs in a separate YAML file.
 package main
 
 import (
@@ -23,6 +23,7 @@ import (
 	"log"
 
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/outputconfig"
 )
 
 //go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
@@ -30,23 +31,27 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
+//go:embed outputs.yaml
+var outputsYAML []byte
+
 func main() {
-	// Parse the embedded taxonomy YAML at startup.
+	// 1. Parse the embedded taxonomy.
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+	// 2. Load output configuration from YAML.
+	result, err := outputconfig.Load(outputsYAML, &tax, nil)
 	if err != nil {
-		log.Fatalf("create stdout: %v", err)
+		log.Fatalf("load outputs: %v", err)
 	}
 
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-		audit.WithOutputs(stdout),
-	)
+	// 3. Create the logger with taxonomy + outputs.
+	opts := []audit.Option{audit.WithTaxonomy(tax)}
+	opts = append(opts, result.Options...)
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

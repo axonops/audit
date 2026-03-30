@@ -32,6 +32,7 @@ type Item struct { //nolint:govet // fieldalignment: readability preferred
 }
 
 func connectDB() (*sql.DB, error) {
+	// sslmode=disable is for local Docker development only — use sslmode=require in production.
 	dsn := envOr("DATABASE_URL", "postgres://demo:demo@localhost:5432/audit_demo?sslmode=disable")
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

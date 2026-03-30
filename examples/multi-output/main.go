@@ -13,59 +13,44 @@
 // limitations under the License.
 
 // Multi-output demonstrates fan-out: a single Audit call delivers events
-// to both stdout and a file simultaneously.
+// to both stdout and a file simultaneously. Both outputs are configured
+// in outputs.yaml.
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
+	_ "github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/outputconfig"
 )
 
+//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+//go:embed outputs.yaml
+var outputsYAML []byte
+
 func main() {
-	tax := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create"},
-			"security": {"auth_failure"},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create": {
-				Category: "write",
-				Required: []string{"outcome", "actor_id"},
-			},
-			"auth_failure": {
-				Category: "security",
-				Required: []string{"outcome", "actor_id"},
-			},
-		},
-		DefaultEnabled: []string{"write", "security"},
-	}
-
-	// Create two outputs: stdout and a file.
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
-		log.Fatalf("create stdout output: %v", err)
+		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	fileOut, err := file.New(file.Config{
-		Path:        "./audit.log",
-		Permissions: "0600",
-	}, nil)
+	result, err := outputconfig.Load(outputsYAML, &tax, nil)
 	if err != nil {
-		log.Fatalf("create file output: %v", err)
+		log.Fatalf("load outputs: %v", err)
 	}
 
-	// WithOutputs accepts multiple outputs — every Audit call fans out
-	// to all of them.
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-		audit.WithOutputs(stdout, fileOut),
-	)
+	opts := []audit.Option{audit.WithTaxonomy(tax)}
+	opts = append(opts, result.Options...)
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
@@ -76,15 +61,15 @@ func main() {
 		actorID   string
 		outcome   string
 	}{
-		{"user_create", "alice", "success"},
-		{"auth_failure", "unknown", "failure"},
-		{"user_create", "bob", "success"},
+		{EventUserCreate, "alice", "success"},
+		{EventAuthFailure, "unknown", "failure"},
+		{EventUserCreate, "bob", "success"},
 	}
 
 	for _, e := range events {
 		if auditErr := logger.Audit(e.eventType, audit.Fields{
-			"outcome":  e.outcome,
-			"actor_id": e.actorID,
+			FieldOutcome: e.outcome,
+			FieldActorID: e.actorID,
 		}); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}

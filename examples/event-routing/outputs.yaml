@@ -1,0 +1,20 @@
+version: 1
+outputs:
+  console:
+    type: stdout
+
+  security_log:
+    type: file
+    file:
+      path: "./security.log"
+    route:
+      include_categories:
+        - security
+
+  writes_log:
+    type: file
+    file:
+      path: "./writes.log"
+    route:
+      include_categories:
+        - write

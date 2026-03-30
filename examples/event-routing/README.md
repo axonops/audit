@@ -5,10 +5,9 @@ to one file, write events to another, and everything to the console.
 
 ## What You'll Learn
 
-- Using `WithNamedOutput` for per-output configuration
-- Using `audit.WrapOutput` to give outputs human-readable names
-- Defining `EventRoute` with `IncludeCategories` for allow-list filtering
-- How a nil route means "receive all events"
+- Adding per-output routing rules in `outputs.yaml`
+- How `include_categories` and `exclude_categories` work
+- What happens to events that don't match any route
 
 ## Prerequisites
 
@@ -19,7 +18,64 @@ to one file, write events to another, and everything to the console.
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Three named outputs with different routing rules |
+| `taxonomy.yaml` | Three categories: write, read, security |
+| `outputs.yaml` | Three outputs with different routing rules |
+| `audit_generated.go` | Generated constants (committed) |
+| `main.go` | Emits one event per category, shows filtered output |
+
+## Key Concepts
+
+### Routes in YAML
+
+Each output can have a `route:` block that controls which events it
+receives:
+
+```yaml
+version: 1
+outputs:
+  console:
+    type: stdout
+    # No route — receives ALL events.
+
+  security_log:
+    type: file
+    file:
+      path: "./security.log"
+    route:
+      include_categories:
+        - security
+
+  writes_log:
+    type: file
+    file:
+      path: "./writes.log"
+    route:
+      include_categories:
+        - write
+```
+
+- **No route** = receives everything (the console output above)
+- **`include_categories`** = allow-list — only events in these categories
+- **`exclude_categories`** = deny-list — everything except these categories
+
+You can also filter by individual event types with `include_event_types`
+and `exclude_event_types`.
+
+### Route Validation
+
+Routes are validated against your taxonomy when the config is loaded. If
+you reference a category that doesn't exist in your taxonomy,
+`outputconfig.Load` returns an error immediately — no silent
+misconfiguration.
+
+### What Happens to Unmatched Events
+
+An event that doesn't match any routed output is simply not delivered to
+that output. In this example, the `user_read` event (category `read`)
+doesn't match either file's route, so it only appears on stdout.
+
+Events are filtered before serialization — no wasted work formatting
+events that won't be delivered.
 
 ## Run It
 
@@ -29,8 +85,8 @@ go run .
 
 ## Expected Output
 
-All three events appear on stdout (the console output has no route
-filter). Each file contains only the events matching its route:
+All three events appear on stdout. Each file contains only the events
+matching its route:
 
 ```
 --- security.log ---
@@ -40,26 +96,12 @@ filter). Each file contains only the events matching its route:
 {"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
 ```
 
-The `user_read` event does not appear in either file because neither
-route includes the `read` category.
-
-## What's Happening
-
-1. **WithNamedOutput** replaces `WithOutputs` when you need per-output
-   control. Each call takes an output, an optional route, and an optional
-   formatter. You cannot mix `WithOutputs` and `WithNamedOutput`.
-
-2. **WrapOutput** overrides an output's default `Name()` with a
-   human-readable label. This name appears in metrics, log messages, and
-   `EnableOutput`/`DisableOutput` calls.
-
-3. **EventRoute.IncludeCategories** creates an allow-list: only events in
-   the listed categories are delivered. You can also use
-   `ExcludeCategories` for a deny-list, or `IncludeEventTypes` /
-   `ExcludeEventTypes` for event-level granularity.
-
-4. **nil route** means no filtering — the output receives every event.
+The `user_read` event doesn't appear in either file — neither route
+includes the `read` category. Notice that `user_read` only requires
+`outcome` — `actor_id` is optional for read events. Each event type
+defines its own required fields in the taxonomy.
 
 ## Next
 
-[Formatters](../formatters/) -- output events as JSON or CEF side by side.
+[Formatters](../formatters/) — output events as JSON or CEF for SIEM
+integration.

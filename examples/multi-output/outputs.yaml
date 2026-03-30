@@ -1,0 +1,10 @@
+version: 1
+outputs:
+  console:
+    type: stdout
+
+  audit_log:
+    type: file
+    file:
+      path: "./audit.log"
+      permissions: "0600"

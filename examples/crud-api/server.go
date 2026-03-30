@@ -68,6 +68,11 @@ func buildAuditEvent(hints *audit.Hints, transport *audit.TransportMetadata) (ev
 		eventType = mapHTTPToEvent(transport.Method, transport.Path)
 	}
 
+	// Skip unknown routes (e.g., favicon.ico, undefined paths).
+	if eventType == "" {
+		return "", nil, true
+	}
+
 	fields = audit.Fields{
 		FieldOutcome: hints.Outcome,
 	}

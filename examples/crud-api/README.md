@@ -4,17 +4,18 @@ A complete REST API with Postgres, five audit outputs, Prometheus
 metrics, HTTP middleware, lifecycle events, and graceful shutdown.
 
 This is the capstone example: it demonstrates every major go-audit
-feature in a realistic application.
+feature in a realistic application. Four outputs are configured in
+`outputs.yaml`; the webhook output is created programmatically because
+its dev-mode HTTP URL requires `AllowInsecureHTTP`, which is not yet
+available in YAML config (see [#181](https://github.com/axonops/go-audit/issues/181)).
 
 ## What You'll Learn
 
-- YAML taxonomy with `audit-gen` code generation
-- Five named outputs with routing and per-output formatting
-- HTTP audit middleware with `EventBuilder` and `Hints`
-- API key authentication that emits `auth_failure` events
-- Prometheus metrics implementing all four metrics interfaces
-- Lifecycle events (`EmitStartup`, automatic shutdown)
-- Graceful shutdown with signal handling
+- Configuring outputs with routing, formatting, and env vars in YAML
+- Wiring Prometheus metrics into the audit pipeline
+- Using HTTP middleware with authentication and domain hints
+- Lifecycle events (startup and shutdown)
+- Graceful shutdown ordering
 
 ## Prerequisites
 
@@ -26,16 +27,201 @@ feature in a realistic application.
 
 | File | Purpose |
 |------|---------|
+| `taxonomy.yaml` | Audit event definitions (embedded in binary) |
+| `outputs.yaml` | Five outputs with routing, formatting, env vars |
+| `audit_generated.go` | Generated constants (committed) |
 | `main.go` | Entry point, signal handling, graceful shutdown |
+| `audit_setup.go` | Loads output config, wires metrics factories |
 | `server.go` | HTTP mux, middleware wiring, EventBuilder |
 | `handlers.go` | CRUD handlers for `/items` |
-| `auth.go` | API key middleware, auth_failure events |
-| `audit_setup.go` | Five named outputs with routing and formatters |
+| `auth.go` | API key middleware, auth failure events |
 | `db.go` | Postgres connection and queries |
 | `metrics.go` | Prometheus metrics for all four interfaces |
-| `taxonomy.yaml` | Audit event definitions |
-| `audit_generated.go` | Generated constants (committed) |
 | `docker-compose.yml` | Postgres, syslog-ng, webhook receiver |
+
+## Key Concepts
+
+### Output Configuration
+
+Four outputs are configured in `outputs.yaml`:
+
+```yaml
+version: 1
+outputs:
+  console:
+    type: stdout
+
+  audit_log:
+    type: file
+    file:
+      path: "${AUDIT_LOG_PATH:-./audit.log}"
+      max_size_mb: 100
+      max_backups: 5
+      permissions: "0600"
+    route:
+      exclude_categories:
+        - read
+
+  admin_log:
+    type: file
+    file:
+      path: "${ADMIN_LOG_PATH:-./admin-audit.log}"
+      max_size_mb: 50
+      permissions: "0600"
+    route:
+      include_categories:
+        - admin
+    formatter:
+      type: cef
+      vendor: "AxonOps"
+      product: "CRUDExample"
+      version: "0.1.0"
+
+  syslog_security:
+    type: syslog
+    syslog:
+      network: tcp
+      address: "${SYSLOG_ADDR:-localhost:5514}"
+      app_name: crud-api
+    route:
+      include_categories:
+        - security
+```
+
+The fifth output (webhook) is created programmatically in
+`audit_setup.go` because the dev environment uses plain HTTP and
+`allow_insecure_http` is not yet available in YAML config
+([#181](https://github.com/axonops/go-audit/issues/181)). In production
+with HTTPS, you would add it to `outputs.yaml`:
+
+```yaml
+  webhook_siem:
+    type: webhook
+    webhook:
+      url: "https://siem.example.com/events"
+      batch_size: 50
+      flush_interval: "5s"
+      timeout: "10s"
+      max_retries: 3
+      headers:
+        Authorization: "Splunk ${HEC_TOKEN}"
+```
+
+| Output | Route | Format | Purpose |
+|--------|-------|--------|---------|
+| console | all events | JSON | Development visibility |
+| audit_log | exclude read | JSON | Persistent audit trail |
+| admin_log | admin only | CEF | SIEM-compatible admin log |
+| syslog_security | security only | JSON | Central security logging |
+| webhook_siem | all events | JSON | External SIEM forwarding |
+
+### Environment Variables
+
+Output configs support `${VAR:-default}` syntax:
+
+```yaml
+path: "${AUDIT_LOG_PATH:-./audit.log}"
+address: "${SYSLOG_ADDR:-localhost:5514}"
+```
+
+The defaults work for local development with Docker Compose. In
+production, set `SYSLOG_ADDR` and `WEBHOOK_URL` to your real
+infrastructure.
+
+### Wiring Prometheus Metrics
+
+go-audit defines four metrics interfaces. The library does not import
+Prometheus — your application brings its own implementation. A single
+struct can implement all four:
+
+```go
+type auditMetrics struct {
+    events           *prometheus.CounterVec   // audit.Metrics (7 methods)
+    fileRotations    *prometheus.CounterVec   // file.Metrics
+    syslogReconnects *prometheus.CounterVec   // syslog.Metrics
+    webhookDrops     prometheus.Counter       // webhook.Metrics
+    // ...
+}
+```
+
+To track per-output-type metrics (file rotation, syslog reconnection,
+webhook flush timing), register custom factories before loading the
+output config:
+
+```go
+import (
+    "github.com/axonops/go-audit/file"       // named import — calling file.NewFactory
+    "github.com/axonops/go-audit/syslog"
+    "github.com/axonops/go-audit/webhook"
+)
+
+audit.RegisterOutputFactory("file", file.NewFactory(m))
+audit.RegisterOutputFactory("syslog", syslog.NewFactory(m))
+audit.RegisterOutputFactory("webhook", webhook.NewFactory(m))
+
+result, err := outputconfig.Load(outputsYAML, &tax, m)
+```
+
+Note the **named imports** here — not blank imports. In earlier examples,
+you used `_ "github.com/axonops/go-audit/file"` (blank import) which
+registers a default factory without metrics. Here, the named import lets
+you call `file.NewFactory(m)` to register a factory that captures your
+metrics implementation.
+
+Your metrics struct needs to implement these interfaces:
+
+| Interface | Methods | What it tracks |
+|-----------|---------|----------------|
+| `audit.Metrics` | 7 methods | Events emitted, validation errors, buffer drops |
+| `file.Metrics` | `RecordFileRotation(path)` | Log file rotation |
+| `syslog.Metrics` | `RecordSyslogReconnect(addr, success)` | Syslog reconnections |
+| `webhook.Metrics` | `RecordWebhookDrop()`, `RecordWebhookFlush(batchSize, dur)` | Webhook delivery |
+
+The `/metrics` endpoint exposes standard Prometheus counters.
+
+### Authentication and Audit Hints
+
+Auth and audit middleware are composed as layers:
+
+```go
+authed := authMiddleware()(mux)
+audited := audit.Middleware(logger, buildAuditEvent)(authed)
+```
+
+When authentication fails, the auth middleware sets
+`Hints.EventType = "auth_failure"` and returns 401 — the audit
+middleware automatically emits the failure event. When authentication
+succeeds, it sets `Hints.ActorID` so the audit event records who made
+the request.
+
+Neither the auth middleware nor the handlers need a direct reference to
+the audit logger.
+
+### Lifecycle Events
+
+```go
+logger.EmitStartup(audit.Fields{
+    FieldAppName: "crud-api",
+    FieldVersion: "0.1.0",
+})
+```
+
+`EmitStartup` records that the application started. When `Close()` is
+called, a corresponding shutdown event is emitted automatically. These
+prove the audit system was active during the entire application
+lifetime.
+
+### Graceful Shutdown
+
+The shutdown sequence matters: stop the HTTP server first (so no new
+requests generate events), then close the logger (which flushes all
+buffered events and emits the shutdown event).
+
+```go
+<-done  // wait for SIGINT/SIGTERM
+srv.Shutdown(ctx)    // stop HTTP
+logger.Close()       // flush audit, emit shutdown
+```
 
 ## Run It
 
@@ -49,8 +235,8 @@ docker compose exec postgres pg_isready -U demo -d audit_demo
 # Run the API:
 go run .
 
-# In another terminal, make requests:
-# List items (empty):
+# In another terminal:
+# List items:
 curl -s -H "X-API-Key: key-alice" http://localhost:8080/items | jq .
 
 # Create an item:
@@ -59,45 +245,24 @@ curl -s -X POST -H "X-API-Key: key-alice" \
   -d '{"name":"widget","description":"A useful widget"}' \
   http://localhost:8080/items | jq .
 
-# Read the item (replace ID with the one returned above):
-curl -s -H "X-API-Key: key-bob" http://localhost:8080/items/{id} | jq .
-
-# Update the item:
-curl -s -X PUT -H "X-API-Key: key-alice" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"updated-widget","description":"An improved widget"}' \
-  http://localhost:8080/items/{id} | jq .
-
-# Delete the item:
-curl -s -X DELETE -H "X-API-Key: key-admin" \
-  http://localhost:8080/items/{id}
-
-# Auth failure (invalid key):
+# Auth failure:
 curl -s -H "X-API-Key: bad-key" http://localhost:8080/items
-
-# Health check (no audit event):
-curl -s http://localhost:8080/healthz
 
 # Prometheus metrics:
 curl -s http://localhost:8080/metrics | grep audit_
 
-# Stop with Ctrl+C — watch for startup/shutdown events in stdout.
-
-# Tear down:
+# Stop with Ctrl+C, then:
 docker compose down -v
 ```
 
 ## Expected Output
 
-On stdout you will see JSON audit events for every operation:
+On stdout you'll see JSON audit events:
 
 ```json
 {"timestamp":"...","event_type":"startup","app_name":"crud-api","version":"0.1.0"}
 {"timestamp":"...","event_type":"item_list","actor_id":"alice","outcome":"success"}
 {"timestamp":"...","event_type":"item_create","actor_id":"alice","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"item_read","actor_id":"bob","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"item_update","actor_id":"alice","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"item_delete","actor_id":"admin","outcome":"success","target_id":"..."}
 {"timestamp":"...","event_type":"auth_failure","actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
 {"timestamp":"...","event_type":"shutdown","app_name":"crud-api"}
 ```
@@ -106,43 +271,8 @@ Additional outputs:
 - `audit.log` — all events except reads (JSON)
 - `admin-audit.log` — admin events only (CEF format)
 - Syslog on TCP 5514 — security events only
-- Webhook on HTTP 8081 — all events
-
-## What's Happening
-
-### Five Outputs
-
-| Output | Route | Formatter | Purpose |
-|--------|-------|-----------|---------|
-| stdout | all events | JSON | Development visibility |
-| `audit.log` | exclude read | JSON | Persistent audit trail |
-| `admin-audit.log` | admin only | CEF | SIEM-compatible admin log |
-| syslog TCP :5514 | security only | JSON | Central security logging |
-| webhook HTTP :8081 | all events | JSON | External SIEM forwarding |
-
-### Metrics
-
-`metrics.go` implements all four interfaces with a single struct:
-- `audit.Metrics` (7 methods) — core pipeline metrics
-- `file.Metrics` — file rotation tracking
-- `syslog.Metrics` — syslog reconnection tracking
-- `webhook.Metrics` — webhook drop and flush tracking
-
-The `/metrics` endpoint exposes Prometheus-format counters and histograms.
-
-### Authentication
-
-The `auth.go` middleware validates `X-API-Key` headers against a
-hardcoded user map. Invalid keys return 401 and emit an `auth_failure`
-audit event. Valid keys populate `Hints.ActorID` for the audit
-middleware.
-
-### Lifecycle
-
-- `EmitStartup` on boot records the application name and version
-- `logger.Close()` automatically emits a shutdown event
-- SIGINT/SIGTERM triggers graceful HTTP shutdown, then logger close
+- Webhook receiver — all events
 
 ## Previous
 
-[Middleware](../middleware/) -- the HTTP middleware fundamentals.
+[Middleware](../middleware/) — the HTTP middleware fundamentals.

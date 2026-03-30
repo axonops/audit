@@ -1,5 +1,7 @@
 github.com/axonops/go-audit v0.1.0 h1:ABbQfOdy10/NrSJkxQajPT2RoPcpB3MvhEaYNhmhVbw=
 github.com/axonops/go-audit v0.1.0/go.mod h1:VcYYC9PTsqyomNev/n5Vv9Oq5NNDAXKk1xFeEai0xwo=
+github.com/axonops/srslog v1.0.1 h1:TucvspQNxwL18w3xo9r3p+ulxJ5ltR8S9DalDTYDfA4=
+github.com/axonops/srslog v1.0.1/go.mod h1:KmR9aaV5bdRj/WE95Nzfwwed8MKdDpjFCcFO5syaJWg=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

@@ -14,10 +14,10 @@
 
 package syslog
 
-// srslog (github.com/gravwell/srslog) is used for syslog transport.
-// It is a maintained fork of github.com/RackSec/srslog which provides
-// RFC 5424 formatting, TCP/UDP/TLS transport, and thread-safe writes.
-// The library accepts *tls.Config so we control TLS version and certs.
+// srslog (github.com/axonops/srslog) is the AxonOps fork of the srslog
+// library, providing RFC 5424 formatting, TCP/UDP/TLS transport, and
+// thread-safe writes. Forked from github.com/gravwell/srslog for tagged
+// release support and supply chain control (see #147).
 
 import (
 	"crypto/rand"
@@ -31,7 +31,7 @@ import (
 	"time"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/gravwell/srslog"
+	"github.com/axonops/srslog"
 )
 
 // Compile-time assertion: Output satisfies audit.Output.

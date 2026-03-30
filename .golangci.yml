@@ -140,6 +140,13 @@ linters:
         linters:
           - gosec
 
+      # Example applications are documentation, not library code.
+      # wrapcheck and gocognit add noise without improving clarity.
+      - path: examples/
+        linters:
+          - wrapcheck
+          - gocognit
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

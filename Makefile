@@ -1,6 +1,6 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-outputconfig test-audit-gen \
-       test-integration test-bdd \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen \
+       test-integration test-bdd test-examples \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen lint-crud-api \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -11,6 +11,7 @@
 # --- Configuration ---
 
 MODULES           := . file syslog webhook outputconfig cmd/audit-gen
+WORKSPACE_MODULES := $(MODULES) examples/crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 
@@ -45,7 +46,7 @@ install-benchstat:
 
 workspace:
 	@rm -f go.work go.work.sum
-	go work init $(MODULES)
+	go work init $(WORKSPACE_MODULES)
 
 # --- Per-module test targets ---
 
@@ -82,6 +83,15 @@ test-bdd:
 	go test -race -v -count=1 -tags=integration ./tests/bdd/...
 	cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
 
+# Example compilation tests (no runtime — examples are documentation)
+test-examples:
+	@for dir in examples/basic examples/file-output examples/multi-output \
+	            examples/code-generation examples/event-routing \
+	            examples/formatters examples/middleware examples/crud-api; do \
+		echo "=== build $$dir ==="; \
+		(cd $$dir && go build -o /dev/null .) || exit 1; \
+	done
+
 # --- Linting ---
 
 lint-core:
@@ -102,7 +112,10 @@ lint-outputconfig:
 lint-audit-gen:
 	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen
+lint-crud-api:
+	cd examples/crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen lint-crud-api
 lint: lint-all
 
 # --- Vet ---
@@ -230,7 +243,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all tidy-check verify check-replace check-todos release-check security
+check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos release-check security
 	@echo ""
 	@echo "All checks passed."
 

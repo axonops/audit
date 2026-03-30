@@ -110,3 +110,6 @@ CLAUDE.md
 mem.prof
 # Built audit-gen binary (not the source directory)
 /audit-gen
+
+# Example output files (generated at runtime)
+examples/*/*.log

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Eight progressive example applications in `examples/` (#163)
 - YAML-based output configuration with registry pattern (`outputconfig` module) (#172)
 - Output factory registry in core `audit` package: `OutputFactory`, `RegisterOutputFactory`, `LookupOutputFactory`, `RegisteredOutputTypes`
 - Factory registration for file, syslog, and webhook outputs via `init()` and `NewFactory(metrics)`

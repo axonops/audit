@@ -237,6 +237,15 @@ func TestExpandEnv_BashSyntax_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid variable name")
 }
 
+func TestExpandEnv_SequenceError_Propagates(t *testing.T) {
+	yamlStr := "items:\n  - ${MISSING_SEQ_VAR}\n  - ok\n"
+	doc := parseYAML(t, yamlStr)
+
+	err := expandEnvInNode(doc, "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "MISSING_SEQ_VAR")
+}
+
 func TestParseVarExpr_Simple(t *testing.T) {
 	name, def, has := parseVarExpr("MY_VAR")
 	assert.Equal(t, "MY_VAR", name)

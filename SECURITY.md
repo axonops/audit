@@ -48,21 +48,31 @@ We follow coordinated disclosure with a 90-day window:
 
 ## Scope
 
-The following are considered security vulnerabilities:
+If you believe you have found a flaw in the library's own defences
+— not in how a consumer uses it — we want to hear about it. Examples
+of what we consider in scope:
 
-- **SSRF bypass** in the webhook output's SSRF protection
-- **TLS downgrade** or bypass of TLS policy enforcement
-- **Credential leakage** in error messages, logs, or generated output
-- **Injection** — template injection in audit-gen, header injection in
-  webhook output, log injection in syslog output
-- **Denial of service** via crafted taxonomy input or audit fields that
-  causes unbounded resource consumption
-- **Authentication bypass** in mTLS verification
+- A way to bypass the webhook output's SSRF protection so that
+  requests reach private networks despite the guard being enabled
+- A flaw that forces a TLS connection to downgrade below the
+  configured minimum version
+- The library itself leaking credentials (e.g., webhook auth headers
+  appearing in error messages or log output)
+- A way to cause the library to consume unbounded memory or CPU
+  through crafted taxonomy definitions or configuration, independent
+  of the audit data a consumer passes in
 
-The following are **not** security vulnerabilities:
+### Out of scope
 
+The following are normal usage, bugs, or consumer responsibility and
+should be reported as regular GitHub issues, not security reports:
+
+- Consumers passing arbitrary data in audit fields — the library
+  records what it is given; it is not responsible for sanitising
+  application-level content
 - Bugs in formatting, field ordering, or output structure
 - Performance issues
-- Consumer misconfiguration (e.g., disabling TLS validation)
+- Consumer misconfiguration (e.g., choosing to disable TLS validation
+  or setting `AllowInsecureHTTP`)
 - Issues in test infrastructure or CI/CD pipelines
 - Feature requests

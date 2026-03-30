@@ -21,6 +21,7 @@ before:
     - bash -c "cd webhook && go mod tidy"
     - bash -c "cd outputconfig && go mod tidy"
     - bash -c "cd cmd/audit-gen && go mod tidy"
+    - bash -c "cd examples/crud-api && go mod tidy"
 
 changelog:
   use: github

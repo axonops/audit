@@ -1,0 +1,95 @@
+version: 1
+
+categories:
+  write:
+    - item_create
+    - item_update
+    - item_delete
+  read:
+    - item_list
+    - item_read
+  security:
+    - auth_failure
+    - auth_success
+  admin:
+    - config_change
+
+default_enabled:
+  - write
+  - read
+  - security
+  - admin
+
+events:
+  item_create:
+    category: write
+    description: "An item was created"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - target_id
+      - reason
+
+  item_update:
+    category: write
+    description: "An item was updated"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - target_id
+
+  item_delete:
+    category: write
+    description: "An item was deleted"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - target_id
+
+  item_list:
+    category: read
+    description: "Items were listed"
+    required:
+      - outcome
+    optional:
+      - actor_id
+
+  item_read:
+    category: read
+    description: "An item was read"
+    required:
+      - outcome
+    optional:
+      - actor_id
+      - target_id
+
+  auth_failure:
+    category: security
+    description: "An authentication attempt failed"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - reason
+      - source_ip
+
+  auth_success:
+    category: security
+    description: "An authentication attempt succeeded"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - source_ip
+
+  config_change:
+    category: admin
+    description: "A configuration change was made"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - reason

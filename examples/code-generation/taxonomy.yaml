@@ -1,0 +1,63 @@
+version: 1
+
+categories:
+  write:
+    - user_create
+    - user_delete
+  read:
+    - user_read
+  security:
+    - auth_failure
+    - auth_success
+
+default_enabled:
+  - write
+  - read
+  - security
+
+events:
+  user_create:
+    category: write
+    description: "A new user account was created"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - target_id
+      - reason
+
+  user_delete:
+    category: write
+    description: "A user account was deleted"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - target_id
+
+  user_read:
+    category: read
+    description: "A user profile was viewed"
+    required:
+      - outcome
+    optional:
+      - actor_id
+
+  auth_failure:
+    category: security
+    description: "An authentication attempt failed"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - reason
+      - source_ip
+
+  auth_success:
+    category: security
+    description: "An authentication attempt succeeded"
+    required:
+      - outcome
+      - actor_id
+    optional:
+      - source_ip

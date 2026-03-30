@@ -1,0 +1,75 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package file
+
+import (
+	"bytes"
+	"fmt"
+
+	audit "github.com/axonops/go-audit"
+	"gopkg.in/yaml.v3"
+)
+
+func init() {
+	audit.RegisterOutputFactory("file", defaultFactory)
+}
+
+// defaultFactory creates a file output from YAML config with nil metrics.
+func defaultFactory(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	return buildOutput(name, rawConfig, nil)
+}
+
+// NewFactory returns an [audit.OutputFactory] that creates file outputs
+// from YAML configuration with the provided file-specific metrics
+// captured in the closure. Pass nil to disable file metrics.
+func NewFactory(fileMetrics Metrics) audit.OutputFactory {
+	return func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+		return buildOutput(name, rawConfig, fileMetrics)
+	}
+}
+
+// yamlFileConfig is the YAML-specific representation of file output
+// configuration. It maps snake_case YAML fields to the Go Config
+// struct. The existing Config struct does not gain yaml tags —
+// this struct is the mapping layer.
+type yamlFileConfig struct { //nolint:govet // fieldalignment: readability preferred over packing
+	Path        string `yaml:"path"`
+	Permissions string `yaml:"permissions"`
+	MaxSizeMB   int    `yaml:"max_size_mb"`
+	MaxBackups  int    `yaml:"max_backups"`
+	MaxAgeDays  int    `yaml:"max_age_days"`
+	Compress    *bool  `yaml:"compress"`
+}
+
+func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Output, error) {
+	if len(rawConfig) == 0 {
+		return nil, fmt.Errorf("audit: file output %q: config is required", name)
+	}
+
+	var yc yamlFileConfig
+	dec := yaml.NewDecoder(bytes.NewReader(rawConfig))
+	dec.KnownFields(true)
+	if err := dec.Decode(&yc); err != nil {
+		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
+	}
+
+	cfg := Config(yc)
+
+	out, err := New(cfg, fileMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
+	}
+	return audit.WrapOutput(out, name), nil
+}

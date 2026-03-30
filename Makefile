@@ -10,7 +10,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook cmd/audit-gen
+MODULES           := . file syslog webhook outputconfig cmd/audit-gen
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 

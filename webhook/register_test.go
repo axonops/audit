@@ -65,26 +65,62 @@ func TestWebhookFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown_field")
 }
 
-func TestWebhookFactory_AllowInsecureHTTP_Rejected(t *testing.T) {
-	rawYAML := []byte("url: https://example.com/events\nallow_insecure_http: true\n")
+func TestWebhookFactory_AllowInsecureHTTP_AcceptsHTTPURL(t *testing.T) {
+	rawYAML := []byte("url: http://example.com/events\nallow_insecure_http: true\n")
 
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("insecure", rawYAML, nil)
-	assert.Error(t, err, "allow_insecure_http must not be settable via YAML")
-	assert.Contains(t, err.Error(), "allow_insecure_http")
+	out, err := factory("insecure", rawYAML, nil)
+	require.NoError(t, err, "allow_insecure_http: true should accept HTTP URLs")
+	t.Cleanup(func() { _ = out.Close() })
+	assert.Equal(t, "insecure", out.Name())
 }
 
-func TestWebhookFactory_AllowPrivateRanges_Rejected(t *testing.T) {
+func TestWebhookFactory_AllowInsecureHTTP_DefaultFalse_RejectsHTTPURL(t *testing.T) {
+	rawYAML := []byte("url: http://example.com/events\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	_, err := factory("no_insecure", rawYAML, nil)
+	assert.Error(t, err, "HTTP URL without allow_insecure_http should be rejected")
+	assert.Contains(t, err.Error(), "must be https")
+}
+
+func TestWebhookFactory_AllowInsecureHTTP_ExplicitFalse_RejectsHTTPURL(t *testing.T) {
+	rawYAML := []byte("url: http://example.com/events\nallow_insecure_http: false\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	_, err := factory("explicit_false", rawYAML, nil)
+	assert.Error(t, err, "allow_insecure_http: false should still reject HTTP URLs")
+	assert.Contains(t, err.Error(), "must be https")
+}
+
+func TestWebhookFactory_AllowPrivateRanges_Accepted(t *testing.T) {
 	rawYAML := []byte("url: https://example.com/events\nallow_private_ranges: true\n")
 
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("private", rawYAML, nil)
-	assert.Error(t, err, "allow_private_ranges must not be settable via YAML")
-	assert.Contains(t, err.Error(), "allow_private_ranges")
+	out, err := factory("private", rawYAML, nil)
+	require.NoError(t, err, "allow_private_ranges: true should be accepted")
+	t.Cleanup(func() { _ = out.Close() })
+	assert.Equal(t, "private", out.Name())
+}
+
+func TestWebhookFactory_BothInsecureFields_Accepted(t *testing.T) {
+	rawYAML := []byte("url: http://example.com/events\nallow_insecure_http: true\nallow_private_ranges: true\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("both", rawYAML, nil)
+	require.NoError(t, err, "both insecure fields should be accepted together")
+	t.Cleanup(func() { _ = out.Close() })
+	assert.Equal(t, "both", out.Name())
 }
 
 func TestWebhookFactory_EmptyConfig_ReturnsError(t *testing.T) {

@@ -47,23 +47,20 @@ func NewFactory(webhookMetrics Metrics) audit.OutputFactory {
 // yamlWebhookConfig is the YAML-specific representation of webhook
 // output configuration. Maps snake_case YAML fields to the Go Config
 // struct.
-//
-// Security: AllowInsecureHTTP and AllowPrivateRanges are intentionally
-// NOT included. These insecure options are structurally impossible to
-// set via YAML — they require the programmatic API. KnownFields(true)
-// rejects them if someone tries to add them to YAML.
 type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability preferred
-	URL           string            `yaml:"url"`
-	Headers       map[string]string `yaml:"headers"`
-	TLSCA         string            `yaml:"tls_ca"`
-	TLSCert       string            `yaml:"tls_cert"`
-	TLSKey        string            `yaml:"tls_key"`
-	TLSPolicy     *yamlTLSPolicy    `yaml:"tls_policy"`
-	FlushInterval yamlDuration      `yaml:"flush_interval"`
-	Timeout       yamlDuration      `yaml:"timeout"`
-	BatchSize     int               `yaml:"batch_size"`
-	BufferSize    int               `yaml:"buffer_size"`
-	MaxRetries    int               `yaml:"max_retries"`
+	URL                string            `yaml:"url"`
+	Headers            map[string]string `yaml:"headers"`
+	TLSCA              string            `yaml:"tls_ca"`
+	TLSCert            string            `yaml:"tls_cert"`
+	TLSKey             string            `yaml:"tls_key"`
+	TLSPolicy          *yamlTLSPolicy    `yaml:"tls_policy"`
+	FlushInterval      yamlDuration      `yaml:"flush_interval"`
+	Timeout            yamlDuration      `yaml:"timeout"`
+	BatchSize          int               `yaml:"batch_size"`
+	BufferSize         int               `yaml:"buffer_size"`
+	MaxRetries         int               `yaml:"max_retries"`
+	AllowInsecureHTTP  bool              `yaml:"allow_insecure_http"`
+	AllowPrivateRanges bool              `yaml:"allow_private_ranges"`
 }
 
 // yamlTLSPolicy maps TLS policy fields from YAML.
@@ -102,18 +99,18 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, webho
 	}
 
 	cfg := &Config{
-		URL:           yc.URL,
-		Headers:       yc.Headers,
-		TLSCA:         yc.TLSCA,
-		TLSCert:       yc.TLSCert,
-		TLSKey:        yc.TLSKey,
-		FlushInterval: time.Duration(yc.FlushInterval),
-		Timeout:       time.Duration(yc.Timeout),
-		BatchSize:     yc.BatchSize,
-		BufferSize:    yc.BufferSize,
-		MaxRetries:    yc.MaxRetries,
-		// AllowInsecureHTTP and AllowPrivateRanges intentionally left
-		// as false — insecure options cannot be set via YAML config.
+		URL:                yc.URL,
+		Headers:            yc.Headers,
+		TLSCA:              yc.TLSCA,
+		TLSCert:            yc.TLSCert,
+		TLSKey:             yc.TLSKey,
+		FlushInterval:      time.Duration(yc.FlushInterval),
+		Timeout:            time.Duration(yc.Timeout),
+		BatchSize:          yc.BatchSize,
+		BufferSize:         yc.BufferSize,
+		MaxRetries:         yc.MaxRetries,
+		AllowInsecureHTTP:  yc.AllowInsecureHTTP,
+		AllowPrivateRanges: yc.AllowPrivateRanges,
 	}
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{

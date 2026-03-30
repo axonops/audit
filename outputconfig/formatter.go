@@ -15,6 +15,7 @@
 package outputconfig
 
 import (
+	"bytes"
 	"fmt"
 
 	audit "github.com/axonops/go-audit"
@@ -41,8 +42,14 @@ func buildFormatter(node *yaml.Node) (audit.Formatter, error) {
 		return nil, nil
 	}
 
+	fmtBytes, marshalErr := yaml.Marshal(node)
+	if marshalErr != nil {
+		return nil, fmt.Errorf("formatter: %w", marshalErr)
+	}
 	var cfg yamlFormatterConfig
-	if err := node.Decode(&cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(fmtBytes))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("formatter: %w", err)
 	}
 

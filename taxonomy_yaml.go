@@ -40,8 +40,22 @@ const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 type yamlTaxonomy struct {
 	Categories     yamlCategories          `yaml:"categories"`
 	Events         map[string]yamlEventDef `yaml:"events"`
+	Sensitivity    *yamlSensitivity        `yaml:"sensitivity"`
 	DefaultEnabled []string                `yaml:"default_enabled"`
 	Version        int                     `yaml:"version"`
+}
+
+// yamlSensitivity is the intermediate representation of the sensitivity
+// label configuration in YAML.
+type yamlSensitivity struct {
+	Labels map[string]*yamlSensitivityLabel `yaml:"labels"`
+}
+
+// yamlSensitivityLabel defines a single sensitivity label in YAML.
+type yamlSensitivityLabel struct {
+	Description string   `yaml:"description"`
+	Fields      []string `yaml:"fields"`
+	Patterns    []string `yaml:"patterns"`
 }
 
 // yamlCategories handles polymorphic YAML category parsing. Categories
@@ -223,26 +237,63 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	defaultEnabled := make([]string, len(yt.DefaultEnabled))
 	copy(defaultEnabled, yt.DefaultEnabled)
 
-	return Taxonomy{
+	tax := Taxonomy{
 		Version:        yt.Version,
 		Categories:     categories,
 		Events:         events,
 		DefaultEnabled: defaultEnabled,
 	}
+
+	if yt.Sensitivity != nil {
+		tax.Sensitivity = convertYAMLSensitivity(yt.Sensitivity)
+	}
+	return tax
+}
+
+// convertYAMLSensitivity converts the YAML sensitivity config to a
+// [SensitivityConfig].
+func convertYAMLSensitivity(ys *yamlSensitivity) *SensitivityConfig {
+	if ys == nil || len(ys.Labels) == 0 {
+		return nil
+	}
+	sc := &SensitivityConfig{
+		Labels: make(map[string]*SensitivityLabel, len(ys.Labels)),
+	}
+	for name, yl := range ys.Labels {
+		label := &SensitivityLabel{
+			Description: yl.Description,
+			Fields:      copyStrings(yl.Fields),
+			Patterns:    copyStrings(yl.Patterns),
+		}
+		sc.Labels[name] = label
+	}
+	return sc
 }
 
 // convertYAMLEventDef converts a single yamlEventDef into an [EventDef].
-// Required and Optional are derived from the unified fields map.
+// Required and Optional are derived from the unified fields map. Per-field
+// label annotations are stored in fieldAnnotations for later resolution
+// by [precomputeSensitivity].
 func convertYAMLEventDef(def yamlEventDef) *EventDef {
 	ev := &EventDef{
 		Description: def.Description,
 		Severity:    copyIntPtr(def.Severity),
 	}
 	for fieldName, fieldDef := range def.Fields {
-		if fieldDef != nil && fieldDef.Required {
+		if fieldDef == nil {
+			ev.Optional = append(ev.Optional, fieldName)
+			continue
+		}
+		if fieldDef.Required {
 			ev.Required = append(ev.Required, fieldName)
 		} else {
 			ev.Optional = append(ev.Optional, fieldName)
+		}
+		if len(fieldDef.Labels) > 0 {
+			if ev.fieldAnnotations == nil {
+				ev.fieldAnnotations = make(map[string][]string)
+			}
+			ev.fieldAnnotations[fieldName] = copyStrings(fieldDef.Labels)
 		}
 	}
 	slices.Sort(ev.Required)

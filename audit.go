@@ -582,7 +582,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // uncategorised.
 func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
 	for _, oe := range l.entries {
-		if !oe.matchesEvent(entry.eventType, category) {
+		if !oe.matchesEvent(entry.eventType, category, def.ResolvedSeverity()) {
 			if l.metrics != nil {
 				l.metrics.RecordOutputFiltered(oe.output.Name())
 			}

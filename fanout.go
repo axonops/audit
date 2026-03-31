@@ -45,12 +45,12 @@ type outputEntry struct {
 
 // matchesEvent reports whether the event should be delivered to this
 // output based on its current route. Lock-free — single atomic load.
-func (oe *outputEntry) matchesEvent(eventType, category string) bool {
+func (oe *outputEntry) matchesEvent(eventType, category string, severity int) bool {
 	route := oe.route.Load()
 	if route == nil {
 		return true // nil route = all events
 	}
-	return MatchesRoute(route, eventType, category)
+	return MatchesRoute(route, eventType, category, severity)
 }
 
 // effectiveFormatter returns the per-output formatter if set, or the
@@ -71,6 +71,8 @@ func (oe *outputEntry) setRoute(route *EventRoute) {
 		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
+		MinSeverity:       cloneIntPtr(route.MinSeverity),
+		MaxSeverity:       cloneIntPtr(route.MaxSeverity),
 	}
 	buildRouteSets(cp)
 	oe.route.Store(cp)
@@ -87,5 +89,16 @@ func (oe *outputEntry) getRoute() EventRoute {
 		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
+		MinSeverity:       cloneIntPtr(route.MinSeverity),
+		MaxSeverity:       cloneIntPtr(route.MaxSeverity),
 	}
+}
+
+// cloneIntPtr returns a deep copy of p. A nil input returns nil.
+func cloneIntPtr(p *int) *int {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }

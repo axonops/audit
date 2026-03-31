@@ -170,4 +170,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerFanoutSteps(ctx, tc)
 	registerMiddlewareSteps(ctx, tc)
 	RegisterMultiCatSteps(ctx, tc)
+	registerSeverityRoutingSteps(ctx, tc)
 }

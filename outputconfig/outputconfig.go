@@ -295,6 +295,8 @@ type yamlRoute struct {
 	IncludeEventTypes []string `yaml:"include_event_types"`
 	ExcludeCategories []string `yaml:"exclude_categories"`
 	ExcludeEventTypes []string `yaml:"exclude_event_types"`
+	MinSeverity       *int     `yaml:"min_severity"`
+	MaxSeverity       *int     `yaml:"max_severity"`
 }
 
 // outputFields holds parsed fields from a single output YAML node.
@@ -442,6 +444,8 @@ func buildRoute(name string, routeNode *yaml.Node, taxonomy *audit.Taxonomy) (*a
 		IncludeEventTypes: yr.IncludeEventTypes,
 		ExcludeCategories: yr.ExcludeCategories,
 		ExcludeEventTypes: yr.ExcludeEventTypes,
+		MinSeverity:       yr.MinSeverity,
+		MaxSeverity:       yr.MaxSeverity,
 	}
 	if err := audit.ValidateEventRoute(route, taxonomy); err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)

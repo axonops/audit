@@ -59,6 +59,18 @@ type EventRoute struct {
 	// Mutually exclusive with IncludeCategories and IncludeEventTypes.
 	ExcludeEventTypes []string
 
+	// MinSeverity sets a minimum severity threshold. Events with
+	// severity below this value are not delivered. Nil means no
+	// minimum filter. A non-nil pointer to 0 means "severity >= 0"
+	// (effectively no filter). Severity filtering is an AND condition
+	// with category/event type filtering.
+	MinSeverity *int
+
+	// MaxSeverity sets a maximum severity threshold. Events with
+	// severity above this value are not delivered. Nil means no
+	// maximum filter. Combined with MinSeverity to create a range.
+	MaxSeverity *int
+
 	// Pre-computed sets for O(1) lookup, populated by buildRouteSets.
 	// Nil when the route was constructed without buildRouteSets (e.g.
 	// direct struct literal in tests); MatchesRoute falls back to
@@ -75,7 +87,9 @@ func (r *EventRoute) IsEmpty() bool {
 	return len(r.IncludeCategories) == 0 &&
 		len(r.IncludeEventTypes) == 0 &&
 		len(r.ExcludeCategories) == 0 &&
-		len(r.ExcludeEventTypes) == 0
+		len(r.ExcludeEventTypes) == 0 &&
+		r.MinSeverity == nil &&
+		r.MaxSeverity == nil
 }
 
 func (r *EventRoute) isIncludeMode() bool {
@@ -92,7 +106,26 @@ func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 	if route.isIncludeMode() && route.isExcludeMode() {
 		return fmt.Errorf("audit: EventRoute must use either include or exclude, not both")
 	}
+	if err := validateSeverityRange(route); err != nil {
+		return err
+	}
 	return validateRouteEntries(route, taxonomy)
+}
+
+// validateSeverityRange checks that MinSeverity and MaxSeverity are
+// within the valid CEF range 0-10 and that min does not exceed max.
+func validateSeverityRange(route *EventRoute) error {
+	if route.MinSeverity != nil && (*route.MinSeverity < 0 || *route.MinSeverity > 10) {
+		return fmt.Errorf("audit: EventRoute min_severity %d out of range 0-10", *route.MinSeverity)
+	}
+	if route.MaxSeverity != nil && (*route.MaxSeverity < 0 || *route.MaxSeverity > 10) {
+		return fmt.Errorf("audit: EventRoute max_severity %d out of range 0-10", *route.MaxSeverity)
+	}
+	if route.MinSeverity != nil && route.MaxSeverity != nil && *route.MinSeverity > *route.MaxSeverity {
+		return fmt.Errorf("audit: EventRoute min_severity %d exceeds max_severity %d",
+			*route.MinSeverity, *route.MaxSeverity)
+	}
+	return nil
 }
 
 // validateRouteEntries checks that all categories and event types
@@ -153,24 +186,54 @@ func toSet(ss []string) map[string]struct{} {
 
 // MatchesRoute reports whether an event should be delivered to an
 // output with the given route. eventType is the event name, category
-// is its taxonomy category. An empty route matches all events.
+// is its taxonomy category, severity is the event's resolved severity
+// (0-10). An empty route matches all events.
+//
+// Severity filtering is an AND condition: the event must pass both
+// the severity check and the category/event type check. Severity is
+// checked first for performance — severity-only routes (the PagerDuty
+// use case) short-circuit without entering the category/event type
+// logic.
 //
 // When pre-computed sets are available (route created via setRoute),
-// lookups are O(1). Falls back to slices.Contains for routes
-// constructed as direct struct literals.
-func MatchesRoute(route *EventRoute, eventType, category string) bool {
+// category/event type lookups are O(1). Falls back to slices.Contains
+// for routes constructed as direct struct literals.
+func MatchesRoute(route *EventRoute, eventType, category string, severity int) bool {
 	if route.IsEmpty() {
 		return true
 	}
 
+	// Severity filter first — two nil checks + int comparisons.
+	// Short-circuits severity-only routes without entering the
+	// category/event type logic.
+	if !checkSeverity(route, severity) {
+		return false
+	}
+
+	// Category/event type filter.
 	if route.isIncludeMode() {
 		return inSet(route.includeCatSet, route.IncludeCategories, category) ||
 			inSet(route.includeEvtSet, route.IncludeEventTypes, eventType)
 	}
 
-	// Exclude mode.
-	if inSet(route.excludeCatSet, route.ExcludeCategories, category) ||
-		inSet(route.excludeEvtSet, route.ExcludeEventTypes, eventType) {
+	if route.isExcludeMode() {
+		return !inSet(route.excludeCatSet, route.ExcludeCategories, category) &&
+			!inSet(route.excludeEvtSet, route.ExcludeEventTypes, eventType)
+	}
+
+	// Severity-only route — no category/event type filters.
+	// Severity already passed above.
+	return true
+}
+
+// checkSeverity returns true if the event's severity passes the
+// route's min/max severity filters. Returns true if no severity
+// filter is set (nil pointers).
+func checkSeverity(route *EventRoute, severity int) bool {
+	if route.MinSeverity != nil && severity < *route.MinSeverity {
+		return false
+	}
+	if route.MaxSeverity != nil && severity > *route.MaxSeverity {
 		return false
 	}
 	return true

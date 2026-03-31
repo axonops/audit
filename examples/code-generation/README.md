@@ -55,20 +55,21 @@ default_enabled:
 events:
   user_create:
     description: "A new user account was created"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
-      - reason
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id: {}
+      reason: {}
 
   # ... (auth_failure, auth_success, user_read, user_delete defined similarly)
 ```
 
-Each event belongs to a category, has required fields that must always be
-present, and optional fields that may be included. The `description`
-field is used by `audit-gen` as the Go doc comment for the generated
-constant.
+Each event belongs to a category and declares its fields in a `fields:`
+map. Fields with `required: true` must be present in every `Audit()`
+call; all other fields are optional. The `description` field is used by
+`audit-gen` as the Go doc comment for the generated constant.
 
 **`default_enabled` is critical.** It lists which categories are active
 when the logger starts. If you omit it, all categories are disabled and

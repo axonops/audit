@@ -679,6 +679,9 @@ func filterFieldList(fields []string, fieldLabels map[string]map[string]struct{}
 // filterFieldsByLabels returns a copy of fields with any field whose
 // sensitivity labels overlap with excluded removed. Framework fields
 // (timestamp, event_type, severity, duration_ms) are never stripped.
+// Only fields declared in the event's Required or Optional lists are
+// subject to sensitivity filtering. Extra fields passed in permissive
+// validation mode are always delivered unstripped.
 func filterFieldsByLabels(fields Fields, def *EventDef, excluded map[string]struct{}) Fields {
 	if def.FieldLabels == nil {
 		return fields

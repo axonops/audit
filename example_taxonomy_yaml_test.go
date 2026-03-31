@@ -79,3 +79,55 @@ events:
 	// Output:
 	// taxonomy validation failed
 }
+
+// ExampleParseTaxonomyYAML_sensitivityLabels demonstrates defining
+// sensitivity labels in a taxonomy and inspecting the resolved field
+// labels after parsing.
+func ExampleParseTaxonomyYAML_sensitivityLabels() {
+	data := []byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields: [email]
+      patterns: ["_email$"]
+    financial:
+      fields: [card_number]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      email: {}
+      card_number: {}
+      contact_email: {}
+default_enabled: [write]
+`)
+
+	tax, err := audit.ParseTaxonomyYAML(data)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	def := tax.Events["user_create"]
+	for _, field := range []string{"email", "card_number", "contact_email", "outcome"} {
+		if labels, ok := def.FieldLabels[field]; ok {
+			names := make([]string, 0, len(labels))
+			for l := range labels {
+				names = append(names, l)
+			}
+			fmt.Printf("%s: %v\n", field, names)
+		} else {
+			fmt.Printf("%s: no labels\n", field)
+		}
+	}
+	// Output:
+	// email: [pii]
+	// card_number: [financial]
+	// contact_email: [pii]
+	// outcome: no labels
+}

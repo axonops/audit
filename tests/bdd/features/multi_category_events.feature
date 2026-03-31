@@ -156,7 +156,8 @@ Feature: Multi-category event delivery and severity
           - ping
       events:
         ping:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - ops
       """
@@ -177,7 +178,8 @@ Feature: Multi-category event delivery and severity
           events: [audit_event]
       events:
         audit_event:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - ops
       """
@@ -209,7 +211,8 @@ Feature: Multi-category event delivery and severity
           events: [auth_failure]
       events:
         auth_failure:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - ops
         - security

@@ -35,14 +35,13 @@ default_enabled:
   - security
 events:
   user_create:
-    required:
-      - outcome
-      - actor_id
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   auth_failure:
-    required:
-      - outcome
-    optional:
-      - reason
+    fields:
+      outcome: {required: true}
+      reason: {}
 `)
 
 	tax, err := audit.ParseTaxonomyYAML(data)
@@ -69,7 +68,8 @@ categories:
     - nonexistent_event
 events:
   deploy:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `)
 
 	_, err := audit.ParseTaxonomyYAML(data)

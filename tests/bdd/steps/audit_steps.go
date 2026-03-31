@@ -42,17 +42,36 @@ categories:
 
 events:
   user_create:
-    required: [outcome, actor_id]
-    optional: [marker, target_id, target_type, reason, source_ip, user_agent, request_id, duration_ms]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+      target_id: {}
+      target_type: {}
+      reason: {}
+      source_ip: {}
+      user_agent: {}
+      request_id: {}
+      duration_ms: {}
   user_update:
-    required: [outcome, actor_id]
-    optional: [marker, target_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+      target_id: {}
   auth_failure:
-    required: [outcome, actor_id]
-    optional: [marker, source_ip, reason]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+      source_ip: {}
+      reason: {}
   permission_denied:
-    required: [outcome, actor_id]
-    optional: [marker, resource]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+      resource: {}
 
 default_enabled:
   - write

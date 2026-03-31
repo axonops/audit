@@ -59,17 +59,6 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 			wantError: "not supported",
 		},
 		{
-			name: "field in both required and optional",
-			taxonomy: audit.Taxonomy{
-				Version:    1,
-				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
-				Events: map[string]*audit.EventDef{
-					"ev1": {Required: []string{"f1"}, Optional: []string{"f1"}},
-				},
-			},
-			wantError: "in both Required and Optional",
-		},
-		{
 			name: "category member not in Events map",
 			taxonomy: audit.Taxonomy{
 				Version:    1,

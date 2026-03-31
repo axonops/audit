@@ -120,7 +120,7 @@ Feature: Core Audit Logging
           - ping
       events:
         ping:
-          required: []
+          fields: {}
       default_enabled:
         - ops
       """

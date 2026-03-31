@@ -38,17 +38,25 @@ categories:
 
 events:
   user_create:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   user_update:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   auth_failure:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   permission_denied:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
 
 default_enabled:
   - write
@@ -66,11 +74,15 @@ categories:
 
 events:
   user_create:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   auth_failure:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
 
 default_enabled: []
 `

@@ -31,65 +31,71 @@ default_enabled:
 events:
   item_create:
     description: "An item was created"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
 
   item_update:
     description: "An item was updated"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
 
   item_delete:
     description: "An item was deleted"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
 
   item_list:
     description: "Items were listed"
-    required:
-      - outcome
-    optional:
-      - actor_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
 
   item_read:
     description: "An item was read"
-    required:
-      - outcome
-    optional:
-      - actor_id
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+      target_id:
 
   auth_failure:
     description: "An authentication attempt failed"
     severity: 9
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - reason
-      - source_ip
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      reason:
+      source_ip:
 
   auth_success:
     description: "An authentication attempt succeeded"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - source_ip
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      source_ip:
 
   config_change:
     description: "A configuration change was made"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:

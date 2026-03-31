@@ -658,11 +658,14 @@ categories:
     events: [medium_event]
 events:
   critical_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   low_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   medium_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [critical, low, medium]
 `
 
@@ -725,9 +728,11 @@ categories:
     events: [normal_event]
 events:
   restricted_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   normal_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [normal]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))

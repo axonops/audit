@@ -22,11 +22,15 @@ Feature: Taxonomy Validation
           - auth_failure
       events:
         user_create:
-          required: [outcome, actor_id]
-          optional: [marker]
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            marker: {}
         auth_failure:
-          required: [outcome, actor_id]
-          optional: [reason]
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            reason: {}
       default_enabled:
         - write
         - security
@@ -61,7 +65,8 @@ Feature: Taxonomy Validation
           - health_check
       events:
         health_check:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - ops
       """
@@ -109,7 +114,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       ---
@@ -129,7 +135,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       unknown_key: true
@@ -146,7 +153,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -161,7 +169,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -176,7 +185,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -193,7 +203,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -209,13 +220,14 @@ Feature: Taxonomy Validation
           - nonexistent_event
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
-  Scenario: Field in both required and optional is rejected
+  Scenario: Duplicate field name is rejected
     When I try to parse taxonomy from YAML:
       """
       version: 1
@@ -224,12 +236,14 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome, actor_id]
-          optional: [outcome]
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            outcome: {}
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
 
   Scenario: DefaultEnabled references unknown category is rejected
     When I try to parse taxonomy from YAML:
@@ -240,7 +254,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
         - nonexistent_category
@@ -258,7 +273,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -275,7 +291,8 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """
@@ -293,11 +310,16 @@ Feature: Taxonomy Validation
           - shutdown
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
         startup:
-          required: [app_name, version]
+          fields:
+            app_name: {required: true}
+            version: {required: true}
         shutdown:
-          required: [app_name, uptime_ms]
+          fields:
+            app_name: {required: true}
+            uptime_ms: {required: true}
       default_enabled:
         - write
         - lifecycle
@@ -330,9 +352,11 @@ Feature: Taxonomy Validation
           - user_update
       events:
         user_create:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
         user_update:
-          required: [outcome]
+          fields:
+            outcome: {required: true}
       default_enabled:
         - write
       """

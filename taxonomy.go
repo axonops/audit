@@ -322,7 +322,6 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkTaxonomyVersion(t)...)
 	errs = append(errs, checkCategoryConsistency(t)...)
 	errs = append(errs, checkSeverityRanges(t)...)
-	errs = append(errs, checkFieldOverlap(t)...)
 	errs = append(errs, checkDefaultEnabled(t)...)
 
 	if len(errs) > 0 {
@@ -391,25 +390,6 @@ func checkSeverityRanges(t Taxonomy) []string {
 		if def.Severity != nil && (*def.Severity < 0 || *def.Severity > 10) {
 			errs = append(errs, fmt.Sprintf(
 				"event %q severity %d is out of range 0-10", et, *def.Severity))
-		}
-	}
-	return errs
-}
-
-// checkFieldOverlap validates no field appears in both Required and Optional.
-func checkFieldOverlap(t Taxonomy) []string {
-	var errs []string
-	for et, def := range t.Events {
-		seen := make(map[string]bool, len(def.Required))
-		for _, f := range def.Required {
-			seen[f] = true
-		}
-		for _, f := range def.Optional {
-			if seen[f] {
-				errs = append(errs, fmt.Sprintf(
-					"event %q has field %q in both Required and Optional",
-					et, f))
-			}
 		}
 	}
 	return errs

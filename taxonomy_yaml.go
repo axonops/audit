@@ -118,11 +118,21 @@ func parseCategoryMapping(catName string, node *yaml.Node) (*yamlCategoryDef, er
 // yamlEventDef is the intermediate representation of a single event
 // definition within the YAML taxonomy. Categories are derived from
 // the categories map — there is no category field on events.
+//
+// Fields are declared in a unified fields: map. Each field entry
+// specifies whether the field is required (default false = optional)
+// and optionally carries sensitivity labels.
 type yamlEventDef struct {
-	Description string   `yaml:"description"`
-	Severity    *int     `yaml:"severity"`
-	Required    []string `yaml:"required"`
-	Optional    []string `yaml:"optional"`
+	Fields      map[string]*yamlFieldDef `yaml:"fields"`
+	Severity    *int                     `yaml:"severity"`
+	Description string                   `yaml:"description"`
+}
+
+// yamlFieldDef defines a single field within an event definition.
+// A nil yamlFieldDef is treated as optional with no labels.
+type yamlFieldDef struct {
+	Labels   []string `yaml:"labels"`
+	Required bool     `yaml:"required"`
 }
 
 // ParseTaxonomyYAML parses a YAML document into a [Taxonomy].
@@ -194,12 +204,7 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
-		events[name] = &EventDef{
-			Description: def.Description,
-			Severity:    copyIntPtr(def.Severity),
-			Required:    copyStrings(def.Required),
-			Optional:    copyStrings(def.Optional),
-		}
+		events[name] = convertYAMLEventDef(def)
 	}
 
 	// Derive EventDef.Categories from the categories map.
@@ -224,6 +229,25 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		Events:         events,
 		DefaultEnabled: defaultEnabled,
 	}
+}
+
+// convertYAMLEventDef converts a single yamlEventDef into an [EventDef].
+// Required and Optional are derived from the unified fields map.
+func convertYAMLEventDef(def yamlEventDef) *EventDef {
+	ev := &EventDef{
+		Description: def.Description,
+		Severity:    copyIntPtr(def.Severity),
+	}
+	for fieldName, fieldDef := range def.Fields {
+		if fieldDef != nil && fieldDef.Required {
+			ev.Required = append(ev.Required, fieldName)
+		} else {
+			ev.Optional = append(ev.Optional, fieldName)
+		}
+	}
+	slices.Sort(ev.Required)
+	slices.Sort(ev.Optional)
+	return ev
 }
 
 // copyIntPtr returns a copy of p. A nil input returns nil.

@@ -37,8 +37,17 @@ categories:
     - api_request
 events:
   api_request:
-    required: [outcome]
-    optional: [method, path, status_code, actor_id, source_ip, user_agent, request_id, transport_security, custom_field]
+    fields:
+      outcome: {required: true}
+      method: {}
+      path: {}
+      status_code: {}
+      actor_id: {}
+      source_ip: {}
+      user_agent: {}
+      request_id: {}
+      transport_security: {}
+      custom_field: {}
 default_enabled:
   - http
 `

@@ -46,13 +46,19 @@ default_enabled:
   - read
 events:
   user_create:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   user_delete:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   auth_failure:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   user_read:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `))
 	require.NoError(t, err, "test taxonomy parse")
 	return tax

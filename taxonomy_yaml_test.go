@@ -44,31 +44,28 @@ default_enabled:
   - security
 events:
   schema_read:
-    required:
-      - outcome
-    optional:
-      - subject
+    fields:
+      outcome: {required: true}
+      subject: {}
   config_read:
-    required:
-      - outcome
+    fields:
+      outcome: {required: true}
   schema_register:
-    required:
-      - outcome
-      - actor_id
-      - subject
-    optional:
-      - schema_type
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      subject: {required: true}
+      schema_type: {}
   schema_delete:
-    required:
-      - outcome
-      - actor_id
-      - subject
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      subject: {required: true}
   auth_failure:
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - reason
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      reason: {}
 `
 
 // minimalYAML is a minimal valid taxonomy with one category and one event.
@@ -79,8 +76,8 @@ categories:
     - deploy
 events:
   deploy:
-    required:
-      - outcome
+    fields:
+      outcome: {required: true}
 `
 
 func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
@@ -95,7 +92,7 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 
 	assert.Contains(t, tax.Events, "schema_register")
 	assert.Contains(t, tax.Events["schema_register"].Categories, "write")
-	assert.Equal(t, []string{"outcome", "actor_id", "subject"}, tax.Events["schema_register"].Required)
+	assert.Equal(t, []string{"actor_id", "outcome", "subject"}, tax.Events["schema_register"].Required)
 	assert.Equal(t, []string{"schema_type"}, tax.Events["schema_register"].Optional)
 
 	assert.Contains(t, tax.DefaultEnabled, "write")
@@ -156,8 +153,8 @@ categories:
 default_enabled: []
 events:
   deploy:
-    required:
-      - outcome
+    fields:
+      outcome: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -222,8 +219,8 @@ categories:
     - deploy
 events:
   deploy:
-    required:
-      - outcome
+    fields:
+      outcome: {required: true}
 ---
 version: 1
 categories:
@@ -341,7 +338,8 @@ categories:
     - deploy
 events:
   deploy:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -359,15 +357,19 @@ categories:
     - deploy
 events:
   deploy:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err, "events in multiple categories should be valid")
 	assert.Equal(t, []string{"admin", "ops"}, tax.Events["deploy"].Categories)
 }
 
-func TestParseTaxonomyYAML_FieldInBothRequiredAndOptional(t *testing.T) {
+func TestParseTaxonomyYAML_DuplicateFieldName(t *testing.T) {
 	t.Parallel()
+	// In the unified fields: format, duplicate field names are caught by
+	// the YAML parser as duplicate mapping keys — they never reach the
+	// taxonomy validation layer.
 	yml := `
 version: 1
 categories:
@@ -375,15 +377,14 @@ categories:
     - deploy
 events:
   deploy:
-    required:
-      - outcome
-    optional:
-      - outcome
+    fields:
+      outcome: {required: true}
+      outcome: {}
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "both Required and Optional")
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
+	assert.Contains(t, err.Error(), "already defined")
 }
 
 func TestParseTaxonomyYAML_CategoryMemberNotInEvents(t *testing.T) {
@@ -412,9 +413,11 @@ categories:
     - deploy
 events:
   deploy:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   orphan:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err, "uncategorised events are valid")
@@ -552,7 +555,7 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 	b.WriteString("events:\n")
 	for i := range numCategories {
 		for j := range eventsPerCategory {
-			fmt.Fprintf(&b, "  ev_%d_%d:\n    required:\n      - outcome\n    optional:\n      - detail\n", i, j)
+			fmt.Fprintf(&b, "  ev_%d_%d:\n    fields:\n      outcome: {required: true}\n      detail: {}\n", i, j)
 		}
 	}
 
@@ -576,14 +579,14 @@ default_enabled:
   - ops
 events:
   startup:
-    required:
-      - custom_startup_field
+    fields:
+      custom_startup_field: {required: true}
   shutdown:
-    required:
-      - custom_shutdown_field
+    fields:
+      custom_shutdown_field: {required: true}
   deploy:
-    required:
-      - outcome
+    fields:
+      outcome: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -602,8 +605,7 @@ categories:
     - deploy
 events:
   deploy:
-    required: []
-    optional: []
+    fields: {}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -648,6 +650,9 @@ func TestParseTaxonomyYAML_NoYAMLFilesystemOrNetworkAccess(t *testing.T) {
 func TestParseTaxonomyYAML_YAMLAnchorBomb(t *testing.T) {
 	t.Parallel()
 	// yaml.v3 limits alias expansion, so this should not cause issues.
+	// With the unified fields: format, anchoring a fields map and using
+	// it elsewhere is valid YAML and does not create field overlap. The
+	// point of this test is that it does not hang or OOM.
 	yml := `
 version: 1
 categories:
@@ -655,16 +660,12 @@ categories:
     - deploy
 events:
   deploy:
-    required: &req
-      - outcome
-    optional: *req
+    fields: &flds
+      outcome: {required: true}
 `
-	// This should parse (anchors/aliases are valid YAML) but may fail
-	// validation if fields overlap. The point is it does not hang or OOM.
-	_, err := audit.ParseTaxonomyYAML([]byte(yml))
-	// outcome appears in both required and optional via alias.
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err, "anchored fields map is valid YAML")
+	assert.Contains(t, tax.Events["deploy"].Required, "outcome")
 }
 
 func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
@@ -699,7 +700,8 @@ categories:
 events:
   user_create:
     description: "A new user account was created"
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
@@ -715,7 +717,8 @@ categories:
     - user_create
 events:
   user_create:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
@@ -746,8 +749,9 @@ categories:
 events:
   user_create:
     description: "Should not appear in knownFields"
-    required: [outcome]
-    optional: [actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {}
 default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))

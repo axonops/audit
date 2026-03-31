@@ -57,7 +57,9 @@ categories:
     events: [auth_failure]
 events:
   auth_failure:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
 default_enabled: [compliance, security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -120,7 +122,8 @@ categories:
     events: [shared_event]
 events:
   shared_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [alpha, beta]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -169,7 +172,8 @@ categories:
     - multi_event
 events:
   multi_event:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [alpha, beta, gamma]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -209,7 +213,9 @@ categories:
     events: [auth_failure]
 events:
   auth_failure:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
 default_enabled: [security, compliance]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -295,7 +301,8 @@ categories:
 events:
   deploy:
     severity: 8
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `,
 			eventType:    "deploy",
@@ -311,7 +318,8 @@ categories:
     events: [alert]
 events:
   alert:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [security]
 `,
 			eventType:    "alert",
@@ -326,7 +334,8 @@ categories:
     - plain
 events:
   plain:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `,
 			eventType:    "plain",
@@ -342,7 +351,8 @@ categories:
 events:
   low:
     severity: 0
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `,
 			eventType:    "low",
@@ -402,7 +412,8 @@ categories:
 events:
   level5_event:
     severity: 0
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -453,7 +464,8 @@ categories:
 events:
   deploy:
     severity: 7
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `,
 			eventType:    "deploy",
@@ -469,7 +481,8 @@ categories:
     events: [auth_fail]
 events:
   auth_fail:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [security]
 `,
 			eventType:    "auth_fail",
@@ -484,7 +497,8 @@ categories:
     - ping
 events:
   ping:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops]
 `,
 			eventType:    "ping",
@@ -546,7 +560,8 @@ categories:
     events: [auth_failure]
 events:
   auth_failure:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled: [ops, security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))

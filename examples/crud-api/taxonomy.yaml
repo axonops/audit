@@ -2,17 +2,25 @@ version: 1
 
 categories:
   write:
-    - item_create
-    - item_update
-    - item_delete
+    severity: 4
+    events:
+      - item_create
+      - item_update
+      - item_delete
   read:
-    - item_list
-    - item_read
+    severity: 2
+    events:
+      - item_list
+      - item_read
   security:
-    - auth_failure
-    - auth_success
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
   admin:
-    - config_change
+    severity: 6
+    events:
+      - config_change
 
 default_enabled:
   - write
@@ -22,17 +30,14 @@ default_enabled:
 
 events:
   item_create:
-    category: write
     description: "An item was created"
     required:
       - outcome
       - actor_id
     optional:
       - target_id
-      - reason
 
   item_update:
-    category: write
     description: "An item was updated"
     required:
       - outcome
@@ -41,7 +46,6 @@ events:
       - target_id
 
   item_delete:
-    category: write
     description: "An item was deleted"
     required:
       - outcome
@@ -50,7 +54,6 @@ events:
       - target_id
 
   item_list:
-    category: read
     description: "Items were listed"
     required:
       - outcome
@@ -58,7 +61,6 @@ events:
       - actor_id
 
   item_read:
-    category: read
     description: "An item was read"
     required:
       - outcome
@@ -67,8 +69,8 @@ events:
       - target_id
 
   auth_failure:
-    category: security
     description: "An authentication attempt failed"
+    severity: 9
     required:
       - outcome
       - actor_id
@@ -77,7 +79,6 @@ events:
       - source_ip
 
   auth_success:
-    category: security
     description: "An authentication attempt succeeded"
     required:
       - outcome
@@ -86,10 +87,9 @@ events:
       - source_ip
 
   config_change:
-    category: admin
     description: "A configuration change was made"
     required:
       - outcome
       - actor_id
     optional:
-      - reason
+      - target_id

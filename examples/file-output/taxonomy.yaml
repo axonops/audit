@@ -1,0 +1,15 @@
+version: 1
+
+categories:
+  write:
+    - user_create
+
+default_enabled:
+  - write
+
+events:
+  user_create:
+    description: "A new user account was created"
+    required:
+      - outcome
+      - actor_id

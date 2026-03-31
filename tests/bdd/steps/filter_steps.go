@@ -38,19 +38,15 @@ categories:
 
 events:
   user_create:
-    category: write
     required: [outcome, actor_id]
     optional: [marker]
   user_update:
-    category: write
     required: [outcome, actor_id]
     optional: [marker]
   auth_failure:
-    category: security
     required: [outcome, actor_id]
     optional: [marker]
   permission_denied:
-    category: security
     required: [outcome, actor_id]
     optional: [marker]
 
@@ -70,11 +66,9 @@ categories:
 
 events:
   user_create:
-    category: write
     required: [outcome, actor_id]
     optional: [marker]
   auth_failure:
-    category: security
     required: [outcome, actor_id]
     optional: [marker]
 

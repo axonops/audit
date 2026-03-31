@@ -22,7 +22,10 @@ import (
 )
 
 func init() {
-	RegisterOutputFactory("stdout", func(name string, _ []byte, _ Metrics) (Output, error) {
+	RegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ Metrics) (Output, error) {
+		if len(rawConfig) > 0 {
+			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
+		}
 		out, err := NewStdoutOutput(StdoutConfig{})
 		if err != nil {
 			return nil, err

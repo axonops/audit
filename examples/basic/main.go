@@ -29,21 +29,18 @@ func main() {
 	//    from a YAML file — see the code-generation example.
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"security": {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"write":    {Events: []string{"user_create", "user_delete"}},
+			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create": {
-				Category: "write",
 				Required: []string{"outcome", "actor_id"},
 			},
 			"user_delete": {
-				Category: "write",
 				Required: []string{"outcome", "actor_id"},
 			},
 			"auth_failure": {
-				Category: "security",
 				Required: []string{"outcome", "actor_id"},
 			},
 		},

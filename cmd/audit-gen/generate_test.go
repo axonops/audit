@@ -544,10 +544,9 @@ func TestGenerate_MultiLineDescription(t *testing.T) {
 	t.Parallel()
 	tax := audit.Taxonomy{
 		Version:    1,
-		Categories: map[string][]string{"test": {"multi_line"}},
+		Categories: map[string]*audit.CategoryDef{"test": {Events: []string{"multi_line"}}},
 		Events: map[string]*audit.EventDef{
 			"multi_line": {
-				Category:    "test",
 				Description: "First line\nSecond line\n\tTabbed",
 				Required:    []string{"outcome"},
 			},
@@ -566,10 +565,9 @@ func TestGenerate_WhitespaceOnlyDescription(t *testing.T) {
 	t.Parallel()
 	tax := audit.Taxonomy{
 		Version:    1,
-		Categories: map[string][]string{"test": {"blank_desc"}},
+		Categories: map[string]*audit.CategoryDef{"test": {Events: []string{"blank_desc"}}},
 		Events: map[string]*audit.EventDef{
 			"blank_desc": {
-				Category:    "test",
 				Description: "   \t\n  ",
 				Required:    []string{"outcome"},
 			},

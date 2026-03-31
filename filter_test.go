@@ -273,7 +273,7 @@ func TestMatchesRoute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := audit.MatchesRoute(&tt.route, tt.eventType, tt.category)
+			got := audit.MatchesRoute(&tt.route, tt.eventType, tt.category, 5)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -289,7 +289,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			audit.MatchesRoute(&route, "user_create", "write")
+			audit.MatchesRoute(&route, "user_create", "write", 5)
 		}
 	})
 
@@ -300,7 +300,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			audit.MatchesRoute(&route, "user_create", "write")
+			audit.MatchesRoute(&route, "user_create", "write", 5)
 		}
 	})
 
@@ -311,7 +311,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			audit.MatchesRoute(&route, "user_create", "write")
+			audit.MatchesRoute(&route, "user_create", "write", 5)
 		}
 	})
 
@@ -322,7 +322,7 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			audit.MatchesRoute(&route, "user_create", "write")
+			audit.MatchesRoute(&route, "user_create", "write", 5)
 		}
 	})
 
@@ -336,7 +336,10 @@ func BenchmarkMatchesRoute(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			audit.MatchesRoute(&route, "user_create", "write")
+			audit.MatchesRoute(&route, "user_create", "write", 5)
 		}
 	})
+
 }
+
+// BenchmarkMatchesRoute_Severity is defined in severity_routing_test.go.

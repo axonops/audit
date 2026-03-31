@@ -42,19 +42,15 @@ categories:
 
 events:
   user_create:
-    category: write
     required: [outcome, actor_id]
     optional: [marker, target_id, target_type, reason, source_ip, user_agent, request_id, duration_ms]
   user_update:
-    category: write
     required: [outcome, actor_id]
     optional: [marker, target_id]
   auth_failure:
-    category: security
     required: [outcome, actor_id]
     optional: [marker, source_ip, reason]
   permission_denied:
-    category: security
     required: [outcome, actor_id]
     optional: [marker, resource]
 
@@ -476,7 +472,7 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 		return err
 	}
 	// Auto-populated fields that are allowed but not required in the table.
-	autoFields := []string{"timestamp"}
+	autoFields := []string{"timestamp", "severity"}
 	for _, e := range events {
 		match, mismatch := eventMatchesExactly(e, expected, autoFields)
 		if match {

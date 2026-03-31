@@ -5,10 +5,11 @@ to one file, write events to another, and everything to the console.
 
 ## What You'll Learn
 
-- Using `WithNamedOutput` for per-output configuration
-- Using `audit.WrapOutput` to give outputs human-readable names
-- Defining `EventRoute` with `IncludeCategories` for allow-list filtering
-- How a nil route means "receive all events"
+- Setting per-category severity levels in the taxonomy
+- Adding per-output routing rules in `outputs.yaml`
+- How `include_categories` and `exclude_categories` work
+- Severity-based routing with `min_severity` and `max_severity`
+- What happens to events that don't match any route
 
 ## Prerequisites
 
@@ -19,7 +20,159 @@ to one file, write events to another, and everything to the console.
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Three named outputs with different routing rules |
+| `taxonomy.yaml` | Three categories: write, read, security (with severity) |
+| `outputs.yaml` | Four outputs with different routing rules |
+| `audit_generated.go` | Generated constants (committed) |
+| `main.go` | Emits one event per category, shows filtered output |
+
+## Key Concepts
+
+### Category Severity in the Taxonomy
+
+This example's `taxonomy.yaml` uses a new category format — notice the
+`security` category has a `severity: 8`:
+
+```yaml
+categories:
+  write:
+    - user_create        # list format (severity defaults to 5)
+  read:
+    - user_read          # list format
+  security:
+    severity: 8          # struct format — all events inherit severity 8
+    events:
+      - auth_failure
+```
+
+go-audit supports two ways to define categories:
+
+- **List format** — just the event names. Events get the default
+  severity of 5.
+- **Struct format** — an object with `severity` and `events` keys.
+  Every event in this category inherits the category's severity unless
+  the event defines its own.
+
+Both formats can be mixed in the same taxonomy file. The
+[CRUD API](../crud-api/) example shows every category using the struct
+format with different severity levels.
+
+### Routes in YAML
+
+Each output can have a `route:` block that controls which events it
+receives:
+
+```yaml
+version: 1
+outputs:
+  console:
+    type: stdout
+    # No route — receives ALL events.
+
+  security_log:
+    type: file
+    file:
+      path: "./security.log"
+    route:
+      include_categories:
+        - security
+
+  writes_log:
+    type: file
+    file:
+      path: "./writes.log"
+    route:
+      include_categories:
+        - write
+```
+
+- **No route** = receives everything (the console output above)
+- **`include_categories`** = allow-list — only events in these categories
+- **`exclude_categories`** = deny-list — everything except these categories
+
+You can also filter by individual event types with `include_event_types`
+and `exclude_event_types`.
+
+### Route Validation
+
+Routes are validated against your taxonomy when the config is loaded. If
+you reference a category that doesn't exist in your taxonomy,
+`outputconfig.Load` returns an error immediately — no silent
+misconfiguration.
+
+### What Happens to Unmatched Events
+
+An event that doesn't match any routed output is simply not delivered to
+that output. In this example, the `user_read` event (category `read`)
+doesn't match either file's route, so it only appears on stdout.
+
+Events are filtered before serialization — no wasted work formatting
+events that won't be delivered.
+
+### Severity-Based Routing
+
+Each output's route can filter by severity level (0-10). This
+example's `outputs.yaml` includes a `critical_alerts` output with
+`min_severity: 7`. Below are the three routing modes you can use:
+
+**Category only** — filter by category, all severity levels:
+```yaml
+  security_log:
+    type: file
+    file:
+      path: "./security.log"
+    route:
+      include_categories: [security]
+```
+
+**Category with severity** — filter by category AND severity. Only
+events matching the category AND meeting the severity threshold are
+delivered:
+```yaml
+  security_critical:
+    type: file
+    file:
+      path: "./security-critical.log"
+    route:
+      include_categories: [security]
+      min_severity: 7
+```
+
+**Severity only** — filter by severity regardless of category. This
+is the PagerDuty use case — route all high-severity events to an
+alerting webhook:
+```yaml
+  pagerduty:
+    type: webhook
+    webhook:
+      url: "https://alerts.example.com/pagerduty"
+    route:
+      min_severity: 9
+```
+
+Each output has exactly one route. `min_severity` and `max_severity`
+accept values 0-10.
+
+### Multi-Category Events
+
+An event can belong to multiple categories. For example, an
+`admin_delete` event might belong to both `write` and `admin`:
+
+```yaml
+categories:
+  write:
+    - admin_delete
+  admin:
+    severity: 7
+    events:
+      - admin_delete
+```
+
+When a multi-category event is emitted, the logger processes it once
+per enabled category. If `write` routes to a file output and `admin`
+routes to a webhook, the event is delivered to both — each with the
+severity from its respective category. This means the same event can
+appear multiple times in a fan-out output that matches multiple
+categories.
 
 ## Run It
 
@@ -29,37 +182,31 @@ go run .
 
 ## Expected Output
 
-All three events appear on stdout (the console output has no route
-filter). Each file contains only the events matching its route:
+All three events appear on stdout. Each file contains only the events
+matching its route:
 
 ```
 --- security.log ---
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
 
 --- writes.log ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+
+--- critical.log ---
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
 ```
 
-The `user_read` event does not appear in either file because neither
-route includes the `read` category.
+The `user_read` event doesn't appear in any file — no route includes
+the `read` category, and its severity (5) is below the critical
+threshold (7). The `auth_failure` event appears in both `security.log`
+(category route) and `critical.log` (severity route) — it matches both
+independently.
 
-## What's Happening
+## Previous
 
-1. **WithNamedOutput** replaces `WithOutputs` when you need per-output
-   control. Each call takes an output, an optional route, and an optional
-   formatter. You cannot mix `WithOutputs` and `WithNamedOutput`.
-
-2. **WrapOutput** overrides an output's default `Name()` with a
-   human-readable label. This name appears in metrics, log messages, and
-   `EnableOutput`/`DisableOutput` calls.
-
-3. **EventRoute.IncludeCategories** creates an allow-list: only events in
-   the listed categories are delivered. You can also use
-   `ExcludeCategories` for a deny-list, or `IncludeEventTypes` /
-   `ExcludeEventTypes` for event-level granularity.
-
-4. **nil route** means no filtering — the output receives every event.
+[Multi-Output](../multi-output/)
 
 ## Next
 
-[Formatters](../formatters/) -- output events as JSON or CEF side by side.
+[Formatters](../formatters/) — output events as JSON or CEF for SIEM
+integration.

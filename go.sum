@@ -1,11 +1,12 @@
 github.com/axonops/go-audit/file v0.1.0 h1:FqceBwyGrJenuQiuW0VWtSpfdvwr4kytjrXbFICIAIY=
 github.com/axonops/go-audit/file v0.1.0/go.mod h1:GPb3ckRf1EBjmWm6/f/qCXpmTmddFavU3RG4GU0PpOg=
+github.com/axonops/go-audit/outputconfig v0.1.0 h1:zFRyhPmClwgPbtVWk7E26rD74FT+ABWyKsXmVp6ng38=
+github.com/axonops/go-audit/outputconfig v0.1.0/go.mod h1:vME+mFEirP1/LCiqMqIKvoxhlGaCtEAZ5OfgvkCUIbc=
 github.com/axonops/go-audit/syslog v0.1.0 h1:OYbewO9OjMZ8pA5cVy6NC+Cj04oTaTdRllE3Lz7Imcw=
 github.com/axonops/go-audit/syslog v0.1.0/go.mod h1:ft7/8l+fkmFpTt3XSJftBMm7amf+aANNH/HgMsvSk9k=
 github.com/axonops/go-audit/webhook v0.1.0 h1:5wptVYabQHI9f+TZdCOO00YKyJsTWYds08dHRRUfWsM=
 github.com/axonops/go-audit/webhook v0.1.0/go.mod h1:d7+XGxcGMlX8afPp3P7+kpASsocK/KrfgF44YKuc0Vs=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cucumber/gherkin/go/v26 v26.2.0 h1:EgIjePLWiPeslwIWmNQ3XHcypPsWAHoMCz/YEBKP4GI=
 github.com/cucumber/gherkin/go/v26 v26.2.0/go.mod h1:t2GAPnB8maCT4lkHL99BDCVNzCh1d7dBhCLt150Nr/0=
 github.com/cucumber/godog v0.15.1 h1:rb/6oHDdvVZKS66hrhpjFQFHjthFSrQBCOI1LwshNTI=

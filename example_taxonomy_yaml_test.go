@@ -35,12 +35,10 @@ default_enabled:
   - security
 events:
   user_create:
-    category: write
     required:
       - outcome
       - actor_id
   auth_failure:
-    category: security
     required:
       - outcome
     optional:
@@ -61,16 +59,17 @@ events:
 
 func ExampleParseTaxonomyYAML_validation() {
 	// ParseTaxonomyYAML returns an error wrapping audit.ErrTaxonomyInvalid
-	// when the taxonomy is structurally inconsistent — here, the event's
-	// category does not match any key in categories.
+	// when the taxonomy is structurally inconsistent — here, a category
+	// references an event type that is not defined in the events map.
 	data := []byte(`
 version: 1
 categories:
   ops:
     - deploy
+    - nonexistent_event
 events:
   deploy:
-    category: nonexistent
+    required: [outcome]
 `)
 
 	_, err := audit.ParseTaxonomyYAML(data)

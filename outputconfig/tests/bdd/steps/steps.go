@@ -88,16 +88,12 @@ default_enabled:
   - read
 events:
   user_create:
-    category: write
     required: [outcome, actor_id]
   user_delete:
-    category: write
     required: [outcome, actor_id]
   auth_failure:
-    category: security
     required: [outcome]
   user_read:
-    category: read
     required: [outcome]
 `))
 		if err != nil {

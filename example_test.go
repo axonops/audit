@@ -25,13 +25,13 @@ import (
 func ExampleNewLogger() {
 	taxonomy := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create"},
-			"security": {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"write":    {Events: []string{"user_create"}},
+			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
-			"user_create":  {Category: "write", Required: []string{"outcome", "actor_id"}},
-			"auth_failure": {Category: "security", Required: []string{"outcome", "actor_id"}},
+			"user_create":  {Required: []string{"outcome", "actor_id"}},
+			"auth_failure": {Required: []string{"outcome", "actor_id"}},
 		},
 		DefaultEnabled: []string{"write", "security"},
 	}
@@ -58,9 +58,9 @@ func ExampleLogger_Audit() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
-			Categories: map[string][]string{"write": {"doc_create"}},
+			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
 			Events: map[string]*audit.EventDef{
-				"doc_create": {Category: "write", Required: []string{"outcome"}},
+				"doc_create": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
 		}),
@@ -88,9 +88,9 @@ func ExampleLogger_MustHandle() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
-			Categories: map[string][]string{"write": {"doc_create"}},
+			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
 			Events: map[string]*audit.EventDef{
-				"doc_create": {Category: "write", Required: []string{"outcome"}},
+				"doc_create": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
 		}),
@@ -121,13 +121,13 @@ func ExampleLogger_EnableCategory() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
-			Categories: map[string][]string{
-				"read":  {"doc_read"},
-				"write": {"doc_create"},
+			Categories: map[string]*audit.CategoryDef{
+				"read":  {Events: []string{"doc_read"}},
+				"write": {Events: []string{"doc_create"}},
 			},
 			Events: map[string]*audit.EventDef{
-				"doc_read":   {Category: "read", Required: []string{"outcome"}},
-				"doc_create": {Category: "write", Required: []string{"outcome"}},
+				"doc_read":   {Required: []string{"outcome"}},
+				"doc_create": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
 		}),
@@ -156,9 +156,9 @@ func ExampleLogger_Close() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
-			Categories: map[string][]string{"write": {"doc_create"}},
+			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
 			Events: map[string]*audit.EventDef{
-				"doc_create": {Category: "write", Required: []string{"outcome"}},
+				"doc_create": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write"},
 		}),
@@ -195,9 +195,9 @@ func ExampleWithFormatter() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
-			Categories: map[string][]string{"security": {"auth_failure"}},
+			Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
 			Events: map[string]*audit.EventDef{
-				"auth_failure": {Category: "security", Required: []string{"outcome"}},
+				"auth_failure": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"security"},
 		}),
@@ -261,13 +261,13 @@ func ExampleLogger_SetOutputRoute() {
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
-			Categories: map[string][]string{
-				"write":    {"user_create"},
-				"security": {"auth_failure"},
+			Categories: map[string]*audit.CategoryDef{
+				"write":    {Events: []string{"user_create"}},
+				"security": {Events: []string{"auth_failure"}},
 			},
 			Events: map[string]*audit.EventDef{
-				"user_create":  {Category: "write", Required: []string{"outcome"}},
-				"auth_failure": {Category: "security", Required: []string{"outcome"}},
+				"user_create":  {Required: []string{"outcome"}},
+				"auth_failure": {Required: []string{"outcome"}},
 			},
 			DefaultEnabled: []string{"write", "security"},
 		}),

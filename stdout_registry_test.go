@@ -38,3 +38,28 @@ func TestStdoutFactory_RegisteredByInit(t *testing.T) {
 	assert.Equal(t, "my_stdout", out.Name())
 	assert.NoError(t, out.Write([]byte("test\n")))
 }
+
+func TestStdoutFactory_AcceptsNoConfig(t *testing.T) {
+	factory := audit.LookupOutputFactory("stdout")
+	require.NotNil(t, factory)
+
+	// nil config — accepted (the normal case)
+	out, err := factory("no_config", nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// empty byte slice — also accepted
+	out2, err := factory("empty_config", []byte{}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out2.Close() })
+}
+
+func TestStdoutFactory_RejectsConfig(t *testing.T) {
+	factory := audit.LookupOutputFactory("stdout")
+	require.NotNil(t, factory)
+
+	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not accept configuration")
+	assert.Contains(t, err.Error(), "bad_stdout")
+}

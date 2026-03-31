@@ -169,4 +169,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerWebhookSteps(ctx, tc)
 	registerFanoutSteps(ctx, tc)
 	registerMiddlewareSteps(ctx, tc)
+	RegisterMultiCatSteps(ctx, tc)
+	registerSeverityRoutingSteps(ctx, tc)
 }

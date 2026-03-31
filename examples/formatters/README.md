@@ -1,14 +1,14 @@
 # Formatters Example
 
-Output the same events as JSON and CEF side by side, with a custom
-severity function that maps security events to higher CEF severity.
+Output the same events in two formats side by side: JSON for log
+aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 
 ## What You'll Learn
 
-- Using per-output formatters via `WithNamedOutput`
-- Configuring `CEFFormatter` with `Vendor`, `Product`, `Version`
-- Writing a `SeverityFunc` to control CEF severity per event type
-- How nil formatter defaults to JSON
+- Configuring per-output formatters in `outputs.yaml`
+- What CEF (Common Event Format) is and when to use it
+- How JSON and CEF output differ
+- How field names map between go-audit and CEF
 
 ## Prerequisites
 
@@ -19,7 +19,81 @@ severity function that maps security events to higher CEF severity.
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Two file outputs with JSON and CEF formatters |
+| `taxonomy.yaml` | Event definitions (embedded) |
+| `outputs.yaml` | Two file outputs with different formatters |
+| `audit_generated.go` | Generated constants (committed) |
+| `main.go` | Emits events, prints both files |
+
+## Key Concepts
+
+### Per-Output Formatters in YAML
+
+Each output can have its own `formatter:` block. Outputs without one
+use JSON by default:
+
+```yaml
+version: 1
+outputs:
+  json_file:
+    type: file
+    file:
+      path: "./json-audit.log"
+    # No formatter — uses JSON by default.
+
+  cef_file:
+    type: file
+    file:
+      path: "./cef-audit.log"
+    formatter:
+      type: cef
+      vendor: "Example"
+      product: "AuditDemo"
+      version: "1.0"
+```
+
+### What is CEF?
+
+Common Event Format (CEF) is a standard log format used by SIEM tools.
+If your organization uses Splunk, ArcSight, QRadar, or similar security
+information tools, they likely expect CEF-formatted events.
+
+A CEF line looks like:
+
+```
+CEF:0|Example|AuditDemo|1.0|user_create|user_create|5|rt=... suser=alice outcome=success
+```
+
+The `Vendor|Product|Version` triple identifies your application in the
+SIEM. The extensions (`suser=alice`, `outcome=success`) are the event
+fields mapped to CEF key names.
+
+### CEF Field Mapping
+
+The formatter automatically translates go-audit field names to standard
+CEF extension keys:
+
+| go-audit field | CEF key |
+|----------------|---------|
+| `actor_id` | `suser` |
+| `source_ip` | `src` |
+| `outcome` | `outcome` |
+| `method` | `requestMethod` |
+| `path` | `request` |
+
+Fields without a mapping are passed through with their original names.
+
+### JSON Formatter Options
+
+You can also customize the JSON formatter:
+
+```yaml
+formatter:
+  type: json
+  timestamp: unix_ms      # unix milliseconds instead of RFC3339
+  omit_empty: true         # skip fields with zero values
+```
+
+Most applications leave the JSON default as-is.
 
 ## Run It
 
@@ -31,37 +105,24 @@ go run .
 
 ```
 --- json-audit.log ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"auth_success","actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success"}
 
 --- cef-audit.log ---
-CEF:0|Example|AuditDemo|1.0|user_create|user_create|3|rt=... act=user_create suser=alice outcome=success
-CEF:0|Example|AuditDemo|1.0|auth_failure|auth_failure|8|rt=... act=auth_failure suser=unknown outcome=failure
-CEF:0|Example|AuditDemo|1.0|auth_success|auth_success|8|rt=... act=auth_success suser=bob outcome=success
+CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success
+CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure
+CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success
 ```
 
-Notice the severity column: `user_create` is 3 (low), while
-`auth_failure` and `auth_success` are 8 (high). The `suser` extension
-key is mapped from `actor_id` by `DefaultCEFFieldMapping`.
+Both files contain the same three events in different formats. The CEF
+output uses the `suser` extension key for `actor_id`, and the
+`Vendor|Product|Version` header from the YAML config.
 
-## What's Happening
+## Previous
 
-1. **Per-output formatters**: the third argument to `WithNamedOutput` is
-   an optional `Formatter`. When nil, the logger's default formatter is
-   used (JSON). When set, it overrides the default for that output only.
-
-2. **CEFFormatter** produces Common Event Format lines compatible with
-   SIEM tools (Splunk, ArcSight, QRadar). The `Vendor|Product|Version`
-   triple identifies your application in the CEF header.
-
-3. **SeverityFunc** receives the event type name and returns a CEF
-   severity (0-10). Security events get 8; business events get 3. If nil,
-   all events default to severity 5.
-
-4. **JSONFormatter** is the default. You can customize it with
-   `Timestamp: audit.TimestampUnixMillis` or `OmitEmpty: true`.
+[Event Routing](../event-routing/)
 
 ## Next
 
-[Middleware](../middleware/) -- automatic audit logging for HTTP handlers.
+[Middleware](../middleware/) — automatic audit logging for HTTP handlers.

@@ -276,18 +276,18 @@ var _ webhook.Metrics = (*mockMetrics)(nil)
 func testTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"read":     {"user_get", "config_get"},
-			"security": {"auth_failure", "permission_denied"},
+		Categories: map[string]*audit.CategoryDef{
+			"write":    {Events: []string{"user_create", "user_delete"}},
+			"read":     {Events: []string{"user_get", "config_get"}},
+			"security": {Events: []string{"auth_failure", "permission_denied"}},
 		},
 		Events: map[string]*audit.EventDef{
-			"user_create":       {Category: "write", Required: []string{"outcome"}},
-			"user_delete":       {Category: "write", Required: []string{"outcome"}},
-			"user_get":          {Category: "read", Required: []string{"outcome"}},
-			"config_get":        {Category: "read", Required: []string{"outcome"}},
-			"auth_failure":      {Category: "security", Required: []string{"outcome"}},
-			"permission_denied": {Category: "security", Required: []string{"outcome"}},
+			"user_create":       {Required: []string{"outcome"}},
+			"user_delete":       {Required: []string{"outcome"}},
+			"user_get":          {Required: []string{"outcome"}},
+			"config_get":        {Required: []string{"outcome"}},
+			"auth_failure":      {Required: []string{"outcome"}},
+			"permission_denied": {Required: []string{"outcome"}},
 		},
 		DefaultEnabled: []string{"write", "read", "security"},
 	}

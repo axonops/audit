@@ -36,12 +36,11 @@ import (
 func middlewareTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"access": {"http_request"},
+		Categories: map[string]*audit.CategoryDef{
+			"access": {Events: []string{"http_request"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"http_request": {
-				Category: "access",
 				Required: []string{"outcome"},
 				Optional: []string{
 					"actor_id", "actor_type", "auth_method", "role",

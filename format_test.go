@@ -34,7 +34,6 @@ import (
 var testTime = time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
 
 var testDef = &audit.EventDef{
-	Category: "write",
 	Required: []string{"outcome", "actor_id", "subject"},
 	Optional: []string{"schema_type", "version"},
 }
@@ -136,7 +135,6 @@ func TestCEFFormatter_DurationAsInt(t *testing.T) {
 		"outcome":     "ok",
 		"duration_ms": 500,
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"duration_ms"},
 	})
@@ -164,7 +162,6 @@ func TestCEFFormatter_SeverityClamped(t *testing.T) {
 				SeverityFunc: func(string) int { return tt.severity },
 			}
 			data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-				Category: "write",
 				Required: []string{"outcome"},
 			})
 			require.NoError(t, err)
@@ -176,7 +173,6 @@ func TestCEFFormatter_SeverityClamped(t *testing.T) {
 func TestJSONFormatter_TimestampRFC3339Nano(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -194,7 +190,6 @@ func TestJSONFormatter_TimestampRFC3339Nano(t *testing.T) {
 func TestJSONFormatter_TimestampUnixMillis(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -210,7 +205,6 @@ func TestJSONFormatter_TimestampUnixMillis(t *testing.T) {
 func TestJSONFormatter_UnrecognisedTimestampFormat(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampFormat("bogus")}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -265,7 +259,6 @@ func TestJSONFormatter_UnicodeValues(t *testing.T) {
 		"outcome": "success",
 		"name":    "hello \u4e16\u754c",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"name"},
 	})
@@ -282,7 +275,6 @@ func TestJSONFormatter_LongValues(t *testing.T) {
 	data, err := f.Format(testTime, "ev", audit.Fields{
 		"outcome": longVal,
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -294,9 +286,7 @@ func TestJSONFormatter_LongValues(t *testing.T) {
 
 func TestJSONFormatter_NilFields(t *testing.T) {
 	f := &audit.JSONFormatter{}
-	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{
-		Category: "write",
-	})
+	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{})
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -309,7 +299,6 @@ func TestJSONFormatter_NewlineInjection(t *testing.T) {
 	data, err := f.Format(testTime, "ev", audit.Fields{
 		"outcome": "success\n{\"injected\":true}",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -326,7 +315,6 @@ func TestJSONFormatter_ExtraFieldsSorted(t *testing.T) {
 		"zebra":   "z",
 		"alpha":   "a",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -366,7 +354,6 @@ func TestCEFFormatter_ValidHeader(t *testing.T) {
 func TestCEFFormatter_DefaultSeverity(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -388,7 +375,6 @@ func TestCEFFormatter_CustomSeverity(t *testing.T) {
 		},
 	}
 	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "fail"}, &audit.EventDef{
-		Category: "security",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -398,7 +384,6 @@ func TestCEFFormatter_CustomSeverity(t *testing.T) {
 func TestCEFFormatter_DefaultDescription(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	data, err := f.Format(testTime, "my_event", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -417,7 +402,6 @@ func TestCEFFormatter_CustomDescription(t *testing.T) {
 		},
 	}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -430,7 +414,6 @@ func TestCEFFormatter_ExtensionFields(t *testing.T) {
 		"outcome":  "success",
 		"actor_id": "alice",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id"},
 	})
 	require.NoError(t, err)
@@ -455,7 +438,6 @@ func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
 		"outcome":  "success",
 		"actor_id": "alice",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id"},
 	})
 	require.NoError(t, err)
@@ -482,7 +464,6 @@ func TestCEFFormatter_CustomFieldMappingMergesDefaults(t *testing.T) {
 		"actor_id":  "alice",
 		"source_ip": "10.0.0.1",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id"},
 		Optional: []string{"source_ip"},
 	})
@@ -499,7 +480,6 @@ func TestCEFFormatter_OmitEmpty(t *testing.T) {
 		"outcome": "ok",
 		"empty":   "",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"empty"},
 	})
@@ -513,7 +493,6 @@ func TestCEFFormatter_DurationInExtensions(t *testing.T) {
 		"outcome":     "ok",
 		"duration_ms": 2500 * time.Millisecond,
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -599,7 +578,7 @@ func TestCEFExtKeyValidation(t *testing.T) {
 // does not corrupt cached Format() results.
 func TestCEFFormatter_PoolSafety(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
-	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+	def := &audit.EventDef{Required: []string{"outcome"}}
 	ts := time.Now()
 
 	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
@@ -663,7 +642,6 @@ func TestCEFFormatter_NewlineInjection(t *testing.T) {
 	data, err := f.Format(testTime, "ev", audit.Fields{
 		"outcome": "success\n{injected}",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -677,7 +655,6 @@ func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
 	data, err := f.Format(testTime, "ev|bad", audit.Fields{
 		"outcome": "ok",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -811,7 +788,6 @@ func TestCEFFormatter_FieldValueTypes(t *testing.T) {
 		"nilfield": nil,
 		"custom":   []string{"a", "b"},
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"count", "count64", "ratio", "active", "inactive", "dur", "when", "nilfield", "custom"},
 	})
@@ -835,7 +811,6 @@ func TestJSONFormatter_WriteFieldError(t *testing.T) {
 		"outcome": "ok",
 		"bad":     make(chan struct{}),
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"bad"},
 	})
@@ -875,7 +850,6 @@ func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 		Version: "1",
 	}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	}
 	ts := time.Now()
@@ -912,7 +886,6 @@ func TestCEFFormatter_AllocCount(t *testing.T) {
 		Version: "1.0",
 	}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
@@ -940,7 +913,6 @@ func TestCEFFormatter_AllocCount(t *testing.T) {
 func TestJSONFormatter_AllocCount(t *testing.T) {
 	jf := &audit.JSONFormatter{}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
@@ -971,7 +943,6 @@ func TestCEFFormatter_NullByteStripped(t *testing.T) {
 	data, err := f.Format(testTime, "ev", audit.Fields{
 		"outcome": "ok\x00injected",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.NoError(t, err)
@@ -990,7 +961,6 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 	_, err := f.Format(testTime, "ev", audit.Fields{
 		"outcome": "ok",
 	}, &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	})
 	require.Error(t, err)
@@ -999,7 +969,6 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 
 func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 	baseDef := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 		Optional: []string{"source_ip", "actor_id"},
 	}
@@ -1047,7 +1016,6 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 
 	t.Run("cn1_with_duration", func(t *testing.T) {
 		def := &audit.EventDef{
-			Category: "write",
 			Required: []string{"outcome"},
 			Optional: []string{"actor_id", "duration_ms"},
 		}
@@ -1138,7 +1106,7 @@ func TestWriteJSONString(t *testing.T) {
 // timestamp output as the old json.Marshal(ts.Format(...)) approach.
 func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
-	def := &audit.EventDef{Category: "write", Required: []string{"outcome"}}
+	def := &audit.EventDef{Required: []string{"outcome"}}
 
 	// Use a timestamp with nanosecond precision and a timezone offset
 	// to exercise all format components.
@@ -1164,7 +1132,6 @@ func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
 func TestJSONFormatter_PoolSafety(t *testing.T) {
 	f := &audit.JSONFormatter{}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome"},
 	}
 	ts := time.Now()
@@ -1213,7 +1180,6 @@ func BenchmarkJSONFormatter_Format(b *testing.B) {
 		"version":  1,
 	}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
@@ -1240,7 +1206,6 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 		"version":  1,
 	}
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id", "subject"},
 		Optional: []string{"version"},
 	}
@@ -1258,7 +1223,6 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 // scaling with production-realistic field counts.
 func largeEventFixture() (audit.Fields, *audit.EventDef) {
 	def := &audit.EventDef{
-		Category: "write",
 		Required: []string{"outcome", "actor_id", "method", "path", "source_ip"},
 		Optional: []string{
 			"request_id", "user_agent", "subject", "schema_type", "version",

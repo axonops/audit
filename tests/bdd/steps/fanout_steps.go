@@ -42,12 +42,12 @@ categories:
     - auth_failure
     - permission_denied
 events:
-  user_create:    { category: write, required: [outcome, actor_id], optional: [marker] }
-  config_update:  { category: write, required: [outcome, actor_id], optional: [marker] }
-  user_get:       { category: read, required: [outcome], optional: [marker] }
-  config_read:    { category: read, required: [outcome], optional: [marker] }
-  auth_failure:   { category: security, required: [outcome, actor_id], optional: [marker] }
-  permission_denied: { category: security, required: [outcome, actor_id], optional: [marker] }
+  user_create:    { required: [outcome, actor_id], optional: [marker] }
+  config_update:  { required: [outcome, actor_id], optional: [marker] }
+  user_get:       { required: [outcome], optional: [marker] }
+  config_read:    { required: [outcome], optional: [marker] }
+  auth_failure:   { required: [outcome, actor_id], optional: [marker] }
+  permission_denied: { required: [outcome, actor_id], optional: [marker] }
 default_enabled:
   - write
   - read
@@ -227,9 +227,7 @@ func registerFanoutGivenMultiOutputSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		u = strings.TrimPrefix(u, "https://")
 		return tc.Logger.ClearOutputRoute("webhook:" + u)
 	})
-	ctx.Step(`^I disable category "([^"]*)"$`, func(cat string) error {
-		return tc.Logger.DisableCategory(cat)
-	})
+	// Note: "I disable category" step is registered in filter_steps.go
 	ctx.Step(`^file "([^"]*)" should contain "([^"]*)"$`, func(name, text string) error {
 		return assertFileContainsText(tc, name, text)
 	})

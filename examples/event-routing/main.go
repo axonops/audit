@@ -14,86 +14,67 @@
 
 // Event-routing demonstrates per-output filtering: security events go
 // to one file, write events go to another, and stdout gets everything.
+// Routing rules are defined in outputs.yaml.
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
+	_ "github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/outputconfig"
 )
 
+//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+//go:embed outputs.yaml
+var outputsYAML []byte
+
 func main() {
-	tax := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create"},
-			"read":     {"user_read"},
-			"security": {"auth_failure"},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create": {
-				Category: "write",
-				Required: []string{"outcome", "actor_id"},
-			},
-			"user_read": {
-				Category: "read",
-				Required: []string{"outcome"},
-			},
-			"auth_failure": {
-				Category: "security",
-				Required: []string{"outcome", "actor_id"},
-			},
-		},
-		DefaultEnabled: []string{"write", "read", "security"},
-	}
-
-	// Create three outputs with different routing rules.
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
-		log.Fatalf("create stdout: %v", err)
+		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	securityFile, err := file.New(file.Config{Path: "./security.log"}, nil)
+	result, err := outputconfig.Load(outputsYAML, &tax, nil)
 	if err != nil {
-		log.Fatalf("create security file: %v", err)
+		log.Fatalf("load outputs: %v", err)
 	}
 
-	writesFile, err := file.New(file.Config{Path: "./writes.log"}, nil)
-	if err != nil {
-		log.Fatalf("create writes file: %v", err)
-	}
+	opts := []audit.Option{audit.WithTaxonomy(tax)}
+	opts = append(opts, result.Options...)
 
-	// WithNamedOutput wires each output with an optional route and formatter.
-	// WrapOutput gives each output a human-readable name for metrics and logs.
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-		// Console: nil route = receives ALL events.
-		audit.WithNamedOutput(audit.WrapOutput(stdout, "console"), nil, nil),
-		// security.log: only security events.
-		audit.WithNamedOutput(
-			audit.WrapOutput(securityFile, "security_log"),
-			&audit.EventRoute{IncludeCategories: []string{"security"}},
-			nil,
-		),
-		// writes.log: only write events.
-		audit.WithNamedOutput(
-			audit.WrapOutput(writesFile, "writes_log"),
-			&audit.EventRoute{IncludeCategories: []string{"write"}},
-			nil,
-		),
-	)
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
 
 	// Emit one event per category.
-	_ = logger.Audit("user_create", audit.Fields{"outcome": "success", "actor_id": "alice"})
-	_ = logger.Audit("user_read", audit.Fields{"outcome": "success"})
-	_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "unknown"})
+	if err := logger.Audit(EventUserCreate, audit.Fields{
+		FieldOutcome: "success",
+		FieldActorID: "alice",
+	}); err != nil {
+		log.Printf("audit error: %v", err)
+	}
+
+	if err := logger.Audit(EventUserRead, audit.Fields{
+		FieldOutcome: "success",
+	}); err != nil {
+		log.Printf("audit error: %v", err)
+	}
+
+	if err := logger.Audit(EventAuthFailure, audit.Fields{
+		FieldOutcome: "failure",
+		FieldActorID: "unknown",
+	}); err != nil {
+		log.Printf("audit error: %v", err)
+	}
 
 	if err := logger.Close(); err != nil {
 		log.Printf("close logger: %v", err)
@@ -102,10 +83,12 @@ func main() {
 	// Show filtered output.
 	printFile("security.log")
 	printFile("writes.log")
+	printFile("critical.log")
 
 	// Clean up.
 	_ = os.Remove("./security.log")
 	_ = os.Remove("./writes.log")
+	_ = os.Remove("./critical.log")
 }
 
 func printFile(name string) {

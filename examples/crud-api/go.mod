@@ -3,8 +3,9 @@ module github.com/axonops/go-audit/examples/crud-api
 go 1.26.1
 
 require (
-	github.com/axonops/go-audit v0.1.0
+	github.com/axonops/go-audit v0.2.0
 	github.com/axonops/go-audit/file v0.1.0
+	github.com/axonops/go-audit/outputconfig v0.1.0
 	github.com/axonops/go-audit/syslog v0.1.0
 	github.com/axonops/go-audit/webhook v0.1.0
 	github.com/google/uuid v1.6.0
@@ -22,4 +23,5 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

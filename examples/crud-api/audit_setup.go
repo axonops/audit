@@ -15,114 +15,54 @@
 package main
 
 import (
+	_ "embed"
 	"log"
-	"time"
 
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/outputconfig"
 	"github.com/axonops/go-audit/syslog"
 	"github.com/axonops/go-audit/webhook"
 )
 
-// setupAuditLogger creates the logger with five named outputs:
+//go:embed outputs.yaml
+var outputsYAML []byte
+
+// setupAuditLogger creates the logger with five named outputs, all
+// loaded from outputs.yaml:
 //
-//  1. stdout — all events, JSON (dev visibility)
-//  2. audit.log — exclude read events, JSON (persistent log)
-//  3. admin-audit.log — admin events only, CEF (SIEM trail)
-//  4. syslog TCP — security events only, JSON (central syslog)
-//  5. webhook HTTP — all events, JSON (external SIEM/Splunk)
+//  1. console (stdout) — all events, JSON
+//  2. audit_log (file) — exclude read events, JSON
+//  3. admin_log (file) — admin events only, CEF
+//  4. syslog_security (syslog TCP) — security events only, JSON
+//  5. webhook_siem (webhook HTTP) — all events, JSON
+//
+// Per-output-type metrics (file rotation, syslog reconnection,
+// webhook flush) are wired by registering custom factories before
+// loading the YAML config.
 func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
+	// Override init()-registered default factories with metrics-aware
+	// factories so file rotations, syslog reconnects, and webhook
+	// flushes are tracked in Prometheus.
+	audit.RegisterOutputFactory("file", file.NewFactory(m))
+	audit.RegisterOutputFactory("syslog", syslog.NewFactory(m))
+	audit.RegisterOutputFactory("webhook", webhook.NewFactory(m))
+
+	// Load all five outputs from YAML. Environment variables in the
+	// YAML (like ${SYSLOG_ADDR:-localhost:5514}) are resolved at
+	// load time.
+	result, err := outputconfig.Load(outputsYAML, &tax, m)
+	if err != nil {
+		log.Printf("load outputs: %v", err)
+		log.Printf("hint: run 'docker compose up -d' to start the infrastructure")
+		return nil, err
+	}
+
 	opts := []audit.Option{
 		audit.WithTaxonomy(tax),
 		audit.WithMetrics(m),
 	}
-
-	// 1. Stdout — all events.
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
-	if err != nil {
-		return nil, err
-	}
-	opts = append(opts, audit.WithNamedOutput(
-		audit.WrapOutput(stdout, "console"), nil, nil,
-	))
-
-	// 2. audit.log — exclude read events.
-	auditFile, err := file.New(file.Config{
-		Path:        envOr("AUDIT_LOG_PATH", "./audit.log"),
-		MaxSizeMB:   100,
-		MaxBackups:  5,
-		Permissions: "0600",
-	}, m) // m satisfies file.Metrics
-	if err != nil {
-		return nil, err
-	}
-	opts = append(opts, audit.WithNamedOutput(
-		audit.WrapOutput(auditFile, "audit_log"),
-		&audit.EventRoute{ExcludeCategories: []string{CategoryRead}},
-		nil,
-	))
-
-	// 3. admin-audit.log — admin events only, CEF format.
-	adminFile, err := file.New(file.Config{
-		Path:        envOr("ADMIN_LOG_PATH", "./admin-audit.log"),
-		MaxSizeMB:   50,
-		Permissions: "0600",
-	}, m)
-	if err != nil {
-		return nil, err
-	}
-	cefFmt := &audit.CEFFormatter{
-		Vendor:  "AxonOps",
-		Product: "CRUDExample",
-		Version: "0.1.0",
-		SeverityFunc: func(eventType string) int {
-			if eventType == EventAuthFailure {
-				return 8
-			}
-			return 5
-		},
-	}
-	opts = append(opts, audit.WithNamedOutput(
-		audit.WrapOutput(adminFile, "admin_log"),
-		&audit.EventRoute{IncludeCategories: []string{CategoryAdmin}},
-		cefFmt,
-	))
-
-	// 4. Syslog — security events only.
-	syslogAddr := envOr("SYSLOG_ADDR", "localhost:5514")
-	syslogOut, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: syslogAddr,
-		AppName: "crud-api",
-	}, m) // m satisfies syslog.Metrics
-	if err != nil {
-		log.Printf("syslog output unavailable (%s): %v — continuing without it", syslogAddr, err)
-	} else {
-		opts = append(opts, audit.WithNamedOutput(
-			audit.WrapOutput(syslogOut, "syslog_security"),
-			&audit.EventRoute{IncludeCategories: []string{CategorySecurity}},
-			nil,
-		))
-	}
-
-	// 5. Webhook — all events.
-	webhookURL := envOr("WEBHOOK_URL", "http://localhost:8081/events")
-	webhookOut, err := webhook.New(&webhook.Config{
-		URL:                webhookURL,
-		BatchSize:          50,
-		FlushInterval:      5 * time.Second,
-		Timeout:            10 * time.Second,
-		MaxRetries:         3,
-		AllowInsecureHTTP:  true, // dev only — use HTTPS in production
-		AllowPrivateRanges: true, // dev only — localhost webhook receiver
-	}, m, m) // m satisfies both audit.Metrics and webhook.Metrics
-	if err != nil {
-		log.Printf("webhook output unavailable (%s): %v — continuing without it", webhookURL, err)
-	} else {
-		opts = append(opts, audit.WithNamedOutput(
-			audit.WrapOutput(webhookOut, "webhook_siem"), nil, nil,
-		))
-	}
+	opts = append(opts, result.Options...)
 
 	return audit.NewLogger(audit.Config{
 		Version: 1,

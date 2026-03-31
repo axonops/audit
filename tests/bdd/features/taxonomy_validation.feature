@@ -22,11 +22,9 @@ Feature: Taxonomy Validation
           - auth_failure
       events:
         user_create:
-          category: write
           required: [outcome, actor_id]
           optional: [marker]
         auth_failure:
-          category: security
           required: [outcome, actor_id]
           optional: [reason]
       default_enabled:
@@ -63,7 +61,6 @@ Feature: Taxonomy Validation
           - health_check
       events:
         health_check:
-          category: ops
           required: [outcome]
       default_enabled:
         - ops
@@ -112,7 +109,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -133,7 +129,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -151,7 +146,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -167,7 +161,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -183,14 +176,13 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
-  Scenario: Event in multiple categories is rejected
+  Scenario: Event in multiple categories is accepted
     When I try to parse taxonomy from YAML:
       """
       version: 1
@@ -201,12 +193,11 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    Then the taxonomy parse should succeed
 
   Scenario: Category member not defined in events is rejected
     When I try to parse taxonomy from YAML:
@@ -218,7 +209,6 @@ Feature: Taxonomy Validation
           - nonexistent_event
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -234,7 +224,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome, actor_id]
           optional: [outcome]
       default_enabled:
@@ -251,7 +240,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -270,7 +258,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -288,7 +275,6 @@ Feature: Taxonomy Validation
           - user_create
       events:
         user_create:
-          category: write
           required: [outcome]
       default_enabled:
         - write
@@ -307,13 +293,10 @@ Feature: Taxonomy Validation
           - shutdown
       events:
         user_create:
-          category: write
           required: [outcome]
         startup:
-          category: lifecycle
           required: [app_name, version]
         shutdown:
-          category: lifecycle
           required: [app_name, uptime_ms]
       default_enabled:
         - write
@@ -338,7 +321,7 @@ Feature: Taxonomy Validation
 
   # --- Additional structural validation ---
 
-  Scenario: Event not listed in its declared category is rejected
+  Scenario: Uncategorised event is valid
     When I try to parse taxonomy from YAML:
       """
       version: 1
@@ -347,15 +330,13 @@ Feature: Taxonomy Validation
           - user_update
       events:
         user_create:
-          category: write
           required: [outcome]
         user_update:
-          category: write
           required: [outcome]
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    Then the taxonomy parse should succeed
 
   # --- Validation modes ---
 

@@ -79,16 +79,20 @@ func DefaultCEFFieldMapping() map[string]string {
 //
 // # Severity
 //
-// Severity is determined by [CEFFormatter.SeverityFunc]. If nil, all
-// events default to severity 5 (medium). Values are clamped to the
-// valid CEF range 0-10.
+// Severity is determined by [CEFFormatter.SeverityFunc] if set. If nil,
+// the taxonomy-defined severity is used via [EventDef.ResolvedSeverity]:
+// event Severity (if non-nil) → first category Severity in alphabetical
+// order (if non-nil) → 5. Values are clamped to the valid CEF range 0-10.
 type CEFFormatter struct {
 	// SeverityFunc maps event types to CEF severity (0-10). If nil,
-	// all events default to severity 5. Values are clamped to 0-10.
+	// taxonomy-defined severity is used via [EventDef.ResolvedSeverity].
+	// Values are clamped to 0-10. Set SeverityFunc only to override
+	// the taxonomy.
 	SeverityFunc func(eventType string) int
 
 	// DescriptionFunc maps event types to human-readable CEF
-	// descriptions. If nil, the event type name is used.
+	// descriptions. If nil, [EventDef.Description] is used when
+	// non-empty, falling back to the event type name.
 	DescriptionFunc func(eventType string) string
 
 	// FieldMapping maps audit field names to CEF extension keys. If nil,
@@ -135,8 +139,8 @@ func (*noCopy) Unlock() {}
 // Format serialises a single audit event as a CEF line using a single
 // buffer for both header and extensions.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
-	severity := cf.severity(eventType)
-	description := cf.description(eventType)
+	severity := cf.severity(eventType, def)
+	description := cf.description(eventType, def)
 	mapping := cf.fieldMapping()
 
 	buf, ok := cefBufPool.Get().(*bytes.Buffer)
@@ -231,24 +235,23 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 	return nil
 }
 
-func (cf *CEFFormatter) severity(eventType string) int {
-	s := 5
+func (cf *CEFFormatter) severity(eventType string, def *EventDef) int {
+	// SeverityFunc takes precedence (backwards compatibility).
 	if cf.SeverityFunc != nil {
-		s = cf.SeverityFunc(eventType)
+		return clampSeverity(cf.SeverityFunc(eventType))
 	}
-	// Clamp to valid CEF range.
-	if s < 0 {
-		s = 0
-	}
-	if s > 10 {
-		s = 10
-	}
-	return s
+	// Use taxonomy-defined severity.
+	return def.ResolvedSeverity()
 }
 
-func (cf *CEFFormatter) description(eventType string) string {
+func (cf *CEFFormatter) description(eventType string, def *EventDef) string {
+	// DescriptionFunc takes precedence (backwards compatibility).
 	if cf.DescriptionFunc != nil {
 		return cf.DescriptionFunc(eventType)
+	}
+	// Use taxonomy-defined description.
+	if def.Description != "" {
+		return def.Description
 	}
 	return eventType
 }

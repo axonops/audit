@@ -21,17 +21,17 @@ import "github.com/axonops/go-audit"
 func ValidTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"read":     {"schema_read", "config_read"},
-			"write":    {"schema_register", "schema_delete"},
-			"security": {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"read":     {Events: []string{"schema_read", "config_read"}},
+			"write":    {Events: []string{"schema_register", "schema_delete"}},
+			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
-			"schema_read":     {Category: "read", Required: []string{"outcome"}, Optional: []string{"subject"}},
-			"config_read":     {Category: "read", Required: []string{"outcome"}},
-			"schema_register": {Category: "write", Required: []string{"outcome", "actor_id", "subject"}, Optional: []string{"schema_type"}},
-			"schema_delete":   {Category: "write", Required: []string{"outcome", "actor_id", "subject"}},
-			"auth_failure":    {Category: "security", Required: []string{"outcome", "actor_id"}, Optional: []string{"reason"}},
+			"schema_read":     {Required: []string{"outcome"}, Optional: []string{"subject"}},
+			"config_read":     {Required: []string{"outcome"}},
+			"schema_register": {Required: []string{"outcome", "actor_id", "subject"}, Optional: []string{"schema_type"}},
+			"schema_delete":   {Required: []string{"outcome", "actor_id", "subject"}},
+			"auth_failure":    {Required: []string{"outcome", "actor_id"}, Optional: []string{"reason"}},
 		},
 		DefaultEnabled: []string{"write", "security"},
 	}
@@ -42,18 +42,18 @@ func ValidTaxonomy() audit.Taxonomy {
 func TestTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"read":     {"user_get", "config_get"},
-			"security": {"auth_failure", "permission_denied"},
+		Categories: map[string]*audit.CategoryDef{
+			"write":    {Events: []string{"user_create", "user_delete"}},
+			"read":     {Events: []string{"user_get", "config_get"}},
+			"security": {Events: []string{"auth_failure", "permission_denied"}},
 		},
 		Events: map[string]*audit.EventDef{
-			"user_create":       {Category: "write", Required: []string{"outcome"}},
-			"user_delete":       {Category: "write", Required: []string{"outcome"}},
-			"user_get":          {Category: "read", Required: []string{"outcome"}},
-			"config_get":        {Category: "read", Required: []string{"outcome"}},
-			"auth_failure":      {Category: "security", Required: []string{"outcome"}},
-			"permission_denied": {Category: "security", Required: []string{"outcome"}},
+			"user_create":       {Required: []string{"outcome"}},
+			"user_delete":       {Required: []string{"outcome"}},
+			"user_get":          {Required: []string{"outcome"}},
+			"config_get":        {Required: []string{"outcome"}},
+			"auth_failure":      {Required: []string{"outcome"}},
+			"permission_denied": {Required: []string{"outcome"}},
 		},
 		DefaultEnabled: []string{"write", "read", "security"},
 	}

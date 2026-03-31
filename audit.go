@@ -350,6 +350,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 	l.filter.eventOverrides.Store(eventType, true)
+	l.filter.hasEventOverrides.Store(true)
 	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
@@ -363,6 +364,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 	l.filter.eventOverrides.Store(eventType, false)
+	l.filter.hasEventOverrides.Store(true)
 	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
@@ -549,22 +551,50 @@ func (l *Logger) processEntry(entry *auditEntry) {
 
 	ts := time.Now()
 	def := l.taxonomy.Events[entry.eventType]
-	category := def.Category
 
-	// Stack-allocated cache for up to 4 unique formatters. Avoids a
-	// per-event map allocation for the common case of 1-3 outputs
-	// sharing the same formatter.
+	if len(def.Categories) == 0 {
+		// Uncategorised event: single pass, no category context.
+		var fc formatCache
+		l.deliverToOutputs(entry, "", ts, def, &fc)
+		return
+	}
+
+	// Categorised event: deliver once per enabled category.
+	// If EnableEvent was called, iterate ALL categories.
+	// The atomic flag guards the sync.Map lookup on the hot path.
+	eventForceEnabled := false
+	if l.filter.hasEventOverrides.Load() {
+		if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
+			eventForceEnabled = true
+		}
+	}
+
+	// Format cache shared across category passes — the formatted
+	// output is identical because ResolvedSeverity is a single
+	// value per event, not per category.
 	var fc formatCache
 
+	for _, category := range def.Categories {
+		if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
+			continue
+		}
+		l.deliverToOutputs(entry, category, ts, def, &fc)
+	}
+}
+
+// deliverToOutputs fans out a single event to all matching outputs
+// for a given category. An empty category means the event is
+// uncategorised.
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
 	for _, oe := range l.entries {
-		if !oe.matchesEvent(entry.eventType, category) {
+		if !oe.matchesEvent(entry.eventType, category, def.ResolvedSeverity()) {
 			if l.metrics != nil {
 				l.metrics.RecordOutputFiltered(oe.output.Name())
 			}
 			continue
 		}
 
-		data := l.formatCached(oe, entry, ts, def, &fc)
+		data := l.formatCached(oe, entry, ts, def, fc)
 		if data == nil {
 			continue
 		}

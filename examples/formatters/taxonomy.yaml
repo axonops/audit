@@ -1,0 +1,35 @@
+version: 1
+
+categories:
+  write:
+    severity: 3
+    events:
+      - user_create
+  security:
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
+
+default_enabled:
+  - write
+  - security
+
+events:
+  user_create:
+    description: "A new user account was created"
+    required:
+      - outcome
+      - actor_id
+
+  auth_failure:
+    description: "An authentication attempt failed"
+    required:
+      - outcome
+      - actor_id
+
+  auth_success:
+    description: "An authentication attempt succeeded"
+    required:
+      - outcome
+      - actor_id

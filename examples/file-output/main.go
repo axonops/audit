@@ -14,51 +14,43 @@
 
 // File-output demonstrates writing audit events to a log file with
 // automatic rotation, size limits, and restricted file permissions.
+// Output configuration is loaded from outputs.yaml.
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
+	_ "github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/outputconfig"
 )
 
+//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+//go:embed outputs.yaml
+var outputsYAML []byte
+
 func main() {
-	tax := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"write": {"user_create"},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create": {
-				Category: "write",
-				Required: []string{"outcome", "actor_id"},
-			},
-		},
-		DefaultEnabled: []string{"write"},
-	}
-
-	// Create a file output with rotation settings.
-	// - MaxSizeMB: rotate when file exceeds 10 MB
-	// - MaxBackups: keep 3 rotated files
-	// - Permissions: only owner can read/write (0600)
-	fileOut, err := file.New(file.Config{
-		Path:        "./audit.log",
-		MaxSizeMB:   10,
-		MaxBackups:  3,
-		Permissions: "0600",
-	}, nil) // nil = no file-specific metrics
+	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
-		log.Fatalf("create file output: %v", err)
+		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-		audit.WithOutputs(fileOut),
-	)
+	result, err := outputconfig.Load(outputsYAML, &tax, nil)
+	if err != nil {
+		log.Fatalf("load outputs: %v", err)
+	}
+
+	opts := []audit.Option{audit.WithTaxonomy(tax)}
+	opts = append(opts, result.Options...)
+
+	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
@@ -66,9 +58,9 @@ func main() {
 	// Emit five events.
 	users := []string{"alice", "bob", "carol", "dave", "eve"}
 	for _, user := range users {
-		if auditErr := logger.Audit("user_create", audit.Fields{
-			"outcome":  "success",
-			"actor_id": user,
+		if auditErr := logger.Audit(EventUserCreate, audit.Fields{
+			FieldOutcome: "success",
+			FieldActorID: user,
 		}); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}

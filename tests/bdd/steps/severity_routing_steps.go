@@ -217,8 +217,6 @@ func registerSeverityRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		if tc.Logger == nil {
 			return fmt.Errorf("logger not created")
 		}
-		// Flush any pending events before changing the route.
-		// Small sleep to let drain goroutine process pending events.
 		route := &audit.EventRoute{MinSeverity: &minSev}
 		return tc.Logger.SetOutputRoute(name, route)
 	})

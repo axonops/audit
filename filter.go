@@ -100,8 +100,10 @@ func (r *EventRoute) isExcludeMode() bool {
 	return len(r.ExcludeCategories) > 0 || len(r.ExcludeEventTypes) > 0
 }
 
-// ValidateEventRoute checks that the route is well-formed and all
-// referenced categories and event types exist in the taxonomy.
+// ValidateEventRoute checks that the route is well-formed: include and
+// exclude fields are not mixed, severity fields are in range 0-10 and
+// min does not exceed max, and all referenced categories and event types
+// exist in the taxonomy.
 func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 	if route.isIncludeMode() && route.isExcludeMode() {
 		return fmt.Errorf("audit: EventRoute must use either include or exclude, not both")
@@ -226,9 +228,10 @@ func MatchesRoute(route *EventRoute, eventType, category string, severity int) b
 	return true
 }
 
-// checkSeverity returns true if the event's severity passes the
-// route's min/max severity filters. Returns true if no severity
-// filter is set (nil pointers).
+// checkSeverity returns true if the event's severity is within the
+// route's inclusive range [MinSeverity, MaxSeverity]. Boundaries are
+// inclusive: severity == *MinSeverity passes. Returns true if no
+// severity filter is set (both pointers nil).
 func checkSeverity(route *EventRoute, severity int) bool {
 	if route.MinSeverity != nil && severity < *route.MinSeverity {
 		return false

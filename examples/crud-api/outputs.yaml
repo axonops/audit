@@ -49,3 +49,5 @@ outputs:
       max_retries: 3
       allow_insecure_http: true   # dev only — use HTTPS in production
       allow_private_ranges: true  # dev only — localhost webhook receiver
+    route:
+      min_severity: 7             # only high-severity events to SIEM

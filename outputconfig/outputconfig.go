@@ -291,7 +291,11 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop 
 
 // yamlRoute maps to [audit.EventRoute] fields.
 type yamlRoute struct {
-	MinSeverity       *int     `yaml:"min_severity"`
+	// MinSeverity (YAML: min_severity) — minimum severity threshold.
+	// Events with severity below this value are not delivered. Nil = no filter.
+	MinSeverity *int `yaml:"min_severity"`
+	// MaxSeverity (YAML: max_severity) — maximum severity threshold.
+	// Events with severity above this value are not delivered. Nil = no filter.
 	MaxSeverity       *int     `yaml:"max_severity"`
 	IncludeCategories []string `yaml:"include_categories"`
 	IncludeEventTypes []string `yaml:"include_event_types"`

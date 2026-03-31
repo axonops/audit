@@ -213,6 +213,7 @@ Feature: Severity-based event routing
   # Uncategorised events
   # ---------------------------------------------------------------------------
 
+  # custom_event has event-level severity 6 in the taxonomy (below min 7).
   Scenario: Severity filter applies to uncategorised events
     Given a logger with stdout output routed with min_severity 7
     When I audit event "custom_event" with fields:
@@ -268,6 +269,10 @@ Feature: Severity-based event routing
   # Multi-category interaction
   # ---------------------------------------------------------------------------
 
+  # The multi-category severity taxonomy has auth_failure in compliance
+  # (severity 3) and security (severity 8). The resolved severity is 3
+  # (compliance wins alphabetically). With min_severity 5, severity 3 < 5
+  # → rejected on ALL category passes.
   Scenario: Multi-category event uses single resolved severity for routing
     Given a multi-category severity taxonomy
     And a logger with stdout output routed with min_severity 5

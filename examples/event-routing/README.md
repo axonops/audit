@@ -77,6 +77,49 @@ doesn't match either file's route, so it only appears on stdout.
 Events are filtered before serialization — no wasted work formatting
 events that won't be delivered.
 
+### Severity-Based Routing
+
+Each output's route can filter by severity level (0-10). There are
+three modes:
+
+**Category only** — filter by category, all severity levels:
+```yaml
+  security_log:
+    type: file
+    file:
+      path: "./security.log"
+    route:
+      include_categories: [security]
+```
+
+**Category with severity** — filter by category AND severity. Only
+events matching the category AND meeting the severity threshold are
+delivered:
+```yaml
+  security_critical:
+    type: file
+    file:
+      path: "./security-critical.log"
+    route:
+      include_categories: [security]
+      min_severity: 7
+```
+
+**Severity only** — filter by severity regardless of category. This
+is the PagerDuty use case — route all high-severity events to an
+alerting webhook:
+```yaml
+  pagerduty:
+    type: webhook
+    webhook:
+      url: "https://alerts.example.com/pagerduty"
+    route:
+      min_severity: 9
+```
+
+Each output has exactly one route. `min_severity` and `max_severity`
+accept values 0-10.
+
 ## Run It
 
 ```bash

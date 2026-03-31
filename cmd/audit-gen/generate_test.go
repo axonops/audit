@@ -667,14 +667,10 @@ func TestBuildLabelConstants_NamingCollision(t *testing.T) {
 	sc := &audit.SensitivityConfig{
 		Labels: map[string]*audit.SensitivityLabel{
 			"my_data":  {Description: "one"},
-			"my__data": {Description: "two"}, // toPascalCase("my__data") == "MyData" == toPascalCase("my_data")
+			"my__data": {Description: "two"},
 		},
 	}
 	_, err := buildLabelConstantsFromConfig(sc)
-	// Whether this collides depends on toPascalCase implementation.
-	// If it does, we get an error. If not, both are valid.
-	// This test documents the behavior either way.
-	if err != nil {
-		assert.Contains(t, err.Error(), "naming collision")
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "naming collision")
 }

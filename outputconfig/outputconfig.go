@@ -70,11 +70,14 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 // NamedOutput pairs a constructed output with its config-level name
 // and resolved formatter and route.
 type NamedOutput struct {
-	Name          string
-	Output        audit.Output
-	Route         *audit.EventRoute
-	Formatter     audit.Formatter
-	ExcludeLabels []string // sensitivity labels to strip from events
+	Name      string
+	Output    audit.Output
+	Route     *audit.EventRoute
+	Formatter audit.Formatter
+	// ExcludeLabels lists sensitivity label names whose fields are
+	// stripped from events before delivery to this output. Nil or
+	// empty means no field stripping.
+	ExcludeLabels []string
 }
 
 // String returns a safe representation of LoadResult that never

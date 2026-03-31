@@ -102,7 +102,7 @@ func containsFrameworkField(sorted []string, fields Fields) bool {
 // isFrameworkField reports whether k is a framework-managed field that
 // should be skipped during user-field iteration.
 func isFrameworkField(k string, fields Fields) bool {
-	if k == "timestamp" || k == "event_type" || k == "category" || k == "severity" {
+	if k == "timestamp" || k == "event_type" || k == "severity" {
 		return true
 	}
 	if k == "duration_ms" {

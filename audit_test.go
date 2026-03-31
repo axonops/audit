@@ -811,6 +811,110 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 	assert.Equal(t, 1, out.EventCount(), "uncategorised event should be delivered to unrouted output")
 }
 
+func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"security":   {Events: []string{"auth_failure"}},
+			"compliance": {Events: []string{"auth_failure"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "compliance"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	// Disable both categories, then force-enable the event.
+	require.NoError(t, logger.DisableCategory("security"))
+	require.NoError(t, logger.DisableCategory("compliance"))
+	require.NoError(t, logger.EnableEvent("auth_failure"))
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// EnableEvent should override disabled categories — event delivered
+	// on ALL category passes (both security and compliance).
+	require.True(t, out.WaitForEvents(2, 2*time.Second))
+	assert.Equal(t, 2, out.EventCount(), "EnableEvent should deliver on all category passes")
+}
+
+func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"security":   {Events: []string{"auth_failure"}},
+			"compliance": {Events: []string{"auth_failure"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "compliance"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, &audit.EventRoute{
+			IncludeCategories: []string{"security"},
+		}, nil),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// Output includes only security — should get 1 delivery (security pass),
+	// not 2 (compliance pass is filtered by the route).
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "include route should match only one category pass")
+}
+
+func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"security":   {Events: []string{"auth_failure"}},
+			"compliance": {Events: []string{"auth_failure"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "compliance"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, &audit.EventRoute{
+			ExcludeCategories: []string{"security"},
+		}, nil),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// Output excludes security — should get 1 delivery (compliance pass only).
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "exclude route should skip security, deliver compliance")
+}
+
 func TestLogger_Filter_InvalidEvent(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")

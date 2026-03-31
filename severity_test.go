@@ -1001,3 +1001,46 @@ default_enabled: [security]
 	assert.NotContains(t, trimmed, "\n",
 		"CEF output must be a single line; line: %s", line)
 }
+
+func TestParseTaxonomyYAML_CategoryStructUnknownFieldRejected(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  security:
+    severity: 8
+    events: [auth_failure]
+    unknown_key: true
+default_enabled: [security]
+events:
+  auth_failure:
+    required: [outcome]
+`
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown field")
+}
+
+func TestParseTaxonomyYAML_CategoryScalarValueRejected(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  ops: true
+events:
+  deploy:
+    required: [outcome]
+`
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected a sequence or mapping")
+}
+
+func TestEventDef_ResolvedSeverity_Unprecomputed(t *testing.T) {
+	t.Parallel()
+	// A bare EventDef not processed by precomputeTaxonomy should
+	// return the default 5, even if Severity is explicitly set.
+	sev := 8
+	def := &audit.EventDef{Severity: &sev}
+	assert.Equal(t, 5, def.ResolvedSeverity(), "unprecomputed EventDef should return default 5")
+}

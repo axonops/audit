@@ -26,7 +26,7 @@ func ExampleNewLogger() {
 	taxonomy := audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
-			"write": {Events: []string{"user_create"}},
+			"write":    {Events: []string{"user_create"}},
 			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
@@ -122,7 +122,7 @@ func ExampleLogger_EnableCategory() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
-				"read": {Events: []string{"doc_read"}},
+				"read":  {Events: []string{"doc_read"}},
 				"write": {Events: []string{"doc_create"}},
 			},
 			Events: map[string]*audit.EventDef{
@@ -262,7 +262,7 @@ func ExampleLogger_SetOutputRoute() {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
-				"write": {Events: []string{"user_create"}},
+				"write":    {Events: []string{"user_create"}},
 				"security": {Events: []string{"auth_failure"}},
 			},
 			Events: map[string]*audit.EventDef{

@@ -325,7 +325,7 @@ default_enabled: [security]
 // names the offending category.
 func TestValidateTaxonomy_CategorySeverityOutOfRange(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	tests := []struct { //nolint:govet // fieldalignment: test readability preferred
 		name     string
 		severity int
 		wantMsg  string
@@ -438,10 +438,10 @@ func TestValidateTaxonomy_EventSeverityOutOfRange(t *testing.T) {
 // to confirm out-of-range values are caught end-to-end.
 func TestValidateTaxonomy_SeverityViaYAML(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		yaml     string
-		wantErr  bool
+	tests := []struct { //nolint:govet // fieldalignment: test readability preferred
+		name        string
+		yaml        string
+		wantErr     bool
 		errContains string
 	}{
 		{

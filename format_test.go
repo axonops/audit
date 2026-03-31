@@ -286,8 +286,7 @@ func TestJSONFormatter_LongValues(t *testing.T) {
 
 func TestJSONFormatter_NilFields(t *testing.T) {
 	f := &audit.JSONFormatter{}
-	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{
-	})
+	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{})
 	require.NoError(t, err)
 
 	var m map[string]any

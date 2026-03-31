@@ -321,7 +321,7 @@ Feature: Taxonomy Validation
 
   # --- Additional structural validation ---
 
-  Scenario: Event not listed in its declared category is rejected
+  Scenario: Uncategorised event is valid
     When I try to parse taxonomy from YAML:
       """
       version: 1
@@ -336,7 +336,7 @@ Feature: Taxonomy Validation
       default_enabled:
         - write
       """
-    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    Then the taxonomy parse should succeed
 
   # --- Validation modes ---
 

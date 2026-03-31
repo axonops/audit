@@ -551,60 +551,49 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	def := l.taxonomy.Events[entry.eventType]
 
 	if len(def.Categories) == 0 {
-		// Uncategorised event: deliver to outputs matching by event
-		// type or with no route. Single pass, no category context.
+		// Uncategorised event: single pass, no category context.
 		var fc formatCache
-		for _, oe := range l.entries {
-			if !oe.matchesEvent(entry.eventType, "") {
-				if l.metrics != nil {
-					l.metrics.RecordOutputFiltered(oe.output.Name())
-				}
-				continue
-			}
+		l.deliverToOutputs(entry, "", ts, def, &fc)
+		return
+	}
 
-			data := l.formatCached(oe, entry, ts, def, &fc)
-			if data == nil {
-				continue
-			}
-			l.writeToOutput(oe.output, data, entry.eventType)
+	// Categorised event: deliver once per enabled category.
+	// If EnableEvent was called, iterate ALL categories.
+	eventForceEnabled := false
+	if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
+		eventForceEnabled = true
+	}
+
+	// Format cache shared across category passes — the formatted
+	// output is identical because ResolvedSeverity is a single
+	// value per event, not per category.
+	var fc formatCache
+
+	for _, category := range def.Categories {
+		if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
+			continue
 		}
-	} else {
-		// Categorised event: deliver once per enabled category.
-		// Each category pass is independent — an output may receive
-		// the event multiple times on different category passes.
-		//
-		// If EnableEvent was called for this event, iterate ALL
-		// categories regardless of their enabled/disabled state.
-		eventForceEnabled := false
-		if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
-			eventForceEnabled = true
+		l.deliverToOutputs(entry, category, ts, def, &fc)
+	}
+}
+
+// deliverToOutputs fans out a single event to all matching outputs
+// for a given category. An empty category means the event is
+// uncategorised.
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
+	for _, oe := range l.entries {
+		if !oe.matchesEvent(entry.eventType, category) {
+			if l.metrics != nil {
+				l.metrics.RecordOutputFiltered(oe.output.Name())
+			}
+			continue
 		}
 
-		// Format cache shared across category passes — the formatted
-		// output is identical because ResolvedSeverity is a single
-		// value per event, not per category.
-		var fc formatCache
-
-		for _, category := range def.Categories {
-			if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
-				continue
-			}
-
-			for _, oe := range l.entries {
-				if !oe.matchesEvent(entry.eventType, category) {
-					if l.metrics != nil {
-						l.metrics.RecordOutputFiltered(oe.output.Name())
-					}
-					continue
-				}
-
-				data := l.formatCached(oe, entry, ts, def, &fc)
-				if data == nil {
-					continue
-				}
-				l.writeToOutput(oe.output, data, entry.eventType)
-			}
+		data := l.formatCached(oe, entry, ts, def, fc)
+		if data == nil {
+			continue
 		}
+		l.writeToOutput(oe.output, data, entry.eventType)
 	}
 }
 

@@ -66,40 +66,53 @@ func (c *yamlCategories) UnmarshalYAML(value *yaml.Node) error {
 	*c = make(yamlCategories, len(value.Content)/2)
 
 	for i := 0; i+1 < len(value.Content); i += 2 {
-		keyNode := value.Content[i]
-		valNode := value.Content[i+1]
-		catName := keyNode.Value
-
-		switch valNode.Kind {
-		case yaml.SequenceNode:
-			// Simple list format: category: [event1, event2]
-			var events []string
-			if err := valNode.Decode(&events); err != nil {
-				return fmt.Errorf("category %q: %w", catName, err)
-			}
-			(*c)[catName] = &yamlCategoryDef{Events: events}
-
-		case yaml.MappingNode:
-			// Struct format: category: {severity: 8, events: [...]}
-			// Validate keys manually since yaml.Node.Decode does not
-			// honour KnownFields(true) from the parent decoder.
-			allowed := map[string]struct{}{"severity": {}, "events": {}}
-			for j := 0; j+1 < len(valNode.Content); j += 2 {
-				if _, ok := allowed[valNode.Content[j].Value]; !ok {
-					return fmt.Errorf("category %q: unknown field %q", catName, valNode.Content[j].Value)
-				}
-			}
-			var def yamlCategoryDef
-			if err := valNode.Decode(&def); err != nil {
-				return fmt.Errorf("category %q: %w", catName, err)
-			}
-			(*c)[catName] = &def
-
-		default:
-			return fmt.Errorf("category %q: expected a sequence or mapping", catName)
+		catName := value.Content[i].Value
+		def, err := parseCategoryNode(catName, value.Content[i+1])
+		if err != nil {
+			return err
 		}
+		(*c)[catName] = def
 	}
 	return nil
+}
+
+// parseCategoryNode handles polymorphic category parsing: a category
+// value can be a sequence (simple list) or a mapping (struct with
+// severity and events).
+func parseCategoryNode(catName string, node *yaml.Node) (*yamlCategoryDef, error) {
+	switch node.Kind {
+	case yaml.SequenceNode:
+		var events []string
+		if err := node.Decode(&events); err != nil {
+			return nil, fmt.Errorf("category %q: %w", catName, err)
+		}
+		return &yamlCategoryDef{Events: events}, nil
+
+	case yaml.MappingNode:
+		return parseCategoryMapping(catName, node)
+
+	case yaml.ScalarNode, yaml.DocumentNode, yaml.AliasNode:
+		return nil, fmt.Errorf("category %q: expected a sequence or mapping, got %v", catName, node.Kind)
+
+	default:
+		return nil, fmt.Errorf("category %q: expected a sequence or mapping", catName)
+	}
+}
+
+// parseCategoryMapping decodes a struct-format category and validates
+// that only known fields (severity, events) are present.
+func parseCategoryMapping(catName string, node *yaml.Node) (*yamlCategoryDef, error) {
+	allowed := map[string]struct{}{"severity": {}, "events": {}}
+	for j := 0; j+1 < len(node.Content); j += 2 {
+		if _, ok := allowed[node.Content[j].Value]; !ok {
+			return nil, fmt.Errorf("category %q: unknown field %q", catName, node.Content[j].Value)
+		}
+	}
+	var def yamlCategoryDef
+	if err := node.Decode(&def); err != nil {
+		return nil, fmt.Errorf("category %q: %w", catName, err)
+	}
+	return &def, nil
 }
 
 // yamlEventDef is the intermediate representation of a single event

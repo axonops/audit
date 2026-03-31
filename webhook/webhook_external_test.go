@@ -277,8 +277,8 @@ func testTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
-			"write": {Events: []string{"user_create", "user_delete"}},
-			"read": {Events: []string{"user_get", "config_get"}},
+			"write":    {Events: []string{"user_create", "user_delete"}},
+			"read":     {Events: []string{"user_get", "config_get"}},
 			"security": {Events: []string{"auth_failure", "permission_denied"}},
 		},
 		Events: map[string]*audit.EventDef{

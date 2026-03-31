@@ -428,9 +428,9 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
-			Categories: map[string][]string{
-				"write":    {"user_create"},
-				"security": {"auth_failure"},
+			Categories: map[string]*audit.CategoryDef{
+				"write": {Events: []string{"user_create"}},
+				"security": {Events: []string{"auth_failure"}},
 			},
 			Events: map[string]*audit.EventDef{
 				"user_create":  {Required: []string{"outcome"}},

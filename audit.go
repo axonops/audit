@@ -580,16 +580,15 @@ func (l *Logger) processEntry(entry *auditEntry) {
 			eventForceEnabled = true
 		}
 
+		// Format cache shared across category passes — the formatted
+		// output is identical because ResolvedSeverity is a single
+		// value per event, not per category.
+		var fc formatCache
+
 		for _, category := range def.Categories {
 			if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
 				continue
 			}
-
-			// Reset the format cache for each category pass. Once
-			// severity (#186) is added, the formatted output will
-			// include category-specific severity, making each pass's
-			// serialised bytes different.
-			var fc formatCache
 
 			for _, oe := range l.entries {
 				if !oe.matchesEvent(entry.eventType, category) {

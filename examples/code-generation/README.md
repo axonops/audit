@@ -54,7 +54,6 @@ default_enabled:
 
 events:
   user_create:
-    category: write
     description: "A new user account was created"
     required:
       - outcome

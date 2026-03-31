@@ -89,9 +89,9 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, tax.Version)
-	assert.Len(t, tax.Categories["read"], 2)
-	assert.Len(t, tax.Categories["write"], 2)
-	assert.Len(t, tax.Categories["security"], 1)
+	assert.Len(t, tax.Categories["read"].Events, 2)
+	assert.Len(t, tax.Categories["write"].Events, 2)
+	assert.Len(t, tax.Categories["security"].Events, 1)
 
 	assert.Contains(t, tax.Events, "schema_register")
 	assert.Contains(t, tax.Events["schema_register"].Categories, "write")
@@ -726,7 +726,7 @@ default_enabled: [write]
 func TestInjectLifecycleEvents_SetsDescriptions(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version:    1,
-		Categories: map[string][]string{"write": {"user_create"}},
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"user_create"}}},
 		Events: map[string]*audit.EventDef{
 			"user_create": {Required: []string{"outcome"}},
 		},

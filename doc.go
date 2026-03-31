@@ -42,9 +42,9 @@
 //
 //	taxonomy := audit.Taxonomy{
 //	    Version: 1,
-//	    Categories: map[string][]string{
-//	        "write":    {"user_create", "user_delete"},
-//	        "security": {"auth_failure"},
+//	    Categories: map[string]*audit.CategoryDef{
+//	        "write": {Events: []string{"user_create", "user_delete"}},
+//	        "security": {Events: []string{"auth_failure"}},
 //	    },
 //	    Events: map[string]*audit.EventDef{
 //	        "user_create":  {Required: []string{"outcome", "actor_id"}},

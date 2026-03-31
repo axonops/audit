@@ -133,9 +133,9 @@ func waitForWebhookEvents(t *testing.T, n int, timeout time.Duration) bool {
 func testTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create"},
-			"security": {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create"}},
+			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create":  {Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},

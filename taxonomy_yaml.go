@@ -38,10 +38,68 @@ const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
 type yamlTaxonomy struct {
-	Categories     map[string][]string     `yaml:"categories"`
+	Categories     yamlCategories          `yaml:"categories"`
 	Events         map[string]yamlEventDef `yaml:"events"`
 	DefaultEnabled []string                `yaml:"default_enabled"`
 	Version        int                     `yaml:"version"`
+}
+
+// yamlCategories handles polymorphic YAML category parsing. Categories
+// can be either a simple list of event names or a struct with severity
+// and events. Both formats are supported in the same document.
+type yamlCategories map[string]*yamlCategoryDef
+
+// yamlCategoryDef represents a single category in YAML.
+type yamlCategoryDef struct {
+	Severity *int     `yaml:"severity"`
+	Events   []string `yaml:"events"`
+}
+
+// UnmarshalYAML handles polymorphic parsing: a category value can be
+// either a sequence (list of event names) or a mapping (struct with
+// severity and events fields).
+func (c *yamlCategories) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("categories must be a YAML mapping")
+	}
+
+	*c = make(yamlCategories, len(value.Content)/2)
+
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		keyNode := value.Content[i]
+		valNode := value.Content[i+1]
+		catName := keyNode.Value
+
+		switch valNode.Kind {
+		case yaml.SequenceNode:
+			// Simple list format: category: [event1, event2]
+			var events []string
+			if err := valNode.Decode(&events); err != nil {
+				return fmt.Errorf("category %q: %w", catName, err)
+			}
+			(*c)[catName] = &yamlCategoryDef{Events: events}
+
+		case yaml.MappingNode:
+			// Struct format: category: {severity: 8, events: [...]}
+			// Validate keys manually since yaml.Node.Decode does not
+			// honour KnownFields(true) from the parent decoder.
+			allowed := map[string]struct{}{"severity": {}, "events": {}}
+			for j := 0; j+1 < len(valNode.Content); j += 2 {
+				if _, ok := allowed[valNode.Content[j].Value]; !ok {
+					return fmt.Errorf("category %q: unknown field %q", catName, valNode.Content[j].Value)
+				}
+			}
+			var def yamlCategoryDef
+			if err := valNode.Decode(&def); err != nil {
+				return fmt.Errorf("category %q: %w", catName, err)
+			}
+			(*c)[catName] = &def
+
+		default:
+			return fmt.Errorf("category %q: expected a sequence or mapping", catName)
+		}
+	}
+	return nil
 }
 
 // yamlEventDef is the intermediate representation of a single event
@@ -49,6 +107,7 @@ type yamlTaxonomy struct {
 // the categories map — there is no category field on events.
 type yamlEventDef struct {
 	Description string   `yaml:"description"`
+	Severity    *int     `yaml:"severity"`
 	Required    []string `yaml:"required"`
 	Optional    []string `yaml:"optional"`
 }
@@ -112,25 +171,27 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 // is derived from the categories map — events may belong to multiple
 // categories or none (uncategorised).
 func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
-	categories := make(map[string][]string, len(yt.Categories))
-	for name, events := range yt.Categories {
-		cp := make([]string, len(events))
-		copy(cp, events)
-		categories[name] = cp
+	categories := make(map[string]*CategoryDef, len(yt.Categories))
+	for name, yamlCat := range yt.Categories {
+		categories[name] = &CategoryDef{
+			Severity: copyIntPtr(yamlCat.Severity),
+			Events:   copyStrings(yamlCat.Events),
+		}
 	}
 
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
 		events[name] = &EventDef{
 			Description: def.Description,
+			Severity:    copyIntPtr(def.Severity),
 			Required:    copyStrings(def.Required),
 			Optional:    copyStrings(def.Optional),
 		}
 	}
 
 	// Derive EventDef.Categories from the categories map.
-	for catName, catEvents := range categories {
-		for _, eventName := range catEvents {
+	for catName, catDef := range categories {
+		for _, eventName := range catDef.Events {
 			if def, ok := events[eventName]; ok {
 				def.Categories = append(def.Categories, catName)
 			}
@@ -150,6 +211,15 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		Events:         events,
 		DefaultEnabled: defaultEnabled,
 	}
+}
+
+// copyIntPtr returns a copy of p. A nil input returns nil.
+func copyIntPtr(p *int) *int {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 // copyStrings returns a shallow copy of s. A nil input returns nil.

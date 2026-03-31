@@ -21,10 +21,10 @@ import "github.com/axonops/go-audit"
 func ValidTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"read":     {"schema_read", "config_read"},
-			"write":    {"schema_register", "schema_delete"},
-			"security": {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"read":     {Events: []string{"schema_read", "config_read"}},
+			"write":    {Events: []string{"schema_register", "schema_delete"}},
+			"security": {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"schema_read":     {Required: []string{"outcome"}, Optional: []string{"subject"}},
@@ -42,10 +42,10 @@ func ValidTaxonomy() audit.Taxonomy {
 func TestTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"read":     {"user_get", "config_get"},
-			"security": {"auth_failure", "permission_denied"},
+		Categories: map[string]*audit.CategoryDef{
+			"write":    {Events: []string{"user_create", "user_delete"}},
+			"read":     {Events: []string{"user_get", "config_get"}},
+			"security": {Events: []string{"auth_failure", "permission_denied"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create":       {Required: []string{"outcome"}},

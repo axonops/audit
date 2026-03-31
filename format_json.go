@@ -37,9 +37,10 @@ var jsonBufPool = sync.Pool{
 // JSONFormatter serialises audit events as line-delimited JSON.
 //
 // Fields are emitted in deterministic order: framework fields first
-// (timestamp, event_type, duration_ms if present as [time.Duration]),
-// then required fields (sorted), then optional fields (sorted), then
-// any extra fields (sorted). Each event is terminated by a newline.
+// (timestamp, event_type, severity, duration_ms if present as
+// [time.Duration]), then required fields (sorted), then optional fields
+// (sorted), then any extra fields (sorted). Each event is terminated
+// by a newline.
 //
 // [time.Duration] values are converted to int64 milliseconds.
 // Timestamps are rendered according to [JSONFormatter.Timestamp]
@@ -67,6 +68,7 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 	// Framework fields first.
 	enc.writeTimestamp(ts, jf.tsFormat())
 	enc.writeStringField("event_type", eventType)
+	enc.writeInt64Field("severity", int64(def.ResolvedSeverity()))
 	jf.writeDuration(enc, fields)
 
 	// Required fields (sorted). Uses pre-sorted slice when available.

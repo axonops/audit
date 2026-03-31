@@ -26,6 +26,18 @@ import (
 // field values as Fields to [Logger.Audit].
 type Fields = map[string]any
 
+// CategoryDef defines a taxonomy category with its member events and
+// optional default severity.
+type CategoryDef struct {
+	// Severity is the default CEF severity (0-10) for all events in
+	// this category. Nil means not set — events inherit the global
+	// default (5). A non-nil pointer to 0 means explicitly severity 0.
+	Severity *int
+
+	// Events lists the event type names belonging to this category.
+	Events []string
+}
+
 // EventDef defines a single audit event type in the taxonomy.
 type EventDef struct {
 	// Categories lists the taxonomy categories this event belongs to
@@ -38,8 +50,13 @@ type EventDef struct {
 	// this event type represents. It is informational metadata only
 	// — it has no effect on validation, routing, or serialisation.
 	// When present, [audit-gen] emits it as a Go comment above the
-	// generated constant.
+	// generated constant. Also used as the default CEF description.
 	Description string
+
+	// Severity is the event-level CEF severity (0-10). Nil means
+	// inherit from the category. A non-nil pointer to 0 means
+	// explicitly severity 0. Resolution: event → category → 5.
+	Severity *int
 
 	// Required lists field names that must be present in every
 	// [Logger.Audit] call for this event type. Missing required
@@ -55,10 +72,25 @@ type EventDef struct {
 	// registration time. These are read-only after construction
 	// and eliminate per-event allocations in validation and
 	// formatting.
-	knownFields    map[string]struct{} // union of Required + Optional
-	sortedRequired []string            // Required, sorted alphabetically
-	sortedOptional []string            // Optional, sorted alphabetically
-	sortedAllKeys  []string            // Required + Optional, merged, deduped, sorted
+	knownFields      map[string]struct{} // union of Required + Optional
+	sortedRequired   []string            // Required, sorted alphabetically
+	sortedOptional   []string            // Optional, sorted alphabetically
+	sortedAllKeys    []string            // Required + Optional, merged, deduped, sorted
+	resolvedSeverity int                 // event → category → 5; precomputed
+	severityResolved bool                // true once resolvedSeverity has been set
+}
+
+// ResolvedSeverity returns the effective severity for this event type.
+// The value is precomputed during taxonomy registration and is always
+// in the range 0-10. Resolution chain: event Severity (if non-nil) →
+// first category Severity in alphabetical order (if non-nil) → 5.
+// For events in multiple categories, set event-level Severity to
+// avoid depending on alphabetical category ordering.
+func (d *EventDef) ResolvedSeverity() int {
+	if !d.severityResolved {
+		return 5 // default for EventDefs not processed by precomputeTaxonomy
+	}
+	return d.resolvedSeverity
 }
 
 // Taxonomy defines the complete set of audit event types, their
@@ -71,10 +103,10 @@ type EventDef struct {
 // "shutdown" lifecycle events, which are added automatically if not
 // already present.
 type Taxonomy struct {
-	// Categories maps category names to the event type names they
-	// contain. An event type may appear in multiple categories or
-	// in none (uncategorised events are always globally enabled).
-	Categories map[string][]string
+	// Categories maps category names to their definitions. An event
+	// type may appear in multiple categories or in none (uncategorised
+	// events are always globally enabled).
+	Categories map[string]*CategoryDef
 
 	// Events maps event type names to their definitions. Every event
 	// type listed in Categories MUST have a corresponding entry here.
@@ -129,7 +161,7 @@ var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 // injection before calling [ValidateTaxonomy].
 func InjectLifecycleEvents(t *Taxonomy) {
 	if t.Categories == nil {
-		t.Categories = make(map[string][]string)
+		t.Categories = make(map[string]*CategoryDef)
 	}
 	if t.Events == nil {
 		t.Events = make(map[string]*EventDef)
@@ -137,8 +169,10 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Ensure lifecycle category exists.
 	if _, ok := t.Categories[lifecycleCategory]; !ok {
-		t.Categories[lifecycleCategory] = nil
+		t.Categories[lifecycleCategory] = &CategoryDef{}
 	}
+
+	lc := t.Categories[lifecycleCategory]
 
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
@@ -148,8 +182,8 @@ func InjectLifecycleEvents(t *Taxonomy) {
 			Required:    []string{"app_name"},
 			Optional:    []string{"version", "config"},
 		}
-		if !slices.Contains(t.Categories[lifecycleCategory], "startup") {
-			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "startup")
+		if !slices.Contains(lc.Events, "startup") {
+			lc.Events = append(lc.Events, "startup")
 		}
 	}
 
@@ -161,8 +195,8 @@ func InjectLifecycleEvents(t *Taxonomy) {
 			Required:    []string{"app_name"},
 			Optional:    []string{"reason", "uptime_ms"},
 		}
-		if !slices.Contains(t.Categories[lifecycleCategory], "shutdown") {
-			t.Categories[lifecycleCategory] = append(t.Categories[lifecycleCategory], "shutdown")
+		if !slices.Contains(lc.Events, "shutdown") {
+			lc.Events = append(lc.Events, "shutdown")
 		}
 	}
 
@@ -181,8 +215,11 @@ func precomputeTaxonomy(t *Taxonomy) {
 	// Derive EventDef.Categories from the categories map. This
 	// ensures Categories is populated for both YAML-parsed and
 	// Go-constructed taxonomies.
-	for catName, catEvents := range t.Categories {
-		for _, eventName := range catEvents {
+	for catName, catDef := range t.Categories {
+		if catDef == nil {
+			continue
+		}
+		for _, eventName := range catDef.Events {
 			if def, ok := t.Events[eventName]; ok {
 				if !slices.Contains(def.Categories, catName) {
 					def.Categories = append(def.Categories, catName)
@@ -194,9 +231,42 @@ func precomputeTaxonomy(t *Taxonomy) {
 		slices.Sort(def.Categories)
 	}
 
+	// Resolve severity for each event. Resolution chain:
+	// event Severity (if non-nil) → first category Severity (if non-nil) → 5.
+	for _, def := range t.Events {
+		def.resolvedSeverity = resolveEventSeverity(def, t)
+		def.severityResolved = true
+	}
+
 	for _, def := range t.Events {
 		precomputeEventDef(def)
 	}
+}
+
+// resolveEventSeverity computes the effective severity for an event.
+// Resolution: event Severity → first category Severity → 5.
+func resolveEventSeverity(def *EventDef, t *Taxonomy) int {
+	if def.Severity != nil {
+		return clampSeverity(*def.Severity)
+	}
+	// Check categories in sorted order for determinism.
+	for _, catName := range def.Categories {
+		if catDef, ok := t.Categories[catName]; ok && catDef.Severity != nil {
+			return clampSeverity(*catDef.Severity)
+		}
+	}
+	return 5
+}
+
+// clampSeverity restricts a severity value to the valid CEF range 0-10.
+func clampSeverity(s int) int {
+	if s < 0 {
+		return 0
+	}
+	if s > 10 {
+		return 10
+	}
+	return s
 }
 
 // precomputeEventDef populates the pre-computed lookup structures
@@ -247,6 +317,7 @@ func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string
 	errs = append(errs, checkTaxonomyVersion(t)...)
 	errs = append(errs, checkCategoryConsistency(t)...)
+	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
 	errs = append(errs, checkDefaultEnabled(t)...)
 
@@ -284,8 +355,12 @@ func checkCategoryConsistency(t Taxonomy) []string {
 	}
 
 	// Every event listed in Categories must exist in Events map.
-	for cat, events := range t.Categories {
-		for _, et := range events {
+	for cat, catDef := range t.Categories {
+		if catDef == nil {
+			errs = append(errs, fmt.Sprintf("category %q has nil definition", cat))
+			continue
+		}
+		for _, et := range catDef.Events {
 			if _, ok := t.Events[et]; !ok {
 				errs = append(errs, fmt.Sprintf(
 					"category %q lists event type %q which is not defined in Events",
@@ -296,6 +371,26 @@ func checkCategoryConsistency(t Taxonomy) []string {
 	return errs
 }
 
+// checkSeverityRanges validates that severity values are in range 0-10.
+func checkSeverityRanges(t Taxonomy) []string {
+	var errs []string
+	for cat, catDef := range t.Categories {
+		if catDef == nil {
+			continue // nil categories caught by checkCategoryConsistency
+		}
+		if catDef.Severity != nil && (*catDef.Severity < 0 || *catDef.Severity > 10) {
+			errs = append(errs, fmt.Sprintf(
+				"category %q severity %d is out of range 0-10", cat, *catDef.Severity))
+		}
+	}
+	for et, def := range t.Events {
+		if def.Severity != nil && (*def.Severity < 0 || *def.Severity > 10) {
+			errs = append(errs, fmt.Sprintf(
+				"event %q severity %d is out of range 0-10", et, *def.Severity))
+		}
+	}
+	return errs
+}
 
 // checkFieldOverlap validates no field appears in both Required and Optional.
 func checkFieldOverlap(t Taxonomy) []string {

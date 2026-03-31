@@ -682,9 +682,9 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 	// Create a taxonomy where auth_failure is in both security and access.
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"security": {"auth_failure"},
-			"access":   {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"auth_failure"}},
+			"access":   {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
@@ -713,9 +713,9 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"security": {"auth_failure"},
-			"access":   {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"auth_failure"}},
+			"access":   {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
@@ -747,9 +747,9 @@ func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"security": {"auth_failure"},
-			"access":   {"auth_failure"},
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"auth_failure"}},
+			"access":   {Events: []string{"auth_failure"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
@@ -786,8 +786,8 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 	// data_export is not in any category.
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write": {"user_create"},
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create": {Required: []string{"outcome"}},
@@ -1152,7 +1152,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	// Create a taxonomy with an event that has no required fields.
 	tax := audit.Taxonomy{
 		Version:    1,
-		Categories: map[string][]string{"misc": {"no_req"}},
+		Categories: map[string]*audit.CategoryDef{"misc": {Events: []string{"no_req"}}},
 		Events: map[string]*audit.EventDef{
 			"no_req": {Optional: []string{"info"}},
 		},
@@ -1438,7 +1438,7 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 
 	tax := audit.Taxonomy{
 		Version:    1,
-		Categories: map[string][]string{"write": {"ev1"}},
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
 			"ev1": {Required: []string{"f1"}},
 		},
@@ -2034,8 +2034,8 @@ func TestFormatCache_NilData(t *testing.T) {
 func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"security": {"auth_check"},
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"auth_check"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
@@ -2091,8 +2091,8 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"security": {"auth_check"},
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"auth_check"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
@@ -2225,8 +2225,8 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 	silenceSlog(b)
 	taxonomy := audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write": {"api_request"},
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"api_request"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"api_request": {

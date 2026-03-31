@@ -276,10 +276,10 @@ var _ webhook.Metrics = (*mockMetrics)(nil)
 func testTaxonomy() audit.Taxonomy {
 	return audit.Taxonomy{
 		Version: 1,
-		Categories: map[string][]string{
-			"write":    {"user_create", "user_delete"},
-			"read":     {"user_get", "config_get"},
-			"security": {"auth_failure", "permission_denied"},
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create", "user_delete"}},
+			"read": {Events: []string{"user_get", "config_get"}},
+			"security": {Events: []string{"auth_failure", "permission_denied"}},
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create":       {Required: []string{"outcome"}},

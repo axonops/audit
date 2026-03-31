@@ -113,8 +113,8 @@ func WithOutputs(outputs ...Output) Option {
 // stripped from events before delivery to this output. When non-empty,
 // all labels must be defined in the taxonomy's [SensitivityConfig].
 // An empty slice means no field stripping — the output receives all
-// fields. Framework fields (timestamp, event_type, severity) are
-// never stripped.
+// fields. Framework fields (timestamp, event_type, severity,
+// duration_ms) are never stripped.
 //
 // WithNamedOutput MUST NOT be combined with [WithOutputs]; if
 // [WithOutputs] was already applied, WithNamedOutput returns an error.

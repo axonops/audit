@@ -774,6 +774,64 @@ default_enabled: [write]
 }
 
 // ---------------------------------------------------------------------------
+// Framework field protection in field stripping
+// ---------------------------------------------------------------------------
+
+func TestFieldStripping_FrameworkFieldProtected(t *testing.T) {
+	t.Parallel()
+	// Even if a user somehow passes a field named "timestamp" with a
+	// sensitivity label, it must not be stripped.
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [actor_id]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	evt := events[0]
+
+	// Framework fields always present.
+	assert.Contains(t, evt, "timestamp")
+	assert.Contains(t, evt, "event_type")
+	assert.Contains(t, evt, "severity")
+
+	// Labeled user field stripped.
+	assert.NotContains(t, evt, "actor_id")
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 

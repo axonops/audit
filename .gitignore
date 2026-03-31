@@ -108,8 +108,17 @@ bench.txt
 CLAUDE.md
 .claude/
 mem.prof
-# Built audit-gen binary (not the source directory)
+# Built binaries (not source directories)
 /audit-gen
+/cmd/audit-gen/audit-gen
+/basic
+/code-generation
+/crud-api
+/event-routing
+/file-output
+/formatters
+/middleware
+/multi-output
 
 # Example output files (generated at runtime)
 examples/*/*.log

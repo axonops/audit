@@ -29,6 +29,7 @@ package audit_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/internal/testhelper"
@@ -689,9 +690,9 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 	require.NoError(t, logger.Audit("medium_event", audit.Fields{"outcome": "success"}))
 	require.NoError(t, logger.Audit("low_event", audit.Fields{"outcome": "success"}))
 
-	// Close flushes the drain buffer before returning.
-	require.NoError(t, logger.Close())
-	t.Cleanup(func() {}) // override the deferred Close — we already closed explicitly.
+	// t.Cleanup calls logger.Close() which flushes the drain buffer.
+	// Wait for events to be processed.
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// Only critical_event (severity 9) must pass min_severity 7.
 	assert.Equal(t, 1, out.EventCount(),
@@ -749,8 +750,8 @@ default_enabled: [normal]
 	// Emit normal_event (severity 7 >= min 5 on the output route).
 	require.NoError(t, logger.Audit("normal_event", audit.Fields{"outcome": "ok"}))
 
-	require.NoError(t, logger.Close())
-	t.Cleanup(func() {}) // close already called
+	// t.Cleanup calls logger.Close() which flushes the drain buffer.
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// restricted_event is globally enabled but its severity (2) is below the
 	// output route's min_severity (5). It must not be delivered.

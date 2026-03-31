@@ -81,8 +81,8 @@ import (
 ```
 
 If you reference `type: file` in YAML without this import,
-`outputconfig.Load` returns an error:
-`unknown output type "file" — did you import _ "github.com/axonops/go-audit/file"?`
+`outputconfig.Load` returns an error like:
+`output "audit_log": unknown output type "file" (registered: [stdout]); did you import _ "github.com/axonops/go-audit/file"?`
 
 ### Close Flushes to Disk
 

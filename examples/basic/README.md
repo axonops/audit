@@ -118,6 +118,17 @@ err = logger.Audit("user_create", audit.Fields{
 The event is rejected before it enters the buffer. No partial events
 reach your outputs.
 
+### Severity
+
+Every audit event has an integer severity from 0 (informational) to 10
+(critical). You'll see `"severity":5` in every JSON event in this
+example — that's the default when no severity is configured.
+
+Severity becomes useful for routing: you can send high-severity events
+to a SIEM webhook while keeping low-severity events in local files.
+You'll learn how to set per-category severity levels and route by
+threshold in the [Event Routing](../event-routing/) example.
+
 ### Closing the Logger
 
 ```go
@@ -131,6 +142,30 @@ defer func() {
 `Close()` waits for buffered events to flush, then shuts down the
 background goroutine and closes all outputs. Without `Close()`, buffered
 events may be lost.
+
+### Buffer Full and Delivery Guarantees
+
+go-audit uses an internal buffer (default 10,000 events) between
+`Audit()` and the output writes. If your application emits events
+faster than outputs can drain them, the buffer fills up and `Audit()`
+returns `audit.ErrBufferFull`.
+
+This is deliberate — audit logging must not silently drop events. Your
+application decides how to handle back-pressure:
+
+```go
+if err := logger.Audit("user_create", fields); err != nil {
+    if errors.Is(err, audit.ErrBufferFull) {
+        // Buffer is full — outputs can't keep up.
+        // Log to stderr, increment a metric, or slow down.
+    }
+}
+```
+
+Delivery to outputs is **at-most-once within a process lifetime**: if
+the application crashes before `Close()` flushes the buffer, in-flight
+events are lost. For stronger guarantees, use the webhook output with
+retries or a durable syslog relay.
 
 ## Run It
 

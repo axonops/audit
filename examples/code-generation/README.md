@@ -130,10 +130,6 @@ Now a typo like `EventUserCrate` fails the build instead of silently
 passing as a runtime validation error. In a large codebase, this
 prevents an entire class of bugs.
 
-The generated file also includes constants for the library's built-in
-lifecycle events (`EventStartup`, `EventShutdown`, `CategoryLifecycle`).
-These appear automatically — you don't define them in your taxonomy.
-
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,
 generated constants are worth the small overhead of running
@@ -143,6 +139,31 @@ The generated file is committed to version control, so the example
 compiles without running `go generate` first. `go generate` runs
 `audit-gen` via `go run`, which downloads and caches the tool
 automatically — no separate install step.
+
+### Lifecycle Events
+
+The generated file includes constants for two built-in events:
+`EventStartup` and `EventShutdown` (in `CategoryLifecycle`). You don't
+define these in your taxonomy — go-audit injects them automatically.
+
+When you call `logger.Close()`, the library emits a shutdown event
+before flushing outputs. This creates a tamper-evident audit trail: if
+the log has a startup event but no shutdown, either the application
+crashed or someone tampered with the log. The [CRUD API](../crud-api/)
+example demonstrates explicit startup events with
+`logger.EmitStartup()`.
+
+### Null Fields in JSON Output
+
+You'll notice `"reason":null` in the expected output below. When the
+taxonomy declares a field as `optional`, the JSON formatter emits it as
+`null` if you don't set it. This makes every event structurally
+consistent — consumers can parse all events with the same schema
+regardless of which optional fields were populated.
+
+If you prefer to omit null fields entirely, the JSON formatter supports
+an `omit_empty` option (shown in the [Formatters](../formatters/)
+example).
 
 ### Configuring Outputs in YAML
 

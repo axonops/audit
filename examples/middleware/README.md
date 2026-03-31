@@ -20,7 +20,7 @@ checks are silently skipped.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../event-routing/)
+- Completed: [Formatters](../formatters/)
 
 ## Files
 

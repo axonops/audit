@@ -95,6 +95,8 @@ outputs:
       max_retries: 3
       allow_insecure_http: true   # dev only — use HTTPS in production
       allow_private_ranges: true  # dev only — localhost webhook receiver
+    route:
+      min_severity: 7
 ```
 
 | Output | Route | Format | Purpose |
@@ -250,18 +252,18 @@ docker compose down -v
 On stdout you'll see JSON audit events:
 
 ```json
-{"timestamp":"...","event_type":"startup","app_name":"crud-api","version":"0.1.0"}
-{"timestamp":"...","event_type":"item_list","actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"item_create","actor_id":"alice","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
-{"timestamp":"...","event_type":"shutdown","app_name":"crud-api"}
+{"timestamp":"...","event_type":"startup","severity":6,"app_name":"crud-api","version":"0.1.0"}
+{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"..."}
+{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
+{"timestamp":"...","event_type":"shutdown","severity":7,"app_name":"crud-api"}
 ```
 
 Additional outputs:
 - `audit.log` — all events except reads (JSON)
 - `admin-audit.log` — admin events only (CEF format)
 - Syslog on TCP 5514 — security events only
-- Webhook receiver — all events
+- Webhook receiver — high-severity events (severity >= 7)
 
 ## Previous
 

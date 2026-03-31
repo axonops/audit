@@ -5,8 +5,10 @@ to one file, write events to another, and everything to the console.
 
 ## What You'll Learn
 
+- Setting per-category severity levels in the taxonomy
 - Adding per-output routing rules in `outputs.yaml`
 - How `include_categories` and `exclude_categories` work
+- Severity-based routing with `min_severity` and `max_severity`
 - What happens to events that don't match any route
 
 ## Prerequisites
@@ -18,12 +20,41 @@ to one file, write events to another, and everything to the console.
 
 | File | Purpose |
 |------|---------|
-| `taxonomy.yaml` | Three categories: write, read, security |
-| `outputs.yaml` | Three outputs with different routing rules |
+| `taxonomy.yaml` | Three categories: write, read, security (with severity) |
+| `outputs.yaml` | Four outputs with different routing rules |
 | `audit_generated.go` | Generated constants (committed) |
 | `main.go` | Emits one event per category, shows filtered output |
 
 ## Key Concepts
+
+### Category Severity in the Taxonomy
+
+This example's `taxonomy.yaml` uses a new category format — notice the
+`security` category has a `severity: 8`:
+
+```yaml
+categories:
+  write:
+    - user_create        # list format (severity defaults to 5)
+  read:
+    - user_read          # list format
+  security:
+    severity: 8          # struct format — all events inherit severity 8
+    events:
+      - auth_failure
+```
+
+go-audit supports two ways to define categories:
+
+- **List format** — just the event names. Events get the default
+  severity of 5.
+- **Struct format** — an object with `severity` and `events` keys.
+  Every event in this category inherits the category's severity unless
+  the event defines its own.
+
+Both formats can be mixed in the same taxonomy file. The
+[CRUD API](../crud-api/) example shows every category using the struct
+format with different severity levels.
 
 ### Routes in YAML
 
@@ -79,8 +110,9 @@ events that won't be delivered.
 
 ### Severity-Based Routing
 
-Each output's route can filter by severity level (0-10). There are
-three modes:
+Each output's route can filter by severity level (0-10). This
+example's `outputs.yaml` includes a `critical_alerts` output with
+`min_severity: 7`. Below are the three routing modes you can use:
 
 **Category only** — filter by category, all severity levels:
 ```yaml
@@ -119,6 +151,28 @@ alerting webhook:
 
 Each output has exactly one route. `min_severity` and `max_severity`
 accept values 0-10.
+
+### Multi-Category Events
+
+An event can belong to multiple categories. For example, an
+`admin_delete` event might belong to both `write` and `admin`:
+
+```yaml
+categories:
+  write:
+    - admin_delete
+  admin:
+    severity: 7
+    events:
+      - admin_delete
+```
+
+When a multi-category event is emitted, the logger processes it once
+per enabled category. If `write` routes to a file output and `admin`
+routes to a webhook, the event is delivered to both — each with the
+severity from its respective category. This means the same event can
+appear multiple times in a fan-out output that matches multiple
+categories.
 
 ## Run It
 

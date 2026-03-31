@@ -385,3 +385,205 @@ Feature: Field-Level Sensitivity Labels
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"
+
+  # ---------------------------------------------------------------------------
+  # Field stripping — per-output exclusion filters
+  # ---------------------------------------------------------------------------
+
+  Scenario: Field with excluded label stripped from output
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            email: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field    | value             |
+      | outcome  | success           |
+      | actor_id | alice             |
+      | email    | alice@example.com |
+    Then the output should contain an event with field "actor_id" value "alice"
+    And the output should not contain field "email"
+
+  Scenario: Field with multiple labels stripped if any excluded
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [email]
+          financial:
+            fields: [email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            email: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field   | value             |
+      | outcome | success           |
+      | email   | alice@example.com |
+    Then the output should not contain field "email"
+
+  Scenario: Output without exclude_labels receives all fields
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            email: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field   | value             |
+      | outcome | success           |
+      | email   | alice@example.com |
+    Then the output should contain an event with field "email" value "alice@example.com"
+
+  Scenario: Framework fields never stripped
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [outcome, actor_id]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the output should contain an event with field "event_type" value "user_create"
+    And the output should not contain field "outcome"
+    And the output should not contain field "actor_id"
+
+  Scenario: All user fields excluded — event still has framework fields
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [outcome, actor_id, email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            email: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field    | value             |
+      | outcome  | success           |
+      | actor_id | alice             |
+      | email    | alice@example.com |
+    Then the output should contain an event with field "event_type" value "user_create"
+    And the output should not contain field "outcome"
+    And the output should not contain field "actor_id"
+    And the output should not contain field "email"
+
+  Scenario: Undefined label in exclude_labels → logger construction error
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      default_enabled: [write]
+      """
+    When I try to create a logger with stdout output excluding labels "nonexistent"
+    Then logger creation should fail with an error containing "undefined sensitivity label"
+
+  Scenario: Exclude_labels on output but no sensitivity config → logger construction error
+    Given a taxonomy without sensitivity labels:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      default_enabled: [write]
+      """
+    When I try to create a logger with stdout output excluding labels "pii"
+    Then logger creation should fail with an error containing "no sensitivity config"
+
+  Scenario: No fields match any labels plus exclude_labels present → no stripping
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [nonexistent_field]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            email: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field   | value             |
+      | outcome | success           |
+      | email   | alice@example.com |
+    Then the output should contain an event with field "email" value "alice@example.com"

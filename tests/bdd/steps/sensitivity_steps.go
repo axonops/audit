@@ -42,11 +42,29 @@ func registerSensitivityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 
 func registerSensitivityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with stdout output$`, func() error {
-		return createSensitivityLogger(tc)
+		return createSensitivityLogger(tc, nil)
+	})
+	ctx.Step(`^a logger with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
+		excludeLabels := strings.Split(labels, ",")
+		for i := range excludeLabels {
+			excludeLabels[i] = strings.TrimSpace(excludeLabels[i])
+		}
+		return createSensitivityLogger(tc, excludeLabels)
+	})
+	ctx.Step(`^I try to create a logger with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
+		excludeLabels := strings.Split(labels, ",")
+		for i := range excludeLabels {
+			excludeLabels[i] = strings.TrimSpace(excludeLabels[i])
+		}
+		err := createSensitivityLogger(tc, excludeLabels)
+		if err != nil {
+			tc.LastErr = err
+		}
+		return nil
 	})
 }
 
-func createSensitivityLogger(tc *AuditTestContext) error {
+func createSensitivityLogger(tc *AuditTestContext, excludeLabels []string) error {
 	tc.StdoutBuf = &bytes.Buffer{}
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 	if err != nil {
@@ -55,7 +73,7 @@ func createSensitivityLogger(tc *AuditTestContext) error {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithOutputs(stdout),
+		audit.WithNamedOutput(stdout, nil, nil, excludeLabels...),
 	)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
@@ -77,6 +95,20 @@ func registerSensitivityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the output should contain an event with field "([^"]*)" value "([^"]*)"$`,
 		func(field, value string) error {
 			return assertOutputContainsFieldValue(tc, field, value)
+		})
+	ctx.Step(`^the output should not contain field "([^"]*)"$`,
+		func(field string) error {
+			return assertOutputDoesNotContainField(tc, field)
+		})
+	ctx.Step(`^logger creation should fail with an error containing "([^"]*)"$`,
+		func(substr string) error {
+			if tc.LastErr == nil {
+				return fmt.Errorf("expected logger creation to fail, but it succeeded")
+			}
+			if !strings.Contains(tc.LastErr.Error(), substr) {
+				return fmt.Errorf("expected error containing %q, got: %v", substr, tc.LastErr)
+			}
+			return nil
 		})
 }
 
@@ -137,6 +169,31 @@ func assertOutputContainsFieldValue(tc *AuditTestContext, field, value string) e
 	}
 	return fmt.Errorf("no event found with field %q = %q in output:\n%s",
 		field, value, tc.StdoutBuf.String())
+}
+
+func assertOutputDoesNotContainField(tc *AuditTestContext, field string) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+		tc.Logger = nil
+	}
+	if tc.StdoutBuf == nil {
+		return fmt.Errorf("no stdout buffer configured")
+	}
+	lines := strings.Split(strings.TrimSpace(tc.StdoutBuf.String()), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		if _, ok := m[field]; ok {
+			return fmt.Errorf("event contains field %q which should have been stripped:\n%s",
+				field, line)
+		}
+	}
+	return nil
 }
 
 func assertFieldNotLabeled(tc *AuditTestContext, eventType, field string) error {

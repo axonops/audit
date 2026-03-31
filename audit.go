@@ -300,16 +300,37 @@ func (l *Logger) waitForDrain() {
 	}
 }
 
-// validateOutputRoutes checks all per-output event routes against
-// the taxonomy.
+// validateOutputRoutes checks all per-output event routes and
+// sensitivity exclusion labels against the taxonomy.
 func (l *Logger) validateOutputRoutes() error {
 	for _, oe := range l.entries {
 		route := oe.route.Load()
-		if route == nil {
-			continue
+		if route != nil {
+			if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+				return fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
+			}
 		}
-		if err := ValidateEventRoute(route, l.taxonomy); err != nil {
-			return fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
+		if err := l.validateExcludeLabels(oe); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateExcludeLabels checks that all exclude_labels on an output
+// reference labels defined in the taxonomy's sensitivity config.
+func (l *Logger) validateExcludeLabels(oe *outputEntry) error {
+	if len(oe.excludedLabels) == 0 {
+		return nil
+	}
+	if l.taxonomy == nil || l.taxonomy.Sensitivity == nil {
+		return fmt.Errorf("audit: output %q has exclude_labels but taxonomy has no sensitivity config",
+			oe.output.Name())
+	}
+	for label := range oe.excludedLabels {
+		if _, ok := l.taxonomy.Sensitivity.Labels[label]; !ok {
+			return fmt.Errorf("audit: output %q exclude_labels references undefined sensitivity label %q",
+				oe.output.Name(), label)
 		}
 	}
 	return nil
@@ -594,12 +615,98 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 			continue
 		}
 
-		data := l.formatCached(oe, entry, ts, def, fc)
+		var data []byte
+		if oe.excludedLabels != nil && def.FieldLabels != nil {
+			// Field stripping active — bypass format cache because
+			// different outputs may exclude different labels, producing
+			// different field subsets from the same event.
+			data = l.formatFiltered(oe, entry, ts, def)
+		} else {
+			data = l.formatCached(oe, entry, ts, def, fc)
+		}
 		if data == nil {
 			continue
 		}
 		l.writeToOutput(oe.output, data, entry.eventType)
 	}
+}
+
+// formatFiltered creates a filtered copy of the event's fields (with
+// excluded labels stripped) and serialises it directly, bypassing the
+// format cache. A temporary EventDef is created with excluded fields
+// removed from Required/Optional so the formatter does not emit null
+// values for stripped fields.
+func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
+	filtered := filterFieldsByLabels(entry.fields, def, oe.excludedLabels)
+	filteredDef := filterEventDef(def, oe.excludedLabels)
+	f := oe.effectiveFormatter(l.formatter)
+	data, err := f.Format(ts, entry.eventType, filtered, filteredDef)
+	if err != nil {
+		if l.metrics != nil {
+			l.metrics.RecordSerializationError(oe.output.Name())
+		}
+		return nil
+	}
+	return data
+}
+
+// filterEventDef creates a temporary EventDef with fields excluded by
+// sensitivity labels removed from Required and Optional. This ensures
+// the formatter does not emit null values for stripped fields.
+func filterEventDef(def *EventDef, excluded map[string]struct{}) *EventDef {
+	cp := *def // shallow copy
+	cp.Required = filterFieldList(def.Required, def.FieldLabels, excluded)
+	cp.Optional = filterFieldList(def.Optional, def.FieldLabels, excluded)
+	// Rebuild pre-computed fields for the filtered def.
+	precomputeEventDef(&cp)
+	return &cp
+}
+
+// filterFieldList returns a new slice with fields whose labels overlap
+// with excluded removed.
+func filterFieldList(fields []string, fieldLabels map[string]map[string]struct{}, excluded map[string]struct{}) []string {
+	result := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if labels, ok := fieldLabels[f]; ok && anyLabelExcluded(labels, excluded) {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result
+}
+
+// filterFieldsByLabels returns a copy of fields with any field whose
+// sensitivity labels overlap with excluded removed. Framework fields
+// (timestamp, event_type, severity, duration_ms) are never stripped.
+func filterFieldsByLabels(fields Fields, def *EventDef, excluded map[string]struct{}) Fields {
+	if def.FieldLabels == nil {
+		return fields
+	}
+	filtered := make(Fields, len(fields))
+	for k, v := range fields {
+		if isFrameworkField(k, fields) {
+			filtered[k] = v
+			continue
+		}
+		if fieldLabels, ok := def.FieldLabels[k]; ok {
+			if anyLabelExcluded(fieldLabels, excluded) {
+				continue
+			}
+		}
+		filtered[k] = v
+	}
+	return filtered
+}
+
+// anyLabelExcluded reports whether any label in fieldLabels is present
+// in the excluded set.
+func anyLabelExcluded(fieldLabels, excluded map[string]struct{}) bool {
+	for label := range fieldLabels {
+		if _, ok := excluded[label]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // formatCacheSize is the number of unique formatters cached on the

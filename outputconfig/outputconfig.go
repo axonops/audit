@@ -70,10 +70,11 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 // NamedOutput pairs a constructed output with its config-level name
 // and resolved formatter and route.
 type NamedOutput struct { //nolint:govet // fieldalignment: readability preferred
-	Name      string
-	Output    audit.Output
-	Route     *audit.EventRoute
-	Formatter audit.Formatter
+	Name          string
+	Output        audit.Output
+	Route         *audit.EventRoute
+	Formatter     audit.Formatter
+	ExcludeLabels []string // sensitivity labels to strip from events
 }
 
 // String returns a safe representation of LoadResult that never
@@ -226,7 +227,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	}
 	for i := range outputs {
 		result.Options = append(result.Options,
-			audit.WithNamedOutput(outputs[i].Output, outputs[i].Route, outputs[i].Formatter))
+			audit.WithNamedOutput(outputs[i].Output, outputs[i].Route, outputs[i].Formatter, outputs[i].ExcludeLabels...))
 	}
 
 	return result, nil
@@ -306,6 +307,7 @@ type yamlRoute struct {
 // outputFields holds parsed fields from a single output YAML node.
 type outputFields struct { //nolint:govet // fieldalignment: readability preferred
 	typeName       string
+	excludeLabels  []string
 	enabled        bool
 	routeNode      *yaml.Node
 	formatterNode  *yaml.Node
@@ -339,7 +341,11 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMet
 		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
-	return &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter}, nil
+	no := &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter}
+	if len(fields.excludeLabels) > 0 {
+		no.ExcludeLabels = fields.excludeLabels
+	}
+	return no, nil
 }
 
 func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { //nolint:gocognit,gocyclo,cyclop // YAML field extraction with validation
@@ -363,9 +369,13 @@ func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { 
 			f.routeNode = val
 		case "formatter":
 			f.formatterNode = val
+		case "exclude_labels":
+			if err := val.Decode(&f.excludeLabels); err != nil {
+				return nil, fmt.Errorf("output %q: exclude_labels: %w", name, err)
+			}
 		default:
 			if f.typeConfigNode != nil {
-				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', and one type-specific config block are allowed", name, key)
+				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', 'exclude_labels', and one type-specific config block are allowed", name, key)
 			}
 			f.typeConfigNode = val
 		}

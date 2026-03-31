@@ -15,12 +15,17 @@
 package audit_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/internal/testhelper"
 )
 
 // ---------------------------------------------------------------------------
@@ -475,4 +480,311 @@ default_enabled: [write]
 	require.NoError(t, err)
 	// No fields matched any label → FieldLabels is nil.
 	assert.Nil(t, tax.Events["user_create"].FieldLabels)
+}
+
+// ---------------------------------------------------------------------------
+// Field stripping pipeline tests
+// ---------------------------------------------------------------------------
+
+const sensitivityPipelineTaxonomyYAML = `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email, phone_number]
+    financial:
+      fields: [card_number]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+      phone_number: {}
+      card_number: {}
+      nickname: {}
+default_enabled: [write]
+`
+
+func TestFieldStripping_SingleLabel(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":      "success",
+		"actor_id":     "alice",
+		"email":        "alice@example.com",
+		"phone_number": "555-0100",
+		"card_number":  "4111111111111111",
+		"nickname":     "ally",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	evt := events[0]
+
+	// PII fields stripped.
+	assert.NotContains(t, evt, "email")
+	assert.NotContains(t, evt, "phone_number")
+
+	// Non-PII fields present.
+	assert.Equal(t, "4111111111111111", evt["card_number"])
+	assert.Equal(t, "ally", evt["nickname"])
+	assert.Equal(t, "success", evt["outcome"])
+	assert.Equal(t, "alice", evt["actor_id"])
+
+	// Framework fields present.
+	assert.Contains(t, evt, "timestamp")
+	assert.Contains(t, evt, "event_type")
+	assert.Contains(t, evt, "severity")
+}
+
+func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	// Exclude financial only — card_number is stripped.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "financial"),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"email":       "alice@example.com",
+		"card_number": "4111111111111111",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	evt := events[0]
+
+	// Financial field stripped, PII field kept.
+	assert.NotContains(t, evt, "card_number")
+	assert.Equal(t, "alice@example.com", evt["email"])
+}
+
+func TestFieldStripping_DifferentOutputs(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	outAll := testhelper.NewMockOutput("all")
+	outNoPII := testhelper.NewMockOutput("no-pii")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(outAll, nil, nil),          // no exclusions
+		audit.WithNamedOutput(outNoPII, nil, nil, "pii"), // exclude PII
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	// "all" output gets all fields.
+	require.True(t, outAll.WaitForEvents(1, 2*time.Second))
+	allEvt := outAll.GetEvent(0)
+	assert.Equal(t, "alice@example.com", allEvt["email"])
+
+	// "no-pii" output has email stripped.
+	require.True(t, outNoPII.WaitForEvents(1, 2*time.Second))
+	noPIIEvt := outNoPII.GetEvent(0)
+	assert.Nil(t, noPIIEvt["email"])
+	assert.Equal(t, "alice", noPIIEvt["actor_id"])
+}
+
+func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	// No exclude_labels → all fields delivered.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	assert.Equal(t, "alice@example.com", events[0]["email"])
+}
+
+func TestFieldStripping_AllFieldsExcluded_FrameworkRemains(t *testing.T) {
+	t.Parallel()
+	// Taxonomy where ALL user fields are labeled.
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [outcome, actor_id, email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	err = logger.Audit("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	})
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	evt := events[0]
+
+	// All user fields stripped.
+	assert.NotContains(t, evt, "outcome")
+	assert.NotContains(t, evt, "actor_id")
+	assert.NotContains(t, evt, "email")
+
+	// Framework fields remain.
+	assert.Contains(t, evt, "timestamp")
+	assert.Equal(t, "user_create", evt["event_type"])
+	assert.Contains(t, evt, "severity")
+}
+
+func TestNewLogger_ExcludeLabels_NoSensitivity(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+default_enabled: [write]
+`))
+	require.NoError(t, err)
+
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+	require.NoError(t, err)
+
+	_, err = audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "pii"),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no sensitivity config")
+}
+
+func TestNewLogger_ExcludeLabels_UndefinedLabel(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      email: {}
+default_enabled: [write]
+`))
+	require.NoError(t, err)
+
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+	require.NoError(t, err)
+
+	_, err = audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "nonexistent"),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "undefined sensitivity label")
+}
+
+// parseJSONEvents parses newline-delimited JSON from a buffer.
+func parseJSONEvents(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	events := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &m))
+		events = append(events, m)
+	}
+	return events
 }

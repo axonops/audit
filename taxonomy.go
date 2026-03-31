@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"slices"
 	"sort"
@@ -483,10 +484,18 @@ func checkDefaultEnabled(t Taxonomy) []string {
 	return errs
 }
 
-// frameworkFieldNames lists field names managed by the framework that
-// must not be labeled with sensitivity labels. These fields are always
-// transmitted to every output regardless of exclusion filters.
-var frameworkFieldNames = []string{"timestamp", "event_type", "severity", "duration_ms"}
+// frameworkFieldNames returns the field names managed by the framework
+// that must not be labeled with sensitivity labels. These fields are
+// always transmitted to every output regardless of exclusion filters.
+//
+// Note: The validation layer unconditionally protects duration_ms,
+// while the runtime layer (isFrameworkField in format.go) only treats
+// it as a framework field when the value is time.Duration. This is
+// intentionally conservative — validation rejects labeling duration_ms
+// to prevent accidental stripping in any context.
+func frameworkFieldNames() []string {
+	return []string{"timestamp", "event_type", "severity", "duration_ms"}
+}
 
 // labelNamePattern validates sensitivity label names. Labels must start
 // with a lowercase letter and contain only lowercase letters, digits,
@@ -538,7 +547,7 @@ func checkLabelPatterns(sc *SensitivityConfig) []string {
 					labelName, i, pattern, err))
 				continue
 			}
-			for _, fw := range frameworkFieldNames {
+			for _, fw := range frameworkFieldNames() {
 				if re.MatchString(fw) {
 					errs = append(errs, fmt.Sprintf(
 						"sensitivity label %q pattern %q matches protected framework field %q",
@@ -553,8 +562,9 @@ func checkLabelPatterns(sc *SensitivityConfig) []string {
 // checkLabelProtectedFields validates that global field name mappings
 // do not reference framework fields.
 func checkLabelProtectedFields(sc *SensitivityConfig) []string {
-	fwSet := make(map[string]struct{}, len(frameworkFieldNames))
-	for _, fw := range frameworkFieldNames {
+	fwNames := frameworkFieldNames()
+	fwSet := make(map[string]struct{}, len(fwNames))
+	for _, fw := range fwNames {
 		fwSet[fw] = struct{}{}
 	}
 	var errs []string
@@ -579,8 +589,9 @@ func checkFieldAnnotationLabels(t Taxonomy) []string {
 	if t.Sensitivity == nil {
 		return nil
 	}
-	fwSet := make(map[string]struct{}, len(frameworkFieldNames))
-	for _, fw := range frameworkFieldNames {
+	fwNames := frameworkFieldNames()
+	fwSet := make(map[string]struct{}, len(fwNames))
+	for _, fw := range fwNames {
 		fwSet[fw] = struct{}{}
 	}
 	var errs []string
@@ -642,9 +653,13 @@ func precomputeSensitivity(t *Taxonomy) {
 	if t.Sensitivity == nil || len(t.Sensitivity.Labels) == 0 {
 		return
 	}
-	// Compile patterns (idempotent if already done by validation,
-	// but may not be compiled for programmatic taxonomies).
-	_ = compileSensitivityPatterns(t.Sensitivity)
+	// Compile patterns. ValidateTaxonomy already checked pattern
+	// validity, so compilation errors here indicate a programming
+	// error (e.g., precomputeTaxonomy called without validation).
+	if err := compileSensitivityPatterns(t.Sensitivity); err != nil {
+		slog.Error("audit: unexpected pattern compilation failure in precomputeSensitivity", "error", err)
+		return
+	}
 
 	globalFieldLabels := buildGlobalFieldLabels(t.Sensitivity)
 

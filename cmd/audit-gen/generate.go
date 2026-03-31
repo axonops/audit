@@ -188,11 +188,17 @@ func buildLabelConstants(tax audit.Taxonomy) ([]constantDef, error) {
 	return buildLabelConstantsFromConfig(tax.Sensitivity)
 }
 
+// buildLabelConstantsFromConfig creates label constant entries from
+// a sensitivity config. Labels with nil definitions are skipped.
 func buildLabelConstantsFromConfig(sc *audit.SensitivityConfig) ([]constantDef, error) {
 	keys := sortedKeys(sc.Labels)
 	nameToKey := make(map[string]string, len(keys))
 	defs := make([]constantDef, 0, len(keys))
 	for _, k := range keys {
+		label := sc.Labels[k]
+		if label == nil {
+			continue
+		}
 		if !validKey.MatchString(k) {
 			return nil, fmt.Errorf("sensitivity label %q contains characters unsafe for code generation", k)
 		}
@@ -202,7 +208,7 @@ func buildLabelConstantsFromConfig(sc *audit.SensitivityConfig) ([]constantDef, 
 		}
 		nameToKey[name] = k
 
-		comment := sanitiseComment(sc.Labels[k].Description)
+		comment := sanitiseComment(label.Description)
 		if comment != "" {
 			comment = name + " — " + comment
 		}

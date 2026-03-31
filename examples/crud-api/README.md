@@ -237,6 +237,19 @@ curl -s -X POST -H "X-API-Key: key-alice" \
   -d '{"name":"widget","description":"A useful widget"}' \
   http://localhost:8080/items | jq .
 
+# Read an item (replace {id} with the ID from create):
+curl -s -H "X-API-Key: key-bob" http://localhost:8080/items/{id} | jq .
+
+# Update an item:
+curl -s -X PUT -H "X-API-Key: key-alice" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"updated-widget","description":"An improved widget"}' \
+  http://localhost:8080/items/{id} | jq .
+
+# Delete an item:
+curl -s -X DELETE -H "X-API-Key: key-alice" \
+  http://localhost:8080/items/{id}
+
 # Auth failure:
 curl -s -H "X-API-Key: bad-key" http://localhost:8080/items
 

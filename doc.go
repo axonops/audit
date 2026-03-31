@@ -87,6 +87,8 @@
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
+//   - [SensitivityConfig] — sensitivity label definitions; registered via [Taxonomy.Sensitivity]
+//   - [SensitivityLabel] — a single label with global field mappings and regex patterns
 //   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
 //   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
 //   - [Hints] — per-request mutable audit metadata; populated by handlers via [HintsFromContext]
@@ -106,6 +108,16 @@
 // [WithTaxonomy]. The framework then validates every [Logger.Audit] call
 // against the registered definitions, catching missing required fields,
 // unknown event types, and unrecognised field names at runtime.
+//
+// # Sensitivity Labels
+//
+// Consumers MAY define sensitivity labels in [SensitivityConfig] to classify
+// fields (e.g., "pii", "financial"). Labels are assigned to fields via three
+// mechanisms: explicit per-event annotation in the YAML fields: map, global
+// field name mapping in [SensitivityLabel.Fields], and regex patterns in
+// [SensitivityLabel.Patterns]. Per-output field stripping is configured via
+// [WithNamedOutput] using the excludeLabels parameter. Framework fields
+// (timestamp, event_type, severity, duration_ms) are never stripped.
 //
 // # Async Delivery
 //

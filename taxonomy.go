@@ -34,8 +34,9 @@ type Fields = map[string]any
 // with zero overhead.
 type SensitivityConfig struct {
 	// Labels maps label names (e.g., "pii", "financial") to their
-	// definitions. Label names must be non-empty and match
-	// [a-z][a-z0-9_]* for code generation safety.
+	// definitions. Label names MUST be non-empty and match the
+	// pattern `^[a-z][a-z0-9_]*$` for code generation safety.
+	// [ValidateTaxonomy] rejects any name that does not conform.
 	Labels map[string]*SensitivityLabel
 }
 
@@ -105,11 +106,12 @@ type EventDef struct {
 	// produces an error.
 	Optional []string
 
-	// FieldLabels maps field names to their resolved sensitivity
-	// labels. Populated by [precomputeSensitivity] at taxonomy parse
-	// time from all three label sources: explicit per-event annotation,
-	// global field name mapping, and regex patterns. Nil when no
-	// sensitivity config is defined. Read-only after construction.
+	// FieldLabels maps field names to their resolved sensitivity labels,
+	// represented as a set (map key = label name, value always struct{}).
+	// Populated at taxonomy registration time from all three label
+	// sources: explicit per-event annotation, global field name mapping,
+	// and regex patterns. Nil when no sensitivity config is defined.
+	// Read-only after construction — consumers MUST NOT modify this map.
 	FieldLabels map[string]map[string]struct{}
 
 	// Pre-computed fields populated by precomputeTaxonomy at
@@ -637,7 +639,7 @@ func compileSensitivityPatterns(sc *SensitivityConfig) error {
 		for _, pattern := range label.Patterns {
 			re, err := regexp.Compile(pattern)
 			if err != nil {
-				return fmt.Errorf("sensitivity label %q: invalid pattern %q: %w", labelName, pattern, err)
+				return fmt.Errorf("audit: sensitivity label %q: invalid pattern %q: %w", labelName, pattern, err)
 			}
 			label.compiled = append(label.compiled, re)
 		}

@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Per-output `exclude_labels` strips labeled fields before delivery (#195)
 - `WithNamedOutput` accepts variadic `excludeLabels` for output-level field stripping (#195)
 - `audit-gen` generates `Label` constants when taxonomy has sensitivity labels (#195)
-- Framework fields (timestamp, event_type, severity) protected from labeling (#195)
+- Framework fields (timestamp, event_type, severity, duration_ms) protected from labeling (#195)
 
 - `CategoryDef` struct with `Severity *int` for per-category CEF severity (#186)
 - `EventDef.Severity *int` for per-event severity override; `EventDef.ResolvedSeverity()` returns resolved value (#186)

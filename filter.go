@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/rgooding/go-syncmap"
 )
@@ -265,6 +266,11 @@ type filterState struct {
 	// false value forces it disabled. Events not in this map inherit
 	// their category's state.
 	eventOverrides syncmap.SyncMap[string, bool]
+
+	// hasEventOverrides is true when at least one per-event override
+	// has been registered. Read on the hot path to skip the
+	// sync.Map.Load when no overrides exist (the common case).
+	hasEventOverrides atomic.Bool
 }
 
 // newFilterState initialises a filterState from the taxonomy's
@@ -286,9 +292,12 @@ func newFilterState(t *Taxonomy) *filterState {
 // enabled. Uncategorised events (empty Categories) are always enabled
 // at the global level. Lock-free on the read path.
 func (f *filterState) isEnabled(eventType string, taxonomy *Taxonomy) bool {
-	// Per-event override takes precedence.
-	if override, ok := f.eventOverrides.Load(eventType); ok {
-		return override
+	// Per-event override takes precedence. The hasEventOverrides flag
+	// skips the sync.Map.Load when no overrides exist (common case).
+	if f.hasEventOverrides.Load() {
+		if override, ok := f.eventOverrides.Load(eventType); ok {
+			return override
+		}
 	}
 
 	// Fall back to category state.

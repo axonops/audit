@@ -690,3 +690,165 @@ func TestNamedOutput_String_Nil(t *testing.T) {
 	var no *outputconfig.NamedOutput
 	assert.Equal(t, "<nil>", no.String())
 }
+
+// --- Severity routing YAML tests (#187) ---
+
+func TestLoad_RouteWithMinSeverity(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  alerts:
+    type: stdout
+    route:
+      min_severity: 7
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].Route)
+	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.Outputs[0].Route.MinSeverity)
+	assert.Nil(t, result.Outputs[0].Route.MaxSeverity)
+}
+
+func TestLoad_RouteWithMaxSeverity(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  debug:
+    type: stdout
+    route:
+      max_severity: 3
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].Route)
+	assert.Nil(t, result.Outputs[0].Route.MinSeverity)
+	require.NotNil(t, result.Outputs[0].Route.MaxSeverity)
+	assert.Equal(t, 3, *result.Outputs[0].Route.MaxSeverity)
+}
+
+func TestLoad_RouteWithMinAndMaxSeverity(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  band:
+    type: stdout
+    route:
+      min_severity: 3
+      max_severity: 7
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].Route)
+	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
+	require.NotNil(t, result.Outputs[0].Route.MaxSeverity)
+	assert.Equal(t, 3, *result.Outputs[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.Outputs[0].Route.MaxSeverity)
+}
+
+func TestLoad_RouteWithSeverityOmitted(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  plain:
+    type: stdout
+    route:
+      include_categories: [write]
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].Route)
+	assert.Nil(t, result.Outputs[0].Route.MinSeverity,
+		"severity omitted should be nil, not pointer-to-zero")
+	assert.Nil(t, result.Outputs[0].Route.MaxSeverity)
+}
+
+func TestLoad_RouteMinSeverityOutOfRange(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  bad:
+    type: stdout
+    route:
+      min_severity: 11
+`)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min_severity 11 out of range 0-10")
+}
+
+func TestLoad_RouteMaxSeverityOutOfRange(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  bad:
+    type: stdout
+    route:
+      max_severity: -1
+`)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max_severity -1 out of range 0-10")
+}
+
+func TestLoad_RouteMinGreaterThanMax(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  bad:
+    type: stdout
+    route:
+      min_severity: 8
+      max_severity: 3
+`)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min_severity 8 exceeds max_severity 3")
+}
+
+func TestLoad_RouteSeverityZeroIsValid(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  zero:
+    type: stdout
+    route:
+      min_severity: 0
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "severity 0 is a valid value, not rejected as zero-value")
+	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
+	assert.Equal(t, 0, *result.Outputs[0].Route.MinSeverity,
+		"severity 0 must be pointer-to-zero, not nil")
+}
+
+func TestLoad_RouteSeverityWithCategories(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+outputs:
+  combined:
+    type: stdout
+    route:
+      include_categories: [security]
+      min_severity: 7
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result.Outputs[0].Route)
+	assert.Equal(t, []string{"security"}, result.Outputs[0].Route.IncludeCategories)
+	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.Outputs[0].Route.MinSeverity)
+}

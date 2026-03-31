@@ -1044,3 +1044,67 @@ func TestEventDef_ResolvedSeverity_Unprecomputed(t *testing.T) {
 	def := &audit.EventDef{Severity: &sev}
 	assert.Equal(t, 5, def.ResolvedSeverity(), "unprecomputed EventDef should return default 5")
 }
+
+func TestLifecycleEvents_DefaultSeverity(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    required: [outcome]
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	startup := tax.Events["startup"]
+	require.NotNil(t, startup, "startup event should be injected")
+	assert.Equal(t, 6, startup.ResolvedSeverity(), "startup severity should be 6")
+
+	shutdown := tax.Events["shutdown"]
+	require.NotNil(t, shutdown, "shutdown event should be injected")
+	assert.Equal(t, 7, shutdown.ResolvedSeverity(), "shutdown severity should be 7")
+}
+
+func TestLifecycleEvents_CustomCategorySeverityInheritance(t *testing.T) {
+	t.Parallel()
+	// User defines lifecycle category with custom severity.
+	// User-defined events should inherit, but the library-injected
+	// startup/shutdown have explicit severity so they should keep
+	// their own values.
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"lifecycle": {Severity: intPtr(9), Events: []string{"startup", "shutdown", "heartbeat"}},
+			"write":     {Events: []string{"user_create"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"user_create": {Required: []string{"outcome"}},
+			"heartbeat":   {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"write"},
+	}
+	audit.InjectLifecycleEvents(&tax)
+
+	// startup/shutdown have explicit severity set by InjectLifecycleEvents,
+	// so they should NOT inherit the category severity 9.
+	// But wait — InjectLifecycleEvents only injects if not already defined.
+	// Since we didn't define startup/shutdown in Events, they get injected
+	// with severity 6 and 7 respectively.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	// Injected startup has explicit severity 6 (overrides category 9).
+	assert.Equal(t, 6, tax.Events["startup"].ResolvedSeverity())
+	// Injected shutdown has explicit severity 7 (overrides category 9).
+	assert.Equal(t, 7, tax.Events["shutdown"].ResolvedSeverity())
+	// heartbeat has no severity — inherits category 9.
+	assert.Equal(t, 9, tax.Events["heartbeat"].ResolvedSeverity())
+}

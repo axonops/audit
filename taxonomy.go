@@ -176,9 +176,11 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
+		startupSev := 6 // Notice — application started
 		t.Events["startup"] = &EventDef{
 			Categories:  []string{lifecycleCategory},
 			Description: "Application started",
+			Severity:    &startupSev,
 			Required:    []string{"app_name"},
 			Optional:    []string{"version", "config"},
 		}
@@ -189,9 +191,11 @@ func InjectLifecycleEvents(t *Taxonomy) {
 
 	// Inject shutdown if not already defined.
 	if _, ok := t.Events["shutdown"]; !ok {
+		shutdownSev := 7 // High — audit coverage ending
 		t.Events["shutdown"] = &EventDef{
 			Categories:  []string{lifecycleCategory},
 			Description: "Application shutting down",
+			Severity:    &shutdownSev,
 			Required:    []string{"app_name"},
 			Optional:    []string{"reason", "uptime_ms"},
 		}

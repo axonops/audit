@@ -62,7 +62,6 @@ categories:
     - user_create
 events:
   user_create:
-    category: write
     required: [outcome]
 default_enabled:
   - write

@@ -30,7 +30,6 @@ func ExampleMiddleware() {
 		},
 		Events: map[string]*audit.EventDef{
 			"http_request": {
-				Category: "access",
 				Required: []string{"outcome"},
 				Optional: []string{"actor_id", "method", "path", "status_code"},
 			},
@@ -91,7 +90,6 @@ func ExampleMiddleware_skip() {
 		},
 		Events: map[string]*audit.EventDef{
 			"http_request": {
-				Category: "access",
 				Required: []string{"outcome"},
 				Optional: []string{"path"},
 			},

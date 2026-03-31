@@ -676,6 +676,141 @@ func TestLogger_Filter_InvalidCategory(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	// Create a taxonomy where auth_failure is in both security and access.
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"security": {"auth_failure"},
+			"access":   {"auth_failure"},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "access"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// Event in 2 categories → 2 deliveries to the unrouted output.
+	require.True(t, out.WaitForEvents(2, 2*time.Second))
+	assert.Equal(t, 2, out.EventCount(), "multi-category event should be delivered twice")
+}
+
+func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"security": {"auth_failure"},
+			"access":   {"auth_failure"},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "access"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	// Disable one category.
+	require.NoError(t, logger.DisableCategory("security"))
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// Only the access pass should deliver.
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "should deliver once — only access category enabled")
+}
+
+func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"security": {"auth_failure"},
+			"access":   {"auth_failure"},
+		},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"security", "access"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	require.NoError(t, logger.DisableCategory("security"))
+	require.NoError(t, logger.DisableCategory("access"))
+
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	require.NoError(t, err)
+
+	// Both categories disabled → event enters channel but no category
+	// pass runs. Send a sentinel to prove processing completed.
+	require.NoError(t, logger.EnableCategory("security"))
+	err = logger.Audit("auth_failure", audit.Fields{"outcome": "sentinel"})
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "only sentinel should arrive — first event had all categories disabled")
+}
+
+func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+
+	// data_export is not in any category.
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string][]string{
+			"write": {"user_create"},
+		},
+		Events: map[string]*audit.EventDef{
+			"user_create": {Required: []string{"outcome"}},
+			"data_export": {Required: []string{"outcome"}},
+		},
+		DefaultEnabled: []string{"write"},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = logger.Close() })
+
+	err = logger.Audit("data_export", audit.Fields{"outcome": "success"})
+	require.NoError(t, err)
+
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount(), "uncategorised event should be delivered to unrouted output")
+}
+
 func TestLogger_Filter_InvalidEvent(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")
@@ -1019,7 +1154,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 		Version:    1,
 		Categories: map[string][]string{"misc": {"no_req"}},
 		Events: map[string]*audit.EventDef{
-			"no_req": {Category: "misc", Optional: []string{"info"}},
+			"no_req": {Optional: []string{"info"}},
 		},
 		DefaultEnabled: []string{"misc"},
 	}
@@ -1305,7 +1440,7 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 		Version:    1,
 		Categories: map[string][]string{"write": {"ev1"}},
 		Events: map[string]*audit.EventDef{
-			"ev1": {Category: "write", Required: []string{"f1"}},
+			"ev1": {Required: []string{"f1"}},
 		},
 		DefaultEnabled: []string{}, // empty -- only lifecycle enabled
 	}
@@ -1904,7 +2039,6 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
-				Category: "security",
 				Required: []string{"outcome", "actor_id", "actor_type"},
 				Optional: []string{"target_type", "target_id", "reason", "source_ip", "user_agent", "request_id"},
 			},
@@ -1962,7 +2096,6 @@ func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T
 		},
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
-				Category: "security",
 				Required: []string{"outcome", "actor_id"},
 				Optional: []string{"reason", "source_ip", "user_agent"},
 			},
@@ -2097,7 +2230,6 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 		},
 		Events: map[string]*audit.EventDef{
 			"api_request": {
-				Category: "write",
 				Required: []string{"outcome", "actor_id", "method", "path"},
 				Optional: []string{"source_ip", "request_id", "user_agent", "subject", "schema_type", "version"},
 			},

@@ -63,7 +63,6 @@ func main() {
 		},
 		Events: map[string]*audit.EventDef{
 			"http_request": {
-				Category: "access",
 				Required: []string{"outcome", "method", "path"},
 				Optional: []string{"actor_id", "target_id", "source_ip", "status_code", "duration_ms"},
 			},

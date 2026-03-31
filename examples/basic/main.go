@@ -35,15 +35,12 @@ func main() {
 		},
 		Events: map[string]*audit.EventDef{
 			"user_create": {
-				Category: "write",
 				Required: []string{"outcome", "actor_id"},
 			},
 			"user_delete": {
-				Category: "write",
 				Required: []string{"outcome", "actor_id"},
 			},
 			"auth_failure": {
-				Category: "security",
 				Required: []string{"outcome", "actor_id"},
 			},
 		},

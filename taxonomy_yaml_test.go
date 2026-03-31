@@ -44,17 +44,14 @@ default_enabled:
   - security
 events:
   schema_read:
-    category: read
     required:
       - outcome
     optional:
       - subject
   config_read:
-    category: read
     required:
       - outcome
   schema_register:
-    category: write
     required:
       - outcome
       - actor_id
@@ -62,13 +59,11 @@ events:
     optional:
       - schema_type
   schema_delete:
-    category: write
     required:
       - outcome
       - actor_id
       - subject
   auth_failure:
-    category: security
     required:
       - outcome
       - actor_id
@@ -84,7 +79,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     required:
       - outcome
 `
@@ -100,7 +94,7 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 	assert.Len(t, tax.Categories["security"], 1)
 
 	assert.Contains(t, tax.Events, "schema_register")
-	assert.Equal(t, "write", tax.Events["schema_register"].Category)
+	assert.Contains(t, tax.Events["schema_register"].Categories, "write")
 	assert.Equal(t, []string{"outcome", "actor_id", "subject"}, tax.Events["schema_register"].Required)
 	assert.Equal(t, []string{"schema_type"}, tax.Events["schema_register"].Optional)
 
@@ -130,7 +124,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -141,27 +134,16 @@ events:
 
 func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 	t.Parallel()
-	// Build the same taxonomy in Go code.
-	goTax := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string][]string{
-			"ops": {"deploy"},
-		},
-		Events: map[string]*audit.EventDef{
-			"deploy": {Category: "ops", Required: []string{"outcome"}},
-		},
-	}
-	audit.InjectLifecycleEvents(&goTax)
-
 	yamlTax, err := audit.ParseTaxonomyYAML([]byte(minimalYAML))
 	require.NoError(t, err)
 
-	// Compare structurally (categories, events, version).
-	assert.Equal(t, goTax.Version, yamlTax.Version)
-	assert.Equal(t, goTax.Events["deploy"].Category, yamlTax.Events["deploy"].Category)
-	assert.Equal(t, goTax.Events["deploy"].Required, yamlTax.Events["deploy"].Required)
+	// Verify parsed taxonomy has correct structure.
+	assert.Equal(t, 1, yamlTax.Version)
+	assert.Contains(t, yamlTax.Events["deploy"].Categories, "ops")
+	assert.Equal(t, []string{"outcome"}, yamlTax.Events["deploy"].Required)
 	assert.Contains(t, yamlTax.Events, "startup")
 	assert.Contains(t, yamlTax.Events, "shutdown")
+	assert.Contains(t, yamlTax.Events["startup"].Categories, "lifecycle")
 }
 
 func TestParseTaxonomyYAML_DefaultEnabledEmpty(t *testing.T) {
@@ -174,7 +156,6 @@ categories:
 default_enabled: []
 events:
   deploy:
-    category: ops
     required:
       - outcome
 `
@@ -241,7 +222,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     required:
       - outcome
 ---
@@ -251,7 +231,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -261,7 +240,7 @@ events:
 
 func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
 	t.Parallel()
-	yml := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n---\n{{broken"
+	yml := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n---\n{{broken"
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrInvalidInput)
@@ -280,7 +259,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -297,7 +275,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     unknown_field: true
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
@@ -317,7 +294,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -333,7 +309,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -350,7 +325,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -358,7 +332,7 @@ events:
 	assert.Contains(t, err.Error(), "not supported")
 }
 
-func TestParseTaxonomyYAML_EventReferencesNonExistentCategory(t *testing.T) {
+func TestParseTaxonomyYAML_EventCategoryDerivedFromMap(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -367,15 +341,14 @@ categories:
     - deploy
 events:
   deploy:
-    category: nonexistent
+    required: [outcome]
 `
-	_, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "does not exist")
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.Contains(t, tax.Events["deploy"].Categories, "ops")
 }
 
-func TestParseTaxonomyYAML_DuplicateEventAcrossCategories(t *testing.T) {
+func TestParseTaxonomyYAML_EventInMultipleCategories(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -386,12 +359,11 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
+    required: [outcome]
 `
-	_, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "multiple categories")
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err, "events in multiple categories should be valid")
+	assert.Equal(t, []string{"admin", "ops"}, tax.Events["deploy"].Categories)
 }
 
 func TestParseTaxonomyYAML_FieldInBothRequiredAndOptional(t *testing.T) {
@@ -403,7 +375,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     required:
       - outcome
     optional:
@@ -425,7 +396,6 @@ categories:
     - missing_event
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -433,7 +403,7 @@ events:
 	assert.Contains(t, err.Error(), "not defined in Events")
 }
 
-func TestParseTaxonomyYAML_EventNotInAnyCategory(t *testing.T) {
+func TestParseTaxonomyYAML_EventNotInAnyCategory_Valid(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -442,14 +412,14 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
+    required: [outcome]
   orphan:
-    category: ops
+    required: [outcome]
 `
-	_, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "not listed in Categories")
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err, "uncategorised events are valid")
+	assert.Contains(t, tax.Events["deploy"].Categories, "ops")
+	assert.Empty(t, tax.Events["orphan"].Categories, "orphan should have no categories")
 }
 
 func TestParseTaxonomyYAML_DefaultEnabledNonExistentCategory(t *testing.T) {
@@ -464,7 +434,6 @@ default_enabled:
   - nonexistent
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -492,7 +461,7 @@ events: {}
 func TestParseTaxonomyYAML_ExactMaxInputSize(t *testing.T) {
 	t.Parallel()
 	// Build a valid YAML that is exactly MaxInputSize bytes.
-	base := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"
+	base := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n"
 	padding := audit.MaxTaxonomyInputSize - len(base) - 1 // -1 for the newline
 	data := make([]byte, 0, audit.MaxTaxonomyInputSize)
 	data = append(data, []byte(base)...)
@@ -532,7 +501,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -584,7 +552,7 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 	b.WriteString("events:\n")
 	for i := range numCategories {
 		for j := range eventsPerCategory {
-			fmt.Fprintf(&b, "  ev_%d_%d:\n    category: cat_%d\n    required:\n      - outcome\n    optional:\n      - detail\n", i, j, i)
+			fmt.Fprintf(&b, "  ev_%d_%d:\n    required:\n      - outcome\n    optional:\n      - detail\n", i, j)
 		}
 	}
 
@@ -608,15 +576,12 @@ default_enabled:
   - ops
 events:
   startup:
-    category: lifecycle
     required:
       - custom_startup_field
   shutdown:
-    category: lifecycle
     required:
       - custom_shutdown_field
   deploy:
-    category: ops
     required:
       - outcome
 `
@@ -637,7 +602,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     required: []
     optional: []
 `
@@ -691,7 +655,6 @@ categories:
     - deploy
 events:
   deploy:
-    category: ops
     required: &req
       - outcome
     optional: *req
@@ -710,10 +673,9 @@ func TestParseTaxonomyYAML_AllValidationErrorsWrapSentinel(t *testing.T) {
 		name string
 		yaml string
 	}{
-		{"version zero", "version: 0\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
-		{"missing version", "categories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
-		{"version too high", "version: 999\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: ops\n"},
-		{"event references nonexistent category", "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n    category: nonexistent\n"},
+		{"version zero", "version: 0\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n"},
+		{"missing version", "categories:\n  ops:\n    - deploy\nevents:\n  deploy:\n"},
+		{"version too high", "version: 999\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n"},
 	}
 
 	for _, tt := range tests {
@@ -736,7 +698,6 @@ categories:
     - user_create
 events:
   user_create:
-    category: write
     description: "A new user account was created"
     required: [outcome]
 default_enabled: [write]
@@ -754,7 +715,6 @@ categories:
     - user_create
 events:
   user_create:
-    category: write
     required: [outcome]
 default_enabled: [write]
 `
@@ -768,7 +728,7 @@ func TestInjectLifecycleEvents_SetsDescriptions(t *testing.T) {
 		Version:    1,
 		Categories: map[string][]string{"write": {"user_create"}},
 		Events: map[string]*audit.EventDef{
-			"user_create": {Category: "write", Required: []string{"outcome"}},
+			"user_create": {Required: []string{"outcome"}},
 		},
 		DefaultEnabled: []string{"write"},
 	}
@@ -785,7 +745,6 @@ categories:
     - user_create
 events:
   user_create:
-    category: write
     description: "Should not appear in knownFields"
     required: [outcome]
     optional: [actor_id]

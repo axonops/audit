@@ -41,7 +41,6 @@ func middlewareTaxonomy() audit.Taxonomy {
 		},
 		Events: map[string]*audit.EventDef{
 			"http_request": {
-				Category: "access",
 				Required: []string{"outcome"},
 				Optional: []string{
 					"actor_id", "actor_type", "auth_method", "role",

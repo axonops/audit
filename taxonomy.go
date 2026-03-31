@@ -28,10 +28,11 @@ type Fields = map[string]any
 
 // EventDef defines a single audit event type in the taxonomy.
 type EventDef struct {
-	// Category is the taxonomy category this event belongs to
-	// (e.g. "write", "security"). It MUST match a key in
-	// [Taxonomy.Categories].
-	Category string
+	// Categories lists the taxonomy categories this event belongs to
+	// (e.g. ["write"], ["security", "access"]). Derived from the
+	// [Taxonomy.Categories] map during parsing — not set by consumers.
+	// Sorted alphabetically. May be empty for uncategorised events.
+	Categories []string
 
 	// Description is an optional human-readable explanation of what
 	// this event type represents. It is informational metadata only
@@ -71,7 +72,8 @@ type EventDef struct {
 // already present.
 type Taxonomy struct {
 	// Categories maps category names to the event type names they
-	// contain. Every event type MUST appear in exactly one category.
+	// contain. An event type may appear in multiple categories or
+	// in none (uncategorised events are always globally enabled).
 	Categories map[string][]string
 
 	// Events maps event type names to their definitions. Every event
@@ -141,7 +143,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	// Inject startup if not already defined.
 	if _, ok := t.Events["startup"]; !ok {
 		t.Events["startup"] = &EventDef{
-			Category:    lifecycleCategory,
+			Categories:  []string{lifecycleCategory},
 			Description: "Application started",
 			Required:    []string{"app_name"},
 			Optional:    []string{"version", "config"},
@@ -154,7 +156,7 @@ func InjectLifecycleEvents(t *Taxonomy) {
 	// Inject shutdown if not already defined.
 	if _, ok := t.Events["shutdown"]; !ok {
 		t.Events["shutdown"] = &EventDef{
-			Category:    lifecycleCategory,
+			Categories:  []string{lifecycleCategory},
 			Description: "Application shutting down",
 			Required:    []string{"app_name"},
 			Optional:    []string{"reason", "uptime_ms"},
@@ -171,10 +173,27 @@ func InjectLifecycleEvents(t *Taxonomy) {
 }
 
 // precomputeTaxonomy populates the pre-computed fields on every
-// EventDef in the taxonomy. These fields are derived from the
-// Required and Optional slices and are read-only after this call.
-// Must be called after validation succeeds.
+// EventDef in the taxonomy. This includes deriving Categories from
+// the categories map (for Go-level construction where categories
+// are not set on EventDef directly) and building the field lookup
+// structures. Must be called after validation succeeds.
 func precomputeTaxonomy(t *Taxonomy) {
+	// Derive EventDef.Categories from the categories map. This
+	// ensures Categories is populated for both YAML-parsed and
+	// Go-constructed taxonomies.
+	for catName, catEvents := range t.Categories {
+		for _, eventName := range catEvents {
+			if def, ok := t.Events[eventName]; ok {
+				if !slices.Contains(def.Categories, catName) {
+					def.Categories = append(def.Categories, catName)
+				}
+			}
+		}
+	}
+	for _, def := range t.Events {
+		slices.Sort(def.Categories)
+	}
+
 	for _, def := range t.Events {
 		precomputeEventDef(def)
 	}
@@ -228,7 +247,6 @@ func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string
 	errs = append(errs, checkTaxonomyVersion(t)...)
 	errs = append(errs, checkCategoryConsistency(t)...)
-	errs = append(errs, checkEventConsistency(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
 	errs = append(errs, checkDefaultEnabled(t)...)
 
@@ -258,29 +276,14 @@ func checkTaxonomyVersion(t Taxonomy) []string {
 }
 
 // checkCategoryConsistency validates categories and their members.
+// Events MAY appear in multiple categories.
 func checkCategoryConsistency(t Taxonomy) []string {
 	var errs []string
 	if len(t.Categories) == 0 {
 		errs = append(errs, "taxonomy must define at least one category")
 	}
 
-	// Check for duplicate event types across categories.
-	eventToCategory := make(map[string][]string)
-	for cat, events := range t.Categories {
-		for _, et := range events {
-			eventToCategory[et] = append(eventToCategory[et], cat)
-		}
-	}
-	for et, cats := range eventToCategory {
-		if len(cats) > 1 {
-			sort.Strings(cats)
-			errs = append(errs, fmt.Sprintf(
-				"event type %q appears in multiple categories: [%s]",
-				et, strings.Join(cats, ", ")))
-		}
-	}
-
-	// Every event in Categories must exist in Events map.
+	// Every event listed in Categories must exist in Events map.
 	for cat, events := range t.Categories {
 		for _, et := range events {
 			if _, ok := t.Events[et]; !ok {
@@ -293,22 +296,6 @@ func checkCategoryConsistency(t Taxonomy) []string {
 	return errs
 }
 
-// checkEventConsistency validates that events reference valid categories.
-func checkEventConsistency(t Taxonomy) []string {
-	var errs []string
-	for et, def := range t.Events {
-		if _, ok := t.Categories[def.Category]; !ok {
-			errs = append(errs, fmt.Sprintf(
-				"event %q references category %q which does not exist in Categories",
-				et, def.Category))
-		} else if !slices.Contains(t.Categories[def.Category], et) {
-			errs = append(errs, fmt.Sprintf(
-				"event %q has category %q but is not listed in Categories[%q]",
-				et, def.Category, def.Category))
-		}
-	}
-	return errs
-}
 
 // checkFieldOverlap validates no field appears in both Required and Optional.
 func checkFieldOverlap(t Taxonomy) []string {

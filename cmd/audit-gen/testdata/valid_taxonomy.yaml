@@ -13,17 +13,14 @@ default_enabled:
   - security
 events:
   schema_read:
-    category: read
     required:
       - outcome
     optional:
       - subject
   config_read:
-    category: read
     required:
       - outcome
   schema_register:
-    category: write
     description: "A new schema version was registered in the registry"
     required:
       - outcome
@@ -32,14 +29,12 @@ events:
     optional:
       - schema_type
   schema_delete:
-    category: write
     description: "A schema was permanently deleted"
     required:
       - outcome
       - actor_id
       - subject
   auth_failure:
-    category: security
     description: "An authentication attempt failed"
     required:
       - outcome

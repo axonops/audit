@@ -549,26 +549,63 @@ func (l *Logger) processEntry(entry *auditEntry) {
 
 	ts := time.Now()
 	def := l.taxonomy.Events[entry.eventType]
-	category := def.Category
 
-	// Stack-allocated cache for up to 4 unique formatters. Avoids a
-	// per-event map allocation for the common case of 1-3 outputs
-	// sharing the same formatter.
-	var fc formatCache
-
-	for _, oe := range l.entries {
-		if !oe.matchesEvent(entry.eventType, category) {
-			if l.metrics != nil {
-				l.metrics.RecordOutputFiltered(oe.output.Name())
+	if len(def.Categories) == 0 {
+		// Uncategorised event: deliver to outputs matching by event
+		// type or with no route. Single pass, no category context.
+		var fc formatCache
+		for _, oe := range l.entries {
+			if !oe.matchesEvent(entry.eventType, "") {
+				if l.metrics != nil {
+					l.metrics.RecordOutputFiltered(oe.output.Name())
+				}
+				continue
 			}
-			continue
+
+			data := l.formatCached(oe, entry, ts, def, &fc)
+			if data == nil {
+				continue
+			}
+			l.writeToOutput(oe.output, data, entry.eventType)
+		}
+	} else {
+		// Categorised event: deliver once per enabled category.
+		// Each category pass is independent — an output may receive
+		// the event multiple times on different category passes.
+		//
+		// If EnableEvent was called for this event, iterate ALL
+		// categories regardless of their enabled/disabled state.
+		eventForceEnabled := false
+		if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
+			eventForceEnabled = true
 		}
 
-		data := l.formatCached(oe, entry, ts, def, &fc)
-		if data == nil {
-			continue
+		for _, category := range def.Categories {
+			if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
+				continue
+			}
+
+			// Reset the format cache for each category pass. Once
+			// severity (#186) is added, the formatted output will
+			// include category-specific severity, making each pass's
+			// serialised bytes different.
+			var fc formatCache
+
+			for _, oe := range l.entries {
+				if !oe.matchesEvent(entry.eventType, category) {
+					if l.metrics != nil {
+						l.metrics.RecordOutputFiltered(oe.output.Name())
+					}
+					continue
+				}
+
+				data := l.formatCached(oe, entry, ts, def, &fc)
+				if data == nil {
+					continue
+				}
+				l.writeToOutput(oe.output, data, entry.eventType)
+			}
 		}
-		l.writeToOutput(oe.output, data, entry.eventType)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,9 +45,9 @@ type yamlTaxonomy struct {
 }
 
 // yamlEventDef is the intermediate representation of a single event
-// definition within the YAML taxonomy.
+// definition within the YAML taxonomy. Categories are derived from
+// the categories map — there is no category field on events.
 type yamlEventDef struct {
-	Category    string   `yaml:"category"`
 	Description string   `yaml:"description"`
 	Required    []string `yaml:"required"`
 	Optional    []string `yaml:"optional"`
@@ -107,7 +108,9 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 }
 
 // convertYAMLTaxonomy transforms the intermediate yamlTaxonomy into a
-// [Taxonomy]. All maps and slices are defensively copied.
+// [Taxonomy]. All maps and slices are defensively copied. EventDef.Categories
+// is derived from the categories map — events may belong to multiple
+// categories or none (uncategorised).
 func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	categories := make(map[string][]string, len(yt.Categories))
 	for name, events := range yt.Categories {
@@ -119,11 +122,23 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
 		events[name] = &EventDef{
-			Category:    def.Category,
 			Description: def.Description,
 			Required:    copyStrings(def.Required),
 			Optional:    copyStrings(def.Optional),
 		}
+	}
+
+	// Derive EventDef.Categories from the categories map.
+	for catName, catEvents := range categories {
+		for _, eventName := range catEvents {
+			if def, ok := events[eventName]; ok {
+				def.Categories = append(def.Categories, catName)
+			}
+		}
+	}
+	// Sort categories on each event for deterministic ordering.
+	for _, def := range events {
+		slices.Sort(def.Categories)
 	}
 
 	defaultEnabled := make([]string, len(yt.DefaultEnabled))

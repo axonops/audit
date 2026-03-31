@@ -138,8 +138,8 @@ func testTaxonomy() audit.Taxonomy {
 			"security": {"auth_failure"},
 		},
 		Events: map[string]*audit.EventDef{
-			"user_create":  {Category: "write", Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
-			"auth_failure": {Category: "security", Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
+			"user_create":  {Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
+			"auth_failure": {Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
 		},
 		DefaultEnabled: []string{"write", "security"},
 	}

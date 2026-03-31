@@ -42,12 +42,12 @@ categories:
     - auth_failure
     - permission_denied
 events:
-  user_create:    { category: write, required: [outcome, actor_id], optional: [marker] }
-  config_update:  { category: write, required: [outcome, actor_id], optional: [marker] }
-  user_get:       { category: read, required: [outcome], optional: [marker] }
-  config_read:    { category: read, required: [outcome], optional: [marker] }
-  auth_failure:   { category: security, required: [outcome, actor_id], optional: [marker] }
-  permission_denied: { category: security, required: [outcome, actor_id], optional: [marker] }
+  user_create:    { required: [outcome, actor_id], optional: [marker] }
+  config_update:  { required: [outcome, actor_id], optional: [marker] }
+  user_get:       { required: [outcome], optional: [marker] }
+  config_read:    { required: [outcome], optional: [marker] }
+  auth_failure:   { required: [outcome, actor_id], optional: [marker] }
+  permission_denied: { required: [outcome, actor_id], optional: [marker] }
 default_enabled:
   - write
   - read

@@ -547,7 +547,6 @@ func TestGenerate_MultiLineDescription(t *testing.T) {
 		Categories: map[string][]string{"test": {"multi_line"}},
 		Events: map[string]*audit.EventDef{
 			"multi_line": {
-				Category:    "test",
 				Description: "First line\nSecond line\n\tTabbed",
 				Required:    []string{"outcome"},
 			},
@@ -569,7 +568,6 @@ func TestGenerate_WhitespaceOnlyDescription(t *testing.T) {
 		Categories: map[string][]string{"test": {"blank_desc"}},
 		Events: map[string]*audit.EventDef{
 			"blank_desc": {
-				Category:    "test",
 				Description: "   \t\n  ",
 				Required:    []string{"outcome"},
 			},

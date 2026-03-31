@@ -22,7 +22,6 @@ default_enabled:
 
 events:
   item_create:
-    category: write
     description: "An item was created"
     required:
       - outcome
@@ -32,7 +31,6 @@ events:
       - reason
 
   item_update:
-    category: write
     description: "An item was updated"
     required:
       - outcome
@@ -41,7 +39,6 @@ events:
       - target_id
 
   item_delete:
-    category: write
     description: "An item was deleted"
     required:
       - outcome
@@ -50,7 +47,6 @@ events:
       - target_id
 
   item_list:
-    category: read
     description: "Items were listed"
     required:
       - outcome
@@ -58,7 +54,6 @@ events:
       - actor_id
 
   item_read:
-    category: read
     description: "An item was read"
     required:
       - outcome
@@ -67,7 +62,6 @@ events:
       - target_id
 
   auth_failure:
-    category: security
     description: "An authentication attempt failed"
     required:
       - outcome
@@ -77,7 +71,6 @@ events:
       - source_ip
 
   auth_success:
-    category: security
     description: "An authentication attempt succeeded"
     required:
       - outcome
@@ -86,7 +79,6 @@ events:
       - source_ip
 
   config_change:
-    category: admin
     description: "A configuration change was made"
     required:
       - outcome

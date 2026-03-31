@@ -15,20 +15,17 @@ default_enabled:
 
 events:
   user_create:
-    category: write
     description: "A new user account was created"
     required:
       - outcome
       - actor_id
 
   user_read:
-    category: read
     description: "A user profile was viewed"
     required:
       - outcome
 
   auth_failure:
-    category: security
     description: "An authentication attempt failed"
     required:
       - outcome

@@ -45,7 +45,7 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 			taxonomy: audit.Taxonomy{
 				Version:    0,
 				Categories: map[string][]string{"write": {"ev1"}},
-				Events:     map[string]*audit.EventDef{"ev1": {Category: "write", Required: []string{"f1"}}},
+				Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
 			},
 			wantError: "version is required",
 		},
@@ -54,34 +54,9 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 			taxonomy: audit.Taxonomy{
 				Version:    999,
 				Categories: map[string][]string{"write": {"ev1"}},
-				Events:     map[string]*audit.EventDef{"ev1": {Category: "write", Required: []string{"f1"}}},
+				Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
 			},
 			wantError: "not supported",
-		},
-		{
-			name: "event references non-existent category",
-			taxonomy: audit.Taxonomy{
-				Version:    1,
-				Categories: map[string][]string{"write": {"ev1"}},
-				Events: map[string]*audit.EventDef{
-					"ev1": {Category: "nonexistent", Required: []string{"f1"}},
-				},
-			},
-			wantError: "does not exist in Categories",
-		},
-		{
-			name: "duplicate event across categories",
-			taxonomy: audit.Taxonomy{
-				Version: 1,
-				Categories: map[string][]string{
-					"read":  {"ev1"},
-					"write": {"ev1"},
-				},
-				Events: map[string]*audit.EventDef{
-					"ev1": {Category: "read", Required: []string{"f1"}},
-				},
-			},
-			wantError: "appears in multiple categories",
 		},
 		{
 			name: "field in both required and optional",
@@ -89,7 +64,7 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 				Version:    1,
 				Categories: map[string][]string{"write": {"ev1"}},
 				Events: map[string]*audit.EventDef{
-					"ev1": {Category: "write", Required: []string{"f1"}, Optional: []string{"f1"}},
+					"ev1": {Required: []string{"f1"}, Optional: []string{"f1"}},
 				},
 			},
 			wantError: "in both Required and Optional",
@@ -100,29 +75,17 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 				Version:    1,
 				Categories: map[string][]string{"write": {"ev1", "ev_missing"}},
 				Events: map[string]*audit.EventDef{
-					"ev1": {Category: "write", Required: []string{"f1"}},
+					"ev1": {Required: []string{"f1"}},
 				},
 			},
 			wantError: "not defined in Events",
-		},
-		{
-			name: "event not listed in any category",
-			taxonomy: audit.Taxonomy{
-				Version:    1,
-				Categories: map[string][]string{"write": {"ev1"}},
-				Events: map[string]*audit.EventDef{
-					"ev1":    {Category: "write", Required: []string{"f1"}},
-					"orphan": {Category: "write", Required: []string{"f1"}},
-				},
-			},
-			wantError: "not listed in Categories",
 		},
 		{
 			name: "DefaultEnabled references non-existent category",
 			taxonomy: audit.Taxonomy{
 				Version:        1,
 				Categories:     map[string][]string{"write": {"ev1"}},
-				Events:         map[string]*audit.EventDef{"ev1": {Category: "write", Required: []string{"f1"}}},
+				Events:         map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
 				DefaultEnabled: []string{"write", "nonexistent"},
 			},
 			wantError: "does not exist",
@@ -171,11 +134,9 @@ func TestNewLogger_LifecycleEventsPreserved(t *testing.T) {
 	tax := testhelper.ValidTaxonomy()
 	tax.Categories["lifecycle"] = []string{"startup", "shutdown"}
 	tax.Events["startup"] = &audit.EventDef{
-		Category: "lifecycle",
 		Required: []string{"custom_field"},
 	}
 	tax.Events["shutdown"] = &audit.EventDef{
-		Category: "lifecycle",
 		Required: []string{"custom_field"},
 	}
 
@@ -242,11 +203,9 @@ func TestInjectLifecycleEvents(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()
 		tax.Categories["lifecycle"] = []string{"startup", "shutdown"}
 		tax.Events["startup"] = &audit.EventDef{
-			Category: "lifecycle",
 			Required: []string{"custom_field"},
 		}
 		tax.Events["shutdown"] = &audit.EventDef{
-			Category: "lifecycle",
 			Required: []string{"custom_field"},
 		}
 
@@ -315,7 +274,7 @@ func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    -1,
 			Categories: map[string][]string{"write": {"ev1"}},
-			Events:     map[string]*audit.EventDef{"ev1": {Category: "write", Required: []string{"f1"}}},
+			Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
 		}),
 	)
 	require.Error(t, err)

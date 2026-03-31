@@ -216,7 +216,9 @@ func newFilterState(t *Taxonomy) *filterState {
 
 // isEnabled reports whether the given event type should be processed.
 // It checks per-event overrides first, then falls back to the event's
-// category state. Lock-free on the read path.
+// category state. An event is enabled if ANY of its categories is
+// enabled. Uncategorised events (empty Categories) are always enabled
+// at the global level. Lock-free on the read path.
 func (f *filterState) isEnabled(eventType string, taxonomy *Taxonomy) bool {
 	// Per-event override takes precedence.
 	if override, ok := f.eventOverrides.Load(eventType); ok {
@@ -228,6 +230,24 @@ func (f *filterState) isEnabled(eventType string, taxonomy *Taxonomy) bool {
 	if !ok {
 		return false
 	}
-	enabled, _ := f.enabledCategories.Load(def.Category)
+
+	// Uncategorised events are always globally enabled.
+	if len(def.Categories) == 0 {
+		return true
+	}
+
+	// Enabled if ANY category is enabled.
+	for _, cat := range def.Categories {
+		if enabled, _ := f.enabledCategories.Load(cat); enabled {
+			return true
+		}
+	}
+	return false
+}
+
+// isCategoryEnabled reports whether the given category is currently
+// enabled. Used by the drain loop to skip disabled category passes.
+func (f *filterState) isCategoryEnabled(category string) bool {
+	enabled, _ := f.enabledCategories.Load(category)
 	return enabled
 }

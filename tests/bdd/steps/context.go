@@ -171,4 +171,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerMiddlewareSteps(ctx, tc)
 	RegisterMultiCatSteps(ctx, tc)
 	registerSeverityRoutingSteps(ctx, tc)
+	registerSensitivitySteps(ctx, tc)
 }

@@ -350,6 +350,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 	l.filter.eventOverrides.Store(eventType, true)
+	l.filter.hasEventOverrides.Store(true)
 	slog.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
@@ -363,6 +364,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 	l.filter.eventOverrides.Store(eventType, false)
+	l.filter.hasEventOverrides.Store(true)
 	slog.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
@@ -559,9 +561,12 @@ func (l *Logger) processEntry(entry *auditEntry) {
 
 	// Categorised event: deliver once per enabled category.
 	// If EnableEvent was called, iterate ALL categories.
+	// The atomic flag guards the sync.Map lookup on the hot path.
 	eventForceEnabled := false
-	if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
-		eventForceEnabled = true
+	if l.filter.hasEventOverrides.Load() {
+		if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
+			eventForceEnabled = true
+		}
 	}
 
 	// Format cache shared across category passes — the formatted

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -511,6 +512,7 @@ default_enabled: [write]
 
 func TestFieldStripping_SingleLabel(t *testing.T) {
 	t.Parallel()
+
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
 
@@ -558,6 +560,7 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 
 func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 	t.Parallel()
+
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
 
@@ -593,6 +596,7 @@ func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 
 func TestFieldStripping_DifferentOutputs(t *testing.T) {
 	t.Parallel()
+
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
 
@@ -623,12 +627,14 @@ func TestFieldStripping_DifferentOutputs(t *testing.T) {
 	// "no-pii" output has email stripped.
 	require.True(t, outNoPII.WaitForEvents(1, 2*time.Second))
 	noPIIEvt := outNoPII.GetEvent(0)
-	assert.Nil(t, noPIIEvt["email"])
+	_, hasEmail := noPIIEvt["email"]
+	assert.False(t, hasEmail, "email field should be absent, not nil")
 	assert.Equal(t, "alice", noPIIEvt["actor_id"])
 }
 
 func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
 	t.Parallel()
+
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
 
@@ -659,6 +665,7 @@ func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
 
 func TestFieldStripping_AllFieldsExcluded_FrameworkRemains(t *testing.T) {
 	t.Parallel()
+
 	// Taxonomy where ALL user fields are labeled.
 	yml := `
 version: 1
@@ -779,6 +786,7 @@ default_enabled: [write]
 
 func TestFieldStripping_FrameworkFieldProtected(t *testing.T) {
 	t.Parallel()
+
 	// Even if a user somehow passes a field named "timestamp" with a
 	// sensitivity label, it must not be stripped.
 	yml := `
@@ -829,6 +837,100 @@ default_enabled: [write]
 
 	// Labeled user field stripped.
 	assert.NotContains(t, evt, "actor_id")
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent field stripping
+// ---------------------------------------------------------------------------
+
+func TestFieldStripping_Concurrent(t *testing.T) {
+	t.Parallel()
+
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	out := testhelper.NewMockOutput("concurrent")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	const goroutines = 50
+	const eventsPerGoroutine = 20
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range eventsPerGoroutine {
+				_ = logger.Audit("user_create", audit.Fields{
+					"outcome":  "success",
+					"actor_id": "alice",
+					"email":    "alice@example.com",
+				})
+			}
+		}()
+	}
+	wg.Wait()
+	require.NoError(t, logger.Close())
+
+	total := goroutines * eventsPerGoroutine
+	require.True(t, out.WaitForEvents(total, 5*time.Second),
+		"expected %d events, got %d", total, out.EventCount())
+
+	// Verify ALL events had email stripped.
+	for i := range out.EventCount() {
+		evt := out.GetEvent(i)
+		_, hasEmail := evt["email"]
+		assert.False(t, hasEmail, "event %d should not have email", i)
+		assert.Equal(t, "alice", evt["actor_id"], "event %d actor_id", i)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Global mapping across multiple events
+// ---------------------------------------------------------------------------
+
+func TestPrecomputeSensitivity_GlobalMappingAcrossMultipleEvents(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+categories:
+  write:
+    - user_create
+    - user_update
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      email: {}
+  user_update:
+    fields:
+      outcome: {required: true}
+      email: {}
+      reason: {}
+default_enabled: [write]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+
+	// Both events should have email labeled pii.
+	createLabels := tax.Events["user_create"].FieldLabels
+	require.NotNil(t, createLabels)
+	assert.Contains(t, createLabels["email"], "pii")
+
+	updateLabels := tax.Events["user_update"].FieldLabels
+	require.NotNil(t, updateLabels)
+	assert.Contains(t, updateLabels["email"], "pii")
+
+	// reason should NOT be labeled.
+	assert.NotContains(t, updateLabels, "reason")
 }
 
 // ---------------------------------------------------------------------------

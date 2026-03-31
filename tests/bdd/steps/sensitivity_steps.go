@@ -41,7 +41,7 @@ func registerSensitivityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 }
 
 func registerSensitivityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with stdout output$`, func() error {
+	ctx.Step(`^a logger with stdout output and no exclusions$`, func() error {
 		return createSensitivityLogger(tc, nil)
 	})
 	ctx.Step(`^a logger with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
@@ -99,6 +99,10 @@ func registerSensitivityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the output should not contain field "([^"]*)"$`,
 		func(field string) error {
 			return assertOutputDoesNotContainField(tc, field)
+		})
+	ctx.Step(`^the output should contain an event with field "([^"]*)"$`,
+		func(field string) error {
+			return assertOutputContainsField(tc, field)
 		})
 	ctx.Step(`^logger creation should fail with an error containing "([^"]*)"$`,
 		func(substr string) error {
@@ -171,7 +175,7 @@ func assertOutputContainsFieldValue(tc *AuditTestContext, field, value string) e
 		field, value, tc.StdoutBuf.String())
 }
 
-func assertOutputDoesNotContainField(tc *AuditTestContext, field string) error {
+func assertOutputContainsField(tc *AuditTestContext, field string) error {
 	if tc.Logger != nil {
 		_ = tc.Logger.Close()
 		tc.Logger = nil
@@ -189,9 +193,39 @@ func assertOutputDoesNotContainField(tc *AuditTestContext, field string) error {
 			continue
 		}
 		if _, ok := m[field]; ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("no event found with field %q in output:\n%s",
+		field, tc.StdoutBuf.String())
+}
+
+func assertOutputDoesNotContainField(tc *AuditTestContext, field string) error {
+	if tc.Logger != nil {
+		_ = tc.Logger.Close()
+		tc.Logger = nil
+	}
+	if tc.StdoutBuf == nil {
+		return fmt.Errorf("no stdout buffer configured")
+	}
+	lines := strings.Split(strings.TrimSpace(tc.StdoutBuf.String()), "\n")
+	eventCount := 0
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			continue
+		}
+		eventCount++
+		if _, ok := m[field]; ok {
 			return fmt.Errorf("event contains field %q which should have been stripped:\n%s",
 				field, line)
 		}
+	}
+	if eventCount == 0 {
+		return fmt.Errorf("no events in output — field absence assertion is vacuous")
 	}
 	return nil
 }

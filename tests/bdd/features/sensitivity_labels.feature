@@ -26,7 +26,7 @@ Feature: Field-Level Sensitivity Labels
             email: {}
       default_enabled: [write]
       """
-    And a logger with stdout output
+    And a logger with stdout output and no exclusions
     When I audit event "user_create" with fields:
       | field    | value         |
       | outcome  | success       |
@@ -463,7 +463,7 @@ Feature: Field-Level Sensitivity Labels
             email: {}
       default_enabled: [write]
       """
-    And a logger with stdout output
+    And a logger with stdout output and no exclusions
     When I audit event "user_create" with fields:
       | field   | value             |
       | outcome | success           |
@@ -587,3 +587,89 @@ Feature: Field-Level Sensitivity Labels
       | outcome | success           |
       | email   | alice@example.com |
     Then the output should contain an event with field "email" value "alice@example.com"
+
+  # ---------------------------------------------------------------------------
+  # Multi-label, multi-output, and framework field assertions
+  # ---------------------------------------------------------------------------
+
+  Scenario: Multiple exclude_labels on one output strips all matching fields
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [email]
+          financial:
+            fields: [card_number]
+      categories:
+        write:
+          - payment
+      events:
+        payment:
+          fields:
+            outcome: {required: true}
+            email: {}
+            card_number: {}
+            merchant: {}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii,financial"
+    When I audit event "payment" with fields:
+      | field       | value             |
+      | outcome     | success           |
+      | email       | alice@example.com |
+      | card_number | 4111111111111111  |
+      | merchant    | ACME Corp         |
+    Then the output should not contain field "email"
+    And the output should not contain field "card_number"
+    And the output should contain an event with field "merchant" value "ACME Corp"
+
+  Scenario: Framework fields never stripped — all four verified
+    Given a taxonomy with sensitivity labels:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [outcome, actor_id]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+      default_enabled: [write]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the output should contain an event with field "event_type" value "user_create"
+    And the output should contain an event with field "timestamp"
+    And the output should contain an event with field "severity"
+    And the output should not contain field "outcome"
+    And the output should not contain field "actor_id"
+
+  Scenario: Wildcard regex rejected when it matches framework fields
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          everything:
+            patterns: [".*"]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      default_enabled: [write]
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    And the taxonomy parse should fail with an error containing "protected framework field"

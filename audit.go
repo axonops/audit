@@ -642,8 +642,9 @@ func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time
 	f := oe.effectiveFormatter(l.formatter)
 	data, err := f.Format(ts, entry.eventType, filtered, filteredDef)
 	if err != nil {
+		slog.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
 		if l.metrics != nil {
-			l.metrics.RecordSerializationError(oe.output.Name())
+			l.metrics.RecordSerializationError(entry.eventType)
 		}
 		return nil
 	}

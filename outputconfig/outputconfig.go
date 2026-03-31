@@ -69,7 +69,7 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 
 // NamedOutput pairs a constructed output with its config-level name
 // and resolved formatter and route.
-type NamedOutput struct { //nolint:govet // fieldalignment: readability preferred
+type NamedOutput struct {
 	Name          string
 	Output        audit.Output
 	Route         *audit.EventRoute

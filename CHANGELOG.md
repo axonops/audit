@@ -8,12 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- Taxonomy YAML `required:` and `optional:` replaced by unified `fields:` map (#195)
 - `Taxonomy.Categories` type changed from `map[string][]string` to `map[string]*CategoryDef` (#188)
 - `EventDef.Category` (string) replaced by `EventDef.Categories` ([]string) — derived from categories map (#188)
 - `category:` field removed from YAML event definitions (#188)
 - `MatchesRoute` signature now requires a `severity int` parameter (#187)
 
 ### Added
+
+- `SensitivityConfig` and `SensitivityLabel` for field-level sensitivity labels (#195)
+- Three labeling mechanisms: explicit per-field annotation, global field name mapping, regex patterns (#195)
+- Per-output `exclude_labels` strips labeled fields before delivery (#195)
+- `WithNamedOutput` accepts variadic `excludeLabels` for output-level field stripping (#195)
+- `audit-gen` generates `Label` constants when taxonomy has sensitivity labels (#195)
+- Framework fields (timestamp, event_type, severity) protected from labeling (#195)
 
 - `CategoryDef` struct with `Severity *int` for per-category CEF severity (#186)
 - `EventDef.Severity *int` for per-event severity override; `EventDef.ResolvedSeverity()` returns resolved value (#186)

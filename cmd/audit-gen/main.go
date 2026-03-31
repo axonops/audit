@@ -67,6 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 type cliConfig struct {
 	input, output, pkg, header string
 	types, fields, categories  bool
+	labels                     bool
 }
 
 func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCode int) {
@@ -80,6 +81,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		types      = fs.Bool("types", true, "generate event type constants")
 		fields     = fs.Bool("fields", true, "generate field name constants")
 		categories = fs.Bool("categories", true, "generate category constants")
+		labels     = fs.Bool("labels", true, "generate sensitivity label constants")
 		header     = fs.String("header", "", "file header (default: auto-generated DO NOT EDIT comment)")
 		showVer    = fs.Bool("version", false, "print version and exit")
 	)
@@ -106,7 +108,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 
 	return cliConfig{
 		input: *input, output: *output, pkg: *pkg, header: *header,
-		types: *types, fields: *fields, categories: *categories,
+		types: *types, fields: *fields, categories: *categories, labels: *labels,
 	}, -1 // -1 signals "continue"
 }
 
@@ -143,6 +145,7 @@ func execute(cfg cliConfig, stdout, stderr io.Writer) int {
 		Types:      cfg.types,
 		Fields:     cfg.fields,
 		Categories: cfg.categories,
+		Labels:     cfg.labels,
 	}
 	if cfg.header != "" {
 		opts.InputFile = "" // custom header overrides auto-generated one

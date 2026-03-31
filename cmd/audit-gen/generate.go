@@ -39,6 +39,7 @@ type generateOptions struct {
 	Types      bool
 	Fields     bool
 	Categories bool
+	Labels     bool
 }
 
 // constantDef represents a single generated constant.
@@ -56,9 +57,11 @@ type templateData struct {
 	Events        []constantDef
 	Categories    []constantDef
 	Fields        []constantDef
+	Labels        []constantDef
 	HasEvents     bool
 	HasCategories bool
 	HasFields     bool
+	HasLabels     bool
 }
 
 var tmpl = template.Must(template.New("audit-gen").Parse(tmplText))
@@ -89,6 +92,15 @@ const (
 const (
 {{- range .Fields }}
 	{{ .Name }} = {{ .QuotedValue }}
+{{- end }}
+)
+{{ end }}{{ if .HasLabels }}
+// Sensitivity label constants — use with exclude_labels
+// in output configuration.
+const (
+{{- range .Labels }}
+{{ if .Comment }}	// {{ .Comment }}
+{{ end }}	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
 {{ end }}`
@@ -155,7 +167,54 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 		data.HasFields = len(data.Fields) > 0
 	}
 
+	if opts.Labels {
+		var err error
+		data.Labels, err = buildLabelConstants(tax)
+		if err != nil {
+			return templateData{}, err
+		}
+		data.HasLabels = len(data.Labels) > 0
+	}
+
 	return data, nil
+}
+
+// buildLabelConstants creates label constant entries from the taxonomy's
+// sensitivity config. Only emitted when labels are defined.
+func buildLabelConstants(tax audit.Taxonomy) ([]constantDef, error) {
+	if tax.Sensitivity == nil || len(tax.Sensitivity.Labels) == 0 {
+		return nil, nil
+	}
+	return buildLabelConstantsFromConfig(tax.Sensitivity)
+}
+
+func buildLabelConstantsFromConfig(sc *audit.SensitivityConfig) ([]constantDef, error) {
+	keys := sortedKeys(sc.Labels)
+	nameToKey := make(map[string]string, len(keys))
+	defs := make([]constantDef, 0, len(keys))
+	for _, k := range keys {
+		if !validKey.MatchString(k) {
+			return nil, fmt.Errorf("sensitivity label %q contains characters unsafe for code generation", k)
+		}
+		name := "Label" + toPascalCase(k)
+		if prev, ok := nameToKey[name]; ok {
+			return nil, fmt.Errorf("naming collision: labels %q and %q both produce constant %q", prev, k, name)
+		}
+		nameToKey[name] = k
+
+		comment := sanitiseComment(sc.Labels[k].Description)
+		if comment != "" {
+			comment = name + " — " + comment
+		}
+
+		defs = append(defs, constantDef{
+			Name:        name,
+			Value:       k,
+			QuotedValue: strconv.Quote(k),
+			Comment:     comment,
+		})
+	}
+	return defs, nil
 }
 
 // buildEventConstants creates event constant entries with optional

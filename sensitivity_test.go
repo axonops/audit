@@ -773,6 +773,120 @@ default_enabled: [write]
 	assert.Contains(t, err.Error(), "undefined sensitivity label")
 }
 
+// ---------------------------------------------------------------------------
+// Benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkDeliverToOutputs_NoSensitivity(b *testing.B) {
+	yml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+default_enabled: [write]
+`
+	benchAuditWithExclusions(b, yml, nil)
+}
+
+func BenchmarkDeliverToOutputs_SensitivityNoExclusions(b *testing.B) {
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+default_enabled: [write]
+`
+	benchAuditWithExclusions(b, yml, nil)
+}
+
+func BenchmarkDeliverToOutputs_WithExclusions(b *testing.B) {
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+default_enabled: [write]
+`
+	benchAuditWithExclusions(b, yml, []string{"pii"})
+}
+
+func BenchmarkDeliverToOutputs_AllFieldsExcluded(b *testing.B) {
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [outcome, actor_id, email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+default_enabled: [write]
+`
+	benchAuditWithExclusions(b, yml, []string{"pii"})
+}
+
+func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels []string) {
+	b.Helper()
+	tax, err := audit.ParseTaxonomyYAML([]byte(taxonomyYAML))
+	if err != nil {
+		b.Fatal(err)
+	}
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil, excludeLabels...),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for range b.N {
+		_ = logger.Audit("user_create", fields)
+	}
+}
+
 // parseJSONEvents parses newline-delimited JSON from a buffer.
 func parseJSONEvents(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	t.Helper()

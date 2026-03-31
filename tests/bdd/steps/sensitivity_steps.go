@@ -106,7 +106,7 @@ func registerSensitivityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				return fmt.Errorf("expected logger creation to fail, but it succeeded")
 			}
 			if !strings.Contains(tc.LastErr.Error(), substr) {
-				return fmt.Errorf("expected error containing %q, got: %v", substr, tc.LastErr)
+				return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
 			}
 			return nil
 		})

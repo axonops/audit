@@ -2,17 +2,25 @@ version: 1
 
 categories:
   write:
-    - item_create
-    - item_update
-    - item_delete
+    severity: 4
+    events:
+      - item_create
+      - item_update
+      - item_delete
   read:
-    - item_list
-    - item_read
+    severity: 2
+    events:
+      - item_list
+      - item_read
   security:
-    - auth_failure
-    - auth_success
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
   admin:
-    - config_change
+    severity: 6
+    events:
+      - config_change
 
 default_enabled:
   - write
@@ -28,7 +36,6 @@ events:
       - actor_id
     optional:
       - target_id
-      - reason
 
   item_update:
     description: "An item was updated"
@@ -63,6 +70,7 @@ events:
 
   auth_failure:
     description: "An authentication attempt failed"
+    severity: 9
     required:
       - outcome
       - actor_id
@@ -84,4 +92,4 @@ events:
       - outcome
       - actor_id
     optional:
-      - reason
+      - target_id

@@ -119,6 +119,25 @@ mem.prof
 /formatters
 /middleware
 /multi-output
+# Binaries built inside example directories
+examples/*/basic
+examples/*/code-generation
+examples/*/crud-api
+examples/*/event-routing
+examples/*/file-output
+examples/*/formatters
+examples/*/middleware
+examples/*/multi-output
+# Generic: any binary matching the directory name inside examples
+examples/basic/basic
+examples/code-generation/code-generation
+examples/crud-api/crud-api
+examples/event-routing/event-routing
+examples/file-output/file-output
+examples/formatters/formatters
+examples/middleware/middleware
+examples/multi-output/multi-output
+/multi-output
 
 # Example output files (generated at runtime)
 examples/*/*.log

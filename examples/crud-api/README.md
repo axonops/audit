@@ -103,7 +103,7 @@ outputs:
 | audit_log | exclude read | JSON | Persistent audit trail |
 | admin_log | admin only | CEF | SIEM-compatible admin log |
 | syslog_security | security only | JSON | Central security logging |
-| webhook_siem | all events | JSON | External SIEM forwarding |
+| webhook_siem | severity >= 7 | JSON | High-severity alerts to SIEM |
 
 ### Environment Variables
 

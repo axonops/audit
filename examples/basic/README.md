@@ -145,7 +145,7 @@ go run .
 
 --- Invalid event (missing required field) ---
 Validation error: audit: event "user_create" missing required fields: [actor_id]
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
 ```
 
 The JSON event appears after both print statements because `Audit()`

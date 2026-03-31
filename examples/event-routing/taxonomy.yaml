@@ -6,7 +6,9 @@ categories:
   read:
     - user_read
   security:
-    - auth_failure
+    severity: 8
+    events:
+      - auth_failure
 
 default_enabled:
   - write

@@ -224,10 +224,14 @@ go generate .
 
 ```
 --- Using generated constants ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success","target_id":"user-42"}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100"}
-{"timestamp":"...","event_type":"user_read","actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","reason":null,"target_id":"user-42"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100"}
+{"timestamp":"...","event_type":"user_read","severity":5,"outcome":"success","actor_id":"bob"}
 ```
+
+## Previous
+
+[Basic](../basic/)
 
 ## Next
 

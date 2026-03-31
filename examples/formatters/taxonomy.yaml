@@ -2,10 +2,14 @@ version: 1
 
 categories:
   write:
-    - user_create
+    severity: 3
+    events:
+      - user_create
   security:
-    - auth_failure
-    - auth_success
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
 
 default_enabled:
   - write

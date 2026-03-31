@@ -69,17 +69,21 @@ Three JSON events appear on stdout, followed by the same three events
 read back from `audit.log`:
 
 ```
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"user_create","actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success"}
 
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"user_create","actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success"}
 ```
 
 Both outputs received identical events — that's fan-out.
+
+## Previous
+
+[File Output](../file-output/)
 
 ## Next
 

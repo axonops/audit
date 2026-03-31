@@ -145,8 +145,8 @@ GET http://127.0.0.1:.../healthz -> 200
 GET http://127.0.0.1:.../items -> 200
 POST http://127.0.0.1:.../items -> 201
 --- Audit events ---
-{"timestamp":"...","event_type":"http_request","actor_id":"alice","duration_ms":0,"method":"GET","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":200}
-{"timestamp":"...","event_type":"http_request","actor_id":"alice","duration_ms":0,"method":"POST","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
+{"timestamp":"...","event_type":"http_request","severity":5,"actor_id":"alice","duration_ms":0,"method":"GET","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":200}
+{"timestamp":"...","event_type":"http_request","severity":5,"actor_id":"alice","duration_ms":0,"method":"POST","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
 
 Note: /healthz produced no audit event (skipped by EventBuilder).
 ```

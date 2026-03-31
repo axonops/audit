@@ -105,19 +105,23 @@ go run .
 
 ```
 --- json-audit.log ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"auth_success","actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success"}
 
 --- cef-audit.log ---
-CEF:0|Example|AuditDemo|1.0|user_create|user_create|5|rt=... act=user_create suser=alice outcome=success
-CEF:0|Example|AuditDemo|1.0|auth_failure|auth_failure|5|rt=... act=auth_failure suser=unknown outcome=failure
-CEF:0|Example|AuditDemo|1.0|auth_success|auth_success|5|rt=... act=auth_success suser=bob outcome=success
+CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success
+CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure
+CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success
 ```
 
 Both files contain the same three events in different formats. The CEF
 output uses the `suser` extension key for `actor_id`, and the
 `Vendor|Product|Version` header from the YAML config.
+
+## Previous
+
+[Event Routing](../event-routing/)
 
 ## Next
 

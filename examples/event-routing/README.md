@@ -133,16 +133,24 @@ matching its route:
 
 ```
 --- security.log ---
-{"timestamp":"...","event_type":"auth_failure","actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
 
 --- writes.log ---
-{"timestamp":"...","event_type":"user_create","actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+
+--- critical.log ---
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
 ```
 
-The `user_read` event doesn't appear in either file — neither route
-includes the `read` category. Notice that `user_read` only requires
-`outcome` — `actor_id` is optional for read events. Each event type
-defines its own required fields in the taxonomy.
+The `user_read` event doesn't appear in any file — no route includes
+the `read` category, and its severity (5) is below the critical
+threshold (7). The `auth_failure` event appears in both `security.log`
+(category route) and `critical.log` (severity route) — it matches both
+independently.
+
+## Previous
+
+[Multi-Output](../multi-output/)
 
 ## Next
 

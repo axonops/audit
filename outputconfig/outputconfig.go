@@ -291,12 +291,12 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop 
 
 // yamlRoute maps to [audit.EventRoute] fields.
 type yamlRoute struct {
+	MinSeverity       *int     `yaml:"min_severity"`
+	MaxSeverity       *int     `yaml:"max_severity"`
 	IncludeCategories []string `yaml:"include_categories"`
 	IncludeEventTypes []string `yaml:"include_event_types"`
 	ExcludeCategories []string `yaml:"exclude_categories"`
 	ExcludeEventTypes []string `yaml:"exclude_event_types"`
-	MinSeverity       *int     `yaml:"min_severity"`
-	MaxSeverity       *int     `yaml:"max_severity"`
 }
 
 // outputFields holds parsed fields from a single output YAML node.

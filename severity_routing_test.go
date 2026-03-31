@@ -28,6 +28,7 @@ package audit_test
 //   - Benchmarks for hot-path severity filtering scenarios
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -871,4 +872,45 @@ func BenchmarkMatchesRoute_Severity(b *testing.B) {
 			audit.MatchesRoute(&route, "user_create", "write", 8)
 		}
 	})
+}
+
+func TestConcurrentSetRouteWithSeverity(t *testing.T) {
+	t.Parallel()
+	tax := testhelper.TestTaxonomy()
+	out := testhelper.NewMockOutput("concurrent_sev")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Goroutine 1: audit events continuously.
+	go func() {
+		defer wg.Done()
+		for range 200 {
+			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+		}
+	}()
+
+	// Goroutine 2: toggle severity route concurrently.
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			minSev := 5
+			_ = logger.SetOutputRoute("concurrent_sev", &audit.EventRoute{
+				MinSeverity: &minSev,
+			})
+			_ = logger.ClearOutputRoute("concurrent_sev")
+		}
+	}()
+
+	wg.Wait()
+	require.NoError(t, logger.Close())
+	// Events may or may not be filtered depending on timing —
+	// the test verifies no data race, not a specific count.
+	assert.True(t, out.EventCount() > 0, "at least some events should arrive")
 }

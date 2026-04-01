@@ -73,21 +73,32 @@ outputs can write them.
 
 ### Configuration
 
-Buffer and drain settings are configured in the Go `Config` struct
-(not in YAML):
+Buffer and drain settings are configured in the `logger:` section of
+your output YAML:
+
+```yaml
+logger:
+  buffer_size: 50000         # default: 10,000, max: 1,000,000
+  drain_timeout: "30s"       # default: "5s", max: "60s"
+```
+
+Or programmatically via the `Config` struct:
 
 ```go
 logger, err := audit.NewLogger(
     audit.Config{
         Version:      1,
         Enabled:      true,
-        BufferSize:   10_000,        // channel capacity (default: 10,000, max: 1,000,000)
-        DrainTimeout: 5 * time.Second, // shutdown flush deadline (default: 5s, max: 60s)
+        BufferSize:   50_000,
+        DrainTimeout: 30 * time.Second,
     },
     audit.WithTaxonomy(tax),
     audit.WithOutputs(out),
 )
 ```
+
+When using `outputconfig.Load`, the parsed `result.Config` contains
+these values from your YAML — pass it directly to `NewLogger`.
 
 | Field | Default | Max | What It Does |
 |-------|---------|-----|-------------|

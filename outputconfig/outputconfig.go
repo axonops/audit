@@ -19,7 +19,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"time"
 
 	audit "github.com/axonops/go-audit"
 	"gopkg.in/yaml.v3"
@@ -35,9 +37,17 @@ const MaxOutputConfigSize = 1 << 20 // 1 MiB
 // MaxOutputCount is the maximum number of outputs in a single config.
 const MaxOutputCount = 100
 
-// LoadResult holds the outputs and options produced by [Load], ready
-// to be passed to [audit.NewLogger].
+// LoadResult holds the outputs, options, and logger configuration
+// produced by [Load], ready to be passed to [audit.NewLogger].
 type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
+	// Config is the logger configuration parsed from the optional
+	// top-level `logger:` section. If the section is omitted, Config
+	// contains Version: 1 and Enabled: true; other fields are zero-valued
+	// and will be filled with sensible defaults by [audit.NewLogger]
+	// (BufferSize: 10,000, DrainTimeout: 5s, ValidationMode: strict).
+	// Pass this directly to [audit.NewLogger] as the first argument.
+	Config audit.Config
+
 	// Options contains one [audit.WithNamedOutput] per configured
 	// output, plus an optional [audit.WithFormatter] for the default
 	// formatter. Pass these directly to [audit.NewLogger].
@@ -55,9 +65,16 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 // NamedOutput pairs a constructed output with its config-level name
 // and resolved formatter and route.
 type NamedOutput struct {
-	Name      string
-	Output    audit.Output
-	Route     *audit.EventRoute
+	// Name is the config-level name of the output, as declared in the
+	// YAML outputs map key.
+	Name string
+	// Output is the constructed output instance, ready for use.
+	Output audit.Output
+	// Route is the optional per-output event filter. Nil means all
+	// events are delivered to this output.
+	Route *audit.EventRoute
+	// Formatter is the optional per-output formatter override. Nil
+	// means the logger's default formatter is used.
 	Formatter audit.Formatter
 	// ExcludeLabels lists sensitivity label names whose fields are
 	// stripped from events before delivery to this output. Nil or
@@ -207,6 +224,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 
 	// Phase 8: Build Options slice.
 	result := &LoadResult{
+		Config:           top.config,
 		Outputs:          outputs,
 		DefaultFormatter: top.defaultFmt,
 	}
@@ -225,10 +243,122 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 type topLevel struct {
 	outputsNode *yaml.Node
 	defaultFmt  audit.Formatter
+	config      audit.Config
+}
+
+// parseLoggerConfig parses the logger: YAML node into an audit.Config.
+// It walks the mapping manually (like parseTopLevel) so that env-var-
+// expanded string values are correctly handled for numeric fields.
+func parseLoggerConfig(node *yaml.Node) (audit.Config, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
+	if node.Kind != yaml.MappingNode {
+		return audit.Config{}, fmt.Errorf("expected mapping, got %v", node.Kind)
+	}
+	cfg := audit.Config{
+		Version: 1,
+		Enabled: true,
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		val := node.Content[i+1]
+		switch key {
+		case "enabled":
+			var v bool
+			if err := val.Decode(&v); err != nil {
+				var s string
+				if sErr := val.Decode(&s); sErr != nil {
+					return cfg, fmt.Errorf("enabled: %w", err)
+				}
+				parsed, pErr := strconv.ParseBool(s)
+				if pErr != nil {
+					return cfg, fmt.Errorf("enabled: invalid boolean %q: %w", s, pErr)
+				}
+				v = parsed
+			}
+			cfg.Enabled = v
+		case "buffer_size":
+			var v int
+			if err := val.Decode(&v); err != nil {
+				// After env expansion, the value may be a string.
+				var s string
+				if sErr := val.Decode(&s); sErr != nil {
+					return cfg, fmt.Errorf("buffer_size: %w", err)
+				}
+				n, pErr := strconv.Atoi(s)
+				if pErr != nil {
+					return cfg, fmt.Errorf("buffer_size: invalid integer %q: %w", s, pErr)
+				}
+				v = n
+			}
+			if v < 0 {
+				return cfg, fmt.Errorf("buffer_size: must be non-negative, got %d", v)
+			}
+			if v > audit.MaxBufferSize {
+				return cfg, fmt.Errorf("buffer_size: %d exceeds maximum %d", v, audit.MaxBufferSize)
+			}
+			cfg.BufferSize = v
+		case "drain_timeout":
+			var s string
+			if err := val.Decode(&s); err != nil {
+				return cfg, fmt.Errorf("drain_timeout: %w", err)
+			}
+			if s != "" {
+				d, err := time.ParseDuration(s)
+				if err != nil {
+					return cfg, fmt.Errorf("drain_timeout: invalid duration %q: %w", s, err)
+				}
+				if d < 0 {
+					return cfg, fmt.Errorf("drain_timeout: must be non-negative, got %s", s)
+				}
+				if d > audit.MaxDrainTimeout {
+					return cfg, fmt.Errorf("drain_timeout: %s exceeds maximum %s", d, audit.MaxDrainTimeout)
+				}
+				cfg.DrainTimeout = d
+			}
+		case "validation_mode":
+			var s string
+			if err := val.Decode(&s); err != nil {
+				return cfg, fmt.Errorf("validation_mode: %w", err)
+			}
+			if s != "" {
+				switch audit.ValidationMode(s) {
+				case audit.ValidationStrict, audit.ValidationWarn, audit.ValidationPermissive:
+					cfg.ValidationMode = audit.ValidationMode(s)
+				default:
+					return cfg, fmt.Errorf("validation_mode: unknown mode %q (valid: strict, warn, permissive)", s)
+				}
+			}
+		case "omit_empty":
+			var v bool
+			if err := val.Decode(&v); err != nil {
+				var s string
+				if sErr := val.Decode(&s); sErr != nil {
+					return cfg, fmt.Errorf("omit_empty: %w", err)
+				}
+				parsed, pErr := strconv.ParseBool(s)
+				if pErr != nil {
+					return cfg, fmt.Errorf("omit_empty: invalid boolean %q: %w", s, pErr)
+				}
+				v = parsed
+			}
+			cfg.OmitEmpty = v
+		default:
+			return cfg, fmt.Errorf("unknown field %q", key)
+		}
+	}
+	return cfg, nil
+}
+
+// defaultLoggerConfig returns an audit.Config with sensible defaults
+// for when the logger: section is omitted from YAML.
+func defaultLoggerConfig() audit.Config {
+	return audit.Config{
+		Version: 1,
+		Enabled: true,
+	}
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
-func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop // YAML field dispatch
+func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
 	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
 		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
 	}
@@ -240,6 +370,7 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop 
 	var (
 		version        int
 		defaultFmtNode *yaml.Node
+		loggerNode     *yaml.Node
 		result         topLevel
 	)
 	for i := 0; i+1 < len(root.Content); i += 2 {
@@ -252,6 +383,8 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop 
 			}
 		case "default_formatter":
 			defaultFmtNode = val
+		case "logger":
+			loggerNode = val
 		case "outputs":
 			result.outputsNode = val
 		default:
@@ -262,6 +395,19 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop 
 	if version != 1 {
 		return nil, fmt.Errorf("%w: unsupported version %d (expected 1)",
 			ErrOutputConfigInvalid, version)
+	}
+
+	if loggerNode != nil {
+		if err := expandEnvInNode(loggerNode, "logger"); err != nil {
+			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
+		}
+		cfg, err := parseLoggerConfig(loggerNode)
+		if err != nil {
+			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
+		}
+		result.config = cfg
+	} else {
+		result.config = defaultLoggerConfig()
 	}
 
 	if defaultFmtNode != nil {

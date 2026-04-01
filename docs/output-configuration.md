@@ -14,6 +14,16 @@ This is a complete reference for everything that can go in an
 ```yaml
 version: 1
 
+# ── Logger Configuration (optional) ────────────────────────
+# Core logger settings. If omitted, sensible defaults are used.
+
+logger:
+  enabled: true                    # default: true (set false to disable auditing)
+  buffer_size: 10000               # default: 10,000 (max: 1,000,000)
+  drain_timeout: "5s"              # default: "5s" (max: "60s")
+  validation_mode: strict          # "strict" (default), "warn", "permissive"
+  omit_empty: false                # default: false
+
 # ── Default Formatter (optional) ───────────────────────────
 # Applies to all outputs that don't specify their own formatter.
 # If omitted, JSON with RFC 3339 nanosecond timestamps is used.
@@ -117,8 +127,31 @@ outputs:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Must be `1`. Schema version for future migration. |
+| `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
 | `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
+
+## ⚙️ Logger Configuration
+
+The optional `logger:` section configures the core audit logger. All
+fields are optional — omitted fields use sensible defaults.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `true` | Set `false` to disable audit logging entirely (no-op logger). |
+| `buffer_size` | `10000` | Async channel capacity. Events dropped when full. Maximum: 1,000,000. |
+| `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
+| `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
+| `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no `default_formatter` or per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
+
+All values support environment variable substitution:
+
+```yaml
+logger:
+  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
+  enabled: ${AUDIT_ENABLED:-true}
+```
 
 ## 📦 Output Block
 
@@ -310,12 +343,12 @@ var outputsYAML []byte
 
 result, err := outputconfig.Load(outputsYAML, &taxonomy, metrics)
 if err != nil {
-    log.Fatal(err)  // fail hard — partial configs are never returned
+    return fmt.Errorf("audit config: %w", err)
 }
 
 opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 opts = append(opts, result.Options...)
-logger, err := audit.NewLogger(cfg, opts...)
+logger, err := audit.NewLogger(result.Config, opts...)
 ```
 
 ## 📚 Further Reading

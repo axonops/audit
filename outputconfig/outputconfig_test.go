@@ -15,10 +15,12 @@
 package outputconfig_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +28,7 @@ import (
 	audit "github.com/axonops/go-audit"
 	_ "github.com/axonops/go-audit/file" // register file factory
 	"github.com/axonops/go-audit/outputconfig"
+	"go.uber.org/goleak"
 )
 
 func testTaxonomy(t *testing.T) audit.Taxonomy {
@@ -439,6 +442,7 @@ outputs:
 }
 
 func TestLoad_OptionsContainWithNamedOutput(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	yaml := []byte(`
 version: 1
 outputs:
@@ -586,6 +590,7 @@ func TestLoad_MissingEnvVarInRoute(t *testing.T) {
 }
 
 func TestLoad_EndToEnd_EventsFlowThrough(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	dir := t.TempDir()
 	yamlCfg := []byte(`
 version: 1
@@ -935,4 +940,289 @@ outputs:
 	// Verify the labels are stored and will be passed through.
 	require.Len(t, result.Outputs, 1)
 	assert.Equal(t, []string{"pii"}, result.Outputs[0].ExcludeLabels)
+}
+
+// ---------------------------------------------------------------------------
+// Logger config from YAML (#183)
+// ---------------------------------------------------------------------------
+
+func TestLoad_LoggerConfig_Defaults(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, result.Config.Version)
+	assert.True(t, result.Config.Enabled)
+	assert.Equal(t, 0, result.Config.BufferSize, "zero means applyDefaults will set 10000")
+	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "zero means applyDefaults will set 5s")
+	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
+	assert.False(t, result.Config.OmitEmpty)
+}
+
+func TestLoad_LoggerConfig_AllFields(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  enabled: true
+  buffer_size: 50000
+  drain_timeout: "30s"
+  validation_mode: warn
+  omit_empty: true
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, result.Config.Version)
+	assert.True(t, result.Config.Enabled)
+	assert.Equal(t, 50000, result.Config.BufferSize)
+	assert.Equal(t, 30*time.Second, result.Config.DrainTimeout)
+	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
+	assert.True(t, result.Config.OmitEmpty)
+}
+
+func TestLoad_LoggerConfig_PartialFields(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  buffer_size: 25000
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 25000, result.Config.BufferSize)
+	assert.True(t, result.Config.Enabled, "default enabled")
+	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "default drain timeout")
+}
+
+func TestLoad_LoggerConfig_EnabledFalse(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  enabled: false
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.False(t, result.Config.Enabled)
+}
+
+func TestLoad_LoggerConfig_EnvVars(t *testing.T) {
+	t.Setenv("TEST_BUFFER_SIZE", "75000")
+	t.Setenv("TEST_DRAIN_TIMEOUT", "15s")
+
+	data := []byte(`
+version: 1
+logger:
+  buffer_size: ${TEST_BUFFER_SIZE}
+  drain_timeout: "${TEST_DRAIN_TIMEOUT}"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 75000, result.Config.BufferSize)
+	assert.Equal(t, 15*time.Second, result.Config.DrainTimeout)
+}
+
+func TestLoad_LoggerConfig_EnvVars_Boolean(t *testing.T) {
+	t.Setenv("TEST_ENABLED", "false")
+	t.Setenv("TEST_OMIT_EMPTY", "true")
+
+	data := []byte(`
+version: 1
+logger:
+  enabled: ${TEST_ENABLED}
+  omit_empty: ${TEST_OMIT_EMPTY}
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.False(t, result.Config.Enabled)
+	assert.True(t, result.Config.OmitEmpty)
+}
+
+func TestLoad_LoggerConfig_NotAMapping(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger: "not a mapping"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "logger")
+}
+
+func TestLoad_LoggerConfig_UnknownField(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  enabled: true
+  bogus_field: 42
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "logger")
+}
+
+func TestLoad_LoggerConfig_NegativeBufferSize(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  buffer_size: -1
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "non-negative")
+}
+
+func TestLoad_LoggerConfig_BufferSizeExceedsMax(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  buffer_size: 2000000
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestLoad_LoggerConfig_NegativeDrainTimeout(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  drain_timeout: "-5s"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "non-negative")
+}
+
+func TestLoad_LoggerConfig_DrainTimeoutExceedsMax(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  drain_timeout: "120s"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "exceeds maximum")
+}
+
+func TestLoad_LoggerConfig_InvalidDrainTimeout(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  drain_timeout: "not-a-duration"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "duration")
+}
+
+func TestLoad_LoggerConfig_InvalidValidationMode(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+logger:
+  validation_mode: invalid
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "unknown mode")
+}
+
+func TestLoad_LoggerConfig_ValidationModes(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"strict", "warn", "permissive"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			data := []byte(fmt.Sprintf(`
+version: 1
+logger:
+  validation_mode: %s
+outputs:
+  console:
+    type: stdout
+`, mode))
+			tax := testTaxonomy(t)
+			result, err := outputconfig.Load(data, &tax, nil)
+			require.NoError(t, err)
+			assert.Equal(t, audit.ValidationMode(mode), result.Config.ValidationMode)
+		})
+	}
 }

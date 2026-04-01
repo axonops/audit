@@ -7,6 +7,7 @@ require (
 	github.com/axonops/go-audit/file v0.1.0
 	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/goleak v1.3.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

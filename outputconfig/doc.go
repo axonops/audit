@@ -35,12 +35,19 @@
 //
 // # YAML Schema
 //
-// The configuration document has three top-level keys:
+// The configuration document has four top-level keys:
 //
 //	version: 1                      # required, must be 1
+//	logger:                         # optional, core logger settings
+//	  enabled: true                 # default: true
+//	  buffer_size: 10000            # default: 10,000 (max: 1,000,000)
+//	  drain_timeout: "5s"           # default: "5s" (max: "60s")
+//	  validation_mode: strict       # "strict" (default), "warn", "permissive"
+//	  omit_empty: false             # default: false
 //	default_formatter:              # optional, applies to all outputs
 //	  type: json                    # "json" or "cef"
 //	  timestamp: rfc3339nano        # "rfc3339nano" or "unix_ms"
+//	  omit_empty: false             # default: false
 //	outputs:                        # required, map of named outputs
 //	  audit_log:
 //	    type: file                  # registered output type
@@ -66,14 +73,12 @@
 //
 //	result, err := outputconfig.Load(yamlData, &taxonomy, metrics)
 //	if err != nil {
-//	    log.Fatal(err)
+//	    return fmt.Errorf("audit config: %w", err)
 //	}
 //
-//	logger, err := audit.NewLogger(
-//	    audit.Config{Version: 1, Enabled: true},
-//	    audit.WithTaxonomy(taxonomy),
-//	    result.Options...,
-//	)
+//	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
+//	opts = append(opts, result.Options...)
+//	logger, err := audit.NewLogger(result.Config, opts...)
 //
 // [Load] fails hard on any configuration error — partial configurations
 // are never returned. This ensures that a misconfigured output does not

@@ -161,7 +161,6 @@ func assertTaxonomyHasCategory(tc *AuditTestContext, category string) error {
 	return nil
 }
 
-
 func assertTaxonomyEventRequires(tc *AuditTestContext, eventType, field string) error {
 	def, ok := tc.Taxonomy.Events[eventType]
 	if !ok {

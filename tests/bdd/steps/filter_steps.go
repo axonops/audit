@@ -76,7 +76,6 @@ func registerFilterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
-
 	ctx.Step(`^I enable category "([^"]*)"$`, func(category string) error {
 		tc.LastErr = tc.Logger.EnableCategory(category)
 		return nil

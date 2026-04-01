@@ -28,9 +28,11 @@ type config struct {
 	cfg            audit.Config
 }
 
-// WithConfig overrides the default [audit.Config]. Version is set to 1
-// if its zero value is provided; all other fields use the caller's
-// values (including Enabled, which defaults to false if not set).
+// WithConfig overrides the entire default [audit.Config]. Only
+// Version is normalised: if the caller passes Version=0, it is
+// set to 1. All other fields — including Enabled and BufferSize —
+// take the caller's values directly. The test defaults
+// (Enabled=true, BufferSize=1000) are NOT preserved.
 func WithConfig(cfg audit.Config) Option {
 	return func(c *config) { c.cfg = cfg }
 }
@@ -72,7 +74,9 @@ func NewLoggerQuick(tb testing.TB, eventTypes ...string) (*audit.Logger, *Record
 
 // QuickTaxonomy builds a minimal [audit.Taxonomy] where every listed
 // event type accepts any fields. All events are in a single enabled
-// category ("test"). Validation mode is permissive.
+// category ("test"). The returned taxonomy does not enforce required
+// fields; pair it with [audit.ValidationPermissive] (as [NewLoggerQuick]
+// does) for fully unconstrained testing.
 func QuickTaxonomy(eventTypes ...string) audit.Taxonomy {
 	events := make(map[string]*audit.EventDef, len(eventTypes))
 	for _, et := range eventTypes {

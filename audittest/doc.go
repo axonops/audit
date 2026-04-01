@@ -27,7 +27,7 @@
 //	func TestMyHandler(t *testing.T) {
 //	    logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
 //	    myHandler(logger) // code under test
-//	    logger.Close()    // drain async buffer
+//	    require.NoError(t, logger.Close()) // drain async buffer
 //
 //	    require.Equal(t, 1, events.Count())
 //	    assert.Equal(t, "user_create", events.Events()[0].EventType)

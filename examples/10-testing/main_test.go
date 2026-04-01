@@ -77,7 +77,7 @@ func TestLogin_Success_NoAuditEvent(t *testing.T) {
 	assert.Equal(t, 0, events.Count())
 }
 
-// --- Pattern 2: Quick smoke test without a taxonomy ---
+// --- Pattern 2: Quick smoke test (permissive taxonomy, any fields accepted) ---
 
 func TestAuditEventEmitted_Quick(t *testing.T) {
 	// NewLoggerQuick creates a permissive logger — any fields accepted.

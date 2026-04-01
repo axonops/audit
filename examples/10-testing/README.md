@@ -6,7 +6,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## What You'll Learn
 
 - Using `audittest.NewLogger` for full integration tests
-- Using `audittest.NewLoggerQuick` for smoke tests without a taxonomy
+- Using `audittest.NewLoggerQuick` for smoke tests with a permissive taxonomy
 - Asserting on captured events and metrics
 - Table-driven tests with `Reset()`
 - Testing validation error paths
@@ -26,6 +26,9 @@ an in-memory test logger that captures events and metrics for assertion.
 | `main_test.go` | Tests using audittest |
 
 ## Key Concepts
+
+The patterns below address the core challenge of testing async audit
+pipelines. Each pattern maps to a distinct testing need.
 
 ### The Testing Problem
 
@@ -131,6 +134,9 @@ for _, tc := range tests {
 }
 ```
 
+When sharing a logger across sub-tests without calling Close(), use
+`require.Eventually` to wait for the async drain.
+
 ### RecordedEvent API
 
 Each captured event provides structured access:
@@ -144,6 +150,7 @@ Each captured event provides structured access:
 | `evt.Field(key)` | `any` | Single field value (nil if absent) |
 | `evt.HasField(key, val)` | `bool` | Deep-equal check on field value |
 | `evt.RawJSON` | `[]byte` | Original serialised bytes |
+| `evt.ParseErr` | `error` | JSON deserialisation error (nil on success) |
 
 ### Dependency Injection
 

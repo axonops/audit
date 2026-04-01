@@ -46,6 +46,9 @@ type RecordedEvent struct { //nolint:govet // readability over alignment
 	// RawJSON is the original serialised bytes for format-level assertions.
 	RawJSON []byte
 	// ParseErr holds any error from JSON deserialisation of the raw bytes.
+	// When non-nil, EventType, Severity, Timestamp, and Fields are all
+	// zero-valued. Tests SHOULD assert ParseErr == nil before inspecting
+	// other fields to avoid masking serialisation bugs.
 	ParseErr error
 }
 
@@ -103,8 +106,9 @@ func (r *Recorder) Name() string { return "recorder" }
 // not own any resources.
 func (r *Recorder) Close() error { return nil }
 
-// Events returns all recorded events in drain order. Call after
-// [audit.Logger.Close] to ensure all events have been processed.
+// Events returns a snapshot of all recorded events in drain order.
+// The returned slice is a copy; later Reset calls do not affect it.
+// Call after [audit.Logger.Close] to ensure all events have been processed.
 func (r *Recorder) Events() []RecordedEvent {
 	r.mu.Lock()
 	defer r.mu.Unlock()

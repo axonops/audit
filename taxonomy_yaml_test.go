@@ -39,9 +39,6 @@ categories:
     - schema_delete
   security:
     - auth_failure
-default_enabled:
-  - write
-  - security
 events:
   schema_read:
     fields:
@@ -95,8 +92,6 @@ func TestParseTaxonomyYAML_ValidFull(t *testing.T) {
 	assert.Equal(t, []string{"actor_id", "outcome", "subject"}, tax.Events["schema_register"].Required)
 	assert.Equal(t, []string{"schema_type"}, tax.Events["schema_register"].Optional)
 
-	assert.Contains(t, tax.DefaultEnabled, "write")
-	assert.Contains(t, tax.DefaultEnabled, "security")
 }
 
 func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
@@ -107,9 +102,6 @@ func TestParseTaxonomyYAML_ValidMinimal(t *testing.T) {
 	assert.Equal(t, 1, tax.Version)
 	assert.Contains(t, tax.Events, "deploy")
 	// Lifecycle events injected.
-	assert.Contains(t, tax.Events, "startup")
-	assert.Contains(t, tax.Events, "shutdown")
-	assert.Contains(t, tax.Categories, "lifecycle")
 }
 
 func TestParseTaxonomyYAML_OptionalFieldsOmitted(t *testing.T) {
@@ -138,31 +130,6 @@ func TestParseTaxonomyYAML_RoundTripEquivalence(t *testing.T) {
 	assert.Equal(t, 1, yamlTax.Version)
 	assert.Contains(t, yamlTax.Events["deploy"].Categories, "ops")
 	assert.Equal(t, []string{"outcome"}, yamlTax.Events["deploy"].Required)
-	assert.Contains(t, yamlTax.Events, "startup")
-	assert.Contains(t, yamlTax.Events, "shutdown")
-	assert.Contains(t, yamlTax.Events["startup"].Categories, "lifecycle")
-}
-
-func TestParseTaxonomyYAML_DefaultEnabledEmpty(t *testing.T) {
-	t.Parallel()
-	yml := `
-version: 1
-categories:
-  ops:
-    - deploy
-default_enabled: []
-events:
-  deploy:
-    fields:
-      outcome: {required: true}
-`
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-
-	// lifecycle is always added to DefaultEnabled.
-	assert.Contains(t, tax.DefaultEnabled, "lifecycle")
-	// Original empty list should not contain "ops".
-	assert.NotContains(t, tax.DefaultEnabled, "ops")
 }
 
 // --- Input validation ---
@@ -425,38 +392,18 @@ events:
 	assert.Empty(t, tax.Events["orphan"].Categories, "orphan should have no categories")
 }
 
-func TestParseTaxonomyYAML_DefaultEnabledNonExistentCategory(t *testing.T) {
-	t.Parallel()
-	yml := `
-version: 1
-categories:
-  ops:
-    - deploy
-default_enabled:
-  - ops
-  - nonexistent
-events:
-  deploy:
-`
-	_, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "does not exist")
-}
-
 func TestParseTaxonomyYAML_EmptyCategories(t *testing.T) {
 	t.Parallel()
-	// Empty categories + events still passes because lifecycle injection
-	// adds the lifecycle category with startup/shutdown events.
+	// Empty categories + events fails validation — at least one category
+	// is required.
 	yml := `
 version: 1
 categories: {}
 events: {}
 `
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-	assert.Contains(t, tax.Categories, "lifecycle")
-	assert.Contains(t, tax.Events, "startup")
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 }
 
 // --- Additional edge cases from deep review ---
@@ -513,27 +460,24 @@ events:
 
 func TestParseTaxonomyYAML_MissingCategoriesKey(t *testing.T) {
 	t.Parallel()
-	// categories key absent entirely — lifecycle injection saves it.
 	yml := `
 version: 1
 events: {}
 `
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-	assert.Contains(t, tax.Categories, "lifecycle")
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 }
 
 func TestParseTaxonomyYAML_MissingEventsKey(t *testing.T) {
 	t.Parallel()
-	// events key absent entirely — lifecycle injection adds startup/shutdown.
 	yml := `
 version: 1
 categories: {}
 `
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-	assert.Contains(t, tax.Events, "startup")
-	assert.Contains(t, tax.Events, "shutdown")
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 }
 
 // --- Edge cases ---
@@ -561,39 +505,7 @@ func TestParseTaxonomyYAML_LargeTaxonomy(t *testing.T) {
 
 	tax, err := audit.ParseTaxonomyYAML([]byte(b.String()))
 	require.NoError(t, err)
-	assert.Equal(t, numCategories*eventsPerCategory+2, len(tax.Events)) // +2 for lifecycle
-}
-
-func TestParseTaxonomyYAML_LifecycleEventsUserDefined(t *testing.T) {
-	t.Parallel()
-	yml := `
-version: 1
-categories:
-  lifecycle:
-    - startup
-    - shutdown
-  ops:
-    - deploy
-default_enabled:
-  - lifecycle
-  - ops
-events:
-  startup:
-    fields:
-      custom_startup_field: {required: true}
-  shutdown:
-    fields:
-      custom_shutdown_field: {required: true}
-  deploy:
-    fields:
-      outcome: {required: true}
-`
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-
-	// User-defined lifecycle events should be preserved.
-	assert.Equal(t, []string{"custom_startup_field"}, tax.Events["startup"].Required)
-	assert.Equal(t, []string{"custom_shutdown_field"}, tax.Events["shutdown"].Required)
+	assert.Equal(t, numCategories*eventsPerCategory, len(tax.Events))
 }
 
 func TestParseTaxonomyYAML_EventWithEmptyRequiredOptional(t *testing.T) {
@@ -702,7 +614,6 @@ events:
     description: "A new user account was created"
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
 	require.NoError(t, err)
@@ -719,25 +630,10 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
 	require.NoError(t, err)
 	assert.Equal(t, "", tax.Events["user_create"].Description)
-}
-
-func TestInjectLifecycleEvents_SetsDescriptions(t *testing.T) {
-	tax := audit.Taxonomy{
-		Version:    1,
-		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"user_create"}}},
-		Events: map[string]*audit.EventDef{
-			"user_create": {Required: []string{"outcome"}},
-		},
-		DefaultEnabled: []string{"write"},
-	}
-	audit.InjectLifecycleEvents(&tax)
-	assert.Equal(t, "Application started", tax.Events["startup"].Description)
-	assert.Equal(t, "Application shutting down", tax.Events["shutdown"].Description)
 }
 
 func TestPrecomputeTaxonomy_DescriptionNotInKnownFields(t *testing.T) {
@@ -752,7 +648,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
 	require.NoError(t, err)

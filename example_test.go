@@ -23,37 +23,58 @@ import (
 )
 
 func ExampleNewLogger() {
-	taxonomy := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string]*audit.CategoryDef{
-			"write":    {Events: []string{"user_create"}},
-			"security": {Events: []string{"auth_failure"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create":  {Required: []string{"outcome", "actor_id"}},
-			"auth_failure": {Required: []string{"outcome", "actor_id"}},
-		},
-		DefaultEnabled: []string{"write", "security"},
+	// Create a stdout output that writes to a buffer for this example.
+	var buf bytes.Buffer
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(taxonomy),
+		audit.WithTaxonomy(audit.Taxonomy{
+			Version: 1,
+			Categories: map[string]*audit.CategoryDef{
+				"write": {Events: []string{"user_create"}},
+			},
+			Events: map[string]*audit.EventDef{
+				"user_create": {Required: []string{"outcome", "actor_id"}},
+			},
+		}),
+		audit.WithOutputs(stdout),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if err := logger.Close(); err != nil {
-			log.Printf("audit close: %v", err)
-		}
-	}()
 
-	fmt.Println("logger created")
-	// Output: logger created
+	// Emit an event — it will be written to the buffer as a JSON line.
+	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})); err != nil {
+		log.Fatal(err)
+	}
+
+	// Close drains the async buffer so all events are flushed.
+	if err := logger.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	// The buffer now contains the JSON-serialised event.
+	fmt.Println("has event_type:", bytes.Contains(buf.Bytes(), []byte(`"event_type":"user_create"`)))
+	fmt.Println("has actor_id:", bytes.Contains(buf.Bytes(), []byte(`"actor_id":"alice"`)))
+	// Output:
+	// has event_type: true
+	// has actor_id: true
 }
 
 func ExampleLogger_AuditEvent() {
+	var buf bytes.Buffer
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
@@ -62,25 +83,28 @@ func ExampleLogger_AuditEvent() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
+		audit.WithOutputs(stdout),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("audit close: %v", closeErr)
-		}
-	}()
 
 	if err = logger.AuditEvent(audit.NewEvent("doc_create", audit.Fields{"outcome": "success"})); err != nil {
 		fmt.Println("audit error:", err)
 		return
 	}
 
-	fmt.Println("event emitted")
-	// Output: event emitted
+	if err = logger.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	// The event is now in the buffer as a JSON line.
+	fmt.Println("has event_type:", bytes.Contains(buf.Bytes(), []byte(`"event_type":"doc_create"`)))
+	fmt.Println("has outcome:", bytes.Contains(buf.Bytes(), []byte(`"outcome":"success"`)))
+	// Output:
+	// has event_type: true
+	// has outcome: true
 }
 
 func ExampleLogger_MustHandle() {
@@ -92,7 +116,6 @@ func ExampleLogger_MustHandle() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -129,7 +152,6 @@ func ExampleLogger_EnableCategory() {
 				"doc_read":   {Required: []string{"outcome"}},
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -160,7 +182,6 @@ func ExampleLogger_Close() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -199,7 +220,6 @@ func ExampleWithFormatter() {
 			Events: map[string]*audit.EventDef{
 				"auth_failure": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"security"},
 		}),
 		audit.WithFormatter(cef),
 	)
@@ -269,7 +289,6 @@ func ExampleLogger_SetOutputRoute() {
 				"user_create":  {Required: []string{"outcome"}},
 				"auth_failure": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write", "security"},
 		}),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)

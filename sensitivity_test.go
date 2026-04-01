@@ -56,7 +56,6 @@ events:
       outcome: {required: true}
       email: {}
       card_number: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -78,7 +77,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -99,7 +97,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -127,7 +124,6 @@ events:
     fields:
       outcome: {required: true}
       email: {}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -150,7 +146,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -173,7 +168,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -196,7 +190,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -219,7 +212,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -242,7 +234,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -267,7 +258,6 @@ events:
       outcome: {required: true}
       email:
         labels: [nonexistent]
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -292,7 +282,6 @@ events:
       outcome: {required: true}
       timestamp:
         labels: [pii]
-default_enabled: [write]
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
@@ -321,7 +310,6 @@ events:
       outcome: {required: true}
       email:
         labels: [pii]
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -350,7 +338,6 @@ events:
       outcome: {required: true}
       email: {}
       source_ip: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -379,7 +366,6 @@ events:
       card_number: {}
       card_expiry: {}
       merchant: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -415,7 +401,6 @@ events:
       email:
         labels: [confidential]
       contact_email: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -449,7 +434,6 @@ events:
     fields:
       outcome: {required: true}
       email: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -476,7 +460,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -508,7 +491,6 @@ events:
       phone_number: {}
       card_number: {}
       nickname: {}
-default_enabled: [write]
 `
 
 func TestFieldStripping_SingleLabel(t *testing.T) {
@@ -683,7 +665,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       email: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -733,7 +714,6 @@ events:
   user_create:
     fields:
       outcome: {required: true}
-default_enabled: [write]
 `))
 	require.NoError(t, err)
 
@@ -765,7 +745,6 @@ events:
     fields:
       outcome: {required: true}
       email: {}
-default_enabled: [write]
 `))
 	require.NoError(t, err)
 
@@ -804,7 +783,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -1037,7 +1015,6 @@ events:
       outcome: {required: true}
       email: {}
       reason: {}
-default_enabled: [write]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -1071,7 +1048,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       email: {}
-default_enabled: [write]
 `
 	benchAuditWithExclusions(b, yml, nil)
 }
@@ -1092,7 +1068,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       email: {}
-default_enabled: [write]
 `
 	benchAuditWithExclusions(b, yml, nil)
 }
@@ -1113,7 +1088,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       email: {}
-default_enabled: [write]
 `
 	benchAuditWithExclusions(b, yml, []string{"pii"})
 }
@@ -1134,7 +1108,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       email: {}
-default_enabled: [write]
 `
 	benchAuditWithExclusions(b, yml, []string{"pii"})
 }

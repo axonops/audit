@@ -42,9 +42,6 @@ categories:
     - auth_failure
   compliance:
     - auth_failure
-default_enabled:
-  - security
-  - compliance
 events:
   auth_failure:
     fields:
@@ -71,9 +68,6 @@ categories:
   security:
     severity: 8
     events: [auth_failure]
-default_enabled:
-  - security
-  - compliance
 events:
   auth_failure:
     fields:
@@ -94,8 +88,6 @@ categories:
   security:
     severity: %d
     events: [auth_failure]
-default_enabled:
-  - security
 events:
   auth_failure:
     severity: %d

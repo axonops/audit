@@ -25,11 +25,9 @@ type Option func(*Logger) error
 // Calling it more than once replaces the taxonomy and resets all
 // runtime category and event overrides established by the previous call.
 //
-// The taxonomy is validated at startup. Lifecycle events (startup and
-// shutdown) are injected automatically if not already present.
+// The taxonomy is validated and pre-computed at construction time.
 func WithTaxonomy(t Taxonomy) Option {
 	return func(l *Logger) error {
-		InjectLifecycleEvents(&t)
 		if err := MigrateTaxonomy(&t); err != nil {
 			return err
 		}

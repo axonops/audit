@@ -70,10 +70,6 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       marker: {}
-default_enabled:
-  - write
-  - read
-  - security
 `
 
 func registerFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

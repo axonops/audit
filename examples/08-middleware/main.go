@@ -67,7 +67,6 @@ func main() {
 				Optional: []string{"actor_id", "target_id", "source_ip", "status_code", "duration_ms"},
 			},
 		},
-		DefaultEnabled: []string{"access"},
 	}
 
 	// Capture audit output in a buffer so we can print it at the end.

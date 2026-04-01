@@ -15,6 +15,27 @@
 // Package syslog provides an RFC 5424 syslog [audit.Output] implementation
 // supporting TCP, UDP, and TCP+TLS (including mTLS) transport.
 //
+// # Construction
+//
+// [New] dials the syslog server immediately — the server must be
+// reachable at construction time:
+//
+//	out, err := syslog.New(&syslog.Config{
+//	    Network: "tcp+tls",
+//	    Address: "syslog.example.com:6514",
+//	    TLSCA:   "/etc/audit/ca.pem",
+//	}, nil) // optional syslog.Metrics
+//
+// Valid [Config.Network] values: "tcp" (default), "udp", "tcp+tls".
+// Use "tcp+tls" with [Config.TLSCert] and [Config.TLSKey] for mTLS.
+//
+// # Reconnection
+//
+// TCP and TLS connections are re-established automatically on write
+// failure, up to [Config.MaxRetries] attempts (default 10). UDP is
+// connectionless and does not reconnect, but messages exceeding the
+// UDP MTU are silently truncated by the network.
+//
 // Recommended import alias:
 //
 //	import auditsyslog "github.com/axonops/go-audit/syslog"

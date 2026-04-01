@@ -34,7 +34,6 @@ func ExampleMiddleware() {
 				Optional: []string{"actor_id", "method", "path", "status_code"},
 			},
 		},
-		DefaultEnabled: []string{"access"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -94,7 +93,6 @@ func ExampleMiddleware_skip() {
 				Optional: []string{"path"},
 			},
 		},
-		DefaultEnabled: []string{"access"},
 	}
 
 	logger, err := audit.NewLogger(

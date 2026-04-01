@@ -10,12 +10,12 @@ Feature: Event Filtering
   overrides always take precedence over category state.
 
   Background:
-    Given a taxonomy with categories "write" and "security" where only "write" is enabled
+    Given a taxonomy with categories "write" and "security"
     And a logger with stdout output
 
   # --- Category-level filtering ---
 
-  Scenario: Events in enabled categories are delivered
+  Scenario: All categories are enabled by default
     When I audit event "user_create" with required fields
     Then the event should be delivered successfully
     And the output should contain an event matching:
@@ -26,12 +26,14 @@ Feature: Event Filtering
       | marker     |             |
 
   Scenario: Events in disabled categories are silently discarded
+    Given I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the audit call should return no error
     And no events should be delivered
 
-  Scenario: Enabling a disabled category starts delivery
-    Given I enable category "security"
+  Scenario: Re-enabling a disabled category starts delivery
+    Given I disable category "security"
+    And I enable category "security"
     When I audit event "auth_failure" with required fields
     Then the event should be delivered successfully
     And the output should contain an event matching:
@@ -47,17 +49,11 @@ Feature: Event Filtering
     Then the audit call should return no error
     And no events should be delivered
 
-  Scenario: Empty DefaultEnabled disables all non-lifecycle events
-    Given a taxonomy with all categories disabled by default
-    And a logger with stdout output
-    When I audit event "user_create" with required fields
-    Then the audit call should return no error
-    And no events should be delivered
-
   # --- Per-event overrides ---
 
   Scenario: EnableEvent overrides disabled category
-    Given I enable event "auth_failure"
+    Given I disable category "security"
+    And I enable event "auth_failure"
     When I audit event "auth_failure" with required fields
     Then the event should be delivered successfully
 

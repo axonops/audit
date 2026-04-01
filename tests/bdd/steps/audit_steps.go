@@ -73,9 +73,6 @@ events:
       marker: {}
       resource: {}
 
-default_enabled:
-  - write
-  - security
 `
 
 func registerAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

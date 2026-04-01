@@ -30,9 +30,6 @@ categories:
     - user_create
   security:
     - auth_failure
-default_enabled:
-  - write
-  - security
 events:
   user_create:
     fields:
@@ -53,7 +50,7 @@ events:
 	fmt.Println("events:", len(tax.Events))
 	// Output:
 	// version: 1
-	// events: 4
+	// events: 2
 }
 
 func ExampleParseTaxonomyYAML_validation() {
@@ -104,7 +101,6 @@ events:
       email: {}
       card_number: {}
       contact_email: {}
-default_enabled: [write]
 `)
 
 	tax, err := audit.ParseTaxonomyYAML(data)

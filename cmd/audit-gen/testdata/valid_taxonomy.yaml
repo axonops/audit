@@ -8,9 +8,6 @@ categories:
     - schema_delete
   security:
     - auth_failure
-default_enabled:
-  - write
-  - security
 events:
   schema_read:
     fields:

@@ -23,8 +23,8 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
-// filteringTaxonomyYAML is a taxonomy with write enabled and security
-// disabled by default, used by event filtering scenarios.
+// filteringTaxonomyYAML is a taxonomy with write and security categories,
+// used by event filtering scenarios. All categories are enabled by default.
 const filteringTaxonomyYAML = `
 version: 1
 
@@ -58,33 +58,6 @@ events:
       actor_id: {required: true}
       marker: {}
 
-default_enabled:
-  - write
-`
-
-// allDisabledTaxonomyYAML has no categories in default_enabled.
-const allDisabledTaxonomyYAML = `
-version: 1
-
-categories:
-  write:
-    - user_create
-  security:
-    - auth_failure
-
-events:
-  user_create:
-    fields:
-      outcome: {required: true}
-      actor_id: {required: true}
-      marker: {}
-  auth_failure:
-    fields:
-      outcome: {required: true}
-      actor_id: {required: true}
-      marker: {}
-
-default_enabled: []
 `
 
 func registerFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -94,19 +67,10 @@ func registerFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFilterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a taxonomy with categories "write" and "security" where only "write" is enabled$`, func() error {
+	ctx.Step(`^a taxonomy with categories "write" and "security"$`, func() error {
 		tax, err := audit.ParseTaxonomyYAML([]byte(filteringTaxonomyYAML))
 		if err != nil {
 			return fmt.Errorf("parse filtering taxonomy: %w", err)
-		}
-		tc.Taxonomy = tax
-		return nil
-	})
-
-	ctx.Step(`^a taxonomy with all categories disabled by default$`, func() error {
-		tax, err := audit.ParseTaxonomyYAML([]byte(allDisabledTaxonomyYAML))
-		if err != nil {
-			return fmt.Errorf("parse all-disabled taxonomy: %w", err)
 		}
 		tc.Taxonomy = tax
 		return nil

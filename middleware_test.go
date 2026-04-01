@@ -51,7 +51,6 @@ func middlewareTaxonomy() audit.Taxonomy {
 				},
 			},
 		},
-		DefaultEnabled: []string{"access"},
 	}
 }
 

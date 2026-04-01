@@ -27,8 +27,6 @@ version: 1
 categories:
   write:
     - user_create
-default_enabled:
-  - write
 events:
   user_create:
     fields:

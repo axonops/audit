@@ -166,13 +166,6 @@ type Taxonomy struct {
 	// disabled with zero overhead.
 	Sensitivity *SensitivityConfig
 
-	// DefaultEnabled lists category names that are enabled at startup.
-	// Events in categories not listed here are silently discarded
-	// unless explicitly enabled at runtime via [Logger.EnableCategory].
-	// An empty slice means all non-lifecycle categories are disabled;
-	// all events will be silently discarded until enabled at runtime.
-	DefaultEnabled []string
-
 	// Version is the taxonomy schema version. MUST be > 0. Currently
 	// only version 1 is supported; higher values cause [WithTaxonomy]
 	// to return an error wrapping [ErrTaxonomyInvalid].
@@ -187,80 +180,11 @@ const (
 	// minSupportedTaxonomyVersion is the oldest taxonomy schema
 	// version the library can migrate from.
 	minSupportedTaxonomyVersion = 1
-
-	// lifecycleCategory is the category name used for framework-
-	// provided lifecycle events.
-	lifecycleCategory = "lifecycle"
 )
 
 // ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
 // validation failures.
 var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
-
-// InjectLifecycleEvents adds the "lifecycle" category with "startup"
-// and "shutdown" events to t if they are not already defined:
-//
-//   - startup:  required [app_name], optional [version, config]
-//   - shutdown: required [app_name], optional [reason, uptime_ms]
-//
-// If the consumer has already defined events with these names, their
-// definitions are preserved unchanged. The "lifecycle" category is
-// always added to [Taxonomy.DefaultEnabled].
-//
-// Calling InjectLifecycleEvents multiple times is safe and idempotent.
-// [WithTaxonomy] calls it automatically; it is exported so that
-// [ParseTaxonomyYAML] can apply the same
-// injection before calling [ValidateTaxonomy].
-func InjectLifecycleEvents(t *Taxonomy) {
-	if t.Categories == nil {
-		t.Categories = make(map[string]*CategoryDef)
-	}
-	if t.Events == nil {
-		t.Events = make(map[string]*EventDef)
-	}
-
-	// Ensure lifecycle category exists.
-	if _, ok := t.Categories[lifecycleCategory]; !ok {
-		t.Categories[lifecycleCategory] = &CategoryDef{}
-	}
-
-	lc := t.Categories[lifecycleCategory]
-
-	// Inject startup if not already defined.
-	if _, ok := t.Events["startup"]; !ok {
-		startupSev := 6 // Notice — application started
-		t.Events["startup"] = &EventDef{
-			Categories:  []string{lifecycleCategory},
-			Description: "Application started",
-			Severity:    &startupSev,
-			Required:    []string{"app_name"},
-			Optional:    []string{"version", "config"},
-		}
-		if !slices.Contains(lc.Events, "startup") {
-			lc.Events = append(lc.Events, "startup")
-		}
-	}
-
-	// Inject shutdown if not already defined.
-	if _, ok := t.Events["shutdown"]; !ok {
-		shutdownSev := 7 // High — audit coverage ending
-		t.Events["shutdown"] = &EventDef{
-			Categories:  []string{lifecycleCategory},
-			Description: "Application shutting down",
-			Severity:    &shutdownSev,
-			Required:    []string{"app_name"},
-			Optional:    []string{"reason", "uptime_ms"},
-		}
-		if !slices.Contains(lc.Events, "shutdown") {
-			lc.Events = append(lc.Events, "shutdown")
-		}
-	}
-
-	// Ensure lifecycle category is in DefaultEnabled.
-	if !slices.Contains(t.DefaultEnabled, lifecycleCategory) {
-		t.DefaultEnabled = append(t.DefaultEnabled, lifecycleCategory)
-	}
-}
 
 // precomputeTaxonomy populates the pre-computed fields on every
 // EventDef in the taxonomy. This includes deriving Categories from
@@ -377,7 +301,6 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkCategoryConsistency(t)...)
 	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
-	errs = append(errs, checkDefaultEnabled(t)...)
 	errs = append(errs, checkSensitivity(t)...)
 
 	if len(errs) > 0 {
@@ -468,19 +391,6 @@ func checkFieldOverlap(t Taxonomy) []string {
 					"event %q has field %q in both Required and Optional",
 					et, f))
 			}
-		}
-	}
-	return errs
-}
-
-// checkDefaultEnabled validates that DefaultEnabled references valid categories.
-func checkDefaultEnabled(t Taxonomy) []string {
-	var errs []string
-	for _, cat := range t.DefaultEnabled {
-		if _, ok := t.Categories[cat]; !ok {
-			errs = append(errs, fmt.Sprintf(
-				"DefaultEnabled references category %q which does not exist",
-				cat))
 		}
 	}
 	return errs

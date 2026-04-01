@@ -551,7 +551,6 @@ func TestGenerate_MultiLineDescription(t *testing.T) {
 				Required:    []string{"outcome"},
 			},
 		},
-		DefaultEnabled: []string{"test"},
 	}
 
 	out := generateToString(t, tax, defaultOpts())
@@ -572,7 +571,6 @@ func TestGenerate_WhitespaceOnlyDescription(t *testing.T) {
 				Required:    []string{"outcome"},
 			},
 		},
-		DefaultEnabled: []string{"test"},
 	}
 
 	out := generateToString(t, tax, defaultOpts())
@@ -790,7 +788,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-default_enabled: [security]
 `))
 	require.NoError(t, err)
 

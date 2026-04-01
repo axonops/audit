@@ -55,7 +55,6 @@ events:
     severity: 8
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -81,7 +80,6 @@ events:
   deploy:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -106,7 +104,6 @@ events:
   deploy:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -132,7 +129,6 @@ events:
     severity: 3
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -159,7 +155,6 @@ events:
     severity: 0
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -191,7 +186,6 @@ events:
   shared_event:
     fields:
       outcome: {required: true}
-default_enabled: [alpha, zeta]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -227,7 +221,6 @@ events:
   permission_denied:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -264,7 +257,6 @@ events:
   auth_failure:
     fields:
       outcome: {required: true}
-default_enabled: [read, security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -309,7 +301,6 @@ events:
   minor_alert:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -379,7 +370,6 @@ func TestValidateTaxonomy_CategorySeverityOutOfRange(t *testing.T) {
 					"deploy": {Required: []string{"outcome"}},
 				},
 			}
-			audit.InjectLifecycleEvents(&tax)
 			err := audit.ValidateTaxonomy(tax)
 
 			if tt.wantMsg != "" {
@@ -428,7 +418,6 @@ func TestValidateTaxonomy_EventSeverityOutOfRange(t *testing.T) {
 					},
 				},
 			}
-			audit.InjectLifecycleEvents(&tax)
 			err := audit.ValidateTaxonomy(tax)
 
 			if tt.wantErr {
@@ -468,7 +457,6 @@ events:
   deploy:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			wantErr:     true,
 			errContains: "out of range 0-10",
@@ -485,7 +473,6 @@ events:
     severity: -1
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			wantErr:     true,
 			errContains: "out of range 0-10",
@@ -510,7 +497,6 @@ events:
     severity: 10
     fields:
       outcome: {required: true}
-default_enabled: [low, high]
 `,
 			wantErr: false,
 		},
@@ -558,7 +544,6 @@ events:
     severity: 9
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "high_sev_event",
 			wantSeverity: 9,
@@ -575,7 +560,6 @@ events:
   sec_event:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `,
 			eventType:    "sec_event",
 			wantSeverity: 8,
@@ -591,7 +575,6 @@ events:
   plain_event:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "plain_event",
 			wantSeverity: 5,
@@ -608,7 +591,6 @@ events:
     severity: 0
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "zero_sev_event",
 			wantSeverity: 0,
@@ -656,7 +638,6 @@ events:
     severity: 7
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -695,7 +676,6 @@ events:
     severity: 7
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -743,7 +723,6 @@ events:
     severity: 8
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "deploy",
 			wantSeverity: 8,
@@ -760,7 +739,6 @@ events:
   alert:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `,
 			eventType:    "alert",
 			wantSeverity: 9,
@@ -776,7 +754,6 @@ events:
   plain:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "plain",
 			wantSeverity: 5,
@@ -793,7 +770,6 @@ events:
     severity: 0
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "low",
 			wantSeverity: 0,
@@ -844,7 +820,6 @@ events:
     severity: 7
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -888,7 +863,6 @@ events:
     description: "User authentication failed"
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -925,7 +899,6 @@ events:
   deploy:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -960,7 +933,6 @@ events:
     description: "Taxonomy description — must be overridden"
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -1004,7 +976,6 @@ events:
     severity: 10
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -1042,7 +1013,6 @@ categories:
     severity: 8
     events: [auth_failure]
     unknown_key: true
-default_enabled: [security]
 events:
   auth_failure:
     fields:
@@ -1076,69 +1046,4 @@ func TestEventDef_ResolvedSeverity_Unprecomputed(t *testing.T) {
 	sev := 8
 	def := &audit.EventDef{Severity: &sev}
 	assert.Equal(t, 5, def.ResolvedSeverity(), "unprecomputed EventDef should return default 5")
-}
-
-func TestLifecycleEvents_DefaultSeverity(t *testing.T) {
-	t.Parallel()
-	yml := `
-version: 1
-categories:
-  write:
-    - user_create
-events:
-  user_create:
-    fields:
-      outcome: {required: true}
-default_enabled: [write]
-`
-	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
-	require.NoError(t, err)
-
-	startup := tax.Events["startup"]
-	require.NotNil(t, startup, "startup event should be injected")
-	assert.Equal(t, 6, startup.ResolvedSeverity(), "startup severity should be 6")
-
-	shutdown := tax.Events["shutdown"]
-	require.NotNil(t, shutdown, "shutdown event should be injected")
-	assert.Equal(t, 7, shutdown.ResolvedSeverity(), "shutdown severity should be 7")
-}
-
-func TestLifecycleEvents_CustomCategorySeverityInheritance(t *testing.T) {
-	t.Parallel()
-	// User defines lifecycle category with custom severity.
-	// User-defined events should inherit, but the library-injected
-	// startup/shutdown have explicit severity so they should keep
-	// their own values.
-	tax := audit.Taxonomy{
-		Version: 1,
-		Categories: map[string]*audit.CategoryDef{
-			"lifecycle": {Severity: intPtr(9), Events: []string{"startup", "shutdown", "heartbeat"}},
-			"write":     {Events: []string{"user_create"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create": {Required: []string{"outcome"}},
-			"heartbeat":   {Required: []string{"outcome"}},
-		},
-		DefaultEnabled: []string{"write"},
-	}
-	audit.InjectLifecycleEvents(&tax)
-
-	// startup/shutdown have explicit severity set by InjectLifecycleEvents,
-	// so they should NOT inherit the category severity 9.
-	// But wait — InjectLifecycleEvents only injects if not already defined.
-	// Since we didn't define startup/shutdown in Events, they get injected
-	// with severity 6 and 7 respectively.
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-	)
-	require.NoError(t, err)
-	defer func() { _ = logger.Close() }()
-
-	// Injected startup has explicit severity 6 (overrides category 9).
-	assert.Equal(t, 6, tax.Events["startup"].ResolvedSeverity())
-	// Injected shutdown has explicit severity 7 (overrides category 9).
-	assert.Equal(t, 7, tax.Events["shutdown"].ResolvedSeverity())
-	// heartbeat has no severity — inherits category 9.
-	assert.Equal(t, 9, tax.Events["heartbeat"].ResolvedSeverity())
 }

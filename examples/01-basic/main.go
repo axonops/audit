@@ -44,7 +44,6 @@ func main() {
 				Required: []string{"outcome", "actor_id"},
 			},
 		},
-		DefaultEnabled: []string{"write", "security"},
 	}
 
 	// 2. Create a stdout output — events are printed as JSON lines.

@@ -12,7 +12,6 @@ in `outputs.yaml`.
 - Configuring outputs with routing, formatting, and env vars in YAML
 - Wiring Prometheus metrics into the audit pipeline
 - Using HTTP middleware with authentication and domain hints
-- Lifecycle events (startup and shutdown)
 - Graceful shutdown ordering
 
 ## Prerequisites
@@ -189,31 +188,45 @@ the request.
 Neither the auth middleware nor the handlers need a direct reference to
 the audit logger.
 
-### Lifecycle Events
+### Graceful Shutdown — Critical
+
+> **You MUST call `logger.Close()` before your application exits.**
+> If you don't, the drain goroutine is leaked and all buffered audit
+> events are lost. This is the single most important thing to get
+> right when integrating go-audit.
+
+The shutdown sequence matters — the order is:
+
+1. **Stop the HTTP server** — no new requests, no new audit events
+2. **Close the audit logger** — flushes all buffered events to every output
+3. **Exit**
 
 ```go
-logger.EmitStartup(audit.Fields{
-    FieldAppName: "crud-api",
-    FieldVersion: "0.1.0",
-})
+// Wait for SIGINT (Ctrl+C) or SIGTERM (Docker/K8s stop).
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+<-quit
+
+log.Println("shutting down...")
+
+// Step 1: Stop accepting new HTTP requests.
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+srv.Shutdown(ctx)
+
+// Step 2: Close the audit logger — THIS FLUSHES ALL PENDING EVENTS.
+// Without this call, buffered events are lost and the drain goroutine leaks.
+if err := logger.Close(); err != nil {
+    log.Printf("audit close: %v", err)
+}
+
+log.Println("shutdown complete")
 ```
 
-`EmitStartup` records that the application started. When `Close()` is
-called, a corresponding shutdown event is emitted automatically. These
-prove the audit system was active during the entire application
-lifetime.
-
-### Graceful Shutdown
-
-The shutdown sequence matters: stop the HTTP server first (so no new
-requests generate events), then close the logger (which flushes all
-buffered events and emits the shutdown event).
-
-```go
-<-done  // wait for SIGINT/SIGTERM
-srv.Shutdown(ctx)    // stop HTTP
-logger.Close()       // flush audit, emit shutdown
-```
+`Close()` waits up to `DrainTimeout` (default: 5 seconds) for all
+buffered events to be written to outputs, then closes each output.
+If events are still in the buffer when the timeout expires, they are
+dropped and a warning is logged.
 
 ## Run It
 
@@ -265,11 +278,9 @@ docker compose down -v
 On stdout you'll see JSON audit events:
 
 ```json
-{"timestamp":"...","event_type":"startup","severity":6,"app_name":"crud-api","version":"0.1.0"}
 {"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success"}
 {"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"..."}
 {"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
-{"timestamp":"...","event_type":"shutdown","severity":7,"app_name":"crud-api"}
 ```
 
 Additional outputs:

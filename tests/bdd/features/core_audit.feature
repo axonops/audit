@@ -121,8 +121,6 @@ Feature: Core Audit Logging
       events:
         ping:
           fields: {}
-      default_enabled:
-        - ops
       """
     And a logger with stdout output
     When I audit event "ping" with nil fields

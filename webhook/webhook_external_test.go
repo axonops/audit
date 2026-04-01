@@ -289,7 +289,6 @@ func testTaxonomy() audit.Taxonomy {
 			"auth_failure":      {Required: []string{"outcome"}},
 			"permission_denied": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"write", "read", "security"},
 	}
 }
 

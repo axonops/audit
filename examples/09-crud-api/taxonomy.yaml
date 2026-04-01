@@ -22,12 +22,6 @@ categories:
     events:
       - config_change
 
-default_enabled:
-  - write
-  - read
-  - security
-  - admin
-
 events:
   item_create:
     description: "An item was created"

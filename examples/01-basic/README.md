@@ -46,7 +46,6 @@ tax := audit.Taxonomy{
         },
         // ...
     },
-    DefaultEnabled: []string{"write", "security"},
 }
 ```
 

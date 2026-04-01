@@ -34,8 +34,9 @@ Feature: Metrics Interface
     Then the metrics should have recorded a validation error
 
   Scenario: Filtered event records filter metric
-    Given a filtering taxonomy with only "write" enabled
+    Given a standard test taxonomy
     And a logger with stdout output and metrics
+    And I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the metrics should have recorded a filtered event "auth_failure"
 
@@ -106,7 +107,8 @@ Feature: Metrics Interface
     Then the metrics should have recorded an output error for "error-output"
 
   Scenario: Nil metrics with filtered event does not panic
-    Given a filtering taxonomy with only "write" enabled
+    Given a standard test taxonomy
     And a logger with stdout output
+    And I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the audit call should return no error

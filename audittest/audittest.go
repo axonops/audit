@@ -87,8 +87,7 @@ func QuickTaxonomy(eventTypes ...string) audit.Taxonomy {
 		Categories: map[string]*audit.CategoryDef{
 			"test": {Events: eventTypes},
 		},
-		Events:         events,
-		DefaultEnabled: []string{"test"},
+		Events: events,
 	}
 }
 

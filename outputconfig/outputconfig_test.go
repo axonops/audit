@@ -40,10 +40,6 @@ categories:
     - auth_failure
   read:
     - user_read
-default_enabled:
-  - write
-  - security
-  - read
 events:
   user_create:
     fields:
@@ -876,8 +872,6 @@ sensitivity:
 categories:
   write:
     - user_create
-default_enabled:
-  - write
 events:
   user_create:
     fields:

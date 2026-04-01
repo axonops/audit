@@ -10,11 +10,6 @@ categories:
     - auth_failure
     - auth_success
 
-default_enabled:
-  - write
-  - read
-  - security
-
 events:
   user_create:
     description: "A new user account was created"

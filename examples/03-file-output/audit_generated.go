@@ -8,10 +8,6 @@ import audit "github.com/axonops/go-audit"
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
 const (
-	// EventShutdown — Application shutting down
-	EventShutdown = "shutdown"
-	// EventStartup — Application started
-	EventStartup = "startup"
 	// EventUserCreate — A new user account was created
 	EventUserCreate = "user_create"
 )
@@ -19,20 +15,14 @@ const (
 // Category constants — use with Logger.EnableCategory and
 // Logger.DisableCategory.
 const (
-	CategoryLifecycle = "lifecycle"
-	CategoryWrite     = "write"
+	CategoryWrite = "write"
 )
 
 // Field name constants — use in audit.Fields maps for
 // compile-time typo prevention.
 const (
-	FieldActorID  = "actor_id"
-	FieldAppName  = "app_name"
-	FieldConfig   = "config"
-	FieldOutcome  = "outcome"
-	FieldReason   = "reason"
-	FieldUptimeMS = "uptime_ms"
-	FieldVersion  = "version"
+	FieldActorID = "actor_id"
+	FieldOutcome = "outcome"
 )
 
 // EventFields maps event types to their required and optional fields.
@@ -40,14 +30,6 @@ var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
-	EventShutdown: {
-		Required: []string{FieldAppName},
-		Optional: []string{FieldReason, FieldUptimeMS},
-	},
-	EventStartup: {
-		Required: []string{FieldAppName},
-		Optional: []string{FieldConfig, FieldVersion},
-	},
 	EventUserCreate: {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
@@ -56,124 +38,7 @@ var EventFields = map[string]struct {
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	CategoryLifecycle: {EventShutdown, EventStartup},
-	CategoryWrite:     {EventUserCreate},
-}
-
-// ShutdownFields describes every field on [EventShutdown] events.
-type ShutdownFields struct {
-	AppName  audit.FieldInfo // required
-	Reason   audit.FieldInfo // optional
-	UptimeMS audit.FieldInfo // optional
-}
-
-// ShutdownEvent builds a type-safe audit event: Application shutting down.
-// A builder is not safe for concurrent use. Calling a setter
-// multiple times overwrites the previous value.
-type ShutdownEvent struct {
-	fields audit.Fields
-}
-
-// NewShutdownEvent creates a EventShutdown event with required fields.
-func NewShutdownEvent(appName any) *ShutdownEvent {
-	return &ShutdownEvent{fields: audit.Fields{
-		FieldAppName: appName,
-	}}
-}
-
-// SetReason sets the FieldReason field.
-func (e *ShutdownEvent) SetReason(v any) *ShutdownEvent {
-	e.fields[FieldReason] = v
-	return e
-}
-
-// SetUptimeMS sets the FieldUptimeMS field.
-func (e *ShutdownEvent) SetUptimeMS(v any) *ShutdownEvent {
-	e.fields[FieldUptimeMS] = v
-	return e
-}
-
-// EventType returns the event type name.
-func (e *ShutdownEvent) EventType() string { return EventShutdown }
-
-// Fields returns the event fields for [audit.Logger.AuditEvent].
-func (e *ShutdownEvent) Fields() audit.Fields { return e.fields }
-
-// Description returns the taxonomy description.
-func (e *ShutdownEvent) Description() string { return "Application shutting down" }
-
-// FieldInfo returns typed descriptors for every field on this event.
-func (e *ShutdownEvent) FieldInfo() ShutdownFields {
-	return ShutdownFields{
-		AppName:  audit.FieldInfo{Name: FieldAppName, Required: true},
-		Reason:   audit.FieldInfo{Name: FieldReason},
-		UptimeMS: audit.FieldInfo{Name: FieldUptimeMS},
-	}
-}
-
-// Categories returns the categories this event belongs to.
-func (e *ShutdownEvent) Categories() []audit.CategoryInfo {
-	return []audit.CategoryInfo{
-		{Name: CategoryLifecycle},
-	}
-}
-
-// StartupFields describes every field on [EventStartup] events.
-type StartupFields struct {
-	AppName audit.FieldInfo // required
-	Config  audit.FieldInfo // optional
-	Version audit.FieldInfo // optional
-}
-
-// StartupEvent builds a type-safe audit event: Application started.
-// A builder is not safe for concurrent use. Calling a setter
-// multiple times overwrites the previous value.
-type StartupEvent struct {
-	fields audit.Fields
-}
-
-// NewStartupEvent creates a EventStartup event with required fields.
-func NewStartupEvent(appName any) *StartupEvent {
-	return &StartupEvent{fields: audit.Fields{
-		FieldAppName: appName,
-	}}
-}
-
-// SetConfig sets the FieldConfig field.
-func (e *StartupEvent) SetConfig(v any) *StartupEvent {
-	e.fields[FieldConfig] = v
-	return e
-}
-
-// SetVersion sets the FieldVersion field.
-func (e *StartupEvent) SetVersion(v any) *StartupEvent {
-	e.fields[FieldVersion] = v
-	return e
-}
-
-// EventType returns the event type name.
-func (e *StartupEvent) EventType() string { return EventStartup }
-
-// Fields returns the event fields for [audit.Logger.AuditEvent].
-func (e *StartupEvent) Fields() audit.Fields { return e.fields }
-
-// Description returns the taxonomy description.
-func (e *StartupEvent) Description() string { return "Application started" }
-
-// FieldInfo returns typed descriptors for every field on this event.
-func (e *StartupEvent) FieldInfo() StartupFields {
-	return StartupFields{
-		AppName: audit.FieldInfo{Name: FieldAppName, Required: true},
-		Config:  audit.FieldInfo{Name: FieldConfig},
-		Version: audit.FieldInfo{Name: FieldVersion},
-	}
-}
-
-// Categories returns the categories this event belongs to.
-func (e *StartupEvent) Categories() []audit.CategoryInfo {
-	return []audit.CategoryInfo{
-		{Name: CategoryLifecycle},
-	}
+	CategoryWrite: {EventUserCreate},
 }
 
 // UserCreateFields describes every field on [EventUserCreate] events.

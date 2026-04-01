@@ -24,7 +24,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             actor_id: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output and no exclusions
     When I audit event "user_create" with fields:
@@ -50,7 +49,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             email: {}
-      default_enabled: [write]
       """
     Then the taxonomy should have field "email" labeled "pii" on event "user_create"
 
@@ -72,7 +70,6 @@ Feature: Field-Level Sensitivity Labels
             card_number: {}
             card_expiry: {}
             merchant: {}
-      default_enabled: [write]
       """
     Then the taxonomy should have field "card_number" labeled "financial" on event "payment"
     And the taxonomy should have field "card_expiry" labeled "financial" on event "payment"
@@ -96,7 +93,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email: {}
             contact_email: {}
-      default_enabled: [write]
       """
     Then the taxonomy should have field "email" labeled "pii" on event "user_create"
     And the taxonomy should have field "contact_email" labeled "pii" on event "user_create"
@@ -118,7 +114,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email:
               labels: [nonexistent]
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "undefined sensitivity label"
@@ -138,7 +133,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
@@ -157,7 +151,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "label name must not be empty"
@@ -175,7 +168,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should succeed
 
@@ -197,7 +189,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             email: {}
-      default_enabled: [write]
       """
     Then the taxonomy should have field "email" labeled "pii" on event "user_create"
     And the taxonomy should have field "email" labeled "financial" on event "user_create"
@@ -223,7 +214,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             session_token:
               labels: [confidential]
-      default_enabled: [write]
       """
     Then the taxonomy should have field "session_token" labeled "confidential" on event "user_create"
 
@@ -244,7 +234,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email:
               labels: [unknown_label]
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "undefined sensitivity label"
@@ -268,7 +257,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email:
               labels: [confidential]
-      default_enabled: [write]
       """
     Then the taxonomy should have field "email" labeled "pii" on event "user_create"
     And the taxonomy should have field "email" labeled "confidential" on event "user_create"
@@ -294,7 +282,6 @@ Feature: Field-Level Sensitivity Labels
             email:
               labels: [confidential]
             user_email: {}
-      default_enabled: [write]
       """
     Then the taxonomy should have field "email" labeled "pii" on event "user_create"
     And the taxonomy should have field "email" labeled "confidential" on event "user_create"
@@ -321,7 +308,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             timestamp:
               labels: [pii]
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"
@@ -341,7 +327,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"
@@ -361,7 +346,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"
@@ -381,7 +365,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"
@@ -407,7 +390,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             actor_id: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -436,7 +418,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -461,7 +442,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output and no exclusions
     When I audit event "user_create" with fields:
@@ -486,7 +466,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             actor_id: {required: true}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -514,7 +493,6 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             actor_id: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -542,7 +520,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     When I try to create a logger with stdout output excluding labels "nonexistent"
     Then logger creation should fail with an error containing "undefined sensitivity label"
@@ -558,7 +535,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     When I try to create a logger with stdout output excluding labels "pii"
     Then logger creation should fail with an error containing "no sensitivity config"
@@ -579,7 +555,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             email: {}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -612,7 +587,6 @@ Feature: Field-Level Sensitivity Labels
             email: {}
             card_number: {}
             merchant: {}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii,financial"
     When I audit event "payment" with fields:
@@ -641,7 +615,6 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
             actor_id: {required: true}
-      default_enabled: [write]
       """
     And a logger with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
@@ -669,7 +642,6 @@ Feature: Field-Level Sensitivity Labels
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled: [write]
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
     And the taxonomy parse should fail with an error containing "protected framework field"

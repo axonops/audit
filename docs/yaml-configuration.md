@@ -59,10 +59,14 @@ outputs:
       network: "tcp+tls"           # "tcp" (default), "udp", or "tcp+tls"
       address: "${SYSLOG_HOST}:6514"
       app_name: "myapp"            # RFC 5424 APP-NAME (default: "audit")
+      facility: "local0"           # syslog facility (default: "local0")
       tls_ca: "/etc/audit/ca.pem"
       tls_cert: "/etc/audit/client-cert.pem"   # for mTLS
       tls_key: "/etc/audit/client-key.pem"     # for mTLS
       max_retries: 10              # reconnection attempts (default: 10)
+      # tls_policy:                # TLS version policy
+      #   allow_tls12: false       # allow TLS 1.2 (default: TLS 1.3 only)
+      #   allow_weak_ciphers: false # allow weaker ciphers with TLS 1.2
     formatter:
       type: cef                    # SIEM-native format
       vendor: "MyCompany"
@@ -81,8 +85,15 @@ outputs:
       flush_interval: "5s"         # time-based flush (default: "5s")
       timeout: "10s"               # HTTP request timeout (default: "10s")
       max_retries: 3               # retry attempts (default: 3)
+      # buffer_size: 10000        # internal buffer; events dropped when full
       # headers:                   # custom HTTP headers
       #   Authorization: "Bearer ${AUDIT_TOKEN}"
+      # tls_ca: "/etc/audit/ca.pem"
+      # tls_cert: "/etc/audit/client-cert.pem"
+      # tls_key: "/etc/audit/client-key.pem"
+      # tls_policy:                # TLS version policy
+      #   allow_tls12: false
+      #   allow_weak_ciphers: false
       # allow_insecure_http: true  # MUST NOT be true in production
       # allow_private_ranges: true # disable SSRF protection (dev only)
     route:
@@ -98,7 +109,7 @@ outputs:
 |-------|----------|-------------|
 | `version` | Yes | Must be `1`. Schema version for future migration. |
 | `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
-| `outputs` | Yes | Map of named outputs. At least one must be defined. |
+| `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
 ## Output Block
 
@@ -168,6 +179,10 @@ route:
 | `min_severity` | Minimum severity threshold (0-10 inclusive) |
 | `max_severity` | Maximum severity threshold (0-10 inclusive) |
 
+Include and exclude modes are mutually exclusive — setting both on the
+same route causes a startup error. Severity filtering can be combined
+with either mode.
+
 See [Event Routing](event-routing.md) for details and examples.
 
 ## Sensitivity Label Exclusion
@@ -189,9 +204,9 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `path` | (required) | File path. Supports `${VAR}` substitution. Parent directory must exist. |
-| `max_size_mb` | `100` | Rotate when file reaches this size in MB. |
-| `max_backups` | `5` | Number of rotated files to keep. |
-| `max_age_days` | `30` | Delete rotated files older than this. |
+| `max_size_mb` | `100` | Rotate when file reaches this size in MB. Maximum: 10,240 (10 GB). |
+| `max_backups` | `5` | Number of rotated files to keep. Maximum: 100. |
+| `max_age_days` | `30` | Delete rotated files older than this. Maximum: 365. |
 | `permissions` | `"0600"` | File permissions (octal string, must be quoted). |
 | `compress` | `true` | Gzip compress rotated files. |
 
@@ -202,25 +217,32 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `network` | `"tcp"` | Transport: `"tcp"`, `"udp"`, or `"tcp+tls"`. |
 | `address` | (required) | Host:port. Supports `${VAR}` substitution. |
 | `app_name` | `"audit"` | RFC 5424 APP-NAME field. |
-| `facility` | `"local0"` | Syslog facility. |
+| `facility` | `"local0"` | Syslog facility. Valid: kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, local0-local7. |
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. |
 | `tls_key` | — | Client key path for mTLS. |
 | `max_retries` | `10` | Reconnection attempts before giving up. |
+| `tls_policy` | — | TLS version policy (nested object). |
+| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 
 ## Webhook Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `url` | (required) | HTTPS endpoint. Must be `https://` unless `allow_insecure_http` is set. |
-| `batch_size` | `100` | Events per batch. |
+| `batch_size` | `100` | Events per batch. Maximum: 10,000. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Events dropped when full. Maximum: 1,000,000. |
 | `flush_interval` | `"5s"` | Flush after this duration even if batch is not full. |
 | `timeout` | `"10s"` | HTTP request timeout. |
-| `max_retries` | `3` | Retry attempts with exponential backoff. |
+| `max_retries` | `3` | Retry attempts with exponential backoff. Maximum: 20. |
 | `headers` | — | Map of custom HTTP headers added to every request. |
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. |
 | `tls_key` | — | Client key path for mTLS. |
+| `tls_policy` | — | TLS version policy (nested object). |
+| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
 

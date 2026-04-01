@@ -155,7 +155,7 @@ events:
 |-------------|----------|-------------|
 | `description` | No | Human-readable label. Used as CEF description header. |
 | `severity` | No | Per-event severity (0-10). Overrides category severity. |
-| `fields` | Yes | Map of field name to field definition. |
+| `fields` | No | Map of field name to field definition. If omitted, the event accepts only framework fields in strict mode. |
 
 ### Field Definitions
 
@@ -266,6 +266,14 @@ var taxonomyYAML []byte
 tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 ```
 
+**Constraints:**
+- Input is limited to 1 MiB. Inputs exceeding this are rejected
+  with `ErrInvalidInput`.
+- The input must be a single YAML document. Multi-document YAML
+  (separated by `---`) is rejected.
+- Unknown YAML keys are rejected. A typo like `sevrity` instead
+  of `severity` produces a parse error, not a silently ignored field.
+
 ## Lifecycle Events
 
 The library automatically injects two lifecycle events into every
@@ -273,6 +281,10 @@ taxonomy:
 
 - `startup` (severity 6) — emitted via `logger.EmitStartup(fields)`
 - `shutdown` (severity 7) — emitted automatically by `logger.Close()`
+
+The shutdown event is only emitted if `EmitStartup` was called
+successfully. If your application does not call `EmitStartup`, no
+shutdown event is emitted on `Close`.
 
 These create a tamper-evident audit trail. If a shutdown event is
 missing, the application crashed or was killed without graceful

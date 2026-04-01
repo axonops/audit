@@ -40,7 +40,7 @@
 //	version: 1                      # required, must be 1
 //	default_formatter:              # optional, applies to all outputs
 //	  type: json                    # "json" or "cef"
-//	  timestamp: rfc3339nano        # "rfc3339nano" or "unix_millis"
+//	  timestamp: rfc3339nano        # "rfc3339nano" or "unix_ms"
 //	outputs:                        # required, map of named outputs
 //	  audit_log:
 //	    type: file                  # registered output type

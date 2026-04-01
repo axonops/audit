@@ -1263,8 +1263,13 @@ func TestSyslogOutput_RapidFireTCP(t *testing.T) {
 		require.NoError(t, out.Write(data))
 	}
 
-	require.True(t, srv.waitForData(5*time.Second), "server should receive data")
 	require.NoError(t, out.Close())
+
+	// Wait for the last event to arrive — verifies all data was delivered.
+	// Close() flushes the connection, so all data should be receivable.
+	lastEvent := fmt.Sprintf(`"n":%d`, count-1)
+	require.True(t, srv.waitForContent([]string{lastEvent}, 10*time.Second),
+		"server should receive all %d events (last event not found)", count)
 
 	// Verify all events arrived by checking the concatenated content.
 	all := strings.Join(srv.getMessages(), "")

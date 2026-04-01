@@ -189,11 +189,11 @@ func TestFanOut_AllOutputs(t *testing.T) {
 	t.Cleanup(func() { _ = logger.Close() })
 
 	// Send an event.
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Wait for webhook delivery before closing — the webhook batch
@@ -250,20 +250,20 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	// Send a write event (should go to file, NOT webhook).
 	writeMarker := marker(t)
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   writeMarker,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Send a security event (should go to BOTH).
 	secMarker := marker(t)
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"marker":   secMarker,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Wait for webhook delivery before closing.
@@ -336,11 +336,11 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send event while webhook is failing.
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Close flushes file and syslog despite webhook failure.
@@ -389,11 +389,11 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 	require.NoError(t, err)
 
 	m := marker(t)
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Wait for webhook delivery before closing.

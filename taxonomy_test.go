@@ -138,9 +138,9 @@ func TestNewLogger_LifecycleEventsPreserved(t *testing.T) {
 
 	// Consumer-defined startup should still require custom_field (not
 	// the default app_name).
-	err = logger.Audit("startup", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("startup", audit.Fields{
 		"app_name": "test",
-	})
+	}))
 	assert.Error(t, err, "should require custom_field, not app_name")
 }
 

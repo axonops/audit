@@ -110,7 +110,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			tc.Markers[fmt.Sprintf("multi_%d", i)] = m
 			fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 			fields["marker"] = m
-			if err := tc.Logger.Audit("user_create", fields); err != nil {
+			if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 				return fmt.Errorf("audit event %d: %w", i, err)
 			}
 		}
@@ -120,7 +120,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^I audit an event with a (\d+)-byte payload$`, func(size int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = strings.Repeat("x", size)
-		tc.LastErr = tc.Logger.Audit("user_create", fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
 		return nil
 	})
 
@@ -185,13 +185,13 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		// The first write after restart may fail and trigger reconnect.
 		// Retry a few times to allow reconnection.
 		for range 10 {
-			err := tc.Logger.Audit(eventType, fields)
+			err := tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 			if err == nil {
 				return nil
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 

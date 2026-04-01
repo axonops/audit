@@ -692,10 +692,10 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.True(t, called, "custom formatter should have been called")
@@ -719,10 +719,10 @@ func TestLogger_DefaultJSONFormatter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -749,10 +749,10 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 

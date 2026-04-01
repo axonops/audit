@@ -45,10 +45,10 @@ func registerLifecycleWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^I fill the buffer and emit startup with app name "([^"]*)"$`, func(appName string) error {
 		// Fill the buffer to capacity then try EmitStartup.
 		for range 100 {
-			err := tc.Logger.Audit("user_create", audit.Fields{
+			err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": "filler",
-			})
+			}))
 			if err != nil {
 				break // buffer full
 			}

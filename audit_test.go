@@ -62,11 +62,11 @@ func TestLogger_Audit_ValidCall(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
-	})
+	}))
 	require.NoError(t, err)
 
 	require.True(t, out.WaitForEvents(1, 2*time.Second), "expected 1 event")
@@ -82,10 +82,10 @@ func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome": "success",
 		// missing actor_id and subject
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required fields")
 	assert.Contains(t, err.Error(), "actor_id")
@@ -97,11 +97,11 @@ func TestLogger_Audit_MissingSingleRequiredField(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		// missing subject
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "subject")
 }
@@ -111,7 +111,7 @@ func TestLogger_Audit_UnknownEventType(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("schema_registr", audit.Fields{})
+	err := logger.AuditEvent(audit.NewEvent("schema_registr", audit.Fields{}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown event type")
 	assert.Contains(t, err.Error(), "schema_registr")
@@ -126,12 +126,12 @@ func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 		ValidationMode: audit.ValidationStrict,
 	}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"bogus_field": "value",
-	})
+	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown fields")
 	assert.Contains(t, err.Error(), "bogus_field")
@@ -146,12 +146,12 @@ func TestLogger_Audit_UnknownFieldWarn(t *testing.T) {
 		ValidationMode: audit.ValidationWarn,
 	}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"bogus_field": "value",
-	})
+	}))
 	// Warn mode: no error, event accepted.
 	assert.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
@@ -166,12 +166,12 @@ func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
 		ValidationMode: audit.ValidationPermissive,
 	}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"bogus_field": "value",
-	})
+	}))
 	assert.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
@@ -183,7 +183,7 @@ func TestLogger_Audit_NilFields(t *testing.T) {
 
 	// schema_register requires outcome, actor_id, subject — nil map
 	// means all are missing.
-	err := logger.Audit("schema_register", nil)
+	err := logger.AuditEvent(audit.NewEvent("schema_register", nil))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required fields")
 }
@@ -194,12 +194,12 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// "read" category is not in DefaultEnabled.
-	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
+	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 
 	// Send an enabled event as sentinel to prove the drain loop processed
 	// past the filtered event.
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount(), "disabled category event should not be delivered")
@@ -212,12 +212,12 @@ func TestLogger_Audit_OptionalFields(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	// Include an optional field.
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"schema_type": "AVRO",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	ev := out.GetEvent(0)
@@ -234,10 +234,10 @@ func TestLogger_Audit_TimestampAutoPopulated(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	before := time.Now()
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -254,10 +254,10 @@ func TestLogger_Audit_EventTypeAutoPopulated(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -270,11 +270,11 @@ func TestLogger_Audit_ConsumerTimestampOverwritten(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationPermissive}, out)
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":   "failure",
 		"actor_id":  "bob",
 		"timestamp": "consumer-set-value",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -292,12 +292,12 @@ func TestLogger_Audit_OmitEmptyTrue(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
 		// schema_type (optional) not provided
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -311,12 +311,12 @@ func TestLogger_Audit_OmitEmptyFalse(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: false}, out)
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
 		// schema_type (optional) not provided
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -398,10 +398,10 @@ func TestLogger_Audit_EventDelivered(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount())
@@ -428,10 +428,10 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	// Send enough to guarantee overflow.
 	var bufferFullSeen bool
 	for i := 0; i < 100; i++ {
-		err = logger.Audit("auth_failure", audit.Fields{
+		err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 			"outcome":  "failure",
 			"actor_id": "bob",
-		})
+		}))
 		if errors.Is(err, audit.ErrBufferFull) {
 			bufferFullSeen = true
 		}
@@ -475,10 +475,10 @@ func TestLogger_Close_DrainsEvents(t *testing.T) {
 
 	// Send several events.
 	for i := 0; i < 10; i++ {
-		err := logger.Audit("auth_failure", audit.Fields{
+		err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 			"outcome":  "failure",
 			"actor_id": "bob",
-		})
+		}))
 		require.NoError(t, err)
 	}
 
@@ -512,10 +512,10 @@ func TestLogger_Audit_AfterClose(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	assert.ErrorIs(t, err, audit.ErrClosed)
 }
 
@@ -535,10 +535,10 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Enqueue an event so the drain goroutine has work to do.
-	_ = logger.Audit("auth_failure", audit.Fields{
+	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 
 	start := time.Now()
 	_ = logger.Close()
@@ -586,7 +586,7 @@ func TestLogger_EnableCategory(t *testing.T) {
 	// "read" is not in DefaultEnabled. Enable it.
 	require.NoError(t, logger.EnableCategory("read"))
 
-	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
+	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
@@ -599,15 +599,15 @@ func TestLogger_DisableCategory(t *testing.T) {
 	// "write" is in DefaultEnabled. Disable it.
 	require.NoError(t, logger.DisableCategory("write"))
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "test",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Send an enabled event as sentinel to prove processing.
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount(), "disabled category should not deliver events")
@@ -621,17 +621,17 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 	// "read" category is disabled. Enable one specific event.
 	require.NoError(t, logger.EnableEvent("schema_read"))
 
-	err := logger.Audit("schema_read", audit.Fields{"outcome": "success"})
+	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// config_read (same category, no override) should still be filtered.
-	err = logger.Audit("config_read", audit.Fields{"outcome": "success"})
+	err = logger.AuditEvent(audit.NewEvent("config_read", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 
 	// Send an enabled event as sentinel, then verify only 2 events
 	// (schema_read + sentinel), not 3.
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure", "actor_id": "sentinel"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(2, 2*time.Second))
 	assert.Equal(t, 2, out.EventCount(), "only overridden event + sentinel should be delivered")
@@ -645,19 +645,19 @@ func TestLogger_DisableEvent_OverridesCategory(t *testing.T) {
 	// "write" category is enabled. Disable one specific event.
 	require.NoError(t, logger.DisableEvent("schema_register"))
 
-	err := logger.Audit("schema_register", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "test",
-	})
+	}))
 	require.NoError(t, err)
 
 	// schema_delete (same category, no override) should still work.
-	err = logger.Audit("schema_delete", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("schema_delete", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "test",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount(), "only non-overridden event should be delivered")
@@ -700,7 +700,7 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// Event in 2 categories → 2 deliveries to the unrouted output.
@@ -734,7 +734,7 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 	// Disable one category.
 	require.NoError(t, logger.DisableCategory("security"))
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// Only the access pass should deliver.
@@ -768,13 +768,13 @@ func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 	require.NoError(t, logger.DisableCategory("security"))
 	require.NoError(t, logger.DisableCategory("access"))
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// Both categories disabled → event enters channel but no category
 	// pass runs. Send a sentinel to prove processing completed.
 	require.NoError(t, logger.EnableCategory("security"))
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "sentinel"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "sentinel"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount(), "only sentinel should arrive — first event had all categories disabled")
@@ -804,7 +804,7 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("data_export", audit.Fields{"outcome": "success"})
+	err = logger.AuditEvent(audit.NewEvent("data_export", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
@@ -839,7 +839,7 @@ func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 	require.NoError(t, logger.DisableCategory("compliance"))
 	require.NoError(t, logger.EnableEvent("auth_failure"))
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// EnableEvent should override disabled categories — event delivered
@@ -873,7 +873,7 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// Output includes only security — should get 1 delivery (security pass),
@@ -907,7 +907,7 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 	require.NoError(t, err)
 
 	// Output excludes security — should get 1 delivery (compliance pass only).
@@ -996,10 +996,10 @@ func TestLogger_ConcurrentAudit(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = logger.Audit("auth_failure", audit.Fields{
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 				"outcome":  "failure",
 				"actor_id": "bob",
-			})
+			}))
 		}()
 	}
 	wg.Wait()
@@ -1024,10 +1024,10 @@ func TestLogger_ConcurrentFilterMutation(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_ = logger.Audit("auth_failure", audit.Fields{
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 				"outcome":  "failure",
 				"actor_id": "bob",
-			})
+			}))
 		}()
 	}
 	wg.Wait()
@@ -1071,10 +1071,10 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -1096,10 +1096,10 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Close drains all pending events and completes metric recording.
@@ -1130,10 +1130,10 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should not error — events are validated and filtered but go nowhere.
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	assert.NoError(t, err)
 	require.NoError(t, logger.Close())
 }
@@ -1169,12 +1169,12 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true, OmitEmpty: true, ValidationMode: audit.ValidationPermissive}, out)
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"count":    0,     // zero int should be omitted
 		"active":   false, // false bool should be omitted
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -1227,19 +1227,19 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 	// (permissive mode) and is enqueued, but serialisation fails in the
 	// drain loop. The output should receive zero events and no panic.
 	ch := make(chan struct{})
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"bad":      ch,
-	})
+	}))
 	require.NoError(t, err)
 
 	// Send a valid event as sentinel to confirm drain loop processed
 	// the bad event without crashing.
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "sentinel",
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -1273,7 +1273,7 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
 	// nil fields should work when there are no required fields.
-	err = logger.Audit("no_req", nil)
+	err = logger.AuditEvent(audit.NewEvent("no_req", nil))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
@@ -1299,10 +1299,10 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				_ = logger.Audit("auth_failure", audit.Fields{
+				_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 					"outcome":  "failure",
 					"actor_id": "bob",
-				})
+				}))
 			}
 		}()
 	}
@@ -1318,7 +1318,7 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Handle.Audit after Close
+// Handle.AuditEvent after Close
 // ---------------------------------------------------------------------------
 
 func TestLogger_Handle_AuditAfterClose(t *testing.T) {
@@ -1370,20 +1370,20 @@ func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
 	require.NoError(t, err)
 
 	// First event: drain goroutine picks it up and blocks in Write.
-	_ = logger.Audit("auth_failure", audit.Fields{
+	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 
 	// Wait for the drain goroutine to enter Write (blocking).
 	// This guarantees the channel slot is free for the second event.
 	<-enteredCh
 
 	// Second event fills the 1-slot buffer (drain is blocked).
-	_ = logger.Audit("auth_failure", audit.Fields{
+	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "charlie",
-	})
+	}))
 
 	// Buffer is now full; EmitStartup should fail.
 	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
@@ -1427,10 +1427,10 @@ func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 
 	require.True(t, out1.WaitForEvents(1, 2*time.Second))
@@ -1453,12 +1453,12 @@ func TestLogger_Audit_OmitEmptyNonZeroIncluded(t *testing.T) {
 		ValidationMode: audit.ValidationPermissive,
 	}, out)
 
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"count":    42,
 		"active":   true,
-	})
+	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -1486,18 +1486,18 @@ func TestLogger_Audit_FuncFieldOmitEmpty(t *testing.T) {
 	// so the func is included in the map. json.Marshal will fail on
 	// func types, causing the event to be dropped. The drain goroutine
 	// must survive this without panicking.
-	err := logger.Audit("auth_failure", audit.Fields{
+	err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"callback": func() {},
-	})
+	}))
 	require.NoError(t, err)
 
 	// Send sentinel to prove drain goroutine survived the bad event.
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "sentinel",
-	})
+	}))
 	require.NoError(t, err)
 	// Only the sentinel arrives (the func event fails serialization).
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
@@ -1524,10 +1524,10 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 
 	// Fill the buffer so emitShutdown's non-blocking send hits default.
 	for i := 0; i < 100; i++ {
-		_ = logger.Audit("auth_failure", audit.Fields{
+		_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 			"outcome":  "failure",
 			"actor_id": "bob",
-		})
+		}))
 	}
 
 	// Close should not panic or hang even when shutdown event is dropped.
@@ -1559,11 +1559,11 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
 	// ev1 should be filtered (write category not enabled).
-	err = logger.Audit("ev1", audit.Fields{"f1": "val"})
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"f1": "val"}))
 	require.NoError(t, err)
 
 	// Startup (lifecycle, always enabled) should work as sentinel.
-	err = logger.Audit("startup", audit.Fields{"app_name": "test"})
+	err = logger.AuditEvent(audit.NewEvent("startup", audit.Fields{"app_name": "test"}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 	assert.Equal(t, 1, out.EventCount(), "only lifecycle event should pass when DefaultEnabled is empty")
@@ -1579,7 +1579,7 @@ func TestAudit_UnknownEventType_RecordsValidationError(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
-	_ = logger.Audit("nonexistent", audit.Fields{})
+	_ = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
@@ -1592,7 +1592,7 @@ func TestAudit_MissingRequiredField_RecordsValidationError(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
-	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
+	_ = logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{"outcome": "ok"}))
 
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
@@ -1611,11 +1611,11 @@ func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	_ = logger.Audit("auth_failure", audit.Fields{
+	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "fail",
 		"actor_id": "bob",
 		"bogus":    "val",
-	})
+	}))
 
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
@@ -1629,7 +1629,7 @@ func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
 		audit.WithMetrics(metrics))
 
 	// "read" category is not in DefaultEnabled.
-	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
+	_ = logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "ok"}))
 
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
@@ -1645,11 +1645,11 @@ func TestAudit_FilteredEventOverride_RecordsFiltered(t *testing.T) {
 	// Disable a specific event in an enabled category.
 	require.NoError(t, logger.DisableEvent("schema_register"))
 
-	_ = logger.Audit("schema_register", audit.Fields{
+	_ = logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "ok",
 		"actor_id": "alice",
 		"subject":  "test",
-	})
+	}))
 
 	metrics.Mu.Lock()
 	defer metrics.Mu.Unlock()
@@ -1673,10 +1673,10 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "fail",
 		"actor_id": "bob",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Close drains the event through processEntry, triggering the
@@ -1705,10 +1705,10 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 
 	// Fill the buffer.
 	for i := 0; i < 100; i++ {
-		_ = logger.Audit("auth_failure", audit.Fields{
+		_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 			"outcome":  "fail",
 			"actor_id": "bob",
-		})
+		}))
 	}
 
 	_ = logger.Close()
@@ -1737,13 +1737,13 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Validation error path (unknown event type).
-	_ = logger.Audit("nonexistent", audit.Fields{})
+	_ = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 	// Missing required field path.
-	_ = logger.Audit("schema_register", audit.Fields{"outcome": "ok"})
+	_ = logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{"outcome": "ok"}))
 	// Filtered event path.
-	_ = logger.Audit("schema_read", audit.Fields{"outcome": "ok"})
+	_ = logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "ok"}))
 	// Normal path (will trigger serialization error in drain goroutine).
-	_ = logger.Audit("auth_failure", audit.Fields{"outcome": "fail", "actor_id": "bob"})
+	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "fail", "actor_id": "bob"}))
 
 	// Close drains the bad event through processEntry -> serialize error
 	// with nil metrics. Must not panic.
@@ -1794,10 +1794,10 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	}))
+	})))
 	require.NoError(t, logger.Close())
 
 	// The self-reporting output received the event.
@@ -1825,10 +1825,10 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	}))
+	})))
 	require.NoError(t, logger.Close())
 
 	// Core logger must not record any metrics for the self-reporting output.
@@ -1858,10 +1858,10 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	}))
+	})))
 	require.NoError(t, logger.Close())
 
 	assert.Greater(t, metrics.GetEventCount("plain", "success"), 0,
@@ -1988,7 +1988,7 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, subLogger.Close()) })
 
-			require.NoError(t, subLogger.Audit("auth_failure", tt.fields))
+			require.NoError(t, subLogger.AuditEvent(audit.NewEvent("auth_failure", tt.fields)))
 			require.True(t, subOut.WaitForEvents(1, 2*time.Second))
 
 			ev := subOut.GetEvent(0)
@@ -2002,7 +2002,7 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 	}
 
 	// Prevent unused warning for the outer logger.
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "ok", "actor_id": "x"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "ok", "actor_id": "x"})))
 	_ = out
 }
 
@@ -2170,7 +2170,7 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 		"user_agent":  "test-client/1.0",
 		"request_id":  "req-12345",
 	}
-	require.NoError(t, logger.Audit("auth_check", fields))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_check", fields)))
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	record := out.GetEvent(0)
@@ -2217,10 +2217,10 @@ func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
 	// Send event with only required fields — optional fields omitted.
-	require.NoError(t, logger.Audit("auth_check", audit.Fields{
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_check", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
-	}))
+	})))
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	record := out.GetEvent(0)
@@ -2272,7 +2272,7 @@ func BenchmarkAudit(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2294,7 +2294,7 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_read", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_read", fields))
 	}
 }
 
@@ -2317,7 +2317,7 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("auth_failure", fields)
+		_ = logger.AuditEvent(audit.NewEvent("auth_failure", fields))
 	}
 }
 
@@ -2367,7 +2367,7 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("api_request", fields)
+		_ = logger.AuditEvent(audit.NewEvent("api_request", fields))
 	}
 }
 
@@ -2395,7 +2395,7 @@ func BenchmarkAudit_Parallel(b *testing.B) {
 	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = logger.Audit("schema_register", fields)
+			_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 		}
 	})
 }
@@ -2426,13 +2426,13 @@ func BenchmarkAudit_PoolAmortised(b *testing.B) {
 
 	// Warm the pool with a few iterations before measuring.
 	for range 1000 {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2467,7 +2467,7 @@ func BenchmarkAudit_FanOut_SharedFormatter(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2501,7 +2501,7 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2541,7 +2541,7 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// schema_register is "write" category — out1 and out2 receive it,
 		// out3 filters it.
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2572,7 +2572,7 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 }
 
@@ -2619,7 +2619,7 @@ func BenchmarkAudit_EndToEnd(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = logger.Audit("schema_register", fields)
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
 	}
 	b.StopTimer()
 
@@ -2713,4 +2713,68 @@ func BenchmarkFilterCheck_ReadWriteContention(b *testing.B) {
 			_ = audit.IsEnabledForTest(logger, "schema_register")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Event interface and NewEvent tests
+// ---------------------------------------------------------------------------
+
+func TestNewEvent_ImplementsInterface(t *testing.T) {
+	t.Parallel()
+	evt := audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})
+	assert.Equal(t, "user_create", evt.EventType())
+	assert.Equal(t, "success", evt.Fields()["outcome"])
+	assert.Equal(t, "alice", evt.Fields()["actor_id"])
+}
+
+func TestAuditEvent_WithNewEvent(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	evt := audit.NewEvent("schema_register", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "test-schema",
+	})
+	require.NoError(t, logger.AuditEvent(evt))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, "success", out.GetEvent(0)["outcome"])
+}
+
+func TestAuditEvent_UnknownEventType(t *testing.T) {
+	t.Parallel()
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	err = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown event type")
+}
+
+func TestAuditEvent_NilEvent(t *testing.T) {
+	t.Parallel()
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	err = logger.AuditEvent(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "event must not be nil")
 }

@@ -56,21 +56,14 @@ func main() {
 	}
 
 	// Emit events — each goes to both stdout and the file.
-	events := []struct {
-		eventType string
-		actorID   string
-		outcome   string
-	}{
-		{EventUserCreate, "alice", "success"},
-		{EventAuthFailure, "unknown", "failure"},
-		{EventUserCreate, "bob", "success"},
+	events := []audit.Event{
+		NewUserCreateEvent("alice", "success"),
+		NewAuthFailureEvent("unknown", "failure"),
+		NewUserCreateEvent("bob", "success"),
 	}
 
-	for _, e := range events {
-		if auditErr := logger.Audit(e.eventType, audit.Fields{
-			FieldOutcome: e.outcome,
-			FieldActorID: e.actorID,
-		}); auditErr != nil {
+	for _, evt := range events {
+		if auditErr := logger.AuditEvent(evt); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}
 	}

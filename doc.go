@@ -67,10 +67,10 @@
 //	    }
 //	}()
 //
-//	if err := logger.Audit("user_create", audit.Fields{
+//	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 //	    "outcome":  "success",
 //	    "actor_id": "alice",
-//	}); err != nil {
+//	})); err != nil {
 //	    log.Printf("audit: %v", err)
 //	}
 //
@@ -82,7 +82,12 @@
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
 //   - [Output] — interface for audit event destinations
 //   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
-//   - [EventType] — handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [Event] — interface for typed audit events; see [Logger.AuditEvent]
+//   - [NewEvent] — creates an untyped event for dynamic use without code generation
+//   - [LabelInfo] — sensitivity label descriptor (name + description)
+//   - [FieldInfo] — field descriptor with name, required flag, and labels
+//   - [CategoryInfo] — category descriptor with name and optional severity
+//   - [EventType] — handle for pre-validated audit calls; see [Logger.MustHandle]
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration
@@ -105,7 +110,7 @@
 //
 // The framework does not hardcode event types, field names, or categories.
 // Consumers register their entire audit taxonomy at bootstrap via
-// [WithTaxonomy]. The framework then validates every [Logger.Audit] call
+// [WithTaxonomy]. The framework then validates every [Logger.AuditEvent] call
 // against the registered definitions, catching missing required fields,
 // unknown event types, and unrecognised field names at runtime.
 //
@@ -123,7 +128,7 @@
 //
 // Events are enqueued to a buffered channel (configurable capacity, default
 // 10,000) and drained by a single background goroutine. If the buffer is
-// full, [Logger.Audit] returns [ErrBufferFull] and the drop is recorded via
+// full, [Logger.AuditEvent] returns [ErrBufferFull] and the drop is recorded via
 // the [Metrics] interface.
 //
 // # Graceful Shutdown

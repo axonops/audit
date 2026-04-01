@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// ValidationMode controls how [Logger.Audit] handles unknown fields
+// ValidationMode controls how [Logger.AuditEvent] handles unknown fields
 // (fields not listed in the event's Required or Optional lists).
 type ValidationMode string
 

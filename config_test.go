@@ -103,11 +103,11 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 	require.NotNil(t, logger)
 
 	// Audit on disabled logger returns nil.
-	err = logger.Audit("schema_register", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "test",
-	})
+	}))
 	assert.NoError(t, err)
 
 	require.NoError(t, logger.Close())

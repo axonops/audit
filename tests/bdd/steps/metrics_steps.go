@@ -234,10 +234,10 @@ func registerMetricsWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	ctx.Step(`^I fill the logger buffer beyond capacity$`, func() error {
 		// Send more events than buffer can hold. Some will be dropped.
 		for range 100 {
-			_ = tc.Logger.Audit("user_create", audit.Fields{
+			_ = tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": "overflow",
-			})
+			}))
 		}
 		return nil
 	})

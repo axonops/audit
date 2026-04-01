@@ -37,7 +37,7 @@ func TestFanout_DeliverToAll(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	for _, out := range []*testhelper.MockOutput{out1, out2, out3} {
@@ -57,7 +57,7 @@ func TestFanout_OutputFailureIsolation(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 1, healthy.EventCount(),
@@ -138,7 +138,7 @@ func TestFanout_RouteFiltering(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, evt := range tt.events {
-				require.NoError(t, logger.Audit(evt, audit.Fields{"outcome": "success"}))
+				require.NoError(t, logger.AuditEvent(audit.NewEvent(evt, audit.Fields{"outcome": "success"})))
 			}
 			require.NoError(t, logger.Close())
 
@@ -222,7 +222,7 @@ func TestFanout_SetOutputRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initially receives all events.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// Set route to security only.
@@ -230,8 +230,8 @@ func TestFanout_SetOutputRoute(t *testing.T) {
 		IncludeCategories: []string{"security"},
 	}))
 
-	require.NoError(t, logger.Audit("user_delete", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_delete", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 	require.NoError(t, logger.Close())
 
 	// Should have: 1 initial + 1 auth_failure = 2 (user_delete filtered).
@@ -254,8 +254,8 @@ func TestFanout_SetOutputRoute_DoesNotAffectOtherOutputs(t *testing.T) {
 		IncludeCategories: []string{"security"},
 	}))
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 1, outA.EventCount(), "A should only get auth_failure")
@@ -305,8 +305,8 @@ func TestFanout_ClearOutputRoute(t *testing.T) {
 
 	// Clear route — now receives all events.
 	require.NoError(t, logger.ClearOutputRoute("routed"))
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 2, out.EventCount(), "should receive all events after clearing route")
@@ -399,7 +399,7 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 100 {
-			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 		}
 	}()
 
@@ -445,7 +445,7 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Globally disabled — should not reach output even though route includes it.
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 0, out.EventCount(),
@@ -470,7 +470,7 @@ func TestFanout_PerOutputFormatter(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	require.Equal(t, 1, jsonOut.EventCount())
@@ -493,9 +493,9 @@ func TestFanout_PanicInFormatter_DrainLoopSurvives(t *testing.T) {
 	require.NoError(t, err)
 
 	// The panic is recovered by processEntry — drain loop survives.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	// Second event also processed (drain loop not dead).
-	require.NoError(t, logger.Audit("user_delete", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_delete", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	// Events are lost due to panic, but the drain loop is alive.
@@ -520,7 +520,7 @@ func TestFanout_SharedFormatter_DeliversSameBytes(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	require.Equal(t, 1, out1.EventCount())
@@ -546,7 +546,7 @@ func TestFanout_PerOutputRouteFilter_MetricsRecordFiltered(t *testing.T) {
 	require.NoError(t, err)
 
 	// This write event will be filtered by the per-output route.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 0, out.EventCount())
@@ -565,9 +565,9 @@ func TestFanout_ExcludeEventType_EndToEnd(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("config_get", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("user_get", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("config_get", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_get", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 2, out.EventCount(), "config_get should be excluded")
@@ -592,7 +592,7 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	assert.Equal(t, 1, goodOut.EventCount(),
@@ -630,7 +630,7 @@ func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 100 {
-			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 		}
 	}()
 

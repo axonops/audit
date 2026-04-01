@@ -62,30 +62,22 @@ func main() {
 	}()
 
 	// All event types, field names, and categories are generated constants.
-	// A typo like "EventUserCrate" would fail at compile time.
-	fmt.Println("--- Using generated constants ---")
+	// A typo like "NewUserCrateEvent" would fail at compile time.
+	fmt.Println("--- Using typed event builders ---")
 
-	if err := logger.Audit(EventUserCreate, audit.Fields{
-		FieldOutcome:  "success",
-		FieldActorID:  "alice",
-		FieldTargetID: "user-42",
-	}); err != nil {
+	if err := logger.AuditEvent(NewUserCreateEvent("alice", "success").
+		SetTargetID("user-42")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventAuthFailure, audit.Fields{
-		FieldOutcome:  "failure",
-		FieldActorID:  "unknown",
-		FieldReason:   "invalid credentials",
-		FieldSourceIP: "192.168.1.100",
-	}); err != nil {
+	if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure").
+		SetReason("invalid credentials").
+		SetSourceIP("192.168.1.100")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventUserRead, audit.Fields{
-		FieldOutcome: "success",
-		FieldActorID: "bob",
-	}); err != nil {
+	if err := logger.AuditEvent(NewUserReadEvent("success").
+		SetActorID("bob")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 }

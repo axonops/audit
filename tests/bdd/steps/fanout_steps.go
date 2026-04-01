@@ -334,7 +334,7 @@ func auditEventWithMarker(tc *AuditTestContext, eventType, m string) error {
 	tc.Markers[m] = m
 	fields := defaultRequiredFields(tc.Taxonomy, eventType)
 	fields["marker"] = m
-	tc.LastErr = tc.Logger.Audit(eventType, fields)
+	tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 	return nil
 }
 

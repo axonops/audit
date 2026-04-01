@@ -70,19 +70,19 @@ func main() {
 
 	// 4. Emit a valid event — this prints a JSON line to stdout.
 	fmt.Println("--- Valid event ---")
-	if auditErr := logger.Audit("user_create", audit.Fields{
+	if auditErr := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
-	}); auditErr != nil {
+	})); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
 	// 5. Emit an invalid event — actor_id is missing (required by taxonomy).
 	fmt.Println("\n--- Invalid event (missing required field) ---")
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome": "success",
 		// actor_id intentionally omitted
-	})
+	}))
 	if err != nil {
 		fmt.Printf("Validation error: %v\n", err)
 	}

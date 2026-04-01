@@ -767,10 +767,10 @@ default_enabled: [write]
 	require.NoError(t, err)
 	defer func() { _ = logger.Close() }()
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
-	})
+	}))
 	assert.NoError(t, err, "description should not be in knownFields set")
 }
 

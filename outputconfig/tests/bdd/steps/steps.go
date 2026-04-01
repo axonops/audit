@@ -165,7 +165,7 @@ func registerWhenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		for _, row := range table.Rows[1:] { // skip header
 			fields[row.Cells[0].Value] = row.Cells[1].Value
 		}
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 

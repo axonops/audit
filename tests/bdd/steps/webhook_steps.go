@@ -370,10 +370,10 @@ func registerWebhookWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	ctx.Step(`^I rapidly audit (\d+) webhook events measuring time$`, func(count int) error {
 		start := time.Now()
 		for i := range count {
-			_ = tc.Logger.Audit("user_create", audit.Fields{
+			_ = tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": fmt.Sprintf("rapid_%d", i),
-			})
+			}))
 		}
 		tc.AuditDuration = time.Since(start)
 		return nil
@@ -673,7 +673,7 @@ func auditMarkedWebhookEvent(tc *AuditTestContext, eventType, name string) error
 	tc.Markers[name] = m
 	fields := defaultRequiredFields(tc.Taxonomy, eventType)
 	fields["marker"] = m
-	tc.LastErr = tc.Logger.Audit(eventType, fields)
+	tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 	return nil
 }
 

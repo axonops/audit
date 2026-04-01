@@ -35,11 +35,11 @@ type Metrics interface {
 	// global category/event filter drops before any output is reached.
 	RecordOutputFiltered(output string)
 
-	// RecordValidationError records that [Logger.Audit] rejected an
+	// RecordValidationError records that [Logger.AuditEvent] rejected an
 	// event due to a validation failure: unknown event type, missing
 	// required fields, or unknown fields in strict mode. The
 	// eventType parameter is the event type string that was passed to
-	// Audit.
+	// AuditEvent.
 	RecordValidationError(eventType string)
 
 	// RecordFiltered records that an event was silently discarded by

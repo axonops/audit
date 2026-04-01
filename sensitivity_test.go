@@ -527,14 +527,14 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":      "success",
 		"actor_id":     "alice",
 		"email":        "alice@example.com",
 		"phone_number": "555-0100",
 		"card_number":  "4111111111111111",
 		"nickname":     "ally",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -576,12 +576,12 @@ func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"email":       "alice@example.com",
 		"card_number": "4111111111111111",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -611,11 +611,11 @@ func TestFieldStripping_DifferentOutputs(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -650,11 +650,11 @@ func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -698,11 +698,11 @@ default_enabled: [write]
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -819,10 +819,10 @@ default_enabled: [write]
 	)
 	require.NoError(t, err)
 
-	err = logger.Audit("user_create", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
-	})
+	}))
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 
@@ -865,11 +865,11 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range eventsPerGoroutine {
-				_ = logger.Audit("user_create", audit.Fields{
+				_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 					"outcome":  "success",
 					"actor_id": "alice",
 					"email":    "alice@example.com",
-				})
+				}))
 			}
 		}()
 	}
@@ -1043,7 +1043,7 @@ func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels [
 	b.ResetTimer()
 	b.ReportAllocs()
 	for range b.N {
-		_ = logger.Audit("user_create", fields)
+		_ = logger.AuditEvent(audit.NewEvent("user_create", fields))
 	}
 }
 

@@ -25,7 +25,7 @@ import (
 )
 
 // Fields is a typed alias for audit event field maps. Consumers pass
-// field values as Fields to [Logger.Audit].
+// field values as Fields to [Logger.AuditEvent].
 type Fields = map[string]any
 
 // SensitivityConfig holds all sensitivity label definitions for a
@@ -97,7 +97,7 @@ type EventDef struct {
 	Severity *int
 
 	// Required lists field names that must be present in every
-	// [Logger.Audit] call for this event type. Missing required
+	// [Logger.AuditEvent] call for this event type. Missing required
 	// fields always produce an error regardless of validation mode.
 	Required []string
 

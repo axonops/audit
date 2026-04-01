@@ -40,6 +40,7 @@ type generateOptions struct {
 	Fields     bool
 	Categories bool
 	Labels     bool
+	Builders   bool
 }
 
 // constantDef represents a single generated constant.
@@ -69,6 +70,39 @@ type categoryEventsDef struct {
 	EventConsts []string // sorted event constant names
 }
 
+// builderDef describes a generated typed event builder.
+type builderDef struct {
+	StructName   string         // e.g., "UserCreateEvent"
+	FieldsStruct string         // e.g., "UserCreateFields"
+	EventConst   string         // e.g., "EventUserCreate"
+	Description  string         // taxonomy description
+	Required     []builderField // constructor params (sorted by ParamName)
+	Optional     []builderField // setter methods (sorted by SetterName)
+	Categories   []builderCat   // categories this event belongs to
+}
+
+// builderField describes a single field on a builder.
+type builderField struct {
+	GoName     string         // Go exported name, e.g., "ActorID" (for struct fields)
+	ParamName  string         // Go param name, e.g., "actorID" (for constructor)
+	SetterName string         // Go method name, e.g., "SetActorID"
+	FieldConst string         // e.g., "FieldActorID"
+	Labels     []builderLabel // labels on this field
+}
+
+// builderLabel is a label reference for generated godoc.
+type builderLabel struct {
+	ConstName   string // e.g., "LabelPii"
+	Description string // e.g., "Personally identifiable information"
+}
+
+// builderCat is a category reference for generated Categories() method.
+type builderCat struct {
+	ConstName   string // e.g., "CategoryWrite"
+	HasSeverity bool
+	Severity    int
+}
+
 // templateData is the data passed to the Go template.
 type templateData struct {
 	Header         string
@@ -77,6 +111,7 @@ type templateData struct {
 	Categories     []constantDef
 	Fields         []constantDef
 	Labels         []constantDef
+	Builders       []builderDef
 	FieldLabels    []fieldLabelDef     // field → labels mapping
 	EventFields    []eventFieldsDef    // event → required/optional fields
 	CategoryEvents []categoryEventsDef // category → events
@@ -84,6 +119,7 @@ type templateData struct {
 	HasCategories  bool
 	HasFields      bool
 	HasLabels      bool
+	HasBuilders    bool
 	HasMetadata    bool // true when any metadata var is emitted
 }
 
@@ -92,6 +128,9 @@ var tmpl = template.Must(template.New("audit-gen").Parse(tmplText))
 const tmplText = `{{ .Header }}
 
 package {{ .Package }}
+{{ if .HasBuilders }}
+import audit "github.com/axonops/go-audit"
+{{ end }}
 {{ if .HasEvents }}
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
@@ -155,7 +194,71 @@ var CategoryEvents = map[string][]string{
 	{{ .ConstName }}: { {{- range $i, $e := .EventConsts }}{{ if $i }}, {{ end }}{{ $e }}{{ end -}} },
 {{- end }}
 }
-{{ end }}`
+{{ end }}{{ if .HasBuilders }}{{ range $b := .Builders }}
+// {{ $b.FieldsStruct }} describes every field on a {{ $b.EventConst }} event.
+type {{ $b.FieldsStruct }} struct {
+{{- range $b.Required }}
+	{{ .GoName }} audit.FieldInfo
+{{- end }}
+{{- range $b.Optional }}
+	{{ .GoName }} audit.FieldInfo
+{{- end }}
+}
+
+{{ if $b.Description }}// {{ $b.StructName }} builds a type-safe audit event.
+// {{ $b.Description }}{{ else }}// {{ $b.StructName }} builds a type-safe audit event.{{ end }}
+type {{ $b.StructName }} struct {
+	fields audit.Fields
+}
+
+// New{{ $b.StructName }} creates a {{ $b.EventConst }} event with required fields.
+func New{{ $b.StructName }}({{ range $i, $f := $b.Required }}{{ if $i }}, {{ end }}{{ $f.ParamName }} any{{ end }}) *{{ $b.StructName }} {
+	return &{{ $b.StructName }}{fields: audit.Fields{
+{{- range $b.Required }}
+		{{ .FieldConst }}: {{ .ParamName }},
+{{- end }}
+	}}
+}
+{{ range $b.Optional }}
+// {{ .SetterName }} sets the {{ .FieldConst }} field.{{ range .Labels }}
+// Sensitivity label: {{ .ConstName }} — {{ .Description }}{{ end }}
+func (e *{{ $b.StructName }}) {{ .SetterName }}(v any) *{{ $b.StructName }} {
+	e.fields[{{ .FieldConst }}] = v
+	return e
+}
+{{ end }}
+// EventType returns the event type name.
+func (e *{{ $b.StructName }}) EventType() string { return {{ $b.EventConst }} }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *{{ $b.StructName }}) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *{{ $b.StructName }}) Description() string { return {{ printf "%q" $b.Description }} }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *{{ $b.StructName }}) FieldInfo() {{ $b.FieldsStruct }} {
+	return {{ $b.FieldsStruct }}{
+{{- range $b.Required }}
+		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}, Required: true{{ if .Labels }}, Labels: []audit.LabelInfo{ {{- range $i, $l := .Labels }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }{{ end }}},
+{{- end }}
+{{- range $b.Optional }}
+		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}{{ if .Labels }}, Labels: []audit.LabelInfo{ {{- range $i, $l := .Labels }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }{{ end }}},
+{{- end }}
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *{{ $b.StructName }}) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+{{- range $b.Categories }}
+		{Name: {{ .ConstName }}{{ if .HasSeverity }}, Severity: intPtr({{ .Severity }}){{ end }}},
+{{- end }}
+	}
+}
+{{ end }}{{ if .HasBuilders }}
+func intPtr(n int) *int { return &n }
+{{ end }}{{ end }}`
 
 // generate produces Go source code from a taxonomy. The output is
 // gofmt-formatted and deterministic (same input → byte-identical output).
@@ -232,9 +335,8 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 	return data, nil
 }
 
-// buildMetadata populates the metadata vars in the template data.
-// FieldLabels is only emitted when label constants are also emitted,
-// since the metadata references Label* constants.
+// buildMetadata populates the metadata vars and builders in the
+// template data.
 func buildMetadata(data *templateData, tax audit.Taxonomy, opts generateOptions) {
 	if opts.Labels {
 		data.FieldLabels = collectFieldLabels(tax)
@@ -244,6 +346,11 @@ func buildMetadata(data *templateData, tax audit.Taxonomy, opts generateOptions)
 	data.HasMetadata = len(data.FieldLabels) > 0 ||
 		len(data.EventFields) > 0 ||
 		len(data.CategoryEvents) > 0
+
+	if opts.Builders {
+		data.Builders = collectBuilders(tax)
+		data.HasBuilders = len(data.Builders) > 0
+	}
 }
 
 // buildLabelConstants creates label constant entries from the taxonomy's
@@ -476,4 +583,100 @@ func toFieldConsts(fields []string) []string {
 		consts[i] = "Field" + toPascalCase(f)
 	}
 	return consts
+}
+
+// collectBuilders creates typed builder definitions for each event type.
+func collectBuilders(tax audit.Taxonomy) []builderDef {
+	keys := sortedKeys(tax.Events)
+	builders := make([]builderDef, 0, len(keys))
+	for _, name := range keys {
+		def := tax.Events[name]
+		if def == nil {
+			continue
+		}
+		b := buildOneBuilder(name, def, tax)
+		builders = append(builders, b)
+	}
+	return builders
+}
+
+func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) builderDef {
+	pascal := toPascalCase(name)
+	b := builderDef{
+		StructName:   pascal + "Event",
+		FieldsStruct: pascal + "Fields",
+		EventConst:   "Event" + pascal,
+		Description:  def.Description,
+	}
+
+	// Required fields → constructor params.
+	req := sortedCopyStr(def.Required)
+	for _, f := range req {
+		b.Required = append(b.Required, makeBuilderField(f, def, tax))
+	}
+
+	// Optional fields → setter methods.
+	opt := sortedCopyStr(def.Optional)
+	for _, f := range opt {
+		b.Optional = append(b.Optional, makeBuilderField(f, def, tax))
+	}
+
+	// Categories.
+	for _, catName := range def.Categories {
+		bc := builderCat{ConstName: "Category" + toPascalCase(catName)}
+		if catDef, ok := tax.Categories[catName]; ok && catDef.Severity != nil {
+			bc.HasSeverity = true
+			bc.Severity = *catDef.Severity
+		}
+		b.Categories = append(b.Categories, bc)
+	}
+
+	return b
+}
+
+func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy) builderField {
+	pascal := toPascalCase(fieldName)
+	bf := builderField{
+		GoName:     pascal,
+		ParamName:  toParamName(fieldName),
+		SetterName: "Set" + pascal,
+		FieldConst: "Field" + pascal,
+	}
+
+	// Resolve labels for this field.
+	if def.FieldLabels != nil {
+		if labels, ok := def.FieldLabels[fieldName]; ok {
+			for _, labelName := range sortedKeys(labels) {
+				bl := builderLabel{ConstName: "Label" + toPascalCase(labelName)}
+				if tax.Sensitivity != nil {
+					if sl, ok := tax.Sensitivity.Labels[labelName]; ok {
+						bl.Description = sl.Description
+					}
+				}
+				bf.Labels = append(bf.Labels, bl)
+			}
+		}
+	}
+
+	return bf
+}
+
+// toParamName converts a snake_case field name to a Go parameter name
+// (camelCase, not exported).
+func toParamName(s string) string {
+	pascal := toPascalCase(s)
+	if pascal == "" {
+		return s
+	}
+	// Lowercase the first rune for camelCase.
+	runes := []rune(pascal)
+	runes[0] = rune(strings.ToLower(string(runes[0]))[0])
+	return string(runes)
+}
+
+func sortedCopyStr(s []string) []string {
+	cp := make([]string, len(s))
+	copy(cp, s)
+	sort.Strings(cp)
+	return cp
 }

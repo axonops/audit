@@ -2,6 +2,8 @@
 
 package main
 
+import audit "github.com/axonops/go-audit"
+
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
 const (
@@ -56,3 +58,163 @@ var CategoryEvents = map[string][]string{
 	CategoryLifecycle: {EventShutdown, EventStartup},
 	CategoryWrite:     {EventUserCreate},
 }
+
+// ShutdownFields describes every field on a EventShutdown event.
+type ShutdownFields struct {
+	AppName  audit.FieldInfo
+	Reason   audit.FieldInfo
+	UptimeMS audit.FieldInfo
+}
+
+// ShutdownEvent builds a type-safe audit event.
+// Application shutting down
+type ShutdownEvent struct {
+	fields audit.Fields
+}
+
+// NewShutdownEvent creates a EventShutdown event with required fields.
+func NewShutdownEvent(appName any) *ShutdownEvent {
+	return &ShutdownEvent{fields: audit.Fields{
+		FieldAppName: appName,
+	}}
+}
+
+// SetReason sets the FieldReason field.
+func (e *ShutdownEvent) SetReason(v any) *ShutdownEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetUptimeMS sets the FieldUptimeMS field.
+func (e *ShutdownEvent) SetUptimeMS(v any) *ShutdownEvent {
+	e.fields[FieldUptimeMS] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *ShutdownEvent) EventType() string { return EventShutdown }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *ShutdownEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *ShutdownEvent) Description() string { return "Application shutting down" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *ShutdownEvent) FieldInfo() ShutdownFields {
+	return ShutdownFields{
+		AppName:  audit.FieldInfo{Name: FieldAppName, Required: true},
+		Reason:   audit.FieldInfo{Name: FieldReason},
+		UptimeMS: audit.FieldInfo{Name: FieldUptimeMS},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *ShutdownEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryLifecycle},
+	}
+}
+
+// StartupFields describes every field on a EventStartup event.
+type StartupFields struct {
+	AppName audit.FieldInfo
+	Config  audit.FieldInfo
+	Version audit.FieldInfo
+}
+
+// StartupEvent builds a type-safe audit event.
+// Application started
+type StartupEvent struct {
+	fields audit.Fields
+}
+
+// NewStartupEvent creates a EventStartup event with required fields.
+func NewStartupEvent(appName any) *StartupEvent {
+	return &StartupEvent{fields: audit.Fields{
+		FieldAppName: appName,
+	}}
+}
+
+// SetConfig sets the FieldConfig field.
+func (e *StartupEvent) SetConfig(v any) *StartupEvent {
+	e.fields[FieldConfig] = v
+	return e
+}
+
+// SetVersion sets the FieldVersion field.
+func (e *StartupEvent) SetVersion(v any) *StartupEvent {
+	e.fields[FieldVersion] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *StartupEvent) EventType() string { return EventStartup }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *StartupEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *StartupEvent) Description() string { return "Application started" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *StartupEvent) FieldInfo() StartupFields {
+	return StartupFields{
+		AppName: audit.FieldInfo{Name: FieldAppName, Required: true},
+		Config:  audit.FieldInfo{Name: FieldConfig},
+		Version: audit.FieldInfo{Name: FieldVersion},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *StartupEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryLifecycle},
+	}
+}
+
+// UserCreateFields describes every field on a EventUserCreate event.
+type UserCreateFields struct {
+	ActorID audit.FieldInfo
+	Outcome audit.FieldInfo
+}
+
+// UserCreateEvent builds a type-safe audit event.
+// A new user account was created
+type UserCreateEvent struct {
+	fields audit.Fields
+}
+
+// NewUserCreateEvent creates a EventUserCreate event with required fields.
+func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
+	return &UserCreateEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// EventType returns the event type name.
+func (e *UserCreateEvent) EventType() string { return EventUserCreate }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *UserCreateEvent) Description() string { return "A new user account was created" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *UserCreateEvent) FieldInfo() UserCreateFields {
+	return UserCreateFields{
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite},
+	}
+}
+
+func intPtr(n int) *int { return &n }

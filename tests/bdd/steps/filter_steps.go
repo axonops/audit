@@ -23,8 +23,8 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
-// filteringTaxonomyYAML is a taxonomy with write enabled and security
-// disabled by default, used by event filtering scenarios.
+// filteringTaxonomyYAML is a taxonomy with write and security categories,
+// used by event filtering scenarios. All categories are enabled by default.
 const filteringTaxonomyYAML = `
 version: 1
 

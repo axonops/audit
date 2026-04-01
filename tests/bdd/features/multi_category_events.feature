@@ -158,7 +158,6 @@ Feature: Multi-category event delivery and severity
         ping:
           fields:
             outcome: {required: true}
-        - ops
       """
     And a logger with stdout output
     When I audit event "ping" with fields:
@@ -179,7 +178,6 @@ Feature: Multi-category event delivery and severity
         audit_event:
           fields:
             outcome: {required: true}
-        - ops
       """
     And a logger with stdout output
     When I audit event "audit_event" with fields:
@@ -211,8 +209,6 @@ Feature: Multi-category event delivery and severity
         auth_failure:
           fields:
             outcome: {required: true}
-        - ops
-        - security
       """
     And a logger with stdout output
     When I audit event "auth_failure" with fields:

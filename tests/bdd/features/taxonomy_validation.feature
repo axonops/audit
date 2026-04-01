@@ -31,8 +31,6 @@ Feature: Taxonomy Validation
             outcome: {required: true}
             actor_id: {required: true}
             reason: {}
-        - write
-        - security
       """
     Then the taxonomy should contain category "write"
     And the taxonomy should contain category "security"
@@ -63,7 +61,6 @@ Feature: Taxonomy Validation
         health_check:
           fields:
             outcome: {required: true}
-        - ops
       """
     Then the taxonomy should contain category "ops"
     And the taxonomy should contain event type "health_check"
@@ -111,7 +108,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       ---
       version: 2
       """
@@ -131,7 +127,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       unknown_key: true
       """
     Then the taxonomy parse should fail wrapping "ErrInvalidInput"
@@ -148,7 +143,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
@@ -163,7 +157,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
@@ -178,7 +171,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
@@ -195,7 +187,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should succeed
 
@@ -211,7 +202,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
@@ -228,25 +218,8 @@ Feature: Taxonomy Validation
             outcome: {required: true}
             actor_id: {required: true}
             outcome: {}
-        - write
       """
     Then the taxonomy parse should fail wrapping "ErrInvalidInput"
-
-  Scenario: DefaultEnabled references unknown category is rejected
-    When I try to parse taxonomy from YAML:
-      """
-      version: 1
-      categories:
-        write:
-          - user_create
-      events:
-        user_create:
-          fields:
-            outcome: {required: true}
-        - write
-        - nonexistent_category
-      """
-    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
 
   Scenario: Tabs in YAML are rejected
     When I try to parse taxonomy from YAML:
@@ -278,7 +251,6 @@ Feature: Taxonomy Validation
         user_update:
           fields:
             outcome: {required: true}
-        - write
       """
     Then the taxonomy parse should succeed
 

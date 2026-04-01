@@ -165,6 +165,25 @@ const (
 These are useful when configuring exclusion labels programmatically
 via `WithNamedOutput`.
 
+### Generated Field-to-Label Mapping
+
+`audit-gen` also generates a `FieldLabels` map showing which labels
+each field carries after resolving all three mechanisms:
+
+```go
+var FieldLabels = map[string][]string{
+    FieldCardExpiry: {LabelFinancial},
+    FieldCardNumber: {LabelFinancial},
+    FieldEmail:      {LabelPii},
+    FieldPhone:      {LabelPii},
+    FieldUserName:   {LabelPii},
+}
+```
+
+This is useful for programmatic inspection — for example, masking
+labeled fields in a debug UI or validating that your regex patterns
+match the fields you expect.
+
 ## Run It
 
 ```bash

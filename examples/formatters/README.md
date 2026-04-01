@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../event-routing/)
+- Completed: [Sensitivity Labels](../sensitivity-labels/)
 
 ## Files
 

@@ -378,10 +378,10 @@ func TestLogger_Handle_Audit(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
 	h := logger.MustHandle("auth_failure")
-	err := h.AuditEvent(audit.NewEvent(h.Name(), audit.Fields{
+	err := h.Audit(audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	}))
+	})
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -1334,10 +1334,10 @@ func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 	h := logger.MustHandle("auth_failure")
 	require.NoError(t, logger.Close())
 
-	err = h.AuditEvent(audit.NewEvent(h.Name(), audit.Fields{
+	err = h.Audit(audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
-	}))
+	})
 	assert.ErrorIs(t, err, audit.ErrClosed)
 }
 

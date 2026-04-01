@@ -253,7 +253,7 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			return fmt.Errorf("no event handle set")
 		}
 		fields := tableToFields(table)
-		tc.LastErr = tc.EventHandle.AuditEvent(audit.NewEvent(tc.EventHandle.Name(), fields))
+		tc.LastErr = tc.EventHandle.Audit(fields)
 		return nil
 	})
 }

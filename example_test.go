@@ -107,7 +107,7 @@ func ExampleLogger_MustHandle() {
 	// Get a handle for zero-allocation audit calls.
 	docCreate := logger.MustHandle("doc_create")
 
-	if err = docCreate.AuditEvent(audit.NewEvent(docCreate.Name(), audit.Fields{"outcome": "success"})); err != nil {
+	if err = docCreate.Audit(audit.Fields{"outcome": "success"}); err != nil {
 		fmt.Println("audit error:", err)
 		return
 	}

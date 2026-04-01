@@ -21,7 +21,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	audit "github.com/axonops/go-audit"
 )
+
+var _ audit.Output = (*Recorder)(nil)
 
 // RecordedEvent is a single captured audit event with structured access
 // to its fields. Events are captured after serialisation and
@@ -41,16 +45,18 @@ type RecordedEvent struct { //nolint:govet // readability over alignment
 	Fields map[string]any
 	// RawJSON is the original serialised bytes for format-level assertions.
 	RawJSON []byte
+	// ParseErr holds any error from JSON deserialisation of the raw bytes.
+	ParseErr error
 }
 
 // Field returns the value of the named field, or nil if not present.
-func (e *RecordedEvent) Field(key string) any {
+func (e RecordedEvent) Field(key string) any { //nolint:gocritic // value receiver required for fmt.GoStringer on non-addressable values
 	return e.Fields[key]
 }
 
 // HasField reports whether the event has a field with the given key
 // and value. Comparison uses [reflect.DeepEqual].
-func (e *RecordedEvent) HasField(key string, want any) bool {
+func (e RecordedEvent) HasField(key string, want any) bool { //nolint:gocritic // value receiver required for consistency with Field/GoString
 	got, ok := e.Fields[key]
 	if !ok {
 		return false
@@ -60,7 +66,7 @@ func (e *RecordedEvent) HasField(key string, want any) bool {
 
 // GoString returns a human-readable representation of the event,
 // suitable for test failure messages.
-func (e *RecordedEvent) GoString() string {
+func (e RecordedEvent) GoString() string { //nolint:gocritic // value receiver required for fmt.GoStringer on non-addressable values
 	return fmt.Sprintf("RecordedEvent{Type: %q, Severity: %d, Fields: %v}",
 		e.EventType, e.Severity, e.Fields)
 }
@@ -158,12 +164,15 @@ func parseEvent(data []byte) RecordedEvent {
 	raw := make([]byte, len(data))
 	copy(raw, data)
 
-	var m map[string]any
-	_ = json.Unmarshal(data, &m) // best-effort parse
-
 	re := RecordedEvent{
 		RawJSON: raw,
 		Fields:  make(map[string]any),
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		re.ParseErr = err
+		return re
 	}
 
 	// Extract framework fields.
@@ -173,8 +182,11 @@ func parseEvent(data []byte) RecordedEvent {
 	if sev, ok := m["severity"].(float64); ok {
 		re.Severity = int(sev)
 	}
-	if ts, ok := m["timestamp"].(string); ok {
+	switch ts := m["timestamp"].(type) {
+	case string:
 		re.Timestamp, _ = time.Parse(time.RFC3339Nano, ts)
+	case float64:
+		re.Timestamp = time.UnixMilli(int64(ts))
 	}
 
 	// Copy non-framework fields.

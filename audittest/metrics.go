@@ -14,7 +14,13 @@
 
 package audittest
 
-import "sync"
+import (
+	"sync"
+
+	audit "github.com/axonops/go-audit"
+)
+
+var _ audit.Metrics = (*MetricsRecorder)(nil)
 
 // MetricsRecorder implements [audit.Metrics] and captures all metric
 // calls for assertion. It is safe for concurrent use.

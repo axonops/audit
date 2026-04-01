@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/audittest"
 )
 
@@ -95,20 +96,17 @@ func TestAuditEventEmitted_Quick(t *testing.T) {
 // --- Pattern 3: Validation error testing ---
 
 func TestValidationError_MissingRequiredField(t *testing.T) {
-	logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+	logger, _, metrics := audittest.NewLogger(t, taxonomyYAML)
 
-	// Emit an event missing the required "actor_id" field.
-	// This tests that the taxonomy validation works correctly.
-	err := logger.AuditEvent(
-		NewUserCreateEvent("success", ""), // actor_id is empty string, not missing
-	)
-	// Note: empty string is still present — validation checks presence, not emptiness.
-	// To test truly missing fields, use NewEvent directly:
-	require.NoError(t, err)
+	// Emit event missing required field "actor_id" using NewEvent directly.
+	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome": "success",
+		// actor_id missing — validation error
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required")
 
 	_ = logger.Close()
 
-	// The event was delivered (empty string is still a value).
-	assert.Equal(t, 1, events.Count())
-	assert.Equal(t, 0, metrics.ValidationErrors(EventUserCreate))
+	assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }

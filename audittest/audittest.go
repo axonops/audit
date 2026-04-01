@@ -29,7 +29,8 @@ type config struct {
 }
 
 // WithConfig overrides the default [audit.Config]. Version is set to 1
-// and Enabled is set to true if their zero values are provided.
+// if its zero value is provided; all other fields use the caller's
+// values (including Enabled, which defaults to false if not set).
 func WithConfig(cfg audit.Config) Option {
 	return func(c *config) { c.cfg = cfg }
 }

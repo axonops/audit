@@ -15,6 +15,7 @@
 package audittest_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -118,6 +119,23 @@ func TestRecorder_Close(t *testing.T) {
 	t.Parallel()
 	rec := audittest.NewRecorder()
 	assert.NoError(t, rec.Close())
+}
+
+func TestRecorder_ConcurrentWriteAndRead(t *testing.T) {
+	t.Parallel()
+	rec := audittest.NewRecorder()
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = rec.Write([]byte(`{"event_type":"test","severity":5}` + "\n"))
+			_ = rec.Count()
+			_ = rec.Events()
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 100, rec.Count())
 }
 
 // TestRecorder_FullPipeline verifies the recorder works end-to-end

@@ -53,7 +53,8 @@ func TestCreateUser(t *testing.T) {
     logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
 
     svc := NewUserService(logger)
-    svc.CreateUser("alice", "alice@example.com")
+    err := svc.CreateUser("alice", "alice@example.com")
+    require.NoError(t, err)
 
     logger.Close() // drain async buffer
 
@@ -74,7 +75,8 @@ about field validation:
 func TestAuditHappens(t *testing.T) {
     logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
 
-    svc.CreateUser("alice", "alice@example.com")
+    svc := NewUserService(logger)
+    _ = svc.CreateUser("alice", "alice@example.com")
 
     logger.Close()
     assert.Equal(t, 1, events.Count())
@@ -93,12 +95,13 @@ buffer drops, delivery counts:
 func TestValidationError(t *testing.T) {
     logger, _, metrics := audittest.NewLogger(t, taxonomyYAML)
 
-    // Emit event missing required field
+    // Emit event missing required field "actor_id"
     err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
         "outcome": "success",
         // actor_id missing — validation error
     }))
     require.Error(t, err)
+    assert.Contains(t, err.Error(), "missing required")
 
     logger.Close()
     assert.Equal(t, 1, metrics.ValidationErrors("user_create"))

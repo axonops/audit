@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../event-routing/)
+- Completed: [Sensitivity Labels](../sensitivity-labels/)
 
 ## Files
 
@@ -121,7 +121,7 @@ output uses the `suser` extension key for `actor_id`, and the
 
 ## Previous
 
-[Event Routing](../event-routing/)
+[Sensitivity Labels](../sensitivity-labels/)
 
 ## Next
 

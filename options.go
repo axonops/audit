@@ -109,6 +109,14 @@ func WithOutputs(outputs ...Output) Option {
 // events are delivered to this output. If formatter is nil, the
 // logger's default formatter is used.
 //
+// excludeLabels specifies sensitivity labels whose fields should be
+// stripped from events before delivery to this output. When non-empty,
+// the taxonomy MUST define a [SensitivityConfig] and every label in
+// excludeLabels MUST be defined within it; [NewLogger] returns an
+// error if either condition is violated. An empty slice means no
+// field stripping — the output receives all fields. Framework fields
+// (timestamp, event_type, severity, duration_ms) are never stripped.
+//
 // WithNamedOutput MUST NOT be combined with [WithOutputs]; if
 // [WithOutputs] was already applied, WithNamedOutput returns an error.
 //
@@ -116,35 +124,53 @@ func WithOutputs(outputs ...Output) Option {
 // cause [NewLogger] to return an error. Duplicate destinations are
 // also detected via [DestinationKeyer]. Routes are validated against
 // the taxonomy after all options have been applied.
-func WithNamedOutput(output Output, route *EventRoute, formatter Formatter) Option {
+func WithNamedOutput(output Output, route *EventRoute, formatter Formatter, excludeLabels ...string) Option {
 	return func(l *Logger) error {
 		if l.usedWithOutputs {
 			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
 		}
-		name := output.Name()
-		if l.outputsByName == nil {
-			l.outputsByName = make(map[string]*outputEntry)
-		}
-		if l.destKeys == nil {
-			l.destKeys = make(map[string]string)
-		}
-		if _, dup := l.outputsByName[name]; dup {
-			return fmt.Errorf("audit: duplicate output name %q", name)
-		}
-		if err := checkDestinationDup(output, name, l.destKeys); err != nil {
-			return err
-		}
-		oe := &outputEntry{
-			output:    output,
-			formatter: formatter,
-		}
-		if route != nil {
-			oe.setRoute(route)
-		}
-		l.entries = append(l.entries, oe)
-		l.outputsByName[name] = oe
-		return nil
+		return l.addNamedOutput(output, route, formatter, excludeLabels)
 	}
+}
+
+// addNamedOutput registers a named output with dedup checking and
+// optional route/formatter/exclude-label configuration.
+func (l *Logger) addNamedOutput(output Output, route *EventRoute, formatter Formatter, excludeLabels []string) error {
+	name := output.Name()
+	if l.outputsByName == nil {
+		l.outputsByName = make(map[string]*outputEntry)
+	}
+	if l.destKeys == nil {
+		l.destKeys = make(map[string]string)
+	}
+	if _, dup := l.outputsByName[name]; dup {
+		return fmt.Errorf("audit: duplicate output name %q", name)
+	}
+	if err := checkDestinationDup(output, name, l.destKeys); err != nil {
+		return err
+	}
+	oe := &outputEntry{
+		output:    output,
+		formatter: formatter,
+	}
+	if route != nil {
+		oe.setRoute(route)
+	}
+	if len(excludeLabels) > 0 {
+		oe.excludedLabels = buildLabelSet(excludeLabels)
+	}
+	l.entries = append(l.entries, oe)
+	l.outputsByName[name] = oe
+	return nil
+}
+
+// buildLabelSet converts a slice of label names to a set.
+func buildLabelSet(labels []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(labels))
+	for _, l := range labels {
+		m[l] = struct{}{}
+	}
+	return m
 }
 
 // checkDestinationDup checks whether the output's destination key

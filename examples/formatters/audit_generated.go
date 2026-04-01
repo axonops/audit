@@ -36,3 +36,37 @@ const (
 	FieldUptimeMS = "uptime_ms"
 	FieldVersion  = "version"
 )
+
+// EventFields maps event types to their required and optional fields.
+var EventFields = map[string]struct {
+	Required []string
+	Optional []string
+}{
+	EventAuthFailure: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventAuthSuccess: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventShutdown: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldReason, FieldUptimeMS},
+	},
+	EventStartup: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldConfig, FieldVersion},
+	},
+	EventUserCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+}
+
+// CategoryEvents maps category names to their member event types.
+var CategoryEvents = map[string][]string{
+	CategoryLifecycle: {EventShutdown, EventStartup},
+	CategorySecurity:  {EventAuthFailure, EventAuthSuccess},
+	CategoryWrite:     {EventUserCreate},
+}

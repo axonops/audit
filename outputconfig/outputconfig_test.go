@@ -46,13 +46,19 @@ default_enabled:
   - read
 events:
   user_create:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   user_delete:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   auth_failure:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
   user_read:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `))
 	require.NoError(t, err, "test taxonomy parse")
 	return tax
@@ -851,4 +857,88 @@ outputs:
 	assert.Equal(t, []string{"security"}, result.Outputs[0].Route.IncludeCategories)
 	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
 	assert.Equal(t, 7, *result.Outputs[0].Route.MinSeverity)
+}
+
+// ---------------------------------------------------------------------------
+// exclude_labels YAML parsing
+// ---------------------------------------------------------------------------
+
+func testTaxonomyWithSensitivity(t *testing.T) audit.Taxonomy {
+	t.Helper()
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+    financial:
+      fields: [card_number]
+categories:
+  write:
+    - user_create
+default_enabled:
+  - write
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      email: {}
+      card_number: {}
+`))
+	require.NoError(t, err)
+	return tax
+}
+
+func TestLoad_OutputWithExcludeLabels(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+    exclude_labels:
+      - pii
+      - financial
+`)
+	tax := testTaxonomyWithSensitivity(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Equal(t, []string{"pii", "financial"}, result.Outputs[0].ExcludeLabels)
+}
+
+func TestLoad_OutputWithExcludeLabels_Empty(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+    exclude_labels: []
+`)
+	tax := testTaxonomyWithSensitivity(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Empty(t, result.Outputs[0].ExcludeLabels)
+}
+
+func TestLoad_OutputWithExcludeLabels_NoSensitivity(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+    exclude_labels:
+      - pii
+`)
+	tax := testTaxonomy(t) // no sensitivity config
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	// The Load itself succeeds — validation happens at NewLogger time.
+	// Verify the labels are stored and will be passed through.
+	require.Len(t, result.Outputs, 1)
+	assert.Equal(t, []string{"pii"}, result.Outputs[0].ExcludeLabels)
 }

@@ -13,32 +13,39 @@ default_enabled:
   - security
 events:
   schema_read:
-    required:
-      - outcome
-    optional:
-      - subject
+    fields:
+      outcome:
+        required: true
+      subject: {}
   config_read:
-    required:
-      - outcome
+    fields:
+      outcome:
+        required: true
   schema_register:
     description: "A new schema version was registered in the registry"
-    required:
-      - outcome
-      - actor_id
-      - subject
-    optional:
-      - schema_type
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      subject:
+        required: true
+      schema_type: {}
   schema_delete:
     description: "A schema was permanently deleted"
-    required:
-      - outcome
-      - actor_id
-      - subject
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      subject:
+        required: true
   auth_failure:
     description: "An authentication attempt failed"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - reason
-      - client_ip
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      reason: {}
+      client_ip: {}

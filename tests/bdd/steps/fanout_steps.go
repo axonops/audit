@@ -42,12 +42,34 @@ categories:
     - auth_failure
     - permission_denied
 events:
-  user_create:    { required: [outcome, actor_id], optional: [marker] }
-  config_update:  { required: [outcome, actor_id], optional: [marker] }
-  user_get:       { required: [outcome], optional: [marker] }
-  config_read:    { required: [outcome], optional: [marker] }
-  auth_failure:   { required: [outcome, actor_id], optional: [marker] }
-  permission_denied: { required: [outcome, actor_id], optional: [marker] }
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+  config_update:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+  user_get:
+    fields:
+      outcome: {required: true}
+      marker: {}
+  config_read:
+    fields:
+      outcome: {required: true}
+      marker: {}
+  auth_failure:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+  permission_denied:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
 default_enabled:
   - write
   - read

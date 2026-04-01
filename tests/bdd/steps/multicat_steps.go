@@ -47,9 +47,12 @@ default_enabled:
   - compliance
 events:
   auth_failure:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
   data_export:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 `))
 		if err != nil {
 			return fmt.Errorf("parse multi-category taxonomy: %w", err)
@@ -73,7 +76,9 @@ default_enabled:
   - compliance
 events:
   auth_failure:
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
 `))
 		if err != nil {
 			return fmt.Errorf("parse multi-category severity taxonomy: %w", err)
@@ -94,7 +99,9 @@ default_enabled:
 events:
   auth_failure:
     severity: %d
-    required: [outcome, actor_id]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
 `, catSev, eventSev)))
 		if err != nil {
 			return fmt.Errorf("parse severity taxonomy: %w", err)

@@ -62,7 +62,8 @@ categories:
     - user_create
 events:
   user_create:
-    required: [outcome]
+    fields:
+      outcome: {required: true}
 default_enabled:
   - write
 ` + "\nsome trailing garbage that is not valid YAML"
@@ -88,6 +89,12 @@ func registerTaxonomyThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	})
 	ctx.Step(`^the taxonomy parse should fail wrapping "([^"]*)"$`, func(sentinel string) error {
 		return assertTaxonomyParseSentinel(tc, sentinel)
+	})
+	ctx.Step(`^the taxonomy parse should succeed$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected taxonomy parse to succeed, got: %w", tc.LastErr)
+		}
+		return nil
 	})
 	ctx.Step(`^the taxonomy parse should fail with an error$`, func() error { return assertTaxonomyParseError(tc) })
 	ctx.Step(`^the taxonomy parse should fail with an error containing "([^"]*)"$`, func(s string) error { return assertTaxonomyParseErrorContaining(tc, s) })

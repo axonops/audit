@@ -12,9 +12,10 @@ Each example introduces one new concept and builds on the previous.
 | 3 | [file-output](file-output/) | File output with rotation and permissions in YAML |
 | 4 | [multi-output](multi-output/) | Fan-out to multiple outputs from one YAML config |
 | 5 | [event-routing](event-routing/) | Category and severity-based routing in YAML |
-| 6 | [formatters](formatters/) | JSON vs CEF with category severity levels |
-| 7 | [middleware](middleware/) | Automatic HTTP audit logging with Hints |
-| 8 | [crud-api](crud-api/) | Complete REST API with Postgres, lifecycle events, Docker |
+| 6 | [sensitivity-labels](sensitivity-labels/) | Per-output field stripping with PII and financial labels |
+| 7 | [formatters](formatters/) | JSON vs CEF with category severity levels |
+| 8 | [middleware](middleware/) | Automatic HTTP audit logging with Hints |
+| 9 | [crud-api](crud-api/) | Complete REST API with Postgres, lifecycle events, Docker |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

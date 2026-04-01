@@ -18,41 +18,45 @@ default_enabled:
 events:
   user_create:
     description: "A new user account was created"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
-      - reason
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+      reason:
 
   user_delete:
     description: "A user account was deleted"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
 
   user_read:
     description: "A user profile was viewed"
-    required:
-      - outcome
-    optional:
-      - actor_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
 
   auth_failure:
     description: "An authentication attempt failed"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - reason
-      - source_ip
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      reason:
+      source_ip:
 
   auth_success:
     description: "An authentication attempt succeeded"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - source_ip
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      source_ip:

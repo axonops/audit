@@ -54,30 +54,43 @@ categories:
     events: [health_check]
 events:
   auth_failure:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   permission_denied:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   user_create:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   config_update:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   user_get:
-    required: [outcome]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      marker: {}
   system_breach:
-    required: [outcome, actor_id]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
   health_check:
-    required: [outcome]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      marker: {}
   custom_event:
     severity: 6
-    required: [outcome]
-    optional: [marker]
+    fields:
+      outcome: {required: true}
+      marker: {}
 default_enabled:
   - security
   - write

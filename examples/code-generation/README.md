@@ -55,20 +55,33 @@ default_enabled:
 events:
   user_create:
     description: "A new user account was created"
-    required:
-      - outcome
-      - actor_id
-    optional:
-      - target_id
-      - reason
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id: {}
+      reason: {}
 
   # ... (auth_failure, auth_success, user_read, user_delete defined similarly)
 ```
 
-Each event belongs to a category, has required fields that must always be
-present, and optional fields that may be included. The `description`
-field is used by `audit-gen` as the Go doc comment for the generated
-constant.
+Each event belongs to a category and declares its fields in a `fields:`
+map. The `description` field is used by `audit-gen` as the Go doc
+comment for the generated constant.
+
+### Field Declaration Syntax
+
+| Syntax | Meaning |
+|--------|---------|
+| `field_name:` or `field_name: {}` | Optional, no labels |
+| `field_name: {required: true}` | Required — must be in every `Audit()` call |
+| `field_name: {labels: [pii]}` | Optional with sensitivity label |
+| `field_name: {required: true, labels: [pii]}` | Required with label |
+
+Sensitivity labels are covered in the [Sensitivity Labels](../sensitivity-labels/)
+example. For now, the key point is: `required: true` means the field
+must always be present; everything else is optional.
 
 **`default_enabled` is critical.** It lists which categories are active
 when the logger starts. If you omit it, all categories are disabled and
@@ -104,31 +117,64 @@ events exist, what fields are required. It's part of your source code:
 //go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
-This produces `audit_generated.go` with three groups of constants:
+This produces `audit_generated.go` with four sections — event type
+constants, category constants, field name constants, and taxonomy
+metadata:
 
 ```go
 const (
-    EventUserCreate  = "user_create"   // A new user account was created
-    EventAuthFailure = "auth_failure"  // An authentication attempt failed
-    // ...
+    // EventAuthFailure — An authentication attempt failed
+    EventAuthFailure = "auth_failure"
+    // EventUserCreate — A new user account was created
+    EventUserCreate = "user_create"
+    // ... (plus lifecycle events EventStartup, EventShutdown)
 )
 
 const (
-    CategoryWrite    = "write"
+    CategoryRead     = "read"
     CategorySecurity = "security"
-    // ...
+    CategoryWrite    = "write"
+    // ... (plus CategoryLifecycle)
 )
 
 const (
     FieldActorID  = "actor_id"
     FieldOutcome  = "outcome"
+    FieldReason   = "reason"
+    FieldSourceIP = "source_ip"
+    FieldTargetID = "target_id"
     // ...
 )
+
+// Metadata: the complete taxonomy schema, using the constants above.
+var EventFields = map[string]struct {
+    Required []string
+    Optional []string
+}{
+    EventUserCreate: {
+        Required: []string{FieldActorID, FieldOutcome},
+        Optional: []string{FieldReason, FieldTargetID},
+    },
+    EventAuthFailure: {
+        Required: []string{FieldActorID, FieldOutcome},
+        Optional: []string{FieldReason, FieldSourceIP},
+    },
+    // ...
+}
+
+var CategoryEvents = map[string][]string{
+    CategoryWrite:    {EventUserCreate, EventUserDelete},
+    CategorySecurity: {EventAuthFailure, EventAuthSuccess},
+    // ...
+}
 ```
 
 Now a typo like `EventUserCrate` fails the build instead of silently
-passing as a runtime validation error. In a large codebase, this
-prevents an entire class of bugs.
+passing as a runtime validation error. The metadata vars reference
+the generated constants — `EventUserCreate` not `"user_create"` —
+so the entire taxonomy is type-safe. When sensitivity labels are
+defined, `FieldLabels` and `Label` constants are also generated — see
+the [Sensitivity Labels](../sensitivity-labels/) example.
 
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,

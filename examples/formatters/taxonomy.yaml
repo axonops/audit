@@ -18,18 +18,24 @@ default_enabled:
 events:
   user_create:
     description: "A new user account was created"
-    required:
-      - outcome
-      - actor_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
 
   auth_failure:
     description: "An authentication attempt failed"
-    required:
-      - outcome
-      - actor_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
 
   auth_success:
     description: "An authentication attempt succeeded"
-    required:
-      - outcome
-      - actor_id
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true

@@ -38,9 +38,10 @@ import (
 // optional [Formatter] override. The route may be changed at runtime
 // via [Logger.SetOutputRoute]; access is lock-free via atomic.Pointer.
 type outputEntry struct {
-	output    Output
-	formatter Formatter // nil = use logger's default formatter
-	route     atomic.Pointer[EventRoute]
+	output         Output
+	formatter      Formatter           // nil = use logger's default formatter
+	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
+	route          atomic.Pointer[EventRoute]
 }
 
 // matchesEvent reports whether the event should be delivered to this

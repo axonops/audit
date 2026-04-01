@@ -40,8 +40,22 @@ const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 type yamlTaxonomy struct {
 	Categories     yamlCategories          `yaml:"categories"`
 	Events         map[string]yamlEventDef `yaml:"events"`
+	Sensitivity    *yamlSensitivity        `yaml:"sensitivity"`
 	DefaultEnabled []string                `yaml:"default_enabled"`
 	Version        int                     `yaml:"version"`
+}
+
+// yamlSensitivity is the intermediate representation of the sensitivity
+// label configuration in YAML.
+type yamlSensitivity struct {
+	Labels map[string]*yamlSensitivityLabel `yaml:"labels"`
+}
+
+// yamlSensitivityLabel defines a single sensitivity label in YAML.
+type yamlSensitivityLabel struct {
+	Description string   `yaml:"description"`
+	Fields      []string `yaml:"fields"`
+	Patterns    []string `yaml:"patterns"`
 }
 
 // yamlCategories handles polymorphic YAML category parsing. Categories
@@ -118,11 +132,21 @@ func parseCategoryMapping(catName string, node *yaml.Node) (*yamlCategoryDef, er
 // yamlEventDef is the intermediate representation of a single event
 // definition within the YAML taxonomy. Categories are derived from
 // the categories map — there is no category field on events.
+//
+// Fields are declared in a unified fields: map. Each field entry
+// specifies whether the field is required (default false = optional)
+// and optionally carries sensitivity labels.
 type yamlEventDef struct {
-	Description string   `yaml:"description"`
-	Severity    *int     `yaml:"severity"`
-	Required    []string `yaml:"required"`
-	Optional    []string `yaml:"optional"`
+	Fields      map[string]*yamlFieldDef `yaml:"fields"`
+	Severity    *int                     `yaml:"severity"`
+	Description string                   `yaml:"description"`
+}
+
+// yamlFieldDef defines a single field within an event definition.
+// A nil yamlFieldDef is treated as optional with no labels.
+type yamlFieldDef struct {
+	Labels   []string `yaml:"labels"`
+	Required bool     `yaml:"required"`
 }
 
 // ParseTaxonomyYAML parses a YAML document into a [Taxonomy].
@@ -194,12 +218,7 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
-		events[name] = &EventDef{
-			Description: def.Description,
-			Severity:    copyIntPtr(def.Severity),
-			Required:    copyStrings(def.Required),
-			Optional:    copyStrings(def.Optional),
-		}
+		events[name] = convertYAMLEventDef(def)
 	}
 
 	// Derive EventDef.Categories from the categories map.
@@ -218,12 +237,68 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	defaultEnabled := make([]string, len(yt.DefaultEnabled))
 	copy(defaultEnabled, yt.DefaultEnabled)
 
-	return Taxonomy{
+	tax := Taxonomy{
 		Version:        yt.Version,
 		Categories:     categories,
 		Events:         events,
 		DefaultEnabled: defaultEnabled,
 	}
+
+	if yt.Sensitivity != nil {
+		tax.Sensitivity = convertYAMLSensitivity(yt.Sensitivity)
+	}
+	return tax
+}
+
+// convertYAMLSensitivity converts the YAML sensitivity config to a
+// [SensitivityConfig].
+func convertYAMLSensitivity(ys *yamlSensitivity) *SensitivityConfig {
+	if ys == nil || len(ys.Labels) == 0 {
+		return nil
+	}
+	sc := &SensitivityConfig{
+		Labels: make(map[string]*SensitivityLabel, len(ys.Labels)),
+	}
+	for name, yl := range ys.Labels {
+		label := &SensitivityLabel{
+			Description: yl.Description,
+			Fields:      copyStrings(yl.Fields),
+			Patterns:    copyStrings(yl.Patterns),
+		}
+		sc.Labels[name] = label
+	}
+	return sc
+}
+
+// convertYAMLEventDef converts a single yamlEventDef into an [EventDef].
+// Required and Optional are derived from the unified fields map. Per-field
+// label annotations are stored in fieldAnnotations for later resolution
+// by [precomputeSensitivity].
+func convertYAMLEventDef(def yamlEventDef) *EventDef {
+	ev := &EventDef{
+		Description: def.Description,
+		Severity:    copyIntPtr(def.Severity),
+	}
+	for fieldName, fieldDef := range def.Fields {
+		if fieldDef == nil {
+			ev.Optional = append(ev.Optional, fieldName)
+			continue
+		}
+		if fieldDef.Required {
+			ev.Required = append(ev.Required, fieldName)
+		} else {
+			ev.Optional = append(ev.Optional, fieldName)
+		}
+		if len(fieldDef.Labels) > 0 {
+			if ev.fieldAnnotations == nil {
+				ev.fieldAnnotations = make(map[string][]string)
+			}
+			ev.fieldAnnotations[fieldName] = copyStrings(fieldDef.Labels)
+		}
+	}
+	slices.Sort(ev.Required)
+	slices.Sort(ev.Optional)
+	return ev
 }
 
 // copyIntPtr returns a copy of p. A nil input returns nil.

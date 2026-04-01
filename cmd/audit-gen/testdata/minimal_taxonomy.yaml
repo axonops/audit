@@ -4,7 +4,8 @@ categories:
     - health_check
 events:
   health_check:
-    required:
-      - outcome
+    fields:
+      outcome:
+        required: true
 default_enabled:
   - ops

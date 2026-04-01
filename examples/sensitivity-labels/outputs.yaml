@@ -1,0 +1,25 @@
+version: 1
+outputs:
+  full_log:
+    type: file
+    file:
+      path: "./full-audit.log"
+    # No exclude_labels — receives ALL fields including PII and financial.
+
+  public_log:
+    type: file
+    file:
+      path: "./public-audit.log"
+    exclude_labels:
+      - pii
+      - financial
+    # PII and financial fields stripped before delivery.
+
+  pci_log:
+    type: file
+    file:
+      path: "./pci-audit.log"
+    exclude_labels:
+      - financial
+    # Only financial fields stripped — PII is preserved for
+    # security investigations.

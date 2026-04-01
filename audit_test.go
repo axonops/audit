@@ -193,7 +193,9 @@ func TestLogger_Audit_DisabledCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	// "read" category is not in DefaultEnabled.
+	// Disable the "read" category at runtime.
+	require.NoError(t, logger.DisableCategory("read"))
+
 	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
 
@@ -583,7 +585,8 @@ func TestLogger_EnableCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	// "read" is not in DefaultEnabled. Enable it.
+	// Disable "read", then re-enable it.
+	require.NoError(t, logger.DisableCategory("read"))
 	require.NoError(t, logger.EnableCategory("read"))
 
 	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
@@ -596,7 +599,7 @@ func TestLogger_DisableCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	// "write" is in DefaultEnabled. Disable it.
+	// Disable "write" at runtime.
 	require.NoError(t, logger.DisableCategory("write"))
 
 	err := logger.AuditEvent(audit.NewEvent("schema_register", audit.Fields{
@@ -618,7 +621,8 @@ func TestLogger_EnableEvent_OverridesCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
 
-	// "read" category is disabled. Enable one specific event.
+	// Disable "read" category, then enable one specific event from it.
+	require.NoError(t, logger.DisableCategory("read"))
 	require.NoError(t, logger.EnableEvent("schema_read"))
 
 	err := logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "success"}))
@@ -689,7 +693,6 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "access"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -720,7 +723,6 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "access"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -754,7 +756,6 @@ func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "access"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -793,7 +794,6 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 			"user_create": {Required: []string{"outcome"}},
 			"data_export": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"write"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -823,7 +823,6 @@ func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "compliance"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -860,7 +859,6 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "compliance"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -894,7 +892,6 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_failure": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"security", "compliance"},
 	}
 
 	logger, err := audit.NewLogger(
@@ -1260,7 +1257,6 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"no_req": {Optional: []string{"info"}},
 		},
-		DefaultEnabled: []string{"misc"},
 	}
 
 	out := testhelper.NewMockOutput("test")
@@ -1535,10 +1531,10 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Empty DefaultEnabled -- all events filtered
+// All categories enabled by default
 // ---------------------------------------------------------------------------
 
-func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
+func TestLogger_Audit_AllCategoriesEnabledByDefault(t *testing.T) {
 
 	tax := audit.Taxonomy{
 		Version:    1,
@@ -1546,7 +1542,6 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"ev1": {Required: []string{"f1"}},
 		},
-		DefaultEnabled: []string{}, // empty -- only lifecycle enabled
 	}
 
 	out := testhelper.NewMockOutput("test")
@@ -1558,15 +1553,11 @@ func TestLogger_Audit_EmptyDefaultEnabled(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
-	// ev1 should be filtered (write category not enabled).
+	// ev1 should be delivered — all categories enabled by default.
 	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"f1": "val"}))
 	require.NoError(t, err)
-
-	// Startup (lifecycle, always enabled) should work as sentinel.
-	err = logger.AuditEvent(audit.NewEvent("startup", audit.Fields{"app_name": "test"}))
-	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
-	assert.Equal(t, 1, out.EventCount(), "only lifecycle event should pass when DefaultEnabled is empty")
+	assert.Equal(t, 1, out.EventCount(), "event should be delivered — all categories enabled by default")
 }
 
 // ---------------------------------------------------------------------------
@@ -1628,7 +1619,8 @@ func TestAudit_FilteredEvent_RecordsFiltered(t *testing.T) {
 	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out,
 		audit.WithMetrics(metrics))
 
-	// "read" category is not in DefaultEnabled.
+	// Disable "read" category at runtime, then emit an event.
+	require.NoError(t, logger.DisableCategory("read"))
 	_ = logger.AuditEvent(audit.NewEvent("schema_read", audit.Fields{"outcome": "ok"}))
 
 	metrics.Mu.Lock()
@@ -2147,7 +2139,6 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 				Optional: []string{"target_type", "target_id", "reason", "source_ip", "user_agent", "request_id"},
 			},
 		},
-		DefaultEnabled: []string{"security"},
 	}
 
 	out := testhelper.NewMockOutput("field-test")
@@ -2204,7 +2195,6 @@ func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T
 				Optional: []string{"reason", "source_ip", "user_agent"},
 			},
 		},
-		DefaultEnabled: []string{"security"},
 	}
 
 	out := testhelper.NewMockOutput("field-test")
@@ -2338,7 +2328,6 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 				Optional: []string{"source_ip", "request_id", "user_agent", "subject", "schema_type", "version"},
 			},
 		},
-		DefaultEnabled: []string{"write"},
 	}
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(

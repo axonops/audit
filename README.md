@@ -18,16 +18,21 @@
 
 ## Overview
 
-go-audit is an audit logging library for Go that validates every event
-against a consumer-defined schema, delivers events asynchronously to
-multiple outputs simultaneously, and supports both
-[JSON](docs/json-format.md) and
-[CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
+go-audit is an audit logging library for Go. Audit logging is different
+from application logging — application logs record technical details
+for debugging (`log/slog`, `zap`), while audit logs record **who did
+what, when, and to which resource** for compliance, forensics, and
+accountability. If your application handles user data, authentication,
+or financial transactions, regulations like SOX, HIPAA, and GDPR
+require structured audit trails that application loggers don't enforce.
 
-Define your audit event types in YAML. Generate type-safe Go code.
-The library handles validation, async delivery, multi-output fan-out,
-per-output event routing, and sensitive field stripping — so you can
-focus on your application logic.
+go-audit validates every event against a consumer-defined schema,
+delivers events asynchronously to multiple outputs simultaneously,
+and supports both [JSON](docs/json-format.md) and
+[CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
+Define your audit event types in YAML, generate type-safe Go code, and
+let the library handle validation, delivery, fan-out, per-output
+routing, and sensitive field stripping.
 
 ---
 
@@ -109,10 +114,6 @@ categories:
     severity: 8
     events:
       - auth_failure
-
-default_enabled:
-  - write
-  - security
 
 events:
   user_create:

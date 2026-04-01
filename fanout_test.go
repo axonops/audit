@@ -436,7 +436,6 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 				"user_create":  {Required: []string{"outcome"}},
 				"auth_failure": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"}, // security NOT enabled
 		}),
 		audit.WithNamedOutput(out, &audit.EventRoute{
 			IncludeCategories: []string{"security"},
@@ -444,7 +443,8 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Globally disabled — should not reach output even though route includes it.
+	// Disable security globally — should not reach output even though route includes it.
+	require.NoError(t, logger.DisableCategory("security"))
 	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 	require.NoError(t, logger.Close())
 

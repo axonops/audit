@@ -33,7 +33,6 @@ func ValidTaxonomy() audit.Taxonomy {
 			"schema_delete":   {Required: []string{"outcome", "actor_id", "subject"}},
 			"auth_failure":    {Required: []string{"outcome", "actor_id"}, Optional: []string{"reason"}},
 		},
-		DefaultEnabled: []string{"write", "security"},
 	}
 }
 
@@ -55,6 +54,5 @@ func TestTaxonomy() audit.Taxonomy {
 			"auth_failure":      {Required: []string{"outcome"}},
 			"permission_denied": {Required: []string{"outcome"}},
 		},
-		DefaultEnabled: []string{"write", "read", "security"},
 	}
 }

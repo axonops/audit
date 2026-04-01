@@ -51,7 +51,6 @@
 //	    Events: map[string]*audit.EventDef{
 //	        "user_create": {Required: []string{"outcome", "actor_id"}},
 //	    },
-//	    DefaultEnabled: []string{"write"},
 //	}
 //
 //	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})

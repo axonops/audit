@@ -69,16 +69,6 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 			},
 			wantError: "not defined in Events",
 		},
-		{
-			name: "DefaultEnabled references non-existent category",
-			taxonomy: audit.Taxonomy{
-				Version:        1,
-				Categories:     map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
-				Events:         map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
-				DefaultEnabled: []string{"write", "nonexistent"},
-			},
-			wantError: "does not exist",
-		},
 	}
 
 	for _, tt := range tests {
@@ -185,7 +175,6 @@ func TestInjectLifecycleEvents(t *testing.T) {
 		assert.Contains(t, tax.Categories, "lifecycle")
 		assert.Contains(t, tax.Events, "startup")
 		assert.Contains(t, tax.Events, "shutdown")
-		assert.Contains(t, tax.DefaultEnabled, "lifecycle")
 	})
 
 	t.Run("preserves consumer-defined lifecycle events", func(t *testing.T) {
@@ -214,14 +203,7 @@ func TestInjectLifecycleEvents(t *testing.T) {
 		assert.Equal(t, first.Version, tax.Version)
 		assert.Equal(t, len(first.Events), len(tax.Events))
 		assert.Equal(t, len(first.Categories), len(tax.Categories))
-		// DefaultEnabled should not have duplicate "lifecycle".
-		count := 0
-		for _, cat := range tax.DefaultEnabled {
-			if cat == "lifecycle" {
-				count++
-			}
-		}
-		assert.Equal(t, 1, count, "lifecycle should appear exactly once in DefaultEnabled")
+		assert.Contains(t, tax.Categories, "lifecycle")
 	})
 
 	t.Run("handles nil maps", func(t *testing.T) {

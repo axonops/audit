@@ -666,7 +666,6 @@ events:
   medium_event:
     fields:
       outcome: {required: true}
-default_enabled: [critical, low, medium]
 `
 
 // TestAudit_SeverityRouteFiltersInDrainLoop verifies the complete async
@@ -733,7 +732,6 @@ events:
   normal_event:
     fields:
       outcome: {required: true}
-default_enabled: [normal]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)

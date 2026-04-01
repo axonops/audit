@@ -31,7 +31,6 @@ Feature: Taxonomy Validation
             outcome: {required: true}
             actor_id: {required: true}
             reason: {}
-      default_enabled:
         - write
         - security
       """
@@ -67,7 +66,6 @@ Feature: Taxonomy Validation
         health_check:
           fields:
             outcome: {required: true}
-      default_enabled:
         - ops
       """
     Then the taxonomy should contain category "ops"
@@ -116,7 +114,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       ---
       version: 2
@@ -137,7 +134,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       unknown_key: true
       """
@@ -155,7 +151,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
@@ -171,7 +166,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
@@ -187,7 +181,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
@@ -205,7 +198,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should succeed
@@ -222,7 +214,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
@@ -240,7 +231,6 @@ Feature: Taxonomy Validation
             outcome: {required: true}
             actor_id: {required: true}
             outcome: {}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should fail wrapping "ErrInvalidInput"
@@ -256,7 +246,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
         - nonexistent_category
       """
@@ -275,7 +264,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy should contain event type "startup"
@@ -293,7 +281,6 @@ Feature: Taxonomy Validation
         user_create:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy default enabled should include "lifecycle"
@@ -320,7 +307,6 @@ Feature: Taxonomy Validation
           fields:
             app_name: {required: true}
             uptime_ms: {required: true}
-      default_enabled:
         - write
         - lifecycle
       """
@@ -357,7 +343,6 @@ Feature: Taxonomy Validation
         user_update:
           fields:
             outcome: {required: true}
-      default_enabled:
         - write
       """
     Then the taxonomy parse should succeed

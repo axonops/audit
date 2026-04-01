@@ -35,9 +35,6 @@ categories:
     severity: 8
     events:
       - auth_failure
-default_enabled:
-  - write
-  - security
 events:
   user_create:
     fields:
@@ -154,5 +151,4 @@ func TestQuickTaxonomy(t *testing.T) {
 	assert.Contains(t, tax.Events, "user_create")
 	assert.Contains(t, tax.Events, "user_delete")
 	assert.Contains(t, tax.Categories, "test")
-	assert.Equal(t, []string{"test"}, tax.DefaultEnabled)
 }

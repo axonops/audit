@@ -274,14 +274,11 @@ type filterState struct {
 	hasEventOverrides atomic.Bool
 }
 
-// newFilterState initialises a filterState from the taxonomy's
-// DefaultEnabled list and the full set of categories.
+// newFilterState initialises a filterState with all taxonomy categories
+// enabled by default.
 func newFilterState(t *Taxonomy) *filterState {
 	f := &filterState{}
 	for cat := range t.Categories {
-		f.enabledCategories.Store(cat, false)
-	}
-	for _, cat := range t.DefaultEnabled {
 		f.enabledCategories.Store(cat, true)
 	}
 	return f

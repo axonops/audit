@@ -91,12 +91,6 @@ events:
     fields:
       outcome: {required: true}
       marker: {}
-default_enabled:
-  - security
-  - write
-  - read
-  - critical
-  - info
 `))
 		if err != nil {
 			return fmt.Errorf("parse severity routing taxonomy: %w", err)

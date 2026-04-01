@@ -47,11 +47,6 @@ categories:
     - auth_failure
     - auth_success
 
-default_enabled:
-  - write
-  - read
-  - security
-
 events:
   user_create:
     description: "A new user account was created"
@@ -82,11 +77,6 @@ comment for the generated constant.
 Sensitivity labels are covered in the [Sensitivity Labels](../06-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
-
-**`default_enabled` is critical.** It lists which categories are active
-when the logger starts. If you omit it, all categories are disabled and
-every event is silently discarded — the worst failure mode for a
-compliance tool. Always list the categories your application needs.
 
 ### Why Embed the Taxonomy?
 

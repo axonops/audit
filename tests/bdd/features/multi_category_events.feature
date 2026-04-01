@@ -158,7 +158,6 @@ Feature: Multi-category event delivery and severity
         ping:
           fields:
             outcome: {required: true}
-      default_enabled:
         - ops
       """
     And a logger with stdout output
@@ -180,7 +179,6 @@ Feature: Multi-category event delivery and severity
         audit_event:
           fields:
             outcome: {required: true}
-      default_enabled:
         - ops
       """
     And a logger with stdout output
@@ -213,7 +211,6 @@ Feature: Multi-category event delivery and severity
         auth_failure:
           fields:
             outcome: {required: true}
-      default_enabled:
         - ops
         - security
       """

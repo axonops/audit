@@ -38,11 +38,10 @@ const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
 type yamlTaxonomy struct {
-	Categories     yamlCategories          `yaml:"categories"`
-	Events         map[string]yamlEventDef `yaml:"events"`
-	Sensitivity    *yamlSensitivity        `yaml:"sensitivity"`
-	DefaultEnabled []string                `yaml:"default_enabled"`
-	Version        int                     `yaml:"version"`
+	Categories  yamlCategories          `yaml:"categories"`
+	Events      map[string]yamlEventDef `yaml:"events"`
+	Sensitivity *yamlSensitivity        `yaml:"sensitivity"`
+	Version     int                     `yaml:"version"`
 }
 
 // yamlSensitivity is the intermediate representation of the sensitivity
@@ -234,14 +233,10 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		slices.Sort(def.Categories)
 	}
 
-	defaultEnabled := make([]string, len(yt.DefaultEnabled))
-	copy(defaultEnabled, yt.DefaultEnabled)
-
 	tax := Taxonomy{
-		Version:        yt.Version,
-		Categories:     categories,
-		Events:         events,
-		DefaultEnabled: defaultEnabled,
+		Version:    yt.Version,
+		Categories: categories,
+		Events:     events,
 	}
 
 	if yt.Sensitivity != nil {

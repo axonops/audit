@@ -40,7 +40,6 @@ func ExampleNewLogger() {
 			Events: map[string]*audit.EventDef{
 				"user_create": {Required: []string{"outcome", "actor_id"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 		audit.WithOutputs(stdout),
 	)
@@ -84,7 +83,6 @@ func ExampleLogger_AuditEvent() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 		audit.WithOutputs(stdout),
 	)
@@ -118,7 +116,6 @@ func ExampleLogger_MustHandle() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -155,7 +152,6 @@ func ExampleLogger_EnableCategory() {
 				"doc_read":   {Required: []string{"outcome"}},
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -186,7 +182,6 @@ func ExampleLogger_Close() {
 			Events: map[string]*audit.EventDef{
 				"doc_create": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write"},
 		}),
 	)
 	if err != nil {
@@ -225,7 +220,6 @@ func ExampleWithFormatter() {
 			Events: map[string]*audit.EventDef{
 				"auth_failure": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"security"},
 		}),
 		audit.WithFormatter(cef),
 	)
@@ -295,7 +289,6 @@ func ExampleLogger_SetOutputRoute() {
 				"user_create":  {Required: []string{"outcome"}},
 				"auth_failure": {Required: []string{"outcome"}},
 			},
-			DefaultEnabled: []string{"write", "security"},
 		}),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)

@@ -47,10 +47,6 @@ categories:
     events:
       - auth_failure
 
-default_enabled:
-  - write
-  - security
-
 events:
   user_create:
     description: "A new user account was created"
@@ -75,7 +71,6 @@ events:
 ### Key Concepts
 
 - **Categories** group related events and control bulk enable/disable
-- **`default_enabled`** lists which categories are active at startup
 - **Events** define the fields each event type accepts
 - **Fields** can be `required: true` or optional (bare `{}` or empty)
 - **Severity** can be set per-category (default for all events in that category) or per-event (overrides category)

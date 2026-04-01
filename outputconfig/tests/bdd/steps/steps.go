@@ -82,10 +82,6 @@ categories:
     - auth_failure
   read:
     - user_read
-default_enabled:
-  - write
-  - security
-  - read
 events:
   user_create:
     fields:

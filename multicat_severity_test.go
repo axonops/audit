@@ -60,7 +60,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-default_enabled: [compliance, security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -124,7 +123,6 @@ events:
   shared_event:
     fields:
       outcome: {required: true}
-default_enabled: [alpha, beta]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -174,7 +172,6 @@ events:
   multi_event:
     fields:
       outcome: {required: true}
-default_enabled: [alpha, beta, gamma]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -216,7 +213,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-default_enabled: [security, compliance]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -303,7 +299,6 @@ events:
     severity: 8
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "deploy",
 			wantSeverity: 8,
@@ -320,7 +315,6 @@ events:
   alert:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `,
 			eventType:    "alert",
 			wantSeverity: 9,
@@ -336,7 +330,6 @@ events:
   plain:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "plain",
 			wantSeverity: 5,
@@ -353,7 +346,6 @@ events:
     severity: 0
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "low",
 			wantSeverity: 0,
@@ -414,7 +406,6 @@ events:
     severity: 0
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
@@ -466,7 +457,6 @@ events:
     severity: 7
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "deploy",
 			wantSeverity: 7,
@@ -483,7 +473,6 @@ events:
   auth_fail:
     fields:
       outcome: {required: true}
-default_enabled: [security]
 `,
 			eventType:    "auth_fail",
 			wantSeverity: 9,
@@ -499,7 +488,6 @@ events:
   ping:
     fields:
       outcome: {required: true}
-default_enabled: [ops]
 `,
 			eventType:    "ping",
 			wantSeverity: 5,
@@ -562,7 +550,6 @@ events:
   auth_failure:
     fields:
       outcome: {required: true}
-default_enabled: [ops, security]
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)

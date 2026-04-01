@@ -166,13 +166,6 @@ type Taxonomy struct {
 	// disabled with zero overhead.
 	Sensitivity *SensitivityConfig
 
-	// DefaultEnabled lists category names that are enabled at startup.
-	// Events in categories not listed here are silently discarded
-	// unless explicitly enabled at runtime via [Logger.EnableCategory].
-	// An empty slice means all non-lifecycle categories are disabled;
-	// all events will be silently discarded until enabled at runtime.
-	DefaultEnabled []string
-
 	// Version is the taxonomy schema version. MUST be > 0. Currently
 	// only version 1 is supported; higher values cause [WithTaxonomy]
 	// to return an error wrapping [ErrTaxonomyInvalid].
@@ -204,8 +197,7 @@ var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 //   - shutdown: required [app_name], optional [reason, uptime_ms]
 //
 // If the consumer has already defined events with these names, their
-// definitions are preserved unchanged. The "lifecycle" category is
-// always added to [Taxonomy.DefaultEnabled].
+// definitions are preserved unchanged.
 //
 // Calling InjectLifecycleEvents multiple times is safe and idempotent.
 // [WithTaxonomy] calls it automatically; it is exported so that
@@ -256,10 +248,6 @@ func InjectLifecycleEvents(t *Taxonomy) {
 		}
 	}
 
-	// Ensure lifecycle category is in DefaultEnabled.
-	if !slices.Contains(t.DefaultEnabled, lifecycleCategory) {
-		t.DefaultEnabled = append(t.DefaultEnabled, lifecycleCategory)
-	}
 }
 
 // precomputeTaxonomy populates the pre-computed fields on every
@@ -377,7 +365,6 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkCategoryConsistency(t)...)
 	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
-	errs = append(errs, checkDefaultEnabled(t)...)
 	errs = append(errs, checkSensitivity(t)...)
 
 	if len(errs) > 0 {
@@ -468,19 +455,6 @@ func checkFieldOverlap(t Taxonomy) []string {
 					"event %q has field %q in both Required and Optional",
 					et, f))
 			}
-		}
-	}
-	return errs
-}
-
-// checkDefaultEnabled validates that DefaultEnabled references valid categories.
-func checkDefaultEnabled(t Taxonomy) []string {
-	var errs []string
-	for _, cat := range t.DefaultEnabled {
-		if _, ok := t.Categories[cat]; !ok {
-			errs = append(errs, fmt.Sprintf(
-				"DefaultEnabled references category %q which does not exist",
-				cat))
 		}
 	}
 	return errs

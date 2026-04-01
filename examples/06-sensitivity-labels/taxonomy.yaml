@@ -19,9 +19,6 @@ categories:
     - user_create
     - payment_process
 
-default_enabled:
-  - write
-
 events:
   user_create:
     description: "A new user account was created"

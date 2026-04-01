@@ -7,5 +7,3 @@ events:
     fields:
       outcome:
         required: true
-default_enabled:
-  - ops

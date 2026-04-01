@@ -48,8 +48,6 @@ events:
       request_id: {}
       transport_security: {}
       custom_field: {}
-default_enabled:
-  - http
 `
 
 func registerMiddlewareSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

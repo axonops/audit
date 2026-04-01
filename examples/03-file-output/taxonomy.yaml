@@ -4,9 +4,6 @@ categories:
   write:
     - user_create
 
-default_enabled:
-  - write
-
 events:
   user_create:
     description: "A new user account was created"

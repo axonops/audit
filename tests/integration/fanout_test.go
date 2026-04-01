@@ -141,7 +141,6 @@ func testTaxonomy() audit.Taxonomy {
 			"user_create":  {Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
 			"auth_failure": {Required: []string{"outcome", "actor_id"}, Optional: []string{"marker"}},
 		},
-		DefaultEnabled: []string{"write", "security"},
 	}
 }
 

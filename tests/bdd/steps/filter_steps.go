@@ -58,11 +58,8 @@ events:
       actor_id: {required: true}
       marker: {}
 
-default_enabled:
-  - write
 `
 
-// allDisabledTaxonomyYAML has no categories in default_enabled.
 const allDisabledTaxonomyYAML = `
 version: 1
 
@@ -84,7 +81,6 @@ events:
       actor_id: {required: true}
       marker: {}
 
-default_enabled: []
 `
 
 func registerFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

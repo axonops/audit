@@ -606,7 +606,7 @@ func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) build
 		StructName:   pascal + "Event",
 		FieldsStruct: pascal + "Fields",
 		EventConst:   "Event" + pascal,
-		Description:  def.Description,
+		Description:  sanitiseComment(def.Description),
 	}
 
 	// Required fields → constructor params.
@@ -650,7 +650,7 @@ func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy)
 				bl := builderLabel{ConstName: "Label" + toPascalCase(labelName)}
 				if tax.Sensitivity != nil {
 					if sl, ok := tax.Sensitivity.Labels[labelName]; ok {
-						bl.Description = sl.Description
+						bl.Description = sanitiseComment(sl.Description)
 					}
 				}
 				bf.Labels = append(bf.Labels, bl)

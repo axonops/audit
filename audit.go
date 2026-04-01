@@ -177,6 +177,15 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
 func (l *Logger) AuditEvent(evt Event) error {
+	if evt == nil {
+		return fmt.Errorf("audit: event must not be nil")
+	}
+	return l.auditInternal(evt.EventType(), evt.Fields())
+}
+
+// auditInternal is the shared validation-and-enqueue path used by
+// both [Logger.AuditEvent] and internal callers.
+func (l *Logger) auditInternal(eventType string, fields Fields) error {
 	if !l.cfg.Enabled {
 		return nil
 	}
@@ -184,10 +193,6 @@ func (l *Logger) AuditEvent(evt Event) error {
 		return ErrClosed
 	}
 
-	eventType := evt.EventType()
-	fields := evt.Fields()
-
-	// taxonomy is immutable after construction; safe to read without lock.
 	def, ok := l.taxonomy.Events[eventType]
 	if !ok {
 		if l.metrics != nil {
@@ -468,7 +473,7 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 // false), EmitStartup returns nil immediately and no shutdown event
 // will be emitted by Close.
 func (l *Logger) EmitStartup(fields Fields) error {
-	if err := l.AuditEvent(NewEvent("startup", fields)); err != nil {
+	if err := l.auditInternal("startup", fields); err != nil {
 		return err
 	}
 	if appName, ok := fields["app_name"]; ok {

@@ -2764,3 +2764,17 @@ func TestAuditEvent_UnknownEventType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown event type")
 }
+
+func TestAuditEvent_NilEvent(t *testing.T) {
+	t.Parallel()
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	err = logger.AuditEvent(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "event must not be nil")
+}

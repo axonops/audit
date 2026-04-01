@@ -1139,6 +1139,10 @@ default_enabled: [write]
 	benchAuditWithExclusions(b, yml, []string{"pii"})
 }
 
+// BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion measures delivery
+// throughput when one output receives all fields and one output has PII
+// sensitivity exclusions active, exercising the pre-computed filteredDefs
+// lookup path under realistic mixed-output conditions.
 func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	yml := sensitivityPipelineTaxonomyYAML
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))

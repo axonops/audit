@@ -641,9 +641,11 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 	}
 }
 
-// precomputeFilteredDefs builds filtered EventDefs for every
-// (eventType, excludedLabels) pair at construction time. This
-// eliminates per-event allocations from filterEventDef (#199).
+// precomputeFilteredDefs builds a filtered EventDef for every event
+// type in the taxonomy, for each output that has sensitivity
+// exclusions. Filtering is done once at construction time so the hot
+// path (formatFiltered) can look up a pre-filtered def by event type
+// rather than allocating one on every event (#199).
 func (l *Logger) precomputeFilteredDefs() {
 	for _, oe := range l.entries {
 		if oe.excludedLabels == nil {
@@ -660,14 +662,18 @@ func (l *Logger) precomputeFilteredDefs() {
 	}
 }
 
-// formatFiltered creates a filtered copy of the event's fields (with
-// excluded labels stripped) and serialises it directly, bypassing the
-// format cache. Uses pre-computed filtered EventDefs to avoid per-event
-// allocation of sorted field lists (#199).
+// formatFiltered serialises entry with sensitivity-labelled fields
+// stripped for oe. It bypasses the format cache because different
+// outputs may exclude different label sets, producing distinct field
+// subsets from the same event. The filtered EventDef is looked up from
+// oe.filteredDefs (pre-computed at construction time) to avoid
+// per-event allocation of sorted field lists (#199).
 func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
 	filtered := filterFieldsByLabels(entry.fields, def, oe.excludedLabels)
 
-	// Use pre-computed filtered def if available (#199).
+	// Fall back to the original def for event types that have no
+	// sensitivity annotations (FieldLabels == nil); no stripping
+	// is needed so def is correct as-is.
 	fDef := def
 	if fd, ok := oe.filteredDefs[entry.eventType]; ok {
 		fDef = fd
@@ -685,9 +691,12 @@ func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time
 	return data
 }
 
-// filterEventDef creates a filtered EventDef with excluded fields
-// removed from Required and Optional. Used at construction time
-// for pre-computation.
+// filterEventDef returns a new EventDef with all fields whose
+// sensitivity labels overlap with excluded removed from Required
+// and Optional. The formatter uses Required/Optional to determine
+// which fields to emit; removing a field here prevents the formatter
+// from emitting a null placeholder for a stripped field.
+// Used at construction time by precomputeFilteredDefs.
 func filterEventDef(def *EventDef, excluded map[string]struct{}) *EventDef {
 	cp := *def // shallow copy
 	cp.Required = filterFieldList(def.Required, def.FieldLabels, excluded)

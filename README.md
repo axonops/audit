@@ -230,6 +230,8 @@ minimal third-party dependencies. Import only the outputs you use.
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
 | 📝 [Changelog](CHANGELOG.md) | Release history and breaking changes |
+| ❌ [Error Reference](docs/error-reference.md) | Every error explained with recovery guidance |
+| 🔧 [Troubleshooting](docs/troubleshooting.md) | Common problems and how to fix them |
 | 🔒 [Security Policy](SECURITY.md) | Vulnerability reporting |
 | ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline and methodology |
 

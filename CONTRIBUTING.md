@@ -69,6 +69,26 @@ docs: update syslog configuration reference (#45)
 
 Never commit directly to `main`.
 
+## Branch and Commit Rules
+
+The `main` branch has protection rules enforced by GitHub:
+
+- **Signed commits required** — all commits must be GPG or SSH
+  signed. See [GitHub's signing docs](https://docs.github.com/en/authentication/managing-commit-signature-verification)
+  for setup instructions.
+- **Linear history** — only squash or rebase merges are allowed.
+  No merge commits.
+- **No force pushes** — `git push --force` to `main` is blocked.
+- **No branch deletion** — `main` cannot be deleted.
+- **Status checks** — the `CI Pass` job must be green before merge.
+  This aggregates all per-module build, lint, test, and security jobs.
+- **Up-to-date branches** — your branch must be rebased on the
+  latest `main` before merging.
+
+Version tags (`v*`, `file/v*`, `syslog/v*`, `webhook/v*`,
+`outputconfig/v*`) are protected — they cannot be deleted or
+force-updated once created.
+
 ## Dependencies
 
 Dependencies are kept minimal. The core library depends on

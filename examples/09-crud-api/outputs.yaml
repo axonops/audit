@@ -1,4 +1,7 @@
 version: 1
+logger:
+  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
 outputs:
   console:
     type: stdout

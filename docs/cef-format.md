@@ -7,7 +7,7 @@
 The Common Event Format (CEF) is a standardised log format designed for
 interoperability between security products. Originally developed by
 ArcSight (now part of OpenText), CEF is widely supported by SIEM
-platforms including Splunk, ArcSight, IBM QRadar, Elasticsearch, and
+platforms including Splunk, ArcSight, IBM QRadar, OpenSearch, and
 many others.
 
 CEF provides a structured format that SIEM platforms can parse without

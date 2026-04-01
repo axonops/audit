@@ -92,10 +92,10 @@ outputs:
 
 Framework fields are never stripped, regardless of label configuration:
 
-- `timestamp`
-- `event_type`
-- `severity`
-- `duration_ms`
+- `timestamp` — when the event was processed
+- `event_type` — the taxonomy event type name
+- `severity` — resolved severity (0-10)
+- `duration_ms` — request duration (set by the [HTTP middleware](http-middleware.md) when auditing HTTP requests; can also be set manually on any event as a `time.Duration` value)
 
 This ensures every output receives a structurally valid audit event.
 

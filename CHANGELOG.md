@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `EventDef.Category` (string) replaced by `EventDef.Categories` ([]string) — derived from categories map (#188)
 - `category:` field removed from YAML event definitions (#188)
 - `MatchesRoute` signature now requires a `severity int` parameter (#187)
+- `Taxonomy.DefaultEnabled` field removed — all categories are enabled by default (#12)
+- `InjectLifecycleEvents`, `EmitStartup`, and automatic shutdown event removed (#12)
 
 ### Added
 
@@ -36,7 +38,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `EventDef.Severity *int` for per-event severity override; `EventDef.ResolvedSeverity()` returns resolved value (#186)
 - `severity` framework field in JSON output, emitted after `event_type` (#186)
 - CEF formatter uses taxonomy `Description` and `ResolvedSeverity()` when `DescriptionFunc`/`SeverityFunc` are nil (#186)
-- Lifecycle events have explicit severity: startup=6, shutdown=7
 - Events can belong to multiple categories (#188)
 - Uncategorised events (not in any category) are valid and always globally enabled (#188)
 - `EventRoute.MinSeverity` and `EventRoute.MaxSeverity` for severity-based event routing (#187)

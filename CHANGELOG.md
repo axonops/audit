@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `audittest` package: in-memory `Recorder` and `MetricsRecorder`, `NewLogger`, `NewLoggerQuick`, `QuickTaxonomy`, `WithConfig`, `WithValidationMode` for consumer testing (#184)
 - `Event` interface, `LabelInfo`, `FieldInfo`, `CategoryInfo` core types (#205)
 - `NewEvent()` for dynamic event construction without code generation (#205)
 - Per-event typed builders with required-field constructors and optional-field setters (#205)
@@ -44,9 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Stdout factory rejects non-empty config blocks (#182)
 - Eight progressive example applications in `examples/` (#163)
 - YAML-based output configuration with registry pattern (`outputconfig` module) (#172)
-- Output factory registry in core `audit` package: `OutputFactory`, `RegisterOutputFactory`, `LookupOutputFactory`, `RegisteredOutputTypes`
-- Factory registration for file, syslog, and webhook outputs via `init()` and `NewFactory(metrics)`
-- Environment variable substitution (`${VAR}`, `${VAR:-default}`) with post-parse expansion for YAML injection safety
-- Per-output routing, formatter overrides, and `enabled` toggle in YAML config
+- Output factory registry in core `audit` package: `OutputFactory`, `RegisterOutputFactory`, `LookupOutputFactory`, `RegisteredOutputTypes` (#172)
+- Factory registration for file, syslog, and webhook outputs via `init()` and `NewFactory(metrics)` (#172)
+- Environment variable substitution (`${VAR}`, `${VAR:-default}`) with post-parse expansion for YAML injection safety (#172)
+- Per-output routing, formatter overrides, and `enabled` toggle in YAML config (#172)
 - `audit-gen` CLI for generating type-safe audit event helpers from taxonomy YAML (#26)
 - Taxonomy description field support (#161)

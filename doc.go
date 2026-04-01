@@ -82,7 +82,12 @@
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
 //   - [Output] — interface for audit event destinations
 //   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
-//   - [EventType] — handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [Event] — interface for typed audit events; see [Logger.AuditEvent]
+//   - [NewEvent] — creates an untyped event for dynamic use without code generation
+//   - [LabelInfo] — sensitivity label descriptor (name + description)
+//   - [FieldInfo] — field descriptor with name, required flag, and labels
+//   - [CategoryInfo] — category descriptor with name and optional severity
+//   - [EventType] — handle for pre-validated audit calls; see [Logger.MustHandle]
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
 //   - [CEFFormatter] — Common Event Format formatter for SIEM integration

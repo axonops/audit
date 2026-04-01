@@ -19,6 +19,36 @@ import (
 	"time"
 )
 
+// FormatOptions carries optional per-output context to the formatter.
+// A nil *FormatOptions means no special handling — all fields are
+// emitted. When non-nil, the formatter skips fields whose sensitivity
+// labels overlap with ExcludedLabels.
+type FormatOptions struct {
+	// ExcludedLabels is the set of sensitivity labels to exclude.
+	ExcludedLabels map[string]struct{}
+	// FieldLabels maps field names to their resolved sensitivity labels.
+	// Sourced from [EventDef.FieldLabels].
+	FieldLabels map[string]map[string]struct{}
+}
+
+// isExcluded reports whether fieldName carries any label in the
+// excluded set.
+func (o *FormatOptions) isExcluded(fieldName string) bool {
+	if o == nil || o.FieldLabels == nil || o.ExcludedLabels == nil {
+		return false
+	}
+	labels, ok := o.FieldLabels[fieldName]
+	if !ok {
+		return false
+	}
+	for label := range labels {
+		if _, excluded := o.ExcludedLabels[label]; excluded {
+			return true
+		}
+	}
+	return false
+}
+
 // Formatter serialises an audit event into a wire-format byte slice.
 // Implementations MUST append a newline terminator. The library
 // provides [JSONFormatter] and [CEFFormatter].
@@ -34,11 +64,12 @@ type Formatter interface {
 	// submission). eventType is the registered event type name.
 	// fields contains the caller-supplied key-value pairs. def is the
 	// [EventDef] for eventType; it is never nil when called by the
-	// library.
+	// library. opts carries per-output sensitivity exclusion context;
+	// nil means no field exclusion.
 	//
 	// A non-nil error causes the event to be dropped and
 	// [Metrics.RecordSerializationError] to be called.
-	Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error)
+	Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error)
 }
 
 // TimestampFormat controls how timestamps are rendered in serialised

@@ -505,7 +505,7 @@ func TestFanout_PanicInFormatter_DrainLoopSurvives(t *testing.T) {
 // panicFormatter is a Formatter that always panics.
 type panicFormatter struct{}
 
-func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	panic("formatter panic")
 }
 
@@ -576,7 +576,7 @@ func TestFanout_ExcludeEventType_EndToEnd(t *testing.T) {
 // errorFormatter always returns an error (does not panic).
 type errorFormatter struct{}
 
-func (e *errorFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+func (e *errorFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	return nil, fmt.Errorf("format failed")
 }
 

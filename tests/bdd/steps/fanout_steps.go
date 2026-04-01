@@ -622,7 +622,7 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 // panicFormatter panics on every Format call.
 type panicFormatter struct{}
 
-func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	panic("intentional panic in formatter")
 }
 

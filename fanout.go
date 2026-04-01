@@ -39,9 +39,9 @@ import (
 // via [Logger.SetOutputRoute]; access is lock-free via atomic.Pointer.
 type outputEntry struct {
 	output         Output
-	formatter      Formatter            // nil = use logger's default formatter
-	excludedLabels map[string]struct{}  // nil = no sensitivity exclusions
-	filteredDefs   map[string]*EventDef // event type → pre-computed filtered EventDef
+	formatter      Formatter           // nil = use logger's default formatter
+	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
+	formatOpts     *FormatOptions      // pre-allocated; nil when no exclusions
 	route          atomic.Pointer[EventRoute]
 }
 

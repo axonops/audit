@@ -55,7 +55,7 @@ type JSONFormatter struct {
 }
 
 // Format serialises a single audit event as a JSON line.
-func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
+func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
 	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
 	if !ok {
 		buf = new(bytes.Buffer)
@@ -73,16 +73,25 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 
 	// Required fields (sorted). Uses pre-sorted slice when available.
 	for _, k := range sortedFieldKeys(def.sortedRequired, def.Required, fields, jf.OmitEmpty) {
+		if opts.isExcluded(k) {
+			continue
+		}
 		enc.writeField(k, fields[k])
 	}
 
 	// Optional fields (sorted). Uses pre-sorted slice when available.
 	for _, k := range sortedFieldKeys(def.sortedOptional, def.Optional, fields, jf.OmitEmpty) {
+		if opts.isExcluded(k) {
+			continue
+		}
 		enc.writeField(k, fields[k])
 	}
 
 	// Extra fields not in required or optional (sorted).
 	for _, k := range extraFieldKeys(def, fields, jf.OmitEmpty) {
+		if opts.isExcluded(k) {
+			continue
+		}
 		enc.writeField(k, fields[k])
 	}
 

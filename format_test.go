@@ -48,7 +48,7 @@ func TestJSONFormatter_ValidOutput(t *testing.T) {
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	// Must end with newline.
@@ -72,7 +72,7 @@ func TestJSONFormatter_FieldOrdering(t *testing.T) {
 		"subject":     "my-topic",
 		"schema_type": "AVRO",
 		"version":     1,
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	raw := string(data)
@@ -102,7 +102,7 @@ func TestJSONFormatter_DurationMarshalling(t *testing.T) {
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"duration_ms": 1500 * time.Millisecond,
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -120,7 +120,7 @@ func TestJSONFormatter_DurationAsInt(t *testing.T) {
 		"actor_id":    "alice",
 		"subject":     "my-topic",
 		"duration_ms": 250,
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -137,7 +137,7 @@ func TestCEFFormatter_DurationAsInt(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
 		Optional: []string{"duration_ms"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Non-Duration duration_ms should appear as a regular field, not be dropped.
@@ -163,7 +163,7 @@ func TestCEFFormatter_SeverityClamped(t *testing.T) {
 			}
 			data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 				Required: []string{"outcome"},
-			})
+			}, nil)
 			require.NoError(t, err)
 			assert.Contains(t, string(data), fmt.Sprintf("|%d|", tt.want))
 		})
@@ -174,7 +174,7 @@ func TestJSONFormatter_TimestampRFC3339Nano(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -191,7 +191,7 @@ func TestJSONFormatter_TimestampUnixMillis(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -206,7 +206,7 @@ func TestJSONFormatter_UnrecognisedTimestampFormat(t *testing.T) {
 	f := &audit.JSONFormatter{Timestamp: audit.TimestampFormat("bogus")}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -226,7 +226,7 @@ func TestJSONFormatter_OmitEmptyTrue(t *testing.T) {
 		"actor_id": "alice",
 		"subject":  "my-topic",
 		// schema_type and version not provided
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -242,7 +242,7 @@ func TestJSONFormatter_OmitEmptyFalse(t *testing.T) {
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -261,7 +261,7 @@ func TestJSONFormatter_UnicodeValues(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
 		Optional: []string{"name"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -276,7 +276,7 @@ func TestJSONFormatter_LongValues(t *testing.T) {
 		"outcome": longVal,
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -286,7 +286,7 @@ func TestJSONFormatter_LongValues(t *testing.T) {
 
 func TestJSONFormatter_NilFields(t *testing.T) {
 	f := &audit.JSONFormatter{}
-	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{})
+	data, err := f.Format(testTime, "ev", nil, &audit.EventDef{}, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -300,7 +300,7 @@ func TestJSONFormatter_NewlineInjection(t *testing.T) {
 		"outcome": "success\n{\"injected\":true}",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// The output must be a single line (one trailing newline only).
@@ -316,7 +316,7 @@ func TestJSONFormatter_ExtraFieldsSorted(t *testing.T) {
 		"alpha":   "a",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	raw := string(data)
@@ -339,7 +339,7 @@ func TestCEFFormatter_ValidHeader(t *testing.T) {
 		"outcome":  "success",
 		"actor_id": "alice",
 		"subject":  "my-topic",
-	}, testDef)
+	}, testDef, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -355,7 +355,7 @@ func TestCEFFormatter_DefaultSeverity(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Default severity is 5.
@@ -376,7 +376,7 @@ func TestCEFFormatter_CustomSeverity(t *testing.T) {
 	}
 	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "fail"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "|auth_failure|8|")
 }
@@ -385,7 +385,7 @@ func TestCEFFormatter_DefaultDescription(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	data, err := f.Format(testTime, "my_event", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Default description is the event type itself.
@@ -403,7 +403,7 @@ func TestCEFFormatter_CustomDescription(t *testing.T) {
 	}
 	data, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "|Custom: ev|")
 }
@@ -415,7 +415,7 @@ func TestCEFFormatter_ExtensionFields(t *testing.T) {
 		"actor_id": "alice",
 	}, &audit.EventDef{
 		Required: []string{"outcome", "actor_id"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -439,7 +439,7 @@ func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
 		"actor_id": "alice",
 	}, &audit.EventDef{
 		Required: []string{"outcome", "actor_id"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -466,7 +466,7 @@ func TestCEFFormatter_CustomFieldMappingMergesDefaults(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome", "actor_id"},
 		Optional: []string{"source_ip"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -482,7 +482,7 @@ func TestCEFFormatter_OmitEmpty(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
 		Optional: []string{"empty"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "empty=")
 }
@@ -494,7 +494,7 @@ func TestCEFFormatter_DurationInExtensions(t *testing.T) {
 		"duration_ms": 2500 * time.Millisecond,
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "cn1=2500")
 	assert.Contains(t, string(data), "cn1Label=durationMs")
@@ -581,10 +581,10 @@ func TestCEFFormatter_PoolSafety(t *testing.T) {
 	def := &audit.EventDef{Required: []string{"outcome"}}
 	ts := time.Now()
 
-	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
+	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def, nil)
 	require.NoError(t, err)
 
-	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def)
+	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, string(result1), "outcome=first")
@@ -643,7 +643,7 @@ func TestCEFFormatter_NewlineInjection(t *testing.T) {
 		"outcome": "success\n{injected}",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
@@ -656,7 +656,7 @@ func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
 		"outcome": "ok",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -705,7 +705,7 @@ type stubFormatter struct {
 	fn func(time.Time, string, audit.Fields, *audit.EventDef) ([]byte, error)
 }
 
-func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fields, def *audit.EventDef) ([]byte, error) {
+func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fields, def *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	return s.fn(ts, eventType, fields, def)
 }
 
@@ -790,7 +790,7 @@ func TestCEFFormatter_FieldValueTypes(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
 		Optional: []string{"count", "count64", "ratio", "active", "inactive", "dur", "when", "nilfield", "custom"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -813,7 +813,7 @@ func TestJSONFormatter_WriteFieldError(t *testing.T) {
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
 		Optional: []string{"bad"},
-	})
+	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json format")
 }
@@ -862,7 +862,7 @@ func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 			// Each goroutine gets its own fields map to avoid relying
 			// on Format never writing to the map.
 			f := audit.Fields{"outcome": "ok"}
-			data, err := cf.Format(ts, "ev", f, def)
+			data, err := cf.Format(ts, "ev", f, def, nil)
 			if err != nil {
 				t.Errorf("Format failed: %v", err)
 				return
@@ -898,7 +898,7 @@ func TestCEFFormatter_AllocCount(t *testing.T) {
 	ts := testTime
 
 	allocs := testing.AllocsPerRun(100, func() {
-		_, _ = cf.Format(ts, "schema_register", fields, def)
+		_, _ = cf.Format(ts, "schema_register", fields, def, nil)
 	})
 
 	t.Logf("CEFFormatter.Format AllocsPerRun = %.0f", allocs)
@@ -925,7 +925,7 @@ func TestJSONFormatter_AllocCount(t *testing.T) {
 	ts := testTime
 
 	allocs := testing.AllocsPerRun(100, func() {
-		_, _ = jf.Format(ts, "schema_register", fields, def)
+		_, _ = jf.Format(ts, "schema_register", fields, def, nil)
 	})
 
 	t.Logf("JSONFormatter.Format AllocsPerRun = %.0f", allocs)
@@ -944,7 +944,7 @@ func TestCEFFormatter_NullByteStripped(t *testing.T) {
 		"outcome": "ok\x00injected",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "\x00", "null bytes must be stripped")
 }
@@ -962,7 +962,7 @@ func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
 		"outcome": "ok",
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-	})
+	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid extension key")
 }
@@ -983,7 +983,7 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 		data, err := f.Format(testTime, "ev", audit.Fields{
 			"outcome":   "ok",
 			"source_ip": "10.0.0.1",
-		}, baseDef)
+		}, baseDef, nil)
 		require.NoError(t, err)
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "rt="),
@@ -1004,7 +1004,7 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 		data, err := f.Format(testTime, "ev", audit.Fields{
 			"outcome":  "ok",
 			"actor_id": "alice",
-		}, baseDef)
+		}, baseDef, nil)
 		require.NoError(t, err)
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "act="),
@@ -1029,7 +1029,7 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 			"outcome":     "ok",
 			"actor_id":    "alice",
 			"duration_ms": 500 * time.Millisecond,
-		}, def)
+		}, def, nil)
 		require.NoError(t, err)
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "cn1="),
@@ -1046,7 +1046,7 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 		data, err := f.Format(testTime, "ev", audit.Fields{
 			"outcome":  "ok",
 			"actor_id": "alice",
-		}, baseDef)
+		}, baseDef, nil)
 		require.NoError(t, err)
 		output := string(data)
 		assert.Equal(t, 1, strings.Count(output, "cn1="),
@@ -1112,7 +1112,7 @@ func TestJSONFormatter_TimestampAppendFormat(t *testing.T) {
 	// to exercise all format components.
 	ts := time.Date(2026, 3, 28, 15, 4, 5, 123456789, time.FixedZone("EST", -5*60*60))
 
-	data, err := f.Format(ts, "ev", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(ts, "ev", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -1138,10 +1138,10 @@ func TestJSONFormatter_PoolSafety(t *testing.T) {
 
 	// Call Format twice in succession. The second call should reuse
 	// the pooled buffer but must not corrupt the first result.
-	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def)
+	result1, err := f.Format(ts, "ev1", audit.Fields{"outcome": "first"}, def, nil)
 	require.NoError(t, err)
 
-	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def)
+	result2, err := f.Format(ts, "ev2", audit.Fields{"outcome": "second"}, def, nil)
 	require.NoError(t, err)
 
 	// Both results must be independent — the first must not have been
@@ -1189,7 +1189,7 @@ func BenchmarkJSONFormatter_Format(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _ = f.Format(ts, "schema_register", fields, def)
+		_, _ = f.Format(ts, "schema_register", fields, def, nil)
 	}
 }
 
@@ -1215,7 +1215,7 @@ func BenchmarkCEFFormatter_Format(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _ = f.Format(ts, "schema_register", fields, def)
+		_, _ = f.Format(ts, "schema_register", fields, def, nil)
 	}
 }
 
@@ -1264,7 +1264,7 @@ func BenchmarkJSONFormatter_Format_LargeEvent(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _ = f.Format(ts, "api_request", fields, def)
+		_, _ = f.Format(ts, "api_request", fields, def, nil)
 	}
 }
 
@@ -1280,6 +1280,6 @@ func BenchmarkCEFFormatter_Format_LargeEvent(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _ = f.Format(ts, "api_request", fields, def)
+		_, _ = f.Format(ts, "api_request", fields, def, nil)
 	}
 }

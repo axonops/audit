@@ -92,7 +92,9 @@ func main() {
 		log.Printf("http shutdown: %v", err)
 	}
 
-	// Close logger — flushes all pending events to outputs.
+	// CRITICAL: Close the audit logger. This flushes all buffered events
+	// to every output. Without this call, pending events are lost and the
+	// drain goroutine leaks.
 	if err := logger.Close(); err != nil {
 		log.Printf("close logger: %v", err)
 	}

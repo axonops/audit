@@ -188,17 +188,45 @@ the request.
 Neither the auth middleware nor the handlers need a direct reference to
 the audit logger.
 
-### Graceful Shutdown
+### Graceful Shutdown — Critical
 
-The shutdown sequence matters: stop the HTTP server first (so no new
-requests generate events), then close the logger (which flushes all
-buffered events to outputs).
+> **You MUST call `logger.Close()` before your application exits.**
+> If you don't, the drain goroutine is leaked and all buffered audit
+> events are lost. This is the single most important thing to get
+> right when integrating go-audit.
+
+The shutdown sequence matters — the order is:
+
+1. **Stop the HTTP server** — no new requests, no new audit events
+2. **Close the audit logger** — flushes all buffered events to every output
+3. **Exit**
 
 ```go
-<-done  // wait for SIGINT/SIGTERM
-srv.Shutdown(ctx)    // stop accepting HTTP requests
-logger.Close()       // flush all pending audit events
+// Wait for SIGINT (Ctrl+C) or SIGTERM (Docker/K8s stop).
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+<-quit
+
+log.Println("shutting down...")
+
+// Step 1: Stop accepting new HTTP requests.
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+srv.Shutdown(ctx)
+
+// Step 2: Close the audit logger — THIS FLUSHES ALL PENDING EVENTS.
+// Without this call, buffered events are lost and the drain goroutine leaks.
+if err := logger.Close(); err != nil {
+    log.Printf("audit close: %v", err)
+}
+
+log.Println("shutdown complete")
 ```
+
+`Close()` waits up to `DrainTimeout` (default: 5 seconds) for all
+buffered events to be written to outputs, then closes each output.
+If events are still in the buffer when the timeout expires, they are
+dropped and a warning is logged.
 
 ## Run It
 

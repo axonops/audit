@@ -105,8 +105,8 @@ Install: `go get github.com/axonops/go-audit/syslog`
 
 ## Webhook Output
 
-Batches events into JSON arrays and POSTs them to an HTTPS endpoint.
-Failed batches are retried with exponential backoff.
+Batches events as newline-delimited JSON (NDJSON) and POSTs them to an
+HTTPS endpoint. Failed batches are retried with exponential backoff.
 
 ### YAML Configuration
 
@@ -118,7 +118,7 @@ outputs:
       url: "https://ingest.example.com/audit"
       batch_size: 50              # events per batch (default: 100)
       flush_interval: "5s"        # flush after 5 seconds (default: "5s")
-      timeout: "10s"              # HTTP request timeout (default: "30s")
+      timeout: "10s"              # HTTP request timeout (default: "10s")
       max_retries: 3              # retry attempts (default: 3)
       # allow_insecure_http: true # MUST NOT be true in production
       # allow_private_ranges: true # SSRF protection — enable only for local dev

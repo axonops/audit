@@ -151,10 +151,15 @@ cef := &audit.CEFFormatter{
 
 ## Escaping and Security
 
-CEF escaping follows the standard specification:
-- Header fields: pipes (`|`) and backslashes are escaped
-- Extension values: equals signs (`=`) and backslashes are escaped
-- Newlines in values are escaped to prevent log injection attacks
+CEF escaping follows the standard specification with different rules
+for headers and extension values:
+
+- **Header fields** (vendor, product, version, event type, description):
+  pipes (`|`) and backslashes are escaped; newlines and carriage returns
+  are replaced with a space
+- **Extension values**: equals signs (`=`) and backslashes are escaped;
+  newlines are escaped to the literal two-character sequence `\n` and
+  carriage returns to `\r`
 - Control characters (0x00-0x1F) are stripped from extension values
 
 **Note:** Spaces in CEF extension values are not escaped — spaces are

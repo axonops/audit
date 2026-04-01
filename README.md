@@ -11,8 +11,23 @@
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   ![Status](https://img.shields.io/badge/status-pre--release-orange)
 
-  [Getting Started](#-quick-start) | [Features](#-key-features) | [Examples](examples/) | [API Reference](https://pkg.go.dev/github.com/axonops/go-audit)
+  [Getting Started](#-quick-start) | [Features](#key-features) | [Examples](examples/) | [API Reference](https://pkg.go.dev/github.com/axonops/go-audit)
 </div>
+
+---
+
+## Overview
+
+go-audit is an audit logging library for Go that validates every event
+against a consumer-defined schema, delivers events asynchronously to
+multiple outputs simultaneously, and supports both
+[JSON](docs/json-format.md) and
+[CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
+
+Define your audit event types in YAML. Generate type-safe Go code.
+The library handles validation, async delivery, multi-output fan-out,
+per-output event routing, and sensitive field stripping — so you can
+focus on your application logic.
 
 ---
 
@@ -36,21 +51,6 @@
 | **Testing Support** | In-memory recorder with same validation as production | [Learn more](docs/testing.md) |
 
 </div>
-
----
-
-## Overview
-
-go-audit is an audit logging library for Go that validates every event
-against a consumer-defined schema, delivers events asynchronously to
-multiple outputs simultaneously, and supports both
-[JSON](docs/json-format.md) and
-[CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
-
-Define your audit event types in YAML. Generate type-safe Go code.
-The library handles validation, async delivery, multi-output fan-out,
-per-output event routing, and sensitive field stripping — so you can
-focus on your application logic.
 
 ---
 

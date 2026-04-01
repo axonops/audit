@@ -24,9 +24,9 @@
 //
 // # Batching and Delivery
 //
-// Events are buffered in memory and flushed as JSON arrays when the
-// batch reaches [Config.BatchSize] events or [Config.FlushInterval]
-// elapses. Failed batches are retried with exponential backoff up to
+// Events are buffered in memory and flushed as newline-delimited JSON
+// (application/x-ndjson) when the batch reaches [Config.BatchSize]
+// events or [Config.FlushInterval] elapses. Failed batches are retried with exponential backoff up to
 // [Config.MaxRetries] times. Delivery semantics are at-least-once:
 // a batch may be delivered more than once if the server accepts the
 // payload but the acknowledgement is lost.

@@ -79,6 +79,11 @@ logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "auth_failure")
 | `evt.Field(key)` | `any` | Single field value (nil if absent) |
 | `evt.HasField(key, val)` | `bool` | Deep-equal check |
 | `evt.RawJSON` | `[]byte` | Original serialised bytes |
+| `evt.ParseErr` | `error` | Non-nil if JSON deserialisation failed; assert nil before inspecting other fields |
+
+> **Note:** Always check `evt.ParseErr == nil` before asserting on
+> other fields. A non-nil `ParseErr` means the formatter produced
+> invalid JSON; other fields are zero-valued in that case.
 
 ## Metrics Assertions
 

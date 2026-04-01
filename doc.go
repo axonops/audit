@@ -28,8 +28,10 @@
 //   - github.com/axonops/go-audit/file — file output with rotation
 //   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/go-audit/webhook — batched HTTP webhook
+//   - github.com/axonops/go-audit/outputconfig — YAML-based output configuration
 //
-// [StdoutOutput] ships with core and requires no additional import.
+// [StdoutOutput] and the audittest package ship with core and require
+// no additional import.
 //
 // # Stability
 //
@@ -38,25 +40,29 @@
 //
 // # Quick Start
 //
-// Define a taxonomy describing your event types, then create a logger:
+// Define a taxonomy describing your event types, create a logger with
+// a stdout output, and emit an event:
 //
 //	taxonomy := audit.Taxonomy{
 //	    Version: 1,
 //	    Categories: map[string]*audit.CategoryDef{
-//	        "write": {Events: []string{"user_create", "user_delete"}},
-//	        "security": {Events: []string{"auth_failure"}},
+//	        "write": {Events: []string{"user_create"}},
 //	    },
 //	    Events: map[string]*audit.EventDef{
-//	        "user_create":  {Required: []string{"outcome", "actor_id"}},
-//	        "user_delete":  {Required: []string{"outcome", "actor_id"}},
-//	        "auth_failure": {Required: []string{"outcome", "actor_id"}},
+//	        "user_create": {Required: []string{"outcome", "actor_id"}},
 //	    },
-//	    DefaultEnabled: []string{"write", "security"},
+//	    DefaultEnabled: []string{"write"},
+//	}
+//
+//	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+//	if err != nil {
+//	    log.Fatal(err)
 //	}
 //
 //	logger, err := audit.NewLogger(
 //	    audit.Config{Version: 1, Enabled: true},
 //	    audit.WithTaxonomy(taxonomy),
+//	    audit.WithOutputs(stdout),
 //	)
 //	if err != nil {
 //	    log.Fatal(err)
@@ -67,6 +73,7 @@
 //	    }
 //	}()
 //
+//	// This prints a JSON line to stdout:
 //	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 //	    "outcome":  "success",
 //	    "actor_id": "alice",
@@ -74,42 +81,74 @@
 //	    log.Printf("audit: %v", err)
 //	}
 //
-// # Key Types
+// # Core API
 //
 //   - [Logger] — core audit logger; created via [NewLogger]
-//   - [Taxonomy] — consumer-defined event schema; registered via [WithTaxonomy]
-//   - [EventDef] — definition of a single event type's fields
 //   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
-//   - [Output] — interface for audit event destinations
+//   - [Option] — functional option for [NewLogger]: [WithTaxonomy], [WithOutputs], [WithFormatter], [WithMetrics]
+//
+// # Events
+//
+//   - [Event] — interface for typed audit events; pass to [Logger.AuditEvent]
+//   - [NewEvent] — creates an event for dynamic use without code generation
+//   - [EventType] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [Fields] — type alias for map[string]any
+//
+// # Outputs
+//
+//   - [Output] — interface for audit event destinations (file, syslog, webhook, stdout)
+//   - [StdoutOutput] — writes events to stdout or any io.Writer; included in core
+//   - [WithOutputs] — registers unnamed outputs; [WithNamedOutput] for per-output routing
 //   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
-//   - [Event] — interface for typed audit events; see [Logger.AuditEvent]
-//   - [NewEvent] — creates an untyped event for dynamic use without code generation
-//   - [LabelInfo] — sensitivity label descriptor (name, description); embedded in [FieldInfo]
+//
+// # Formatters
+//
+//   - [Formatter] — interface for event serialisation
+//   - [JSONFormatter] — default; line-delimited JSON with deterministic field order
+//   - [CEFFormatter] — Common Event Format for SIEM integration (Splunk, ArcSight, QRadar)
+//   - [FormatOptions] — per-output context for sensitivity label exclusion
+//
+// # Taxonomy
+//
+//   - [Taxonomy] — consumer-defined event schema; registered via [WithTaxonomy]
+//   - [EventDef] — definition of a single event type's required and optional fields
+//   - [CategoryDef] — category grouping with optional default severity
+//   - [ParseTaxonomyYAML] — parses a YAML document into a [Taxonomy]; use with //go:embed
+//   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency
+//   - [SensitivityConfig] — sensitivity label definitions for field classification
+//   - [SensitivityLabel] — a single label with global field mappings and regex patterns
+//
+// # Event Routing
+//
+//   - [EventRoute] — per-output event filter (include/exclude categories, severity range)
+//   - [ValidateEventRoute] — validates route configuration against a taxonomy
+//   - [MatchesRoute] — checks whether an event matches a route filter
+//
+// # HTTP Middleware
+//
+//   - [Middleware] — wraps an HTTP handler to capture request metadata for audit logging
+//   - [Hints] — per-request audit metadata populated by handlers via [HintsFromContext]
+//   - [TransportMetadata] — auto-captured HTTP fields (client IP, method, status code, duration)
+//   - [EventBuilder] — callback that transforms hints + transport into an audit event
+//
+// # Metrics
+//
+//   - [Metrics] — optional instrumentation interface; track deliveries, drops, and errors
+//
+// # Code Generation Support
+//
+//   - [LabelInfo] — sensitivity label descriptor; embedded in [FieldInfo]
 //   - [FieldInfo] — field descriptor with name, required flag, and labels; returned by generated builders
 //   - [CategoryInfo] — category descriptor with name and optional severity; returned by generated builders
-//   - [EventType] — handle for pre-validated audit calls; see [Logger.MustHandle]
-//   - [Formatter] — interface for custom serialisation; see [WithFormatter]
-//   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
-//   - [CEFFormatter] — Common Event Format formatter for SIEM integration
-//   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs; see [TLSPolicy.Apply]
-//   - [SensitivityConfig] — sensitivity label definitions; registered via [Taxonomy.Sensitivity]
-//   - [SensitivityLabel] — a single label with global field mappings and regex patterns
-//   - [EventRoute] — per-output event filter (include/exclude modes); see [WithNamedOutput]
-//   - [Middleware] — router-agnostic HTTP middleware; captures transport metadata automatically
-//   - [Hints] — per-request mutable audit metadata; populated by handlers via [HintsFromContext]
-//   - [TransportMetadata] — HTTP transport fields captured by the middleware
-//   - [EventBuilder] — callback that transforms hints + transport into an audit event
-//   - [Metrics] — optional core instrumentation interface
-//   - [ParseTaxonomyYAML] — parses a YAML document into a [Taxonomy]; use with //go:embed
-//   - [ErrInvalidInput] — sentinel for YAML structural errors (vs [ErrTaxonomyInvalid] for semantic errors)
-//   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency
-//   - [InjectLifecycleEvents] — adds the "lifecycle" category with startup/shutdown events
-//   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
+//
+// # Advanced
+//
 //   - [OutputFactory] — function signature for output factory registration
-//   - [RegisterOutputFactory] — registers an output factory by type name (e.g., "file", "syslog")
+//   - [RegisterOutputFactory] — registers a factory by type name (used by output modules)
 //   - [LookupOutputFactory] — retrieves a registered factory by type name
-//   - [RegisteredOutputTypes] — returns all registered output type names
-//   - [WrapOutput] — wraps an [Output] to override its [Output.Name]
+//   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs
+//   - [InjectLifecycleEvents] — adds startup/shutdown events to a taxonomy
+//   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
 // # Taxonomy
 //

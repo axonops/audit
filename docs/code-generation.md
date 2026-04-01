@@ -97,11 +97,16 @@ err := logger.AuditEvent(
 
 ## CLI Flags
 
-| Flag | Description |
-|------|-------------|
-| `-input` | Path to taxonomy YAML file |
-| `-output` | Output Go file path |
-| `-package` | Go package name for the generated file |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-input` | (required) | Path to taxonomy YAML file |
+| `-output` | (required) | Output Go file path; use `-` for stdout |
+| `-package` | (required) | Go package name for the generated file |
+| `-types` | `true` | Generate event type constants |
+| `-fields` | `true` | Generate field name constants |
+| `-categories` | `true` | Generate category constants |
+| `-labels` | `true` | Generate sensitivity label constants |
+| `-builders` | `true` | Generate typed event builder structs |
 
 ## Performance
 

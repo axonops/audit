@@ -652,6 +652,9 @@ func (l *Logger) preAllocFormatOpts() {
 // fields excluded. It bypasses the format cache because different
 // outputs may exclude different label sets.
 func (l *Logger) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
+	// Safe: drain loop is single-goroutine. FieldLabels is read-only
+	// after taxonomy registration; we assign the pointer per-event
+	// to avoid allocating a new FormatOptions on every call.
 	oe.formatOpts.FieldLabels = def.FieldLabels
 	f := oe.effectiveFormatter(l.formatter)
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, oe.formatOpts)

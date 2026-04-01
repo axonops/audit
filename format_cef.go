@@ -215,7 +215,7 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 		if isFrameworkField(k, fields) {
 			continue
 		}
-		if opts.isExcluded(k) {
+		if opts.IsExcluded(k) {
 			continue
 		}
 		v := fields[k]

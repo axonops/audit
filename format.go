@@ -23,17 +23,24 @@ import (
 // A nil *FormatOptions means no special handling — all fields are
 // emitted. When non-nil, the formatter skips fields whose sensitivity
 // labels overlap with ExcludedLabels.
+//
+// The library sets FieldLabels per-event before calling [Formatter.Format].
+// Implementations MUST NOT retain the opts pointer or modify its fields
+// beyond the duration of the Format call.
 type FormatOptions struct {
 	// ExcludedLabels is the set of sensitivity labels to exclude.
+	// Set once at construction time; immutable after that.
 	ExcludedLabels map[string]struct{}
 	// FieldLabels maps field names to their resolved sensitivity labels.
-	// Sourced from [EventDef.FieldLabels].
+	// Set by the library per-event from [EventDef.FieldLabels] before
+	// calling Format. Implementations MUST NOT retain this pointer.
 	FieldLabels map[string]map[string]struct{}
 }
 
-// isExcluded reports whether fieldName carries any label in the
-// excluded set.
-func (o *FormatOptions) isExcluded(fieldName string) bool {
+// IsExcluded reports whether fieldName carries any label in the
+// excluded set. Custom [Formatter] implementations should call this
+// to honor sensitivity exclusions.
+func (o *FormatOptions) IsExcluded(fieldName string) bool {
 	if o == nil || o.FieldLabels == nil || o.ExcludedLabels == nil {
 		return false
 	}
@@ -65,7 +72,9 @@ type Formatter interface {
 	// fields contains the caller-supplied key-value pairs. def is the
 	// [EventDef] for eventType; it is never nil when called by the
 	// library. opts carries per-output sensitivity exclusion context;
-	// nil means no field exclusion.
+	// nil means no field exclusion. Use [FormatOptions.IsExcluded] to
+	// check whether a field should be skipped. Implementations MUST
+	// NOT retain the opts pointer beyond the Format call.
 	//
 	// A non-nil error causes the event to be dropped and
 	// [Metrics.RecordSerializationError] to be called.

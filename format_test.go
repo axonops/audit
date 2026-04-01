@@ -1283,3 +1283,97 @@ func BenchmarkCEFFormatter_Format_LargeEvent(b *testing.B) {
 		_, _ = f.Format(ts, "api_request", fields, def, nil)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FormatOptions.IsExcluded tests
+// ---------------------------------------------------------------------------
+
+func TestFormatOptions_IsExcluded(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		opts     *audit.FormatOptions
+		field    string
+		excluded bool
+	}{
+		{"nil opts", nil, "email", false},
+		{"nil FieldLabels", &audit.FormatOptions{ExcludedLabels: map[string]struct{}{"pii": {}}}, "email", false},
+		{"nil ExcludedLabels", &audit.FormatOptions{FieldLabels: map[string]map[string]struct{}{"email": {"pii": {}}}}, "email", false},
+		{"field not in FieldLabels", &audit.FormatOptions{
+			ExcludedLabels: map[string]struct{}{"pii": {}},
+			FieldLabels:    map[string]map[string]struct{}{"phone": {"pii": {}}},
+		}, "email", false},
+		{"label not excluded", &audit.FormatOptions{
+			ExcludedLabels: map[string]struct{}{"financial": {}},
+			FieldLabels:    map[string]map[string]struct{}{"email": {"pii": {}}},
+		}, "email", false},
+		{"label excluded", &audit.FormatOptions{
+			ExcludedLabels: map[string]struct{}{"pii": {}},
+			FieldLabels:    map[string]map[string]struct{}{"email": {"pii": {}}},
+		}, "email", true},
+		{"multi label one excluded", &audit.FormatOptions{
+			ExcludedLabels: map[string]struct{}{"financial": {}},
+			FieldLabels:    map[string]map[string]struct{}{"card": {"pii": {}, "financial": {}}},
+		}, "card", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.excluded, tt.opts.IsExcluded(tt.field))
+		})
+	}
+}
+
+func TestJSONFormatter_Format_WithExclusion(t *testing.T) {
+	t.Parallel()
+	f := &audit.JSONFormatter{}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	def := &audit.EventDef{
+		Required: []string{"outcome"},
+		Optional: []string{"email", "name"},
+	}
+	fields := audit.Fields{
+		"outcome": "success",
+		"email":   "alice@example.com",
+		"name":    "Alice",
+	}
+	opts := &audit.FormatOptions{
+		ExcludedLabels: map[string]struct{}{"pii": {}},
+		FieldLabels:    map[string]map[string]struct{}{"email": {"pii": {}}},
+	}
+
+	data, err := f.Format(ts, "user_create", fields, def, opts)
+	require.NoError(t, err)
+	s := string(data)
+
+	assert.NotContains(t, s, "email")
+	assert.NotContains(t, s, "alice@example.com")
+	assert.Contains(t, s, `"name":"Alice"`)
+	assert.Contains(t, s, `"outcome":"success"`)
+	assert.Contains(t, s, `"event_type":"user_create"`)
+}
+
+func TestCEFFormatter_Format_WithExclusion(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{Vendor: "Test", Product: "Test", Version: "1.0"}
+	ts := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	def := &audit.EventDef{
+		Required: []string{"outcome"},
+		Optional: []string{"email"},
+	}
+	fields := audit.Fields{
+		"outcome": "success",
+		"email":   "alice@example.com",
+	}
+	opts := &audit.FormatOptions{
+		ExcludedLabels: map[string]struct{}{"pii": {}},
+		FieldLabels:    map[string]map[string]struct{}{"email": {"pii": {}}},
+	}
+
+	data, err := f.Format(ts, "user_create", fields, def, opts)
+	require.NoError(t, err)
+	s := string(data)
+
+	assert.NotContains(t, s, "alice@example.com")
+	assert.Contains(t, s, "outcome=success")
+}

@@ -2714,3 +2714,53 @@ func BenchmarkFilterCheck_ReadWriteContention(b *testing.B) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Event interface and NewEvent tests
+// ---------------------------------------------------------------------------
+
+func TestNewEvent_ImplementsInterface(t *testing.T) {
+	t.Parallel()
+	evt := audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})
+	assert.Equal(t, "user_create", evt.EventType())
+	assert.Equal(t, "success", evt.Fields()["outcome"])
+	assert.Equal(t, "alice", evt.Fields()["actor_id"])
+}
+
+func TestAuditEvent_WithNewEvent(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	evt := audit.NewEvent("schema_register", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "test-schema",
+	})
+	require.NoError(t, logger.AuditEvent(evt))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, "success", out.GetEvent(0)["outcome"])
+}
+
+func TestAuditEvent_UnknownEventType(t *testing.T) {
+	t.Parallel()
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+	)
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	err = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown event type")
+}

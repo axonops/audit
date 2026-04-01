@@ -662,15 +662,34 @@ func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy)
 }
 
 // toParamName converts a snake_case field name to a Go parameter name
-// (camelCase, not exported).
+// (camelCase). Handles acronyms: "actor_id" → "actorID", "id" → "id".
 func toParamName(s string) string {
 	pascal := toPascalCase(s)
 	if pascal == "" {
 		return s
 	}
-	// Lowercase the first rune for camelCase.
 	runes := []rune(pascal)
-	runes[0] = rune(strings.ToLower(string(runes[0]))[0])
+	// Find length of leading uppercase run (acronym detection).
+	upper := 0
+	for upper < len(runes) && runes[upper] >= 'A' && runes[upper] <= 'Z' {
+		upper++
+	}
+	if upper == 0 {
+		return pascal
+	}
+	// Entire name is uppercase (bare acronym like "ID") → all lowercase.
+	if upper == len(runes) {
+		return strings.ToLower(pascal)
+	}
+	// Acronym at start ("HTTPServer" → "httpServer"): lowercase all but
+	// last uppercase letter which starts the next word.
+	if upper > 1 {
+		for i := range upper - 1 {
+			runes[i] = rune(strings.ToLower(string(runes[i]))[0])
+		}
+	} else {
+		runes[0] = rune(strings.ToLower(string(runes[0]))[0])
+	}
 	return string(runes)
 }
 

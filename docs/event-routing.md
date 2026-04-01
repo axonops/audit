@@ -13,14 +13,14 @@
 - [Runtime Route Changes](#runtime-route-changes)
 - [Events Without Categories](#events-without-categories)
 
-## What Is Event Routing?
+## 🔍 What Is Event Routing?
 
 Event routing controls which events reach which outputs. Instead of
 sending every event to every output, you can filter by category,
 event type, or severity so that each output receives only the events
 relevant to its purpose.
 
-## Why Route Events?
+## ❓ Why Route Events?
 
 A typical deployment has multiple outputs with different purposes:
 
@@ -32,7 +32,7 @@ A typical deployment has multiple outputs with different purposes:
 Without routing, every output receives every event, increasing storage
 costs and noise.
 
-## Configuration
+## ⚙️ Configuration
 
 Routes are configured per-output in the output YAML:
 
@@ -62,7 +62,7 @@ outputs:
       min_severity: 7
 ```
 
-## Include Mode
+## ✅ Include Mode
 
 Only events matching the filter are delivered to this output:
 
@@ -75,7 +75,7 @@ route:
 If you include both a category and an event type that belongs to that
 category, the event is delivered **once** — it is not duplicated.
 
-## Exclude Mode
+## ❌ Exclude Mode
 
 All events are delivered **except** those matching the filter:
 
@@ -88,7 +88,7 @@ route:
 > **Include and exclude are mutually exclusive.** You cannot use both
 > on the same route. Setting both causes a startup error.
 
-## Severity Filtering
+## 📊 Severity Filtering
 
 Filter by severity range (0-10 scale). Events outside the range are
 not delivered to this output:
@@ -103,7 +103,7 @@ If only `min_severity` is set, all events at or above that severity
 pass. If only `max_severity` is set, all events at or below that
 severity pass.
 
-## Combining Severity with Include/Exclude
+## 🔗 Combining Severity with Include/Exclude
 
 Severity filtering combines with include/exclude as an **AND**
 condition — an event must pass **both** the category/event filter
@@ -134,7 +134,7 @@ This delivers events that are NOT in the "read" category **AND** have
 severity 5 or higher. Low-severity write events (severity 3) are
 filtered out even though they pass the exclude filter.
 
-## How Events Flow
+## 🔧 How Events Flow
 
 ```
 AuditEvent()
@@ -152,7 +152,7 @@ An event must pass the category check AND the per-output route filter
 to reach an output. If an output has no route configured, it receives
 all events.
 
-## Runtime Route Changes
+## 🔄 Runtime Route Changes
 
 Routes can be modified at runtime without restarting the logger:
 
@@ -178,7 +178,7 @@ next event processed by the drain goroutine.
 See [Progressive Example: Event Routing](../examples/05-event-routing/)
 for runtime route changes in a working application.
 
-## Events Without Categories
+## 📋 Events Without Categories
 
 Events that are not assigned to any category in the taxonomy are
 always delivered at the global level — they cannot be disabled via
@@ -192,7 +192,7 @@ Category-based include/exclude routes do not affect uncategorised
 events — an `include_categories: [security]` route will NOT deliver
 uncategorised events (they are not in the "security" category).
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Event Routing](../examples/05-event-routing/) — complete routing configuration
 - [Outputs](outputs.md) — output types and fan-out architecture

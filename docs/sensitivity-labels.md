@@ -2,7 +2,13 @@
 
 # Sensitivity Labels
 
-## What Are Sensitivity Labels?
+- [What Are Sensitivity Labels?](#-what-are-sensitivity-labels)
+- [Why Sensitivity Labels?](#-why-sensitivity-labels)
+- [Taxonomy Configuration](#taxonomy-configuration)
+- [Per-Output Exclusion](#-per-output-exclusion)
+- [Protected Fields](#️-protected-fields)
+
+## 🔍 What Are Sensitivity Labels?
 
 Sensitivity labels classify audit event fields by their data
 sensitivity — for example, `pii` (personally identifiable information),
@@ -10,7 +16,7 @@ sensitivity — for example, `pii` (personally identifiable information),
 are defined in the taxonomy and applied to fields. Each output can then
 exclude specific labels, stripping sensitive fields before delivery.
 
-## Why Sensitivity Labels?
+## ❓ Why Sensitivity Labels?
 
 Audit events often contain sensitive data that must be handled
 differently depending on the destination:
@@ -63,7 +69,7 @@ events:
 All three mechanisms are resolved at taxonomy parse time — there is no
 per-event runtime cost for label resolution.
 
-## Per-Output Exclusion
+## 🔀 Per-Output Exclusion
 
 ```yaml
 outputs:
@@ -88,7 +94,7 @@ outputs:
     # email, phone, user_name, card_number, card_expiry stripped
 ```
 
-## Protected Fields
+## 🛡️ Protected Fields
 
 Framework fields are never stripped, regardless of label configuration:
 
@@ -99,14 +105,14 @@ Framework fields are never stripped, regardless of label configuration:
 
 This ensures every output receives a structurally valid audit event.
 
-## Performance
+## ⚡ Performance
 
 Sensitivity label exclusion operates inside the formatter's existing
 field iteration loop. There is zero additional allocation or map copy
 when sensitivity labels are configured — the `FormatOptions` are
 pre-allocated per output at construction time.
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Sensitivity Labels](../examples/06-sensitivity-labels/) — complete working example with PII and financial labels
 - [Event Routing](event-routing.md) — per-output routing (complementary feature)

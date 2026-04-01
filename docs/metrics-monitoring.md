@@ -2,7 +2,15 @@
 
 # Metrics and Monitoring
 
-## Why Monitor Your Audit Pipeline?
+- [Why Monitor?](#-why-monitor-your-audit-pipeline)
+- [The Metrics Interface](#the-metrics-interface)
+- [What to Monitor](#-what-to-monitor)
+- [Prometheus Example](#prometheus-example)
+- [Recommended Alerts](#-recommended-alerts)
+- [Per-Output Metrics](#-per-output-metrics)
+- [Testing Metrics](#-testing-metrics)
+
+## ❓ Why Monitor Your Audit Pipeline?
 
 An audit pipeline that silently drops events is worse than no audit
 pipeline at all — it gives a false sense of compliance. Monitoring
@@ -38,7 +46,7 @@ logger, err := audit.NewLogger(
 )
 ```
 
-## What to Monitor
+## 🔍 What to Monitor
 
 ### Critical — Alert Immediately
 
@@ -87,7 +95,7 @@ func (m *prometheusMetrics) RecordValidationError(eventType string) {
 // ... implement remaining methods
 ```
 
-## Recommended Alerts
+## 🚨 Recommended Alerts
 
 | Alert | Condition | Action |
 |-------|-----------|--------|
@@ -96,7 +104,7 @@ func (m *prometheusMetrics) RecordValidationError(eventType string) {
 | Delivery error rate | `RecordEvent("error")` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
-## Per-Output Metrics
+## 🔀 Per-Output Metrics
 
 In addition to the global `Metrics` interface, each output type has
 its own metrics interface for output-specific telemetry. These are
@@ -140,7 +148,7 @@ the webhook configuration.
 See [Progressive Example: CRUD API](../examples/09-crud-api/) for a
 complete Prometheus implementation of all four metrics interfaces.
 
-## Testing Metrics
+## 🧪 Testing Metrics
 
 The `audittest.MetricsRecorder` captures all metrics calls in memory:
 
@@ -153,7 +161,7 @@ assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 assert.Equal(t, 0, metrics.BufferDrops())
 ```
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: CRUD API](../examples/09-crud-api/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure

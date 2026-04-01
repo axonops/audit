@@ -11,14 +11,14 @@
 - [Per-Output Features](#per-output-features)
 - [Fan-Out Architecture](#fan-out-architecture)
 
-## What Are Outputs?
+## 🔍 What Are Outputs?
 
 Outputs are where your audit events end up after validation and
 serialisation. go-audit can send the same event to multiple outputs
 at once — a local file for long-term retention, a syslog server for
 your SIEM, and a webhook for real-time alerting, all simultaneously.
 
-## Why Multiple Outputs?
+## ❓ Why Multiple Outputs?
 
 Different teams need audit events in different places, in different
 formats, with different levels of detail:
@@ -31,7 +31,7 @@ formats, with different levels of detail:
 Each output can have its own formatter, [event routing](event-routing.md)
 filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
-## Available Outputs
+## 📋 Available Outputs
 
 | Output | Module | Transport | Key Features |
 |--------|--------|-----------|--------------|
@@ -42,7 +42,7 @@ filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
 ---
 
-## File Output
+## 📁 File Output
 
 Writes one event per line to a local file. Rotates automatically when
 the file reaches the configured size. Old files are compressed with
@@ -82,7 +82,7 @@ Install: `go get github.com/axonops/go-audit/file`
 
 ---
 
-## Syslog Output
+## 📡 Syslog Output
 
 Sends events as RFC 5424 syslog messages over TCP, UDP, or TCP+TLS.
 The connection is established immediately when the output is created —
@@ -134,7 +134,7 @@ Install: `go get github.com/axonops/go-audit/syslog`
 
 ---
 
-## Webhook Output
+## 🌐 Webhook Output
 
 Batches events as newline-delimited JSON (NDJSON) and POSTs them to
 an HTTPS endpoint. Failed batches are retried with exponential
@@ -196,7 +196,7 @@ Install: `go get github.com/axonops/go-audit/webhook`
 
 ---
 
-## Stdout Output
+## 💻 Stdout Output
 
 Writes events to standard output. Built into the core module — no
 additional `go get` needed. Useful for local development, debugging,
@@ -214,7 +214,7 @@ No additional configuration fields are needed.
 
 ---
 
-## Per-Output Features
+## 🔀 Per-Output Features
 
 Every output supports these optional features:
 
@@ -225,13 +225,13 @@ Every output supports these optional features:
 | **Sensitivity labels** | `exclude_labels:` on each output | [Sensitivity Labels](sensitivity-labels.md) |
 | **Enable/disable** | `enabled: false` on each output | Toggle without removing config |
 
-## Fan-Out Architecture
+## 📡 Fan-Out Architecture
 
 The drain goroutine serialises each event once per unique format and
 delivers to all outputs in sequence. Each output is independent —
 a failure in one output does not block or affect delivery to others.
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/04-multi-output/)

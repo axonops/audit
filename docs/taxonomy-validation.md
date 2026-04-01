@@ -10,7 +10,7 @@ are classified for sensitivity filtering.
 This is a complete reference for everything that can go in a
 `taxonomy.yaml` file.
 
-## Why a Taxonomy?
+## ❓ Why a Taxonomy?
 
 Application logs are best-effort — a missing field doesn't break
 anything. Audit logs are compliance artefacts. A security event
@@ -21,7 +21,7 @@ The taxonomy is a contract: "these are the audit events we produce,
 and each one always includes these fields." The library validates
 every event against this contract at runtime.
 
-## Complete Schema
+## 📋 Complete Schema
 
 ```yaml
 version: 1
@@ -91,7 +91,7 @@ events:
       reason: {}
 ```
 
-## Top-Level Fields
+## 📋 Top-Level Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -100,7 +100,7 @@ events:
 | `events` | Yes | Map of event type name to event definition. |
 | `sensitivity` | No | Sensitivity label configuration for field classification. |
 
-## Categories
+## 📂 Categories
 
 Categories group related events. Each category maps to either a
 simple list of event names or a struct with optional severity:
@@ -129,7 +129,7 @@ Both formats can be mixed in the same taxonomy. Severity is optional
 An event can belong to multiple categories. Events not in any
 category are valid and always globally enabled.
 
-## Events
+## 📋 Events
 
 Each event defines its description, optional severity override, and
 fields:
@@ -178,7 +178,7 @@ fields:
 | `required` | `false` | If `true`, the library rejects events missing this field. |
 | `labels` | `[]` | List of sensitivity label names applied to this field. |
 
-## Sensitivity Labels
+## 🔒 Sensitivity Labels
 
 Sensitivity labels classify fields by data sensitivity. There are
 three ways to assign labels to fields:
@@ -229,7 +229,7 @@ Per-output field stripping is configured in `outputs.yaml`, not in
 the taxonomy. See [Sensitivity Labels](sensitivity-labels.md) and
 [Outputs](outputs.md) for the `exclude_labels` configuration.
 
-## Severity Resolution
+## 📊 Severity Resolution
 
 Severity is a 0-10 scale used in CEF output and event routing.
 Resolution order:
@@ -241,7 +241,7 @@ Resolution order:
 See [CEF Format — Severity Levels](cef-format.md#severity-levels)
 for practical guidance on choosing severity values.
 
-## Validation Modes
+## ✅ Validation Modes
 
 | Mode | Behaviour |
 |------|-----------|
@@ -252,7 +252,7 @@ for practical guidance on choosing severity values.
 Set via `audit.Config{ValidationMode: "warn"}` or
 `audittest.WithValidationMode(audit.ValidationWarn)` in tests.
 
-## Loading a Taxonomy
+## 📦 Loading a Taxonomy
 
 The library accepts `[]byte` only — not file paths. Use `go:embed`
 to bundle the YAML into your binary:
@@ -272,7 +272,7 @@ tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 - Unknown YAML keys are rejected. A typo like `sevrity` instead
   of `severity` produces a parse error, not a silently ignored field.
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Basic](../examples/01-basic/) — inline taxonomy
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — YAML taxonomy with audit-gen

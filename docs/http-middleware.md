@@ -10,7 +10,7 @@
 - [Wiring It Up](#wiring-it-up)
 - [Available Hint Fields](#available-hint-fields)
 
-## What Does This Do?
+## 🔍 What Does This Do?
 
 When you build an HTTP API, you want to audit who did what — which
 user called which endpoint, from which IP address, how long it took,
@@ -27,7 +27,7 @@ them manually in every handler. It wraps your HTTP router and:
    domain-specific audit data (who is the user, what resource did they
    touch, was it allowed)
 
-## What Gets Captured Automatically
+## 🔍 What Gets Captured Automatically
 
 These fields are extracted from every HTTP request without any code in
 your handlers:
@@ -48,7 +48,7 @@ when the middleware calculates the request duration. This is a
 middleware-specific feature — it is not added to events emitted
 outside of HTTP request handling.
 
-## What Your Handlers Add
+## 🔍 What Your Handlers Add
 
 Your handlers add domain-specific audit data — the things only
 your application code knows:
@@ -70,7 +70,7 @@ func createUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-## Skipping Requests
+## ⏭️ Skipping Requests
 
 > **Not every HTTP request needs an audit event.** If your callback
 > returns `skip = true`, no audit event is emitted for that request.
@@ -99,7 +99,7 @@ builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string,
 }
 ```
 
-## Adding Custom Fields
+## ➕ Adding Custom Fields
 
 The predefined hint fields (`ActorID`, `Outcome`, `TargetID`, etc.)
 cover common audit data. For anything beyond these, use the `Extra`
@@ -153,7 +153,7 @@ builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string,
 }
 ```
 
-## Wiring It Up
+## 🔌 Wiring It Up
 
 The middleware works with any Go HTTP router — stdlib `http.ServeMux`,
 chi, gorilla/mux, or anything that uses `http.Handler`.
@@ -175,7 +175,7 @@ For a complete working example with multiple routes, authentication
 middleware, and the full EventBuilder implementation, see
 [Progressive Example: Middleware](../examples/08-middleware/).
 
-## Available Hint Fields
+## 📋 Available Hint Fields
 
 These are the predefined fields you can set on `Hints` in your
 handlers. All are optional — set only what applies to your request.
@@ -198,7 +198,7 @@ handlers. All are optional — set only what applies to your request.
 > common patterns, but `Extra` lets you add any field your taxonomy
 > defines. You are not limited to the predefined set.
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Middleware](../examples/08-middleware/) — complete HTTP middleware example
 - [Progressive Example: CRUD API](../examples/09-crud-api/) — middleware in a full REST application

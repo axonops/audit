@@ -2,7 +2,14 @@
 
 # Async Delivery and Pipeline Architecture
 
-## How Events Flow
+- [How Events Flow](#-how-events-flow)
+- [Why Async?](#-why-async)
+- [Buffering and Backpressure](#-buffering-and-backpressure)
+- [Delivery Guarantee](#-delivery-guarantee)
+- [Graceful Shutdown](#-graceful-shutdown)
+- [Thread Safety](#-thread-safety)
+
+## 🔧 How Events Flow
 
 ```
 AuditEvent(event)
@@ -17,7 +24,7 @@ AuditEvent(event)
                                              └── Output.Write(bytes)
 ```
 
-## Why Async?
+## ❓ Why Async?
 
 Audit logging must not slow down the operations it audits. If writing
 to a syslog server takes 5ms, a synchronous audit call would add 5ms
@@ -58,7 +65,7 @@ HTTP handler blocks on syslog TCP writes, which creates cascading
 failures when the syslog server is slow or unreachable. Async delivery
 with monitoring is both safer and more reliable in practice.
 
-## Buffering and Backpressure
+## 📦 Buffering and Backpressure
 
 Events are held in a buffered channel. The drain goroutine reads from
 this channel continuously — events are processed as fast as the
@@ -100,7 +107,7 @@ events continuously with no timeout.
 Monitor `RecordBufferDrop()` — if it fires, your buffer is too small
 or your outputs are too slow.
 
-## Delivery Guarantee
+## 📤 Delivery Guarantee
 
 **At-most-once within a process lifetime.**
 
@@ -115,7 +122,7 @@ Events are never duplicated at the pipeline level. (The webhook output
 has its own at-least-once retry semantics for HTTP delivery — see
 [Outputs](outputs.md).)
 
-## Graceful Shutdown
+## 🛑 Graceful Shutdown
 
 `Logger.Close()` MUST be called when the logger is no longer needed:
 
@@ -191,14 +198,14 @@ func main() {
 See [Progressive Example: CRUD API](../examples/09-crud-api/) for a
 complete working example with signal handling.
 
-## Thread Safety
+## 🔒 Thread Safety
 
 - `AuditEvent()` is safe for concurrent use from any number of goroutines
 - Category enable/disable uses lock-free reads on the hot path
 - The single drain goroutine means outputs do not need to be thread-safe
 - `Close()` is idempotent via `sync.Once`
 
-## Further Reading
+## 📚 Further Reading
 
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures
 - [Outputs](outputs.md) — output types and fan-out architecture

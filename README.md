@@ -11,12 +11,12 @@
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   ![Status](https://img.shields.io/badge/status-pre--release-orange)
 
-  [Getting Started](#-quick-start) | [Features](#key-features) | [Examples](examples/) | [API Reference](https://pkg.go.dev/github.com/axonops/go-audit)
+  [🚀 Quick Start](#-quick-start) | [✨ Features](#-key-features) | [📚 Examples](examples/) | [📖 API Reference](https://pkg.go.dev/github.com/axonops/go-audit)
 </div>
 
 ---
 
-## Overview
+## 🔍 Overview
 
 go-audit is an audit logging library for Go. Audit logging is different
 from application logging — application logs record technical details
@@ -36,35 +36,35 @@ routing, and sensitive field stripping.
 
 ---
 
-## Key Features
+## ✨ Key Features
 
 <div align="center">
 
 | Feature | Description | Docs |
 |---------|-------------|------|
-| **Taxonomy Validation** | Define event schemas in YAML; every event validated at runtime | [Learn more](docs/taxonomy-validation.md) |
-| **Code Generation** | `audit-gen` generates typed builders; typos become compile errors | [Learn more](docs/code-generation.md) |
-| **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
-| **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
-| **Multi-Output Fan-Out** | File, syslog, webhook, stdout — simultaneously with per-output config | [Learn more](docs/outputs.md) |
-| **Event Routing** | Route events by category or severity to specific outputs | [Learn more](docs/event-routing.md) |
-| **Sensitivity Labels** | Classify fields as PII/financial; strip per-output for compliance | [Learn more](docs/sensitivity-labels.md) |
-| **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |
-| **HTTP Middleware** | Automatically captures HTTP request fields for audit logging | [Learn more](docs/http-middleware.md) |
-| **Metrics & Monitoring** | Track dropped events, delivery errors, and output health | [Learn more](docs/metrics-monitoring.md) |
-| **YAML Configuration** | Configure outputs in YAML with environment variable substitution | [Learn more](docs/output-configuration.md) |
-| **Testing Support** | In-memory recorder with same validation as production | [Learn more](docs/testing.md) |
+| 📋 **Taxonomy Validation** | Define event schemas in YAML; every event validated at runtime | [Learn more](docs/taxonomy-validation.md) |
+| ⚙️ **Code Generation** | `audit-gen` generates typed builders; typos become compile errors | [Learn more](docs/code-generation.md) |
+| 🛡️ **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
+| 📄 **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
+| 📡 **Multi-Output Fan-Out** | File, syslog, webhook, stdout — simultaneously with per-output config | [Learn more](docs/outputs.md) |
+| 🔀 **Event Routing** | Route events by category or severity to specific outputs | [Learn more](docs/event-routing.md) |
+| 🔒 **Sensitivity Labels** | Classify fields as PII/financial; strip per-output for compliance | [Learn more](docs/sensitivity-labels.md) |
+| ⚡ **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |
+| 🌐 **HTTP Middleware** | Automatically captures HTTP request fields for audit logging | [Learn more](docs/http-middleware.md) |
+| 📊 **Metrics & Monitoring** | Track dropped events, delivery errors, and output health | [Learn more](docs/metrics-monitoring.md) |
+| 📝 **YAML Configuration** | Configure outputs in YAML with environment variable substitution | [Learn more](docs/output-configuration.md) |
+| 🧪 **Testing Support** | In-memory recorder with same validation as production | [Learn more](docs/testing.md) |
 
 </div>
 
 ---
 
-## Why Audit Logging?
+## ❓ Why Audit Logging?
 
 Audit logging is not application logging. They serve fundamentally
 different purposes:
 
-| | Application Logging | Audit Logging |
+| | 🔧 Application Logging | 📋 Audit Logging |
 |---|---|---|
 | **Purpose** | Debugging, troubleshooting, observability | Compliance, forensics, accountability |
 | **Audience** | Developers, SREs | Security teams, auditors, legal |
@@ -81,26 +81,26 @@ delivery guarantees that compliance demands.
 
 ---
 
-## Why go-audit?
+## 💡 Why go-audit?
 
 No existing Go library provides schema-enforced audit logging with
 multi-output fan-out and SIEM-native format support:
 
-- **Schema enforcement** — every event validated against your taxonomy; missing required fields are rejected, not silently dropped
-- **SIEM-native output** — [CEF format](docs/cef-format.md) understood by Splunk, ArcSight, QRadar out of the box, alongside [JSON](docs/json-format.md) for log aggregators
-- **Multi-output fan-out** — send events to [files, syslog, webhooks, and stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
-- **Sensitive field stripping** — [classify fields as PII or financial](docs/sensitivity-labels.md); strip them per-output for GDPR/PCI compliance
-- **Non-blocking** — sub-microsecond `AuditEvent()` calls; [async delivery](docs/async-delivery.md) via a background drain goroutine with completeness monitoring
-- **No vendor lock-in** — [pluggable metrics interface](docs/metrics-monitoring.md); no Prometheus, OpenTelemetry, or logging framework dependency in core
+- 📋 **Schema enforcement** — every event validated against your taxonomy; missing required fields are rejected, not silently dropped
+- 🛡️ **SIEM-native output** — [CEF format](docs/cef-format.md) understood by Splunk, ArcSight, QRadar out of the box, alongside [JSON](docs/json-format.md) for log aggregators
+- 📡 **Multi-output fan-out** — send events to [files, syslog, webhooks, and stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
+- 🔒 **Sensitive field stripping** — [classify fields as PII or financial](docs/sensitivity-labels.md); strip them per-output for GDPR/PCI compliance
+- ⚡ **Non-blocking** — sub-microsecond `AuditEvent()` calls; [async delivery](docs/async-delivery.md) via a background drain goroutine with completeness monitoring
+- 🔌 **No vendor lock-in** — [pluggable metrics interface](docs/metrics-monitoring.md); no Prometheus, OpenTelemetry, or logging framework dependency in core
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 go-audit uses a YAML-first workflow: define your events in a taxonomy
 file, configure outputs in another, and generate type-safe Go code.
 
-### 1. Define your taxonomy (`taxonomy.yaml`)
+### 1️⃣ Define your taxonomy (`taxonomy.yaml`)
 
 ```yaml
 version: 1
@@ -131,7 +131,7 @@ events:
       source_ip: {}
 ```
 
-### 2. Configure outputs (`outputs.yaml`)
+### 2️⃣ Configure outputs (`outputs.yaml`)
 
 ```yaml
 version: 1
@@ -150,7 +150,7 @@ outputs:
       version: "1.0"
 ```
 
-### 3. Generate type-safe code
+### 3️⃣ Generate type-safe code
 
 ```bash
 go run github.com/axonops/go-audit/cmd/audit-gen \
@@ -159,9 +159,9 @@ go run github.com/axonops/go-audit/cmd/audit-gen \
   -package main
 ```
 
-(`go run` fetches the tool automatically — no separate install needed.)
+> 💡 `go run` fetches the tool automatically — no separate install needed.
 
-### 4. Use the generated builders
+### 4️⃣ Use the generated builders
 
 ```go
 // Required fields are constructor parameters — typos are compile errors
@@ -171,25 +171,25 @@ err := logger.AuditEvent(
 )
 ```
 
-For the complete runnable application (taxonomy loading, output
-configuration, logger creation), see
-[examples/02-code-generation](examples/02-code-generation/).
+> 📚 For the complete runnable application (taxonomy loading, output
+> configuration, logger creation), see
+> [examples/02-code-generation](examples/02-code-generation/).
 
 ### Output
 
-**JSON** (default formatter):
+**📄 JSON** (default formatter):
 ```json
 {"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","target_id":"user-42"}
 ```
 
-**CEF** (SIEM formatter):
+**🛡️ CEF** (SIEM formatter):
 ```
 CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success
 ```
 
 ---
 
-## Installation
+## 📦 Installation
 
 Requires **Go 1.26+**.
 
@@ -201,12 +201,12 @@ go get github.com/axonops/go-audit/webhook      # batched HTTP webhook with SSRF
 go get github.com/axonops/go-audit/outputconfig # YAML-based output configuration
 ```
 
-The core module includes `StdoutOutput` (no additional dependency) and
-the `audittest` package for [testing](docs/testing.md).
+> 💡 The core module includes `StdoutOutput` (no additional dependency)
+> and the `audittest` package for [testing](docs/testing.md).
 
 ---
 
-## Module Structure
+## 🏗️ Module Structure
 
 | Module | Description |
 |--------|-------------|
@@ -221,28 +221,28 @@ minimal third-party dependencies. Import only the outputs you use.
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Resource | Description |
 |----------|-------------|
-| [Progressive Examples](examples/) | 10 examples from "hello world" to a [complete CRUD API](examples/09-crud-api/) with five outputs |
-| [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) | pkg.go.dev documentation |
-| [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
-| [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
-| [Changelog](CHANGELOG.md) | Release history and breaking changes |
-| [Security Policy](SECURITY.md) | Vulnerability reporting |
-| [Benchmarks](BENCHMARKS.md) | Performance baseline and methodology |
+| 📖 [Progressive Examples](examples/) | 10 examples from "hello world" to a [complete CRUD API](examples/09-crud-api/) with five outputs |
+| 📘 [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) | pkg.go.dev documentation |
+| 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
+| 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
+| 📝 [Changelog](CHANGELOG.md) | Release history and breaking changes |
+| 🔒 [Security Policy](SECURITY.md) | Vulnerability reporting |
+| ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline and methodology |
 
 ---
 
-## Status
+## ⚠️ Status
 
 This library is **pre-release (v0.x)**. The API may change between
 minor versions until v1.0.0. Pin your dependency version.
 
 ---
 
-## Acknowledgements
+## 🙏 Acknowledgements
 
 go-audit builds on the work of these open-source projects:
 
@@ -252,7 +252,7 @@ go-audit builds on the work of these open-source projects:
 
 ---
 
-## License
+## 📄 License
 
 [Apache License 2.0](LICENSE) — Copyright 2026 AxonOps Limited.
 

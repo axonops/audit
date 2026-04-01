@@ -2,7 +2,7 @@
 
 # JSON Format
 
-## What Is the JSON Format?
+## 🔍 What Is the JSON Format?
 
 The JSON formatter serialises each audit event as a single line of
 JSON — one event per line, no pretty-printing. This is the default
@@ -37,7 +37,7 @@ Fields are emitted in a deterministic order:
 This deterministic ordering makes JSON output diff-friendly and
 predictable for downstream parsers.
 
-## Configuration
+## ⚙️ Configuration
 
 ### YAML
 
@@ -76,7 +76,7 @@ every event, with `null` for unset optional fields. This provides
 structural consistency — every event of the same type has the same
 set of keys.
 
-## Further Reading
+## 📚 Further Reading
 
 - [CEF Format](cef-format.md) — alternative format for SIEM integration
 - [Progressive Example: Formatters](../examples/07-formatters/) — JSON and CEF side-by-side

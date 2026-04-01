@@ -2,13 +2,21 @@
 
 # Testing Audit Events in Your Application
 
-## What Is audittest?
+- [What Is audittest?](#-what-is-audittest)
+- [Why a Test Package?](#-why-a-test-package)
+- [Quick Start](#-quick-start)
+- [Two Constructor Patterns](#-two-constructor-patterns)
+- [Recorded Event API](#-recorded-event-api)
+- [Metrics Assertions](#-metrics-assertions)
+- [Table-Driven Tests](#-table-driven-tests)
+
+## 🔍 What Is audittest?
 
 The `audittest` package provides an in-memory audit logger for your
 unit and integration tests. It captures events and metrics in memory for
 assertion, with the same validation and async pipeline as production.
 
-## Why a Test Package?
+## ❓ Why a Test Package?
 
 Testing audit logging without `audittest` requires ~25 lines of
 boilerplate per test: implementing `audit.Output`, creating a full
@@ -21,7 +29,7 @@ asserting on `map[string]interface{}`.
 logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ```go
 func TestCreateUser(t *testing.T) {
@@ -40,7 +48,7 @@ func TestCreateUser(t *testing.T) {
 }
 ```
 
-### Close Before Assert
+### ⚠️ Close Before Assert — Critical
 
 The audit logger delivers events asynchronously. Callers MUST call
 `logger.Close()` before making assertions — the drain goroutine may
@@ -49,7 +57,7 @@ or `events.Events()` without draining first produce racy results.
 `NewLogger` registers `t.Cleanup(logger.Close)` as a safety net
 against goroutine leaks, but your explicit Close MUST come first.
 
-## Two Constructor Patterns
+## 🔧 Two Constructor Patterns
 
 ### NewLogger — full integration test
 
@@ -69,7 +77,7 @@ enforcement:
 logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "auth_failure")
 ```
 
-## Recorded Event API
+## 📋 Recorded Event API
 
 | Method | Returns | Purpose |
 |--------|---------|---------|
@@ -85,7 +93,7 @@ logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "auth_failure")
 > other fields. A non-nil `ParseErr` means the formatter produced
 > invalid JSON; other fields are zero-valued in that case.
 
-## Metrics Assertions
+## 📊 Metrics Assertions
 
 ```go
 metrics.EventDeliveries("recorder", "success") // successful deliveries
@@ -94,7 +102,7 @@ metrics.BufferDrops()                          // buffer-full drops
 metrics.OutputErrors("recorder")               // output write errors
 ```
 
-## Table-Driven Tests
+## 📊 Table-Driven Tests
 
 Use `events.Reset()` to clear captured events between sub-tests
 without creating a new logger:
@@ -109,7 +117,7 @@ for _, tc := range tests {
 }
 ```
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Testing](../examples/10-testing/) — three testing patterns
 - [API Reference: audittest](https://pkg.go.dev/github.com/axonops/go-audit/audittest)

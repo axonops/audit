@@ -9,7 +9,7 @@ route events per-output, and which sensitive fields to strip.
 This is a complete reference for everything that can go in an
 `outputs.yaml` file.
 
-## Complete Schema
+## 📋 Complete Schema
 
 ```yaml
 version: 1
@@ -112,7 +112,7 @@ outputs:
       - financial                  # strip sensitive fields
 ```
 
-## Top-Level Fields
+## 📋 Top-Level Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -120,7 +120,7 @@ outputs:
 | `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
-## Output Block
+## 📦 Output Block
 
 Every output has these fields:
 
@@ -133,7 +133,7 @@ Every output has these fields:
 | `route` | No | Per-output event filter. Receives all events if omitted. |
 | `exclude_labels` | No | List of sensitivity labels to strip from events before delivery. |
 
-## Formatter Configuration
+## 📝 Formatter Configuration
 
 ```yaml
 formatter:
@@ -159,7 +159,7 @@ formatter:
 | `product` | CEF only | — | Required for CEF. Application name. |
 | `version` | CEF only | — | Required for CEF. Application version. |
 
-## Event Route Configuration
+## 🔀 Event Route Configuration
 
 Routes control which events reach an output. Include and exclude
 modes are mutually exclusive.
@@ -210,7 +210,7 @@ route:
 See [Event Routing](event-routing.md) for detailed examples and
 explanations.
 
-## Sensitivity Label Exclusion
+## 🔒 Sensitivity Label Exclusion
 
 ```yaml
 exclude_labels:
@@ -224,7 +224,7 @@ are never stripped.
 
 See [Sensitivity Labels](sensitivity-labels.md) for details.
 
-## File Output Fields
+## 📁 File Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -235,7 +235,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `permissions` | `"0600"` | File permissions (octal string, must be quoted). |
 | `compress` | `true` | Gzip compress rotated files. |
 
-## Syslog Output Fields
+## 📡 Syslog Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -251,7 +251,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
 | `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
 
-## Webhook Output Fields
+## 🌐 Webhook Output Fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
@@ -271,7 +271,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
 
-## Environment Variable Substitution
+## 🌍 Environment Variable Substitution
 
 Values support `${VAR}` and `${VAR:-default}` syntax:
 
@@ -285,7 +285,7 @@ syslog:
 Expansion happens after YAML parsing for injection safety — the raw
 YAML structure is validated first, then string values are expanded.
 
-## Factory Registry
+## 🏭 Factory Registry
 
 Output types must be registered before `Load` can create them.
 Registration happens via blank imports in your application:
@@ -302,7 +302,7 @@ If an output type's module is not imported, `Load` returns an error
 — no output is silently dropped. The `stdout` type is always
 available (built into core).
 
-## Loading Output Configuration
+## 📦 Loading Output Configuration
 
 ```go
 //go:embed outputs.yaml
@@ -318,7 +318,7 @@ opts = append(opts, result.Options...)
 logger, err := audit.NewLogger(cfg, opts...)
 ```
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
 - [Progressive Example: Multi-Output](../examples/04-multi-output/) — multiple outputs in one YAML

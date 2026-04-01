@@ -2,14 +2,20 @@
 
 # Code Generation with audit-gen
 
-## What Is audit-gen?
+- [What Is audit-gen?](#-what-is-audit-gen)
+- [Why Code Generation?](#-why-code-generation)
+- [Workflow](#️-workflow)
+- [What Gets Generated](#what-gets-generated)
+- [CLI Flags](#️-cli-flags)
+
+## 🔍 What Is audit-gen?
 
 `audit-gen` is a CLI tool that reads your taxonomy YAML and generates
 type-safe Go code: constants for event types, field names, and
 categories, plus per-event builder structs with required-field
 constructors.
 
-## Why Code Generation?
+## ❓ Why Code Generation?
 
 Without code generation, emitting an audit event looks like this:
 
@@ -32,7 +38,7 @@ Required fields become constructor parameters — you cannot forget them.
 Optional fields are chainable setters. A typo in an event name or field
 name is a compile error, not a runtime surprise.
 
-## Workflow
+## ⚙️ Workflow
 
 1. Define your taxonomy in `taxonomy.yaml`
 2. Add a `go:generate` directive to your Go code
@@ -137,7 +143,7 @@ err := logger.AuditEvent(
 )
 ```
 
-## CLI Flags
+## ⌨️ CLI Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -150,13 +156,13 @@ err := logger.AuditEvent(
 | `-labels` | `true` | Generate sensitivity label constants |
 | `-builders` | `true` | Generate typed event builder structs |
 
-## Performance
+## ⚡ Performance
 
 Generated builders allocate one `audit.Fields` map per event
 (~1 allocation). This is the cost of type safety — the library
 validates the event against the taxonomy just like untyped events.
 
-## Further Reading
+## 📚 Further Reading
 
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — complete working example
 - [Taxonomy Validation](taxonomy-validation.md) — YAML schema reference

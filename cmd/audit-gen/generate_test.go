@@ -776,6 +776,117 @@ func TestToParamName(t *testing.T) {
 	}
 }
 
+func TestGenerate_Builders_WithSeverity(t *testing.T) {
+	t.Parallel()
+	// Taxonomy with category-level severity to test intPtr generation.
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+categories:
+  security:
+    severity: 8
+    events: [auth_failure]
+events:
+  auth_failure:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+default_enabled: [security]
+`))
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = generate(&buf, tax, generateOptions{
+		Package:  "myapp",
+		Header:   "// test",
+		Types:    true,
+		Builders: true,
+	})
+	require.NoError(t, err)
+
+	src := buf.String()
+	// intPtr should be generated when severity is present.
+	assert.Contains(t, src, "func intPtr(")
+	// Categories should reference severity.
+	assert.Contains(t, src, "Severity: intPtr(8)")
+
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "sev.go", src, parser.AllErrors)
+	require.NoError(t, parseErr, "generated source must parse as valid Go")
+}
+
+func TestGenerate_Builders_NoSeverity_NoIntPtr(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
+	var buf bytes.Buffer
+	err := generate(&buf, tax, generateOptions{
+		Package:  "myapp",
+		Header:   "// test",
+		Types:    true,
+		Builders: true,
+	})
+	require.NoError(t, err)
+	// No category has severity → intPtr should NOT be generated.
+	assert.NotContains(t, buf.String(), "func intPtr(")
+}
+
+func TestGenerate_Builders_RuntimeEquivalent(t *testing.T) {
+	t.Parallel()
+	// Generate code and verify the constructor/setter/method patterns
+	// produce correct Go that a consumer would use.
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "taxonomy_with_labels.yaml"))
+	var buf bytes.Buffer
+	err := generate(&buf, tax, generateOptions{
+		Package:    "myapp",
+		Header:     "// test",
+		Types:      true,
+		Fields:     true,
+		Categories: true,
+		Labels:     true,
+		Builders:   true,
+	})
+	require.NoError(t, err)
+	src := buf.String()
+
+	// Verify builder struct has fields audit.Fields.
+	assert.Contains(t, src, "fields audit.Fields")
+
+	// Verify constructor sets required fields into the map.
+	assert.Contains(t, src, "FieldOutcome: outcome")
+
+	// Verify setter writes to the fields map and returns pointer.
+	assert.Contains(t, src, "e.fields[FieldEmail] = v")
+	assert.Contains(t, src, "return e")
+
+	// Verify EventType returns the correct constant.
+	assert.Contains(t, src, "return EventUserCreate")
+
+	// Verify Fields returns the internal map.
+	assert.Contains(t, src, "return e.fields")
+
+	// Verify FieldInfo has required flag set correctly.
+	assert.Contains(t, src, "Required: true")
+
+	// Verify labels are present in FieldInfo.
+	assert.Contains(t, src, "LabelPii")
+	assert.Contains(t, src, `Description: "Personally identifiable information"`)
+
+	// Verify concurrency/overwrite doc is present.
+	assert.Contains(t, src, "not safe for concurrent use")
+	assert.Contains(t, src, "overwrites the previous value")
+
+	// Verify required/optional comments on fields struct.
+	assert.Contains(t, src, "// required")
+	assert.Contains(t, src, "// optional")
+
+	// Verify //nolint directive.
+	assert.Contains(t, src, "//nolint:all")
+
+	// Verify valid Go.
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "runtime.go", src, parser.AllErrors)
+	require.NoError(t, parseErr, "generated source must parse as valid Go")
+}
+
 func TestBuildLabelConstants_NamingCollision(t *testing.T) {
 	t.Parallel()
 	// Two labels that produce the same PascalCase name.

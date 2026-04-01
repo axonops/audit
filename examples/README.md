@@ -7,8 +7,8 @@ Each example introduces one new concept and builds on the previous.
 
 | # | Example | What it teaches |
 |---|---------|-----------------|
-| 1 | [basic](01-basic/) | Taxonomy, Logger, Audit(), Fields, validation — programmatic setup |
-| 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, go:embed, outputconfig.Load |
+| 1 | [basic](01-basic/) | Taxonomy, Logger, AuditEvent(), Fields, validation — programmatic setup |
+| 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, typed builders, go:embed, outputconfig.Load |
 | 3 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
 | 4 | [multi-output](04-multi-output/) | Fan-out to multiple outputs from one YAML config |
 | 5 | [event-routing](05-event-routing/) | Category and severity-based routing in YAML |

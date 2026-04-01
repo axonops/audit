@@ -184,6 +184,46 @@ This is useful for programmatic inspection — for example, masking
 labeled fields in a debug UI or validating that your regex patterns
 match the fields you expect.
 
+### Emitting Events with Sensitive Fields
+
+The generated typed builders make sensitivity visible in your code.
+Setters for labeled fields include a godoc comment showing the label:
+
+```go
+// SetEmail sets the FieldEmail field.
+// Sensitivity label: LabelPii — Personally identifiable information
+func (e *UserCreateEvent) SetEmail(v any) *UserCreateEvent { ... }
+
+// SetCardNumber sets the FieldCardNumber field.
+// Sensitivity label: LabelFinancial — Financial and payment data
+func (e *PaymentProcessEvent) SetCardNumber(v any) *PaymentProcessEvent { ... }
+```
+
+Using the builders to emit events with sensitive fields:
+
+```go
+if err := logger.AuditEvent(NewUserCreateEvent("admin", "success").
+    SetEmail("alice@example.com").
+    SetPhone("555-0100").
+    SetUserName("alice_smith").
+    SetDepartment("engineering")); err != nil {
+    log.Printf("audit error: %v", err)
+}
+
+if err := logger.AuditEvent(NewPaymentProcessEvent("alice", "success").
+    SetCardNumber("4111111111111111").
+    SetCardExpiry("12/28").
+    SetAmount("99.99")); err != nil {
+    log.Printf("audit error: %v", err)
+}
+```
+
+Required fields (`actorID`, `outcome`) are constructor parameters.
+Sensitive optional fields (`email`, `phone`, `card_number`) use
+chainable setters. The generated code handles field name mapping
+internally — you never type `"email"` or `"card_number"` as raw
+strings.
+
 ## Run It
 
 ```bash

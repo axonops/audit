@@ -7,7 +7,7 @@ recommended workflow for go-audit — all subsequent examples follow it.
 ## What You'll Learn
 
 - Why audit events are defined in YAML and embedded in the binary
-- How `audit-gen` generates type-safe constants from your taxonomy
+- How `audit-gen` generates type-safe constants and event builders from your taxonomy
 - The two-file pattern: `taxonomy.yaml` (events) + `outputs.yaml` (destinations)
 - Loading output configuration with `outputconfig.Load`
 
@@ -22,8 +22,8 @@ recommended workflow for go-audit — all subsequent examples follow it.
 |------|---------|
 | `taxonomy.yaml` | Defines what events your application can produce |
 | `outputs.yaml` | Defines where audit events are sent |
-| `audit_generated.go` | Generated constants — committed, DO NOT EDIT |
-| `main.go` | Loads both YAMLs, emits events using generated constants |
+| `audit_generated.go` | Generated constants and typed builders — committed, DO NOT EDIT |
+| `main.go` | Loads both YAMLs, emits events using typed builders |
 
 ## Key Concepts
 
@@ -109,17 +109,18 @@ events exist, what fields are required. It's part of your source code:
 - **Version-controlled** — changes go through code review, not config
   management
 
-### Generating Constants with audit-gen
+### Generating Code with audit-gen
 
-`audit-gen` reads your taxonomy YAML and generates Go constants:
+`audit-gen` reads your taxonomy YAML and generates Go constants and
+typed event builders:
 
 ```go
 //go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
-This produces `audit_generated.go` with four sections — event type
-constants, category constants, field name constants, and taxonomy
-metadata:
+This produces `audit_generated.go` with five sections — event type
+constants, category constants, field name constants, taxonomy metadata,
+and **typed event builders**:
 
 ```go
 const (
@@ -169,7 +170,30 @@ var CategoryEvents = map[string][]string{
 }
 ```
 
-Now a typo like `EventUserCrate` fails the build instead of silently
+**Typed event builders** are generated for each event type. Required
+fields become constructor parameters; optional fields get chainable
+setter methods:
+
+```go
+// NewUserCreateEvent creates a EventUserCreate event with required fields.
+func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
+    return &UserCreateEvent{fields: audit.Fields{
+        FieldActorID: actorID,
+        FieldOutcome: outcome,
+    }}
+}
+
+// SetTargetID sets the FieldTargetID field.
+func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
+    e.fields[FieldTargetID] = v
+    return e
+}
+```
+
+Each builder implements the `audit.Event` interface (`EventType()`,
+`Fields()`), so it passes directly to `logger.AuditEvent()`.
+
+Now a typo like `NewUserCrateEvent` fails the build instead of silently
 passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
@@ -253,14 +277,26 @@ They're separate because they change for different reasons. Adding a new
 event type doesn't affect where events are sent. Adding a syslog output
 doesn't change what events exist.
 
-### Using Generated Constants
+### Using Typed Event Builders
+
+`audit-gen` generates a constructor and setter methods for each event
+type. Required fields are constructor parameters (compile-time
+enforcement); optional fields use chainable setters:
 
 ```go
-if err := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
-    FieldOutcome:  "success",
-    FieldActorID:  "alice",
-    FieldTargetID: "user-42",
-})); err != nil {
+if err := logger.AuditEvent(NewUserCreateEvent("alice", "success").
+    SetTargetID("user-42")); err != nil {
+    log.Printf("audit error: %v", err)
+}
+
+if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure").
+    SetReason("invalid credentials").
+    SetSourceIP("192.168.1.100")); err != nil {
+    log.Printf("audit error: %v", err)
+}
+
+if err := logger.AuditEvent(NewUserReadEvent("success").
+    SetActorID("bob")); err != nil {
     log.Printf("audit error: %v", err)
 }
 ```
@@ -274,8 +310,10 @@ logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 }))
 ```
 
-Both work. The generated constants add compile-time safety without
-changing how the library behaves at runtime.
+The typed builders add two layers of compile-time safety: a typo in
+the event name (`NewUserCrateEvent`) or a missing required field both
+fail the build. With `audit.NewEvent`, those errors are caught at
+runtime by taxonomy validation.
 
 ## Run It
 
@@ -290,7 +328,7 @@ go generate .
 ## Expected Output
 
 ```
---- Using generated constants ---
+--- Using typed event builders ---
 {"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","reason":null,"target_id":"user-42"}
 {"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100"}
 {"timestamp":"...","event_type":"user_read","severity":5,"outcome":"success","actor_id":"bob"}

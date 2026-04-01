@@ -37,31 +37,39 @@ var taxonomyYAML []byte
 //go:embed outputs.yaml
 var outputsYAML []byte
 
+var logFiles = []string{"full-audit.log", "public-audit.log", "pci-audit.log"}
+
 func main() {
+	logger := createLogger()
+	emitEvents(logger)
+
+	if err := logger.Close(); err != nil {
+		log.Printf("close logger: %v", err)
+	}
+
+	printLogFiles()
+	cleanupLogFiles()
+}
+
+func createLogger() *audit.Logger {
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
-
 	result, err := outputconfig.Load(outputsYAML, &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}
-
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-
 	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
-	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("close logger: %v", closeErr)
-		}
-	}()
+	return logger
+}
 
-	// Emit a user creation event with PII fields.
+func emitEvents(logger *audit.Logger) {
 	if err := logger.Audit(EventUserCreate, audit.Fields{
 		FieldOutcome:    "success",
 		FieldActorID:    "admin",
@@ -73,7 +81,6 @@ func main() {
 		log.Printf("audit error: %v", err)
 	}
 
-	// Emit a payment event with financial fields.
 	if err := logger.Audit(EventPaymentProcess, audit.Fields{
 		FieldOutcome:    "success",
 		FieldActorID:    "alice",
@@ -83,16 +90,13 @@ func main() {
 	}); err != nil {
 		log.Printf("audit error: %v", err)
 	}
+}
 
-	// Close to flush, then show each file's contents.
-	if closeErr := logger.Close(); closeErr != nil {
-		log.Printf("close logger: %v", closeErr)
-	}
-
-	for _, name := range []string{"full-audit.log", "public-audit.log", "pci-audit.log"} {
+func printLogFiles() {
+	for _, name := range logFiles {
 		fmt.Printf("\n--- %s ---\n", name)
-		data, readErr := os.ReadFile(name)
-		if readErr != nil {
+		data, err := os.ReadFile(name) //nolint:gosec // example reads its own output files
+		if err != nil {
 			fmt.Printf("  (not created)\n")
 			continue
 		}
@@ -102,9 +106,10 @@ func main() {
 			}
 		}
 	}
+}
 
-	// Clean up log files.
-	for _, name := range []string{"full-audit.log", "public-audit.log", "pci-audit.log"} {
-		os.Remove(name)
+func cleanupLogFiles() {
+	for _, name := range logFiles {
+		_ = os.Remove(name)
 	}
 }

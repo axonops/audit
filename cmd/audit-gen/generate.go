@@ -105,28 +105,30 @@ type builderCat struct {
 
 // templateData is the data passed to the Go template.
 type templateData struct {
-	Header         string
-	Package        string
-	Events         []constantDef
-	Categories     []constantDef
-	Fields         []constantDef
-	Labels         []constantDef
-	Builders       []builderDef
-	FieldLabels    []fieldLabelDef     // field → labels mapping
-	EventFields    []eventFieldsDef    // event → required/optional fields
-	CategoryEvents []categoryEventsDef // category → events
-	HasEvents      bool
-	HasCategories  bool
-	HasFields      bool
-	HasLabels      bool
-	HasBuilders    bool
-	HasMetadata    bool // true when any metadata var is emitted
+	Header                string
+	Package               string
+	Events                []constantDef
+	Categories            []constantDef
+	Fields                []constantDef
+	Labels                []constantDef
+	Builders              []builderDef
+	FieldLabels           []fieldLabelDef     // field → labels mapping
+	EventFields           []eventFieldsDef    // event → required/optional fields
+	CategoryEvents        []categoryEventsDef // category → events
+	HasEvents             bool
+	HasCategories         bool
+	HasFields             bool
+	HasLabels             bool
+	HasBuilders           bool
+	HasSeverityInBuilders bool
+	HasMetadata           bool // true when any metadata var is emitted
 }
 
 var tmpl = template.Must(template.New("audit-gen").Parse(tmplText))
 
 const tmplText = `{{ .Header }}
 
+//nolint:all // generated code — do not lint
 package {{ .Package }}
 {{ if .HasBuilders }}
 import audit "github.com/axonops/go-audit"
@@ -195,18 +197,20 @@ var CategoryEvents = map[string][]string{
 {{- end }}
 }
 {{ end }}{{ if .HasBuilders }}{{ range $b := .Builders }}
-// {{ $b.FieldsStruct }} describes every field on a {{ $b.EventConst }} event.
+// {{ $b.FieldsStruct }} describes every field on [{{ $b.EventConst }}] events.
 type {{ $b.FieldsStruct }} struct {
 {{- range $b.Required }}
-	{{ .GoName }} audit.FieldInfo
+	{{ .GoName }} audit.FieldInfo // required
 {{- end }}
 {{- range $b.Optional }}
-	{{ .GoName }} audit.FieldInfo
+	{{ .GoName }} audit.FieldInfo // optional
 {{- end }}
 }
 
-{{ if $b.Description }}// {{ $b.StructName }} builds a type-safe audit event.
-// {{ $b.Description }}{{ else }}// {{ $b.StructName }} builds a type-safe audit event.{{ end }}
+{{ if $b.Description }}// {{ $b.StructName }} builds a type-safe audit event: {{ $b.Description }}.
+{{ else }}// {{ $b.StructName }} builds a type-safe audit event.
+{{ end }}// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
 type {{ $b.StructName }} struct {
 	fields audit.Fields
 }
@@ -256,7 +260,7 @@ func (e *{{ $b.StructName }}) Categories() []audit.CategoryInfo {
 {{- end }}
 	}
 }
-{{ end }}{{ if .HasBuilders }}
+{{ end }}{{ if .HasSeverityInBuilders }}
 func intPtr(n int) *int { return &n }
 {{ end }}{{ end }}`
 
@@ -350,6 +354,17 @@ func buildMetadata(data *templateData, tax audit.Taxonomy, opts generateOptions)
 	if opts.Builders {
 		data.Builders = collectBuilders(tax)
 		data.HasBuilders = len(data.Builders) > 0
+		for i := range data.Builders {
+			for _, c := range data.Builders[i].Categories {
+				if c.HasSeverity {
+					data.HasSeverityInBuilders = true
+					break
+				}
+			}
+			if data.HasSeverityInBuilders {
+				break
+			}
+		}
 	}
 }
 

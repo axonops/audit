@@ -16,7 +16,7 @@ package audit
 
 // Architecture: async buffer -> single drain goroutine -> serialise -> fan-out
 //
-// Audit() validates the event against the registered taxonomy, checks
+// AuditEvent() validates the event against the registered taxonomy, checks
 // the global filter, then enqueues the event to a buffered channel. A
 // single drain goroutine reads from the channel, serialises the event
 // to JSON (or the configured format), and writes to all enabled
@@ -58,7 +58,7 @@ var (
 )
 
 // auditEntryPool caches auditEntry instances to avoid per-Audit heap
-// allocation. Entries are retrieved in Audit(), sent through the
+// allocation. Entries are retrieved in AuditEvent(), sent through the
 // channel, processed by the drain goroutine, and returned to the pool
 // at the end of processEntry(). Fields are nilled before return to
 // prevent stale references from keeping caller data alive in the pool.

@@ -9,7 +9,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Breaking Changes
 
 - `Logger.Audit(eventType, fields)` replaced by `Logger.AuditEvent(Event)` (#205)
-- `audit-gen` generates typed event builders with compile-time field safety (#205)
 - Taxonomy YAML `required:` and `optional:` replaced by unified `fields:` map (#195)
 - `Taxonomy.Categories` type changed from `map[string][]string` to `map[string]*CategoryDef` (#188)
 - `EventDef.Category` (string) replaced by `EventDef.Categories` ([]string) — derived from categories map (#188)
@@ -21,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Event` interface, `LabelInfo`, `FieldInfo`, `CategoryInfo` core types (#205)
 - `NewEvent()` for dynamic event construction without code generation (#205)
 - Per-event typed builders with required-field constructors and optional-field setters (#205)
+- `audit-gen` generates typed event builders alongside existing constants (#205)
 - Per-event `{Name}Fields` descriptor structs with `FieldInfo()` metadata accessor (#205)
 - `Categories()` method on builders returning `[]audit.CategoryInfo` (#205)
 

@@ -71,7 +71,7 @@ different purposes:
 | **Guarantees** | Best-effort — missing a log line is fine | Schema-enforced — missing a field is a compliance gap |
 | **Retention** | Days to weeks | Months to years (regulatory requirements) |
 | **Content** | Technical details (errors, stack traces) | Who did what, when, to which resource, and why |
-| **Destinations** | Log aggregator (ELK, Datadog) | SIEM (Splunk, ArcSight, QRadar), compliance archives |
+| **Destinations** | Log aggregator (OpenSearch, Datadog, Loki) | SIEM (Splunk, ArcSight, QRadar), compliance archives |
 
 If your application handles user data, financial transactions,
 authentication, or access control, regulations like SOX, HIPAA, GDPR,

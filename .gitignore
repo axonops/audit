@@ -143,3 +143,4 @@ examples/09-crud-api/09-crud-api
 # Example output files (generated at runtime)
 examples/*/*.log
 examples/10-testing/10-testing
+/10-testing

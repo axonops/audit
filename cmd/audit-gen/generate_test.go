@@ -626,6 +626,12 @@ func TestGenerate_LabelConstants(t *testing.T) {
 	assert.Contains(t, src, "LabelFinancial — Financial and payment data")
 	assert.Contains(t, src, "LabelPii — Personally identifiable information")
 
+	// Metadata: field labels, event fields, category events.
+	assert.Contains(t, src, `"email":`)
+	assert.Contains(t, src, `"pii"`)
+	assert.Contains(t, src, "EventFields")
+	assert.Contains(t, src, "CategoryEvents")
+
 	// Verify it's valid Go.
 	fset := token.NewFileSet()
 	_, parseErr := parser.ParseFile(fset, "labels.go", src, parser.AllErrors)
@@ -657,8 +663,13 @@ func TestGenerate_NoLabels_NoSection(t *testing.T) {
 		Labels:  true,
 	})
 	require.NoError(t, err)
+	src := buf.String()
 	// No sensitivity labels → no Label constants emitted.
-	assert.NotContains(t, buf.String(), "Label")
+	assert.NotContains(t, src, "LabelPii")
+	assert.NotContains(t, src, "LabelFinancial")
+	// Metadata vars (EventFields, CategoryEvents) should still be present.
+	assert.Contains(t, src, "EventFields")
+	assert.Contains(t, src, "CategoryEvents")
 }
 
 func TestBuildLabelConstants_NamingCollision(t *testing.T) {

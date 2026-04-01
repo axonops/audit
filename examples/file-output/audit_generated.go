@@ -31,3 +31,33 @@ const (
 	FieldUptimeMS = "uptime_ms"
 	FieldVersion  = "version"
 )
+
+// FieldLabels maps field names to the sensitivity labels they carry.
+// Resolved from all three mechanisms: explicit annotation, global
+// field mapping, and regex patterns.
+var FieldLabels = map[string][]string{}
+
+// EventFields maps event types to their required and optional fields.
+var EventFields = map[string]struct {
+	Required []string
+	Optional []string
+}{
+	"shutdown": {
+		Required: []string{"app_name"},
+		Optional: []string{"reason", "uptime_ms"},
+	},
+	"startup": {
+		Required: []string{"app_name"},
+		Optional: []string{"config", "version"},
+	},
+	"user_create": {
+		Required: []string{"actor_id", "outcome"},
+		Optional: []string(nil),
+	},
+}
+
+// CategoryEvents maps category names to their member event types.
+var CategoryEvents = map[string][]string{
+	"lifecycle": {"shutdown", "startup"},
+	"write":     {"user_create"},
+}

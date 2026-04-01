@@ -50,18 +50,41 @@ type constantDef struct {
 	Comment     string // Non-empty → emitted as // comment above the constant
 }
 
+// eventFieldsDef holds the field breakdown for a single event type.
+type eventFieldsDef struct {
+	Name     string   // Go-safe event type name
+	Required []string // required field names (sorted)
+	Optional []string // optional field names (sorted)
+}
+
+// fieldLabelDef pairs a field name with its resolved labels.
+type fieldLabelDef struct {
+	Name   string   // field name
+	Labels []string // sorted label names
+}
+
+// categoryEventsDef pairs a category with its event types.
+type categoryEventsDef struct {
+	Name   string   // category name
+	Events []string // sorted event type names
+}
+
 // templateData is the data passed to the Go template.
 type templateData struct {
-	Header        string
-	Package       string
-	Events        []constantDef
-	Categories    []constantDef
-	Fields        []constantDef
-	Labels        []constantDef
-	HasEvents     bool
-	HasCategories bool
-	HasFields     bool
-	HasLabels     bool
+	Header         string
+	Package        string
+	Events         []constantDef
+	Categories     []constantDef
+	Fields         []constantDef
+	Labels         []constantDef
+	FieldLabels    []fieldLabelDef     // field → labels mapping
+	EventFields    []eventFieldsDef    // event → required/optional fields
+	CategoryEvents []categoryEventsDef // category → events
+	HasEvents      bool
+	HasCategories  bool
+	HasFields      bool
+	HasLabels      bool
+	HasMetadata    bool // true when any metadata var is emitted
 }
 
 var tmpl = template.Must(template.New("audit-gen").Parse(tmplText))
@@ -103,6 +126,35 @@ const (
 {{ end }}	{{ .Name }} = {{ .QuotedValue }}
 {{- end }}
 )
+{{ end }}{{ if .HasMetadata }}
+// FieldLabels maps field names to the sensitivity labels they carry.
+// Resolved from all three mechanisms: explicit annotation, global
+// field mapping, and regex patterns.
+var FieldLabels = map[string][]string{
+{{- range .FieldLabels }}
+	{{ printf "%q" .Name }}: {{ printf "%#v" .Labels }},
+{{- end }}
+}
+
+// EventFields maps event types to their required and optional fields.
+var EventFields = map[string]struct {
+	Required []string
+	Optional []string
+}{
+{{- range .EventFields }}
+	{{ printf "%q" .Name }}: {
+		Required: {{ printf "%#v" .Required }},
+		Optional: {{ printf "%#v" .Optional }},
+	},
+{{- end }}
+}
+
+// CategoryEvents maps category names to their member event types.
+var CategoryEvents = map[string][]string{
+{{- range .CategoryEvents }}
+	{{ printf "%q" .Name }}: {{ printf "%#v" .Events }},
+{{- end }}
+}
 {{ end }}`
 
 // generate produces Go source code from a taxonomy. The output is
@@ -176,7 +228,18 @@ func buildTemplateData(tax audit.Taxonomy, opts generateOptions) (templateData, 
 		data.HasLabels = len(data.Labels) > 0
 	}
 
+	buildMetadata(&data, tax)
 	return data, nil
+}
+
+// buildMetadata populates the metadata vars in the template data.
+func buildMetadata(data *templateData, tax audit.Taxonomy) {
+	data.FieldLabels = collectFieldLabels(tax)
+	data.EventFields = collectEventFields(tax)
+	data.CategoryEvents = collectCategoryEvents(tax)
+	data.HasMetadata = len(data.FieldLabels) > 0 ||
+		len(data.EventFields) > 0 ||
+		len(data.CategoryEvents) > 0
 }
 
 // buildLabelConstants creates label constant entries from the taxonomy's
@@ -311,4 +374,68 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// collectFieldLabels returns sorted field-to-labels mappings from all
+// events in the taxonomy. Labels are deduplicated across events.
+func collectFieldLabels(tax audit.Taxonomy) []fieldLabelDef {
+	merged := make(map[string]map[string]struct{})
+	for _, def := range tax.Events {
+		if def == nil || def.FieldLabels == nil {
+			continue
+		}
+		for field, labels := range def.FieldLabels {
+			if merged[field] == nil {
+				merged[field] = make(map[string]struct{})
+			}
+			for label := range labels {
+				merged[field][label] = struct{}{}
+			}
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	result := make([]fieldLabelDef, 0, len(merged))
+	for _, field := range sortedKeys(merged) {
+		labels := sortedKeys(merged[field])
+		result = append(result, fieldLabelDef{Name: field, Labels: labels})
+	}
+	return result
+}
+
+// collectEventFields returns sorted event type field definitions.
+func collectEventFields(tax audit.Taxonomy) []eventFieldsDef {
+	keys := sortedKeys(tax.Events)
+	result := make([]eventFieldsDef, 0, len(keys))
+	for _, name := range keys {
+		def := tax.Events[name]
+		if def == nil {
+			continue
+		}
+		ef := eventFieldsDef{Name: name}
+		ef.Required = append(ef.Required, def.Required...)
+		ef.Optional = append(ef.Optional, def.Optional...)
+		sort.Strings(ef.Required)
+		sort.Strings(ef.Optional)
+		result = append(result, ef)
+	}
+	return result
+}
+
+// collectCategoryEvents returns sorted category-to-events mappings.
+func collectCategoryEvents(tax audit.Taxonomy) []categoryEventsDef {
+	keys := sortedKeys(tax.Categories)
+	result := make([]categoryEventsDef, 0, len(keys))
+	for _, name := range keys {
+		cat := tax.Categories[name]
+		if cat == nil {
+			continue
+		}
+		ce := categoryEventsDef{Name: name}
+		ce.Events = append(ce.Events, cat.Events...)
+		sort.Strings(ce.Events)
+		result = append(result, ce)
+	}
+	return result
 }

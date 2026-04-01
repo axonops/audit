@@ -67,9 +67,21 @@ events:
 ```
 
 Each event belongs to a category and declares its fields in a `fields:`
-map. Fields with `required: true` must be present in every `Audit()`
-call; all other fields are optional. The `description` field is used by
-`audit-gen` as the Go doc comment for the generated constant.
+map. The `description` field is used by `audit-gen` as the Go doc
+comment for the generated constant.
+
+### Field Declaration Syntax
+
+| Syntax | Meaning |
+|--------|---------|
+| `field_name:` or `field_name: {}` | Optional, no labels |
+| `field_name: {required: true}` | Required — must be in every `Audit()` call |
+| `field_name: {labels: [pii]}` | Optional with sensitivity label |
+| `field_name: {required: true, labels: [pii]}` | Required with label |
+
+Sensitivity labels are covered in the [Sensitivity Labels](../sensitivity-labels/)
+example. For now, the key point is: `required: true` means the field
+must always be present; everything else is optional.
 
 **`default_enabled` is critical.** It lists which categories are active
 when the logger starts. If you omit it, all categories are disabled and
@@ -105,31 +117,47 @@ events exist, what fields are required. It's part of your source code:
 //go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
-This produces `audit_generated.go` with three groups of constants:
+This produces `audit_generated.go` with constants and metadata:
 
 ```go
+// Constants for compile-time safety.
 const (
     EventUserCreate  = "user_create"   // A new user account was created
     EventAuthFailure = "auth_failure"  // An authentication attempt failed
-    // ...
 )
-
 const (
     CategoryWrite    = "write"
     CategorySecurity = "security"
-    // ...
 )
-
 const (
     FieldActorID  = "actor_id"
     FieldOutcome  = "outcome"
-    // ...
 )
+
+// Metadata: the complete taxonomy schema in Go.
+var EventFields = map[string]struct {
+    Required []string
+    Optional []string
+}{
+    "user_create": {
+        Required: []string{"actor_id", "outcome"},
+        Optional: []string{"reason", "target_id"},
+    },
+    // ...
+}
+var CategoryEvents = map[string][]string{
+    "write":    {"user_create", "user_delete"},
+    "security": {"auth_failure", "auth_success"},
+}
 ```
 
 Now a typo like `EventUserCrate` fails the build instead of silently
-passing as a runtime validation error. In a large codebase, this
-prevents an entire class of bugs.
+passing as a runtime validation error. The metadata vars
+(`EventFields`, `CategoryEvents`) make the complete taxonomy
+inspectable from Go code without re-parsing the YAML. When sensitivity
+labels are defined, `FieldLabels` and `Label` constants are also
+generated — see the [Sensitivity Labels](../sensitivity-labels/)
+example.
 
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,

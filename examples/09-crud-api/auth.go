@@ -23,7 +23,7 @@ import (
 // authMiddleware validates the X-API-Key header and populates audit
 // hints with the authenticated identity. Unauthenticated requests to
 // protected endpoints receive 401 and emit an auth_failure event via
-// the audit middleware's Hints mechanism — no direct logger.Audit call.
+// the audit middleware's Hints mechanism — no direct logger.AuditEvent call.
 func authMiddleware() func(http.Handler) http.Handler {
 	// In production this would be backed by a database or identity provider.
 	users := map[string]string{

@@ -690,9 +690,9 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
 
-	require.NoError(t, logger.Audit("critical_event", audit.Fields{"outcome": "failure"}))
-	require.NoError(t, logger.Audit("medium_event", audit.Fields{"outcome": "success"}))
-	require.NoError(t, logger.Audit("low_event", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("critical_event", audit.Fields{"outcome": "failure"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("medium_event", audit.Fields{"outcome": "success"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("low_event", audit.Fields{"outcome": "success"})))
 
 	// t.Cleanup calls logger.Close() which flushes the drain buffer.
 	// Wait for events to be processed.
@@ -752,9 +752,9 @@ default_enabled: [normal]
 	require.NoError(t, logger.EnableEvent("restricted_event"))
 
 	// Emit restricted_event (severity 2 < min 5 on the output route).
-	require.NoError(t, logger.Audit("restricted_event", audit.Fields{"outcome": "ok"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("restricted_event", audit.Fields{"outcome": "ok"})))
 	// Emit normal_event (severity 7 >= min 5 on the output route).
-	require.NoError(t, logger.Audit("normal_event", audit.Fields{"outcome": "ok"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("normal_event", audit.Fields{"outcome": "ok"})))
 
 	// t.Cleanup calls logger.Close() which flushes the drain buffer.
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
@@ -897,7 +897,7 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 200 {
-			_ = logger.Audit("auth_failure", audit.Fields{"outcome": "failure"})
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 		}
 	}()
 

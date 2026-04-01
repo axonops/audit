@@ -56,23 +56,23 @@ func main() {
 	}
 
 	// Emit one event per category.
-	if err := logger.Audit(EventUserCreate, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
 		FieldOutcome: "success",
 		FieldActorID: "alice",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventUserRead, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventUserRead, audit.Fields{
 		FieldOutcome: "success",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventAuthFailure, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventAuthFailure, audit.Fields{
 		FieldOutcome: "failure",
 		FieldActorID: "unknown",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 

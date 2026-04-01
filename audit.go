@@ -41,11 +41,11 @@ import (
 
 // Sentinel errors returned by Logger methods.
 var (
-	// ErrClosed is returned by [Logger.Audit] when the logger has
+	// ErrClosed is returned by [Logger.AuditEvent] when the logger has
 	// been closed.
 	ErrClosed = errors.New("audit: logger is closed")
 
-	// ErrBufferFull is returned by [Logger.Audit] when the async buffer
+	// ErrBufferFull is returned by [Logger.AuditEvent] when the async buffer
 	// is at capacity and the event is dropped. Callers SHOULD treat
 	// this as a drop notification. Increasing [Config.BufferSize] or
 	// reducing event emission rate will reduce frequency.
@@ -109,7 +109,7 @@ type Logger struct {
 // NewLogger returns an error if none is supplied.
 //
 // When [Config.Enabled] is false, NewLogger returns a valid no-op
-// logger. All [Logger.Audit] calls return nil immediately without
+// logger. All [Logger.AuditEvent] calls return nil immediately without
 // validation or delivery.
 //
 // NewLogger MUST NOT return a non-nil *Logger when cfg or the taxonomy
@@ -167,22 +167,25 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	return l, nil
 }
 
-// Audit validates and enqueues an audit event. The event type must be
-// registered in the taxonomy and all required fields must be present.
+// AuditEvent validates and enqueues a typed audit event. Use
+// generated event builders from audit-gen for compile-time field
+// safety, or [NewEvent] for dynamic event construction.
 //
+// AuditEvent returns [ErrBufferFull] if the async buffer is at
+// capacity (the event is dropped), [ErrClosed] if the logger has
+// been closed, or a descriptive error for validation failures.
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
-//
-// Audit returns [ErrBufferFull] if the async buffer is at capacity
-// (the event is dropped), [ErrClosed] if the logger has been closed,
-// or a descriptive error for validation failures.
-func (l *Logger) Audit(eventType string, fields Fields) error {
+func (l *Logger) AuditEvent(evt Event) error {
 	if !l.cfg.Enabled {
 		return nil
 	}
 	if l.closed.Load() {
 		return ErrClosed
 	}
+
+	eventType := evt.EventType()
+	fields := evt.Fields()
 
 	// taxonomy is immutable after construction; safe to read without lock.
 	def, ok := l.taxonomy.Events[eventType]
@@ -194,9 +197,6 @@ func (l *Logger) Audit(eventType string, fields Fields) error {
 	}
 
 	if err := l.validateFields(eventType, def, fields); err != nil {
-		// Only strict-mode rejections are validation errors. Warn-mode
-		// unknown fields return nil (event accepted) and are observable
-		// only via slog -- they are not validation errors.
 		if l.metrics != nil {
 			l.metrics.RecordValidationError(eventType)
 		}
@@ -468,7 +468,7 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 // false), EmitStartup returns nil immediately and no shutdown event
 // will be emitted by Close.
 func (l *Logger) EmitStartup(fields Fields) error {
-	if err := l.Audit("startup", fields); err != nil {
+	if err := l.AuditEvent(NewEvent("startup", fields)); err != nil {
 		return err
 	}
 	if appName, ok := fields["app_name"]; ok {

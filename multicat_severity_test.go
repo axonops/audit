@@ -78,10 +78,10 @@ default_enabled: [compliance, security]
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	err = logger.Audit("auth_failure", audit.Fields{
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "alice",
-	})
+	}))
 	require.NoError(t, err)
 
 	// Two categories → two deliveries to an unrouted output.
@@ -140,7 +140,7 @@ default_enabled: [alpha, beta]
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	require.NoError(t, logger.Audit("shared_event", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("shared_event", audit.Fields{"outcome": "success"})))
 
 	require.True(t, out.WaitForEvents(2, 2*time.Second),
 		"expected 2 deliveries, got %d", out.EventCount())
@@ -188,7 +188,7 @@ default_enabled: [alpha, beta, gamma]
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	require.NoError(t, logger.Audit("multi_event", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("multi_event", audit.Fields{"outcome": "success"})))
 
 	require.True(t, out.WaitForEvents(3, 2*time.Second),
 		"expected 3 deliveries (one per category), got %d", out.EventCount())
@@ -241,10 +241,10 @@ default_enabled: [security, compliance]
 	for i := 0; i < writers; i++ {
 		go func(n int) {
 			defer wg.Done()
-			_ = logger.Audit("auth_failure", audit.Fields{
+			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 				"outcome":  "failure",
 				"actor_id": fmt.Sprintf("writer-%d", n),
-			})
+			}))
 		}(i)
 	}
 
@@ -521,7 +521,7 @@ default_enabled: [ops]
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = logger.Close() })
 
-			require.NoError(t, logger.Audit(tt.eventType, audit.Fields{"outcome": "ok"}))
+			require.NoError(t, logger.AuditEvent(audit.NewEvent(tt.eventType, audit.Fields{"outcome": "ok"})))
 			require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 			ev := out.GetEvent(0)
@@ -592,7 +592,7 @@ default_enabled: [ops, security]
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	require.NoError(t, logger.Audit("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 
 	// Two categories, both enabled → two deliveries.
 	require.True(t, out.WaitForEvents(2, 2*time.Second),

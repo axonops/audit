@@ -84,34 +84,34 @@ logger, err := audit.NewLogger(
 tells the logger what events are valid. `WithOutputs` tells it where to
 send them.
 
-`Config.Enabled` is a kill switch — when `false`, `Audit()` does nothing
+`Config.Enabled` is a kill switch — when `false`, `AuditEvent()` does nothing
 and returns `nil`. This lets you wire audit logging into your application
 unconditionally and toggle it via configuration.
 
 ### Emitting Events
 
 ```go
-err := logger.Audit("user_create", audit.Fields{
+err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
     "outcome":  "success",
     "actor_id": "alice",
-})
+}))
 ```
 
-`Audit()` validates the fields against the taxonomy, serializes the
+`AuditEvent()` validates the fields against the taxonomy, serializes the
 event to JSON, and **enqueues it to an internal buffer**. The actual
 write to stdout happens asynchronously on a background goroutine.
 
-This means `Audit()` is fast — it doesn't block on I/O. The trade-off:
+This means `AuditEvent()` is fast — it doesn't block on I/O. The trade-off:
 output may appear slightly after the `fmt.Println` that precedes it in
 your code.
 
 ### Validation Errors
 
 ```go
-err = logger.Audit("user_create", audit.Fields{
+err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
     "outcome": "success",
     // actor_id intentionally omitted
-})
+}))
 // err: audit: event "user_create" missing required fields: [actor_id]
 ```
 
@@ -146,15 +146,15 @@ events may be lost.
 ### Buffer Full and Delivery Guarantees
 
 go-audit uses an internal buffer (default 10,000 events) between
-`Audit()` and the output writes. If your application emits events
-faster than outputs can drain them, the buffer fills up and `Audit()`
+`AuditEvent()` and the output writes. If your application emits events
+faster than outputs can drain them, the buffer fills up and `AuditEvent()`
 returns `audit.ErrBufferFull`.
 
 This is deliberate — audit logging must not silently drop events. Your
 application decides how to handle back-pressure:
 
 ```go
-if err := logger.Audit("user_create", fields); err != nil {
+if err := logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
     if errors.Is(err, audit.ErrBufferFull) {
         // Buffer is full — outputs can't keep up.
         // Log to stderr, increment a metric, or slow down.
@@ -183,7 +183,7 @@ Validation error: audit: event "user_create" missing required fields: [actor_id]
 {"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
 ```
 
-The JSON event appears after both print statements because `Audit()`
+The JSON event appears after both print statements because `AuditEvent()`
 enqueues asynchronously — the background goroutine writes to stdout
 after the caller's next statement has already executed.
 

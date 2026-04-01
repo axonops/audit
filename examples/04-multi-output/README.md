@@ -41,7 +41,7 @@ outputs:
 ```
 
 Every output listed under `outputs:` receives every event. One
-`Audit()` call fans out to all of them. The output names (`console`,
+`AuditEvent()` call fans out to all of them. The output names (`console`,
 `audit_log`) appear in metrics and error messages.
 
 ### How Fan-Out Works

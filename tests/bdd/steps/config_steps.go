@@ -92,10 +92,10 @@ func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			// No-op logger (Enabled=false) returns nil from NewLogger.
 			return nil
 		}
-		err := tc.Logger.Audit("user_create", audit.Fields{
+		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 			"outcome":  "success",
 			"actor_id": "test",
-		})
+		}))
 		if err != nil {
 			return fmt.Errorf("expected no error from disabled logger, got: %w", err)
 		}

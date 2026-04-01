@@ -235,7 +235,7 @@ func auditNEvents(tc *AuditTestContext, count int) error {
 	for i := range count {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rapid_%d", i)
-		if err := tc.Logger.Audit("user_create", fields); err != nil {
+		if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 			return fmt.Errorf("audit event %d: %w", i, err)
 		}
 	}
@@ -253,7 +253,7 @@ func auditConcurrent(tc *AuditTestContext, total, goroutines int) error {
 			for i := range perGoroutine {
 				fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 				fields["marker"] = fmt.Sprintf("g%d_e%d", gID, i)
-				if err := tc.Logger.Audit("user_create", fields); err != nil {
+				if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 					errCh <- fmt.Errorf("goroutine %d event %d: %w", gID, i, err)
 				}
 			}
@@ -276,7 +276,7 @@ func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	for i := range count {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rot_%d_padding_data_for_size", i)
-		err := tc.Logger.Audit("user_create", fields)
+		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
 		if err != nil && !errors.Is(err, audit.ErrBufferFull) {
 			return fmt.Errorf("write event %d: %w", i, err)
 		}

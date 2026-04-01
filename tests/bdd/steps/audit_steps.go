@@ -133,20 +133,20 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit event "([^"]*)" with fields:$`, func(eventType string, table *godog.Table) error {
 		fields := tableToFields(table)
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with required fields$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with required fields and an unknown field "([^"]*)"$`, func(eventType, extraField string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields[extraField] = "extra_value"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
@@ -158,17 +158,17 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		tc.Markers["default"] = m
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = m
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with empty fields$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.Audit(eventType, audit.Fields{})
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, audit.Fields{}))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with nil fields$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.Audit(eventType, nil)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, nil))
 		return nil
 	})
 
@@ -182,7 +182,7 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 
 	ctx.Step(`^I try to audit event "([^"]*)" with required fields$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
@@ -228,10 +228,10 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		// events async, so we need to fill the buffer faster than drain.
 		// Send events in a tight loop until we get ErrBufferFull.
 		for range 1000 {
-			err := tc.Logger.Audit("user_create", audit.Fields{
+			err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": "overflow",
-			})
+			}))
 			if err != nil {
 				tc.LastErr = err
 				return nil //nolint:nilerr // scenario asserts on tc.LastErr
@@ -253,7 +253,7 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			return fmt.Errorf("no event handle set")
 		}
 		fields := tableToFields(table)
-		tc.LastErr = tc.EventHandle.Audit(fields)
+		tc.LastErr = tc.EventHandle.AuditEvent(audit.NewEvent(tc.EventHandle.Name(), fields))
 		return nil
 	})
 }

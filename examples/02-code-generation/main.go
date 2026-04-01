@@ -65,27 +65,27 @@ func main() {
 	// A typo like "EventUserCrate" would fail at compile time.
 	fmt.Println("--- Using generated constants ---")
 
-	if err := logger.Audit(EventUserCreate, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
 		FieldOutcome:  "success",
 		FieldActorID:  "alice",
 		FieldTargetID: "user-42",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventAuthFailure, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventAuthFailure, audit.Fields{
 		FieldOutcome:  "failure",
 		FieldActorID:  "unknown",
 		FieldReason:   "invalid credentials",
 		FieldSourceIP: "192.168.1.100",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventUserRead, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventUserRead, audit.Fields{
 		FieldOutcome: "success",
 		FieldActorID: "bob",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 }

@@ -75,7 +75,7 @@ comment for the generated constant.
 | Syntax | Meaning |
 |--------|---------|
 | `field_name:` or `field_name: {}` | Optional, no labels |
-| `field_name: {required: true}` | Required — must be in every `Audit()` call |
+| `field_name: {required: true}` | Required — must be in every `AuditEvent()` call |
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
@@ -256,11 +256,11 @@ doesn't change what events exist.
 ### Using Generated Constants
 
 ```go
-if err := logger.Audit(EventUserCreate, audit.Fields{
+if err := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
     FieldOutcome:  "success",
     FieldActorID:  "alice",
     FieldTargetID: "user-42",
-}); err != nil {
+})); err != nil {
     log.Printf("audit error: %v", err)
 }
 ```
@@ -268,10 +268,10 @@ if err := logger.Audit(EventUserCreate, audit.Fields{
 Compare with the raw-string approach from the basic example:
 
 ```go
-logger.Audit("user_create", audit.Fields{
+logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
     "outcome":  "success",
     "actor_id": "alice",
-})
+}))
 ```
 
 Both work. The generated constants add compile-time safety without

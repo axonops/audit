@@ -67,10 +67,10 @@ func main() {
 	}
 
 	for _, e := range events {
-		if auditErr := logger.Audit(e.eventType, audit.Fields{
+		if auditErr := logger.AuditEvent(audit.NewEvent(e.eventType, audit.Fields{
 			FieldOutcome: e.outcome,
 			FieldActorID: e.actorID,
-		}); auditErr != nil {
+		})); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}
 	}

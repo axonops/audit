@@ -53,7 +53,7 @@ func ExampleNewLogger() {
 	// Output: logger created
 }
 
-func ExampleLogger_Audit() {
+func ExampleLogger_AuditEvent() {
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
@@ -74,7 +74,7 @@ func ExampleLogger_Audit() {
 		}
 	}()
 
-	if err = logger.Audit("doc_create", audit.Fields{"outcome": "success"}); err != nil {
+	if err = logger.AuditEvent(audit.NewEvent("doc_create", audit.Fields{"outcome": "success"})); err != nil {
 		fmt.Println("audit error:", err)
 		return
 	}
@@ -107,7 +107,7 @@ func ExampleLogger_MustHandle() {
 	// Get a handle for zero-allocation audit calls.
 	docCreate := logger.MustHandle("doc_create")
 
-	if err = docCreate.Audit(audit.Fields{"outcome": "success"}); err != nil {
+	if err = docCreate.AuditEvent(audit.NewEvent(docCreate.Name(), audit.Fields{"outcome": "success"})); err != nil {
 		fmt.Println("audit error:", err)
 		return
 	}

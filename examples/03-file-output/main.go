@@ -58,10 +58,10 @@ func main() {
 	// Emit five events.
 	users := []string{"alice", "bob", "carol", "dave", "eve"}
 	for _, user := range users {
-		if auditErr := logger.Audit(EventUserCreate, audit.Fields{
+		if auditErr := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
 			FieldOutcome: "success",
 			FieldActorID: user,
-		}); auditErr != nil {
+		})); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}
 	}

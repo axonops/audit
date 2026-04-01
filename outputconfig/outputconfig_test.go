@@ -615,8 +615,8 @@ outputs:
 	require.NoError(t, err)
 
 	// Emit a write event and a read event.
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success", "actor_id": "alice"}))
-	require.NoError(t, logger.Audit("user_read", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success", "actor_id": "alice"})))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_read", audit.Fields{"outcome": "success"})))
 	require.NoError(t, logger.Close())
 
 	// all.log should have both events.

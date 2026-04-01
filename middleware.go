@@ -124,7 +124,7 @@ type TransportMetadata struct {
 // after the handler returns (or panics).
 //
 // Return values:
-//   - eventType: the taxonomy event type name to pass to [Logger.Audit]
+//   - eventType: the taxonomy event type name to pass to [Logger.AuditEvent]
 //   - fields: the audit event fields
 //   - skip: if true, no audit event is emitted for this request
 type EventBuilder func(hints *Hints, transport *TransportMetadata) (eventType string, fields Fields, skip bool)
@@ -245,7 +245,7 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 		return
 	}
 
-	if err := logger.Audit(eventType, fields); err != nil {
+	if err := logger.AuditEvent(NewEvent(eventType, fields)); err != nil {
 		slog.Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,

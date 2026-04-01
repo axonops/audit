@@ -1298,7 +1298,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.Audit("user_create", audit.Fields{"outcome": "success"}))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 
 	// Wait for the batch goroutine to finish delivery and record the
 	// success metric. Polling the metric is the correct synchronisation

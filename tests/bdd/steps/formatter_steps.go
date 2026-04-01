@@ -309,63 +309,63 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^I audit event "([^"]*)" with a duration field$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["duration_ms"] = 150 * time.Millisecond
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a tab character$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\ttab\tafter"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a (\d+)-character field value$`, func(eventType string, length int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = strings.Repeat("a", length)
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing control characters$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\x01\x02\x03after"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing invalid UTF-8$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "bad\xfe\xffbyte"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing null bytes$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\x00after"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2028$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\u2028after"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2029$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\u2029after"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a newline$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\n{\"injected\":true}"
-		tc.LastErr = tc.Logger.Audit(eventType, fields)
+		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 }

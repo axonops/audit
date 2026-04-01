@@ -70,24 +70,24 @@ func createLogger() *audit.Logger {
 }
 
 func emitEvents(logger *audit.Logger) {
-	if err := logger.Audit(EventUserCreate, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventUserCreate, audit.Fields{
 		FieldOutcome:    "success",
 		FieldActorID:    "admin",
 		FieldEmail:      "alice@example.com",
 		FieldPhone:      "555-0100",
 		FieldUserName:   "alice_smith",
 		FieldDepartment: "engineering",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Audit(EventPaymentProcess, audit.Fields{
+	if err := logger.AuditEvent(audit.NewEvent(EventPaymentProcess, audit.Fields{
 		FieldOutcome:    "success",
 		FieldActorID:    "alice",
 		FieldCardNumber: "4111111111111111",
 		FieldCardExpiry: "12/28",
 		FieldAmount:     "99.99",
-	}); err != nil {
+	})); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 }

@@ -67,10 +67,10 @@
 //	    }
 //	}()
 //
-//	if err := logger.Audit("user_create", audit.Fields{
+//	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 //	    "outcome":  "success",
 //	    "actor_id": "alice",
-//	}); err != nil {
+//	})); err != nil {
 //	    log.Printf("audit: %v", err)
 //	}
 //
@@ -105,7 +105,7 @@
 //
 // The framework does not hardcode event types, field names, or categories.
 // Consumers register their entire audit taxonomy at bootstrap via
-// [WithTaxonomy]. The framework then validates every [Logger.Audit] call
+// [WithTaxonomy]. The framework then validates every [Logger.AuditEvent] call
 // against the registered definitions, catching missing required fields,
 // unknown event types, and unrecognised field names at runtime.
 //
@@ -123,7 +123,7 @@
 //
 // Events are enqueued to a buffered channel (configurable capacity, default
 // 10,000) and drained by a single background goroutine. If the buffer is
-// full, [Logger.Audit] returns [ErrBufferFull] and the drop is recorded via
+// full, [Logger.AuditEvent] returns [ErrBufferFull] and the drop is recorded via
 // the [Metrics] interface.
 //
 // # Graceful Shutdown

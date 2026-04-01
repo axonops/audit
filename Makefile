@@ -87,7 +87,8 @@ test-bdd:
 test-examples:
 	@for dir in examples/basic examples/file-output examples/multi-output \
 	            examples/code-generation examples/event-routing \
-	            examples/formatters examples/middleware examples/crud-api; do \
+	            examples/sensitivity-labels examples/formatters \
+	            examples/middleware examples/crud-api; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

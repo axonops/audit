@@ -121,7 +121,7 @@ output uses the `suser` extension key for `actor_id`, and the
 
 ## Previous
 
-[Event Routing](../event-routing/)
+[Sensitivity Labels](../sensitivity-labels/)
 
 ## Next
 

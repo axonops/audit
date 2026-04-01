@@ -128,6 +128,7 @@ examples/*/file-output
 examples/*/formatters
 examples/*/middleware
 examples/*/multi-output
+examples/*/sensitivity-labels
 # Generic: any binary matching the directory name inside examples
 examples/basic/basic
 examples/code-generation/code-generation
@@ -137,6 +138,7 @@ examples/file-output/file-output
 examples/formatters/formatters
 examples/middleware/middleware
 examples/multi-output/multi-output
+examples/sensitivity-labels/sensitivity-labels
 /multi-output
 
 # Example output files (generated at runtime)

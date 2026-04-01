@@ -208,5 +208,5 @@ independently.
 
 ## Next
 
-[Formatters](../formatters/) — output events as JSON or CEF for SIEM
-integration.
+[Sensitivity Labels](../sensitivity-labels/) — per-output field
+stripping for PII and financial data.

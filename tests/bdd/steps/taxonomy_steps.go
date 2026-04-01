@@ -98,7 +98,6 @@ func registerTaxonomyThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	ctx.Step(`^the taxonomy parse should fail with an error containing "([^"]*)"$`, func(s string) error { return assertTaxonomyParseErrorContaining(tc, s) })
 	ctx.Step(`^the taxonomy should contain event type "([^"]*)"$`, func(et string) error { return assertTaxonomyHasEvent(tc, et) })
 	ctx.Step(`^the taxonomy should contain category "([^"]*)"$`, func(c string) error { return assertTaxonomyHasCategory(tc, c) })
-	ctx.Step(`^the taxonomy default enabled should include "([^"]*)"$`, func(c string) error { return assertTaxonomyDefaultEnabledIncludes(tc, c) })
 	ctx.Step(`^the taxonomy event "([^"]*)" should require field "([^"]*)"$`, func(et, f string) error { return assertTaxonomyEventRequires(tc, et, f) })
 }
 
@@ -162,10 +161,6 @@ func assertTaxonomyHasCategory(tc *AuditTestContext, category string) error {
 	return nil
 }
 
-func assertTaxonomyDefaultEnabledIncludes(_ *AuditTestContext, _ string) error {
-	// All categories are enabled by default — this assertion always passes.
-	return nil
-}
 
 func assertTaxonomyEventRequires(tc *AuditTestContext, eventType, field string) error {
 	def, ok := tc.Taxonomy.Events[eventType]

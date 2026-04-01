@@ -182,15 +182,6 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 }
 
 func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a filtering taxonomy with only "write" enabled$`, func() error {
-		tax, err := audit.ParseTaxonomyYAML([]byte(filteringTaxonomyYAML))
-		if err != nil {
-			return fmt.Errorf("parse filtering taxonomy: %w", err)
-		}
-		tc.Taxonomy = tax
-		return nil
-	})
-
 	ctx.Step(`^a logger with routed outputs and metrics where webhook excludes "([^"]*)"$`, func(excludeCat string) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {

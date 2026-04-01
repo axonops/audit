@@ -10,7 +10,7 @@ Feature: Event Filtering
   overrides always take precedence over category state.
 
   Background:
-    Given a standard test taxonomy
+    Given a taxonomy with categories "write" and "security"
     And a logger with stdout output
 
   # --- Category-level filtering ---

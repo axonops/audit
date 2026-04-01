@@ -60,29 +60,6 @@ events:
 
 `
 
-const allDisabledTaxonomyYAML = `
-version: 1
-
-categories:
-  write:
-    - user_create
-  security:
-    - auth_failure
-
-events:
-  user_create:
-    fields:
-      outcome: {required: true}
-      actor_id: {required: true}
-      marker: {}
-  auth_failure:
-    fields:
-      outcome: {required: true}
-      actor_id: {required: true}
-      marker: {}
-
-`
-
 func registerFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerFilterGivenSteps(ctx, tc)
 	registerFilterWhenSteps(ctx, tc)
@@ -90,7 +67,7 @@ func registerFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFilterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a taxonomy with categories "write" and "security" where only "write" is enabled$`, func() error {
+	ctx.Step(`^a taxonomy with categories "write" and "security"$`, func() error {
 		tax, err := audit.ParseTaxonomyYAML([]byte(filteringTaxonomyYAML))
 		if err != nil {
 			return fmt.Errorf("parse filtering taxonomy: %w", err)
@@ -99,14 +76,6 @@ func registerFilterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
-	ctx.Step(`^a taxonomy with all categories disabled by default$`, func() error {
-		tax, err := audit.ParseTaxonomyYAML([]byte(allDisabledTaxonomyYAML))
-		if err != nil {
-			return fmt.Errorf("parse all-disabled taxonomy: %w", err)
-		}
-		tc.Taxonomy = tax
-		return nil
-	})
 
 	ctx.Step(`^I enable category "([^"]*)"$`, func(category string) error {
 		tc.LastErr = tc.Logger.EnableCategory(category)

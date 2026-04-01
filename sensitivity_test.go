@@ -1017,6 +1017,38 @@ default_enabled: [write]
 	benchAuditWithExclusions(b, yml, []string{"pii"})
 }
 
+func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
+	yml := sensitivityPipelineTaxonomyYAML
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	if err != nil {
+		b.Fatal(err)
+	}
+	outAll := testhelper.NewMockOutput("all")
+	outFiltered := testhelper.NewMockOutput("filtered")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(outAll, nil, nil),
+		audit.WithNamedOutput(outFiltered, nil, nil, "pii"),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for range b.N {
+		_ = logger.AuditEvent(audit.NewEvent("user_create", fields))
+	}
+}
+
 func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels []string) {
 	b.Helper()
 	tax, err := audit.ParseTaxonomyYAML([]byte(taxonomyYAML))

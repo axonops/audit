@@ -142,6 +142,11 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, err
 	}
 
+	// Pre-compute filtered EventDefs for outputs with sensitivity
+	// exclusions. This eliminates per-event allocations on the
+	// exclusion path (#199).
+	l.precomputeFilteredDefs()
+
 	// Default formatter if WithFormatter was not called.
 	if l.formatter == nil {
 		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
@@ -636,16 +641,40 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 	}
 }
 
+// precomputeFilteredDefs builds filtered EventDefs for every
+// (eventType, excludedLabels) pair at construction time. This
+// eliminates per-event allocations from filterEventDef (#199).
+func (l *Logger) precomputeFilteredDefs() {
+	for _, oe := range l.entries {
+		if oe.excludedLabels == nil {
+			continue
+		}
+		oe.filteredDefs = make(map[string]*EventDef, len(l.taxonomy.Events))
+		for name, def := range l.taxonomy.Events {
+			if def == nil || def.FieldLabels == nil {
+				continue
+			}
+			fd := filterEventDef(def, oe.excludedLabels)
+			oe.filteredDefs[name] = fd
+		}
+	}
+}
+
 // formatFiltered creates a filtered copy of the event's fields (with
 // excluded labels stripped) and serialises it directly, bypassing the
-// format cache. A temporary EventDef is created with excluded fields
-// removed from Required/Optional so the formatter does not emit null
-// values for stripped fields.
+// format cache. Uses pre-computed filtered EventDefs to avoid per-event
+// allocation of sorted field lists (#199).
 func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
 	filtered := filterFieldsByLabels(entry.fields, def, oe.excludedLabels)
-	filteredDef := filterEventDef(def, oe.excludedLabels)
+
+	// Use pre-computed filtered def if available (#199).
+	fDef := def
+	if fd, ok := oe.filteredDefs[entry.eventType]; ok {
+		fDef = fd
+	}
+
 	f := oe.effectiveFormatter(l.formatter)
-	data, err := f.Format(ts, entry.eventType, filtered, filteredDef)
+	data, err := f.Format(ts, entry.eventType, filtered, fDef)
 	if err != nil {
 		slog.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
 		if l.metrics != nil {
@@ -656,14 +685,13 @@ func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time
 	return data
 }
 
-// filterEventDef creates a temporary EventDef with fields excluded by
-// sensitivity labels removed from Required and Optional. This ensures
-// the formatter does not emit null values for stripped fields.
+// filterEventDef creates a filtered EventDef with excluded fields
+// removed from Required and Optional. Used at construction time
+// for pre-computation.
 func filterEventDef(def *EventDef, excluded map[string]struct{}) *EventDef {
 	cp := *def // shallow copy
 	cp.Required = filterFieldList(def.Required, def.FieldLabels, excluded)
 	cp.Optional = filterFieldList(def.Optional, def.FieldLabels, excluded)
-	// Rebuild pre-computed fields for the filtered def.
 	precomputeEventDef(&cp)
 	return &cp
 }

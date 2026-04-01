@@ -17,6 +17,7 @@ package audit_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -840,6 +841,127 @@ default_enabled: [write]
 }
 
 // ---------------------------------------------------------------------------
+// Pre-computed filtered EventDef tests (#199)
+// ---------------------------------------------------------------------------
+
+func TestPrecomputeFilteredDefs_ExclusionPath(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	// Output with exclusions — filteredDefs should be pre-computed.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	// Emit multiple events to verify pre-computed defs work correctly.
+	for i := range 10 {
+		err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			"outcome":  "success",
+			"actor_id": fmt.Sprintf("user-%d", i),
+			"email":    fmt.Sprintf("user%d@example.com", i),
+		}))
+		require.NoError(t, err)
+	}
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 10)
+
+	// All events should have email stripped (PII excluded).
+	for i, evt := range events {
+		assert.NotContains(t, evt, "email", "event %d should not have email", i)
+		assert.Contains(t, evt, "actor_id", "event %d should have actor_id", i)
+	}
+}
+
+func TestPrecomputeFilteredDefs_NoExclusionNoOverhead(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	require.NoError(t, err)
+
+	// Output WITHOUT exclusions — filteredDefs should be nil.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(stdout, nil, nil),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	events := parseJSONEvents(t, buf)
+	require.Len(t, events, 1)
+	// All fields present — no stripping.
+	assert.Equal(t, "alice@example.com", events[0]["email"])
+}
+
+func TestPrecomputeFilteredDefs_MultipleOutputsDifferentExclusions(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
+	require.NoError(t, err)
+
+	outAll := testhelper.NewMockOutput("all")
+	outNoPII := testhelper.NewMockOutput("no-pii")
+	outNoFinancial := testhelper.NewMockOutput("no-financial")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(outAll, nil, nil),
+		audit.WithNamedOutput(outNoPII, nil, nil, "pii"),
+		audit.WithNamedOutput(outNoFinancial, nil, nil, "financial"),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"email":       "alice@example.com",
+		"card_number": "4111111111111111",
+	}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	// "all" gets everything.
+	require.True(t, outAll.WaitForEvents(1, 2*time.Second))
+	allEvt := outAll.GetEvent(0)
+	assert.Equal(t, "alice@example.com", allEvt["email"])
+	assert.Equal(t, "4111111111111111", allEvt["card_number"])
+
+	// "no-pii" gets card_number but not email.
+	require.True(t, outNoPII.WaitForEvents(1, 2*time.Second))
+	noPIIEvt := outNoPII.GetEvent(0)
+	_, hasEmail := noPIIEvt["email"]
+	assert.False(t, hasEmail, "no-pii output should not have email")
+	assert.Equal(t, "4111111111111111", noPIIEvt["card_number"])
+
+	// "no-financial" gets email but not card_number.
+	require.True(t, outNoFinancial.WaitForEvents(1, 2*time.Second))
+	noFinEvt := outNoFinancial.GetEvent(0)
+	assert.Equal(t, "alice@example.com", noFinEvt["email"])
+	_, hasCard := noFinEvt["card_number"]
+	assert.False(t, hasCard, "no-financial output should not have card_number")
+}
+
+// ---------------------------------------------------------------------------
 // Concurrent field stripping
 // ---------------------------------------------------------------------------
 
@@ -1015,6 +1137,42 @@ events:
 default_enabled: [write]
 `
 	benchAuditWithExclusions(b, yml, []string{"pii"})
+}
+
+// BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion measures delivery
+// throughput when one output receives all fields and one output has PII
+// sensitivity exclusions active, exercising the pre-computed filteredDefs
+// lookup path under realistic mixed-output conditions.
+func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
+	yml := sensitivityPipelineTaxonomyYAML
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	if err != nil {
+		b.Fatal(err)
+	}
+	outAll := testhelper.NewMockOutput("all")
+	outFiltered := testhelper.NewMockOutput("filtered")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(outAll, nil, nil),
+		audit.WithNamedOutput(outFiltered, nil, nil, "pii"),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for range b.N {
+		_ = logger.AuditEvent(audit.NewEvent("user_create", fields))
+	}
 }
 
 func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels []string) {

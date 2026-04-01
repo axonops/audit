@@ -12,7 +12,6 @@ in `outputs.yaml`.
 - Configuring outputs with routing, formatting, and env vars in YAML
 - Wiring Prometheus metrics into the audit pipeline
 - Using HTTP middleware with authentication and domain hints
-- Lifecycle events (startup and shutdown)
 - Graceful shutdown ordering
 
 ## Prerequisites
@@ -189,30 +188,16 @@ the request.
 Neither the auth middleware nor the handlers need a direct reference to
 the audit logger.
 
-### Lifecycle Events
-
-```go
-logger.EmitStartup(audit.Fields{
-    FieldAppName: "crud-api",
-    FieldVersion: "0.1.0",
-})
-```
-
-`EmitStartup` records that the application started. When `Close()` is
-called, a corresponding shutdown event is emitted automatically. These
-prove the audit system was active during the entire application
-lifetime.
-
 ### Graceful Shutdown
 
 The shutdown sequence matters: stop the HTTP server first (so no new
 requests generate events), then close the logger (which flushes all
-buffered events and emits the shutdown event).
+buffered events to outputs).
 
 ```go
 <-done  // wait for SIGINT/SIGTERM
-srv.Shutdown(ctx)    // stop HTTP
-logger.Close()       // flush audit, emit shutdown
+srv.Shutdown(ctx)    // stop accepting HTTP requests
+logger.Close()       // flush all pending audit events
 ```
 
 ## Run It
@@ -265,11 +250,9 @@ docker compose down -v
 On stdout you'll see JSON audit events:
 
 ```json
-{"timestamp":"...","event_type":"startup","severity":6,"app_name":"crud-api","version":"0.1.0"}
 {"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success"}
 {"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"..."}
 {"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
-{"timestamp":"...","event_type":"shutdown","severity":7,"app_name":"crud-api"}
 ```
 
 Additional outputs:

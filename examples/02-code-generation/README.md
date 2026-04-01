@@ -118,14 +118,13 @@ const (
     EventAuthFailure = "auth_failure"
     // EventUserCreate — A new user account was created
     EventUserCreate = "user_create"
-    // ... (plus lifecycle events EventStartup, EventShutdown)
+    // ... (one constant per event type)
 )
 
 const (
     CategoryRead     = "read"
     CategorySecurity = "security"
     CategoryWrite    = "write"
-    // ... (plus CategoryLifecycle)
 )
 
 const (
@@ -207,19 +206,6 @@ The generated file is committed to version control, so the example
 compiles without running `go generate` first. `go generate` runs
 `audit-gen` via `go run`, which downloads and caches the tool
 automatically — no separate install step.
-
-### Lifecycle Events
-
-The generated file includes constants for two built-in events:
-`EventStartup` and `EventShutdown` (in `CategoryLifecycle`). You don't
-define these in your taxonomy — go-audit injects them automatically.
-
-When you call `logger.Close()`, the library emits a shutdown event
-before flushing outputs. This creates a tamper-evident audit trail: if
-the log has a startup event but no shutdown, either the application
-crashed or someone tampered with the log. The [CRUD API](../09-crud-api/)
-example demonstrates explicit startup events with
-`logger.EmitStartup()`.
 
 ### Null Fields in JSON Output
 

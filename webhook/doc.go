@@ -15,6 +15,30 @@
 // Package webhook provides a batched HTTP webhook [audit.Output]
 // implementation with retry, SSRF prevention, and graceful shutdown.
 //
+// # Security
+//
+// HTTPS is required by default. [Config.AllowInsecureHTTP] MUST NOT be
+// set to true in production — plaintext HTTP exposes credentials in
+// request headers to network observers. Private and loopback IP ranges
+// are blocked unless [Config.AllowPrivateRanges] is explicitly enabled.
+//
+// # Batching and Delivery
+//
+// Events are buffered in memory and flushed as JSON arrays when the
+// batch reaches [Config.BatchSize] events or [Config.FlushInterval]
+// elapses. Failed batches are retried with exponential backoff up to
+// [Config.MaxRetries] times. Delivery semantics are at-least-once:
+// a batch may be delivered more than once if the server accepts the
+// payload but the acknowledgement is lost.
+//
+// # Construction
+//
+//	out, err := webhook.New(&webhook.Config{
+//	    URL:       "https://ingest.example.com/audit",
+//	    BatchSize: 50,
+//	    Timeout:   15 * time.Second,
+//	}, nil, nil) // optional audit.Metrics and webhook.Metrics
+//
 // Recommended import alias:
 //
 //	import auditwebhook "github.com/axonops/go-audit/webhook"

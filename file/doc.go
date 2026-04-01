@@ -16,6 +16,28 @@
 // automatic size-based rotation, backup retention, age-based cleanup,
 // and optional gzip compression.
 //
+// # Construction
+//
+// Create a file output with [New]:
+//
+//	out, err := file.New(file.Config{
+//	    Path:       "/var/log/audit/events.log",
+//	    MaxSizeMB:  100,
+//	    MaxBackups: 5,
+//	    MaxAgeDays: 30,
+//	}, nil) // optional file.Metrics
+//
+// The parent directory of [Config.Path] must exist before calling [New];
+// the file itself is created if it does not exist. Default permissions
+// are 0600.
+//
+// # Rotation
+//
+// When the active log file exceeds [Config.MaxSizeMB], it is renamed
+// with a timestamp suffix and a new file is opened. Old backups are
+// pruned by count ([Config.MaxBackups]) and age ([Config.MaxAgeDays]).
+// Compressed backups use gzip (enabled by default).
+//
 // Recommended import alias:
 //
 //	import auditfile "github.com/axonops/go-audit/file"

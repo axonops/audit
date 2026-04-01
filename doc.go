@@ -84,9 +84,9 @@
 //   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
 //   - [Event] — interface for typed audit events; see [Logger.AuditEvent]
 //   - [NewEvent] — creates an untyped event for dynamic use without code generation
-//   - [LabelInfo] — sensitivity label descriptor (name + description)
-//   - [FieldInfo] — field descriptor with name, required flag, and labels
-//   - [CategoryInfo] — category descriptor with name and optional severity
+//   - [LabelInfo] — sensitivity label descriptor (name, description); embedded in [FieldInfo]
+//   - [FieldInfo] — field descriptor with name, required flag, and labels; returned by generated builders
+//   - [CategoryInfo] — category descriptor with name and optional severity; returned by generated builders
 //   - [EventType] — handle for pre-validated audit calls; see [Logger.MustHandle]
 //   - [Formatter] — interface for custom serialisation; see [WithFormatter]
 //   - [JSONFormatter] — default formatter; line-delimited JSON with deterministic field order
@@ -105,6 +105,11 @@
 //   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency
 //   - [InjectLifecycleEvents] — adds the "lifecycle" category with startup/shutdown events
 //   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
+//   - [OutputFactory] — function signature for output factory registration
+//   - [RegisterOutputFactory] — registers an output factory by type name (e.g., "file", "syslog")
+//   - [LookupOutputFactory] — retrieves a registered factory by type name
+//   - [RegisteredOutputTypes] — returns all registered output type names
+//   - [WrapOutput] — wraps an [Output] to override its [Output.Name]
 //
 // # Taxonomy
 //

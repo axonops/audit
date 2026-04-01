@@ -112,7 +112,9 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	MaxRetries int
 
 	// AllowInsecureHTTP permits http:// URLs. Default: false.
-	// For development and testing only.
+	// MUST NOT be set to true in production. Plaintext HTTP exposes
+	// credentials in request headers (including Authorization tokens)
+	// to network observers. Use only for local development and testing.
 	AllowInsecureHTTP bool
 
 	// AllowPrivateRanges disables SSRF protection for private and

@@ -12,21 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package outputconfig loads audit output configuration from YAML files.
-// It uses a registry pattern: output modules register factories via
-// [audit.RegisterOutputFactory], and this package constructs outputs
-// from YAML without importing the output modules directly.
-//
-// The consumer controls which output types are available via blank
-// imports:
-//
-//	import (
-//	    "github.com/axonops/go-audit/outputconfig"
-//	    _ "github.com/axonops/go-audit/file"
-//	    _ "github.com/axonops/go-audit/syslog"
-//	)
-//
-//	result, err := outputconfig.Load(yamlData, &taxonomy, metrics)
 package outputconfig
 
 import (

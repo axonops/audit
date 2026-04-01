@@ -50,7 +50,7 @@ events:
 	fmt.Println("events:", len(tax.Events))
 	// Output:
 	// version: 1
-	// events: 4
+	// events: 2
 }
 
 func ExampleParseTaxonomyYAML_validation() {

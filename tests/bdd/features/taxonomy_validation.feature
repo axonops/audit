@@ -36,11 +36,8 @@ Feature: Taxonomy Validation
       """
     Then the taxonomy should contain category "write"
     And the taxonomy should contain category "security"
-    And the taxonomy should contain category "lifecycle"
     And the taxonomy should contain event type "user_create"
     And the taxonomy should contain event type "auth_failure"
-    And the taxonomy should contain event type "startup"
-    And the taxonomy should contain event type "shutdown"
     And the taxonomy event "user_create" should require field "outcome"
     And the taxonomy event "user_create" should require field "actor_id"
     Given a logger with stdout output
@@ -250,68 +247,6 @@ Feature: Taxonomy Validation
         - nonexistent_category
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
-
-  # --- Lifecycle event injection ---
-
-  Scenario: Lifecycle events are auto-injected into taxonomy
-    Given a taxonomy from YAML:
-      """
-      version: 1
-      categories:
-        write:
-          - user_create
-      events:
-        user_create:
-          fields:
-            outcome: {required: true}
-        - write
-      """
-    Then the taxonomy should contain event type "startup"
-    And the taxonomy should contain event type "shutdown"
-    And the taxonomy should contain category "lifecycle"
-
-  Scenario: Lifecycle category added to DefaultEnabled automatically
-    Given a taxonomy from YAML:
-      """
-      version: 1
-      categories:
-        write:
-          - user_create
-      events:
-        user_create:
-          fields:
-            outcome: {required: true}
-        - write
-      """
-    Then the taxonomy default enabled should include "lifecycle"
-
-  Scenario: User-defined lifecycle events are preserved
-    Given a taxonomy from YAML:
-      """
-      version: 1
-      categories:
-        write:
-          - user_create
-        lifecycle:
-          - startup
-          - shutdown
-      events:
-        user_create:
-          fields:
-            outcome: {required: true}
-        startup:
-          fields:
-            app_name: {required: true}
-            version: {required: true}
-        shutdown:
-          fields:
-            app_name: {required: true}
-            uptime_ms: {required: true}
-        - write
-        - lifecycle
-      """
-    Then the taxonomy should contain event type "startup"
-    And the taxonomy event "startup" should require field "version"
 
   Scenario: Tabs in YAML are rejected
     When I try to parse taxonomy from YAML:

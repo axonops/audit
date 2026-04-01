@@ -180,75 +180,11 @@ const (
 	// minSupportedTaxonomyVersion is the oldest taxonomy schema
 	// version the library can migrate from.
 	minSupportedTaxonomyVersion = 1
-
-	// lifecycleCategory is the category name used for framework-
-	// provided lifecycle events.
-	lifecycleCategory = "lifecycle"
 )
 
 // ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
 // validation failures.
 var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
-
-// InjectLifecycleEvents adds the "lifecycle" category with "startup"
-// and "shutdown" events to t if they are not already defined:
-//
-//   - startup:  required [app_name], optional [version, config]
-//   - shutdown: required [app_name], optional [reason, uptime_ms]
-//
-// If the consumer has already defined events with these names, their
-// definitions are preserved unchanged.
-//
-// Calling InjectLifecycleEvents multiple times is safe and idempotent.
-// [WithTaxonomy] calls it automatically; it is exported so that
-// [ParseTaxonomyYAML] can apply the same
-// injection before calling [ValidateTaxonomy].
-func InjectLifecycleEvents(t *Taxonomy) {
-	if t.Categories == nil {
-		t.Categories = make(map[string]*CategoryDef)
-	}
-	if t.Events == nil {
-		t.Events = make(map[string]*EventDef)
-	}
-
-	// Ensure lifecycle category exists.
-	if _, ok := t.Categories[lifecycleCategory]; !ok {
-		t.Categories[lifecycleCategory] = &CategoryDef{}
-	}
-
-	lc := t.Categories[lifecycleCategory]
-
-	// Inject startup if not already defined.
-	if _, ok := t.Events["startup"]; !ok {
-		startupSev := 6 // Notice — application started
-		t.Events["startup"] = &EventDef{
-			Categories:  []string{lifecycleCategory},
-			Description: "Application started",
-			Severity:    &startupSev,
-			Required:    []string{"app_name"},
-			Optional:    []string{"version", "config"},
-		}
-		if !slices.Contains(lc.Events, "startup") {
-			lc.Events = append(lc.Events, "startup")
-		}
-	}
-
-	// Inject shutdown if not already defined.
-	if _, ok := t.Events["shutdown"]; !ok {
-		shutdownSev := 7 // High — audit coverage ending
-		t.Events["shutdown"] = &EventDef{
-			Categories:  []string{lifecycleCategory},
-			Description: "Application shutting down",
-			Severity:    &shutdownSev,
-			Required:    []string{"app_name"},
-			Optional:    []string{"reason", "uptime_ms"},
-		}
-		if !slices.Contains(lc.Events, "shutdown") {
-			lc.Events = append(lc.Events, "shutdown")
-		}
-	}
-
-}
 
 // precomputeTaxonomy populates the pre-computed fields on every
 // EventDef in the taxonomy. This includes deriving Categories from

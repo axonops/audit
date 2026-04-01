@@ -128,17 +128,6 @@ buffered events.**
 - The single drain goroutine means outputs do not need to be thread-safe
 - `Close()` is idempotent via `sync.Once`
 
-## Lifecycle Events
-
-The library supports lifecycle events that create a tamper-evident
-audit trail:
-
-- **Startup event** — emitted via `logger.EmitStartup(fields)`
-- **Shutdown event** — emitted automatically by `logger.Close()`
-
-If a shutdown event is missing from the audit trail, the application
-crashed or was killed without graceful shutdown.
-
 ## Further Reading
 
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures

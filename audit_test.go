@@ -929,56 +929,6 @@ func TestLogger_Filter_InvalidEvent(t *testing.T) {
 // Lifecycle tests
 // ---------------------------------------------------------------------------
 
-func TestLogger_EmitStartup(t *testing.T) {
-
-	out := testhelper.NewMockOutput("test")
-	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
-
-	err := logger.EmitStartup(audit.Fields{"app_name": "test-app"})
-	require.NoError(t, err)
-	require.True(t, out.WaitForEvents(1, 2*time.Second))
-
-	ev := out.GetEvent(0)
-	assert.Equal(t, "startup", ev["event_type"])
-	assert.Equal(t, "test-app", ev["app_name"])
-}
-
-func TestLogger_Close_AutoEmitsShutdown(t *testing.T) {
-
-	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithOutputs(out),
-	)
-	require.NoError(t, err)
-
-	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
-	require.NoError(t, err)
-
-	require.NoError(t, logger.Close())
-
-	// Should have startup + shutdown.
-	assert.Equal(t, 2, out.EventCount())
-	ev := out.GetEvent(1)
-	assert.Equal(t, "shutdown", ev["event_type"])
-	assert.Equal(t, "test-app", ev["app_name"], "shutdown should reuse startup app_name")
-}
-
-func TestLogger_Close_NoStartupNoShutdown(t *testing.T) {
-
-	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithOutputs(out),
-	)
-	require.NoError(t, err)
-
-	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.EventCount(), "no shutdown without prior startup")
-}
-
 // ---------------------------------------------------------------------------
 // Concurrency tests (run with -race)
 // ---------------------------------------------------------------------------
@@ -1186,27 +1136,6 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 // Shutdown with nil app_name stored
 // ---------------------------------------------------------------------------
 
-func TestLogger_Close_ShutdownWithoutAppName(t *testing.T) {
-
-	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationPermissive},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithOutputs(out),
-	)
-	require.NoError(t, err)
-
-	// EmitStartup without app_name (will fail validation in strict,
-	// but we use permissive to test the shutdown fallback).
-	err = logger.EmitStartup(audit.Fields{"app_name": "my-service"})
-	require.NoError(t, err)
-
-	require.NoError(t, logger.Close())
-
-	// Both startup and shutdown should have arrived.
-	assert.Equal(t, 2, out.EventCount())
-}
-
 // ---------------------------------------------------------------------------
 // Serialisation failure — non-JSON-serialisable field value
 // ---------------------------------------------------------------------------
@@ -1341,72 +1270,6 @@ func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 // EmitStartup without app_name in strict mode
 // ---------------------------------------------------------------------------
 
-func TestLogger_EmitStartup_MissingAppName(t *testing.T) {
-
-	out := testhelper.NewMockOutput("test")
-	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
-
-	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "missing required fields")
-	assert.Contains(t, err.Error(), "app_name")
-}
-
-func TestLogger_EmitStartup_BufferFull_NoShutdown(t *testing.T) {
-	// Use a blocking output with an enteredCh signal to synchronise.
-	blockCh := make(chan struct{})
-	enteredCh := make(chan struct{}, 1)
-	blocker := &blockingOutput{name: "test", blockCh: blockCh, enteredCh: enteredCh}
-
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: 1},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithOutputs(blocker),
-	)
-	require.NoError(t, err)
-
-	// First event: drain goroutine picks it up and blocks in Write.
-	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "bob",
-	}))
-
-	// Wait for the drain goroutine to enter Write (blocking).
-	// This guarantees the channel slot is free for the second event.
-	<-enteredCh
-
-	// Second event fills the 1-slot buffer (drain is blocked).
-	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "charlie",
-	}))
-
-	// Buffer is now full; EmitStartup should fail.
-	err = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
-	assert.ErrorIs(t, err, audit.ErrBufferFull)
-
-	// Unblock the drain and close. Since startupEmitted was never
-	// set to true, Close must not emit a shutdown event.
-	close(blockCh)
-	require.NoError(t, logger.Close())
-}
-
-func TestLogger_EmitStartup_ValidationError_NoShutdown(t *testing.T) {
-	out := testhelper.NewMockOutput("test")
-	logger := newTestLogger(t, audit.Config{Version: 1, Enabled: true}, out)
-
-	// EmitStartup without required "app_name" field.
-	err := logger.EmitStartup(audit.Fields{"version": "1.0"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "missing required fields")
-
-	// Close and verify no events were delivered at all — the startup
-	// event was rejected before enqueue, so nothing reached the output.
-	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.EventCount(),
-		"no events should be delivered when EmitStartup fails validation")
-}
-
 // ---------------------------------------------------------------------------
 // Multi-output fan-out
 // ---------------------------------------------------------------------------
@@ -1516,7 +1379,6 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 	require.NoError(t, err)
 
 	// Emit startup so Close will try to emit shutdown.
-	_ = logger.EmitStartup(audit.Fields{"app_name": "test-app"})
 
 	// Fill the buffer so emitShutdown's non-blocking send hits default.
 	for i := 0; i < 100; i++ {
@@ -1692,8 +1554,6 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
-
-	_ = logger.EmitStartup(audit.Fields{"app_name": "test"})
 
 	// Fill the buffer.
 	for i := 0; i < 100; i++ {

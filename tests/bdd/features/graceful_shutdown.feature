@@ -31,16 +31,6 @@ Feature: Graceful Shutdown
     When I close the logger
     Then the audit call should return no error
 
-  Scenario: Shutdown event emitted before drain when startup was called
-    Given a logger with file output at a temporary path
-    When I emit startup with app name "shutdown-test"
-    And I audit event "user_create" with required fields
-    And I close the logger
-    Then the file should contain an event with event_type "shutdown"
-    And the file should contain an event with event_type "startup"
-    And the file should contain an event with event_type "user_create"
-    And the file should contain an event with event_type "shutdown" and field "app_name" with value "shutdown-test"
-
   Scenario: Multiple events all drained before close returns
     Given a logger with file output at a temporary path
     When I audit 50 events rapidly

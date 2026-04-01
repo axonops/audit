@@ -90,50 +90,6 @@ func TestNewLogger_TaxonomyRequired(t *testing.T) {
 	assert.Contains(t, err.Error(), "taxonomy is required")
 }
 
-func TestNewLogger_LifecycleEventsInjected(t *testing.T) {
-	// The taxonomy does not define startup/shutdown — they should be
-	// injected automatically.
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, logger.Close()) }()
-
-	// startup and shutdown should be valid event types.
-	_, err = logger.Handle("startup")
-	assert.NoError(t, err)
-
-	_, err = logger.Handle("shutdown")
-	assert.NoError(t, err)
-}
-
-func TestNewLogger_LifecycleEventsPreserved(t *testing.T) {
-	// Consumer defines their own startup event — it should be preserved.
-	tax := testhelper.ValidTaxonomy()
-	tax.Categories["lifecycle"] = &audit.CategoryDef{Events: []string{"startup", "shutdown"}}
-	tax.Events["startup"] = &audit.EventDef{
-		Required: []string{"custom_field"},
-	}
-	tax.Events["shutdown"] = &audit.EventDef{
-		Required: []string{"custom_field"},
-	}
-
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tax),
-	)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, logger.Close()) }()
-
-	// Consumer-defined startup should still require custom_field (not
-	// the default app_name).
-	err = logger.AuditEvent(audit.NewEvent("startup", audit.Fields{
-		"app_name": "test",
-	}))
-	assert.Error(t, err, "should require custom_field, not app_name")
-}
-
 func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 	_, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
@@ -146,7 +102,6 @@ func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 func TestValidateTaxonomy(t *testing.T) {
 	t.Run("valid taxonomy passes", func(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()
-		audit.InjectLifecycleEvents(&tax)
 		err := audit.ValidateTaxonomy(tax)
 		assert.NoError(t, err)
 	})
@@ -164,56 +119,6 @@ func TestValidateTaxonomy(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		assert.Contains(t, err.Error(), "at least one category")
-	})
-}
-
-func TestInjectLifecycleEvents(t *testing.T) {
-	t.Run("injects startup and shutdown", func(t *testing.T) {
-		tax := testhelper.ValidTaxonomy()
-		audit.InjectLifecycleEvents(&tax)
-
-		assert.Contains(t, tax.Categories, "lifecycle")
-		assert.Contains(t, tax.Events, "startup")
-		assert.Contains(t, tax.Events, "shutdown")
-	})
-
-	t.Run("preserves consumer-defined lifecycle events", func(t *testing.T) {
-		tax := testhelper.ValidTaxonomy()
-		tax.Categories["lifecycle"] = &audit.CategoryDef{Events: []string{"startup", "shutdown"}}
-		tax.Events["startup"] = &audit.EventDef{
-			Required: []string{"custom_field"},
-		}
-		tax.Events["shutdown"] = &audit.EventDef{
-			Required: []string{"custom_field"},
-		}
-
-		audit.InjectLifecycleEvents(&tax)
-
-		assert.Equal(t, []string{"custom_field"}, tax.Events["startup"].Required)
-		assert.Equal(t, []string{"custom_field"}, tax.Events["shutdown"].Required)
-	})
-
-	t.Run("idempotent on repeated calls", func(t *testing.T) {
-		tax := testhelper.ValidTaxonomy()
-		audit.InjectLifecycleEvents(&tax)
-		first := tax
-
-		audit.InjectLifecycleEvents(&tax)
-
-		assert.Equal(t, first.Version, tax.Version)
-		assert.Equal(t, len(first.Events), len(tax.Events))
-		assert.Equal(t, len(first.Categories), len(tax.Categories))
-		assert.Contains(t, tax.Categories, "lifecycle")
-	})
-
-	t.Run("handles nil maps", func(t *testing.T) {
-		tax := audit.Taxonomy{Version: 1}
-		audit.InjectLifecycleEvents(&tax)
-
-		assert.NotNil(t, tax.Categories)
-		assert.NotNil(t, tax.Events)
-		assert.Contains(t, tax.Events, "startup")
-		assert.Contains(t, tax.Events, "shutdown")
 	})
 }
 

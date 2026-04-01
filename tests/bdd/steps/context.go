@@ -163,7 +163,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerFileSteps(ctx, tc)
 	registerFormatterSteps(ctx, tc)
 	registerShutdownSteps(ctx, tc)
-	registerLifecycleSteps(ctx, tc)
 	registerMetricsSteps(ctx, tc)
 	registerSyslogSteps(ctx, tc)
 	registerWebhookSteps(ctx, tc)

@@ -188,7 +188,6 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 	}
 
 	tax := convertYAMLTaxonomy(yt)
-	InjectLifecycleEvents(&tax)
 
 	if err := MigrateTaxonomy(&tax); err != nil {
 		return Taxonomy{}, err

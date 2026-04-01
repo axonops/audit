@@ -146,7 +146,6 @@
 //   - [RegisterOutputFactory] — registers a factory by type name (used by output modules)
 //   - [LookupOutputFactory] — retrieves a registered factory by type name
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs
-//   - [InjectLifecycleEvents] — adds startup/shutdown events to a taxonomy
 //   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
 // # Taxonomy

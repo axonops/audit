@@ -79,22 +79,20 @@ var auditEntryPool = sync.Pool{
 //
 //nolint:govet // field order: logical grouping over alignment optimisation
 type Logger struct {
-	startupAppName atomic.Value
-	closeErr       error
-	filter         *filterState
-	metrics        Metrics
-	formatter      Formatter
-	ch             chan *auditEntry
-	taxonomy       *Taxonomy
-	cancel         context.CancelFunc
-	drainDone      chan struct{}
+	closeErr  error
+	filter    *filterState
+	metrics   Metrics
+	formatter Formatter
+	ch        chan *auditEntry
+	taxonomy  *Taxonomy
+	cancel    context.CancelFunc
+	drainDone chan struct{}
 	// entries and outputsByName are immutable after construction.
-	entries        []*outputEntry
-	outputsByName  map[string]*outputEntry
-	cfg            Config
-	closeOnce      sync.Once
-	closed         atomic.Bool
-	startupEmitted atomic.Bool
+	entries       []*outputEntry
+	outputsByName map[string]*outputEntry
+	cfg           Config
+	closeOnce     sync.Once
+	closed        atomic.Bool
 	// destKeys tracks destination keys during construction to detect
 	// duplicate output destinations. Only used by WithNamedOutput;
 	// WithOutputs uses a local map.
@@ -254,8 +252,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 //
 // Close signals the drain goroutine to stop, waits up to
 // [Config.DrainTimeout] for pending events to flush, then closes all
-// outputs in sequence. If [Logger.EmitStartup] was called, Close
-// automatically emits a shutdown event before draining.
+// outputs in sequence.
 //
 // Close is idempotent -- subsequent calls return nil (or the same
 // error if an output failed to close on the first call).
@@ -269,10 +266,6 @@ func (l *Logger) Close() error {
 
 		shutdownStart := time.Now()
 		slog.Info("audit: shutdown started")
-
-		if l.startupEmitted.Load() {
-			l.emitShutdown()
-		}
 
 		l.cancel()
 		l.waitForDrain()
@@ -460,65 +453,6 @@ func (l *Logger) MustHandle(eventType string) *EventType {
 		panic(err)
 	}
 	return h
-}
-
-// EmitStartup emits a startup lifecycle event. The "app_name" field
-// is required by the default lifecycle taxonomy; omitting it returns a
-// validation error. [Logger.Close] will automatically emit a
-// corresponding shutdown event only if EmitStartup returned nil; a
-// failed EmitStartup (validation error, [ErrBufferFull], or
-// [ErrClosed]) leaves the shutdown flag unset and Close will not
-// emit a shutdown event.
-//
-// EmitStartup MUST be called before [Logger.Close]; calling it after
-// returns [ErrClosed]. On a disabled logger (where [Config.Enabled] is
-// false), EmitStartup returns nil immediately and no shutdown event
-// will be emitted by Close.
-func (l *Logger) EmitStartup(fields Fields) error {
-	if err := l.auditInternal("startup", fields); err != nil {
-		return err
-	}
-	if appName, ok := fields["app_name"]; ok {
-		if s, ok := appName.(string); ok {
-			l.startupAppName.Store(s)
-		}
-	}
-	l.startupEmitted.Store(true)
-	return nil
-}
-
-// emitShutdown enqueues a shutdown lifecycle event directly to the
-// channel, bypassing the closed check and field validation. This is
-// intentional: the framework controls the shutdown event's fields
-// and the logger is already in the process of shutting down.
-//
-// It is called by Close before the drain goroutine is signalled to
-// stop, ensuring the event is in the channel before cancel() fires.
-func (l *Logger) emitShutdown() {
-	appName := "unknown"
-	if v := l.startupAppName.Load(); v != nil {
-		if s, ok := v.(string); ok {
-			appName = s
-		}
-	}
-	entry, ok := auditEntryPool.Get().(*auditEntry)
-	if !ok {
-		entry = new(auditEntry)
-	}
-	entry.eventType = "shutdown"
-	entry.fields = Fields{"app_name": appName}
-	select {
-	case l.ch <- entry:
-	default:
-		entry.eventType = ""
-		entry.fields = nil
-		auditEntryPool.Put(entry)
-		slog.Warn("audit: buffer full, dropping shutdown event",
-			"buffer_size", l.cfg.BufferSize)
-		if l.metrics != nil {
-			l.metrics.RecordBufferDrop()
-		}
-	}
 }
 
 // drainLoop is the single goroutine that reads events from the async

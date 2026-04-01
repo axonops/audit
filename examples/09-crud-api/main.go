@@ -14,8 +14,8 @@
 
 // CRUD API is a complete REST API example demonstrating go-audit in a
 // realistic application: Postgres-backed CRUD, five audit outputs with
-// routing and formatting, HTTP middleware, Prometheus metrics, lifecycle
-// events, and graceful shutdown.
+// routing and formatting, HTTP middleware, Prometheus metrics, and
+// graceful shutdown.
 package main
 
 import (
@@ -50,14 +50,6 @@ func main() {
 	logger, err := setupAuditLogger(tax, metrics)
 	if err != nil {
 		log.Fatalf("setup audit logger: %v", err)
-	}
-
-	// Emit startup event.
-	if startupErr := logger.EmitStartup(audit.Fields{
-		FieldAppName: "crud-api",
-		FieldVersion: "0.1.0",
-	}); startupErr != nil {
-		log.Printf("emit startup: %v", startupErr)
 	}
 
 	// Connect to Postgres.
@@ -100,7 +92,7 @@ func main() {
 		log.Printf("http shutdown: %v", err)
 	}
 
-	// Close logger — this emits the shutdown event and flushes all outputs.
+	// Close logger — flushes all pending events to outputs.
 	if err := logger.Close(); err != nil {
 		log.Printf("close logger: %v", err)
 	}

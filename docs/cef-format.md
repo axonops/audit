@@ -81,16 +81,46 @@ Custom field mappings can override the defaults via `CEFFormatter.FieldMapping`.
 See [`DefaultCEFFieldMapping`](https://pkg.go.dev/github.com/axonops/go-audit#DefaultCEFFieldMapping)
 for the complete default mapping.
 
-## Severity Resolution
+## Severity Levels
 
-CEF severity (0-10) is resolved in this order:
+CEF uses a 0-10 severity scale. Choose severity levels based on the
+operational response each event should trigger:
 
-1. **Per-event severity** — if the event definition has `severity: 8`
-2. **Per-category severity** — if the event's category has `severity: 3`
+| Severity | Label | When to Use | Example Events |
+|----------|-------|-------------|----------------|
+| 0 | Informational | Routine operations, no action needed | `config_read`, `health_check` |
+| 1-2 | Low | Normal activity worth recording | `item_list`, `user_read` |
+| 3-4 | Medium | State-changing operations | `user_create`, `item_update` |
+| 5 | Default | Standard audit events (if no severity set) | Any event without explicit severity |
+| 6-7 | High | Security-relevant or admin operations | `config_change`, `role_assign` |
+| 8-9 | Critical | Security incidents, failed access | `auth_failure`, `access_denied` |
+| 10 | Emergency | Immediate response required | `data_breach`, `system_compromise` |
+
+### Severity Resolution
+
+Severity is resolved in this order:
+
+1. **Per-event severity** — `severity: 9` on the event definition overrides everything
+2. **Per-category severity** — `severity: 8` on the category applies to all events in that category
 3. **Default** — `5` if neither is set
 
-Severity is pre-computed at taxonomy registration time, not resolved
-per-event.
+Severity is pre-computed at taxonomy registration time — there is no
+per-event runtime cost.
+
+### Severity in Taxonomy YAML
+
+```yaml
+categories:
+  security:
+    severity: 8              # all security events default to 8
+    events: [auth_failure, auth_success]
+
+events:
+  auth_failure:
+    severity: 9              # override: auth failures are more severe
+    fields:
+      outcome: { required: true }
+```
 
 ## Configuration
 

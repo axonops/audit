@@ -1,11 +1,11 @@
 [&larr; Back to README](../README.md)
 
-# Testing with audittest
+# Testing Audit Events in Your Application
 
 ## What Is audittest?
 
-The `audittest` package provides an in-memory audit logger for unit and
-integration tests. It captures events and metrics in memory for
+The `audittest` package provides an in-memory audit logger for your
+unit and integration tests. It captures events and metrics in memory for
 assertion, with the same validation and async pipeline as production.
 
 ## Why a Test Package?

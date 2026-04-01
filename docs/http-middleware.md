@@ -1,112 +1,110 @@
 [&larr; Back to README](../README.md)
 
-# HTTP Middleware
+# HTTP Audit Middleware
 
-## What Is the Audit Middleware?
+## What Does This Do?
 
-The go-audit HTTP middleware automatically captures request metadata
-for every HTTP request and makes it available for audit event
-construction. It wraps any `http.Handler` and provides a `Hints`
-object that your handlers populate with domain-specific audit data.
+When you build an HTTP API, you want to audit who did what — which
+user called which endpoint, from which IP address, how long it took,
+and whether it succeeded or failed. Extracting this information from
+every HTTP handler manually is repetitive and error-prone.
 
-## Why Use Middleware?
+The go-audit middleware is a convenience wrapper that automatically
+captures the standard HTTP fields you would otherwise extract by hand
+in every handler. It wraps your HTTP router and:
 
-Without middleware, every HTTP handler must manually extract transport
-metadata (client IP, TLS state, request duration, status code) and
-construct an audit event. This is repetitive, error-prone, and produces
-inconsistent field values across handlers.
+1. **Before your handler runs:** records the start time, extracts the
+   client IP, checks TLS state, reads the request ID header
+2. **After your handler runs:** records the status code and duration
+3. **Calls your callback** to combine the automatic fields with your
+   domain-specific audit data (who is the user, what resource did they
+   touch, was it allowed)
 
-The middleware captures transport metadata once, consistently, and lets
-your handlers focus on the domain-specific audit fields (who did what
-to which resource).
+## What Gets Captured Automatically
 
-## How It Works
+These fields are extracted from every HTTP request without any code in
+your handlers:
 
-```
-Request
-  └── Middleware wraps the handler
-       ├── Captures: client IP, TLS state, method, path, user agent, request ID
-       ├── Injects Hints into request context
-       ├── Calls your handler
-       ├── Captures: status code, duration
-       └── Calls your EventBuilder to construct the audit event
-```
+| Field | Where It Comes From |
+|-------|---------------------|
+| Client IP | `X-Forwarded-For` header, `X-Real-IP` header, or `RemoteAddr` |
+| TLS state | Whether the connection uses TLS or mTLS |
+| HTTP method | `GET`, `POST`, `PUT`, `DELETE`, etc. |
+| Request path | The URL path (e.g., `/api/users/42`) |
+| User agent | The `User-Agent` header (truncated to 512 characters) |
+| Request ID | The `X-Request-Id` header, or a generated UUID if absent |
+| Duration | How long your handler took to execute |
+| Status code | The HTTP response status (200, 404, 500, etc.) |
 
-### Transport Metadata (automatic)
+## What Your Handlers Add
 
-| Field | Source |
-|-------|--------|
-| `client_ip` | X-Forwarded-For, X-Real-IP, or RemoteAddr |
-| `transport_security` | "none", "tls", or "mtls" |
-| `method` | HTTP method (GET, POST, etc.) |
-| `path` | Request path |
-| `user_agent` | User-Agent header (max 512 chars) |
-| `request_id` | X-Request-Id header or generated UUID |
-| `duration` | Handler execution time |
-| `status_code` | HTTP response status |
-
-### Hints (your handlers populate)
+Your handlers add the domain-specific audit fields — the things only
+your application code knows:
 
 ```go
 func createUserHandler(w http.ResponseWriter, r *http.Request) {
+    // Get the audit hints from the request context
     hints := audit.HintsFromContext(r.Context())
+
+    // Tell the middleware what audit event to emit
     hints.EventType = "user_create"
     hints.ActorID = r.Header.Get("X-User-ID")
     hints.Outcome = "success"
     hints.TargetType = "user"
     hints.TargetID = "user-42"
 
-    // ... handle the request ...
+    // ... handle the request normally ...
+    w.WriteHeader(http.StatusCreated)
 }
 ```
 
-Available hint fields: `EventType`, `Outcome`, `ActorID`, `ActorType`,
-`AuthMethod`, `Role`, `TargetType`, `TargetID`, `Reason`, `Error`,
-and `Extra` (arbitrary key-value pairs).
+If a handler does not set `hints.EventType`, no audit event is emitted
+for that request. This lets you skip health checks, static assets, or
+any endpoint that doesn't need auditing.
 
-### EventBuilder Callback
+## Wiring It Up
 
-The `EventBuilder` function transforms hints and transport metadata
-into an audit event:
+The middleware works with any Go HTTP router — stdlib `http.ServeMux`,
+chi, gorilla/mux, or anything that uses `http.Handler`.
 
 ```go
+// The callback combines auto-captured fields with your handler's hints
 builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
     if hints.EventType == "" {
-        return "", nil, true // skip — no audit event for this request
+        return "", nil, true // skip — no audit for this request
     }
-    fields := audit.Fields{
+    return hints.EventType, audit.Fields{
         "outcome":   hints.Outcome,
         "actor_id":  hints.ActorID,
         "client_ip": transport.ClientIP,
         "method":    transport.Method,
         "path":      transport.Path,
-    }
-    return hints.EventType, fields, false
+    }, false
 }
-```
 
-### Wiring It Up
-
-```go
+// Wrap your router with the middleware
 handler := audit.Middleware(logger, builder)(router)
 http.ListenAndServe(":8080", handler)
 ```
 
-Works with any router: chi, gorilla/mux, stdlib `http.ServeMux`.
+## Available Hint Fields
 
-## Skipping Requests
-
-Return `skip = true` from the EventBuilder to suppress the audit event
-for a request (e.g., health checks, static assets):
-
-```go
-if hints.EventType == "" || transport.Path == "/healthz" {
-    return "", nil, true // no audit event
-}
-```
+| Field | Purpose |
+|-------|---------|
+| `EventType` | Which audit event to emit (e.g., `"user_create"`) |
+| `Outcome` | Result: `"success"`, `"failure"`, `"denied"` |
+| `ActorID` | Who performed the action (user ID, service account) |
+| `ActorType` | Category: `"user"`, `"service"`, `"admin"` |
+| `AuthMethod` | How they authenticated: `"bearer"`, `"mtls"`, `"api_key"` |
+| `Role` | Their permission level: `"admin"`, `"viewer"` |
+| `TargetType` | What kind of resource: `"user"`, `"document"`, `"config"` |
+| `TargetID` | Which specific resource: `"user-42"`, `"doc-abc"` |
+| `Reason` | Why (if applicable): `"admin override"`, `"scheduled task"` |
+| `Error` | Error message on failure |
+| `Extra` | Arbitrary `map[string]any` for additional fields |
 
 ## Further Reading
 
 - [Progressive Example: Middleware](../examples/08-middleware/) — complete HTTP middleware example
+- [Progressive Example: CRUD API](../examples/09-crud-api/) — middleware in a full REST application
 - [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/go-audit#Middleware)
-- [API Reference: Hints](https://pkg.go.dev/github.com/axonops/go-audit#Hints)

@@ -137,6 +137,16 @@ outputs:
 If a field has labels `[pii, financial]` and the output excludes
 `[pii]`, the field is stripped (any overlap is enough).
 
+### Performance
+
+Sensitivity labels add **zero allocation overhead**. Field exclusion
+is handled inside the formatter's existing field iteration — excluded
+fields are simply skipped during serialization, with no intermediate
+map copies or temporary data structures. Outputs with exclusions use
+the same number of allocations per event (5) as outputs without
+exclusions. Defining sensitivity labels in your taxonomy but not
+using `exclude_labels` on any output also has zero cost.
+
 ### Protected Framework Fields
 
 Four framework fields can never be labeled or stripped:

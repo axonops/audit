@@ -1,90 +1,263 @@
 [&larr; Back to README](../README.md)
 
-# Taxonomy and Schema Validation
+# Taxonomy YAML Reference
 
-## What Is a Taxonomy?
+The taxonomy is a single YAML file that defines your complete audit
+event schema: which event types exist, what fields each requires,
+how events are grouped into categories, and optionally how fields
+are classified for sensitivity filtering.
 
-A taxonomy is a YAML document that defines every audit event your
-application can emit: which event types exist, what fields each event
-requires, what fields are optional, and how events are grouped into
-categories.
+This is a complete reference for everything that can go in a
+`taxonomy.yaml` file.
 
-The go-audit library validates every audit event against the registered
-taxonomy at runtime. If an event is missing a required field, references
-an unknown event type, or includes a field not declared in the taxonomy,
-the library rejects it with a descriptive error. This catches bugs
-before they reach production — you cannot silently emit a malformed
-audit event.
+## Why a Taxonomy?
 
-## Why Schema Enforcement Matters
+Application logs are best-effort — a missing field doesn't break
+anything. Audit logs are compliance artefacts. A security event
+missing `actor_id` is useless for forensic investigation. A field
+typo (`actorid` instead of `actor_id`) breaks SIEM parsing rules.
 
-Application logs are best-effort: if a log line is missing a field,
-nothing breaks. Audit logs are different — they are compliance
-artefacts. A security audit event missing the `actor_id` field is
-useless for forensic investigation. A SOX-relevant event with a typo
-in the field name (`actorid` instead of `actor_id`) breaks downstream
-SIEM parsing rules.
+The taxonomy is a contract: "these are the audit events we produce,
+and each one always includes these fields." The library validates
+every event against this contract at runtime.
 
-Schema enforcement ensures:
-- Every event has the fields your compliance team requires
-- No event type exists without a definition
-- Unknown fields are caught (strict mode) or flagged (warn mode)
-- Changes to the audit schema are explicit and reviewable in YAML
-
-## YAML Taxonomy Format
+## Complete Schema
 
 ```yaml
 version: 1
 
+# ── Categories ──────────────────────────────────────────────
+# Group related events. Used for event routing and bulk
+# enable/disable at runtime. All categories are enabled by
+# default.
+
 categories:
   write:
-    severity: 3
+    severity: 3                    # default severity for events in this category (0-10)
     events:
       - user_create
       - user_delete
+
+  read:                            # categories can also be a simple list of event names
+    - user_read
+    - config_read
+
   security:
     severity: 8
     events:
       - auth_failure
+      - auth_success
+
+# ── Sensitivity Labels (optional) ──────────────────────────
+# Classify fields by data sensitivity. Used with per-output
+# exclude_labels to strip fields before delivery.
+
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields:                      # global field name mapping — any event with these fields
+        - email
+        - phone
+      patterns:                    # regex patterns — matches field names across all events
+        - "^user_"
+    financial:
+      description: "Financial and payment data"
+      patterns:
+        - "^card_"
+
+# ── Events ──────────────────────────────────────────────────
+# Define each audit event type and its fields.
 
 events:
   user_create:
-    description: "A new user account was created"
+    description: "A new user account was created"   # used as CEF description header
+    severity: 4                    # per-event severity override (takes priority over category)
     fields:
       outcome:
-        required: true
+        required: true             # must be present in every event of this type
       actor_id:
         required: true
-      target_id: {}       # optional, no labels
+      email: {}                    # optional field — matched by pii.fields globally
+      user_name:
+        labels: [pii]             # explicit per-field sensitivity label annotation
+      target_id: {}               # optional field, no labels
       reason: {}
 
   auth_failure:
     description: "An authentication attempt failed"
     fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
+      outcome:  { required: true }   # compact syntax
+      actor_id: { required: true }
       source_ip: {}
+      reason: {}
 ```
 
-### Key Concepts
+## Top-Level Fields
 
-- **Categories** group related events and control bulk enable/disable
-- **Events** define the fields each event type accepts
-- **Fields** can be `required: true` or optional (bare `{}` or empty)
-- **Severity** can be set per-category (default for all events in that category) or per-event (overrides category)
-- **Description** provides a human-readable label, used as the CEF description header
+| Field | Required | Description |
+|-------|----------|-------------|
+| `version` | Yes | Must be `1`. Schema version for future migration. |
+| `categories` | Yes | Map of category name to event list or struct. |
+| `events` | Yes | Map of event type name to event definition. |
+| `sensitivity` | No | Sensitivity label configuration for field classification. |
 
-### Validation Modes
+## Categories
+
+Categories group related events. Each category maps to either a
+simple list of event names or a struct with optional severity:
+
+**Simple list:**
+```yaml
+categories:
+  read:
+    - user_read
+    - config_read
+```
+
+**Struct with severity:**
+```yaml
+categories:
+  security:
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
+```
+
+Both formats can be mixed in the same taxonomy. Severity is optional
+(defaults to `5` if not set at either category or event level).
+
+An event can belong to multiple categories. Events not in any
+category are valid and always globally enabled.
+
+## Events
+
+Each event defines its description, optional severity override, and
+fields:
+
+```yaml
+events:
+  user_create:
+    description: "A new user account was created"
+    severity: 4            # optional — overrides category severity
+    fields:
+      outcome:
+        required: true     # this field must be present
+      actor_id:
+        required: true
+      email: {}            # optional field
+      user_name:
+        labels: [pii]     # optional field with sensitivity label
+```
+
+| Event Field | Required | Description |
+|-------------|----------|-------------|
+| `description` | No | Human-readable label. Used as CEF description header. |
+| `severity` | No | Per-event severity (0-10). Overrides category severity. |
+| `fields` | Yes | Map of field name to field definition. |
+
+### Field Definitions
+
+Fields can be defined in three ways:
+
+```yaml
+fields:
+  outcome:                 # expanded — required field
+    required: true
+  actor_id:                # expanded — required field with label
+    required: true
+    labels: [pii]
+  email: {}                # compact — optional field, no labels
+  user_name:               # expanded — optional field with label
+    labels: [pii]
+  target_id: {}            # compact — optional, no labels
+  reason:                  # bare — same as {}
+```
+
+| Field Property | Default | Description |
+|----------------|---------|-------------|
+| `required` | `false` | If `true`, the library rejects events missing this field. |
+| `labels` | `[]` | List of sensitivity label names applied to this field. |
+
+## Sensitivity Labels
+
+Sensitivity labels classify fields by data sensitivity. There are
+three ways to assign labels to fields:
+
+### 1. Explicit per-field annotation
+
+Directly on the field definition in the event:
+
+```yaml
+events:
+  user_create:
+    fields:
+      user_name:
+        labels: [pii]     # this specific field in this event
+```
+
+### 2. Global field name mapping
+
+Any field with this name in any event gets the label:
+
+```yaml
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields:
+        - email            # every event with an "email" field
+        - phone            # every event with a "phone" field
+```
+
+### 3. Regex patterns
+
+Any field name matching the pattern in any event gets the label:
+
+```yaml
+sensitivity:
+  labels:
+    financial:
+      description: "Financial and payment data"
+      patterns:
+        - "^card_"         # matches card_number, card_expiry, etc.
+```
+
+All three mechanisms are resolved at taxonomy parse time — there is
+no per-event runtime cost. Labels from all three sources are additive.
+
+Per-output field stripping is configured in `outputs.yaml`, not in
+the taxonomy. See [Sensitivity Labels](sensitivity-labels.md) and
+[Outputs](outputs.md) for the `exclude_labels` configuration.
+
+## Severity Resolution
+
+Severity is a 0-10 scale used in CEF output and event routing.
+Resolution order:
+
+1. Per-event `severity` (highest priority)
+2. Category `severity`
+3. Default: `5`
+
+See [CEF Format — Severity Levels](cef-format.md#severity-levels)
+for practical guidance on choosing severity values.
+
+## Validation Modes
 
 | Mode | Behaviour |
 |------|-----------|
-| `strict` (default) | Rejects events with unknown fields |
-| `warn` | Accepts unknown fields but logs a warning |
+| `strict` (default) | Rejects events with fields not declared in the taxonomy |
+| `warn` | Accepts unknown fields but logs a warning via `log/slog` |
 | `permissive` | Accepts any fields without warning |
 
+Set via `audit.Config{ValidationMode: "warn"}` or
+`audittest.WithValidationMode(audit.ValidationWarn)` in tests.
+
 ## Loading a Taxonomy
+
+The library accepts `[]byte` only — not file paths. Use `go:embed`
+to bundle the YAML into your binary:
 
 ```go
 //go:embed taxonomy.yaml
@@ -93,11 +266,22 @@ var taxonomyYAML []byte
 tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 ```
 
-The library accepts `[]byte` only — not file paths. Use `go:embed` to
-bundle your taxonomy YAML into the binary.
+## Lifecycle Events
+
+The library automatically injects two lifecycle events into every
+taxonomy:
+
+- `startup` (severity 6) — emitted via `logger.EmitStartup(fields)`
+- `shutdown` (severity 7) — emitted automatically by `logger.Close()`
+
+These create a tamper-evident audit trail. If a shutdown event is
+missing, the application crashed or was killed without graceful
+shutdown.
 
 ## Further Reading
 
 - [Progressive Example: Basic](../examples/01-basic/) — inline taxonomy
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — YAML taxonomy with audit-gen
+- [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
+- [CEF Format](cef-format.md) — severity levels and SIEM integration
 - [API Reference: ParseTaxonomyYAML](https://pkg.go.dev/github.com/axonops/go-audit#ParseTaxonomyYAML)

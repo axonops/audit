@@ -279,16 +279,45 @@ tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 The library automatically injects two lifecycle events into every
 taxonomy:
 
-- `startup` (severity 6) — emitted via `logger.EmitStartup(fields)`
-- `shutdown` (severity 7) — emitted automatically by `logger.Close()`
+- **startup** (severity 6) — emitted via `logger.EmitStartup(fields)`
+- **shutdown** (severity 7) — emitted automatically by `logger.Close()`
 
-The shutdown event is only emitted if `EmitStartup` was called
-successfully. If your application does not call `EmitStartup`, no
-shutdown event is emitted on `Close`.
+### Startup Event
 
-These create a tamper-evident audit trail. If a shutdown event is
-missing, the application crashed or was killed without graceful
-shutdown.
+Emitted by calling `logger.EmitStartup(fields)`. You provide the
+fields — `app_name` is required, `version` and `config` are optional:
+
+```go
+err := logger.EmitStartup(audit.Fields{
+    "app_name": "myapp",
+    "version":  "1.2.3",
+    "config":   "production",
+})
+```
+
+If you need additional fields in your startup event, you can override
+the default startup event definition in your taxonomy YAML by
+defining your own `startup` event with extra fields. The library
+preserves consumer-defined lifecycle events.
+
+### Shutdown Event
+
+Emitted automatically by `logger.Close()` — but only if `EmitStartup`
+was called successfully. The shutdown event contains only `app_name`
+(carried over from the startup call). The `reason` and `uptime_ms`
+optional fields declared in the default schema are not currently
+populated by the framework.
+
+**Note:** There is no API to add custom fields to the shutdown event.
+The framework controls the shutdown payload. If you need custom
+shutdown fields, emit your own shutdown audit event before calling
+`logger.Close()`.
+
+### Tamper-Evident Trail
+
+These events create a tamper-evident audit trail. If a shutdown event
+is missing from the log, the application crashed or was killed without
+graceful shutdown.
 
 ## Further Reading
 

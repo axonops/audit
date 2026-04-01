@@ -63,7 +63,7 @@ code.
 
 In production, you wouldn't define the taxonomy in Go code like this.
 You'd write it in a YAML file and use `audit-gen` to generate type-safe
-constants. The [Code Generation](../code-generation/) example shows how.
+constants. The [Code Generation](../02-code-generation/) example shows how.
 
 ### Creating the Logger
 
@@ -127,7 +127,7 @@ example — that's the default when no severity is configured.
 Severity becomes useful for routing: you can send high-severity events
 to a SIEM webhook while keeping low-severity events in local files.
 You'll learn how to set per-category severity levels and route by
-threshold in the [Event Routing](../event-routing/) example.
+threshold in the [Event Routing](../05-event-routing/) example.
 
 ### Closing the Logger
 
@@ -189,5 +189,5 @@ after the caller's next statement has already executed.
 
 ## Next
 
-[Code Generation](../code-generation/) — define your events in YAML and
+[Code Generation](../02-code-generation/) — define your events in YAML and
 generate type-safe Go constants.

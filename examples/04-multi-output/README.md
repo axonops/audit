@@ -12,7 +12,7 @@ and a log file, both defined in `outputs.yaml`.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [File Output](../file-output/)
+- Completed: [File Output](../03-file-output/)
 
 ## Files
 
@@ -54,7 +54,7 @@ receive the event.
 ### When to Add Routing
 
 Without routing rules, every output gets every event. The next example
-([Event Routing](../event-routing/)) shows how to send different event
+([Event Routing](../05-event-routing/)) shows how to send different event
 categories to different outputs.
 
 ## Run It
@@ -83,9 +83,9 @@ Both outputs received identical events — that's fan-out.
 
 ## Previous
 
-[File Output](../file-output/)
+[File Output](../03-file-output/)
 
 ## Next
 
-[Event Routing](../event-routing/) — send different event categories to
+[Event Routing](../05-event-routing/) — send different event categories to
 different outputs.

@@ -13,7 +13,7 @@ and restricted file permissions.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Basic](../basic/), [Code Generation](../code-generation/)
+- Completed: [Basic](../01-basic/), [Code Generation](../02-code-generation/)
 
 ## Files
 
@@ -112,9 +112,9 @@ end of the example.
 
 ## Previous
 
-[Code Generation](../code-generation/)
+[Code Generation](../02-code-generation/)
 
 ## Next
 
-[Multi-Output](../multi-output/) — send events to multiple destinations
+[Multi-Output](../04-multi-output/) — send events to multiple destinations
 simultaneously.

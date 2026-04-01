@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Sensitivity Labels](../sensitivity-labels/)
+- Completed: [Sensitivity Labels](../06-sensitivity-labels/)
 
 ## Files
 
@@ -121,8 +121,8 @@ output uses the `suser` extension key for `actor_id`, and the
 
 ## Previous
 
-[Sensitivity Labels](../sensitivity-labels/)
+[Sensitivity Labels](../06-sensitivity-labels/)
 
 ## Next
 
-[Middleware](../middleware/) — automatic audit logging for HTTP handlers.
+[Middleware](../08-middleware/) — automatic audit logging for HTTP handlers.

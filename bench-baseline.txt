@@ -222,13 +222,13 @@ BenchmarkValidRequestID-32                                                 	6943
 BenchmarkValidRequestID-32                                                 	79999135	        15.40 ns/op	       0 B/op	       0 allocs/op
 PASS
 ok  	github.com/axonops/go-audit	320.300s
-?   	github.com/axonops/go-audit/examples/basic	[no test files]
-?   	github.com/axonops/go-audit/examples/code-generation	[no test files]
-?   	github.com/axonops/go-audit/examples/event-routing	[no test files]
-?   	github.com/axonops/go-audit/examples/file-output	[no test files]
-?   	github.com/axonops/go-audit/examples/formatters	[no test files]
-?   	github.com/axonops/go-audit/examples/middleware	[no test files]
-?   	github.com/axonops/go-audit/examples/multi-output	[no test files]
+?   	github.com/axonops/go-audit/examples/01-basic	[no test files]
+?   	github.com/axonops/go-audit/examples/02-code-generation	[no test files]
+?   	github.com/axonops/go-audit/examples/05-event-routing	[no test files]
+?   	github.com/axonops/go-audit/examples/03-file-output	[no test files]
+?   	github.com/axonops/go-audit/examples/07-formatters	[no test files]
+?   	github.com/axonops/go-audit/examples/08-middleware	[no test files]
+?   	github.com/axonops/go-audit/examples/04-multi-output	[no test files]
 ?   	github.com/axonops/go-audit/internal/testhelper	[no test files]
 ?   	github.com/axonops/go-audit/tests/bdd/steps	[no test files]
 === bench file ===

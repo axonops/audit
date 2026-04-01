@@ -15,7 +15,7 @@ and a PCI compliance log keeps PII but strips payment card data.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../event-routing/)
+- Completed: [Event Routing](../05-event-routing/)
 
 ## Files
 
@@ -232,10 +232,10 @@ Notice:
 
 ## Previous
 
-[Event Routing](../event-routing/) — category and severity-based
+[Event Routing](../05-event-routing/) — category and severity-based
 routing.
 
 ## Next
 
-[Formatters](../formatters/) — JSON vs CEF formatters for SIEM
+[Formatters](../07-formatters/) — JSON vs CEF formatters for SIEM
 integration.

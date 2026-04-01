@@ -7,15 +7,15 @@ Each example introduces one new concept and builds on the previous.
 
 | # | Example | What it teaches |
 |---|---------|-----------------|
-| 1 | [basic](basic/) | Taxonomy, Logger, Audit(), Fields, validation — programmatic setup |
-| 2 | [code-generation](code-generation/) | YAML taxonomy, audit-gen, go:embed, outputconfig.Load |
-| 3 | [file-output](file-output/) | File output with rotation and permissions in YAML |
-| 4 | [multi-output](multi-output/) | Fan-out to multiple outputs from one YAML config |
-| 5 | [event-routing](event-routing/) | Category and severity-based routing in YAML |
-| 6 | [sensitivity-labels](sensitivity-labels/) | Per-output field stripping with PII and financial labels |
-| 7 | [formatters](formatters/) | JSON vs CEF with category severity levels |
-| 8 | [middleware](middleware/) | Automatic HTTP audit logging with Hints |
-| 9 | [crud-api](crud-api/) | Complete REST API with Postgres, lifecycle events, Docker |
+| 1 | [basic](01-basic/) | Taxonomy, Logger, Audit(), Fields, validation — programmatic setup |
+| 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, go:embed, outputconfig.Load |
+| 3 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
+| 4 | [multi-output](04-multi-output/) | Fan-out to multiple outputs from one YAML config |
+| 5 | [event-routing](05-event-routing/) | Category and severity-based routing in YAML |
+| 6 | [sensitivity-labels](06-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
+| 7 | [formatters](07-formatters/) | JSON vs CEF with category severity levels |
+| 8 | [middleware](08-middleware/) | Automatic HTTP audit logging with Hints |
+| 9 | [crud-api](09-crud-api/) | Complete REST API with Postgres, lifecycle events, Docker |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
@@ -33,7 +33,7 @@ make workspace
 make test-examples
 
 # Run an individual example:
-cd examples/basic && go run .
+cd examples/01-basic && go run .
 ```
 
 ## For Consumers Outside the Workspace

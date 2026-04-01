@@ -111,35 +111,34 @@ mem.prof
 # Built binaries (not source directories)
 /audit-gen
 /cmd/audit-gen/audit-gen
-/basic
-/code-generation
-/crud-api
-/event-routing
-/file-output
-/formatters
-/middleware
-/multi-output
+/01-basic
+/02-code-generation
+/09-crud-api
+/05-event-routing
+/03-file-output
+/07-formatters
+/08-middleware
+/04-multi-output
 # Binaries built inside example directories
-examples/*/basic
-examples/*/code-generation
-examples/*/crud-api
-examples/*/event-routing
-examples/*/file-output
-examples/*/formatters
-examples/*/middleware
-examples/*/multi-output
-examples/*/sensitivity-labels
+examples/*/01-basic
+examples/*/02-code-generation
+examples/*/09-crud-api
+examples/*/05-event-routing
+examples/*/03-file-output
+examples/*/07-formatters
+examples/*/08-middleware
+examples/*/04-multi-output
+examples/*/06-sensitivity-labels
 # Generic: any binary matching the directory name inside examples
-examples/basic/basic
-examples/code-generation/code-generation
-examples/crud-api/crud-api
-examples/event-routing/event-routing
-examples/file-output/file-output
-examples/formatters/formatters
-examples/middleware/middleware
-examples/multi-output/multi-output
-examples/sensitivity-labels/sensitivity-labels
-/multi-output
+examples/01-basic/01-basic
+examples/02-code-generation/02-code-generation
+examples/03-file-output/03-file-output
+examples/04-multi-output/04-multi-output
+examples/05-event-routing/05-event-routing
+examples/06-sensitivity-labels/06-sensitivity-labels
+examples/07-formatters/07-formatters
+examples/08-middleware/08-middleware
+examples/09-crud-api/09-crud-api
 
 # Example output files (generated at runtime)
 examples/*/*.log

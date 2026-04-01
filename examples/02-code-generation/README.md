@@ -14,7 +14,7 @@ recommended workflow for go-audit — all subsequent examples follow it.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Basic](../basic/)
+- Completed: [Basic](../01-basic/)
 
 ## Files
 
@@ -29,7 +29,7 @@ recommended workflow for go-audit — all subsequent examples follow it.
 
 ### Defining Events in YAML
 
-In the [Basic](../basic/) example, we defined the taxonomy inline in Go.
+In the [Basic](../01-basic/) example, we defined the taxonomy inline in Go.
 That works, but real applications have dozens or hundreds of event types
 with compliance requirements. A YAML file is easier for teams to review
 and maintain:
@@ -79,7 +79,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../06-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -174,7 +174,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../sensitivity-labels/) example.
+the [Sensitivity Labels](../06-sensitivity-labels/) example.
 
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,
@@ -195,7 +195,7 @@ define these in your taxonomy — go-audit injects them automatically.
 When you call `logger.Close()`, the library emits a shutdown event
 before flushing outputs. This creates a tamper-evident audit trail: if
 the log has a startup event but no shutdown, either the application
-crashed or someone tampered with the log. The [CRUD API](../crud-api/)
+crashed or someone tampered with the log. The [CRUD API](../09-crud-api/)
 example demonstrates explicit startup events with
 `logger.EmitStartup()`.
 
@@ -208,7 +208,7 @@ consistent — consumers can parse all events with the same schema
 regardless of which optional fields were populated.
 
 If you prefer to omit null fields entirely, the JSON formatter supports
-an `omit_empty` option (shown in the [Formatters](../formatters/)
+an `omit_empty` option (shown in the [Formatters](../07-formatters/)
 example).
 
 ### Configuring Outputs in YAML
@@ -298,9 +298,9 @@ go generate .
 
 ## Previous
 
-[Basic](../basic/)
+[Basic](../01-basic/)
 
 ## Next
 
-[File Output](../file-output/) — write events to a log file with
+[File Output](../03-file-output/) — write events to a log file with
 rotation and size limits.

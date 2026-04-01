@@ -52,7 +52,7 @@ routing, and sensitive field stripping.
 | **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |
 | **HTTP Middleware** | Automatically captures HTTP request fields for audit logging | [Learn more](docs/http-middleware.md) |
 | **Metrics & Monitoring** | Track dropped events, delivery errors, and output health | [Learn more](docs/metrics-monitoring.md) |
-| **YAML Configuration** | Configure outputs in YAML with environment variable substitution | [Learn more](docs/yaml-configuration.md) |
+| **YAML Configuration** | Configure outputs in YAML with environment variable substitution | [Learn more](docs/output-configuration.md) |
 | **Testing Support** | In-memory recorder with same validation as production | [Learn more](docs/testing.md) |
 
 </div>

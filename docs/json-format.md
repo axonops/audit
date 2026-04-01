@@ -7,8 +7,8 @@
 The JSON formatter serialises each audit event as a single line of
 JSON — one event per line, no pretty-printing. This is the default
 format used by go-audit. JSON output is designed for log aggregation
-platforms (ELK/Elasticsearch, Datadog, Loki, CloudWatch) and for
-custom analytics pipelines that parse structured data.
+platforms (OpenSearch, Elasticsearch, Datadog, Loki, CloudWatch) and
+for custom analytics pipelines that parse structured data.
 
 For SIEM platforms (Splunk, ArcSight, QRadar), consider using the
 [CEF format](cef-format.md) instead — SIEMs understand CEF natively
@@ -42,18 +42,21 @@ predictable for downstream parsers.
 ### YAML
 
 ```yaml
-# JSON is the default — you only need a formatter block if you want
-# to change the timestamp format or enable omit_empty.
+# JSON is the default formatter. You only need a formatter block if
+# you want to change the timestamp format or enable omit_empty.
 outputs:
   audit_log:
     type: file
     file:
       path: "./audit.log"
     formatter:
-      type: json
-      timestamp: rfc3339nano    # or "unix_ms" for Unix milliseconds
-      omit_empty: false         # true to skip fields with zero values
+      type: json                  # default if not specified
+      timestamp: rfc3339nano      # default: "rfc3339nano" (or "unix_ms")
+      omit_empty: false           # default: false
 ```
+
+If you omit the `formatter` block entirely, JSON with `rfc3339nano`
+timestamps and `omit_empty: false` is used.
 
 ### Timestamp Formats
 

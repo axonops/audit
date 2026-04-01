@@ -10,8 +10,9 @@ caller goroutine                         drain goroutine
 ─────────────────                        ───────────────
 AuditEvent(event)
   ├─ validate fields against EventDef
-  ├─ check category enabled (atomic)
-  └─ enqueue to buffered channel ──────► drainLoop reads from channel
+  ├─ check category enabled (all enabled by default;
+  │   DisableCategory() can disable at runtime)
+  └─ enqueue to buffered channel ──────► drainLoop reads continuously
                                            ├─ set timestamp
                                            ├─ serialize with Formatter
                                            └─ fan-out to each outputEntry

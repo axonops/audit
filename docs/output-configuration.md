@@ -18,10 +18,19 @@ version: 1
 # Applies to all outputs that don't specify their own formatter.
 # If omitted, JSON with RFC 3339 nanosecond timestamps is used.
 
+# JSON default formatter example:
 default_formatter:
-  type: json                       # "json" or "cef"
+  type: json                       # "json" (default) or "cef"
   timestamp: rfc3339nano           # "rfc3339nano" (default) or "unix_ms"
-  omit_empty: false                # true to skip fields with zero values
+  omit_empty: false                # default: false
+
+# CEF default formatter example (use instead of JSON above):
+# default_formatter:
+#   type: cef
+#   vendor: "MyCompany"             # recommended (empty string if not set)
+#   product: "MyApp"                # recommended (empty string if not set)
+#   version: "1.0"                  # recommended (empty string if not set)
+#   omit_empty: false               # default: false
 
 # ── Outputs ─────────────────────────────────────────────────
 # Map of named outputs. Each output has a type, optional config,
@@ -180,10 +189,26 @@ route:
 | `max_severity` | Maximum severity threshold (0-10 inclusive) |
 
 Include and exclude modes are mutually exclusive — setting both on the
-same route causes a startup error. Severity filtering can be combined
-with either mode.
+same route causes a startup error.
 
-See [Event Routing](event-routing.md) for details and examples.
+**Severity filtering is an AND condition** — it combines with whichever
+mode you use. An event must pass BOTH the category/event filter AND the
+severity filter. For example:
+
+```yaml
+# Include mode + severity: only security events with severity 8+
+route:
+  include_categories: [security]
+  min_severity: 8
+
+# Exclude mode + severity: everything except reads, but only severity 5+
+route:
+  exclude_categories: [read]
+  min_severity: 5
+```
+
+See [Event Routing](event-routing.md) for detailed examples and
+explanations.
 
 ## Sensitivity Label Exclusion
 

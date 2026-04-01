@@ -39,11 +39,53 @@ name is a compile error, not a runtime surprise.
 3. Run `go generate ./...`
 4. Commit the generated file to version control
 
-### go:generate Directive
+### Step 1: Add the go:generate Directive
+
+Add this comment to any `.go` file in your package (typically
+`main.go` or a dedicated `generate.go`):
 
 ```go
 //go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
+
+### Step 2: Run Code Generation
+
+```bash
+go generate ./...
+```
+
+`go run` automatically downloads and caches `audit-gen` — no
+separate install step needed. The generated file appears in the
+same directory as the `go:generate` directive.
+
+### Integrating into Your Development Process
+
+**Makefile:**
+```makefile
+generate:
+	go generate ./...
+
+# Run generation before build
+build: generate
+	go build ./...
+```
+
+**CI pipeline (GitHub Actions):**
+```yaml
+- name: Generate audit code
+  run: go generate ./...
+- name: Check generated code is committed
+  run: git diff --exit-code -- '**/audit_generated.go'
+```
+
+The CI step ensures the generated file is always committed and up
+to date. If someone changes `taxonomy.yaml` but forgets to
+regenerate, the build fails.
+
+**IDE:** Most Go IDEs (VS Code with gopls, GoLand) recognise
+`go:generate` directives. In VS Code, run `Go: Generate` from the
+command palette. In GoLand, right-click the file and select
+"Run go generate."
 
 ### What Gets Generated
 

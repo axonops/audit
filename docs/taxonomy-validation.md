@@ -27,9 +27,7 @@ every event against this contract at runtime.
 version: 1
 
 # ── Categories ──────────────────────────────────────────────
-# Group related events. Used for event routing and bulk
-# enable/disable at runtime. All categories are enabled by
-# default.
+# Group related events. Used for per-output event routing.
 
 categories:
   write:

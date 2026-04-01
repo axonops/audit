@@ -96,6 +96,50 @@ func (m *prometheusMetrics) RecordValidationError(eventType string) {
 | Delivery error rate | `RecordEvent("error")` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
+## Per-Output Metrics
+
+In addition to the global `Metrics` interface, each output type has
+its own metrics interface for output-specific telemetry. These are
+passed when constructing the output:
+
+### File Output Metrics (`file.Metrics`)
+
+```go
+type Metrics interface {
+    RecordFileRotation(path string) // called when a log file is rotated
+}
+```
+
+Wire this to track how often rotation occurs and which paths are
+being written to.
+
+### Syslog Output Metrics (`syslog.Metrics`)
+
+```go
+type Metrics interface {
+    RecordSyslogReconnect(address string, success bool) // called on reconnection attempt
+}
+```
+
+Monitor reconnection attempts — frequent reconnections indicate
+network instability or a failing syslog server.
+
+### Webhook Output Metrics (`webhook.Metrics`)
+
+```go
+type Metrics interface {
+    RecordWebhookDrop()                            // event dropped (internal buffer full)
+    RecordWebhookFlush(batchSize int, dur time.Duration) // batch flushed successfully
+}
+```
+
+Monitor `RecordWebhookDrop` — if this fires, the webhook's internal
+buffer is full and events are being lost. Increase `buffer_size` in
+the webhook configuration.
+
+See [Progressive Example: CRUD API](../examples/09-crud-api/) for a
+complete Prometheus implementation of all four metrics interfaces.
+
 ## Testing Metrics
 
 The `audittest.MetricsRecorder` captures all metrics calls in memory:

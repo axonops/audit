@@ -258,11 +258,13 @@ minor versions until v1.0.0. Pin your dependency version.
 
 ## 🙏 Acknowledgements
 
-go-audit builds on the work of these open-source projects:
+go-audit builds on excellent open-source projects. See
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for full attribution and
+license details.
 
-- [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) — YAML parsing for taxonomy and output configuration
-- [github.com/axonops/srslog](https://github.com/axonops/srslog) — RFC 5424 syslog client (fork of [gravwell/srslog](https://github.com/gravwell/srslog))
-- [github.com/rgooding/go-syncmap](https://github.com/rgooding/go-syncmap) — Generic sync.Map for lock-free category lookups
+- [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) — YAML parsing (MIT / Apache-2.0)
+- [github.com/axonops/srslog](https://github.com/axonops/srslog) — RFC 5424 syslog (BSD-3-Clause)
+- [github.com/rgooding/go-syncmap](https://github.com/rgooding/go-syncmap) — Generic sync.Map (Apache-2.0)
 
 ---
 

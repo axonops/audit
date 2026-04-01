@@ -26,13 +26,25 @@ accountability. If your application handles user data, authentication,
 or financial transactions, regulations like SOX, HIPAA, and GDPR
 require structured audit trails that application loggers don't enforce.
 
-go-audit validates every event against a consumer-defined schema,
-delivers events asynchronously to multiple outputs simultaneously,
-and supports both [JSON](docs/json-format.md) and
+go-audit splits audit configuration into two layers:
+
+- **Compile-time (taxonomy):** Your event schema — which event types
+  exist, which fields are required, what's optional — is defined in a
+  YAML file and embedded into your binary with `go:embed`. A code
+  generator (`audit-gen`) produces typed Go builders from this schema,
+  so invalid event names and missing required fields are caught by the
+  compiler, not at runtime. The taxonomy is your audit contract — it
+  ships with the binary and cannot be changed without recompiling.
+
+- **Runtime (outputs):** Where events go — files, syslog, webhooks —
+  is configured in a separate YAML file loaded at startup. Output
+  destinations, routing filters, formatters, and sensitivity label
+  exclusions can all change per environment without rebuilding.
+
+The library validates events against the compiled taxonomy, delivers
+them asynchronously to multiple outputs simultaneously, and supports
+both [JSON](docs/json-format.md) and
 [CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
-Define your audit event types in YAML, generate type-safe Go code, and
-let the library handle validation, delivery, fan-out, per-output
-routing, and sensitive field stripping.
 
 ---
 

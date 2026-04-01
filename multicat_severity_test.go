@@ -370,7 +370,7 @@ default_enabled: [ops]
 			require.NotNil(t, def)
 
 			f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
-			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def)
+			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def, nil)
 			require.NoError(t, err)
 
 			line := strings.TrimSuffix(string(data), "\n")
@@ -424,7 +424,7 @@ default_enabled: [ops]
 	require.Equal(t, 0, def.ResolvedSeverity())
 
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
-	data, err := f.Format(testTime, "level5_event", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(testTime, "level5_event", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	line := strings.TrimSuffix(string(data), "\n")

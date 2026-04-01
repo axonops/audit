@@ -844,7 +844,7 @@ default_enabled: [write]
 // Pre-computed filtered EventDef tests (#199)
 // ---------------------------------------------------------------------------
 
-func TestPrecomputeFilteredDefs_ExclusionPath(t *testing.T) {
+func TestFormatWithExclusion_ExclusionPath(t *testing.T) {
 	t.Parallel()
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
@@ -853,7 +853,7 @@ func TestPrecomputeFilteredDefs_ExclusionPath(t *testing.T) {
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
 	require.NoError(t, err)
 
-	// Output with exclusions — filteredDefs should be pre-computed.
+	// Output with exclusions — formatOpts should be pre-allocated.
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
@@ -882,7 +882,7 @@ func TestPrecomputeFilteredDefs_ExclusionPath(t *testing.T) {
 	}
 }
 
-func TestPrecomputeFilteredDefs_NoExclusionNoOverhead(t *testing.T) {
+func TestFormatWithExclusion_NoExclusionNoOverhead(t *testing.T) {
 	t.Parallel()
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)
@@ -891,7 +891,7 @@ func TestPrecomputeFilteredDefs_NoExclusionNoOverhead(t *testing.T) {
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
 	require.NoError(t, err)
 
-	// Output WITHOUT exclusions — filteredDefs should be nil.
+	// Output WITHOUT exclusions — formatOpts should be nil.
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
@@ -913,7 +913,7 @@ func TestPrecomputeFilteredDefs_NoExclusionNoOverhead(t *testing.T) {
 	assert.Equal(t, "alice@example.com", events[0]["email"])
 }
 
-func TestPrecomputeFilteredDefs_MultipleOutputsDifferentExclusions(t *testing.T) {
+func TestFormatWithExclusion_MultipleOutputsDifferentExclusions(t *testing.T) {
 	t.Parallel()
 	tax, err := audit.ParseTaxonomyYAML([]byte(sensitivityPipelineTaxonomyYAML))
 	require.NoError(t, err)

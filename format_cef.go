@@ -138,7 +138,7 @@ func (*noCopy) Unlock() {}
 
 // Format serialises a single audit event as a CEF line using a single
 // buffer for both header and extensions.
-func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error) {
+func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
 	severity := cf.severity(eventType, def)
 	description := cf.description(eventType, def)
 	mapping := cf.fieldMapping()
@@ -190,7 +190,7 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	}
 
 	// All fields via mapping.
-	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved); err != nil {
+	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved, opts); err != nil {
 		cefBufPool.Put(buf)
 		return nil, err
 	}
@@ -209,10 +209,13 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 // extensions into buf, starting at extStart. Fields whose mapped
 // extension key collides with a reserved framework key are silently
 // skipped.
-func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string, reserved map[string]struct{}) error {
+func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string, reserved map[string]struct{}, opts *FormatOptions) error {
 	allKeys := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
 		if isFrameworkField(k, fields) {
+			continue
+		}
+		if opts.IsExcluded(k) {
 			continue
 		}
 		v := fields[k]

@@ -625,7 +625,7 @@ default_enabled: [ops]
 			require.NotNil(t, def, "event %q must exist in taxonomy", tt.eventType)
 
 			f := &audit.JSONFormatter{}
-			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def)
+			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def, nil)
 			require.NoError(t, err)
 
 			var m map[string]any
@@ -662,7 +662,7 @@ default_enabled: [ops]
 	require.NoError(t, err)
 
 	f := &audit.JSONFormatter{}
-	data, err := f.Format(testTime, "deploy", audit.Fields{"outcome": "success"}, tax.Events["deploy"])
+	data, err := f.Format(testTime, "deploy", audit.Fields{"outcome": "success"}, tax.Events["deploy"], nil)
 	require.NoError(t, err)
 
 	raw := string(data)
@@ -705,7 +705,7 @@ default_enabled: [ops]
 	data, err := f.Format(testTime, "deploy", audit.Fields{
 		"outcome":  "success",
 		"severity": 99, // must not appear in output
-	}, tax.Events["deploy"])
+	}, tax.Events["deploy"], nil)
 	require.NoError(t, err)
 
 	var m map[string]any
@@ -811,7 +811,7 @@ default_enabled: [ops]
 
 			f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 			// SeverityFunc is nil — must use def.ResolvedSeverity().
-			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def)
+			data, err := f.Format(testTime, tt.eventType, audit.Fields{"outcome": "ok"}, def, nil)
 			require.NoError(t, err)
 
 			line := string(data)
@@ -863,7 +863,7 @@ default_enabled: [security]
 			return 3
 		},
 	}
-	data, err := f.Format(testTime, "auth_fail", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(testTime, "auth_fail", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -903,7 +903,7 @@ default_enabled: [security]
 		Version: "1",
 		// DescriptionFunc intentionally nil — must fall back to def.Description.
 	}
-	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -935,7 +935,7 @@ default_enabled: [ops]
 	require.Empty(t, def.Description)
 
 	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
-	data, err := f.Format(testTime, "deploy", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(testTime, "deploy", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -977,7 +977,7 @@ default_enabled: [security]
 			return "Override: " + eventType
 		},
 	}
-	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "ok"}, def)
+	data, err := f.Format(testTime, "auth_failure", audit.Fields{"outcome": "ok"}, def, nil)
 	require.NoError(t, err)
 
 	line := string(data)
@@ -1014,7 +1014,7 @@ default_enabled: [security]
 	assert.Equal(t, 10, def.ResolvedSeverity(), "event severity must override category")
 
 	f := &audit.CEFFormatter{Vendor: "MyVendor", Product: "MyProduct", Version: "2"}
-	data, err := f.Format(testTime, "access_denied", audit.Fields{"outcome": "denied"}, def)
+	data, err := f.Format(testTime, "access_denied", audit.Fields{"outcome": "denied"}, def, nil)
 	require.NoError(t, err)
 
 	line := string(data)

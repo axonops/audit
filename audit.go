@@ -142,10 +142,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, err
 	}
 
-	// Pre-compute filtered EventDefs for outputs with sensitivity
-	// exclusions. This eliminates per-event allocations on the
-	// exclusion path (#199).
-	l.precomputeFilteredDefs()
+	l.preAllocFormatOpts()
 
 	// Default formatter if WithFormatter was not called.
 	if l.formatter == nil {
@@ -626,11 +623,8 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		}
 
 		var data []byte
-		if oe.excludedLabels != nil && def.FieldLabels != nil {
-			// Field stripping active — bypass format cache because
-			// different outputs may exclude different labels, producing
-			// different field subsets from the same event.
-			data = l.formatFiltered(oe, entry, ts, def)
+		if oe.formatOpts != nil && def.FieldLabels != nil {
+			data = l.formatWithExclusion(oe, entry, ts, def)
 		} else {
 			data = l.formatCached(oe, entry, ts, def, fc)
 		}
@@ -641,46 +635,29 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 	}
 }
 
-// precomputeFilteredDefs builds a filtered EventDef for every event
-// type in the taxonomy, for each output that has sensitivity
-// exclusions. Filtering is done once at construction time so the hot
-// path (formatFiltered) can look up a pre-filtered def by event type
-// rather than allocating one on every event (#199).
-func (l *Logger) precomputeFilteredDefs() {
+// preAllocFormatOpts pre-allocates FormatOptions for outputs with
+// sensitivity exclusions so the hot path avoids per-event heap
+// allocation.
+func (l *Logger) preAllocFormatOpts() {
 	for _, oe := range l.entries {
-		if oe.excludedLabels == nil {
-			continue
-		}
-		oe.filteredDefs = make(map[string]*EventDef, len(l.taxonomy.Events))
-		for name, def := range l.taxonomy.Events {
-			if def == nil || def.FieldLabels == nil {
-				continue
+		if oe.excludedLabels != nil {
+			oe.formatOpts = &FormatOptions{
+				ExcludedLabels: oe.excludedLabels,
 			}
-			fd := filterEventDef(def, oe.excludedLabels)
-			oe.filteredDefs[name] = fd
 		}
 	}
 }
 
-// formatFiltered serialises entry with sensitivity-labelled fields
-// stripped for oe. It bypasses the format cache because different
-// outputs may exclude different label sets, producing distinct field
-// subsets from the same event. The filtered EventDef is looked up from
-// oe.filteredDefs (pre-computed at construction time) to avoid
-// per-event allocation of sorted field lists (#199).
-func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
-	filtered := filterFieldsByLabels(entry.fields, def, oe.excludedLabels)
-
-	// Fall back to the original def for event types that have no
-	// sensitivity annotations (FieldLabels == nil); no stripping
-	// is needed so def is correct as-is.
-	fDef := def
-	if fd, ok := oe.filteredDefs[entry.eventType]; ok {
-		fDef = fd
-	}
-
+// formatWithExclusion serialises an event with sensitivity-labelled
+// fields excluded. It bypasses the format cache because different
+// outputs may exclude different label sets.
+func (l *Logger) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
+	// Safe: drain loop is single-goroutine. FieldLabels is read-only
+	// after taxonomy registration; we assign the pointer per-event
+	// to avoid allocating a new FormatOptions on every call.
+	oe.formatOpts.FieldLabels = def.FieldLabels
 	f := oe.effectiveFormatter(l.formatter)
-	data, err := f.Format(ts, entry.eventType, filtered, fDef)
+	data, err := f.Format(ts, entry.eventType, entry.fields, def, oe.formatOpts)
 	if err != nil {
 		slog.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
 		if l.metrics != nil {
@@ -689,70 +666,6 @@ func (l *Logger) formatFiltered(oe *outputEntry, entry *auditEntry, ts time.Time
 		return nil
 	}
 	return data
-}
-
-// filterEventDef returns a new EventDef with all fields whose
-// sensitivity labels overlap with excluded removed from Required
-// and Optional. The formatter uses Required/Optional to determine
-// which fields to emit; removing a field here prevents the formatter
-// from emitting a null placeholder for a stripped field.
-// Used at construction time by precomputeFilteredDefs.
-func filterEventDef(def *EventDef, excluded map[string]struct{}) *EventDef {
-	cp := *def // shallow copy
-	cp.Required = filterFieldList(def.Required, def.FieldLabels, excluded)
-	cp.Optional = filterFieldList(def.Optional, def.FieldLabels, excluded)
-	precomputeEventDef(&cp)
-	return &cp
-}
-
-// filterFieldList returns a new slice with fields whose labels overlap
-// with excluded removed.
-func filterFieldList(fields []string, fieldLabels map[string]map[string]struct{}, excluded map[string]struct{}) []string {
-	result := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if labels, ok := fieldLabels[f]; ok && anyLabelExcluded(labels, excluded) {
-			continue
-		}
-		result = append(result, f)
-	}
-	return result
-}
-
-// filterFieldsByLabels returns a copy of fields with any field whose
-// sensitivity labels overlap with excluded removed. Framework fields
-// (timestamp, event_type, severity, duration_ms) are never stripped.
-// Only fields declared in the event's Required or Optional lists are
-// subject to sensitivity filtering. Extra fields passed in permissive
-// validation mode are always delivered unstripped.
-func filterFieldsByLabels(fields Fields, def *EventDef, excluded map[string]struct{}) Fields {
-	if def.FieldLabels == nil {
-		return fields
-	}
-	filtered := make(Fields, len(fields))
-	for k, v := range fields {
-		if isFrameworkField(k, fields) {
-			filtered[k] = v
-			continue
-		}
-		if fieldLabels, ok := def.FieldLabels[k]; ok {
-			if anyLabelExcluded(fieldLabels, excluded) {
-				continue
-			}
-		}
-		filtered[k] = v
-	}
-	return filtered
-}
-
-// anyLabelExcluded reports whether any label in fieldLabels is present
-// in the excluded set.
-func anyLabelExcluded(fieldLabels, excluded map[string]struct{}) bool {
-	for label := range fieldLabels {
-		if _, ok := excluded[label]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 // formatCacheSize is the number of unique formatters cached on the
@@ -807,7 +720,7 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 	if data, ok := cache.get(f); ok {
 		return data // may be nil if serialisation failed
 	}
-	data, err := f.Format(ts, entry.eventType, entry.fields, def)
+	data, err := f.Format(ts, entry.eventType, entry.fields, def, nil)
 	if err != nil {
 		slog.Error("audit: serialisation failed",
 			"event_type", entry.eventType,

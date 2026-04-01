@@ -19,6 +19,43 @@ import (
 	"time"
 )
 
+// FormatOptions carries optional per-output context to the formatter.
+// A nil *FormatOptions means no special handling — all fields are
+// emitted. When non-nil, the formatter skips fields whose sensitivity
+// labels overlap with ExcludedLabels.
+//
+// The library sets FieldLabels per-event before calling [Formatter.Format].
+// Implementations MUST NOT retain the opts pointer or modify its fields
+// beyond the duration of the Format call.
+type FormatOptions struct {
+	// ExcludedLabels is the set of sensitivity labels to exclude.
+	// Set once at construction time; immutable after that.
+	ExcludedLabels map[string]struct{}
+	// FieldLabels maps field names to their resolved sensitivity labels.
+	// Set by the library per-event from [EventDef.FieldLabels] before
+	// calling Format. Implementations MUST NOT retain this pointer.
+	FieldLabels map[string]map[string]struct{}
+}
+
+// IsExcluded reports whether fieldName carries any label in the
+// excluded set. Custom [Formatter] implementations should call this
+// to honor sensitivity exclusions.
+func (o *FormatOptions) IsExcluded(fieldName string) bool {
+	if o == nil || o.FieldLabels == nil || o.ExcludedLabels == nil {
+		return false
+	}
+	labels, ok := o.FieldLabels[fieldName]
+	if !ok {
+		return false
+	}
+	for label := range labels {
+		if _, excluded := o.ExcludedLabels[label]; excluded {
+			return true
+		}
+	}
+	return false
+}
+
 // Formatter serialises an audit event into a wire-format byte slice.
 // Implementations MUST append a newline terminator. The library
 // provides [JSONFormatter] and [CEFFormatter].
@@ -34,11 +71,14 @@ type Formatter interface {
 	// submission). eventType is the registered event type name.
 	// fields contains the caller-supplied key-value pairs. def is the
 	// [EventDef] for eventType; it is never nil when called by the
-	// library.
+	// library. opts carries per-output sensitivity exclusion context;
+	// nil means no field exclusion. Use [FormatOptions.IsExcluded] to
+	// check whether a field should be skipped. Implementations MUST
+	// NOT retain the opts pointer beyond the Format call.
 	//
 	// A non-nil error causes the event to be dropped and
 	// [Metrics.RecordSerializationError] to be called.
-	Format(ts time.Time, eventType string, fields Fields, def *EventDef) ([]byte, error)
+	Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error)
 }
 
 // TimestampFormat controls how timestamps are rendered in serialised

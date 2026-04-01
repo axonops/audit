@@ -2083,7 +2083,7 @@ func TestWithOutputs_MixedTypes_NoFalsePositive(t *testing.T) {
 // cacheTestFmt is a minimal Formatter for testing the cache.
 type cacheTestFmt struct{ id int }
 
-func (f *cacheTestFmt) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef) ([]byte, error) {
+func (f *cacheTestFmt) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
 	return []byte("data"), nil
 }
 

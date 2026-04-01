@@ -16,6 +16,7 @@ Each example introduces one new concept and builds on the previous.
 | 7 | [formatters](07-formatters/) | JSON vs CEF with category severity levels |
 | 8 | [middleware](08-middleware/) | Automatic HTTP audit logging with Hints |
 | 9 | [crud-api](09-crud-api/) | Complete REST API with Postgres, lifecycle events, Docker |
+| 10 | [testing](10-testing/) | Testing audit events with audittest.NewLogger |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

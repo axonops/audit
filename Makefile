@@ -88,7 +88,8 @@ test-examples:
 	@for dir in examples/01-basic examples/03-file-output examples/04-multi-output \
 	            examples/02-code-generation examples/05-event-routing \
 	            examples/06-sensitivity-labels examples/07-formatters \
-	            examples/08-middleware examples/09-crud-api; do \
+	            examples/08-middleware examples/09-crud-api \
+	            examples/10-testing; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

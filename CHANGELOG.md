@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `audittest` package: in-memory Recorder, MetricsRecorder, NewLogger, NewLoggerQuick for consumer testing (#184)
 - `Event` interface, `LabelInfo`, `FieldInfo`, `CategoryInfo` core types (#205)
 - `NewEvent()` for dynamic event construction without code generation (#205)
 - Per-event typed builders with required-field constructors and optional-field setters (#205)

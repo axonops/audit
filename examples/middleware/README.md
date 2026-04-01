@@ -71,6 +71,9 @@ func buildEvent(
     if hints.ActorID != "" {
         fields["actor_id"] = hints.ActorID
     }
+    if hints.TargetID != "" {
+        fields["target_id"] = hints.TargetID
+    }
     return "http_request", fields, false
 }
 ```
@@ -145,8 +148,8 @@ GET http://127.0.0.1:.../healthz -> 200
 GET http://127.0.0.1:.../items -> 200
 POST http://127.0.0.1:.../items -> 201
 --- Audit events ---
-{"timestamp":"...","event_type":"http_request","severity":5,"actor_id":"alice","duration_ms":0,"method":"GET","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":200}
-{"timestamp":"...","event_type":"http_request","severity":5,"actor_id":"alice","duration_ms":0,"method":"POST","outcome":"success","path":"/items","source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
+{"timestamp":"...","event_type":"http_request","severity":5,"method":"GET","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":200,"target_id":null}
+{"timestamp":"...","event_type":"http_request","severity":5,"method":"POST","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
 
 Note: /healthz produced no audit event (skipped by EventBuilder).
 ```

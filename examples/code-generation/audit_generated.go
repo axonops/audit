@@ -44,50 +44,45 @@ const (
 	FieldVersion  = "version"
 )
 
-// FieldLabels maps field names to the sensitivity labels they carry.
-// Resolved from all three mechanisms: explicit annotation, global
-// field mapping, and regex patterns.
-var FieldLabels = map[string][]string{}
-
 // EventFields maps event types to their required and optional fields.
 var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
-	"auth_failure": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"reason", "source_ip"},
+	EventAuthFailure: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldReason, FieldSourceIP},
 	},
-	"auth_success": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"source_ip"},
+	EventAuthSuccess: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldSourceIP},
 	},
-	"shutdown": {
-		Required: []string{"app_name"},
-		Optional: []string{"reason", "uptime_ms"},
+	EventShutdown: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldReason, FieldUptimeMS},
 	},
-	"startup": {
-		Required: []string{"app_name"},
-		Optional: []string{"config", "version"},
+	EventStartup: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldConfig, FieldVersion},
 	},
-	"user_create": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"reason", "target_id"},
+	EventUserCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldReason, FieldTargetID},
 	},
-	"user_delete": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"target_id"},
+	EventUserDelete: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldTargetID},
 	},
-	"user_read": {
-		Required: []string{"outcome"},
-		Optional: []string{"actor_id"},
+	EventUserRead: {
+		Required: []string{FieldOutcome},
+		Optional: []string{FieldActorID},
 	},
 }
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	"lifecycle": {"shutdown", "startup"},
-	"read":      {"user_read"},
-	"security":  {"auth_failure", "auth_success"},
-	"write":     {"user_create", "user_delete"},
+	CategoryLifecycle: {EventShutdown, EventStartup},
+	CategoryRead:      {EventUserRead},
+	CategorySecurity:  {EventAuthFailure, EventAuthSuccess},
+	CategoryWrite:     {EventUserCreate, EventUserDelete},
 }

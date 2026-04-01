@@ -626,11 +626,11 @@ func TestGenerate_LabelConstants(t *testing.T) {
 	assert.Contains(t, src, "LabelFinancial — Financial and payment data")
 	assert.Contains(t, src, "LabelPii — Personally identifiable information")
 
-	// Metadata: field labels, event fields, category events.
-	assert.Contains(t, src, `"email":`)
-	assert.Contains(t, src, `"pii"`)
-	assert.Contains(t, src, "EventFields")
-	assert.Contains(t, src, "CategoryEvents")
+	// Metadata uses constant names, not raw strings.
+	assert.Contains(t, src, "FieldEmail:")
+	assert.Contains(t, src, "LabelPii")
+	assert.Contains(t, src, "EventUserCreate:")
+	assert.Contains(t, src, "CategoryWrite:")
 
 	// Verify it's valid Go.
 	fset := token.NewFileSet()

@@ -54,11 +54,11 @@ const (
 // Resolved from all three mechanisms: explicit annotation, global
 // field mapping, and regex patterns.
 var FieldLabels = map[string][]string{
-	"card_expiry": {"financial"},
-	"card_number": {"financial"},
-	"email":       {"pii"},
-	"phone":       {"pii"},
-	"user_name":   {"pii"},
+	FieldCardExpiry: {LabelFinancial},
+	FieldCardNumber: {LabelFinancial},
+	FieldEmail:      {LabelPii},
+	FieldPhone:      {LabelPii},
+	FieldUserName:   {LabelPii},
 }
 
 // EventFields maps event types to their required and optional fields.
@@ -66,26 +66,26 @@ var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
-	"payment_process": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"amount", "card_expiry", "card_number"},
+	EventPaymentProcess: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldAmount, FieldCardExpiry, FieldCardNumber},
 	},
-	"shutdown": {
-		Required: []string{"app_name"},
-		Optional: []string{"reason", "uptime_ms"},
+	EventShutdown: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldReason, FieldUptimeMS},
 	},
-	"startup": {
-		Required: []string{"app_name"},
-		Optional: []string{"config", "version"},
+	EventStartup: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldConfig, FieldVersion},
 	},
-	"user_create": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"department", "email", "phone", "user_name"},
+	EventUserCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldDepartment, FieldEmail, FieldPhone, FieldUserName},
 	},
 }
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	"lifecycle": {"shutdown", "startup"},
-	"write":     {"payment_process", "user_create"},
+	CategoryLifecycle: {EventShutdown, EventStartup},
+	CategoryWrite:     {EventPaymentProcess, EventUserCreate},
 }

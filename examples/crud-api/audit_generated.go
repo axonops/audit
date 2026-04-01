@@ -51,63 +51,58 @@ const (
 	FieldVersion  = "version"
 )
 
-// FieldLabels maps field names to the sensitivity labels they carry.
-// Resolved from all three mechanisms: explicit annotation, global
-// field mapping, and regex patterns.
-var FieldLabels = map[string][]string{}
-
 // EventFields maps event types to their required and optional fields.
 var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
-	"auth_failure": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"reason", "source_ip"},
+	EventAuthFailure: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldReason, FieldSourceIP},
 	},
-	"auth_success": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"source_ip"},
+	EventAuthSuccess: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldSourceIP},
 	},
-	"config_change": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"target_id"},
+	EventConfigChange: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldTargetID},
 	},
-	"item_create": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"target_id"},
+	EventItemCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldTargetID},
 	},
-	"item_delete": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"target_id"},
+	EventItemDelete: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldTargetID},
 	},
-	"item_list": {
-		Required: []string{"outcome"},
-		Optional: []string{"actor_id"},
+	EventItemList: {
+		Required: []string{FieldOutcome},
+		Optional: []string{FieldActorID},
 	},
-	"item_read": {
-		Required: []string{"outcome"},
-		Optional: []string{"actor_id", "target_id"},
+	EventItemRead: {
+		Required: []string{FieldOutcome},
+		Optional: []string{FieldActorID, FieldTargetID},
 	},
-	"item_update": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string{"target_id"},
+	EventItemUpdate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldTargetID},
 	},
-	"shutdown": {
-		Required: []string{"app_name"},
-		Optional: []string{"reason", "uptime_ms"},
+	EventShutdown: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldReason, FieldUptimeMS},
 	},
-	"startup": {
-		Required: []string{"app_name"},
-		Optional: []string{"config", "version"},
+	EventStartup: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldConfig, FieldVersion},
 	},
 }
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	"admin":     {"config_change"},
-	"lifecycle": {"shutdown", "startup"},
-	"read":      {"item_list", "item_read"},
-	"security":  {"auth_failure", "auth_success"},
-	"write":     {"item_create", "item_delete", "item_update"},
+	CategoryAdmin:     {EventConfigChange},
+	CategoryLifecycle: {EventShutdown, EventStartup},
+	CategoryRead:      {EventItemList, EventItemRead},
+	CategorySecurity:  {EventAuthFailure, EventAuthSuccess},
+	CategoryWrite:     {EventItemCreate, EventItemDelete, EventItemUpdate},
 }

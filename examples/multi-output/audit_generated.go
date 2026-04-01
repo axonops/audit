@@ -35,37 +35,32 @@ const (
 	FieldVersion  = "version"
 )
 
-// FieldLabels maps field names to the sensitivity labels they carry.
-// Resolved from all three mechanisms: explicit annotation, global
-// field mapping, and regex patterns.
-var FieldLabels = map[string][]string{}
-
 // EventFields maps event types to their required and optional fields.
 var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
-	"auth_failure": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string(nil),
+	EventAuthFailure: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
 	},
-	"shutdown": {
-		Required: []string{"app_name"},
-		Optional: []string{"reason", "uptime_ms"},
+	EventShutdown: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldReason, FieldUptimeMS},
 	},
-	"startup": {
-		Required: []string{"app_name"},
-		Optional: []string{"config", "version"},
+	EventStartup: {
+		Required: []string{FieldAppName},
+		Optional: []string{FieldConfig, FieldVersion},
 	},
-	"user_create": {
-		Required: []string{"actor_id", "outcome"},
-		Optional: []string(nil),
+	EventUserCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
 	},
 }
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	"lifecycle": {"shutdown", "startup"},
-	"security":  {"auth_failure"},
-	"write":     {"user_create"},
+	CategoryLifecycle: {EventShutdown, EventStartup},
+	CategorySecurity:  {EventAuthFailure},
+	CategoryWrite:     {EventUserCreate},
 }

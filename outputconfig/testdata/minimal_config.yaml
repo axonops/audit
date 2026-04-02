@@ -1,4 +1,6 @@
 version: 1
+app_name: test-app
+host: test-host
 outputs:
   console:
     type: stdout

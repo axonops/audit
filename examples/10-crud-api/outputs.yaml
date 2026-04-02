@@ -1,4 +1,6 @@
 version: 1
+app_name: crud-api
+host: "${HOSTNAME:-localhost}"
 logger:
   buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"

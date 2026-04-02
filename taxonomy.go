@@ -513,13 +513,18 @@ var reservedStandardFieldMap = func() map[string]struct{} {
 	return m
 }()
 
-// isReservedStandardField reports whether name is a reserved standard
-// field. Called from checkUnknownFields on the validation path (caller
-// goroutine) and from allFieldKeysSorted on the format path (drain
-// goroutine). Uses a precomputed map for O(1) lookup.
-func isReservedStandardField(name string) bool {
+// IsReservedStandardField reports whether name is a reserved standard
+// field. Reserved standard fields are well-known audit field names
+// (actor_id, source_ip, reason, etc.) that are always accepted without
+// taxonomy declaration. Uses a precomputed map for O(1) lookup.
+func IsReservedStandardField(name string) bool {
 	_, ok := reservedStandardFieldMap[name]
 	return ok
+}
+
+// isReservedStandardField is the package-internal alias.
+func isReservedStandardField(name string) bool {
+	return IsReservedStandardField(name)
 }
 
 // checkReservedStandardFields validates that no event declares a

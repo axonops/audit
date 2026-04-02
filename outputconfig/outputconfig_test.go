@@ -120,6 +120,8 @@ func TestLoad_MultipleOutputs(t *testing.T) {
 	dir := t.TempDir()
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   out1:
     type: stdout
@@ -147,6 +149,8 @@ func TestLoad_WithPerOutputFormatter(t *testing.T) {
 	dir := t.TempDir()
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   cef_file:
     type: file
@@ -170,6 +174,8 @@ outputs:
 func TestLoad_EnabledFalse_SkipsOutput(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   active:
     type: stdout
@@ -190,6 +196,8 @@ outputs:
 func TestLoad_EnabledTrue_Explicit(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -233,7 +241,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 
 func TestLoad_MultiDocument(t *testing.T) {
 	tax := testTaxonomy(t)
-	yaml := []byte("version: 1\noutputs:\n  c:\n    type: stdout\n---\nversion: 1\n")
+	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n---\nversion: 1\n")
 	_, err := outputconfig.Load(yaml, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -250,7 +258,7 @@ func TestLoad_Version0(t *testing.T) {
 
 func TestLoad_Version2(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 2\noutputs:\n  c:\n    type: stdout\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 2\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unsupported version")
@@ -258,7 +266,7 @@ func TestLoad_Version2(t *testing.T) {
 
 func TestLoad_NoOutputs(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 1\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 1\napp_name: test\nhost: test\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "at least one output")
@@ -266,7 +274,7 @@ func TestLoad_NoOutputs(t *testing.T) {
 
 func TestLoad_EmptyOutputs(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 1\noutputs: {}\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 1\napp_name: test\nhost: test\noutputs: {}\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "at least one output")
@@ -274,7 +282,7 @@ func TestLoad_EmptyOutputs(t *testing.T) {
 
 func TestLoad_MissingType(t *testing.T) {
 	tax := testTaxonomy(t)
-	yaml := []byte("version: 1\noutputs:\n  bad:\n    enabled: true\n")
+	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    enabled: true\n")
 	_, err := outputconfig.Load(yaml, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -283,7 +291,7 @@ func TestLoad_MissingType(t *testing.T) {
 
 func TestLoad_UnknownType(t *testing.T) {
 	tax := testTaxonomy(t)
-	yaml := []byte("version: 1\noutputs:\n  bad:\n    type: kafka\n")
+	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: kafka\n")
 	_, err := outputconfig.Load(yaml, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -294,7 +302,7 @@ func TestLoad_UnknownType(t *testing.T) {
 func TestLoad_DuplicateOutputName(t *testing.T) {
 	// yaml.v3 Node parser preserves duplicate mapping keys.
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  dupe:\n    type: stdout\n  dupe:\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  dupe:\n    type: stdout\n  dupe:\n    type: stdout\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -303,7 +311,7 @@ func TestLoad_DuplicateOutputName(t *testing.T) {
 
 func TestLoad_TwoDistinctNames(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  a:\n    type: stdout\n  b:\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  a:\n    type: stdout\n  b:\n    type: stdout\n")
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 2)
@@ -314,7 +322,7 @@ func TestLoad_TwoDistinctNames(t *testing.T) {
 
 func TestLoad_UnknownTopLevelKey(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\nmetrics: true\noutputs:\n  c:\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\nmetrics: true\noutputs:\n  c:\n    type: stdout\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -324,7 +332,7 @@ func TestLoad_UnknownTopLevelKey(t *testing.T) {
 
 func TestLoad_AllDisabled(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  a:\n    type: stdout\n    enabled: false\n  b:\n    type: stdout\n    enabled: false\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  a:\n    type: stdout\n    enabled: false\n  b:\n    type: stdout\n    enabled: false\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -335,6 +343,8 @@ func TestLoad_RouteUnknownCategory(t *testing.T) {
 	tax := testTaxonomy(t)
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: stdout
@@ -352,6 +362,8 @@ func TestLoad_RouteMixedIncludeExclude(t *testing.T) {
 	tax := testTaxonomy(t)
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: stdout
@@ -371,6 +383,8 @@ func TestLoad_EnvVarInConfig(t *testing.T) {
 
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   env_file:
     type: file
@@ -387,6 +401,8 @@ outputs:
 func TestLoad_MissingEnvVar(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: file
@@ -403,6 +419,8 @@ outputs:
 func TestLoad_DefaultFormatter(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 default_formatter:
   type: json
   timestamp: unix_ms
@@ -427,6 +445,8 @@ outputs:
 func TestLoad_InvalidDefaultFormatter(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 default_formatter:
   type: protobuf
 outputs:
@@ -445,6 +465,8 @@ func TestLoad_OptionsContainWithNamedOutput(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -467,6 +489,8 @@ outputs:
 func TestLoad_ConfigKeyMismatch(t *testing.T) {
 	yaml := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: file
@@ -492,14 +516,14 @@ func TestLoad_TopLevelSequence_ReturnsError(t *testing.T) {
 
 func TestLoad_OutputsIsSequence_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 1\noutputs:\n  - stdout\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 1\napp_name: test\nhost: test\noutputs:\n  - stdout\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
 
 func TestLoad_OutputValueIsScalar_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 1\noutputs:\n  bad: scalar_value\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad: scalar_value\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "bad")
@@ -507,14 +531,14 @@ func TestLoad_OutputValueIsScalar_ReturnsError(t *testing.T) {
 
 func TestLoad_EnabledInvalidValue_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load([]byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    enabled: not_a_bool\n"), &tax, nil)
+	_, err := outputconfig.Load([]byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    enabled: not_a_bool\n"), &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
 
 func TestLoad_TwoTypeConfigBlocks_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    file:\n      path: /tmp/a\n    syslog:\n      network: tcp\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    file:\n      path: /tmp/a\n    syslog:\n      network: tcp\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -524,7 +548,7 @@ func TestLoad_TwoTypeConfigBlocks_ReturnsError(t *testing.T) {
 
 func TestLoad_RouteUnknownField_Rejected(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_category: [write]\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_category: [write]\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -532,7 +556,7 @@ func TestLoad_RouteUnknownField_Rejected(t *testing.T) {
 
 func TestLoad_PerOutputFormatterInvalid_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: protobuf\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: protobuf\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -541,7 +565,7 @@ func TestLoad_PerOutputFormatterInvalid_ReturnsError(t *testing.T) {
 
 func TestLoad_RouteWithEventTypes(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  filtered:\n    type: stdout\n    route:\n      include_event_types: [user_create]\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      include_event_types: [user_create]\n")
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -551,7 +575,7 @@ func TestLoad_RouteWithEventTypes(t *testing.T) {
 
 func TestLoad_RouteExcludeEventTypes(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  filtered:\n    type: stdout\n    route:\n      exclude_event_types: [auth_failure]\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      exclude_event_types: [auth_failure]\n")
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -562,7 +586,7 @@ func TestLoad_RouteExcludeEventTypes(t *testing.T) {
 func TestLoad_EnabledFalseBeforeType(t *testing.T) {
 	// Verify enabled: false works regardless of key ordering in YAML.
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  active:\n    type: stdout\n  skipped:\n    enabled: false\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  active:\n    type: stdout\n  skipped:\n    enabled: false\n    type: stdout\n")
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 1)
@@ -572,7 +596,7 @@ func TestLoad_EnabledFalseBeforeType(t *testing.T) {
 
 func TestLoad_MissingEnvVarInFormatter(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: json\n      timestamp: ${MISSING_FMT_VAR}\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: json\n      timestamp: ${MISSING_FMT_VAR}\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -582,7 +606,7 @@ func TestLoad_MissingEnvVarInFormatter(t *testing.T) {
 func TestLoad_MissingEnvVarInRoute(t *testing.T) {
 	tax := testTaxonomy(t)
 	// Route values are string sequences — env var in a sequence element.
-	data := []byte("version: 1\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_categories:\n        - ${MISSING_ROUTE_VAR}\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_categories:\n        - ${MISSING_ROUTE_VAR}\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -594,6 +618,8 @@ func TestLoad_EndToEnd_EventsFlowThrough(t *testing.T) {
 	dir := t.TempDir()
 	yamlCfg := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   all_events:
     type: file
@@ -648,7 +674,7 @@ func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: [nonexistent]\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: [nonexistent]\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildRoute fails")
@@ -660,7 +686,7 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  leak:\n    type: spy\n    formatter:\n      type: protobuf\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    formatter:\n      type: protobuf\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildOutputFormatter fails")
@@ -668,13 +694,13 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 
 func TestLoadResult_String_NoCredentials(t *testing.T) {
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\noutputs:\n  console:\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  console:\n    type: stdout\n")
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 
 	s := result.String()
 	assert.Contains(t, s, "console")
-	assert.Contains(t, s, "options: 1")
+	assert.Contains(t, s, "options: 3") // WithAppName + WithHost + WithNamedOutput
 	assert.NotContains(t, s, "Authorization")
 	assert.NotContains(t, s, "Bearer")
 }
@@ -704,6 +730,8 @@ func TestLoad_RouteWithMinSeverity(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   alerts:
     type: stdout
@@ -723,6 +751,8 @@ func TestLoad_RouteWithMaxSeverity(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   debug:
     type: stdout
@@ -742,6 +772,8 @@ func TestLoad_RouteWithMinAndMaxSeverity(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   band:
     type: stdout
@@ -763,6 +795,8 @@ func TestLoad_RouteWithSeverityOmitted(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   plain:
     type: stdout
@@ -782,6 +816,8 @@ func TestLoad_RouteMinSeverityOutOfRange(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: stdout
@@ -797,6 +833,8 @@ func TestLoad_RouteMaxSeverityOutOfRange(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: stdout
@@ -812,6 +850,8 @@ func TestLoad_RouteMinGreaterThanMax(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   bad:
     type: stdout
@@ -828,6 +868,8 @@ func TestLoad_RouteSeverityZeroIsValid(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   zero:
     type: stdout
@@ -845,6 +887,8 @@ func TestLoad_RouteSeverityWithCategories(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   combined:
     type: stdout
@@ -892,6 +936,8 @@ func TestLoad_OutputWithExcludeLabels(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -910,6 +956,8 @@ func TestLoad_OutputWithExcludeLabels_Empty(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -926,6 +974,8 @@ func TestLoad_OutputWithExcludeLabels_NoSensitivity(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -950,6 +1000,8 @@ func TestLoad_LoggerConfig_Defaults(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -970,6 +1022,8 @@ func TestLoad_LoggerConfig_AllFields(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   enabled: true
   buffer_size: 50000
@@ -996,6 +1050,8 @@ func TestLoad_LoggerConfig_PartialFields(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   buffer_size: 25000
 outputs:
@@ -1015,6 +1071,8 @@ func TestLoad_LoggerConfig_EnabledFalse(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   enabled: false
 outputs:
@@ -1034,6 +1092,8 @@ func TestLoad_LoggerConfig_EnvVars(t *testing.T) {
 
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   buffer_size: ${TEST_BUFFER_SIZE}
   drain_timeout: "${TEST_DRAIN_TIMEOUT}"
@@ -1055,6 +1115,8 @@ func TestLoad_LoggerConfig_EnvVars_Boolean(t *testing.T) {
 
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   enabled: ${TEST_ENABLED}
   omit_empty: ${TEST_OMIT_EMPTY}
@@ -1074,6 +1136,8 @@ func TestLoad_LoggerConfig_NotAMapping(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger: "not a mapping"
 outputs:
   console:
@@ -1090,6 +1154,8 @@ func TestLoad_LoggerConfig_UnknownField(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   enabled: true
   bogus_field: 42
@@ -1108,6 +1174,8 @@ func TestLoad_LoggerConfig_NegativeBufferSize(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   buffer_size: -1
 outputs:
@@ -1125,6 +1193,8 @@ func TestLoad_LoggerConfig_BufferSizeExceedsMax(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   buffer_size: 2000000
 outputs:
@@ -1142,6 +1212,8 @@ func TestLoad_LoggerConfig_NegativeDrainTimeout(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   drain_timeout: "-5s"
 outputs:
@@ -1159,6 +1231,8 @@ func TestLoad_LoggerConfig_DrainTimeoutExceedsMax(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   drain_timeout: "120s"
 outputs:
@@ -1176,6 +1250,8 @@ func TestLoad_LoggerConfig_InvalidDrainTimeout(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   drain_timeout: "not-a-duration"
 outputs:
@@ -1193,6 +1269,8 @@ func TestLoad_LoggerConfig_InvalidValidationMode(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 logger:
   validation_mode: invalid
 outputs:
@@ -1213,6 +1291,8 @@ func TestLoad_LoggerConfig_ValidationModes(t *testing.T) {
 			t.Parallel()
 			data := []byte(fmt.Sprintf(`
 version: 1
+app_name: test
+host: test
 logger:
   validation_mode: %s
 outputs:
@@ -1237,6 +1317,8 @@ func TestLoad_GlobalTLSPolicy_AcceptedAtTopLevel(t *testing.T) {
 	// TLS, but the config should still parse without error.
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: true
 outputs:
@@ -1254,6 +1336,8 @@ func TestLoad_GlobalTLSPolicy_NoGlobal(t *testing.T) {
 	// No global tls_policy — outputs should still work.
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -1271,6 +1355,8 @@ func TestLoad_GlobalTLSPolicy_NotInjectedIntoFileOutput(t *testing.T) {
 	// (file doesn't support TLS), so this must succeed.
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: true
 outputs:
@@ -1307,6 +1393,8 @@ func TestLoad_GlobalTLSPolicy_InjectedViaFactory(t *testing.T) {
 
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: true
 outputs:
@@ -1340,6 +1428,8 @@ func TestLoad_GlobalTLSPolicy_PerOutputOverride(t *testing.T) {
 
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: false
 outputs:
@@ -1373,6 +1463,8 @@ func TestLoad_GlobalTLSPolicy_UnknownField(t *testing.T) {
 	// must be rejected at parse time.
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: true
   bogus_field: true
@@ -1390,6 +1482,8 @@ outputs:
 func TestLoad_GlobalTLSPolicy_MissingEnvVar(t *testing.T) {
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 tls_policy:
   allow_tls12: ${TOTALLY_MISSING_TLS_VAR}
 outputs:
@@ -1411,6 +1505,8 @@ func TestLoad_HMAC_FullConfig(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1435,6 +1531,8 @@ func TestLoad_HMAC_Disabled_Default(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -1450,6 +1548,8 @@ func TestLoad_HMAC_ExplicitlyDisabled(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   console:
     type: stdout
@@ -1467,6 +1567,8 @@ func TestLoad_HMAC_SaltTooShort(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1487,6 +1589,8 @@ func TestLoad_HMAC_UnknownAlgorithm(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1507,6 +1611,8 @@ func TestLoad_HMAC_MissingSalt(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1524,6 +1630,8 @@ func TestLoad_HMAC_MissingHash(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1544,6 +1652,8 @@ func TestLoad_HMAC_SaltEnvVar(t *testing.T) {
 
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout
@@ -1565,6 +1675,8 @@ func TestLoad_HMAC_SaltNotInError(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
+app_name: test
+host: test
 outputs:
   audit_log:
     type: stdout

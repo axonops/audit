@@ -76,6 +76,9 @@ type NamedOutput struct {
 	// Formatter is the optional per-output formatter override. Nil
 	// means the logger's default formatter is used.
 	Formatter audit.Formatter
+	// HMACConfig is the optional per-output HMAC configuration.
+	// Nil means no HMAC for this output.
+	HMACConfig *audit.HMACConfig
 	// ExcludeLabels lists sensitivity label names whose fields are
 	// stripped from events before delivery to this output. Nil or
 	// empty means no field stripping.
@@ -234,6 +237,10 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	for i := range outputs {
 		result.Options = append(result.Options,
 			audit.WithNamedOutput(outputs[i].Output, outputs[i].Route, outputs[i].Formatter, outputs[i].ExcludeLabels...))
+		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
+			result.Options = append(result.Options,
+				audit.WithOutputHMAC(outputs[i].Name, outputs[i].HMACConfig))
+		}
 	}
 
 	return result, nil
@@ -469,6 +476,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 	routeNode      *yaml.Node
 	formatterNode  *yaml.Node
 	typeConfigNode *yaml.Node
+	hmacNode       *yaml.Node
 }
 
 // buildOutput constructs a single named output from its YAML node.
@@ -498,7 +506,12 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
-	no := &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter}
+	hmacCfg, err := buildHMACConfig(name, fields.hmacNode)
+	if err != nil {
+		_ = output.Close()
+		return nil, err
+	}
+	no := &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter, HMACConfig: hmacCfg}
 	if len(fields.excludeLabels) > 0 {
 		no.ExcludeLabels = fields.excludeLabels
 	}
@@ -530,6 +543,8 @@ func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { 
 			if err := val.Decode(&f.excludeLabels); err != nil {
 				return nil, fmt.Errorf("output %q: exclude_labels: %w", name, err)
 			}
+		case "hmac":
+			f.hmacNode = val
 		default:
 			if f.typeConfigNode != nil {
 				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', 'exclude_labels', and one type-specific config block are allowed", name, key)
@@ -684,4 +699,58 @@ func buildOutputFormatter(name string, fmtNode *yaml.Node) (audit.Formatter, err
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}
 	return f, nil
+}
+
+// yamlHMACConfig is the intermediate YAML representation of the
+// per-output hmac: section.
+type yamlHMACConfig struct { //nolint:govet // readability over alignment
+	Enabled bool         `yaml:"enabled"`
+	Salt    yamlHMACSalt `yaml:"salt"`
+	Hash    string       `yaml:"hash"`
+}
+
+type yamlHMACSalt struct {
+	Version string `yaml:"version"`
+	Value   string `yaml:"value"`
+}
+
+// buildHMACConfig parses and validates the hmac: YAML node for an output.
+func buildHMACConfig(name string, hmacNode *yaml.Node) (*audit.HMACConfig, error) {
+	if hmacNode == nil {
+		return nil, nil //nolint:nilnil // nil = no HMAC
+	}
+
+	// Expand env vars in the hmac block.
+	if err := expandEnvInNode(hmacNode, fmt.Sprintf("outputs.%s.hmac", name)); err != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	}
+
+	// Parse with strict field checking.
+	hmacBytes, err := yaml.Marshal(hmacNode)
+	if err != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(hmacBytes))
+	dec.KnownFields(true)
+	var yc yamlHMACConfig
+	if err := dec.Decode(&yc); err != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	}
+
+	if !yc.Enabled {
+		return nil, nil //nolint:nilnil // explicitly disabled
+	}
+
+	cfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: yc.Salt.Version,
+		SaltValue:   []byte(yc.Salt.Value),
+		Algorithm:   yc.Hash,
+	}
+
+	if err := audit.ValidateHMACConfig(cfg); err != nil {
+		return nil, fmt.Errorf("output %q: %w", name, err)
+	}
+
+	return cfg, nil
 }

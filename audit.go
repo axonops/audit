@@ -549,7 +549,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // deliverToOutputs fans out a single event to all matching outputs
 // for a given category. An empty category means the event is
 // uncategorised.
-func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocyclo,gocognit,cyclop // delivery pipeline with per-output features
 	for _, oe := range l.entries {
 		if !oe.matchesEvent(entry.eventType, category, def.ResolvedSeverity()) {
 			if l.metrics != nil {
@@ -571,6 +571,19 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		// Append event_category if enabled and the event has a category.
 		if category != "" && l.taxonomy.EmitEventCategory {
 			data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
+		}
+
+		// Compute and append HMAC if configured for this output.
+		// HMAC is computed over the complete payload at this point
+		// (after field stripping + event_category).
+		if oe.hmacConfig != nil && oe.hmacConfig.Enabled {
+			hmacVal, hmacErr := ComputeHMAC(data, oe.hmacConfig.SaltValue, oe.hmacConfig.Algorithm)
+			if hmacErr == nil {
+				data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
+					{JSONKey: "_hmac", CEFKey: "_hmac", Value: hmacVal},
+					{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
+				})
+			}
 		}
 
 		l.writeToOutput(oe.output, data, entry.eventType)

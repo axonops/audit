@@ -162,6 +162,23 @@ func (l *Logger) addNamedOutput(output Output, route *EventRoute, formatter Form
 	return nil
 }
 
+// setOutputHMAC configures HMAC on a named output. Called by the
+// outputconfig loader after all outputs have been registered.
+func (l *Logger) setOutputHMAC(name string, cfg *HMACConfig) {
+	if oe, ok := l.outputsByName[name]; ok {
+		oe.hmacConfig = cfg
+	}
+}
+
+// WithOutputHMAC configures HMAC on a named output. Used by the
+// outputconfig loader to apply HMAC settings after output registration.
+func WithOutputHMAC(name string, cfg *HMACConfig) Option {
+	return func(l *Logger) error {
+		l.setOutputHMAC(name, cfg)
+		return nil
+	}
+}
+
 // buildLabelSet converts a slice of label names to a set.
 func buildLabelSet(labels []string) map[string]struct{} {
 	m := make(map[string]struct{}, len(labels))

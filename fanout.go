@@ -42,6 +42,7 @@ type outputEntry struct {
 	formatter      Formatter           // nil = use logger's default formatter
 	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
 	formatOpts     *FormatOptions      // pre-allocated; nil when no exclusions
+	hmacConfig     *HMACConfig         // nil = no HMAC for this output
 	route          atomic.Pointer[EventRoute]
 }
 

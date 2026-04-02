@@ -2897,3 +2897,118 @@ func BenchmarkAppendPostFields_Disabled(b *testing.B) {
 		_ = audit.AppendPostFields(data, formatter, nil)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// HMAC integrity (#216)
+// ---------------------------------------------------------------------------
+
+func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputHMAC("test", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v1",
+			SaltValue:   []byte("test-salt-sixteen-bytes!"),
+			Algorithm:   "HMAC-SHA-256",
+		}),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.NotEmpty(t, ev["_hmac"], "HMAC should be present")
+	assert.Equal(t, "v1", ev["_hmac_v"], "salt version should be present")
+}
+
+func TestHMAC_Disabled_NoFields(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	_, hasHMAC := ev["_hmac"]
+	assert.False(t, hasHMAC, "no HMAC when disabled")
+}
+
+func TestHMAC_SaltVersion_InOutput(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputHMAC("test", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "2026-Q1",
+			SaltValue:   []byte("version-test-salt-16b!"),
+			Algorithm:   "HMAC-SHA-256",
+		}),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "2026-Q1", ev["_hmac_v"])
+}
+
+func TestHMAC_ReservedFieldNames(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"_hmac", "_hmac_v"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "reserved framework field")
+		})
+	}
+}

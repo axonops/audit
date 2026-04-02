@@ -186,7 +186,7 @@ or `network: udp`) ignore the global TLS policy.
 
 ## 📦 Output Block
 
-Every output has these fields:
+Every output has these fields (plus the optional `hmac:` block):
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -196,6 +196,7 @@ Every output has these fields:
 | `formatter` | No | Per-output formatter override. Uses `default_formatter` if omitted. |
 | `route` | No | Per-output event filter. Receives all events if omitted. |
 | `exclude_labels` | No | List of sensitivity labels to strip from events before delivery. |
+| `hmac` | No | Per-output HMAC integrity config. See [HMAC Integrity](hmac-integrity.md). |
 
 ## 📝 Formatter Configuration
 
@@ -386,7 +387,7 @@ logger, err := audit.NewLogger(result.Config, opts...)
 
 - [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
 - [Progressive Example: Multi-Output](../examples/04-multi-output/) — multiple outputs in one YAML
-- [Progressive Example: CRUD API](../examples/09-crud-api/) — five outputs in a production-like setup
+- [Progressive Example: CRUD API](../examples/10-crud-api/) — five outputs in a production-like setup
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

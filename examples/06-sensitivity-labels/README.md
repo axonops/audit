@@ -246,17 +246,21 @@ Three log files are created, each receiving the same events with
 different field subsets:
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=3
+INFO audit: shutdown started
+INFO audit: shutdown complete duration=...
+
 --- full-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","card_expiry":"12/28","card_number":"4111111111111111"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","card_expiry":"12/28","card_number":"4111111111111111","event_category":"write"}
 
 --- public-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
 
 --- pci-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
 ```
 
 Notice:
@@ -280,6 +284,11 @@ Notice:
 | `output "X" has exclude_labels but taxonomy has no sensitivity config` | Missing `sensitivity:` block | Add `sensitivity:` to your taxonomy YAML |
 | `output "X" exclude_labels references undefined sensitivity label "Z"` | Label name typo in output config | Check label is defined in taxonomy `sensitivity.labels` |
 
+## Further Reading
+
+- [Sensitivity Labels](../../docs/sensitivity-labels.md) — full label reference and regex patterns
+- [Output Configuration YAML](../../docs/output-configuration.md) — exclude_labels syntax
+
 ## Previous
 
 [Event Routing](../05-event-routing/) — category and severity-based
@@ -287,5 +296,5 @@ routing.
 
 ## Next
 
-[Formatters](../07-formatters/) — JSON vs CEF formatters for SIEM
-integration.
+[HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection
+with selective routing.

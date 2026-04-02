@@ -69,17 +69,26 @@ Three JSON events appear on stdout, followed by the same three events
 read back from `audit.log`:
 
 ```
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success"}
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
+INFO audit: shutdown started
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
+INFO audit: shutdown complete duration=...
 
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
 ```
 
-Both outputs received identical events — that's fan-out.
+Both outputs received identical events — that's fan-out. Note `outputs=2`
+in the logger-created message confirms both outputs are registered.
+
+## Further Reading
+
+- [Outputs](../../docs/outputs.md) — fan-out architecture and delivery guarantees
+- [Async Delivery](../../docs/async-delivery.md) — how events flow through the pipeline
 
 ## Previous
 

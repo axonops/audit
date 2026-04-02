@@ -15,10 +15,11 @@ Each example introduces one new concept and builds on the previous.
 | 4 | [multi-output](04-multi-output/) | Fan-out to multiple outputs from one YAML config |
 | 5 | [event-routing](05-event-routing/) | Category and severity-based routing in YAML |
 | 6 | [sensitivity-labels](06-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
-| 7 | [formatters](07-formatters/) | JSON vs CEF with category severity levels |
-| 8 | [middleware](08-middleware/) | Automatic HTTP audit logging with Hints |
-| 9 | [crud-api](09-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
-| 10 | [testing](10-testing/) | Testing audit events with audittest.NewLogger |
+| 7 | [hmac-integrity](07-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
+| 8 | [formatters](08-formatters/) | JSON vs CEF with category severity levels |
+| 9 | [middleware](09-middleware/) | Automatic HTTP audit logging with Hints |
+| 10 | [crud-api](10-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
+| 11 | [testing](11-testing/) | Testing audit events with audittest.NewLogger |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

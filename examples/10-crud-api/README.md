@@ -275,24 +275,33 @@ docker compose down -v
 
 ## Expected Output
 
-On stdout you'll see JSON audit events:
+On stdout you'll see JSON audit events for every request:
 
 ```json
-{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
+{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success","event_category":"read"}
+{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key","event_category":"security"}
 ```
 
-Additional outputs:
-- `audit.log` — all events except reads (JSON)
-- `admin-audit.log` — admin events only (CEF format)
-- Syslog on TCP 5514 — security events only
-- Webhook receiver — high-severity events (severity >= 7)
+The same events are routed to different outputs based on their category
+and severity:
+
+- **`audit.log`** — all events except reads (JSON)
+- **`admin-audit.log`** — admin events only (CEF format)
+- **Syslog** on TCP 5514 — security events only
+- **Webhook** receiver — high-severity events (severity >= 7)
+
+## Further Reading
+
+- [Metrics and Monitoring](../../docs/metrics-monitoring.md) — Prometheus integration guide
+- [HTTP Middleware](../../docs/http-middleware.md) — middleware placement and EventBuilder
+- [Async Delivery](../../docs/async-delivery.md) — graceful shutdown and drain timeout
+- [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
 
 ## Previous
 
-[Middleware](../08-middleware/) — the HTTP middleware fundamentals.
+[Middleware](../09-middleware/) — the HTTP middleware fundamentals.
 
 ## Next
 
-[Testing](../10-testing/) — testing audit events with `audittest`.
+[Testing](../11-testing/) — testing audit events with `audittest`.

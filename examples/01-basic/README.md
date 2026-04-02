@@ -175,16 +175,30 @@ go run .
 ## Expected Output
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Valid event ---
 
 --- Invalid event (missing required field) ---
 Validation error: audit: event "user_create" missing required fields: [actor_id]
+INFO audit: shutdown started
 {"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+INFO audit: shutdown complete duration=...
 ```
 
-The JSON event appears after both print statements because `AuditEvent()`
-enqueues asynchronously — the background goroutine writes to stdout
-after the caller's next statement has already executed.
+The `INFO audit:` lines are diagnostic messages from the library's
+lifecycle — logger creation, shutdown start, and shutdown completion.
+These go to stderr; audit events go to stdout.
+
+The JSON event appears between the shutdown messages because
+`AuditEvent()` enqueues asynchronously and `Close()` drains the buffer
+before finishing. This is normal — `Close()` guarantees all buffered
+events are delivered before it returns.
+
+## Further Reading
+
+- [Taxonomy Validation](../../docs/taxonomy-validation.md) — how the library validates events
+- [Async Delivery](../../docs/async-delivery.md) — buffering, backpressure, and shutdown
+- [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) — full godoc
 
 ## Next
 

@@ -14,7 +14,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [CRUD API](../09-crud-api/)
+- Completed: [CRUD API](../10-crud-api/)
 
 ## Files
 
@@ -174,7 +174,32 @@ func NewUserService(logger *audit.Logger) *UserService {
 go test -v .
 ```
 
+## Expected Output
+
+```
+=== RUN   TestCreateUser_EmitsAuditEvent
+--- PASS: TestCreateUser_EmitsAuditEvent
+=== RUN   TestLogin_Failure_EmitsAuthEvent
+--- PASS: TestLogin_Failure_EmitsAuthEvent
+=== RUN   TestLogin_Success_NoAuditEvent
+--- PASS: TestLogin_Success_NoAuditEvent
+=== RUN   TestAuditEventEmitted_Quick
+--- PASS: TestAuditEventEmitted_Quick
+=== RUN   TestValidationError_MissingRequiredField
+--- PASS: TestValidationError_MissingRequiredField
+PASS
+```
+
+All five tests pass, each demonstrating a different testing pattern.
+You will also see `INFO audit:` lifecycle messages from logger creation
+and shutdown — these are normal.
+
+## Further Reading
+
+- [Testing](../../docs/testing.md) — full audittest reference and testing patterns
+- [Troubleshooting](../../docs/troubleshooting.md) — common issues and solutions
+
 ## Previous
 
-[CRUD API](../09-crud-api/) — complete REST API with Postgres,
+[CRUD API](../10-crud-api/) — complete REST API with Postgres,
 five outputs, and Docker Compose.

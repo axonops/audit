@@ -1402,3 +1402,182 @@ outputs:
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "tls_policy")
 }
+
+// ---------------------------------------------------------------------------
+// HMAC config parsing (#216)
+// ---------------------------------------------------------------------------
+
+func TestLoad_HMAC_FullConfig(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "this-is-a-test-salt!"
+      hash: HMAC-SHA-256
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].HMACConfig)
+	assert.True(t, result.Outputs[0].HMACConfig.Enabled)
+	assert.Equal(t, "v1", result.Outputs[0].HMACConfig.SaltVersion)
+	assert.Equal(t, "HMAC-SHA-256", result.Outputs[0].HMACConfig.Algorithm)
+}
+
+func TestLoad_HMAC_Disabled_Default(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Nil(t, result.Outputs[0].HMACConfig)
+}
+
+func TestLoad_HMAC_ExplicitlyDisabled(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  console:
+    type: stdout
+    hmac:
+      enabled: false
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Nil(t, result.Outputs[0].HMACConfig, "disabled HMAC should be nil")
+}
+
+func TestLoad_HMAC_SaltTooShort(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "short"
+      hash: HMAC-SHA-256
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "at least")
+}
+
+func TestLoad_HMAC_UnknownAlgorithm(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "valid-salt-sixteen-b!"
+      hash: MD5
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown")
+}
+
+func TestLoad_HMAC_MissingSalt(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      hash: HMAC-SHA-256
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "salt")
+}
+
+func TestLoad_HMAC_MissingHash(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "valid-salt-sixteen-b!"
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "algorithm")
+}
+
+func TestLoad_HMAC_SaltEnvVar(t *testing.T) {
+	t.Setenv("TEST_HMAC_SALT", "env-salt-value-sixteen!")
+
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "${TEST_HMAC_SALT}"
+      hash: HMAC-SHA-256
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result.Outputs[0].HMACConfig)
+	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.Outputs[0].HMACConfig.SaltValue)
+}
+
+func TestLoad_HMAC_SaltNotInError(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        value: "short"
+      hash: HMAC-SHA-256
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	// Salt value must NOT appear in the error message.
+	assert.NotContains(t, err.Error(), "short")
+}

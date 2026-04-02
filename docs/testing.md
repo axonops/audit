@@ -2,13 +2,13 @@
 
 # Testing Audit Events in Your Application
 
-- [What Is audittest?](#-what-is-audittest)
-- [Why a Test Package?](#-why-a-test-package)
-- [Quick Start](#-quick-start)
-- [Two Constructor Patterns](#-two-constructor-patterns)
-- [Recorded Event API](#-recorded-event-api)
-- [Metrics Assertions](#-metrics-assertions)
-- [Table-Driven Tests](#-table-driven-tests)
+- [What Is audittest?](#what-is-audittest)
+- [Why a Test Package?](#why-a-test-package)
+- [Quick Start](#quick-start)
+- [Two Constructor Patterns](#two-constructor-patterns)
+- [Recorded Event API](#recorded-event-api)
+- [Metrics Assertions](#metrics-assertions)
+- [Table-Driven Tests](#table-driven-tests)
 
 ## 🔍 What Is audittest?
 
@@ -119,5 +119,5 @@ for _, tc := range tests {
 
 ## 📚 Further Reading
 
-- [Progressive Example: Testing](../examples/10-testing/) — three testing patterns
+- [Progressive Example: Testing](../examples/11-testing/) — three testing patterns
 - [API Reference: audittest](https://pkg.go.dev/github.com/axonops/go-audit/audittest)

@@ -420,7 +420,7 @@ func checkFieldOverlap(t Taxonomy) []string {
 // legitimately set as a user field (the formatter handles the
 // time.Duration vs int distinction at runtime).
 func reservedFieldNames() []string {
-	return []string{"timestamp", "event_type", "severity", "event_category"}
+	return []string{"timestamp", "event_type", "severity", "event_category", "_hmac", "_hmac_v"}
 }
 
 // checkReservedFieldNames validates that no event defines a reserved

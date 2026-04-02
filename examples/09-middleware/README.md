@@ -20,7 +20,7 @@ checks are silently skipped.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Formatters](../07-formatters/)
+- Completed: [Formatters](../08-formatters/)
 
 ## Files
 
@@ -108,7 +108,7 @@ Available hints:
 | `Outcome` | `"success"` or `"failure"` |
 | `TargetID` | The resource affected |
 | `TargetType` | Type of resource (e.g., `"item"`, `"user"`) |
-| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../09-crud-api/)) |
+| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../10-crud-api/)) |
 | `ActorType` | `"user"`, `"service"`, `"api_key"`, etc. |
 | `AuthMethod` | How the actor authenticated (e.g., `"bearer"`, `"api_key"`) |
 | `Role` | Actor's role at request time |
@@ -132,7 +132,7 @@ Available hints:
 
 Place the audit middleware at the outermost layer — it needs to wrap
 everything including auth middleware so it can capture the final response
-status code. The [CRUD API](../09-crud-api/) example shows this with auth
+status code. The [CRUD API](../10-crud-api/) example shows this with auth
 middleware and audit middleware composed together.
 
 ## Run It
@@ -144,9 +144,12 @@ go run .
 ## Expected Output
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 GET http://127.0.0.1:.../healthz -> 200
 GET http://127.0.0.1:.../items -> 200
 POST http://127.0.0.1:.../items -> 201
+INFO audit: shutdown started
+INFO audit: shutdown complete duration=...
 --- Audit events ---
 {"timestamp":"...","event_type":"http_request","severity":5,"method":"GET","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":200,"target_id":null}
 {"timestamp":"...","event_type":"http_request","severity":5,"method":"POST","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
@@ -155,13 +158,19 @@ Note: /healthz produced no audit event (skipped by EventBuilder).
 ```
 
 Three HTTP requests, but only two audit events. The health check was
-skipped.
+skipped because the `EventBuilder` returned `nil` for requests to
+`/healthz`.
+
+## Further Reading
+
+- [HTTP Middleware](../../docs/http-middleware.md) — full middleware reference, Hints API, EventBuilder
+- [Async Delivery](../../docs/async-delivery.md) — how middleware events flow through the pipeline
 
 ## Previous
 
-[Formatters](../07-formatters/) — JSON vs CEF formatters configured in YAML.
+[Formatters](../08-formatters/) — JSON vs CEF formatters configured in YAML.
 
 ## Next
 
-[CRUD API](../09-crud-api/) — a complete REST API with Postgres, five
+[CRUD API](../10-crud-api/) — a complete REST API with Postgres, five
 outputs, Prometheus metrics, and Docker Compose.

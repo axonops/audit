@@ -173,7 +173,7 @@ http.ListenAndServe(":8080", auditedRouter)
 
 For a complete working example with multiple routes, authentication
 middleware, and the full EventBuilder implementation, see
-[Progressive Example: Middleware](../examples/08-middleware/).
+[Progressive Example: Middleware](../examples/09-middleware/).
 
 ## 📋 Available Hint Fields
 
@@ -200,6 +200,6 @@ handlers. All are optional — set only what applies to your request.
 
 ## 📚 Further Reading
 
-- [Progressive Example: Middleware](../examples/08-middleware/) — complete HTTP middleware example
-- [Progressive Example: CRUD API](../examples/09-crud-api/) — middleware in a full REST application
+- [Progressive Example: Middleware](../examples/09-middleware/) — complete HTTP middleware example
+- [Progressive Example: CRUD API](../examples/10-crud-api/) — middleware in a full REST application
 - [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/go-audit#Middleware)

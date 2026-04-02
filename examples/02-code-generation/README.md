@@ -216,7 +216,7 @@ consistent — consumers can parse all events with the same schema
 regardless of which optional fields were populated.
 
 If you prefer to omit null fields entirely, the JSON formatter supports
-an `omit_empty` option (shown in the [Formatters](../07-formatters/)
+an `omit_empty` option (shown in the [Formatters](../08-formatters/)
 example).
 
 ### Configuring Outputs in YAML
@@ -312,11 +312,24 @@ go generate .
 ## Expected Output
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Using typed event builders ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","reason":null,"target_id":"user-42"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100"}
-{"timestamp":"...","event_type":"user_read","severity":5,"outcome":"success","actor_id":"bob"}
+INFO audit: shutdown started
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","reason":null,"target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
+{"timestamp":"...","event_type":"user_read","severity":5,"outcome":"success","actor_id":"bob","event_category":"read"}
+INFO audit: shutdown complete duration=...
 ```
+
+The `event_category` field is automatically populated from the taxonomy's
+category definitions. The `INFO audit:` lines are lifecycle diagnostics
+on stderr — see [example 01](../01-basic/) for details.
+
+## Further Reading
+
+- [Code Generation](../../docs/code-generation.md) — full audit-gen reference
+- [Output Configuration YAML](../../docs/output-configuration.md) — outputs.yaml schema
+- [Taxonomy Validation](../../docs/taxonomy-validation.md) — validation rules and modes
 
 ## Previous
 

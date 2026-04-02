@@ -53,7 +53,7 @@ go-audit supports two ways to define categories:
   the event defines its own.
 
 Both formats can be mixed in the same taxonomy file. The
-[CRUD API](../09-crud-api/) example shows every category using the struct
+[CRUD API](../10-crud-api/) example shows every category using the struct
 format with different severity levels.
 
 ### Per-Event Severity Override
@@ -69,7 +69,7 @@ events:
 ```
 
 Resolution chain: event severity (if set) -> category severity -> 5.
-The [CRUD API](../09-crud-api/) example uses this: `auth_failure` is
+The [CRUD API](../10-crud-api/) example uses this: `auth_failure` is
 severity 9 while other security events are severity 8.
 
 ### Routes in YAML
@@ -198,18 +198,23 @@ go run .
 
 ## Expected Output
 
-All three events appear on stdout. Each file contains only the events
-matching its route:
+All three events appear on stdout (all events). Each file contains only
+the events matching its route:
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=4
+INFO audit: shutdown started
+... (stdout shows all three events)
+INFO audit: shutdown complete duration=...
+
 --- security.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 
 --- writes.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
 
 --- critical.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 ```
 
 The `user_read` event doesn't appear in any file — no route includes
@@ -217,6 +222,11 @@ the `read` category, and its severity (5) is below the critical
 threshold (7). The `auth_failure` event appears in both `security.log`
 (category route) and `critical.log` (severity route) — it matches both
 independently.
+
+## Further Reading
+
+- [Event Routing](../../docs/event-routing.md) — full routing reference with all filter options
+- [Output Configuration YAML](../../docs/output-configuration.md) — route syntax in YAML
 
 ## Previous
 

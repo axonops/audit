@@ -2,12 +2,12 @@
 
 # Async Delivery and Pipeline Architecture
 
-- [How Events Flow](#-how-events-flow)
-- [Why Async?](#-why-async)
-- [Buffering and Backpressure](#-buffering-and-backpressure)
-- [Delivery Guarantee](#-delivery-guarantee)
-- [Graceful Shutdown](#-graceful-shutdown)
-- [Thread Safety](#-thread-safety)
+- [How Events Flow](#how-events-flow)
+- [Why Async?](#why-async)
+- [Buffering and Backpressure](#buffering-and-backpressure)
+- [Delivery Guarantee](#delivery-guarantee)
+- [Graceful Shutdown](#graceful-shutdown)
+- [Thread Safety](#thread-safety)
 
 ## 🔧 How Events Flow
 
@@ -206,7 +206,7 @@ func main() {
 }
 ```
 
-See [Progressive Example: CRUD API](../examples/09-crud-api/) for a
+See [Progressive Example: CRUD API](../examples/10-crud-api/) for a
 complete working example with signal handling.
 
 ## 🔒 Thread Safety

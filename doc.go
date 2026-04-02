@@ -146,6 +146,11 @@
 //   - [RegisterOutputFactory] — registers a factory by type name (used by output modules)
 //   - [LookupOutputFactory] — retrieves a registered factory by type name
 //   - [TLSPolicy] — shared TLS version and cipher suite policy for outputs
+//   - [HMACConfig] — per-output HMAC integrity configuration
+//   - [ComputeHMAC] — computes HMAC over a payload, returns lowercase hex
+//   - [VerifyHMAC] — verifies an HMAC value matches a payload
+//   - [ValidateHMACConfig] — validates HMAC configuration at startup
+//   - [WithOutputHMAC] — configures HMAC on a named output
 //   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
 // # Taxonomy

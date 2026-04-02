@@ -2897,3 +2897,216 @@ func BenchmarkAppendPostFields_Disabled(b *testing.B) {
 		_ = audit.AppendPostFields(data, formatter, nil)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// HMAC integrity (#216)
+// ---------------------------------------------------------------------------
+
+func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputHMAC("test", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v1",
+			SaltValue:   []byte("test-salt-sixteen-bytes!"),
+			Algorithm:   "HMAC-SHA-256",
+		}),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.NotEmpty(t, ev["_hmac"], "HMAC should be present")
+	assert.Equal(t, "v1", ev["_hmac_v"], "salt version should be present")
+}
+
+func TestHMAC_Disabled_NoFields(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	_, hasHMAC := ev["_hmac"]
+	assert.False(t, hasHMAC, "no HMAC when disabled")
+}
+
+func TestHMAC_SaltVersion_InOutput(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputHMAC("test", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "2026-Q1",
+			SaltValue:   []byte("version-test-salt-16b!"),
+			Algorithm:   "HMAC-SHA-256",
+		}),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "2026-Q1", ev["_hmac_v"])
+}
+
+func TestHMAC_ReservedFieldNames(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"_hmac", "_hmac_v"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "reserved framework field")
+		})
+	}
+}
+
+// TestHMAC_DifferentFieldStripping_DifferentHMAC verifies that the same
+// event produces different HMACs on two outputs with different sensitivity
+// label exclusions. Each output uses a different salt to prove HMAC config
+// is applied independently per output (no shared singleton). Output "full"
+// gets all fields; output "stripped" excludes PII fields. The HMAC is
+// computed after stripping, so the digests must differ.
+func TestHMAC_DifferentFieldStripping_DifferentHMAC(t *testing.T) {
+	t.Parallel()
+
+	const taxYAML = `
+version: 1
+categories:
+  write:
+    events:
+      - user_create
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields: [email]
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email:
+        labels: [pii]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(taxYAML))
+	require.NoError(t, err)
+
+	// Different salts per output — proves each output uses its own
+	// HMAC config independently, not a shared singleton.
+	fullHMACCfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v1",
+		SaltValue:   []byte("full-output-salt-value!"),
+		Algorithm:   "HMAC-SHA-256",
+	}
+	strippedHMACCfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v2",
+		SaltValue:   []byte("stripped-output-salt!!"),
+		Algorithm:   "HMAC-SHA-256",
+	}
+
+	fullOut := testhelper.NewMockOutput("full")
+	strippedOut := testhelper.NewMockOutput("stripped")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		// "full" output: no label exclusions — gets all fields including email.
+		audit.WithNamedOutput(fullOut, nil, nil),
+		audit.WithOutputHMAC("full", fullHMACCfg),
+		// "stripped" output: excludes PII — email is removed before HMAC.
+		audit.WithNamedOutput(strippedOut, nil, nil, "pii"),
+		audit.WithOutputHMAC("stripped", strippedHMACCfg),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}))
+	require.NoError(t, err)
+
+	require.True(t, fullOut.WaitForEvents(1, 2*time.Second))
+	require.True(t, strippedOut.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	fullEvent := fullOut.GetEvent(0)
+	strippedEvent := strippedOut.GetEvent(0)
+
+	// Both outputs should have HMAC fields.
+	fullHMAC, ok := fullEvent["_hmac"].(string)
+	require.True(t, ok, "full output should have _hmac")
+	strippedHMAC, ok := strippedEvent["_hmac"].(string)
+	require.True(t, ok, "stripped output should have _hmac")
+
+	// The full output should contain the email field.
+	assert.Equal(t, "alice@example.com", fullEvent["email"], "full output should have email")
+
+	// The stripped output should NOT contain the email field.
+	_, hasEmail := strippedEvent["email"]
+	assert.False(t, hasEmail, "stripped output should not have email (PII excluded)")
+
+	// Salt versions should reflect per-output config.
+	assert.Equal(t, "v1", fullEvent["_hmac_v"], "full output should have salt version v1")
+	assert.Equal(t, "v2", strippedEvent["_hmac_v"], "stripped output should have salt version v2")
+
+	// The HMACs MUST be different because the payloads differ
+	// (one has email, the other does not) AND the salts differ.
+	assert.NotEqual(t, fullHMAC, strippedHMAC,
+		"HMAC should differ between outputs with different field stripping and different salts")
+}

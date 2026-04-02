@@ -1,0 +1,36 @@
+version: 1
+
+outputs:
+  # Selective HMAC — only security events go here.
+  # Combines routing with HMAC: only security events pay the crypto cost.
+  secure_log:
+    type: file
+    hmac:
+      enabled: true
+      salt:
+        version: "2026-Q1"
+        value: "${HMAC_SALT:-default-example-salt!}"
+      hash: HMAC-SHA-256
+    file:
+      path: "./secure-audit.log"
+    route:
+      include_categories:
+        - security
+
+  # Global HMAC — every event gets an HMAC signature.
+  # No route filter, so all events are delivered with tamper detection.
+  tamperproof_log:
+    type: file
+    hmac:
+      enabled: true
+      salt:
+        version: "2026-Q1"
+        value: "${HMAC_SALT:-default-example-salt!}"
+      hash: HMAC-SHA-256
+    file:
+      path: "./all-audit.log"
+
+  # No HMAC — plain stdout for development/debugging.
+  # Zero crypto overhead on this output.
+  console:
+    type: stdout

@@ -2,13 +2,13 @@
 
 # Metrics and Monitoring
 
-- [Why Monitor?](#-why-monitor-your-audit-pipeline)
+- [Why Monitor?](#why-monitor-your-audit-pipeline)
 - [The Metrics Interface](#the-metrics-interface)
-- [What to Monitor](#-what-to-monitor)
+- [What to Monitor](#what-to-monitor)
 - [Prometheus Example](#prometheus-example)
-- [Recommended Alerts](#-recommended-alerts)
-- [Per-Output Metrics](#-per-output-metrics)
-- [Testing Metrics](#-testing-metrics)
+- [Recommended Alerts](#recommended-alerts)
+- [Per-Output Metrics](#per-output-metrics)
+- [Testing Metrics](#testing-metrics)
 
 ## ❓ Why Monitor Your Audit Pipeline?
 
@@ -145,7 +145,7 @@ Monitor `RecordWebhookDrop` — if this fires, the webhook's internal
 buffer is full and events are being lost. Increase `buffer_size` in
 the webhook configuration.
 
-See [Progressive Example: CRUD API](../examples/09-crud-api/) for a
+See [Progressive Example: CRUD API](../examples/10-crud-api/) for a
 complete Prometheus implementation of all four metrics interfaces.
 
 ## 🧪 Testing Metrics
@@ -163,7 +163,7 @@ assert.Equal(t, 0, metrics.BufferDrops())
 
 ## 📚 Further Reading
 
-- [Progressive Example: CRUD API](../examples/09-crud-api/) — Prometheus metrics integration
+- [Progressive Example: CRUD API](../examples/10-crud-api/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure
 - [Testing](testing.md) — asserting on metrics in tests
 - [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/go-audit#Metrics)

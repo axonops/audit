@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Per-output HMAC integrity verification with 6 NIST-approved algorithms (#216)
+- `HMACConfig`, `ComputeHMAC`, `VerifyHMAC` for tamper detection and verification (#216)
+- `_hmac` and `_hmac_v` reserved framework fields (#216)
 - `event_category` framework field appended to serialised output (JSON and CEF) showing the delivery-specific category (#227)
 - `emit_event_category` taxonomy config (under `categories:`) controls category emission; defaults to `true` (#227)
 - `PostField` and `AppendPostFields` extensible post-serialisation append mechanism (#227)

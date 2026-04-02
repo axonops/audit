@@ -39,6 +39,41 @@ Feature: HMAC Integrity Verification
     And I close the logger
     Then the output should contain "_hmac_v" field with value "2026-Q1"
 
+  # --- Field stripping changes the HMAC ---
+
+  Scenario: HMAC differs when sensitivity labels strip fields
+    Given a taxonomy with PII sensitivity labels:
+      """
+      version: 1
+      categories:
+        write:
+          events:
+            - user_create
+      sensitivity:
+        labels:
+          pii:
+            description: "Personally identifiable information"
+            fields: [email]
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            actor_id: {required: true}
+            email:
+              labels: [pii]
+      """
+    And two HMAC-enabled outputs where "stripped" excludes label "pii" using salts "full-salt-sixteen-b!" and "stripped-salt-16-byt"
+    When I audit event "user_create" with fields:
+      | field    | value             |
+      | outcome  | success           |
+      | actor_id | alice             |
+      | email    | alice@example.com |
+    And I close the logger
+    Then output "full" should contain field "email" with value "alice@example.com"
+    And output "stripped" should not contain field "email"
+    And both outputs should have "_hmac" fields
+    And the "_hmac" values should differ between "full" and "stripped"
+
   # --- Validation ---
 
   Scenario: Salt too short rejected at startup

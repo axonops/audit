@@ -29,6 +29,7 @@ func registerHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerHMACGivenSteps(ctx, tc)
 	registerHMACWhenSteps(ctx, tc)
 	registerHMACThenSteps(ctx, tc)
+	registerHMACLabelSteps(ctx, tc)
 }
 
 func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -284,4 +285,172 @@ func (o *captureOutput) Name() string { return o.name }
 
 func (o *captureOutput) Events() [][]byte {
 	return o.events
+}
+
+// registerHMACLabelSteps registers steps for testing HMAC with
+// sensitivity label stripping — same event, different field sets,
+// different HMACs.
+func registerHMACLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a taxonomy with PII sensitivity labels:$`, func(doc *godog.DocString) error {
+		tax, err := audit.ParseTaxonomyYAML([]byte(doc.Content))
+		if err != nil {
+			return fmt.Errorf("parse taxonomy: %w", err)
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
+	ctx.Step(`^two HMAC-enabled outputs where "([^"]*)" excludes label "([^"]*)" using salts "([^"]*)" and "([^"]*)"$`,
+		func(strippedName, label, fullSalt, strippedSalt string) error {
+			return createDualHMACLogger(tc, strippedName, label, fullSalt, strippedSalt)
+		})
+	ctx.Step(`^output "([^"]*)" should contain field "([^"]*)" with value "([^"]*)"$`,
+		func(outputName, field, want string) error {
+			return assertNamedOutputField(tc, outputName, field, want)
+		})
+	ctx.Step(`^output "([^"]*)" should not contain field "([^"]*)"$`,
+		func(outputName, field string) error {
+			return assertNamedOutputNoField(tc, outputName, field)
+		})
+	ctx.Step(`^both outputs should have "_hmac" fields$`, func() error {
+		return assertAllOutputsHaveHMAC(tc)
+	})
+	ctx.Step(`^the "_hmac" values should differ between "([^"]*)" and "([^"]*)"$`,
+		func(name1, name2 string) error {
+			return assertHMACsDiffer(tc, name1, name2)
+		})
+}
+
+func createDualHMACLogger(tc *AuditTestContext, strippedName, label, fullSalt, strippedSalt string) error {
+	fullOut := newCaptureOutput("full")
+	strippedOut := newCaptureOutput(strippedName)
+	tc.CaptureOutputs = map[string]*captureOutput{
+		"full":       fullOut,
+		strippedName: strippedOut,
+	}
+
+	// Different salts per output — proves each output applies its own
+	// HMAC config independently, not a shared singleton.
+	fullHMACCfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v1",
+		SaltValue:   []byte(fullSalt),
+		Algorithm:   "HMAC-SHA-256",
+	}
+	strippedHMACCfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v2",
+		SaltValue:   []byte(strippedSalt),
+		Algorithm:   "HMAC-SHA-256",
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithNamedOutput(fullOut, nil, nil),
+		audit.WithOutputHMAC("full", fullHMACCfg),
+		audit.WithNamedOutput(strippedOut, nil, nil, label),
+		audit.WithOutputHMAC(strippedName, strippedHMACCfg),
+	)
+	if err != nil {
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	return nil
+}
+
+func assertAllOutputsHaveHMAC(tc *AuditTestContext) error {
+	for name, out := range tc.CaptureOutputs {
+		events := out.Events()
+		if len(events) == 0 {
+			return fmt.Errorf("output %q has no events", name)
+		}
+		for _, raw := range events {
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return fmt.Errorf("parse %q event: %w", name, err)
+			}
+			if _, ok := m["_hmac"]; !ok {
+				return fmt.Errorf("output %q event missing _hmac", name)
+			}
+		}
+	}
+	return nil
+}
+
+func assertNamedOutputField(tc *AuditTestContext, outputName, field, want string) error {
+	out, ok := tc.CaptureOutputs[outputName]
+	if !ok {
+		return fmt.Errorf("unknown output %q", outputName)
+	}
+	events := out.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("output %q has no events", outputName)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(events[0], &m); err != nil {
+		return fmt.Errorf("parse event: %w", err)
+	}
+	got, ok := m[field]
+	if !ok {
+		return fmt.Errorf("output %q event missing field %q", outputName, field)
+	}
+	if fmt.Sprint(got) != want {
+		return fmt.Errorf("output %q field %q: want %q, got %q", outputName, field, want, got)
+	}
+	return nil
+}
+
+func assertNamedOutputNoField(tc *AuditTestContext, outputName, field string) error {
+	out, ok := tc.CaptureOutputs[outputName]
+	if !ok {
+		return fmt.Errorf("unknown output %q", outputName)
+	}
+	events := out.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("output %q has no events", outputName)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(events[0], &m); err != nil {
+		return fmt.Errorf("parse event: %w", err)
+	}
+	if _, ok := m[field]; ok {
+		return fmt.Errorf("output %q unexpectedly contains field %q", outputName, field)
+	}
+	return nil
+}
+
+func assertHMACsDiffer(tc *AuditTestContext, name1, name2 string) error {
+	out1, ok := tc.CaptureOutputs[name1]
+	if !ok {
+		return fmt.Errorf("unknown output %q", name1)
+	}
+	out2, ok := tc.CaptureOutputs[name2]
+	if !ok {
+		return fmt.Errorf("unknown output %q", name2)
+	}
+	events1 := out1.Events()
+	events2 := out2.Events()
+	if len(events1) == 0 || len(events2) == 0 {
+		return fmt.Errorf("both outputs must have at least one event")
+	}
+
+	var m1, m2 map[string]any
+	if err := json.Unmarshal(events1[0], &m1); err != nil {
+		return fmt.Errorf("parse %q event: %w", name1, err)
+	}
+	if err := json.Unmarshal(events2[0], &m2); err != nil {
+		return fmt.Errorf("parse %q event: %w", name2, err)
+	}
+
+	hmac1, _ := m1["_hmac"].(string)
+	hmac2, _ := m2["_hmac"].(string)
+
+	if hmac1 == "" || hmac2 == "" {
+		return fmt.Errorf("both outputs must have _hmac values")
+	}
+	if hmac1 == hmac2 {
+		return fmt.Errorf("HMACs should differ: %q has %q and %q has %q (same payload means stripping did not work)",
+			name1, hmac1, name2, hmac2)
+	}
+	return nil
 }

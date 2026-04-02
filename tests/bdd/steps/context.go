@@ -63,7 +63,8 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	QueriedRoute *audit.EventRoute
 
 	// HMAC capture.
-	CaptureOutput *captureOutput // raw event bytes for HMAC verification
+	CaptureOutput  *captureOutput            // raw event bytes for HMAC verification
+	CaptureOutputs map[string]*captureOutput // named outputs for multi-output HMAC tests
 
 	// Metrics capture.
 	MockMetrics    *MockMetrics
@@ -112,6 +113,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.LastHTTPResp = nil
 	tc.QueriedRoute = nil
 	tc.CaptureOutput = nil
+	tc.CaptureOutputs = nil
 	tc.MockMetrics = nil
 	tc.WebhookMetrics = nil
 	tc.FileMetrics = nil

@@ -2636,7 +2636,7 @@ func TestAuditEvent_NilEvent(t *testing.T) {
 func TestAppendPostFields_JSON_SingleField(t *testing.T) {
 	t.Parallel()
 	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
-	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "cat", Value: "security"}}
 	result := audit.AppendPostFields(data, &audit.JSONFormatter{}, fields)
 	assert.Equal(t, `{"event_type":"test","outcome":"success","event_category":"security"}`+"\n", string(result))
 }
@@ -2651,9 +2651,9 @@ func TestAppendPostFields_JSON_EmptyFields(t *testing.T) {
 func TestAppendPostFields_CEF_SingleField(t *testing.T) {
 	t.Parallel()
 	data := []byte("CEF:0|V|P|1|test|desc|5|outcome=success\n")
-	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "write"}}
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "cat", Value: "write"}}
 	result := audit.AppendPostFields(data, &audit.CEFFormatter{}, fields)
-	assert.Equal(t, "CEF:0|V|P|1|test|desc|5|outcome=success eventCategory=write\n", string(result))
+	assert.Equal(t, "CEF:0|V|P|1|test|desc|5|outcome=success cat=write\n", string(result))
 }
 
 func TestAppendPostFields_CEF_EmptyFields(t *testing.T) {
@@ -2667,7 +2667,7 @@ func TestAppendPostFields_JSON_MultipleFields(t *testing.T) {
 	t.Parallel()
 	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
 	fields := []audit.PostField{
-		{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"},
+		{JSONKey: "event_category", CEFKey: "cat", Value: "security"},
 		{JSONKey: "checksum", CEFKey: "checksum", Value: "abc123"},
 	}
 	result := audit.AppendPostFields(data, &audit.JSONFormatter{}, fields)
@@ -2680,11 +2680,11 @@ func TestAppendPostFields_CEF_MultipleFields(t *testing.T) {
 	t.Parallel()
 	data := []byte("CEF:0|V|P|1|test|desc|5|outcome=success\n")
 	fields := []audit.PostField{
-		{JSONKey: "event_category", CEFKey: "eventCategory", Value: "write"},
+		{JSONKey: "event_category", CEFKey: "cat", Value: "write"},
 		{JSONKey: "checksum", CEFKey: "checksum", Value: "abc123"},
 	}
 	result := audit.AppendPostFields(data, &audit.CEFFormatter{}, fields)
-	assert.Contains(t, string(result), "eventCategory=write")
+	assert.Contains(t, string(result), "cat=write")
 	assert.Contains(t, string(result), "checksum=abc123")
 	assert.True(t, strings.HasSuffix(string(result), "\n"))
 }
@@ -2868,7 +2868,7 @@ func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
 
 func BenchmarkAppendPostFields_JSON(b *testing.B) {
 	data := []byte(`{"timestamp":"2026-01-01T00:00:00Z","event_type":"auth_failure","severity":8,"outcome":"failure","actor_id":"alice"}` + "\n")
-	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "cat", Value: "security"}}
 	formatter := &audit.JSONFormatter{}
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -2879,7 +2879,7 @@ func BenchmarkAppendPostFields_JSON(b *testing.B) {
 
 func BenchmarkAppendPostFields_CEF(b *testing.B) {
 	data := []byte("CEF:0|Test|App|1.0|auth_failure|desc|8|rt=1704067200000 act=auth_failure suser=alice outcome=failure\n")
-	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "cat", Value: "security"}}
 	formatter := &audit.CEFFormatter{}
 	b.ResetTimer()
 	b.ReportAllocs()

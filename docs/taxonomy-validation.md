@@ -283,7 +283,7 @@ categories:
 
 **CEF:**
 ```
-CEF:0|...|auth_failure|...|8|... outcome=failure eventCategory=security
+CEF:0|...|auth_failure|...|8|... outcome=failure cat=security
 ```
 
 ### Multi-Category Events

@@ -46,11 +46,11 @@ CEF:0|Vendor|Product|Version|EventType|Description|Severity|Extensions
 ### Example Output
 
 ```
-CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=1704067200000 act=user_create suser=alice outcome=success eventCategory=write
-CEF:0|MyCompany|MyApp|1.0|auth_failure|An authentication attempt failed|8|rt=1704067200000 act=auth_failure suser=unknown outcome=failure reason=invalid_credentials eventCategory=security
+CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=1704067200000 act=user_create suser=alice outcome=success cat=write
+CEF:0|MyCompany|MyApp|1.0|auth_failure|An authentication attempt failed|8|rt=1704067200000 act=auth_failure suser=unknown outcome=failure reason=invalid_credentials cat=security
 ```
 
-> 💡 The `eventCategory` extension is appended automatically when the
+> 💡 The `cat` extension (ArcSight `deviceEventCategory`) is appended automatically when the
 > event belongs to a category. See [Taxonomy: Event Category](taxonomy-validation.md#-event-category-in-output).
 
 ## ⚖️ CEF vs JSON

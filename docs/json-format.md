@@ -17,8 +17,12 @@ without custom field mapping.
 ## Example Output
 
 ```json
-{"timestamp":"2026-01-15T10:30:00.123456789Z","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","target_id":"user-42"}
+{"timestamp":"2026-01-15T10:30:00.123456789Z","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
+
+> 💡 The `event_category` field is appended automatically when the
+> event belongs to a category. It shows which category triggered
+> this delivery. See [Taxonomy: Event Category](taxonomy-validation.md#-event-category-in-output).
 
 ### Field Order
 
@@ -33,6 +37,7 @@ Fields are emitted in a deterministic order:
 2. **Required fields** — sorted alphabetically
 3. **Optional fields** — sorted alphabetically
 4. **Extra fields** — any fields not declared in the taxonomy, sorted alphabetically
+5. **`event_category`** — appended last, only for categorised events (when `emit_event_category` is true)
 
 This deterministic ordering makes JSON output diff-friendly and
 predictable for downstream parsers.

@@ -2861,3 +2861,39 @@ func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
 	ev := out.GetEvent(0)
 	assert.Equal(t, "security", ev["event_category"], "framework category should override user-supplied")
 }
+
+// ---------------------------------------------------------------------------
+// event_category benchmarks (#227)
+// ---------------------------------------------------------------------------
+
+func BenchmarkAppendPostFields_JSON(b *testing.B) {
+	data := []byte(`{"timestamp":"2026-01-01T00:00:00Z","event_type":"auth_failure","severity":8,"outcome":"failure","actor_id":"alice"}` + "\n")
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	formatter := &audit.JSONFormatter{}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = audit.AppendPostFields(data, formatter, fields)
+	}
+}
+
+func BenchmarkAppendPostFields_CEF(b *testing.B) {
+	data := []byte("CEF:0|Test|App|1.0|auth_failure|desc|8|rt=1704067200000 act=auth_failure suser=alice outcome=failure\n")
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	formatter := &audit.CEFFormatter{}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = audit.AppendPostFields(data, formatter, fields)
+	}
+}
+
+func BenchmarkAppendPostFields_Disabled(b *testing.B) {
+	data := []byte(`{"timestamp":"2026-01-01T00:00:00Z","event_type":"test","severity":5,"outcome":"success"}` + "\n")
+	formatter := &audit.JSONFormatter{}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = audit.AppendPostFields(data, formatter, nil)
+	}
+}

@@ -70,19 +70,28 @@ fields mapped to CEF key names.
 ### CEF Field Mapping
 
 The formatter automatically translates go-audit field names to standard
-CEF extension keys:
+CEF extension keys via `FieldMapping` (configurable):
 
 | go-audit field | CEF key |
 |----------------|---------|
-| `event_type` | `act` |
 | `actor_id` | `suser` |
 | `source_ip` | `src` |
-| `outcome` | `outcome` |
+| `request_id` | `externalId` |
+| `user_agent` | `requestClientApplication` |
 | `method` | `requestMethod` |
 | `path` | `request` |
-| `event_category` | `cat` |
+| `outcome` | `outcome` |
 
 Fields without a mapping are passed through with their original names.
+
+Framework extensions are emitted unconditionally and cannot be
+overridden via `FieldMapping`:
+
+| Framework field | CEF key | Description |
+|-----------------|---------|-------------|
+| timestamp | `rt` | Receipt time (Unix milliseconds) |
+| `event_type` | `act` | Device action |
+| `event_category` | `cat` | Appended when event belongs to a category |
 
 ### JSON Formatter Options
 

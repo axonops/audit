@@ -162,7 +162,7 @@ outputs:
       version: "1.0"
 ```
 
-### 3️⃣ Generate type-safe code - This is how you use the library in your code. 
+### 3️⃣ Generate type-safe code 
 
 ```bash
 go run github.com/axonops/go-audit/cmd/audit-gen \

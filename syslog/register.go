@@ -49,7 +49,7 @@ type yamlTLSPolicy struct {
 // yamlSyslogConfig is the YAML-specific representation of syslog
 // output configuration. Maps snake_case YAML fields to the Go
 // Config struct.
-type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability preferred
+type yamlSyslogConfig struct {
 	Network    string         `yaml:"network"`
 	Address    string         `yaml:"address"`
 	AppName    string         `yaml:"app_name"`
@@ -58,6 +58,7 @@ type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability pre
 	TLSKey     string         `yaml:"tls_key"`
 	TLSCA      string         `yaml:"tls_ca"`
 	TLSPolicy  *yamlTLSPolicy `yaml:"tls_policy"`
+	Hostname   string         `yaml:"hostname"`
 	MaxRetries int            `yaml:"max_retries"`
 }
 
@@ -81,6 +82,7 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Ou
 		TLSCert:    yc.TLSCert,
 		TLSKey:     yc.TLSKey,
 		TLSCA:      yc.TLSCA,
+		Hostname:   yc.Hostname,
 		MaxRetries: yc.MaxRetries,
 	}
 	if yc.TLSPolicy != nil {

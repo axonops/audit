@@ -565,8 +565,99 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		if data == nil {
 			continue
 		}
+
+		// Append event_category if enabled and the event has a category.
+		if category != "" && l.taxonomy.EmitEventCategory {
+			data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
+		}
+
 		l.writeToOutput(oe.output, data, entry.eventType)
 	}
+}
+
+// PostField represents a field appended to serialised bytes after
+// format caching. Used for delivery-specific context (category) and
+// future features (e.g., HMAC checksum).
+type PostField struct {
+	JSONKey string // e.g., "event_category"
+	CEFKey  string // e.g., "eventCategory"
+	Value   string
+}
+
+// appendEventCategory appends the event_category field to serialised
+// bytes based on the formatter type. Returns the original data
+// unchanged for unknown formatter types.
+func appendEventCategory(data []byte, formatter Formatter, category string) []byte {
+	return AppendPostFields(data, formatter, []PostField{
+		{JSONKey: "event_category", CEFKey: "eventCategory", Value: category},
+	})
+}
+
+// AppendPostFields appends one or more post-serialisation fields to
+// cached bytes. The formatter type determines the syntax:
+// JSON: ,"key":"val" inserted before }\n
+// CEF: key=val inserted before the newline.
+func AppendPostFields(data []byte, formatter Formatter, fields []PostField) []byte {
+	if len(fields) == 0 || len(data) < 2 {
+		return data
+	}
+
+	switch formatter.(type) {
+	case *JSONFormatter:
+		return appendPostFieldsJSON(data, fields)
+	case *CEFFormatter:
+		return appendPostFieldsCEF(data, fields)
+	default:
+		return data // unknown formatter — skip silently
+	}
+}
+
+func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
+	// JSON ends with }\n — insert before the closing brace.
+	// Find the last } character.
+	braceIdx := len(data) - 2 // data[len-1] is \n, data[len-2] is }
+	if braceIdx < 0 || data[braceIdx] != '}' {
+		return data // unexpected format — return unchanged
+	}
+
+	// Pre-allocate: each field adds ~30 bytes (,"key":"value").
+	suffix := make([]byte, 0, len(fields)*30)
+	for _, f := range fields {
+		suffix = append(suffix, ',', '"')
+		suffix = append(suffix, f.JSONKey...)
+		suffix = append(suffix, '"', ':', '"')
+		suffix = append(suffix, f.Value...)
+		suffix = append(suffix, '"')
+	}
+
+	result := make([]byte, 0, len(data)+len(suffix))
+	result = append(result, data[:braceIdx]...)
+	result = append(result, suffix...)
+	result = append(result, data[braceIdx:]...) // }\n
+	return result
+}
+
+func appendPostFieldsCEF(data []byte, fields []PostField) []byte {
+	// CEF ends with \n — insert before the newline.
+	nlIdx := len(data) - 1
+	if nlIdx < 0 || data[nlIdx] != '\n' {
+		return data // unexpected format — return unchanged
+	}
+
+	// Pre-allocate: each field adds ~25 bytes ( key=value).
+	suffix := make([]byte, 0, len(fields)*25)
+	for _, f := range fields {
+		suffix = append(suffix, ' ')
+		suffix = append(suffix, f.CEFKey...)
+		suffix = append(suffix, '=')
+		suffix = append(suffix, f.Value...)
+	}
+
+	result := make([]byte, 0, len(data)+len(suffix))
+	result = append(result, data[:nlIdx]...)
+	result = append(result, suffix...)
+	result = append(result, '\n')
+	return result
 }
 
 // preAllocFormatOpts pre-allocates FormatOptions for outputs with

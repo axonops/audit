@@ -669,6 +669,63 @@ events:
 	assert.NoError(t, err, "description should not be in knownFields set")
 }
 
+// ---------------------------------------------------------------------------
+// emit_event_category (#227)
+// ---------------------------------------------------------------------------
+
+func TestEmitEventCategory_DefaultTrue(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.True(t, tax.EmitEventCategory, "default should be true when absent")
+}
+
+func TestEmitEventCategory_ExplicitTrue(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  emit_event_category: true
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.True(t, tax.EmitEventCategory)
+}
+
+func TestEmitEventCategory_ExplicitFalse(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+categories:
+  emit_event_category: false
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+	require.NoError(t, err)
+	assert.False(t, tax.EmitEventCategory)
+}
+
 func BenchmarkParseTaxonomyYAML(b *testing.B) {
 	data := []byte(validYAML)
 	for b.Loop() {

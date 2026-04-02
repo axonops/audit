@@ -38,7 +38,7 @@ const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
 type yamlTaxonomy struct {
-	Categories  yamlCategories          `yaml:"categories"`
+	Categories  yamlCategoriesResult    `yaml:"categories"`
 	Events      map[string]yamlEventDef `yaml:"events"`
 	Sensitivity *yamlSensitivity        `yaml:"sensitivity"`
 	Version     int                     `yaml:"version"`
@@ -57,6 +57,41 @@ type yamlSensitivityLabel struct {
 	Patterns    []string `yaml:"patterns"`
 }
 
+// yamlCategoriesResult holds the parsed categories and the optional
+// emit_event_category setting from the categories section.
+type yamlCategoriesResult struct {
+	categories        yamlCategories
+	emitEventCategory *bool // nil = absent (default true)
+}
+
+// UnmarshalYAML parses the categories section, extracting both category
+// definitions and the optional emit_event_category setting.
+func (r *yamlCategoriesResult) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("categories must be a YAML mapping")
+	}
+
+	r.categories = make(yamlCategories, len(value.Content)/2)
+
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		catName := value.Content[i].Value
+		if catName == "emit_event_category" {
+			var v bool
+			if err := value.Content[i+1].Decode(&v); err != nil {
+				return fmt.Errorf("emit_event_category: %w", err)
+			}
+			r.emitEventCategory = &v
+			continue
+		}
+		def, err := parseCategoryNode(catName, value.Content[i+1])
+		if err != nil {
+			return err
+		}
+		r.categories[catName] = def
+	}
+	return nil
+}
+
 // yamlCategories handles polymorphic YAML category parsing. Categories
 // can be either a simple list of event names or a struct with severity
 // and events. Both formats are supported in the same document.
@@ -66,27 +101,6 @@ type yamlCategories map[string]*yamlCategoryDef
 type yamlCategoryDef struct {
 	Severity *int     `yaml:"severity"`
 	Events   []string `yaml:"events"`
-}
-
-// UnmarshalYAML handles polymorphic parsing: a category value can be
-// either a sequence (list of event names) or a mapping (struct with
-// severity and events fields).
-func (c *yamlCategories) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("categories must be a YAML mapping")
-	}
-
-	*c = make(yamlCategories, len(value.Content)/2)
-
-	for i := 0; i+1 < len(value.Content); i += 2 {
-		catName := value.Content[i].Value
-		def, err := parseCategoryNode(catName, value.Content[i+1])
-		if err != nil {
-			return err
-		}
-		(*c)[catName] = def
-	}
-	return nil
 }
 
 // parseCategoryNode handles polymorphic category parsing: a category
@@ -206,8 +220,8 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 // is derived from the categories map — events may belong to multiple
 // categories or none (uncategorised).
 func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
-	categories := make(map[string]*CategoryDef, len(yt.Categories))
-	for name, yamlCat := range yt.Categories {
+	categories := make(map[string]*CategoryDef, len(yt.Categories.categories))
+	for name, yamlCat := range yt.Categories.categories {
 		categories[name] = &CategoryDef{
 			Severity: copyIntPtr(yamlCat.Severity),
 			Events:   copyStrings(yamlCat.Events),
@@ -232,10 +246,17 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		slices.Sort(def.Categories)
 	}
 
+	// Default emit_event_category to true when absent.
+	emitEventCategory := true
+	if yt.Categories.emitEventCategory != nil {
+		emitEventCategory = *yt.Categories.emitEventCategory
+	}
+
 	tax := Taxonomy{
-		Version:    yt.Version,
-		Categories: categories,
-		Events:     events,
+		Version:           yt.Version,
+		Categories:        categories,
+		Events:            events,
+		EmitEventCategory: emitEventCategory,
 	}
 
 	if yt.Sensitivity != nil {

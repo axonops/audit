@@ -122,6 +122,63 @@ func TestValidateTaxonomy(t *testing.T) {
 	})
 }
 
+func TestValidateTaxonomy_AllReservedFields_RejectedAsRequired(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"timestamp", "event_type", "severity", "event_category"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+			assert.Contains(t, err.Error(), "reserved framework field")
+			assert.Contains(t, err.Error(), field)
+		})
+	}
+}
+
+func TestValidateTaxonomy_AllReservedFields_RejectedAsOptional(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"timestamp", "event_type", "severity", "event_category"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{"outcome"}, Optional: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+			assert.Contains(t, err.Error(), "reserved framework field")
+			assert.Contains(t, err.Error(), field)
+		})
+	}
+}
+
+func TestValidateTaxonomy_DurationMs_AllowedAsOptional(t *testing.T) {
+	t.Parallel()
+	// duration_ms is a framework field for sensitivity protection but
+	// is NOT reserved — it can be used as an optional user field.
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events: map[string]*audit.EventDef{
+			"ev1": {Required: []string{"outcome"}, Optional: []string{"duration_ms"}},
+		},
+	}
+	err := audit.ValidateTaxonomy(tax)
+	assert.NoError(t, err)
+}
+
 func TestMigrateTaxonomy(t *testing.T) {
 	t.Run("valid version passes", func(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()

@@ -2627,3 +2627,205 @@ func TestAuditEvent_NilEvent(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "event must not be nil")
 }
+
+// ---------------------------------------------------------------------------
+// event_category (#227)
+// ---------------------------------------------------------------------------
+
+func TestAppendPostFields_JSON_SingleField(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"}}
+	result := audit.AppendPostFields(data, &audit.JSONFormatter{}, fields)
+	assert.Equal(t, `{"event_type":"test","outcome":"success","event_category":"security"}`+"\n", string(result))
+}
+
+func TestAppendPostFields_JSON_EmptyFields(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"event_type":"test"}` + "\n")
+	result := audit.AppendPostFields(data, &audit.JSONFormatter{}, nil)
+	assert.Equal(t, string(data), string(result), "empty fields should return unchanged data")
+}
+
+func TestAppendPostFields_CEF_SingleField(t *testing.T) {
+	t.Parallel()
+	data := []byte("CEF:0|V|P|1|test|desc|5|outcome=success\n")
+	fields := []audit.PostField{{JSONKey: "event_category", CEFKey: "eventCategory", Value: "write"}}
+	result := audit.AppendPostFields(data, &audit.CEFFormatter{}, fields)
+	assert.Equal(t, "CEF:0|V|P|1|test|desc|5|outcome=success eventCategory=write\n", string(result))
+}
+
+func TestAppendPostFields_CEF_EmptyFields(t *testing.T) {
+	t.Parallel()
+	data := []byte("CEF:0|V|P|1|test|desc|5|outcome=success\n")
+	result := audit.AppendPostFields(data, &audit.CEFFormatter{}, nil)
+	assert.Equal(t, string(data), string(result))
+}
+
+func TestAppendPostFields_UnknownFormatter(t *testing.T) {
+	t.Parallel()
+	data := []byte("some custom format\n")
+	fields := []audit.PostField{{JSONKey: "k", CEFKey: "k", Value: "v"}}
+	result := audit.AppendPostFields(data, nil, fields)
+	assert.Equal(t, string(data), string(result), "unknown formatter should return unchanged")
+}
+
+func TestIsFrameworkField_EventCategory(t *testing.T) {
+	t.Parallel()
+	assert.True(t, audit.IsFrameworkField("event_category", nil))
+}
+
+func TestEventCategory_SingleCategory_JSON(t *testing.T) {
+
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "security", ev["event_category"])
+}
+
+func TestEventCategory_MultiCategory_SeparateDeliveries(t *testing.T) {
+
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories: map[string]*audit.CategoryDef{
+			"security": {Events: []string{"admin_update"}},
+			"write":    {Events: []string{"admin_update"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"admin_update": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("admin_update", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(2, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	cat0, ok0 := out.GetEvent(0)["event_category"].(string)
+	require.True(t, ok0, "event_category should be a string")
+	cat1, ok1 := out.GetEvent(1)["event_category"].(string)
+	require.True(t, ok1, "event_category should be a string")
+	categories := []string{cat0, cat1}
+	assert.Contains(t, categories, "security")
+	assert.Contains(t, categories, "write")
+}
+
+func TestEventCategory_Uncategorised_NoField(t *testing.T) {
+
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events: map[string]*audit.EventDef{
+			"ev1":         {Required: []string{"outcome"}},
+			"uncat_event": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("uncat_event", audit.Fields{"outcome": "success"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	_, hasCategory := ev["event_category"]
+	assert.False(t, hasCategory, "uncategorised event should not have event_category")
+}
+
+func TestEventCategory_EmitFalse_NoField(t *testing.T) {
+
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: false,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	_, hasCategory := ev["event_category"]
+	assert.False(t, hasCategory, "emit_event_category:false should not add event_category")
+}
+
+func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
+
+	out := testhelper.NewMockOutput("test")
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// User tries to set event_category — framework value should win.
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":        "failure",
+		"event_category": "user_custom",
+	}))
+	require.NoError(t, err)
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "security", ev["event_category"], "framework category should override user-supplied")
+}

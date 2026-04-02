@@ -467,6 +467,48 @@ func TestSyslogOutput_Write(t *testing.T) {
 	assert.Contains(t, msgs[0], "user_create")
 }
 
+func TestSyslogOutput_Hostname_Override(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp",
+		Address:  srv.addr(),
+		Hostname: "custom-host",
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event_type":"test"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs)
+	assert.Contains(t, msgs[0], "custom-host",
+		"syslog message should contain the overridden hostname")
+}
+
+func TestSyslogOutput_Hostname_DefaultFallback(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+		// Hostname intentionally omitted — should fall back to os.Hostname.
+	}, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event_type":"test"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs)
+	// Cannot assert the exact hostname, but the message should be non-empty.
+	assert.NotEmpty(t, msgs[0])
+}
+
 func TestSyslogOutput_WriteMultiple(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()

@@ -73,7 +73,7 @@ const (
 )
 
 // Config holds configuration for [Output].
-type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy extends scan region by 8 bytes; readability preferred
+type Config struct {
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
 	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
 	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).
@@ -112,6 +112,11 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// the default policy (TLS 1.3 only) is used. See [audit.TLSPolicy]
 	// for details on enabling TLS 1.2 fallback.
 	TLSPolicy *audit.TLSPolicy
+
+	// Hostname overrides the hostname in the syslog RFC 5424 header.
+	// When empty, [os.Hostname] is used at construction time. Set this
+	// to match the logger-wide host value from [audit.WithHost].
+	Hostname string
 
 	// MaxRetries is the maximum number of consecutive reconnection
 	// attempts before giving up. Zero defaults to
@@ -185,12 +190,16 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 		return nil, fmt.Errorf("audit: syslog facility %q: %w", cfg.Facility, err)
 	}
 
-	// Hostname failure is non-fatal; an empty hostname is acceptable
-	// in the RFC 5424 header (NILVALUE "-" per §6.2.4).
+	// Use explicit hostname from config if provided; otherwise fall
+	// back to os.Hostname(). Failure is non-fatal; an empty hostname
+	// is acceptable in the RFC 5424 header (NILVALUE "-" per §6.2.4).
 	// Note: both hostname and ProcID (set by srslog via os.Getpid())
 	// are cached at construction time and not updated if the process
 	// forks or the hostname changes during the process lifetime.
-	hostname, _ := os.Hostname()
+	hostname := cfg.Hostname
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
 
 	var tlsCfg *tls.Config
 	if cfg.Network == "tcp+tls" {

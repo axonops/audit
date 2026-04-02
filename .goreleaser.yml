@@ -49,6 +49,28 @@ changelog:
       regexp: '^refactor'
       order: 4
 
+sboms:
+  - id: cyclonedx
+    artifacts: archive
+    documents:
+      - >-
+        {{ .ProjectName }}_{{ .Version }}_sbom.cdx.json
+    cmd: syft
+    args:
+      - "${artifact}"
+      - "--output"
+      - "cyclonedx-json"
+  - id: spdx
+    artifacts: archive
+    documents:
+      - >-
+        {{ .ProjectName }}_{{ .Version }}_sbom.spdx.json
+    cmd: syft
+    args:
+      - "${artifact}"
+      - "--output"
+      - "spdx-json"
+
 checksum:
   name_template: 'checksums.txt'
   algorithm: sha256

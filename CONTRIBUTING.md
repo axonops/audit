@@ -22,6 +22,8 @@ make test              # unit tests for all modules
 make test-integration  # integration tests (requires Docker)
 make test-bdd          # BDD tests (requires Docker)
 make check             # full quality gate (same checks as CI)
+make sbom              # generate CycloneDX + SPDX SBOMs (requires syft)
+make sbom-validate     # validate generated SBOMs
 ```
 
 Individual modules can be tested separately: `make test-core`,

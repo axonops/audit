@@ -124,7 +124,7 @@ func TestValidateTaxonomy(t *testing.T) {
 
 func TestValidateTaxonomy_AllReservedFields_RejectedAsRequired(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"timestamp", "event_type", "severity", "event_category"} {
+	for _, field := range []string{"timestamp", "event_type", "severity", "event_category", "app_name", "host", "timezone", "pid"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			tax := audit.Taxonomy{
@@ -145,7 +145,7 @@ func TestValidateTaxonomy_AllReservedFields_RejectedAsRequired(t *testing.T) {
 
 func TestValidateTaxonomy_AllReservedFields_RejectedAsOptional(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"timestamp", "event_type", "severity", "event_category"} {
+	for _, field := range []string{"timestamp", "event_type", "severity", "event_category", "app_name", "host", "timezone", "pid"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			tax := audit.Taxonomy{

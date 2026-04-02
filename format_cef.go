@@ -151,6 +151,12 @@ type CEFFormatter struct {
 	// If empty, the version position is blank. SHOULD be non-empty.
 	Version string
 
+	// Framework fields set once via SetFrameworkFields.
+	appName  string
+	host     string
+	timezone string
+	pid      int
+
 	// noCopy prevents go vet from missing struct copies after first use.
 	// CEFFormatter embeds sync.Once which must not be copied.
 	noCopy      noCopy
@@ -221,6 +227,9 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 		}
 	}
 
+	// Framework fields (app_name, host, timezone, pid).
+	cf.writeFrameworkExtensions(buf, extStart, reserved)
+
 	// All fields via mapping.
 	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved, opts); err != nil {
 		cefBufPool.Put(buf)
@@ -256,9 +265,9 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 		}
 		extKey := mapFieldKey(k, mapping)
 		// Skip fields whose mapped key collides with a framework-
-		// emitted extension key (rt, act, cn1, cn1Label). Collision
-		// is a consumer mapping misconfiguration; it is silently
-		// skipped to avoid per-event log flooding.
+		// emitted extension key. Collision is a consumer mapping
+		// misconfiguration; it is silently skipped to avoid
+		// per-event log flooding.
 		if _, dup := reserved[extKey]; dup {
 			continue
 		}
@@ -310,6 +319,36 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 		cf.resolvedMapping = merged
 	})
 	return cf.resolvedMapping
+}
+
+// SetFrameworkFields stores logger-wide framework metadata for
+// emission in every CEF event. Called once at construction time.
+func (cf *CEFFormatter) SetFrameworkFields(appName, host, timezone string, pid int) {
+	cf.appName = appName
+	cf.host = host
+	cf.timezone = timezone
+	cf.pid = pid
+}
+
+// writeFrameworkExtensions writes app_name, host, timezone, and pid as
+// standard CEF extension keys.
+func (cf *CEFFormatter) writeFrameworkExtensions(buf *bytes.Buffer, extStart int, reserved map[string]struct{}) {
+	if cf.appName != "" {
+		writeExtField(buf, extStart, "deviceProcessName", cf.appName)
+		reserved["deviceProcessName"] = struct{}{}
+	}
+	if cf.host != "" {
+		writeExtField(buf, extStart, "dvchost", cf.host)
+		reserved["dvchost"] = struct{}{}
+	}
+	if cf.timezone != "" {
+		writeExtField(buf, extStart, "dtz", cf.timezone)
+		reserved["dtz"] = struct{}{}
+	}
+	if cf.pid > 0 {
+		writeExtField(buf, extStart, "dvcpid", strconv.Itoa(cf.pid))
+		reserved["dvcpid"] = struct{}{}
+	}
 }
 
 // cefEscapeHeader escapes characters in CEF header fields using a

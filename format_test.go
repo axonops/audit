@@ -843,6 +843,94 @@ func TestDefaultCEFFieldMapping_IndependentCopies(t *testing.T) {
 	assert.False(t, hasNew, "second call must not see first call's new key")
 }
 
+// ---------------------------------------------------------------------------
+// Framework fields (#237)
+// ---------------------------------------------------------------------------
+
+func TestJSONFormatter_FrameworkFields(t *testing.T) {
+	t.Parallel()
+	jf := &audit.JSONFormatter{}
+	jf.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+
+	data, err := jf.Format(testTime, "ev", audit.Fields{
+		"outcome": "success",
+	}, &audit.EventDef{
+		Required: []string{"outcome"},
+	}, nil)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	assert.Equal(t, "myapp", m["app_name"])
+	assert.Equal(t, "prod-01", m["host"])
+	assert.Equal(t, "UTC", m["timezone"])
+	assert.Equal(t, float64(12345), m["pid"])
+}
+
+func TestJSONFormatter_FrameworkFields_OmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+	jf := &audit.JSONFormatter{}
+	// No SetFrameworkFields call — fields should be absent.
+
+	data, err := jf.Format(testTime, "ev", audit.Fields{
+		"outcome": "success",
+	}, &audit.EventDef{
+		Required: []string{"outcome"},
+	}, nil)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m))
+
+	_, hasApp := m["app_name"]
+	_, hasHost := m["host"]
+	_, hasTZ := m["timezone"]
+	_, hasPID := m["pid"]
+	assert.False(t, hasApp, "app_name should be absent")
+	assert.False(t, hasHost, "host should be absent")
+	assert.False(t, hasTZ, "timezone should be absent")
+	assert.False(t, hasPID, "pid should be absent")
+}
+
+func TestCEFFormatter_FrameworkFields(t *testing.T) {
+	t.Parallel()
+	cf := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	cf.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+
+	data, err := cf.Format(testTime, "ev", audit.Fields{
+		"outcome": "success",
+	}, &audit.EventDef{
+		Required: []string{"outcome"},
+	}, nil)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "deviceProcessName=myapp")
+	assert.Contains(t, line, "dvchost=prod-01")
+	assert.Contains(t, line, "dtz=UTC")
+	assert.Contains(t, line, "dvcpid=12345")
+}
+
+func TestCEFFormatter_FrameworkFields_OmittedWhenEmpty(t *testing.T) {
+	t.Parallel()
+	cf := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	// No SetFrameworkFields call.
+
+	data, err := cf.Format(testTime, "ev", audit.Fields{
+		"outcome": "success",
+	}, &audit.EventDef{
+		Required: []string{"outcome"},
+	}, nil)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.NotContains(t, line, "deviceProcessName")
+	assert.NotContains(t, line, "dvchost")
+	assert.NotContains(t, line, "dtz")
+	assert.NotContains(t, line, "dvcpid")
+}
+
 func TestDefaultCEFFieldMapping_AllStandardEntries(t *testing.T) {
 	t.Parallel()
 	m := audit.DefaultCEFFieldMapping()
@@ -1112,6 +1200,75 @@ func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {
 			"cn1 not reserved when duration_ms absent, consumer mapping permitted")
 		assert.Contains(t, output, "cn1=alice")
 	})
+}
+
+func TestCEFFormatter_FrameworkField_Collision(t *testing.T) {
+	t.Parallel()
+	baseDef := &audit.EventDef{
+		Required: []string{"outcome"},
+		Optional: []string{"source_ip"},
+	}
+
+	for _, tc := range []struct {
+		name    string
+		cefKey  string
+		value   string
+		appName string
+		host    string
+		tz      string
+		pid     int
+	}{
+		{"deviceProcessName", "deviceProcessName", "myapp", "myapp", "", "", 0},
+		{"dvchost", "dvchost", "prod-01", "", "prod-01", "", 0},
+		{"dtz", "dtz", "UTC", "", "", "UTC", 0},
+		{"dvcpid", "dvcpid", "12345", "", "", "", 12345},
+	} {
+		t.Run(tc.name+"_collision", func(t *testing.T) {
+			t.Parallel()
+			f := &audit.CEFFormatter{
+				Vendor:       "V",
+				Product:      "P",
+				Version:      "1",
+				FieldMapping: map[string]string{"source_ip": tc.cefKey},
+			}
+			f.SetFrameworkFields(tc.appName, tc.host, tc.tz, tc.pid)
+			data, err := f.Format(testTime, "ev", audit.Fields{
+				"outcome":   "ok",
+				"source_ip": "10.0.0.1",
+			}, baseDef, nil)
+			require.NoError(t, err)
+			output := string(data)
+			assert.Equal(t, 1, strings.Count(output, tc.cefKey+"="),
+				"framework %s should appear once, user collision skipped", tc.cefKey)
+			assert.Contains(t, output, tc.cefKey+"="+tc.value)
+			assert.NotContains(t, output, tc.cefKey+"=10.0.0.1")
+		})
+	}
+}
+
+func TestJSONFormatter_FrameworkFields_Ordering(t *testing.T) {
+	t.Parallel()
+	jf := &audit.JSONFormatter{}
+	jf.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+
+	data, err := jf.Format(testTime, "ev", audit.Fields{
+		"outcome":     "success",
+		"duration_ms": 250 * time.Millisecond,
+	}, &audit.EventDef{
+		Required: []string{"outcome"},
+		Optional: []string{"duration_ms"},
+	}, nil)
+	require.NoError(t, err)
+
+	raw := string(data)
+	durIdx := strings.Index(raw, `"duration_ms"`)
+	appIdx := strings.Index(raw, `"app_name"`)
+	pidIdx := strings.Index(raw, `"pid"`)
+	outcomeIdx := strings.Index(raw, `"outcome"`)
+
+	assert.Less(t, durIdx, appIdx, "duration_ms before app_name")
+	assert.Less(t, appIdx, pidIdx, "app_name before pid")
+	assert.Less(t, pidIdx, outcomeIdx, "pid before user fields")
 }
 
 // ---------------------------------------------------------------------------

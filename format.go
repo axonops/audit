@@ -81,6 +81,19 @@ type Formatter interface {
 	Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error)
 }
 
+// FrameworkFieldSetter is implemented by formatters that emit
+// logger-wide framework metadata (app_name, host, timezone, pid) in
+// serialised output. The library calls SetFrameworkFields once at
+// construction time, after all options are applied and before the
+// first Format call.
+//
+// [JSONFormatter] and [CEFFormatter] implement this interface.
+// Third-party formatters that do not implement it silently omit these
+// fields.
+type FrameworkFieldSetter interface {
+	SetFrameworkFields(appName, host, timezone string, pid int)
+}
+
 // TimestampFormat controls how timestamps are rendered in serialised
 // output. Unrecognised values default to [TimestampRFC3339Nano].
 type TimestampFormat string
@@ -142,10 +155,11 @@ func containsFrameworkField(sorted []string, fields Fields) bool {
 // isFrameworkField reports whether k is a framework-managed field that
 // should be skipped during user-field iteration.
 func isFrameworkField(k string, fields Fields) bool {
-	if k == "timestamp" || k == "event_type" || k == "severity" || k == "event_category" {
+	switch k {
+	case "timestamp", "event_type", "severity", "event_category",
+		"app_name", "host", "timezone", "pid":
 		return true
-	}
-	if k == "duration_ms" {
+	case "duration_ms":
 		_, isDuration := fields[k].(time.Duration)
 		return isDuration
 	}

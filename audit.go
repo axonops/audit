@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -102,6 +103,12 @@ type Logger struct {
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool
+	// Framework fields set via WithAppName, WithHost, WithTimezone.
+	// PID is captured once at construction via os.Getpid().
+	appName  string
+	host     string
+	timezone string
+	pid      int
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
@@ -148,6 +155,12 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	if l.formatter == nil {
 		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
 	}
+
+	// Capture PID once at construction.
+	l.pid = os.Getpid()
+
+	// Propagate framework fields to all formatters that support them.
+	l.setFrameworkFieldsOnFormatters()
 
 	if !cfg.Enabled {
 		return l, nil
@@ -701,6 +714,22 @@ func (l *Logger) preAllocFormatOpts() {
 			oe.formatOpts = &FormatOptions{
 				ExcludedLabels: oe.excludedLabels,
 			}
+		}
+	}
+}
+
+// setFrameworkFieldsOnFormatters propagates logger-wide framework
+// metadata to all formatters that implement [FrameworkFieldSetter].
+func (l *Logger) setFrameworkFieldsOnFormatters() {
+	set := func(f Formatter) {
+		if setter, ok := f.(FrameworkFieldSetter); ok {
+			setter.SetFrameworkFields(l.appName, l.host, l.timezone, l.pid)
+		}
+	}
+	set(l.formatter)
+	for _, oe := range l.entries {
+		if oe.formatter != nil {
+			set(oe.formatter)
 		}
 	}
 }

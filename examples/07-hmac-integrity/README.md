@@ -170,11 +170,11 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- secure-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"a578...","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"<hex-64-chars>","_hmac_v":"2026-Q1"}
 
 --- all-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"a578...","_hmac_v":"2026-Q1"}
-{"timestamp":"...","event_type":"user_create",...,"_hmac":"0e9e...","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"<same-hex>","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"user_create",...,"_hmac":"<different-hex>","_hmac_v":"2026-Q1"}
 ```
 
 Notice the three contrasts:

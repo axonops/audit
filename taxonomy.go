@@ -168,8 +168,10 @@ type Taxonomy struct {
 
 	// EmitEventCategory controls whether the delivery-specific category
 	// name is appended as an `event_category` field in serialised output.
-	// Defaults to true. When false, the append is skipped entirely with
-	// zero overhead.
+	// When set via [ParseTaxonomyYAML], defaults to true when absent
+	// from YAML. The Go zero value is false — programmatic consumers
+	// must set this explicitly. When false, the append is skipped
+	// entirely with zero overhead.
 	EmitEventCategory bool
 
 	// Version is the taxonomy schema version. MUST be > 0. Currently

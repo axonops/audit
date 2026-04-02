@@ -18,6 +18,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2662,6 +2663,32 @@ func TestAppendPostFields_CEF_EmptyFields(t *testing.T) {
 	assert.Equal(t, string(data), string(result))
 }
 
+func TestAppendPostFields_JSON_MultipleFields(t *testing.T) {
+	t.Parallel()
+	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
+	fields := []audit.PostField{
+		{JSONKey: "event_category", CEFKey: "eventCategory", Value: "security"},
+		{JSONKey: "checksum", CEFKey: "checksum", Value: "abc123"},
+	}
+	result := audit.AppendPostFields(data, &audit.JSONFormatter{}, fields)
+	assert.Contains(t, string(result), `"event_category":"security"`)
+	assert.Contains(t, string(result), `"checksum":"abc123"`)
+	assert.True(t, strings.HasSuffix(string(result), "}\n"))
+}
+
+func TestAppendPostFields_CEF_MultipleFields(t *testing.T) {
+	t.Parallel()
+	data := []byte("CEF:0|V|P|1|test|desc|5|outcome=success\n")
+	fields := []audit.PostField{
+		{JSONKey: "event_category", CEFKey: "eventCategory", Value: "write"},
+		{JSONKey: "checksum", CEFKey: "checksum", Value: "abc123"},
+	}
+	result := audit.AppendPostFields(data, &audit.CEFFormatter{}, fields)
+	assert.Contains(t, string(result), "eventCategory=write")
+	assert.Contains(t, string(result), "checksum=abc123")
+	assert.True(t, strings.HasSuffix(string(result), "\n"))
+}
+
 func TestAppendPostFields_UnknownFormatter(t *testing.T) {
 	t.Parallel()
 	data := []byte("some custom format\n")
@@ -2676,6 +2703,7 @@ func TestIsFrameworkField_EventCategory(t *testing.T) {
 }
 
 func TestEventCategory_SingleCategory_JSON(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	tax := audit.Taxonomy{
@@ -2704,6 +2732,7 @@ func TestEventCategory_SingleCategory_JSON(t *testing.T) {
 }
 
 func TestEventCategory_MultiCategory_SeparateDeliveries(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	tax := audit.Taxonomy{
@@ -2740,6 +2769,7 @@ func TestEventCategory_MultiCategory_SeparateDeliveries(t *testing.T) {
 }
 
 func TestEventCategory_Uncategorised_NoField(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	tax := audit.Taxonomy{
@@ -2770,6 +2800,7 @@ func TestEventCategory_Uncategorised_NoField(t *testing.T) {
 }
 
 func TestEventCategory_EmitFalse_NoField(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	tax := audit.Taxonomy{
@@ -2799,6 +2830,7 @@ func TestEventCategory_EmitFalse_NoField(t *testing.T) {
 }
 
 func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
+	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
 	tax := audit.Taxonomy{

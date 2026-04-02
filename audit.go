@@ -581,9 +581,13 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 // format caching. Used for delivery-specific context (category) and
 // future features (e.g., HMAC checksum).
 type PostField struct {
-	JSONKey string // e.g., "event_category"
-	CEFKey  string // e.g., "eventCategory"
-	Value   string
+	// JSONKey is the JSON object key used when appending to JSON output.
+	JSONKey string
+	// CEFKey is the extension key used when appending to CEF output.
+	CEFKey string
+	// Value is the string value to emit for this field. Values are
+	// escaped automatically (JSON via encoding/json, CEF via cefEscapeExtValue).
+	Value string
 }
 
 // appendEventCategory appends the event_category field to serialised

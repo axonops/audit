@@ -113,6 +113,11 @@ INFO audit: shutdown complete duration=...
 Five JSON events written to `audit.log`, each with the `event_category`
 field from the taxonomy. The file is cleaned up at the end of the example.
 
+## Further Reading
+
+- [Outputs](../../docs/outputs.md) — output types and fan-out architecture
+- [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
+
 ## Previous
 
 [Code Generation](../02-code-generation/)

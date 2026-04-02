@@ -223,6 +223,11 @@ threshold (7). The `auth_failure` event appears in both `security.log`
 (category route) and `critical.log` (severity route) — it matches both
 independently.
 
+## Further Reading
+
+- [Event Routing](../../docs/event-routing.md) — full routing reference with all filter options
+- [Output Configuration YAML](../../docs/output-configuration.md) — route syntax in YAML
+
 ## Previous
 
 [Multi-Output](../04-multi-output/)

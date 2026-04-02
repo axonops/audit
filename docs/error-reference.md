@@ -3,10 +3,10 @@
 # Error Reference
 
 - [How to Check Errors](#how-to-check-errors)
-- [Core Errors](#-core-errors)
-- [Configuration Errors](#️-configuration-errors)
-- [Output Errors](#-output-errors)
-- [Taxonomy Errors](#-taxonomy-errors)
+- [Core Errors](#core-errors)
+- [Configuration Errors](#configuration-errors)
+- [Output Errors](#output-errors)
+- [Taxonomy Errors](#taxonomy-errors)
 
 ## How to Check Errors
 

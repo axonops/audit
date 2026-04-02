@@ -5,12 +5,12 @@
 - [What Is HMAC?](#what-is-hmac)
 - [Why Use It?](#why-use-it)
 - [What HMAC Does NOT Protect Against](#what-hmac-does-not-protect-against)
-- [Performance Impact](#️-performance-impact)
-- [Configuration](#️-configuration)
-- [Supported Algorithms](#-supported-algorithms)
-- [Salt Management](#-salt-management)
-- [Verification](#-verification)
-- [Alternative Approaches](#-alternative-approaches)
+- [Performance Impact](#performance-impact)
+- [Configuration](#configuration)
+- [Supported Algorithms](#supported-algorithms)
+- [Salt Management](#salt-management)
+- [Verification](#verification)
+- [Alternative Approaches](#alternative-approaches)
 
 ## What Is HMAC?
 
@@ -94,7 +94,7 @@ outputs:
 | `hmac.enabled` | No | Default: `false`. Must be explicitly `true`. |
 | `hmac.salt.version` | Yes (when enabled) | User-defined version identifier for the salt. Included in output for rotation support. |
 | `hmac.salt.value` | Yes (when enabled) | The salt value. Min 16 bytes (128 bits). Supports `${VAR}` env vars. |
-| `hmac.hash` | Yes (when enabled) | Hash algorithm. See [Supported Algorithms](#-supported-algorithms). |
+| `hmac.hash` | Yes (when enabled) | Hash algorithm. See [Supported Algorithms](#supported-algorithms). |
 
 ## 📋 Supported Algorithms
 

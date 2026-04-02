@@ -325,6 +325,12 @@ The `event_category` field is automatically populated from the taxonomy's
 category definitions. The `INFO audit:` lines are lifecycle diagnostics
 on stderr — see [example 01](../01-basic/) for details.
 
+## Further Reading
+
+- [Code Generation](../../docs/code-generation.md) — full audit-gen reference
+- [Output Configuration YAML](../../docs/output-configuration.md) — outputs.yaml schema
+- [Taxonomy Validation](../../docs/taxonomy-validation.md) — validation rules and modes
+
 ## Previous
 
 [Basic](../01-basic/)

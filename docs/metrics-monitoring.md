@@ -2,13 +2,13 @@
 
 # Metrics and Monitoring
 
-- [Why Monitor?](#-why-monitor-your-audit-pipeline)
+- [Why Monitor?](#why-monitor-your-audit-pipeline)
 - [The Metrics Interface](#the-metrics-interface)
-- [What to Monitor](#-what-to-monitor)
+- [What to Monitor](#what-to-monitor)
 - [Prometheus Example](#prometheus-example)
-- [Recommended Alerts](#-recommended-alerts)
-- [Per-Output Metrics](#-per-output-metrics)
-- [Testing Metrics](#-testing-metrics)
+- [Recommended Alerts](#recommended-alerts)
+- [Per-Output Metrics](#per-output-metrics)
+- [Testing Metrics](#testing-metrics)
 
 ## ❓ Why Monitor Your Audit Pipeline?
 

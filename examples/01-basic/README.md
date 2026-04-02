@@ -194,6 +194,12 @@ The JSON event appears between the shutdown messages because
 before finishing. This is normal — `Close()` guarantees all buffered
 events are delivered before it returns.
 
+## Further Reading
+
+- [Taxonomy Validation](../../docs/taxonomy-validation.md) — how the library validates events
+- [Async Delivery](../../docs/async-delivery.md) — buffering, backpressure, and shutdown
+- [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) — full godoc
+
 ## Next
 
 [Code Generation](../02-code-generation/) — define your events in YAML and

@@ -127,6 +127,12 @@ output uses the `suser` extension key for `actor_id`, and the
 `eventCategory` extension appears in CEF because `event_category` is
 automatically mapped.
 
+## Further Reading
+
+- [JSON Format](../../docs/json-format.md) — JSON formatter options and field ordering
+- [CEF Format](../../docs/cef-format.md) — CEF structure, field mapping, and SIEM integration
+- [Output Configuration YAML](../../docs/output-configuration.md) — formatter: block syntax
+
 ## Previous
 
 [HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection.

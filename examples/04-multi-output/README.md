@@ -85,6 +85,11 @@ INFO audit: shutdown complete duration=...
 Both outputs received identical events — that's fan-out. Note `outputs=2`
 in the logger-created message confirms both outputs are registered.
 
+## Further Reading
+
+- [Outputs](../../docs/outputs.md) — fan-out architecture and delivery guarantees
+- [Async Delivery](../../docs/async-delivery.md) — how events flow through the pipeline
+
 ## Previous
 
 [File Output](../03-file-output/)

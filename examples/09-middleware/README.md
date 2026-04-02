@@ -161,6 +161,11 @@ Three HTTP requests, but only two audit events. The health check was
 skipped because the `EventBuilder` returned `nil` for requests to
 `/healthz`.
 
+## Further Reading
+
+- [HTTP Middleware](../../docs/http-middleware.md) — full middleware reference, Hints API, EventBuilder
+- [Async Delivery](../../docs/async-delivery.md) — how middleware events flow through the pipeline
+
 ## Previous
 
 [Formatters](../08-formatters/) — JSON vs CEF formatters configured in YAML.

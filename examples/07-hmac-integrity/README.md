@@ -187,6 +187,13 @@ The `auth_failure` event has the same HMAC value in both files because
 the same salt and payload produce the same hash. The `user_create` event
 only appears in `all-audit.log` because `secure_log` routes by category.
 
+## Further Reading
+
+- [HMAC Integrity](../../docs/hmac-integrity.md) — full guide: algorithms, salt management, verification, performance
+- [Event Routing](../../docs/event-routing.md) — how routing controls which events reach HMAC-enabled outputs
+- [Sensitivity Labels](../../docs/sensitivity-labels.md) — field stripping that changes the HMAC payload
+- [Output Configuration YAML](../../docs/output-configuration.md) — hmac: block syntax
+
 ## Previous
 
 [Sensitivity Labels](../06-sensitivity-labels/) — per-output field

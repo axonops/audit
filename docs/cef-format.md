@@ -2,13 +2,13 @@
 
 # Common Event Format (CEF)
 
-- [What Is CEF?](#-what-is-cef)
-- [Format Structure](#-format-structure)
-- [CEF vs JSON](#️-cef-vs-json)
-- [Field Mapping](#️-field-mapping)
-- [Severity Levels](#-severity-levels)
-- [Configuration](#️-configuration)
-- [Escaping and Security](#-escaping-and-security)
+- [What Is CEF?](#what-is-cef)
+- [Format Structure](#format-structure)
+- [CEF vs JSON](#cef-vs-json)
+- [Field Mapping](#field-mapping)
+- [Severity Levels](#severity-levels)
+- [Configuration](#configuration)
+- [Escaping and Security](#escaping-and-security)
 
 ## 🔍 What Is CEF?
 

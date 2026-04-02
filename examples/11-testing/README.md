@@ -194,6 +194,11 @@ All five tests pass, each demonstrating a different testing pattern.
 You will also see `INFO audit:` lifecycle messages from logger creation
 and shutdown — these are normal.
 
+## Further Reading
+
+- [Testing](../../docs/testing.md) — full audittest reference and testing patterns
+- [Troubleshooting](../../docs/troubleshooting.md) — common issues and solutions
+
 ## Previous
 
 [CRUD API](../10-crud-api/) — complete REST API with Postgres,

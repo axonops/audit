@@ -2,11 +2,11 @@
 
 # Code Generation with audit-gen
 
-- [What Is audit-gen?](#-what-is-audit-gen)
-- [Why Code Generation?](#-why-code-generation)
-- [Workflow](#️-workflow)
+- [What Is audit-gen?](#what-is-audit-gen)
+- [Why Code Generation?](#why-code-generation)
+- [Workflow](#workflow)
 - [What Gets Generated](#what-gets-generated)
-- [CLI Flags](#️-cli-flags)
+- [CLI Flags](#cli-flags)
 
 ## 🔍 What Is audit-gen?
 

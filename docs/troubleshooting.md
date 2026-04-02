@@ -2,14 +2,14 @@
 
 # Troubleshooting
 
-- [Events Not Appearing in Output](#-events-not-appearing-in-output)
-- [ErrBufferFull at Runtime](#-errbufferfull-at-runtime)
-- [Drain Timeout at Shutdown](#-drain-timeout-at-shutdown)
-- [Validation Errors on Valid-Looking Events](#-validation-errors-on-valid-looking-events)
-- [Syslog Connection Failures](#-syslog-connection-failures)
-- [Webhook Events Not Delivered](#-webhook-events-not-delivered)
-- [File Output Not Writing](#-file-output-not-writing)
-- [Goroutine Leak in Tests](#-goroutine-leak-in-tests)
+- [Events Not Appearing in Output](#events-not-appearing-in-output)
+- [ErrBufferFull at Runtime](#errbufferfull-at-runtime)
+- [Drain Timeout at Shutdown](#drain-timeout-at-shutdown)
+- [Validation Errors on Valid-Looking Events](#validation-errors-on-valid-looking-events)
+- [Syslog Connection Failures](#syslog-connection-failures)
+- [Webhook Events Not Delivered](#webhook-events-not-delivered)
+- [File Output Not Writing](#file-output-not-writing)
+- [Goroutine Leak in Tests](#goroutine-leak-in-tests)
 
 ---
 

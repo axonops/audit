@@ -2,13 +2,13 @@
 
 # Testing Audit Events in Your Application
 
-- [What Is audittest?](#-what-is-audittest)
-- [Why a Test Package?](#-why-a-test-package)
-- [Quick Start](#-quick-start)
-- [Two Constructor Patterns](#-two-constructor-patterns)
-- [Recorded Event API](#-recorded-event-api)
-- [Metrics Assertions](#-metrics-assertions)
-- [Table-Driven Tests](#-table-driven-tests)
+- [What Is audittest?](#what-is-audittest)
+- [Why a Test Package?](#why-a-test-package)
+- [Quick Start](#quick-start)
+- [Two Constructor Patterns](#two-constructor-patterns)
+- [Recorded Event API](#recorded-event-api)
+- [Metrics Assertions](#metrics-assertions)
+- [Table-Driven Tests](#table-driven-tests)
 
 ## 🔍 What Is audittest?
 

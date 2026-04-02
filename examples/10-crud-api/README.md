@@ -291,6 +291,13 @@ and severity:
 - **Syslog** on TCP 5514 — security events only
 - **Webhook** receiver — high-severity events (severity >= 7)
 
+## Further Reading
+
+- [Metrics and Monitoring](../../docs/metrics-monitoring.md) — Prometheus integration guide
+- [HTTP Middleware](../../docs/http-middleware.md) — middleware placement and EventBuilder
+- [Async Delivery](../../docs/async-delivery.md) — graceful shutdown and drain timeout
+- [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
+
 ## Previous
 
 [Middleware](../09-middleware/) — the HTTP middleware fundamentals.

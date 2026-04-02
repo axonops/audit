@@ -2,11 +2,11 @@
 
 # Sensitivity Labels
 
-- [What Are Sensitivity Labels?](#-what-are-sensitivity-labels)
-- [Why Sensitivity Labels?](#-why-sensitivity-labels)
+- [What Are Sensitivity Labels?](#what-are-sensitivity-labels)
+- [Why Sensitivity Labels?](#why-sensitivity-labels)
 - [Taxonomy Configuration](#taxonomy-configuration)
-- [Per-Output Exclusion](#-per-output-exclusion)
-- [Protected Fields](#️-protected-fields)
+- [Per-Output Exclusion](#per-output-exclusion)
+- [Protected Fields](#protected-fields)
 
 ## 🔍 What Are Sensitivity Labels?
 

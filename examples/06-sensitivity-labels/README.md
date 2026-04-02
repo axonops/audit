@@ -284,6 +284,11 @@ Notice:
 | `output "X" has exclude_labels but taxonomy has no sensitivity config` | Missing `sensitivity:` block | Add `sensitivity:` to your taxonomy YAML |
 | `output "X" exclude_labels references undefined sensitivity label "Z"` | Label name typo in output config | Check label is defined in taxonomy `sensitivity.labels` |
 
+## Further Reading
+
+- [Sensitivity Labels](../../docs/sensitivity-labels.md) — full label reference and regex patterns
+- [Output Configuration YAML](../../docs/output-configuration.md) — exclude_labels syntax
+
 ## Previous
 
 [Event Routing](../05-event-routing/) — category and severity-based

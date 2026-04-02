@@ -20,7 +20,7 @@ checks are silently skipped.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Formatters](../07-formatters/)
+- Completed: [Formatters](../08-formatters/)
 
 ## Files
 
@@ -108,7 +108,7 @@ Available hints:
 | `Outcome` | `"success"` or `"failure"` |
 | `TargetID` | The resource affected |
 | `TargetType` | Type of resource (e.g., `"item"`, `"user"`) |
-| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../09-crud-api/)) |
+| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../10-crud-api/)) |
 | `ActorType` | `"user"`, `"service"`, `"api_key"`, etc. |
 | `AuthMethod` | How the actor authenticated (e.g., `"bearer"`, `"api_key"`) |
 | `Role` | Actor's role at request time |
@@ -132,7 +132,7 @@ Available hints:
 
 Place the audit middleware at the outermost layer — it needs to wrap
 everything including auth middleware so it can capture the final response
-status code. The [CRUD API](../09-crud-api/) example shows this with auth
+status code. The [CRUD API](../10-crud-api/) example shows this with auth
 middleware and audit middleware composed together.
 
 ## Run It
@@ -159,9 +159,9 @@ skipped.
 
 ## Previous
 
-[Formatters](../07-formatters/) — JSON vs CEF formatters configured in YAML.
+[Formatters](../08-formatters/) — JSON vs CEF formatters configured in YAML.
 
 ## Next
 
-[CRUD API](../09-crud-api/) — a complete REST API with Postgres, five
+[CRUD API](../10-crud-api/) — a complete REST API with Postgres, five
 outputs, Prometheus metrics, and Docker Compose.

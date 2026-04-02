@@ -84,5 +84,5 @@ set of keys.
 ## 📚 Further Reading
 
 - [CEF Format](cef-format.md) — alternative format for SIEM integration
-- [Progressive Example: Formatters](../examples/07-formatters/) — JSON and CEF side-by-side
+- [Progressive Example: Formatters](../examples/08-formatters/) — JSON and CEF side-by-side
 - [API Reference: JSONFormatter](https://pkg.go.dev/github.com/axonops/go-audit#JSONFormatter)

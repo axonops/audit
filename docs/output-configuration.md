@@ -387,7 +387,7 @@ logger, err := audit.NewLogger(result.Config, opts...)
 
 - [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
 - [Progressive Example: Multi-Output](../examples/04-multi-output/) — multiple outputs in one YAML
-- [Progressive Example: CRUD API](../examples/09-crud-api/) — five outputs in a production-like setup
+- [Progressive Example: CRUD API](../examples/10-crud-api/) — five outputs in a production-like setup
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"fmt"
 	"testing"
 	"testing/quick"
 
@@ -225,6 +226,41 @@ func BenchmarkHMAC_SHA256_LargeEvent(b *testing.B) {
 	for b.Loop() {
 		_, _ = audit.ComputeHMAC(payload, salt, "HMAC-SHA-256")
 	}
+}
+
+func TestHMACConfig_String_HidesSalt(t *testing.T) {
+	t.Parallel()
+	cfg := audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v1",
+		SaltValue:   []byte("super-secret-salt-value"),
+		Algorithm:   "HMAC-SHA-256",
+	}
+	s := cfg.String()
+	assert.NotContains(t, s, "super-secret-salt-value")
+	assert.Contains(t, s, "v1")
+	assert.Contains(t, s, "HMAC-SHA-256")
+
+	gs := cfg.GoString()
+	assert.NotContains(t, gs, "super-secret-salt-value")
+
+	// Verify fmt verbs route through String/GoString (no salt leakage).
+	//nolint:gocritic // intentionally testing fmt.Sprint routing
+	fmtResult := fmt.Sprint(cfg)
+	assert.NotContains(t, fmtResult, "super-secret-salt-value")
+}
+
+func TestHMACConfig_String_Disabled(t *testing.T) {
+	t.Parallel()
+	cfg := audit.HMACConfig{Enabled: false}
+	assert.Equal(t, "HMACConfig{Enabled: false}", cfg.String())
+}
+
+func TestVerifyHMAC_ErrorPath(t *testing.T) {
+	t.Parallel()
+	ok, err := audit.VerifyHMAC(nil, "anyvalue", []byte("valid-salt-16bytes!!"), "HMAC-SHA-256")
+	require.Error(t, err)
+	assert.False(t, ok)
 }
 
 func BenchmarkHMAC_SHA512_SmallEvent(b *testing.B) {

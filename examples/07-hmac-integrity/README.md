@@ -13,7 +13,7 @@ with HMAC enabled; all events go to stdout without HMAC overhead.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Testing](../10-testing/)
+- Completed: [Sensitivity Labels](../06-sensitivity-labels/)
 
 ## Files
 
@@ -111,11 +111,17 @@ All NIST SP 800-224 approved. SHA-1 and MD5 are not supported.
 ## Run It
 
 ```bash
-cd examples/11-hmac-integrity
+cd examples/07-hmac-integrity
 go run .
 cat secure-audit.log
 ```
 
 ## Previous
 
-[Testing](../10-testing/) — testing audit events with `audittest`.
+[Sensitivity Labels](../06-sensitivity-labels/) — per-output field
+stripping with PII and financial labels.
+
+## Next
+
+[Formatters](../08-formatters/) — JSON vs CEF formatters for SIEM
+integration.

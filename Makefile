@@ -12,7 +12,7 @@
 # --- Configuration ---
 
 MODULES           := . file syslog webhook outputconfig cmd/audit-gen
-WORKSPACE_MODULES := $(MODULES) examples/09-crud-api
+WORKSPACE_MODULES := $(MODULES) examples/10-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 
@@ -88,9 +88,9 @@ test-bdd:
 test-examples:
 	@for dir in examples/01-basic examples/03-file-output examples/04-multi-output \
 	            examples/02-code-generation examples/05-event-routing \
-	            examples/06-sensitivity-labels examples/07-formatters \
-	            examples/08-middleware examples/09-crud-api \
-	            examples/10-testing examples/11-hmac-integrity; do \
+	            examples/06-sensitivity-labels examples/07-hmac-integrity \
+	            examples/08-formatters examples/09-middleware \
+	            examples/10-crud-api examples/11-testing; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
@@ -116,7 +116,7 @@ lint-audit-gen:
 	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-crud-api:
-	cd examples/09-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+	cd examples/10-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-all: lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen lint-crud-api
 lint: lint-all

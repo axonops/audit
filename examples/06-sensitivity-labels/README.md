@@ -287,5 +287,5 @@ routing.
 
 ## Next
 
-[Formatters](../07-formatters/) — JSON vs CEF formatters for SIEM
-integration.
+[HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection
+with selective routing.

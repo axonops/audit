@@ -34,7 +34,6 @@ func registerHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with stdout output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
-			tc.Taxonomy = newBasicTaxonomy()
 			out := newCaptureOutput("stdout")
 			tc.CaptureOutput = out
 
@@ -60,12 +59,11 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a logger with HMAC salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
-			tax := newBasicTaxonomy()
 			out := newCaptureOutput("stdout")
 
 			_, err := audit.NewLogger(
 				audit.Config{Version: 1, Enabled: true},
-				audit.WithTaxonomy(tax),
+				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, nil, nil),
 				audit.WithOutputHMAC("stdout", &audit.HMACConfig{
 					Enabled:     true,
@@ -118,7 +116,11 @@ func assertCapturedHMACVersion(tc *AuditTestContext, want string) error {
 }
 
 func assertNoHMACField(tc *AuditTestContext) error {
-	for _, raw := range capturedLines(tc) {
+	lines := capturedLines(tc)
+	if len(lines) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	for _, raw := range lines {
 		if strings.Contains(string(raw), `"_hmac"`) {
 			return fmt.Errorf("event unexpectedly contains _hmac field")
 		}
@@ -127,7 +129,11 @@ func assertNoHMACField(tc *AuditTestContext) error {
 }
 
 func assertNoHMACVersionField(tc *AuditTestContext) error {
-	for _, raw := range capturedLines(tc) {
+	lines := capturedLines(tc)
+	if len(lines) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	for _, raw := range lines {
 		if strings.Contains(string(raw), `"_hmac_v"`) {
 			return fmt.Errorf("event unexpectedly contains _hmac_v field")
 		}
@@ -236,22 +242,6 @@ func stripHMACFields(line []byte) []byte {
 	hmacvEnd = hmacvValStart + hmacvEnd + 1
 
 	return []byte(s[:hmacStart] + remaining[hmacvEnd:])
-}
-
-// newBasicTaxonomy creates a simple taxonomy for HMAC BDD tests.
-func newBasicTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
-		Version:           1,
-		EmitEventCategory: true,
-		Categories: map[string]*audit.CategoryDef{
-			"write":    {Events: []string{"user_create"}},
-			"security": {Events: []string{"auth_failure"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create":  {Required: []string{"outcome"}},
-			"auth_failure": {Required: []string{"outcome", "actor_id"}},
-		},
-	}
 }
 
 // capturedLines returns raw event lines from CaptureOutput if available,

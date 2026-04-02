@@ -216,7 +216,7 @@ consistent — consumers can parse all events with the same schema
 regardless of which optional fields were populated.
 
 If you prefer to omit null fields entirely, the JSON formatter supports
-an `omit_empty` option (shown in the [Formatters](../07-formatters/)
+an `omit_empty` option (shown in the [Formatters](../08-formatters/)
 example).
 
 ### Configuring Outputs in YAML

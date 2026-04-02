@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Sensitivity Labels](../06-sensitivity-labels/)
+- Completed: [HMAC Integrity](../07-hmac-integrity/)
 
 ## Files
 
@@ -121,8 +121,8 @@ output uses the `suser` extension key for `actor_id`, and the
 
 ## Previous
 
-[Sensitivity Labels](../06-sensitivity-labels/)
+[HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection.
 
 ## Next
 
-[Middleware](../08-middleware/) — automatic audit logging for HTTP handlers.
+[Middleware](../09-middleware/) — automatic audit logging for HTTP handlers.

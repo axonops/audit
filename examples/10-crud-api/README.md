@@ -291,8 +291,8 @@ Additional outputs:
 
 ## Previous
 
-[Middleware](../08-middleware/) — the HTTP middleware fundamentals.
+[Middleware](../09-middleware/) — the HTTP middleware fundamentals.
 
 ## Next
 
-[Testing](../10-testing/) — testing audit events with `audittest`.
+[Testing](../11-testing/) — testing audit events with `audittest`.

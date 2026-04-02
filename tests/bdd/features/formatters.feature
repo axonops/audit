@@ -278,3 +278,12 @@ Feature: Event Formatters
     And I close the logger
     Then the file should contain a line starting with "CEF:0|"
     And the CEF line should contain "a\\b"
+
+  Scenario: CEF event_category uses standard ArcSight cat extension key
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    And I close the logger
+    Then the CEF line should contain "cat=write"

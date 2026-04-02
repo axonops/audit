@@ -197,7 +197,7 @@ err := logger.AuditEvent(
 
 **🛡️ CEF** (SIEM formatter):
 ```
-CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success eventCategory=write
+CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success cat=write
 ```
 
 ---

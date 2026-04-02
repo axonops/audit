@@ -172,7 +172,7 @@ ok, err := audit.VerifyHMAC(
 
 **CEF:**
 ```
-CEF:0|...|8|... outcome=failure eventCategory=security _hmac=a1b2c3d4... _hmacVersion=2026-Q1
+CEF:0|...|8|... outcome=failure cat=security _hmac=a1b2c3d4... _hmacVersion=2026-Q1
 ```
 
 The HMAC is always the last field. `_hmac` is lowercase hex-encoded.

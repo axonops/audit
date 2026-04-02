@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- CEF `event_category` extension key changed from `eventCategory` to `cat` (ArcSight `deviceEventCategory`) (#237)
 - `Logger.Audit(eventType, fields)` replaced by `Logger.AuditEvent(Event)` (#205)
 - Taxonomy YAML `required:` and `optional:` replaced by unified `fields:` map (#195)
 - `Taxonomy.Categories` type changed from `map[string][]string` to `map[string]*CategoryDef` (#188)

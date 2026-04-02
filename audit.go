@@ -618,7 +618,7 @@ type PostField struct {
 // unchanged for unknown formatter types.
 func appendEventCategory(data []byte, formatter Formatter, category string) []byte {
 	return AppendPostFields(data, formatter, []PostField{
-		{JSONKey: "event_category", CEFKey: "eventCategory", Value: category},
+		{JSONKey: "event_category", CEFKey: "cat", Value: category},
 	})
 }
 

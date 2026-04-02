@@ -80,7 +80,7 @@ CEF extension keys:
 | `outcome` | `outcome` |
 | `method` | `requestMethod` |
 | `path` | `request` |
-| `event_category` | `eventCategory` |
+| `event_category` | `cat` |
 
 Fields without a mapping are passed through with their original names.
 
@@ -116,16 +116,16 @@ INFO audit: shutdown complete duration=...
 {"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success","event_category":"security"}
 
 --- cef-audit.log ---
-CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success eventCategory=write
-CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure eventCategory=security
-CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success eventCategory=security
+CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success cat=write
+CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure cat=security
+CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success cat=security
 ```
 
 Both files contain the same three events in different formats. The CEF
 output uses the `suser` extension key for `actor_id`, and the
 `Vendor|Product|Version` header from the YAML config. The
-`eventCategory` extension appears in CEF because `event_category` is
-automatically mapped.
+`cat` extension (ArcSight `deviceEventCategory`) appears in CEF because
+`event_category` is automatically mapped.
 
 ## Further Reading
 

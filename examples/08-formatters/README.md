@@ -104,20 +104,26 @@ go run .
 ## Expected Output
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
+INFO audit: shutdown started
+INFO audit: shutdown complete duration=...
+
 --- json-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
-{"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success","event_category":"security"}
 
 --- cef-audit.log ---
-CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success
-CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure
-CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success
+CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success eventCategory=write
+CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure eventCategory=security
+CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success eventCategory=security
 ```
 
 Both files contain the same three events in different formats. The CEF
 output uses the `suser` extension key for `actor_id`, and the
-`Vendor|Product|Version` header from the YAML config.
+`Vendor|Product|Version` header from the YAML config. The
+`eventCategory` extension appears in CEF because `event_category` is
+automatically mapped.
 
 ## Previous
 

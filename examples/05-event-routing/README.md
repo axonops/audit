@@ -198,18 +198,23 @@ go run .
 
 ## Expected Output
 
-All three events appear on stdout. Each file contains only the events
-matching its route:
+All three events appear on stdout (all events). Each file contains only
+the events matching its route:
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=4
+INFO audit: shutdown started
+... (stdout shows all three events)
+INFO audit: shutdown complete duration=...
+
 --- security.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 
 --- writes.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
 
 --- critical.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 ```
 
 The `user_read` event doesn't appear in any file — no route includes

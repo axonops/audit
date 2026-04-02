@@ -275,19 +275,21 @@ docker compose down -v
 
 ## Expected Output
 
-On stdout you'll see JSON audit events:
+On stdout you'll see JSON audit events for every request:
 
 ```json
-{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"..."}
-{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key"}
+{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success","event_category":"read"}
+{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key","event_category":"security"}
 ```
 
-Additional outputs:
-- `audit.log` — all events except reads (JSON)
-- `admin-audit.log` — admin events only (CEF format)
-- Syslog on TCP 5514 — security events only
-- Webhook receiver — high-severity events (severity >= 7)
+The same events are routed to different outputs based on their category
+and severity:
+
+- **`audit.log`** — all events except reads (JSON)
+- **`admin-audit.log`** — admin events only (CEF format)
+- **Syslog** on TCP 5514 — security events only
+- **Webhook** receiver — high-severity events (severity >= 7)
 
 ## Previous
 

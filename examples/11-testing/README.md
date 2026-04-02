@@ -174,6 +174,26 @@ func NewUserService(logger *audit.Logger) *UserService {
 go test -v .
 ```
 
+## Expected Output
+
+```
+=== RUN   TestCreateUser_EmitsAuditEvent
+--- PASS: TestCreateUser_EmitsAuditEvent
+=== RUN   TestLogin_Failure_EmitsAuthEvent
+--- PASS: TestLogin_Failure_EmitsAuthEvent
+=== RUN   TestLogin_Success_NoAuditEvent
+--- PASS: TestLogin_Success_NoAuditEvent
+=== RUN   TestAuditEventEmitted_Quick
+--- PASS: TestAuditEventEmitted_Quick
+=== RUN   TestValidationError_MissingRequiredField
+--- PASS: TestValidationError_MissingRequiredField
+PASS
+```
+
+All five tests pass, each demonstrating a different testing pattern.
+You will also see `INFO audit:` lifecycle messages from logger creation
+and shutdown — these are normal.
+
 ## Previous
 
 [CRUD API](../10-crud-api/) — complete REST API with Postgres,

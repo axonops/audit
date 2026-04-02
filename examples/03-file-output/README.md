@@ -99,16 +99,19 @@ go run .
 ## Expected Output
 
 ```
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: shutdown started
+INFO audit: shutdown complete duration=...
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"carol","outcome":"success"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"dave","outcome":"success"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"eve","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"carol","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"dave","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"eve","outcome":"success","event_category":"write"}
 ```
 
-Five JSON events written to `audit.log`. The file is cleaned up at the
-end of the example.
+Five JSON events written to `audit.log`, each with the `event_category`
+field from the taxonomy. The file is cleaned up at the end of the example.
 
 ## Previous
 

@@ -238,6 +238,66 @@ func TestLogger_Audit_ReservedStandardField_StillRejectsUnknown(t *testing.T) {
 	assert.NotContains(t, err.Error(), "source_ip")
 }
 
+func TestWithAppName_Empty_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName(""),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "app_name must not be empty")
+}
+
+func TestWithHost_Empty_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithHost(""),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "host must not be empty")
+}
+
+func TestWithTimezone_Empty_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithTimezone(""),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "timezone must not be empty")
+}
+
+func TestLogger_FrameworkFields_InOutput(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithAppName("testapp"),
+		audit.WithHost("testhost"),
+		audit.WithTimezone("America/New_York"),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+	assert.Equal(t, "testapp", record["app_name"])
+	assert.Equal(t, "testhost", record["host"])
+	assert.Equal(t, "America/New_York", record["timezone"])
+	assert.NotNil(t, record["pid"], "pid should always be present")
+}
+
 func TestLogger_Audit_NilFields(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")

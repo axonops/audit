@@ -50,6 +50,12 @@ type JSONFormatter struct {
 	// [TimestampRFC3339Nano].
 	Timestamp TimestampFormat
 
+	// Framework fields set once via SetFrameworkFields.
+	appName  string
+	host     string
+	timezone string
+	pid      int
+
 	// OmitEmpty controls whether zero-value fields are omitted.
 	OmitEmpty bool
 }
@@ -70,6 +76,7 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 	enc.writeStringField("event_type", eventType)
 	enc.writeInt64Field("severity", int64(def.ResolvedSeverity()))
 	jf.writeDuration(enc, fields)
+	jf.writeFrameworkFields(enc)
 
 	// Required fields (sorted). Uses pre-sorted slice when available.
 	for _, k := range sortedFieldKeys(def.sortedRequired, def.Required, fields, jf.OmitEmpty) {
@@ -128,6 +135,31 @@ func (jf *JSONFormatter) writeDuration(enc *jsonEncoder, fields Fields) {
 		if d, ok := v.(time.Duration); ok {
 			enc.writeInt64Field("duration_ms", d.Milliseconds())
 		}
+	}
+}
+
+// SetFrameworkFields stores logger-wide framework metadata for
+// emission in every JSON event. Called once at construction time.
+func (jf *JSONFormatter) SetFrameworkFields(appName, host, timezone string, pid int) {
+	jf.appName = appName
+	jf.host = host
+	jf.timezone = timezone
+	jf.pid = pid
+}
+
+// writeFrameworkFields writes app_name, host, timezone, and pid if set.
+func (jf *JSONFormatter) writeFrameworkFields(enc *jsonEncoder) {
+	if jf.appName != "" {
+		enc.writeStringField("app_name", jf.appName)
+	}
+	if jf.host != "" {
+		enc.writeStringField("host", jf.host)
+	}
+	if jf.timezone != "" {
+		enc.writeStringField("timezone", jf.timezone)
+	}
+	if jf.pid > 0 {
+		enc.writeInt64Field("pid", int64(jf.pid))
 	}
 }
 

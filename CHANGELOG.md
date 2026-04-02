@@ -21,6 +21,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `WithAppName`, `WithHost`, `WithTimezone` options for logger-wide framework fields (#237)
+- `FrameworkFieldSetter` interface for formatters to receive app_name, host, timezone, pid (#237)
+- `pid` framework field auto-captured via `os.Getpid()` at construction (#237)
+- JSON output: `app_name`, `host`, `timezone`, `pid` after `duration_ms`, before user fields (#237)
+- CEF output: `deviceProcessName`, `dvchost`, `dtz`, `dvcpid` framework extensions (#237)
 - 31 reserved standard fields always accepted without taxonomy declaration (#237)
 - Expanded default CEF field mapping from 7 to 28 ArcSight extension keys (#237)
 - Per-output HMAC integrity verification with 6 NIST-approved algorithms (#216)

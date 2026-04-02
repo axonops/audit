@@ -52,6 +52,52 @@ func WithMetrics(m Metrics) Option {
 	}
 }
 
+// WithAppName sets the application name emitted as a framework field
+// in every serialised event. The value must be non-empty.
+func WithAppName(name string) Option {
+	return func(l *Logger) error {
+		if name == "" {
+			return fmt.Errorf("audit: app_name must not be empty")
+		}
+		if len(name) > 255 {
+			return fmt.Errorf("audit: app_name exceeds maximum length of 255 bytes")
+		}
+		l.appName = name
+		return nil
+	}
+}
+
+// WithHost sets the hostname emitted as a framework field in every
+// serialised event. The value must be non-empty and at most 255 bytes.
+func WithHost(host string) Option {
+	return func(l *Logger) error {
+		if host == "" {
+			return fmt.Errorf("audit: host must not be empty")
+		}
+		if len(host) > 255 {
+			return fmt.Errorf("audit: host exceeds maximum length of 255 bytes")
+		}
+		l.host = host
+		return nil
+	}
+}
+
+// WithTimezone sets the timezone name emitted as a framework field in
+// every serialised event. The value must be non-empty and at most 64
+// bytes. If not set, no timezone field is emitted.
+func WithTimezone(tz string) Option {
+	return func(l *Logger) error {
+		if tz == "" {
+			return fmt.Errorf("audit: timezone must not be empty")
+		}
+		if len(tz) > 64 {
+			return fmt.Errorf("audit: timezone exceeds maximum length of 64 bytes")
+		}
+		l.timezone = tz
+		return nil
+	}
+}
+
 // WithFormatter sets the event serialisation formatter. If not
 // provided, a [JSONFormatter] is created from the [Config]. Use this
 // to configure a [CEFFormatter] or a custom [Formatter] implementation.

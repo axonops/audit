@@ -421,7 +421,11 @@ func checkFieldOverlap(t Taxonomy) []string {
 // legitimately set as a user field (the formatter handles the
 // time.Duration vs int distinction at runtime).
 func reservedFieldNames() []string {
-	return []string{"timestamp", "event_type", "severity", "event_category", "_hmac", "_hmac_v"}
+	return []string{
+		"timestamp", "event_type", "severity", "event_category",
+		"app_name", "host", "timezone", "pid",
+		"_hmac", "_hmac_v",
+	}
 }
 
 // checkReservedFieldNames validates that no event defines a reserved
@@ -581,7 +585,10 @@ func isBareReservedStandardField(f string, def *EventDef, globalLabeled map[stri
 // intentionally conservative — validation rejects labeling duration_ms
 // to prevent accidental stripping in any context.
 func frameworkFieldNames() []string {
-	return []string{"timestamp", "event_type", "severity", "duration_ms", "event_category"}
+	return []string{
+		"timestamp", "event_type", "severity", "duration_ms", "event_category",
+		"app_name", "host", "timezone", "pid",
+	}
 }
 
 // labelNamePattern validates sensitivity label names. Labels must start

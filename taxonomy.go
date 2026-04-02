@@ -166,6 +166,14 @@ type Taxonomy struct {
 	// disabled with zero overhead.
 	Sensitivity *SensitivityConfig
 
+	// EmitEventCategory controls whether the delivery-specific category
+	// name is appended as an `event_category` field in serialised output.
+	// When set via [ParseTaxonomyYAML], defaults to true when absent
+	// from YAML. The Go zero value is false — programmatic consumers
+	// must set this explicitly. When false, the append is skipped
+	// entirely with zero overhead.
+	EmitEventCategory bool
+
 	// Version is the taxonomy schema version. MUST be > 0. Currently
 	// only version 1 is supported; higher values cause [WithTaxonomy]
 	// to return an error wrapping [ErrTaxonomyInvalid].
@@ -301,6 +309,7 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkCategoryConsistency(t)...)
 	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
+	errs = append(errs, checkReservedFieldNames(t)...)
 	errs = append(errs, checkSensitivity(t)...)
 
 	if len(errs) > 0 {
@@ -334,6 +343,15 @@ func checkCategoryConsistency(t Taxonomy) []string {
 	var errs []string
 	if len(t.Categories) == 0 {
 		errs = append(errs, "taxonomy must define at least one category")
+	}
+
+	// Validate category names — must match safe identifier pattern.
+	for cat := range t.Categories {
+		if !labelNamePattern.MatchString(cat) {
+			errs = append(errs, fmt.Sprintf(
+				"category name %q is invalid: must match %s",
+				cat, labelNamePattern.String()))
+		}
 	}
 
 	// Every event listed in Categories must exist in Events map.
@@ -396,9 +414,47 @@ func checkFieldOverlap(t Taxonomy) []string {
 	return errs
 }
 
-// frameworkFieldNames returns the field names managed by the framework
-// that must not be labeled with sensitivity labels. These fields are
-// always transmitted to every output regardless of exclusion filters.
+// reservedFieldNames returns the field names that consumers MUST NOT
+// use as required or optional event fields. This is a subset of
+// frameworkFieldNames — duration_ms is excluded because it can be
+// legitimately set as a user field (the formatter handles the
+// time.Duration vs int distinction at runtime).
+func reservedFieldNames() []string {
+	return []string{"timestamp", "event_type", "severity", "event_category"}
+}
+
+// checkReservedFieldNames validates that no event defines a reserved
+// field name as a required or optional field.
+func checkReservedFieldNames(t Taxonomy) []string {
+	reserved := make(map[string]struct{}, len(reservedFieldNames()))
+	for _, name := range reservedFieldNames() {
+		reserved[name] = struct{}{}
+	}
+	var errs []string
+	for et, def := range t.Events {
+		for _, f := range def.Required {
+			if _, ok := reserved[f]; ok {
+				errs = append(errs, fmt.Sprintf(
+					"event %q field %q is a reserved framework field and cannot be used as a required field",
+					et, f))
+			}
+		}
+		for _, f := range def.Optional {
+			if _, ok := reserved[f]; ok {
+				errs = append(errs, fmt.Sprintf(
+					"event %q field %q is a reserved framework field and cannot be used as an optional field",
+					et, f))
+			}
+		}
+	}
+	return errs
+}
+
+// frameworkFieldNames returns the field names managed by the framework.
+// These names are reserved — they cannot be used as consumer-defined
+// required or optional fields, cannot be tagged with sensitivity labels,
+// and are always transmitted to every output regardless of exclusion
+// filters.
 //
 // Note: The validation layer unconditionally protects duration_ms,
 // while the runtime layer (isFrameworkField in format.go) only treats
@@ -406,7 +462,7 @@ func checkFieldOverlap(t Taxonomy) []string {
 // intentionally conservative — validation rejects labeling duration_ms
 // to prevent accidental stripping in any context.
 func frameworkFieldNames() []string {
-	return []string{"timestamp", "event_type", "severity", "duration_ms"}
+	return []string{"timestamp", "event_type", "severity", "duration_ms", "event_category"}
 }
 
 // labelNamePattern validates sensitivity label names. Labels must start

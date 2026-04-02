@@ -191,12 +191,12 @@ err := logger.AuditEvent(
 
 **📄 JSON** (default formatter):
 ```json
-{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","target_id":"user-42"}
+{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
 
 **🛡️ CEF** (SIEM formatter):
 ```
-CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success
+CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success eventCategory=write
 ```
 
 ---

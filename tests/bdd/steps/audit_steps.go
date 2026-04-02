@@ -488,7 +488,7 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 		return err
 	}
 	// Auto-populated fields that are allowed but not required in the table.
-	autoFields := []string{"timestamp", "severity"}
+	autoFields := []string{"timestamp", "severity", "event_category"}
 	for _, e := range events {
 		match, mismatch := eventMatchesExactly(e, expected, autoFields)
 		if match {

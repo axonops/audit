@@ -2,7 +2,8 @@ version: 1
 
 categories:
   write:
-    - user_create
+    events:
+      - user_create
   security:
     severity: 8
     events:

@@ -74,11 +74,13 @@ CEF extension keys:
 
 | go-audit field | CEF key |
 |----------------|---------|
+| `event_type` | `act` |
 | `actor_id` | `suser` |
 | `source_ip` | `src` |
 | `outcome` | `outcome` |
 | `method` | `requestMethod` |
 | `path` | `request` |
+| `event_category` | `eventCategory` |
 
 Fields without a mapping are passed through with their original names.
 

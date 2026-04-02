@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `app_name`, `host`, `timezone` top-level keys in outputs YAML with env var support (#237)
 - `standard_fields` YAML section for deployment-wide reserved field defaults (#237)
 - Syslog `hostname` auto-injected from top-level `host` when not set per-output (#237)
+- `WithStandardFieldDefaults` option for deployment-wide reserved field defaults (#237)
 - Syslog `hostname` config field overrides `os.Hostname()` in RFC 5424 header (#237)
 - 31 reserved standard fields always accepted without taxonomy declaration (#237)
 - Expanded default CEF field mapping from 7 to 28 ArcSight extension keys (#237)

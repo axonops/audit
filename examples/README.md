@@ -15,7 +15,7 @@ Each example introduces one new concept and builds on the previous.
 | 4 | [multi-output](04-multi-output/) | Fan-out to multiple outputs from one YAML config |
 | 5 | [event-routing](05-event-routing/) | Category and severity-based routing in YAML |
 | 6 | [sensitivity-labels](06-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
-| 7 | [hmac-integrity](07-hmac-integrity/) | Per-output HMAC tamper detection with selective routing |
+| 7 | [hmac-integrity](07-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
 | 8 | [formatters](08-formatters/) | JSON vs CEF with category severity levels |
 | 9 | [middleware](09-middleware/) | Automatic HTTP audit logging with Hints |
 | 10 | [crud-api](10-crud-api/) | Complete REST API with Postgres, five outputs, Docker |

@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"os"
 
 	audit "github.com/axonops/go-audit"
 	_ "github.com/axonops/go-audit/file"
@@ -56,14 +57,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
-	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("close logger: %v", closeErr)
-		}
-	}()
 
 	// 4. Emit events using generated typed builders.
-	fmt.Println("--- Security event (HMAC in secure_log, plain on stdout) ---")
+
+	// Security event — goes to all three outputs:
+	//   secure_log:      HMAC (routed by category)
+	//   tamperproof_log: HMAC (receives all events)
+	//   console:         no HMAC
+	fmt.Println("--- Security event ---")
 	authEvt := NewAuthFailureEvent("unknown", "failure").
 		SetReason("invalid credentials").
 		SetSourceIP("192.168.1.100")
@@ -71,12 +72,38 @@ func main() {
 		log.Printf("audit error: %v", auditErr)
 	}
 
-	fmt.Println("\n--- Write event (stdout only, no HMAC cost) ---")
+	// Write event — goes to two outputs:
+	//   secure_log:      SKIPPED (route excludes write category)
+	//   tamperproof_log: HMAC (receives all events)
+	//   console:         no HMAC
+	fmt.Println("\n--- Write event ---")
 	userEvt := NewUserCreateEvent("admin", "success").
 		SetTargetID("user-42")
 	if auditErr := logger.AuditEvent(userEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
-	fmt.Println("\n--- Check secure-audit.log for HMAC fields (_hmac, _hmac_v) ---")
+	fmt.Println("\n--- Compare the three outputs below ---")
+
+	// Close the logger to flush all events before reading files.
+	if closeErr := logger.Close(); closeErr != nil {
+		log.Printf("close logger: %v", closeErr)
+	}
+
+	// Show what landed in each file.
+	printFile("secure-audit.log")
+	printFile("all-audit.log")
+
+	// Clean up.
+	_ = os.Remove("secure-audit.log")
+	_ = os.Remove("all-audit.log")
+}
+
+func printFile(name string) {
+	data, err := os.ReadFile(name) //nolint:gosec // example reads its own output files
+	if err != nil {
+		log.Printf("read %s: %v", name, err)
+		return
+	}
+	fmt.Printf("\n--- %s ---\n%s", name, data)
 }

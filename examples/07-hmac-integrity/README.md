@@ -1,12 +1,15 @@
 # HMAC Integrity Example
 
-Per-output tamper detection using HMAC. Security events go to a file
-with HMAC enabled; all events go to stdout without HMAC overhead.
+Per-output tamper detection using HMAC. This example shows two HMAC
+patterns side by side: **selective** (only security events) and
+**global** (all events). A plain stdout output shows the contrast.
 
 ## What You'll Learn
 
-- Configuring HMAC on a specific output
-- Using event routing so only security events pay the crypto cost
+- Configuring HMAC on specific outputs
+- Selective HMAC via category routing (only security events pay crypto cost)
+- Global HMAC without routing (every event gets tamper detection)
+- Comparing the same event across outputs with and without HMAC
 - Understanding `_hmac` and `_hmac_v` fields in the output
 - How to verify event integrity
 
@@ -20,49 +23,95 @@ with HMAC enabled; all events go to stdout without HMAC overhead.
 | File | Purpose |
 |------|---------|
 | `taxonomy.yaml` | Event definitions with security and write categories |
-| `outputs.yaml` | Two outputs: HMAC-enabled file (security only) + plain stdout |
+| `outputs.yaml` | Three outputs: selective HMAC, global HMAC, plain stdout |
 | `audit_generated.go` | Generated typed builders and constants |
-| `main.go` | Emits security and write events |
+| `main.go` | Emits security and write events, displays all outputs |
 
 ## Key Concepts
 
 ### What Is HMAC?
 
 HMAC (Hash-based Message Authentication Code) computes a cryptographic
-hash over the event payload using a secret salt. If anyone modifies the
-event after it was written, the HMAC won't match — proving tampering.
+hash over the event payload using a secret key (salt). If anyone modifies
+the event after it was written, the HMAC won't match — proving tampering.
 
-### Why Per-Output?
+### Selective vs Global HMAC
 
-HMAC has a CPU cost (~400ns per event for SHA-256). You don't want to
-pay this for every event on every output. By configuring HMAC only on
-the `secure_log` output and routing only security events there, you
-get tamper detection where it matters without slowing down verbose
-logging.
+HMAC has a CPU cost (~300 ns per event for SHA-256). You have two options:
 
-### YAML Configuration
+**Selective HMAC** — combine HMAC with routing so only specific events
+pay the crypto cost. Use this when tamper detection only matters for
+compliance-relevant events (security, financial):
 
 ```yaml
-outputs:
-  secure_log:
-    type: file
-    hmac:
-      enabled: true
-      salt:
-        version: "2026-Q1"                        # for salt rotation
-        value: "${HMAC_SALT:-default-example-salt!}" # env var recommended
-      hash: HMAC-SHA-256
-    file:
-      path: "./secure-audit.log"
-    route:
-      include_categories: [security]              # only security events
+secure_log:
+  type: file
+  hmac:
+    enabled: true
+    salt:
+      version: "2026-Q1"
+      value: "${HMAC_SALT:-default-example-salt!}"
+    hash: HMAC-SHA-256
+  file:
+    path: "./secure-audit.log"
+  route:
+    include_categories: [security]    # only security events
 ```
 
-### Salt Is Mandatory
+**Global HMAC** — enable HMAC without routing, so every event gets
+tamper detection. Use this when you need to prove no audit event was
+modified, regardless of category:
 
-Without a salt, anyone can recompute the HMAC for a modified event.
-The salt is the shared secret that makes HMAC meaningful. Never
-hardcode it in production — use `${ENV_VAR}` substitution.
+```yaml
+tamperproof_log:
+  type: file
+  hmac:
+    enabled: true
+    salt:
+      version: "2026-Q1"
+      value: "${HMAC_SALT:-default-example-salt!}"
+    hash: HMAC-SHA-256
+  file:
+    path: "./all-audit.log"
+  # No route — all events are delivered with HMAC
+```
+
+**No HMAC** — outputs without an `hmac:` block have zero crypto
+overhead:
+
+```yaml
+console:
+  type: stdout
+  # No hmac block — no crypto cost
+```
+
+### How Routing Interacts with HMAC
+
+The same event can appear on multiple outputs with different HMAC
+treatment. In this example, an `auth_failure` event lands on all three
+outputs:
+
+| Output | Has HMAC? | Why? |
+|--------|-----------|------|
+| `secure_log` | Yes | Route includes `security` category + HMAC enabled |
+| `tamperproof_log` | Yes | No route filter (receives all) + HMAC enabled |
+| `console` (stdout) | No | No `hmac:` block configured |
+
+A `user_create` event (category `write`) lands on two outputs:
+
+| Output | Has HMAC? | Why? |
+|--------|-----------|------|
+| `secure_log` | Skipped | Route excludes `write` category |
+| `tamperproof_log` | Yes | No route filter + HMAC enabled |
+| `console` (stdout) | No | No `hmac:` block configured |
+
+### Salt Requirements
+
+The salt MUST be at least 16 bytes (128 bits), per NIST SP 800-224.
+`ValidateHMACConfig` enforces this — `NewLogger` returns an error if
+the salt is too short.
+
+Never hardcode salts in production — use `${ENV_VAR}` substitution.
 
 ### Salt Versioning
 
@@ -70,29 +119,21 @@ The `version` field is included in every HMAC'd event as `_hmac_v`.
 When you rotate salts, change the version so verifiers know which
 salt to use for each event.
 
-### Output Format
-
-Events in `secure-audit.log` include HMAC fields:
-
-```json
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security","_hmac":"a1b2c3d4...","_hmac_v":"2026-Q1"}
-```
-
-Events on stdout do NOT include HMAC (no crypto cost):
-
-```json
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
-```
-
 ### Verifying Events
 
 Use the exported `audit.VerifyHMAC` function:
 
 ```go
-// Extract payload (everything except _hmac and _hmac_v)
-// Extract the _hmac value and _hmac_v version
-// Look up the salt for that version
-ok, err := audit.VerifyHMAC(payload, hmacValue, salt, "HMAC-SHA-256")
+// payloadBytes is the raw JSON line with _hmac and _hmac_v removed.
+// hmacValue is the string value of the _hmac field (lowercase hex).
+// salt is []byte loaded from your key store, looked up by _hmac_v.
+ok, err := audit.VerifyHMAC(payloadBytes, hmacValue, salt, "HMAC-SHA-256")
+if err != nil {
+    log.Printf("hmac verify: %v", err)
+}
+if !ok {
+    // payload has been tampered with
+}
 ```
 
 ### Supported Algorithms
@@ -112,35 +153,39 @@ All NIST SP 800-224 approved. SHA-1 and MD5 are not supported.
 
 ```bash
 go run .
-cat secure-audit.log
 ```
 
 ## Expected Output
 
-**stdout** (all events, no HMAC — events appear during `Close()` drain):
-
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
---- Security event (HMAC in secure_log, plain on stdout) ---
+INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=3
+--- Security event ---
 
---- Write event (stdout only, no HMAC cost) ---
+--- Write event ---
 
---- Check secure-audit.log for HMAC fields (_hmac, _hmac_v) ---
+--- Compare the three outputs below ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
-{"timestamp":"...","event_type":"user_create","severity":4,"actor_id":"admin","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,...,"event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":4,...,"event_category":"write"}
 INFO audit: shutdown complete duration=...
+
+--- secure-audit.log ---
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"a578...","_hmac_v":"2026-Q1"}
+
+--- all-audit.log ---
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"a578...","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"user_create",...,"_hmac":"0e9e...","_hmac_v":"2026-Q1"}
 ```
 
-**secure-audit.log** (security events only, with HMAC):
+Notice the three contrasts:
 
-```json
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security","_hmac":"5df7...","_hmac_v":"2026-Q1"}
-```
+- **stdout** — both events, no `_hmac` fields (zero crypto cost)
+- **secure-audit.log** — only `auth_failure` (security category), with HMAC
+- **all-audit.log** — both events, both with HMAC (global tamper detection)
 
-Only the security event appears in the file. The write event (`user_create`)
-is excluded by the route. The `_hmac` field is a hex-encoded HMAC-SHA-256
-digest, and `_hmac_v` is the salt version for key lookup during verification.
+The `auth_failure` event has the same HMAC value in both files because
+the same salt and payload produce the same hash. The `user_create` event
+only appears in `all-audit.log` because `secure_log` routes by category.
 
 ## Previous
 

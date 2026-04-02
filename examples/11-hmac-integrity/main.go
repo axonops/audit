@@ -62,23 +62,19 @@ func main() {
 		}
 	}()
 
-	// 4. Emit events.
+	// 4. Emit events using generated typed builders.
 	fmt.Println("--- Security event (HMAC in secure_log, plain on stdout) ---")
-	if auditErr := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":   "failure",
-		"actor_id":  "unknown",
-		"reason":    "invalid credentials",
-		"source_ip": "192.168.1.100",
-	})); auditErr != nil {
+	authEvt := NewAuthFailureEvent("unknown", "failure").
+		SetReason("invalid credentials").
+		SetSourceIP("192.168.1.100")
+	if auditErr := logger.AuditEvent(authEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
 	fmt.Println("\n--- Write event (stdout only, no HMAC cost) ---")
-	if auditErr := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
-		"outcome":   "success",
-		"actor_id":  "admin",
-		"target_id": "user-42",
-	})); auditErr != nil {
+	userEvt := NewUserCreateEvent("admin", "success").
+		SetTargetID("user-42")
+	if auditErr := logger.AuditEvent(userEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 

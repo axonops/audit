@@ -229,6 +229,74 @@ Per-output field stripping is configured in `outputs.yaml`, not in
 the taxonomy. See [Sensitivity Labels](sensitivity-labels.md) and
 [Outputs](outputs.md) for the `exclude_labels` configuration.
 
+## 🚫 Reserved Field Names
+
+The following field names are managed by the framework and cannot be
+used as required or optional fields in your taxonomy:
+
+| Field | Purpose |
+|-------|---------|
+| `timestamp` | Event timestamp, set by the drain goroutine |
+| `event_type` | Event type name from the taxonomy |
+| `severity` | Resolved severity (0-10) |
+| `event_category` | Delivery-specific category (see below) |
+
+If you try to define any of these as a required or optional field,
+taxonomy validation fails with:
+
+```
+event "auth.login" field "event_category" is a reserved framework field
+```
+
+> 💡 `duration_ms` is a framework field for sensitivity protection
+> but is NOT reserved — it can be used as an optional field because
+> the HTTP middleware legitimately sets it as a user-provided value.
+
+## 📂 Event Category in Output
+
+When an event belongs to a category, the `event_category` field is
+automatically appended to the serialised output (JSON and CEF). This
+tells downstream consumers (SIEMs, log aggregators) which category
+triggered the delivery.
+
+### Configuration
+
+```yaml
+categories:
+  emit_event_category: true    # default: true (can be omitted)
+  security:
+    events: [auth_failure]
+```
+
+| Setting | Behaviour |
+|---------|-----------|
+| Absent from YAML | `event_category` is appended (default: true) |
+| `emit_event_category: true` | `event_category` is appended |
+| `emit_event_category: false` | `event_category` is never appended, zero overhead |
+
+### Output Examples
+
+**JSON:**
+```json
+{"timestamp":"...","event_type":"auth_failure","severity":8,"outcome":"failure","event_category":"security"}
+```
+
+**CEF:**
+```
+CEF:0|...|auth_failure|...|8|... outcome=failure eventCategory=security
+```
+
+### Multi-Category Events
+
+Events in multiple categories produce separate deliveries, each with
+a different `event_category` value. The base event data is serialised
+once (cached); only the appended category differs per delivery.
+
+### Uncategorised Events
+
+Events not in any category do not include `event_category` in the
+output — the field is omitted entirely (not null, not empty string).
+
 ## 📊 Severity Resolution
 
 Severity is a 0-10 scale used in CEF output and event routing.

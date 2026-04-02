@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `event_category` framework field appended to serialised output (JSON and CEF) showing the delivery-specific category (#227)
+- `emit_event_category` taxonomy config (under `categories:`) controls category emission; defaults to `true` (#227)
+- `PostField` and `AppendPostFields` extensible post-serialisation append mechanism (#227)
+- Reserved field name validation: `timestamp`, `event_type`, `severity`, `event_category` rejected as user-defined fields (#227)
 - `audittest` package: in-memory `Recorder` and `MetricsRecorder`, `NewLogger`, `NewLoggerQuick`, `QuickTaxonomy`, `WithConfig`, `WithValidationMode` for consumer testing (#184)
 - `Event` interface, `LabelInfo`, `FieldInfo`, `CategoryInfo` core types (#205)
 - `NewEvent()` for dynamic event construction without code generation (#205)

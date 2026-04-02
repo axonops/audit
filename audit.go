@@ -28,7 +28,9 @@ package audit
 // sequence. Close is idempotent via sync.Once.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -620,15 +622,17 @@ func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 		return data // unexpected format — return unchanged
 	}
 
-	// Pre-allocate: each field adds ~30 bytes (,"key":"value").
-	suffix := make([]byte, 0, len(fields)*30)
+	// Build suffix with proper JSON escaping for keys and values.
+	var buf bytes.Buffer
 	for _, f := range fields {
-		suffix = append(suffix, ',', '"')
-		suffix = append(suffix, f.JSONKey...)
-		suffix = append(suffix, '"', ':', '"')
-		suffix = append(suffix, f.Value...)
-		suffix = append(suffix, '"')
+		buf.WriteByte(',')
+		keyBytes, _ := json.Marshal(f.JSONKey)
+		buf.Write(keyBytes)
+		buf.WriteByte(':')
+		valBytes, _ := json.Marshal(f.Value)
+		buf.Write(valBytes)
 	}
+	suffix := buf.Bytes()
 
 	result := make([]byte, 0, len(data)+len(suffix))
 	result = append(result, data[:braceIdx]...)
@@ -644,14 +648,15 @@ func appendPostFieldsCEF(data []byte, fields []PostField) []byte {
 		return data // unexpected format — return unchanged
 	}
 
-	// Pre-allocate: each field adds ~25 bytes ( key=value).
-	suffix := make([]byte, 0, len(fields)*25)
+	// Build suffix with proper CEF escaping for values.
+	var buf bytes.Buffer
 	for _, f := range fields {
-		suffix = append(suffix, ' ')
-		suffix = append(suffix, f.CEFKey...)
-		suffix = append(suffix, '=')
-		suffix = append(suffix, f.Value...)
+		buf.WriteByte(' ')
+		buf.WriteString(f.CEFKey)
+		buf.WriteByte('=')
+		buf.WriteString(cefEscapeExtValue(f.Value))
 	}
+	suffix := buf.Bytes()
 
 	result := make([]byte, 0, len(data)+len(suffix))
 	result = append(result, data[:nlIdx]...)

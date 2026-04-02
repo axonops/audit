@@ -343,6 +343,15 @@ func checkCategoryConsistency(t Taxonomy) []string {
 		errs = append(errs, "taxonomy must define at least one category")
 	}
 
+	// Validate category names — must match safe identifier pattern.
+	for cat := range t.Categories {
+		if !labelNamePattern.MatchString(cat) {
+			errs = append(errs, fmt.Sprintf(
+				"category name %q is invalid: must match %s",
+				cat, labelNamePattern.String()))
+		}
+	}
+
 	// Every event listed in Categories must exist in Events map.
 	for cat, catDef := range t.Categories {
 		if catDef == nil {

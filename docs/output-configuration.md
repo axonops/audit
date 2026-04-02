@@ -186,7 +186,7 @@ or `network: udp`) ignore the global TLS policy.
 
 ## 📦 Output Block
 
-Every output has these fields:
+Every output has these fields (plus the optional `hmac:` block):
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -196,6 +196,7 @@ Every output has these fields:
 | `formatter` | No | Per-output formatter override. Uses `default_formatter` if omitted. |
 | `route` | No | Per-output event filter. Receives all events if omitted. |
 | `exclude_labels` | No | List of sensitivity labels to strip from events before delivery. |
+| `hmac` | No | Per-output HMAC integrity config. See [HMAC Integrity](hmac-integrity.md). |
 
 ## 📝 Formatter Configuration
 

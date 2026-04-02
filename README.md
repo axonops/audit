@@ -65,6 +65,7 @@ both [JSON](docs/json-format.md) and
 | 🌐 **HTTP Middleware** | Automatically captures HTTP request fields for audit logging | [Learn more](docs/http-middleware.md) |
 | 📊 **Metrics & Monitoring** | Track dropped events, delivery errors, and output health | [Learn more](docs/metrics-monitoring.md) |
 | 📝 **YAML Configuration** | Configure outputs in YAML with environment variable substitution | [Learn more](docs/output-configuration.md) |
+| 🔐 **HMAC Integrity** | Per-output tamper detection with NIST-approved algorithms | [Learn more](docs/hmac-integrity.md) |
 | 🧪 **Testing Support** | In-memory recorder with same validation as production | [Learn more](docs/testing.md) |
 
 </div>

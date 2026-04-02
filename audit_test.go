@@ -298,6 +298,115 @@ func TestLogger_FrameworkFields_InOutput(t *testing.T) {
 	assert.NotNil(t, record["pid"], "pid should always be present")
 }
 
+// ---------------------------------------------------------------------------
+// Standard field defaults (#237)
+// ---------------------------------------------------------------------------
+
+func TestWithStandardFieldDefaults_Applied(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+	assert.Equal(t, "10.0.0.1", record["source_ip"], "default should be applied")
+}
+
+func TestWithStandardFieldDefaults_PerEventOverride(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":   "success",
+		"actor_id":  "alice",
+		"source_ip": "192.168.1.1",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+	assert.Equal(t, "192.168.1.1", record["source_ip"], "per-event value should override default")
+}
+
+func TestWithStandardFieldDefaults_EmptyStringOverride(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":   "success",
+		"actor_id":  "alice",
+		"source_ip": "",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+	assert.Equal(t, "", record["source_ip"], "empty string counts as set -- no default applied")
+}
+
+func TestWithStandardFieldDefaults_SetOnce(t *testing.T) {
+	t.Parallel()
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "a"}),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "b"}),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "standard field defaults already set")
+}
+
+func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
+	t.Parallel()
+	// Taxonomy with source_ip as required.
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events: map[string]*audit.EventDef{
+			"ev1": {Required: []string{"outcome", "source_ip"}},
+		},
+	}
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "strict"},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// Event only provides outcome — source_ip should come from defaults.
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{"outcome": "success"}))
+	assert.NoError(t, err, "default should satisfy required field")
+}
+
 func TestLogger_Audit_NilFields(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")

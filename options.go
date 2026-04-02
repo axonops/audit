@@ -98,6 +98,22 @@ func WithTimezone(tz string) Option {
 	}
 }
 
+// WithStandardFieldDefaults sets deployment-wide default values for
+// reserved standard fields. Defaults are applied in [Logger.AuditEvent]
+// before validation — a default satisfies required: true constraints.
+// Per-event values always override defaults (key existence check, not
+// zero value). This option may be called at most once; a second call
+// returns an error.
+func WithStandardFieldDefaults(defaults map[string]string) Option {
+	return func(l *Logger) error {
+		if l.standardFieldDefaults != nil {
+			return fmt.Errorf("audit: standard field defaults already set -- cannot be overridden")
+		}
+		l.standardFieldDefaults = defaults
+		return nil
+	}
+}
+
 // WithFormatter sets the event serialisation formatter. If not
 // provided, a [JSONFormatter] is created from the [Config]. Use this
 // to configure a [CEFFormatter] or a custom [Formatter] implementation.

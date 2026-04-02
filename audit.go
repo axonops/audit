@@ -109,6 +109,11 @@ type Logger struct {
 	host     string
 	timezone string
 	pid      int
+	// standardFieldDefaults holds deployment-wide default values for
+	// reserved standard fields. Set once via WithStandardFieldDefaults;
+	// read-only after construction. Applied in auditInternal before
+	// validation so that defaults satisfy required: true constraints.
+	standardFieldDefaults map[string]string
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
@@ -215,6 +220,8 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		}
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
+
+	fields = l.applyStandardFieldDefaults(fields)
 
 	if err := l.validateFields(eventType, def, fields); err != nil {
 		if l.metrics != nil {
@@ -847,6 +854,25 @@ func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
 
 // validateFields checks that all required fields are present and no
 // unknown fields are included (behavior depends on validation mode).
+// applyStandardFieldDefaults merges deployment-wide defaults into the
+// event fields. Per-event values take precedence (key existence check,
+// not zero value — an empty string counts as "set"). Returns the
+// possibly-initialised fields map.
+func (l *Logger) applyStandardFieldDefaults(fields Fields) Fields {
+	if len(l.standardFieldDefaults) == 0 {
+		return fields
+	}
+	if fields == nil {
+		fields = make(Fields, len(l.standardFieldDefaults))
+	}
+	for k, v := range l.standardFieldDefaults {
+		if _, exists := fields[k]; !exists {
+			fields[k] = v
+		}
+	}
+	return fields
+}
+
 func (l *Logger) validateFields(eventType string, def *EventDef, fields Fields) error {
 	if err := checkRequiredFields(eventType, def, fields); err != nil {
 		return err

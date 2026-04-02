@@ -205,7 +205,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, valueNode, taxonomy, coreMetrics)
+		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, coreMetrics)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -241,9 +241,10 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 
 // topLevel holds parsed top-level YAML fields.
 type topLevel struct {
-	outputsNode *yaml.Node
-	defaultFmt  audit.Formatter
-	config      audit.Config
+	outputsNode   *yaml.Node
+	tlsPolicyNode *yaml.Node // global tls_policy, injected into outputs that don't specify their own
+	defaultFmt    audit.Formatter
+	config        audit.Config
 }
 
 // parseLoggerConfig parses the logger: YAML node into an audit.Config.
@@ -385,6 +386,8 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 			defaultFmtNode = val
 		case "logger":
 			loggerNode = val
+		case "tls_policy":
+			result.tlsPolicyNode = val
 		case "outputs":
 			result.outputsNode = val
 		default:
@@ -408,6 +411,26 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 		result.config = cfg
 	} else {
 		result.config = defaultLoggerConfig()
+	}
+
+	// Expand env vars and validate global TLS policy eagerly so that
+	// typos and unknown fields are caught at startup, not deferred to
+	// individual output factory invocations.
+	if result.tlsPolicyNode != nil {
+		if err := expandEnvInNode(result.tlsPolicyNode, "tls_policy"); err != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
+		}
+		// Validate structure — reject unknown fields like typos.
+		tlsBytes, err := yaml.Marshal(result.tlsPolicyNode)
+		if err != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
+		}
+		dec := yaml.NewDecoder(bytes.NewReader(tlsBytes))
+		dec.KnownFields(true)
+		var validated yamlTLSPolicy
+		if err := dec.Decode(&validated); err != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
+		}
 	}
 
 	if defaultFmtNode != nil {
@@ -450,7 +473,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its YAML node.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*NamedOutput, error) {
+func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, coreMetrics audit.Metrics) (*NamedOutput, error) {
 	fields, err := extractOutputFields(name, node)
 	if err != nil {
 		return nil, err
@@ -461,7 +484,7 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, coreMet
 	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
 		return nil, expandErr
 	}
-	output, err := invokeFactory(name, fields, coreMetrics)
+	output, err := invokeFactory(name, fields, globalTLSNode, coreMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -551,13 +574,64 @@ func expandOutputEnvVars(name string, f *outputFields) error {
 	return nil
 }
 
-func invokeFactory(name string, f *outputFields, coreMetrics audit.Metrics) (audit.Output, error) {
+// deepCopyNode creates a deep copy of a YAML node tree so that
+// mutations in one consumer do not affect others.
+func deepCopyNode(n *yaml.Node) *yaml.Node {
+	if n == nil {
+		return nil
+	}
+	cp := *n
+	if len(n.Content) > 0 {
+		cp.Content = make([]*yaml.Node, len(n.Content))
+		for i, child := range n.Content {
+			cp.Content[i] = deepCopyNode(child)
+		}
+	}
+	return &cp
+}
+
+// injectGlobalTLSPolicy adds the global tls_policy to an output's
+// type-specific config node if the output does not already define one.
+// A deep copy of the global node is injected so that per-output env
+// var expansion does not mutate the shared original.
+func injectGlobalTLSPolicy(typeNode, globalNode *yaml.Node) {
+	if typeNode == nil || globalNode == nil || typeNode.Kind != yaml.MappingNode {
+		return
+	}
+	// Check if the output already has a tls_policy key.
+	for i := 0; i+1 < len(typeNode.Content); i += 2 {
+		if typeNode.Content[i].Value == "tls_policy" {
+			return // per-output policy exists — do not override
+		}
+	}
+	// Inject a deep copy so mutations don't affect other outputs.
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: "tls_policy", Tag: "!!str"}
+	typeNode.Content = append(typeNode.Content, keyNode, deepCopyNode(globalNode))
+}
+
+// yamlTLSPolicy is used for eager validation of the global tls_policy.
+type yamlTLSPolicy struct {
+	AllowTLS12       bool `yaml:"allow_tls12"`
+	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+}
+
+func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, coreMetrics audit.Metrics) (audit.Output, error) {
 	factory := audit.LookupOutputFactory(f.typeName)
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
 		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); did you import _ \"github.com/axonops/go-audit/%s\"?",
 			name, f.typeName, strings.Join(registered, ", "), f.typeName)
 	}
+	// Inject global TLS policy for output types that support it.
+	// Only syslog and webhook parse tls_policy — injecting into other
+	// types (file, stdout) would cause unknown-field errors.
+	if f.typeConfigNode != nil && globalTLSNode != nil {
+		switch f.typeName {
+		case "syslog", "webhook":
+			injectGlobalTLSPolicy(f.typeConfigNode, globalTLSNode)
+		}
+	}
+
 	var rawConfig []byte
 	if f.typeConfigNode != nil {
 		var err error

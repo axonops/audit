@@ -35,7 +35,7 @@
 //
 // # YAML Schema
 //
-// The configuration document has four top-level keys:
+// The configuration document has the following top-level keys:
 //
 //	version: 1                      # required, must be 1
 //	logger:                         # optional, core logger settings
@@ -44,6 +44,9 @@
 //	  drain_timeout: "5s"           # default: "5s" (max: "60s")
 //	  validation_mode: strict       # "strict" (default), "warn", "permissive"
 //	  omit_empty: false             # default: false
+//	tls_policy:                     # optional, global TLS policy
+//	  allow_tls12: false            # default: false (TLS 1.3 only)
+//	  allow_weak_ciphers: false     # default: false
 //	default_formatter:              # optional, applies to all outputs
 //	  type: json                    # "json" or "cef"
 //	  timestamp: rfc3339nano        # "rfc3339nano" or "unix_ms"

@@ -24,6 +24,15 @@ logger:
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
 
+# ── Global TLS Policy (optional) ──────────────────────────
+# Applies to all TLS-enabled outputs (syslog tcp+tls, webhook https)
+# that don't specify their own tls_policy. Per-output tls_policy
+# overrides this global setting.
+
+tls_policy:
+  allow_tls12: false               # default: false (TLS 1.3 only)
+  allow_weak_ciphers: false        # default: false
+
 # ── Default Formatter (optional) ───────────────────────────
 # Applies to all outputs that don't specify their own formatter.
 # If omitted, JSON with RFC 3339 nanosecond timestamps is used.
@@ -128,6 +137,7 @@ outputs:
 |-------|----------|-------------|
 | `version` | Yes | Must be `1`. Schema version for future migration. |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
+| `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |
 | `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
@@ -152,6 +162,27 @@ logger:
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
   enabled: ${AUDIT_ENABLED:-true}
 ```
+
+## 🔒 Global TLS Policy
+
+The optional `tls_policy:` section sets the default TLS version and
+cipher suite policy for all TLS-enabled outputs (syslog with
+`network: tcp+tls`, webhook with `https://`). If an output defines its own `tls_policy`, the global `tls_policy`
+is ignored entirely for that output — fields are not merged. The
+per-output block stands alone, with any omitted fields taking their
+defaults (`false`).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` when connecting to legacy infrastructure that does not support TLS 1.3. |
+| `allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. Has no effect when `allow_tls12` is `false`. SHOULD NOT be enabled unless required by a specific server. |
+
+> ⚠️ **Security:** The default policy (TLS 1.3 only, no weak ciphers)
+> is the most secure configuration. Only relax these settings when
+> connecting to infrastructure that cannot be upgraded.
+
+Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
+or `network: udp`) ignore the global TLS policy.
 
 ## 📦 Output Block
 

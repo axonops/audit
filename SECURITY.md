@@ -76,3 +76,32 @@ should be reported as regular GitHub issues, not security reports:
   or setting `AllowInsecureHTTP`)
 - Issues in test infrastructure or CI/CD pipelines
 - Feature requests
+
+## Software Bill of Materials (SBOM)
+
+Every release includes SBOMs in two formats, published as assets in
+the [GitHub Release](https://github.com/axonops/go-audit/releases):
+
+| Format | Filename | Use Case |
+|--------|----------|----------|
+| **CycloneDX** | `go-audit_<version>_sbom.cdx.json` | Vulnerability scanners (Trivy, Grype, Dependency-Track) |
+| **SPDX** | `go-audit_<version>_sbom.spdx.json` | License compliance tools, regulatory reporting |
+
+Both SBOMs list all direct and transitive dependencies across every
+module in the repository, including versions and license identifiers.
+
+### Using the SBOM
+
+Scan for vulnerabilities:
+
+```bash
+# Download the SBOM from the GitHub release, then:
+trivy sbom go-audit_v0.1.0_sbom.cdx.json
+```
+
+Generate a local SBOM from source (requires [syft](https://github.com/anchore/syft)):
+
+```bash
+make sbom            # generates CycloneDX + SPDX in sbom/
+make sbom-validate   # validates JSON structure
+```

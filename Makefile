@@ -6,7 +6,8 @@
        tidy tidy-check verify check-replace check-todos \
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
-       test-infra-up test-infra-down test-infra-logs
+       test-infra-up test-infra-down test-infra-logs \
+       sbom sbom-validate
 
 # --- Configuration ---
 
@@ -257,6 +258,24 @@ clean:
 		rm -f $$mod/coverage.out $$mod/coverage.html; \
 	done
 	rm -f bench.txt
+
+# --- SBOM generation ---
+
+SBOM_DIR := sbom
+
+sbom:
+	@mkdir -p $(SBOM_DIR)
+	@echo "=== Generating CycloneDX SBOM (all modules) ==="
+	@syft dir:. --output cyclonedx-json --file $(SBOM_DIR)/go-audit_sbom.cdx.json
+	@echo "=== Generating SPDX SBOM (all modules) ==="
+	@syft dir:. --output spdx-json --file $(SBOM_DIR)/go-audit_sbom.spdx.json
+	@echo "SBOMs generated in $(SBOM_DIR)/"
+
+sbom-validate:
+	@echo "=== Validating CycloneDX SBOM ==="
+	@python3 -c "import json; json.load(open('$(SBOM_DIR)/go-audit_sbom.cdx.json')); print('CycloneDX: valid JSON')"
+	@echo "=== Validating SPDX SBOM ==="
+	@python3 -c "import json; json.load(open('$(SBOM_DIR)/go-audit_sbom.spdx.json')); print('SPDX: valid JSON')"
 
 # --- Certificate generation ---
 

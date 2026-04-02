@@ -60,6 +60,24 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 	// DefaultFormatter is the resolved default formatter. Nil means
 	// the logger's built-in JSONFormatter will be used.
 	DefaultFormatter audit.Formatter
+
+	// AppName is the application name parsed from the top-level
+	// `app_name:` key. Always non-empty after a successful Load.
+	AppName string
+
+	// Host is the hostname parsed from the top-level `host:` key.
+	// Always non-empty after a successful Load.
+	Host string
+
+	// Timezone is the timezone name parsed from the top-level
+	// `timezone:` key. Empty when not specified in the YAML.
+	Timezone string
+
+	// StandardFields maps reserved standard field names to their
+	// deployment-wide default values, parsed from the top-level
+	// `standard_fields:` section. Nil when not specified. Pass to
+	// [audit.WithStandardFieldDefaults] (when available).
+	StandardFields map[string]string
 }
 
 // NamedOutput pairs a constructed output with its config-level name
@@ -208,7 +226,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, coreMetrics)
+		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.host, coreMetrics)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -230,7 +248,18 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		Config:           top.config,
 		Outputs:          outputs,
 		DefaultFormatter: top.defaultFmt,
+		AppName:          top.appName,
+		Host:             top.host,
+		Timezone:         top.timezone,
+		StandardFields:   top.standardFields,
 	}
+
+	// Framework field options.
+	result.Options = append(result.Options, audit.WithAppName(top.appName), audit.WithHost(top.host))
+	if top.timezone != "" {
+		result.Options = append(result.Options, audit.WithTimezone(top.timezone))
+	}
+
 	if top.defaultFmt != nil {
 		result.Options = append(result.Options, audit.WithFormatter(top.defaultFmt))
 	}
@@ -248,10 +277,14 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 
 // topLevel holds parsed top-level YAML fields.
 type topLevel struct {
-	outputsNode   *yaml.Node
-	tlsPolicyNode *yaml.Node // global tls_policy, injected into outputs that don't specify their own
-	defaultFmt    audit.Formatter
-	config        audit.Config
+	outputsNode    *yaml.Node
+	tlsPolicyNode  *yaml.Node // global tls_policy, injected into outputs that don't specify their own
+	standardFields map[string]string
+	defaultFmt     audit.Formatter
+	appName        string
+	host           string
+	timezone       string
+	config         audit.Config
 }
 
 // parseLoggerConfig parses the logger: YAML node into an audit.Config.
@@ -397,6 +430,30 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 			result.tlsPolicyNode = val
 		case "outputs":
 			result.outputsNode = val
+		case "app_name":
+			if err := expandEnvInNode(val, "app_name"); err != nil {
+				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, err)
+			}
+			result.appName = val.Value
+		case "host":
+			if err := expandEnvInNode(val, "host"); err != nil {
+				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, err)
+			}
+			result.host = val.Value
+		case "timezone":
+			if err := expandEnvInNode(val, "timezone"); err != nil {
+				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, err)
+			}
+			result.timezone = val.Value
+		case "standard_fields":
+			if err := expandEnvInNode(val, "standard_fields"); err != nil {
+				return nil, fmt.Errorf("%w: standard_fields: %w", ErrOutputConfigInvalid, err)
+			}
+			sf, err := parseStandardFields(val)
+			if err != nil {
+				return nil, err
+			}
+			result.standardFields = sf
 		default:
 			return nil, fmt.Errorf("%w: unknown top-level key %q", ErrOutputConfigInvalid, key)
 		}
@@ -440,6 +497,16 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 		}
 	}
 
+	if result.appName == "" {
+		return nil, fmt.Errorf("%w: app_name is required and must be non-empty", ErrOutputConfigInvalid)
+	}
+	if result.host == "" {
+		return nil, fmt.Errorf("%w: host is required and must be non-empty", ErrOutputConfigInvalid)
+	}
+	if result.timezone != "" && len(result.timezone) > 64 {
+		return nil, fmt.Errorf("%w: timezone exceeds maximum length of 64 bytes", ErrOutputConfigInvalid)
+	}
+
 	if defaultFmtNode != nil {
 		if err := expandEnvInNode(defaultFmtNode, "default_formatter"); err != nil {
 			return nil, fmt.Errorf("%w: default_formatter: %w", ErrOutputConfigInvalid, err)
@@ -452,6 +519,30 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 	}
 
 	return &result, nil
+}
+
+// parseStandardFields parses the standard_fields: YAML mapping into a
+// map[string]string. Keys must be reserved standard field names; values
+// must be non-empty strings.
+func parseStandardFields(node *yaml.Node) (map[string]string, error) {
+	if node.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("%w: standard_fields must be a mapping", ErrOutputConfigInvalid)
+	}
+	result := make(map[string]string, len(node.Content)/2)
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		val := node.Content[i+1].Value
+		if !audit.IsReservedStandardField(key) {
+			return nil, fmt.Errorf("%w: standard_fields: unknown field %q -- only reserved standard field names are accepted",
+				ErrOutputConfigInvalid, key)
+		}
+		if val == "" {
+			return nil, fmt.Errorf("%w: standard_fields: field %q must have a non-empty value",
+				ErrOutputConfigInvalid, key)
+		}
+		result[key] = val
+	}
+	return result, nil
 }
 
 // yamlRoute maps to [audit.EventRoute] fields.
@@ -481,7 +572,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its YAML node.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, coreMetrics audit.Metrics) (*NamedOutput, error) {
+func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
 	fields, err := extractOutputFields(name, node)
 	if err != nil {
 		return nil, err
@@ -492,7 +583,7 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
 		return nil, expandErr
 	}
-	output, err := invokeFactory(name, fields, globalTLSNode, coreMetrics)
+	output, err := invokeFactory(name, fields, globalTLSNode, globalHost, coreMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -624,13 +715,29 @@ func injectGlobalTLSPolicy(typeNode, globalNode *yaml.Node) {
 	typeNode.Content = append(typeNode.Content, keyNode, deepCopyNode(globalNode))
 }
 
+// injectStringField adds a string key-value pair to a YAML mapping
+// node if the key does not already exist.
+func injectStringField(typeNode *yaml.Node, key, value string) {
+	if typeNode == nil || typeNode.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(typeNode.Content); i += 2 {
+		if typeNode.Content[i].Value == key {
+			return // per-output value exists — do not override
+		}
+	}
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key, Tag: "!!str"}
+	valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: value, Tag: "!!str"}
+	typeNode.Content = append(typeNode.Content, keyNode, valNode)
+}
+
 // yamlTLSPolicy is used for eager validation of the global tls_policy.
 type yamlTLSPolicy struct {
 	AllowTLS12       bool `yaml:"allow_tls12"`
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, coreMetrics audit.Metrics) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
 	factory := audit.LookupOutputFactory(f.typeName)
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
@@ -645,6 +752,10 @@ func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, coreM
 		case "syslog", "webhook":
 			injectGlobalTLSPolicy(f.typeConfigNode, globalTLSNode)
 		}
+	}
+	// Inject global hostname into syslog config if not already set.
+	if f.typeName == "syslog" && globalHost != "" {
+		injectStringField(f.typeConfigNode, "hostname", globalHost)
 	}
 
 	var rawConfig []byte

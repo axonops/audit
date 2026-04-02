@@ -1,4 +1,6 @@
 version: 1
+app_name: example
+host: localhost
 outputs:
   json_file:
     type: file

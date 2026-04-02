@@ -8,6 +8,8 @@ Feature: YAML Output Configuration
     And the following output configuration YAML:
       """
       version: 1
+      app_name: test
+      host: test
       outputs:
         console:
           type: stdout
@@ -25,6 +27,8 @@ Feature: YAML Output Configuration
     And the following output configuration YAML:
       """
       version: 1
+      app_name: test
+      host: test
       outputs:
         all_events:
           type: file
@@ -57,6 +61,8 @@ Feature: YAML Output Configuration
     And the following output configuration YAML:
       """
       version: 1
+      app_name: test
+      host: test
       outputs:
         broken:
           type: kafka
@@ -70,6 +76,8 @@ Feature: YAML Output Configuration
     And the following output configuration YAML:
       """
       version: 1
+      app_name: test
+      host: test
       outputs:
         bad:
           type: file

@@ -21,11 +21,9 @@ import (
 )
 
 var (
-	CEFEscapeHeaderForTest            = cefEscapeHeader
-	CEFEscapeExtValueForTest          = cefEscapeExtValue
-	ValidateExtKeyForTest             = validateExtKey
-	IsReservedStandardFieldForTest    = isReservedStandardField
-	ReservedStandardFieldNamesForTest = reservedStandardFieldNames
+	CEFEscapeHeaderForTest   = cefEscapeHeader
+	CEFEscapeExtValueForTest = cefEscapeExtValue
+	ValidateExtKeyForTest    = validateExtKey
 )
 
 // CEFEscapeHeaderOldForTest is the original multi-pass implementation,

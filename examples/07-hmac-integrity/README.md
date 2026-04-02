@@ -111,10 +111,33 @@ All NIST SP 800-224 approved. SHA-1 and MD5 are not supported.
 ## Run It
 
 ```bash
-cd examples/07-hmac-integrity
 go run .
 cat secure-audit.log
 ```
+
+## Expected Output
+
+**stdout** (all events, no HMAC):
+
+```
+--- Security event (HMAC in secure_log, plain on stdout) ---
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
+
+--- Write event (stdout only, no HMAC cost) ---
+{"timestamp":"...","event_type":"user_create","severity":4,"actor_id":"admin","outcome":"success","target_id":"user-42","event_category":"write"}
+
+--- Check secure-audit.log for HMAC fields (_hmac, _hmac_v) ---
+```
+
+**secure-audit.log** (security events only, with HMAC):
+
+```json
+{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security","_hmac":"a1b2c3...","_hmac_v":"2026-Q1"}
+```
+
+Only the security event appears in the file. The write event (`user_create`)
+is excluded by the route. The `_hmac` field is a hex-encoded HMAC-SHA-256
+digest, and `_hmac_v` is the salt version for key lookup during verification.
 
 ## Previous
 

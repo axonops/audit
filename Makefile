@@ -90,7 +90,7 @@ test-examples:
 	            examples/02-code-generation examples/05-event-routing \
 	            examples/06-sensitivity-labels examples/07-formatters \
 	            examples/08-middleware examples/09-crud-api \
-	            examples/10-testing; do \
+	            examples/10-testing examples/11-hmac-integrity; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

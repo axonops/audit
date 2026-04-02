@@ -1,0 +1,21 @@
+version: 1
+
+outputs:
+  # HMAC-enabled output — only security events pay the crypto cost.
+  secure_log:
+    type: file
+    hmac:
+      enabled: true
+      salt:
+        version: "2026-Q1"
+        value: "${HMAC_SALT:-default-example-salt!}"
+      hash: HMAC-SHA-256
+    file:
+      path: "./secure-audit.log"
+    route:
+      include_categories:
+        - security
+
+  # No HMAC — all events, no crypto overhead.
+  console:
+    type: stdout

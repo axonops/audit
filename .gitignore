@@ -147,3 +147,5 @@ sbom/
 examples/*/*.log
 examples/10-testing/10-testing
 /10-testing
+examples/11-hmac-integrity/11-hmac-integrity
+examples/11-hmac-integrity/*.log

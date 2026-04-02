@@ -19,6 +19,7 @@ Each example introduces one new concept and builds on the previous.
 | 8 | [middleware](08-middleware/) | Automatic HTTP audit logging with Hints |
 | 9 | [crud-api](09-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
 | 10 | [testing](10-testing/) | Testing audit events with audittest.NewLogger |
+| 11 | [hmac-integrity](11-hmac-integrity/) | Per-output HMAC tamper detection with selective routing |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

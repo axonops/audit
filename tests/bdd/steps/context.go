@@ -62,6 +62,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// Route query result.
 	QueriedRoute *audit.EventRoute
 
+	// HMAC capture.
+	CaptureOutput *captureOutput // raw event bytes for HMAC verification
+
 	// Metrics capture.
 	MockMetrics    *MockMetrics
 	WebhookMetrics *MockWebhookMetrics
@@ -108,6 +111,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.TestServer = nil
 	tc.LastHTTPResp = nil
 	tc.QueriedRoute = nil
+	tc.CaptureOutput = nil
 	tc.MockMetrics = nil
 	tc.WebhookMetrics = nil
 	tc.FileMetrics = nil
@@ -172,4 +176,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSeverityRoutingSteps(ctx, tc)
 	registerSensitivitySteps(ctx, tc)
 	registerBuilderSteps(ctx, tc)
+	registerHMACSteps(ctx, tc)
 }

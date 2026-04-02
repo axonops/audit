@@ -112,7 +112,7 @@ multi-output fan-out and SIEM-native format support:
 go-audit uses a YAML-first workflow: define your events in a taxonomy
 file, configure outputs in another, and generate type-safe Go code.
 
-### 1️⃣ Define your taxonomy (`taxonomy.yaml`)
+### 1️⃣ Define your taxonomy (`taxonomy.yaml`) - This is your source code. 
 
 ```yaml
 version: 1
@@ -143,7 +143,7 @@ events:
       source_ip: {}
 ```
 
-### 2️⃣ Configure outputs (`outputs.yaml`)
+### 2️⃣ Configure outputs (`outputs.yaml`) - This is your config. 
 
 ```yaml
 version: 1
@@ -162,7 +162,7 @@ outputs:
       version: "1.0"
 ```
 
-### 3️⃣ Generate type-safe code
+### 3️⃣ Generate type-safe code - This is how you use the library in your code. 
 
 ```bash
 go run github.com/axonops/go-audit/cmd/audit-gen \

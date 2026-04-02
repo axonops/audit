@@ -18,8 +18,6 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:
-      reason:
 
   user_delete:
     description: "A user account was deleted"
@@ -28,14 +26,12 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:
 
   user_read:
     description: "A user profile was viewed"
     fields:
       outcome:
         required: true
-      actor_id:
 
   auth_failure:
     description: "An authentication attempt failed"
@@ -44,8 +40,6 @@ events:
         required: true
       actor_id:
         required: true
-      reason:
-      source_ip:
 
   auth_success:
     description: "An authentication attempt succeeded"
@@ -54,4 +48,3 @@ events:
         required: true
       actor_id:
         required: true
-      source_ip:

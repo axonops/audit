@@ -310,6 +310,7 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
 	errs = append(errs, checkReservedFieldNames(t)...)
+	errs = append(errs, checkReservedStandardFields(t)...)
 	errs = append(errs, checkSensitivity(t)...)
 
 	if len(errs) > 0 {
@@ -448,6 +449,124 @@ func checkReservedFieldNames(t Taxonomy) []string {
 		}
 	}
 	return errs
+}
+
+// reservedStandardFieldNames returns the well-known audit field names
+// that are always available on any event without explicit taxonomy
+// declaration. These fields are automatically accepted by the
+// unknown-field check and have standard CEF extension key mappings.
+//
+// Consumers MAY declare a reserved standard field in their taxonomy to
+// make it required (constructor parameter in codegen) or to attach
+// sensitivity labels. Bare declarations (optional, no labels) are
+// rejected because they are redundant.
+func reservedStandardFieldNames() []string {
+	return []string{
+		"action",
+		"actor_id",
+		"actor_uid",
+		"dest_host",
+		"dest_ip",
+		"dest_port",
+		"end_time",
+		"file_hash",
+		"file_name",
+		"file_path",
+		"file_size",
+		"message",
+		"method",
+		"outcome",
+		"path",
+		"protocol",
+		"reason",
+		"referrer",
+		"request_id",
+		"role",
+		"session_id",
+		"source_host",
+		"source_ip",
+		"source_port",
+		"start_time",
+		"target_id",
+		"target_role",
+		"target_type",
+		"target_uid",
+		"transport",
+		"user_agent",
+	}
+}
+
+// reservedStandardFieldMap is a precomputed set of reserved standard
+// field names for O(1) lookup. Built once at package init from
+// reservedStandardFieldNames. Read-only after init — safe for
+// concurrent access without synchronisation.
+var reservedStandardFieldMap = func() map[string]struct{} {
+	names := reservedStandardFieldNames()
+	m := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		m[n] = struct{}{}
+	}
+	return m
+}()
+
+// isReservedStandardField reports whether name is a reserved standard
+// field. Called from checkUnknownFields on the validation path (caller
+// goroutine) and from allFieldKeysSorted on the format path (drain
+// goroutine). Uses a precomputed map for O(1) lookup.
+func isReservedStandardField(name string) bool {
+	_, ok := reservedStandardFieldMap[name]
+	return ok
+}
+
+// checkReservedStandardFields validates that no event declares a
+// reserved standard field as a bare optional (without required: true or
+// sensitivity labels). Bare declarations are redundant because reserved
+// standard fields are always available.
+func checkReservedStandardFields(t Taxonomy) []string {
+	reserved := reservedStandardFieldMap
+	globalLabeled := globalLabeledFields(t)
+
+	var errs []string
+	for et, def := range t.Events {
+		for _, f := range def.Optional {
+			if _, ok := reserved[f]; !ok {
+				continue
+			}
+			if isBareReservedStandardField(f, def, globalLabeled) {
+				errs = append(errs, fmt.Sprintf(
+					"event %q field %q is a reserved standard field -- it is always available without declaration; to reference it, set required: true or add labels",
+					et, f))
+			}
+		}
+	}
+	return errs
+}
+
+// globalLabeledFields returns the set of field names that have at least
+// one global sensitivity label mapping.
+func globalLabeledFields(t Taxonomy) map[string]struct{} {
+	labeled := make(map[string]struct{})
+	if t.Sensitivity == nil {
+		return labeled
+	}
+	for _, label := range t.Sensitivity.Labels {
+		for _, f := range label.Fields {
+			labeled[f] = struct{}{}
+		}
+	}
+	return labeled
+}
+
+// isBareReservedStandardField reports whether a reserved standard field
+// in Optional has no per-event annotations and no global labels.
+func isBareReservedStandardField(f string, def *EventDef, globalLabeled map[string]struct{}) bool {
+	if annotations, ok := def.fieldAnnotations[f]; ok && len(annotations) > 0 {
+		return false
+	}
+	if _, ok := globalLabeled[f]; ok {
+		return false
+	}
+	return true
 }
 
 // frameworkFieldNames returns the field names managed by the framework.

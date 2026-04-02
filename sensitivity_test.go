@@ -1014,7 +1014,6 @@ events:
     fields:
       outcome: {required: true}
       email: {}
-      reason: {}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)

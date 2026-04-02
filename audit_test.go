@@ -177,6 +177,67 @@ func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 }
 
+// ---------------------------------------------------------------------------
+// Reserved standard fields (#237)
+// ---------------------------------------------------------------------------
+
+func TestLogger_Audit_ReservedStandardField_AcceptedInStrictMode(t *testing.T) {
+	t.Parallel()
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events: map[string]*audit.EventDef{
+			"ev1": {Required: []string{"marker"}},
+		},
+	}
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "strict"},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// source_ip is a reserved standard field — accepted without declaration.
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{
+		"marker":    "test",
+		"source_ip": "10.0.0.1",
+		"reason":    "test_reason",
+	}))
+	assert.NoError(t, err)
+}
+
+func TestLogger_Audit_ReservedStandardField_StillRejectsUnknown(t *testing.T) {
+	t.Parallel()
+	tax := audit.Taxonomy{
+		Version:    1,
+		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+		Events: map[string]*audit.EventDef{
+			"ev1": {Required: []string{"marker"}},
+		},
+	}
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, ValidationMode: "strict"},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	// "foobar" is NOT a reserved standard field — rejected in strict mode.
+	err = logger.AuditEvent(audit.NewEvent("ev1", audit.Fields{
+		"marker":    "test",
+		"source_ip": "10.0.0.1",
+		"foobar":    "unknown",
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown fields")
+	assert.Contains(t, err.Error(), "foobar")
+	assert.NotContains(t, err.Error(), "source_ip")
+}
+
 func TestLogger_Audit_NilFields(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")
@@ -1997,7 +2058,6 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
 				Required: []string{"outcome", "actor_id", "actor_type"},
-				Optional: []string{"target_type", "target_id", "reason", "source_ip", "user_agent", "request_id"},
 			},
 		},
 	}
@@ -2053,7 +2113,7 @@ func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T
 		Events: map[string]*audit.EventDef{
 			"auth_check": {
 				Required: []string{"outcome", "actor_id"},
-				Optional: []string{"reason", "source_ip", "user_agent"},
+				Optional: []string{},
 			},
 		},
 	}
@@ -2186,7 +2246,7 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 		Events: map[string]*audit.EventDef{
 			"api_request": {
 				Required: []string{"outcome", "actor_id", "method", "path"},
-				Optional: []string{"source_ip", "request_id", "user_agent", "subject", "schema_type", "version"},
+				Optional: []string{"subject", "schema_type", "version"},
 			},
 		},
 	}

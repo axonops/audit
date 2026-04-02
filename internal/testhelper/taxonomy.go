@@ -31,7 +31,7 @@ func ValidTaxonomy() audit.Taxonomy {
 			"config_read":     {Required: []string{"outcome"}},
 			"schema_register": {Required: []string{"outcome", "actor_id", "subject"}, Optional: []string{"schema_type"}},
 			"schema_delete":   {Required: []string{"outcome", "actor_id", "subject"}},
-			"auth_failure":    {Required: []string{"outcome", "actor_id"}, Optional: []string{"reason"}},
+			"auth_failure":    {Required: []string{"outcome", "actor_id"}},
 		},
 	}
 }

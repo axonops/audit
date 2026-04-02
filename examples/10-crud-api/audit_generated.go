@@ -38,11 +38,8 @@ const (
 // Field name constants — use in audit.Fields maps for
 // compile-time typo prevention.
 const (
-	FieldActorID  = "actor_id"
-	FieldOutcome  = "outcome"
-	FieldReason   = "reason"
-	FieldSourceIP = "source_ip"
-	FieldTargetID = "target_id"
+	FieldActorID = "actor_id"
+	FieldOutcome = "outcome"
 )
 
 // EventFields maps event types to their required and optional fields.
@@ -52,35 +49,35 @@ var EventFields = map[string]struct {
 }{
 	EventAuthFailure: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldReason, FieldSourceIP},
+		Optional: []string{},
 	},
 	EventAuthSuccess: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldSourceIP},
+		Optional: []string{},
 	},
 	EventConfigChange: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldTargetID},
+		Optional: []string{},
 	},
 	EventItemCreate: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldTargetID},
+		Optional: []string{},
 	},
 	EventItemDelete: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldTargetID},
+		Optional: []string{},
 	},
 	EventItemList: {
 		Required: []string{FieldOutcome},
-		Optional: []string{FieldActorID},
+		Optional: []string{},
 	},
 	EventItemRead: {
 		Required: []string{FieldOutcome},
-		Optional: []string{FieldActorID, FieldTargetID},
+		Optional: []string{},
 	},
 	EventItemUpdate: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldTargetID},
+		Optional: []string{},
 	},
 }
 
@@ -94,10 +91,8 @@ var CategoryEvents = map[string][]string{
 
 // AuthFailureFields describes every field on [EventAuthFailure] events.
 type AuthFailureFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	Reason   audit.FieldInfo // optional
-	SourceIP audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // AuthFailureEvent builds a type-safe audit event: An authentication attempt failed.
@@ -115,18 +110,6 @@ func NewAuthFailureEvent(actorID any, outcome any) *AuthFailureEvent {
 	}}
 }
 
-// SetReason sets the FieldReason field.
-func (e *AuthFailureEvent) SetReason(v any) *AuthFailureEvent {
-	e.fields[FieldReason] = v
-	return e
-}
-
-// SetSourceIP sets the FieldSourceIP field.
-func (e *AuthFailureEvent) SetSourceIP(v any) *AuthFailureEvent {
-	e.fields[FieldSourceIP] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
@@ -139,10 +122,8 @@ func (e *AuthFailureEvent) Description() string { return "An authentication atte
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 	return AuthFailureFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		Reason:   audit.FieldInfo{Name: FieldReason},
-		SourceIP: audit.FieldInfo{Name: FieldSourceIP},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -155,9 +136,8 @@ func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 
 // AuthSuccessFields describes every field on [EventAuthSuccess] events.
 type AuthSuccessFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	SourceIP audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // AuthSuccessEvent builds a type-safe audit event: An authentication attempt succeeded.
@@ -175,12 +155,6 @@ func NewAuthSuccessEvent(actorID any, outcome any) *AuthSuccessEvent {
 	}}
 }
 
-// SetSourceIP sets the FieldSourceIP field.
-func (e *AuthSuccessEvent) SetSourceIP(v any) *AuthSuccessEvent {
-	e.fields[FieldSourceIP] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
@@ -193,9 +167,8 @@ func (e *AuthSuccessEvent) Description() string { return "An authentication atte
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *AuthSuccessEvent) FieldInfo() AuthSuccessFields {
 	return AuthSuccessFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		SourceIP: audit.FieldInfo{Name: FieldSourceIP},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -208,9 +181,8 @@ func (e *AuthSuccessEvent) Categories() []audit.CategoryInfo {
 
 // ConfigChangeFields describes every field on [EventConfigChange] events.
 type ConfigChangeFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	TargetID audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // ConfigChangeEvent builds a type-safe audit event: A configuration change was made.
@@ -228,12 +200,6 @@ func NewConfigChangeEvent(actorID any, outcome any) *ConfigChangeEvent {
 	}}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *ConfigChangeEvent) SetTargetID(v any) *ConfigChangeEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ConfigChangeEvent) EventType() string { return EventConfigChange }
 
@@ -246,9 +212,8 @@ func (e *ConfigChangeEvent) Description() string { return "A configuration chang
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ConfigChangeEvent) FieldInfo() ConfigChangeFields {
 	return ConfigChangeFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -261,9 +226,8 @@ func (e *ConfigChangeEvent) Categories() []audit.CategoryInfo {
 
 // ItemCreateFields describes every field on [EventItemCreate] events.
 type ItemCreateFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	TargetID audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // ItemCreateEvent builds a type-safe audit event: An item was created.
@@ -281,12 +245,6 @@ func NewItemCreateEvent(actorID any, outcome any) *ItemCreateEvent {
 	}}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *ItemCreateEvent) SetTargetID(v any) *ItemCreateEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ItemCreateEvent) EventType() string { return EventItemCreate }
 
@@ -299,9 +257,8 @@ func (e *ItemCreateEvent) Description() string { return "An item was created" }
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemCreateEvent) FieldInfo() ItemCreateFields {
 	return ItemCreateFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -314,9 +271,8 @@ func (e *ItemCreateEvent) Categories() []audit.CategoryInfo {
 
 // ItemDeleteFields describes every field on [EventItemDelete] events.
 type ItemDeleteFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	TargetID audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // ItemDeleteEvent builds a type-safe audit event: An item was deleted.
@@ -334,12 +290,6 @@ func NewItemDeleteEvent(actorID any, outcome any) *ItemDeleteEvent {
 	}}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *ItemDeleteEvent) SetTargetID(v any) *ItemDeleteEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ItemDeleteEvent) EventType() string { return EventItemDelete }
 
@@ -352,9 +302,8 @@ func (e *ItemDeleteEvent) Description() string { return "An item was deleted" }
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemDeleteEvent) FieldInfo() ItemDeleteFields {
 	return ItemDeleteFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -368,7 +317,6 @@ func (e *ItemDeleteEvent) Categories() []audit.CategoryInfo {
 // ItemListFields describes every field on [EventItemList] events.
 type ItemListFields struct {
 	Outcome audit.FieldInfo // required
-	ActorID audit.FieldInfo // optional
 }
 
 // ItemListEvent builds a type-safe audit event: Items were listed.
@@ -385,12 +333,6 @@ func NewItemListEvent(outcome any) *ItemListEvent {
 	}}
 }
 
-// SetActorID sets the FieldActorID field.
-func (e *ItemListEvent) SetActorID(v any) *ItemListEvent {
-	e.fields[FieldActorID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ItemListEvent) EventType() string { return EventItemList }
 
@@ -404,7 +346,6 @@ func (e *ItemListEvent) Description() string { return "Items were listed" }
 func (e *ItemListEvent) FieldInfo() ItemListFields {
 	return ItemListFields{
 		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
-		ActorID: audit.FieldInfo{Name: FieldActorID},
 	}
 }
 
@@ -417,9 +358,7 @@ func (e *ItemListEvent) Categories() []audit.CategoryInfo {
 
 // ItemReadFields describes every field on [EventItemRead] events.
 type ItemReadFields struct {
-	Outcome  audit.FieldInfo // required
-	ActorID  audit.FieldInfo // optional
-	TargetID audit.FieldInfo // optional
+	Outcome audit.FieldInfo // required
 }
 
 // ItemReadEvent builds a type-safe audit event: An item was read.
@@ -436,18 +375,6 @@ func NewItemReadEvent(outcome any) *ItemReadEvent {
 	}}
 }
 
-// SetActorID sets the FieldActorID field.
-func (e *ItemReadEvent) SetActorID(v any) *ItemReadEvent {
-	e.fields[FieldActorID] = v
-	return e
-}
-
-// SetTargetID sets the FieldTargetID field.
-func (e *ItemReadEvent) SetTargetID(v any) *ItemReadEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ItemReadEvent) EventType() string { return EventItemRead }
 
@@ -460,9 +387,7 @@ func (e *ItemReadEvent) Description() string { return "An item was read" }
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemReadEvent) FieldInfo() ItemReadFields {
 	return ItemReadFields{
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		ActorID:  audit.FieldInfo{Name: FieldActorID},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -475,9 +400,8 @@ func (e *ItemReadEvent) Categories() []audit.CategoryInfo {
 
 // ItemUpdateFields describes every field on [EventItemUpdate] events.
 type ItemUpdateFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	TargetID audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // ItemUpdateEvent builds a type-safe audit event: An item was updated.
@@ -495,12 +419,6 @@ func NewItemUpdateEvent(actorID any, outcome any) *ItemUpdateEvent {
 	}}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *ItemUpdateEvent) SetTargetID(v any) *ItemUpdateEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *ItemUpdateEvent) EventType() string { return EventItemUpdate }
 
@@ -513,9 +431,8 @@ func (e *ItemUpdateEvent) Description() string { return "An item was updated" }
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemUpdateEvent) FieldInfo() ItemUpdateFields {
 	return ItemUpdateFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 

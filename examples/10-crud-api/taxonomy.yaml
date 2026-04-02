@@ -30,7 +30,6 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:
 
   item_update:
     description: "An item was updated"
@@ -39,7 +38,6 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:
 
   item_delete:
     description: "An item was deleted"
@@ -48,22 +46,18 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:
 
   item_list:
     description: "Items were listed"
     fields:
       outcome:
         required: true
-      actor_id:
 
   item_read:
     description: "An item was read"
     fields:
       outcome:
         required: true
-      actor_id:
-      target_id:
 
   auth_failure:
     description: "An authentication attempt failed"
@@ -73,8 +67,6 @@ events:
         required: true
       actor_id:
         required: true
-      reason:
-      source_ip:
 
   auth_success:
     description: "An authentication attempt succeeded"
@@ -83,7 +75,6 @@ events:
         required: true
       actor_id:
         required: true
-      source_ip:
 
   config_change:
     description: "A configuration change was made"
@@ -92,4 +83,3 @@ events:
         required: true
       actor_id:
         required: true
-      target_id:

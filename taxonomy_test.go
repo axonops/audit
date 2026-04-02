@@ -179,6 +179,144 @@ func TestValidateTaxonomy_DurationMs_AllowedAsOptional(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// ---------------------------------------------------------------------------
+// Reserved standard fields (#237)
+// ---------------------------------------------------------------------------
+
+func TestReservedStandardFieldNames_Complete(t *testing.T) {
+	t.Parallel()
+	names := audit.ReservedStandardFieldNamesForTest()
+	assert.Len(t, names, 31) // 28 from spec + action, target_type, session_id
+
+	expected := []string{
+		"action", "actor_id", "actor_uid",
+		"dest_host", "dest_ip", "dest_port", "end_time",
+		"file_hash", "file_name", "file_path", "file_size",
+		"message", "method", "outcome", "path", "protocol",
+		"reason", "referrer", "request_id", "role",
+		"session_id", "source_host", "source_ip", "source_port",
+		"start_time", "target_id", "target_role", "target_type",
+		"target_uid", "transport", "user_agent",
+	}
+	assert.ElementsMatch(t, expected, names)
+}
+
+func TestIsReservedStandardField_AllFields(t *testing.T) {
+	t.Parallel()
+	for _, name := range audit.ReservedStandardFieldNamesForTest() {
+		assert.True(t, audit.IsReservedStandardFieldForTest(name), "expected %q to be reserved", name)
+	}
+}
+
+func TestIsReservedStandardField_NonReserved(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"timestamp", "event_type", "severity", "custom_field", "foobar", ""} {
+		assert.False(t, audit.IsReservedStandardFieldForTest(name), "expected %q to NOT be reserved", name)
+	}
+}
+
+func TestValidateTaxonomy_ReservedStandardField_BareDeclaration_Rejected(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"source_ip", "actor_id", "reason", "method", "outcome"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{"marker"}, Optional: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+			assert.Contains(t, err.Error(), "reserved standard field")
+			assert.Contains(t, err.Error(), field)
+		})
+	}
+}
+
+func TestValidateTaxonomy_ReservedStandardField_Required_Allowed(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"source_ip", "actor_id", "reason", "method"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			tax := audit.Taxonomy{
+				Version:    1,
+				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
+				Events: map[string]*audit.EventDef{
+					"ev1": {Required: []string{field}},
+				},
+			}
+			err := audit.ValidateTaxonomy(tax)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateTaxonomy_ReservedStandardField_WithLabels_Allowed(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      description: "personal info"
+categories:
+  write:
+    - ev1
+events:
+  ev1:
+    fields:
+      source_ip:
+        labels: [pii]
+`
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	assert.NoError(t, err)
+}
+
+func TestValidateTaxonomy_ReservedStandardField_WithGlobalLabel_Allowed(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [source_ip]
+categories:
+  write:
+    - ev1
+events:
+  ev1:
+    fields:
+      source_ip: {}
+`
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	assert.NoError(t, err)
+}
+
+func TestValidateTaxonomy_ReservedStandardField_RequiredAndLabels_Allowed(t *testing.T) {
+	t.Parallel()
+	yml := `
+version: 1
+sensitivity:
+  labels:
+    pii:
+      description: "personal info"
+categories:
+  write:
+    - ev1
+events:
+  ev1:
+    fields:
+      source_ip:
+        required: true
+        labels: [pii]
+`
+	_, err := audit.ParseTaxonomyYAML([]byte(yml))
+	assert.NoError(t, err)
+}
+
 func TestMigrateTaxonomy(t *testing.T) {
 	t.Run("valid version passes", func(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()

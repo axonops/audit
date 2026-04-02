@@ -44,5 +44,4 @@ events:
         required: true
       actor_id:
         required: true
-      reason: {}
       client_ip: {}

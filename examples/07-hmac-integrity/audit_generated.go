@@ -26,11 +26,8 @@ const (
 // Field name constants — use in audit.Fields maps for
 // compile-time typo prevention.
 const (
-	FieldActorID  = "actor_id"
-	FieldOutcome  = "outcome"
-	FieldReason   = "reason"
-	FieldSourceIP = "source_ip"
-	FieldTargetID = "target_id"
+	FieldActorID = "actor_id"
+	FieldOutcome = "outcome"
 )
 
 // EventFields maps event types to their required and optional fields.
@@ -40,15 +37,15 @@ var EventFields = map[string]struct {
 }{
 	EventAuthFailure: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldReason, FieldSourceIP},
+		Optional: []string{},
 	},
 	EventAuthSuccess: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldSourceIP},
+		Optional: []string{},
 	},
 	EventUserCreate: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldTargetID},
+		Optional: []string{},
 	},
 }
 
@@ -60,10 +57,8 @@ var CategoryEvents = map[string][]string{
 
 // AuthFailureFields describes every field on [EventAuthFailure] events.
 type AuthFailureFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	Reason   audit.FieldInfo // optional
-	SourceIP audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // AuthFailureEvent builds a type-safe audit event: An authentication attempt failed.
@@ -81,18 +76,6 @@ func NewAuthFailureEvent(actorID any, outcome any) *AuthFailureEvent {
 	}}
 }
 
-// SetReason sets the FieldReason field.
-func (e *AuthFailureEvent) SetReason(v any) *AuthFailureEvent {
-	e.fields[FieldReason] = v
-	return e
-}
-
-// SetSourceIP sets the FieldSourceIP field.
-func (e *AuthFailureEvent) SetSourceIP(v any) *AuthFailureEvent {
-	e.fields[FieldSourceIP] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
@@ -105,10 +88,8 @@ func (e *AuthFailureEvent) Description() string { return "An authentication atte
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 	return AuthFailureFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		Reason:   audit.FieldInfo{Name: FieldReason},
-		SourceIP: audit.FieldInfo{Name: FieldSourceIP},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -121,9 +102,8 @@ func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 
 // AuthSuccessFields describes every field on [EventAuthSuccess] events.
 type AuthSuccessFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	SourceIP audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // AuthSuccessEvent builds a type-safe audit event: An authentication attempt succeeded.
@@ -141,12 +121,6 @@ func NewAuthSuccessEvent(actorID any, outcome any) *AuthSuccessEvent {
 	}}
 }
 
-// SetSourceIP sets the FieldSourceIP field.
-func (e *AuthSuccessEvent) SetSourceIP(v any) *AuthSuccessEvent {
-	e.fields[FieldSourceIP] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
@@ -159,9 +133,8 @@ func (e *AuthSuccessEvent) Description() string { return "An authentication atte
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *AuthSuccessEvent) FieldInfo() AuthSuccessFields {
 	return AuthSuccessFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		SourceIP: audit.FieldInfo{Name: FieldSourceIP},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 
@@ -174,9 +147,8 @@ func (e *AuthSuccessEvent) Categories() []audit.CategoryInfo {
 
 // UserCreateFields describes every field on [EventUserCreate] events.
 type UserCreateFields struct {
-	ActorID  audit.FieldInfo // required
-	Outcome  audit.FieldInfo // required
-	TargetID audit.FieldInfo // optional
+	ActorID audit.FieldInfo // required
+	Outcome audit.FieldInfo // required
 }
 
 // UserCreateEvent builds a type-safe audit event: A new user account was created.
@@ -194,12 +166,6 @@ func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
 	}}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
-	e.fields[FieldTargetID] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
@@ -212,9 +178,8 @@ func (e *UserCreateEvent) Description() string { return "A new user account was 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *UserCreateEvent) FieldInfo() UserCreateFields {
 	return UserCreateFields{
-		ActorID:  audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:  audit.FieldInfo{Name: FieldOutcome, Required: true},
-		TargetID: audit.FieldInfo{Name: FieldTargetID},
+		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
 	}
 }
 

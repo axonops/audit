@@ -43,10 +43,8 @@ func middlewareTaxonomy() audit.Taxonomy {
 			"http_request": {
 				Required: []string{"outcome"},
 				Optional: []string{
-					"actor_id", "actor_type", "auth_method", "role",
-					"target_type", "target_id", "reason", "error",
-					"client_ip", "method", "path", "user_agent",
-					"request_id", "status_code", "duration_ms",
+					"actor_type", "auth_method", "error",
+					"client_ip", "status_code", "duration_ms",
 					"transport_security", "extra_field",
 				},
 			},

@@ -27,7 +27,6 @@ const (
 	FieldActorID = "actor_id"
 	FieldEmail   = "email"
 	FieldOutcome = "outcome"
-	FieldReason  = "reason"
 )
 
 // EventFields maps event types to their required and optional fields.
@@ -37,7 +36,7 @@ var EventFields = map[string]struct {
 }{
 	EventAuthFailure: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{FieldReason},
+		Optional: []string{},
 	},
 	EventUserCreate: {
 		Required: []string{FieldActorID, FieldOutcome},
@@ -55,7 +54,6 @@ var CategoryEvents = map[string][]string{
 type AuthFailureFields struct {
 	ActorID audit.FieldInfo // required
 	Outcome audit.FieldInfo // required
-	Reason  audit.FieldInfo // optional
 }
 
 // AuthFailureEvent builds a type-safe audit event: An authentication attempt failed.
@@ -73,12 +71,6 @@ func NewAuthFailureEvent(actorID any, outcome any) *AuthFailureEvent {
 	}}
 }
 
-// SetReason sets the FieldReason field.
-func (e *AuthFailureEvent) SetReason(v any) *AuthFailureEvent {
-	e.fields[FieldReason] = v
-	return e
-}
-
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
@@ -93,7 +85,6 @@ func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 	return AuthFailureFields{
 		ActorID: audit.FieldInfo{Name: FieldActorID, Required: true},
 		Outcome: audit.FieldInfo{Name: FieldOutcome, Required: true},
-		Reason:  audit.FieldInfo{Name: FieldReason},
 	}
 }
 

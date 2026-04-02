@@ -65,9 +65,9 @@ func main() {
 	//   tamperproof_log: HMAC (receives all events)
 	//   console:         no HMAC
 	fmt.Println("--- Security event ---")
-	authEvt := NewAuthFailureEvent("unknown", "failure").
-		SetReason("invalid credentials").
-		SetSourceIP("192.168.1.100")
+	authEvt := NewAuthFailureEvent("unknown", "failure")
+	authEvt.Fields()["reason"] = "invalid credentials"
+	authEvt.Fields()["source_ip"] = "192.168.1.100"
 	if auditErr := logger.AuditEvent(authEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
@@ -77,8 +77,8 @@ func main() {
 	//   tamperproof_log: HMAC (receives all events)
 	//   console:         no HMAC
 	fmt.Println("\n--- Write event ---")
-	userEvt := NewUserCreateEvent("admin", "success").
-		SetTargetID("user-42")
+	userEvt := NewUserCreateEvent("admin", "success")
+	userEvt.Fields()["target_id"] = "user-42"
 	if auditErr := logger.AuditEvent(userEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}

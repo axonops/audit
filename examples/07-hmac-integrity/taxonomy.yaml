@@ -20,8 +20,6 @@ events:
         required: true
       actor_id:
         required: true
-      reason: {}
-      source_ip: {}
 
   auth_success:
     description: "An authentication attempt succeeded"
@@ -30,7 +28,6 @@ events:
         required: true
       actor_id:
         required: true
-      source_ip: {}
 
   user_create:
     description: "A new user account was created"
@@ -39,4 +36,3 @@ events:
         required: true
       actor_id:
         required: true
-      target_id: {}

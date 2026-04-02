@@ -95,11 +95,6 @@ Feature: Multi-Output Fan-Out
       | actor_id    | alice       |
       | marker      | fanout_all  |
       | target_id   | user-42     |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
     And the webhook event body should contain field "event_type" with value "user_create"
     And the webhook event body should contain field "outcome" with value "success"

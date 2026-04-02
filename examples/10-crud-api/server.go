@@ -81,17 +81,17 @@ func buildAuditEvent(hints *audit.Hints, transport *audit.TransportMetadata) (ev
 		fields[FieldActorID] = hints.ActorID
 	}
 	if hints.TargetID != "" {
-		fields[FieldTargetID] = hints.TargetID
+		fields["target_id"] = hints.TargetID
 	}
 	// Error takes precedence over reason when both are set.
 	if hints.Reason != "" {
-		fields[FieldReason] = hints.Reason
+		fields["reason"] = hints.Reason
 	}
 	if hints.Error != "" {
-		fields[FieldReason] = hints.Error
+		fields["reason"] = hints.Error
 	}
 	if transport.ClientIP != "" {
-		fields[FieldSourceIP] = transport.ClientIP
+		fields["source_ip"] = transport.ClientIP
 	}
 
 	return eventType, fields, false

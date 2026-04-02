@@ -29,11 +29,6 @@ Feature: File Output
       | actor_id    | alice       |
       | marker      | file_test   |
       | target_id   | user-42     |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   Scenario: Multiple writes produce one event per line

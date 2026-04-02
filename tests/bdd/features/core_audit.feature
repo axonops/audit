@@ -25,12 +25,6 @@ Feature: Core Audit Logging
       | outcome     | success     |
       | actor_id    | alice       |
       | marker      |             |
-      | target_id   |             |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   Scenario: Emit event with required and optional fields — complete payload
@@ -48,11 +42,6 @@ Feature: Core Audit Logging
       | actor_id    | alice       |
       | marker      | bdd-test-1  |
       | target_id   | user-42     |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   Scenario: Auto-populated fields are always present with correct values
@@ -174,12 +163,6 @@ Feature: Core Audit Logging
       | outcome     | success     |
       | actor_id    | alice       |
       | marker      |             |
-      | target_id   |             |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   # --- OmitEmpty ---
@@ -208,10 +191,4 @@ Feature: Core Audit Logging
       | outcome     | success     |
       | actor_id    | alice       |
       | marker      |             |
-      | target_id   |             |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |

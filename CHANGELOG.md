@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- Bare optional declaration of reserved standard fields now rejected by `ValidateTaxonomy` — use `required: true` or add labels (#237)
 - CEF `event_category` extension key changed from `eventCategory` to `cat` (ArcSight `deviceEventCategory`) (#237)
 - `Logger.Audit(eventType, fields)` replaced by `Logger.AuditEvent(Event)` (#205)
 - Taxonomy YAML `required:` and `optional:` replaced by unified `fields:` map (#195)
@@ -20,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 31 reserved standard fields always accepted without taxonomy declaration (#237)
+- Expanded default CEF field mapping from 7 to 28 ArcSight extension keys (#237)
 - Per-output HMAC integrity verification with 6 NIST-approved algorithms (#216)
 - `HMACConfig`, `ComputeHMAC`, `VerifyHMAC` for tamper detection and verification (#216)
 - `_hmac` and `_hmac_v` reserved framework fields (#216)

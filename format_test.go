@@ -843,6 +843,65 @@ func TestDefaultCEFFieldMapping_IndependentCopies(t *testing.T) {
 	assert.False(t, hasNew, "second call must not see first call's new key")
 }
 
+func TestDefaultCEFFieldMapping_AllStandardEntries(t *testing.T) {
+	t.Parallel()
+	m := audit.DefaultCEFFieldMapping()
+
+	expected := map[string]string{
+		// Identity and access
+		"actor_id":    "suser",
+		"actor_uid":   "suid",
+		"role":        "spriv",
+		"target_id":   "duser",
+		"target_uid":  "duid",
+		"target_role": "dpriv",
+		// Event context
+		"outcome": "outcome",
+		"reason":  "reason",
+		"message": "msg",
+		// Network
+		"source_ip":   "src",
+		"source_host": "shost",
+		"source_port": "spt",
+		"dest_ip":     "dst",
+		"dest_host":   "dhost",
+		"dest_port":   "dpt",
+		"protocol":    "app",
+		"transport":   "proto",
+		// HTTP / request
+		"request_id": "externalId",
+		"user_agent": "requestClientApplication",
+		"referrer":   "requestContext",
+		"method":     "requestMethod",
+		"path":       "request",
+		// Temporal
+		"start_time": "start",
+		"end_time":   "end",
+		// File
+		"file_name": "fname",
+		"file_path": "filePath",
+		"file_hash": "fileHash",
+		"file_size": "fsize",
+	}
+
+	assert.Len(t, m, len(expected), "mapping should have %d entries", len(expected))
+	for auditField, cefKey := range expected {
+		assert.Equal(t, cefKey, m[auditField], "audit field %q should map to %q", auditField, cefKey)
+	}
+}
+
+func TestDefaultCEFFieldMapping_NoDuplicateCEFKeys(t *testing.T) {
+	t.Parallel()
+	m := audit.DefaultCEFFieldMapping()
+	seen := make(map[string]string, len(m))
+	for auditField, cefKey := range m {
+		if prev, ok := seen[cefKey]; ok {
+			t.Errorf("duplicate CEF key %q: used by both %q and %q", cefKey, prev, auditField)
+		}
+		seen[cefKey] = auditField
+	}
+}
+
 func TestCEFFormatter_ConcurrentFormat_NoRace(t *testing.T) {
 	cf := &audit.CEFFormatter{
 		Vendor:  "V",

@@ -46,26 +46,17 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       marker: {}
-      target_id: {}
-      target_type: {}
-      reason: {}
-      source_ip: {}
-      user_agent: {}
-      request_id: {}
       duration_ms: {}
   user_update:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
       marker: {}
-      target_id: {}
   auth_failure:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
       marker: {}
-      source_ip: {}
-      reason: {}
   permission_denied:
     fields:
       outcome: {required: true}

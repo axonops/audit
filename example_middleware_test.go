@@ -31,7 +31,7 @@ func ExampleMiddleware() {
 		Events: map[string]*audit.EventDef{
 			"http_request": {
 				Required: []string{"outcome"},
-				Optional: []string{"actor_id", "method", "path", "status_code"},
+				Optional: []string{"status_code"},
 			},
 		},
 	}
@@ -90,7 +90,7 @@ func ExampleMiddleware_skip() {
 		Events: map[string]*audit.EventDef{
 			"http_request": {
 				Required: []string{"outcome"},
-				Optional: []string{"path"},
+				Optional: []string{},
 			},
 		},
 	}

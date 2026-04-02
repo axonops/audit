@@ -41,13 +41,45 @@ var cefBufPool = sync.Pool{
 // affecting other callers. No package-level mutable state is held.
 func defaultCEFFieldMappingEntries() map[string]string {
 	return map[string]string{
-		"actor_id":   "suser",
-		"source_ip":  "src",
+		// Identity and access
+		"actor_id":    "suser",
+		"actor_uid":   "suid",
+		"role":        "spriv",
+		"target_id":   "duser",
+		"target_uid":  "duid",
+		"target_role": "dpriv",
+
+		// Event context
+		"outcome": "outcome",
+		"reason":  "reason",
+		"message": "msg",
+
+		// Network
+		"source_ip":   "src",
+		"source_host": "shost",
+		"source_port": "spt",
+		"dest_ip":     "dst",
+		"dest_host":   "dhost",
+		"dest_port":   "dpt",
+		"protocol":    "app",
+		"transport":   "proto",
+
+		// HTTP / request
 		"request_id": "externalId",
 		"user_agent": "requestClientApplication",
+		"referrer":   "requestContext",
 		"method":     "requestMethod",
 		"path":       "request",
-		"outcome":    "outcome",
+
+		// Temporal
+		"start_time": "start",
+		"end_time":   "end",
+
+		// File
+		"file_name": "fname",
+		"file_path": "filePath",
+		"file_hash": "fileHash",
+		"file_size": "fsize",
 	}
 }
 

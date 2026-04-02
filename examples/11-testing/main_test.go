@@ -61,7 +61,7 @@ func TestLogin_Failure_EmitsAuthEvent(t *testing.T) {
 	evt := events.Events()[0]
 	assert.Equal(t, EventAuthFailure, evt.EventType)
 	assert.True(t, evt.HasField(FieldActorID, "bob"))
-	assert.True(t, evt.HasField(FieldReason, "invalid password"))
+	assert.True(t, evt.HasField("reason", "invalid password"))
 }
 
 func TestLogin_Success_NoAuditEvent(t *testing.T) {

@@ -39,13 +39,7 @@ events:
   api_request:
     fields:
       outcome: {required: true}
-      method: {}
-      path: {}
       status_code: {}
-      actor_id: {}
-      source_ip: {}
-      user_agent: {}
-      request_id: {}
       transport_security: {}
       custom_field: {}
 `

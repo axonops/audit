@@ -38,7 +38,6 @@ events:
   auth_failure:
     fields:
       outcome: {required: true}
-      reason: {}
 `)
 
 	tax, err := audit.ParseTaxonomyYAML(data)

@@ -62,7 +62,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-      reason: {}
 `
 
 // minimalYAML is a minimal valid taxonomy with one category and one event.
@@ -647,7 +646,7 @@ events:
     description: "Should not appear in knownFields"
     fields:
       outcome: {required: true}
-      actor_id: {}
+      actor_id: {required: true}
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
 	require.NoError(t, err)

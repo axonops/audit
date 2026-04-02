@@ -49,7 +49,6 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-      reason: {}
 `)
 
 func TestNewLogger(t *testing.T) {

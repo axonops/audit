@@ -30,7 +30,6 @@ Feature: Taxonomy Validation
           fields:
             outcome: {required: true}
             actor_id: {required: true}
-            reason: {}
       """
     Then the taxonomy should contain category "write"
     And the taxonomy should contain category "security"
@@ -306,3 +305,120 @@ Feature: Taxonomy Validation
       | strict     |
       | warn       |
       | permissive |
+
+  # --- Reserved standard fields (#237) ---
+
+  Scenario: Bare reserved standard field declaration is rejected
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    And the taxonomy parse should fail with an error containing "reserved standard field"
+
+  Scenario: Reserved standard field with required true is accepted
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip: {required: true}
+      """
+    Then the taxonomy parse should succeed
+
+  Scenario: Reserved standard field with per-event labels is accepted
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            description: "personal info"
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip:
+              labels: [pii]
+      """
+    Then the taxonomy parse should succeed
+
+  Scenario: Reserved standard field with global label is accepted
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            fields: [source_ip]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip: {}
+      """
+    Then the taxonomy parse should succeed
+
+  Scenario: Reserved standard field without declaration accepted in strict mode
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      """
+    And a logger with stdout output and validation mode "strict"
+    When I audit event "user_create" with fields:
+      | field     | value    |
+      | outcome   | success  |
+      | source_ip | 10.0.0.1 |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"
+
+  Scenario: Reserved standard field with sensitivity label can be stripped
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          pii:
+            description: "personal info"
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip:
+              labels: [pii]
+      """
+    And a logger with stdout output excluding labels "pii"
+    When I audit event "user_create" with fields:
+      | field     | value    |
+      | outcome   | success  |
+      | source_ip | 10.0.0.1 |
+    Then the output should not contain field "source_ip"

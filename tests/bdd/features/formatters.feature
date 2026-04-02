@@ -22,12 +22,6 @@ Feature: Event Formatters
       | outcome     | success     |
       | actor_id    | alice       |
       | marker      |             |
-      | target_id   |             |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   Scenario: JSON formatter produces deterministic field ordering
@@ -89,12 +83,6 @@ Feature: Event Formatters
       | outcome     | success     |
       | actor_id    | café☕      |
       | marker      |             |
-      | target_id   |             |
-      | target_type |             |
-      | reason      |             |
-      | source_ip   |             |
-      | user_agent  |             |
-      | request_id  |             |
       | duration_ms |             |
 
   Scenario: JSON prevents newline injection in values

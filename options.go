@@ -164,18 +164,25 @@ func (l *Logger) addNamedOutput(output Output, route *EventRoute, formatter Form
 
 // setOutputHMAC configures HMAC on a named output. Called by the
 // outputconfig loader after all outputs have been registered.
-func (l *Logger) setOutputHMAC(name string, cfg *HMACConfig) {
-	if oe, ok := l.outputsByName[name]; ok {
-		oe.hmacConfig = cfg
+func (l *Logger) setOutputHMAC(name string, cfg *HMACConfig) error {
+	oe, ok := l.outputsByName[name]
+	if !ok {
+		return fmt.Errorf("audit: unknown output %q for hmac configuration", name)
 	}
+	oe.hmacConfig = cfg
+	return nil
 }
 
 // WithOutputHMAC configures HMAC on a named output. Used by the
 // outputconfig loader to apply HMAC settings after output registration.
+// The config is validated — invalid configs (short salt, unknown
+// algorithm) cause [NewLogger] to return an error.
 func WithOutputHMAC(name string, cfg *HMACConfig) Option {
 	return func(l *Logger) error {
-		l.setOutputHMAC(name, cfg)
-		return nil
+		if err := ValidateHMACConfig(cfg); err != nil {
+			return err
+		}
+		return l.setOutputHMAC(name, cfg)
 	}
 }
 

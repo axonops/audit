@@ -547,7 +547,7 @@ func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { 
 			f.hmacNode = val
 		default:
 			if f.typeConfigNode != nil {
-				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', 'exclude_labels', and one type-specific config block are allowed", name, key)
+				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', 'exclude_labels', 'hmac', and one type-specific config block are allowed", name, key)
 			}
 			f.typeConfigNode = val
 		}
@@ -709,6 +709,7 @@ type yamlHMACConfig struct { //nolint:govet // readability over alignment
 	Hash    string       `yaml:"hash"`
 }
 
+// yamlHMACSalt is the YAML representation of the hmac.salt section.
 type yamlHMACSalt struct {
 	Version string `yaml:"version"`
 	Value   string `yaml:"value"`

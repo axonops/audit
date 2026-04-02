@@ -53,6 +53,20 @@ type HMACConfig struct { //nolint:govet // readability over alignment
 	Algorithm string
 }
 
+// String returns a safe representation that never includes the salt value.
+func (c HMACConfig) String() string {
+	if !c.Enabled {
+		return "HMACConfig{Enabled: false}"
+	}
+	return fmt.Sprintf("HMACConfig{Enabled: true, SaltVersion: %q, Algorithm: %q, SaltLen: %d}",
+		c.SaltVersion, c.Algorithm, len(c.SaltValue))
+}
+
+// GoString implements [fmt.GoStringer] to prevent salt leakage via %#v.
+func (c HMACConfig) GoString() string {
+	return c.String()
+}
+
 // hmacAlgorithms maps config string values to hash constructor functions.
 // Only NIST SP 800-224 approved algorithms are included.
 // SHA-1 and MD5 are explicitly excluded.
@@ -88,7 +102,7 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 		return errors.New("audit: hmac salt value is required when hmac is enabled")
 	}
 	if len(cfg.SaltValue) < MinSaltLength {
-		return fmt.Errorf("audit: hmac salt must be at least %d bytes (got %d)", MinSaltLength, len(cfg.SaltValue))
+		return fmt.Errorf("audit: hmac salt must be at least %d bytes", MinSaltLength)
 	}
 	if cfg.Algorithm == "" {
 		return errors.New("audit: hmac hash algorithm is required when hmac is enabled")

@@ -578,7 +578,17 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		// (after field stripping + event_category).
 		if oe.hmacConfig != nil && oe.hmacConfig.Enabled {
 			hmacVal, hmacErr := ComputeHMAC(data, oe.hmacConfig.SaltValue, oe.hmacConfig.Algorithm)
-			if hmacErr == nil {
+			if hmacErr != nil {
+				slog.Error("audit: hmac computation failed",
+					"output", oe.output.Name(),
+					"event_type", entry.eventType,
+					"error", hmacErr)
+				if l.metrics != nil {
+					l.metrics.RecordSerializationError(entry.eventType)
+				}
+				// Deliver without HMAC — don't block the event, but the
+				// operator has a signal via logs and metrics.
+			} else {
 				data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
 					{JSONKey: "_hmac", CEFKey: "_hmac", Value: hmacVal},
 					{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},

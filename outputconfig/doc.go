@@ -65,6 +65,12 @@
 //	    route:                      # optional per-output event filter
 //	      include_categories: [security]
 //	    exclude_labels: [pii]       # optional sensitivity label filter
+//	    hmac:                       # optional per-output HMAC integrity
+//	      enabled: true
+//	      salt:
+//	        version: "v1"
+//	        value: "${HMAC_SALT}"
+//	      hash: HMAC-SHA-256
 //
 // # Environment Variables
 //

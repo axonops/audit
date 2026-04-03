@@ -30,7 +30,7 @@ logger:
 
 app_name: "my-service"               # REQUIRED: application name
 host: "${HOSTNAME:-localhost}"        # REQUIRED: hostname / environment
-timezone: "${TZ:-UTC}"               # optional: timezone context (omitted if absent)
+timezone: "${TZ:-UTC}"               # optional: auto-detected from system if absent
 
 # ── Standard Field Defaults (optional) ────────────────────
 # Deployment-wide default values for reserved standard fields.
@@ -155,7 +155,7 @@ outputs:
 | `version` | Yes | Must be `1`. Schema version for future migration. |
 | `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
-| `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Omitted from output when absent. |
+| `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
 | `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/03-standard-fields/#the-solution-reserved-standard-fields). |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
 | `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |

@@ -151,8 +151,8 @@ POST http://127.0.0.1:.../items -> 201
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 --- Audit events ---
-{"timestamp":"...","event_type":"http_request","severity":5,"method":"GET","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":200,"target_id":null}
-{"timestamp":"...","event_type":"http_request","severity":5,"method":"POST","outcome":"success","path":"/items","actor_id":"alice","duration_ms":0,"source_ip":"127.0.0.1","status_code":201,"target_id":"item-42"}
+{"timestamp":"...","event_type":"http_request","severity":5,"pid":...,"method":"GET","outcome":"success","path":"/items","duration_ms":0,"status_code":200,"actor_id":"alice","source_ip":"127.0.0.1"}
+{"timestamp":"...","event_type":"http_request","severity":5,"pid":...,"method":"POST","outcome":"success","path":"/items","duration_ms":0,"status_code":201,"actor_id":"alice","source_ip":"127.0.0.1","target_id":"item-42"}
 
 Note: /healthz produced no audit event (skipped by EventBuilder).
 ```

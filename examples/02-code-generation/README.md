@@ -143,11 +143,11 @@ var EventFields = map[string]struct {
 }{
     EventUserCreate: {
         Required: []string{FieldActorID, FieldOutcome},
-        Optional: []string{FieldReason, FieldTargetID},
+        Optional: []string{},
     },
     EventAuthFailure: {
         Required: []string{FieldActorID, FieldOutcome},
-        Optional: []string{FieldReason, FieldSourceIP},
+        Optional: []string{},
     },
     // ...
 }

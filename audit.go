@@ -161,8 +161,11 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
 	}
 
-	// Capture PID once at construction.
+	// Capture PID and timezone once at construction.
 	l.pid = os.Getpid()
+	if l.timezone == "" {
+		l.timezone = time.Now().Location().String()
+	}
 
 	// Propagate framework fields to all formatters that support them.
 	l.setFrameworkFieldsOnFormatters()

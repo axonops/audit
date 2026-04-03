@@ -423,7 +423,7 @@ func assertFileEventMatching(tc *AuditTestContext, table *godog.Table) error {
 	if err != nil {
 		return err
 	}
-	autoFields := []string{"timestamp", "severity", "event_category", "pid"}
+	autoFields := []string{"timestamp", "severity", "event_category", "pid", "timezone"}
 	for _, e := range events {
 		match, mismatch := eventMatchesExactly(e, expected, autoFields)
 		if match {

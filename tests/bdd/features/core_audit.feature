@@ -87,9 +87,8 @@ Feature: Core Audit Logging
     And the output should contain field "pid" as a positive integer
     And the output should not contain field "app_name"
     And the output should not contain field "host"
-    And the output should not contain field "timezone"
 
-  Scenario: Framework fields absent when not configured
+  Scenario: Framework fields absent when not configured except pid and timezone
     Given a logger with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
@@ -98,7 +97,7 @@ Feature: Core Audit Logging
     Then the event should be delivered successfully
     And the output should not contain field "app_name"
     And the output should not contain field "host"
-    And the output should not contain field "timezone"
+    And the output should contain field "pid" as a positive integer
 
   Scenario: Framework fields present with OmitEmpty true
     Given framework fields app_name "myapp" host "prod-01" timezone "UTC"

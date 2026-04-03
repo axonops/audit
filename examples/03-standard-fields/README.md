@@ -115,7 +115,7 @@ outputs:
 ```
 
 - `app_name` and `host` are **required** — every deployment must identify itself.
-- `timezone` is optional — omitted from output when absent.
+- `timezone` is optional in YAML — auto-detected from the system when absent.
 - `standard_fields` maps reserved standard field names to default values.
   Environment variables are supported. Per-event values always override defaults.
 
@@ -167,14 +167,18 @@ go run .
 ```
 INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Event with standard fields ---
-{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"alice","outcome":"success","reason":"admin request","source_ip":"10.0.0.1","target_id":"user-42","event_category":"write"}
 --- Event with default source_ip ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"10.0.0.1","event_category":"security"}
 --- Event with explicit source_ip ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"bob","outcome":"failure","reason":"expired token","source_ip":"192.168.1.100","event_category":"security"}
 INFO audit: shutdown started
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"alice","outcome":"success","reason":"admin request","source_ip":"10.0.0.1","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"10.0.0.1","event_category":"security"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"standard-fields-demo","host":"...","timezone":"UTC","pid":...,"actor_id":"bob","outcome":"failure","reason":"expired token","source_ip":"192.168.1.100","event_category":"security"}
 INFO audit: shutdown complete duration=...
 ```
+
+> Events appear during `Close()` because `AuditEvent()` enqueues
+> asynchronously. The `---` markers print immediately but events flush
+> during shutdown. This is normal — see [example 01](../01-basic/).
 
 Notice:
 - `app_name`, `host`, `timezone`, `pid` appear in every event (framework fields)
@@ -188,7 +192,7 @@ If you configured a CEF formatter, the same events would use ArcSight
 standard extension keys:
 
 ```
-CEF:0|...|user_create|...|3|rt=... act=user_create deviceProcessName=standard-fields-demo dvchost=... dtz=UTC dvcpid=... suser=alice outcome=success reason=admin request src=10.0.0.1 duser=user-42 cat=write
+CEF:0|...|user_create|...|5|rt=... act=user_create deviceProcessName=standard-fields-demo dvchost=... dtz=UTC dvcpid=... suser=alice outcome=success reason=admin request src=10.0.0.1 duser=user-42 cat=write
 ```
 
 SIEMs automatically map these keys: `suser` → Source User, `src` → Source IP,

@@ -1,2 +1,0 @@
-{"timestamp":"2026-04-03T06:26:52.936548432+02:00","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":3089267,"actor_id":"admin","outcome":"success","department":"engineering","event_category":"write"}
-{"timestamp":"2026-04-03T06:26:52.936763481+02:00","event_type":"payment_process","severity":5,"app_name":"example","host":"localhost","pid":3089267,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}

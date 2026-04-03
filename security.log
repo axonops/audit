@@ -1,1 +1,0 @@
-{"timestamp":"2026-04-03T06:26:52.684183195+02:00","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","pid":3089129,"actor_id":"unknown","outcome":"failure","event_category":"security"}

@@ -1,3 +1,0 @@
-{"timestamp":"2026-04-03T06:26:52.431924308+02:00","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":3088992,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"2026-04-03T06:26:52.431989097+02:00","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":3088992,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"2026-04-03T06:26:52.431992177+02:00","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":3088992,"actor_id":"bob","outcome":"success","event_category":"write"}

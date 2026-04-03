@@ -105,6 +105,29 @@ Feature: Syslog Output
       audit: syslog facility "bogus": audit: unknown syslog facility "bogus"
       """
 
+  # --- Hostname configuration (#237) ---
+
+  Scenario: Syslog hostname from Config appears in RFC 5424 header
+    Given a logger with syslog output on "tcp" to "localhost:5514" with hostname "bdd-custom-host"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the marker within 10 seconds
+    And the syslog line with the marker should contain "bdd-custom-host"
+
+  Scenario: Syslog hostname defaults to os.Hostname when not configured
+    Given a logger with syslog output on "tcp" to "localhost:5514"
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the syslog server should contain the marker within 10 seconds
+
+  Scenario: Syslog invalid hostname with space is rejected
+    When I try to create a syslog output on "tcp" to "localhost:5514" with hostname "host name"
+    Then the syslog construction should fail with an error containing "invalid byte"
+
+  Scenario: Syslog hostname exceeding 255 bytes is rejected
+    When I try to create a syslog output on "tcp" to "localhost:5514" with hostname "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    Then the syslog construction should fail with an error containing "exceeds RFC 5424 maximum"
+
   Scenario: Default app name is "audit"
     Given a logger with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event

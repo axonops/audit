@@ -66,14 +66,51 @@ Feature: Core Audit Logging
     And the output should contain field "app_name" with value "myapp"
     And the output should contain field "host" with value "prod-01"
     And the output should contain field "timezone" with value "UTC"
+    And the output should contain field "pid" as a positive integer
 
-  Scenario: PID is always present in output
+  Scenario: PID is always present as a positive integer
     Given a logger with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
     Then the event should be delivered successfully
+    And the output should contain field "pid" as a positive integer
+
+  Scenario: PID present even without app_name or host
+    Given a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should contain field "pid" as a positive integer
+    And the output should not contain field "app_name"
+    And the output should not contain field "host"
+    And the output should not contain field "timezone"
+
+  Scenario: Framework fields absent when not configured
+    Given a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should not contain field "app_name"
+    And the output should not contain field "host"
+    And the output should not contain field "timezone"
+
+  Scenario: Framework fields present with OmitEmpty true
+    Given framework fields app_name "myapp" host "prod-01" timezone "UTC"
+    And a logger with stdout output and OmitEmpty "true"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should contain field "app_name" with value "myapp"
+    And the output should contain field "host" with value "prod-01"
+    And the output should contain field "pid" as a positive integer
 
   # --- Standard field defaults (#237) ---
 
@@ -101,6 +138,56 @@ Feature: Core Audit Logging
       | source_ip | 192.168.1.1 |
     Then the event should be delivered successfully
     And the output should contain field "source_ip" with value "192.168.1.1"
+
+  Scenario: Empty string per-event overrides standard field default
+    Given standard field defaults:
+      | field     | value    |
+      | source_ip | 10.0.0.1 |
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field     | value   |
+      | outcome   | success |
+      | actor_id  | alice   |
+      | source_ip |         |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value ""
+
+  Scenario: Multiple standard field defaults applied
+    Given standard field defaults:
+      | field     | value     |
+      | source_ip | 10.0.0.1  |
+      | reason    | scheduled |
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"
+    And the output should contain field "reason" with value "scheduled"
+
+  Scenario: Standard field default satisfies required true
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            source_ip: {required: true}
+      """
+    And standard field defaults:
+      | field     | value    |
+      | source_ip | 10.0.0.1 |
+    And a logger with stdout output and validation mode "strict"
+    When I audit event "user_create" with fields:
+      | field   | value   |
+      | outcome | success |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"
 
   # --- Error paths ---
 

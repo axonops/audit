@@ -18,14 +18,6 @@ package audit
 // CopyFieldsForTest exposes copyFields for benchmarking.
 var CopyFieldsForTest = copyFields
 
-// IsReservedStandardFieldForTest exposes isReservedStandardField for
-// taxonomy validation tests.
-var IsReservedStandardFieldForTest = isReservedStandardField
-
-// ReservedStandardFieldNamesForTest exposes reservedStandardFieldNames
-// for taxonomy validation tests.
-var ReservedStandardFieldNamesForTest = reservedStandardFieldNames
-
 // IsEnabledForTest checks whether the given event type is enabled in
 // the logger's current filter state. Lock-free, matching the
 // production Audit() hot path.

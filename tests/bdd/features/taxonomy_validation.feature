@@ -422,3 +422,100 @@ Feature: Taxonomy Validation
       | outcome   | success  |
       | source_ip | 10.0.0.1 |
     Then the output should not contain field "source_ip"
+
+  # --- Framework fields cannot be declared as user fields (#237) ---
+
+  Scenario Outline: Framework field <field> declared in taxonomy is rejected
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            <field>: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    And the taxonomy parse should fail with an error containing "reserved framework field"
+
+    Examples:
+      | field          |
+      | timestamp      |
+      | event_type     |
+      | severity       |
+      | event_category |
+      | app_name       |
+      | host           |
+      | timezone       |
+      | pid            |
+
+  # --- Framework fields cannot be labeled (#237) ---
+
+  Scenario Outline: Labeling framework field <field> via global mapping is rejected
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          internal:
+            fields: [<field>]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    And the taxonomy parse should fail with an error containing "protected framework field"
+
+    Examples:
+      | field          |
+      | app_name       |
+      | host           |
+      | timezone       |
+      | pid            |
+
+  Scenario: Undeclared reserved standard field accepted in permissive mode
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      """
+    And a logger with stdout output and validation mode "permissive"
+    When I audit event "user_create" with fields:
+      | field     | value    |
+      | outcome   | success  |
+      | source_ip | 10.0.0.1 |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"
+
+  Scenario: Undeclared reserved standard field accepted in warn mode
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      """
+    And a logger with stdout output and validation mode "warn"
+    When I audit event "user_create" with fields:
+      | field     | value    |
+      | outcome   | success  |
+      | source_ip | 10.0.0.1 |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"

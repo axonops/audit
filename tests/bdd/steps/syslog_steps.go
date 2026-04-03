@@ -61,6 +61,18 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Facility: facility})
 	})
 
+	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with hostname "([^"]*)"$`, func(network, address, hostname string) error {
+		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
+	})
+
+	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)" with hostname "([^"]*)"$`, func(network, address, hostname string) error {
+		err := createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
+		if err != nil {
+			tc.LastErr = err
+		}
+		return nil
+	})
+
 	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with max retries (\d+)$`, func(network, address string, retries int) error {
 		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, MaxRetries: retries})
 	})

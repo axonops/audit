@@ -86,3 +86,122 @@ Feature: YAML Output Configuration
       """
     When I try to create a logger from the YAML config
     Then the config load should fail with an error containing "TOTALLY_UNDEFINED_BDD_VAR"
+
+  # --- Framework fields in output config (#237) ---
+
+  Scenario: Missing app_name in output config YAML is rejected
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      host: test
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "app_name is required"
+
+  Scenario: Missing host in output config YAML is rejected
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "host is required"
+
+  Scenario: timezone optional in output config YAML
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        console:
+          type: stdout
+      """
+    When I create a logger from the YAML config
+    And I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the audit call should have succeeded
+
+  Scenario: timezone present in output config YAML
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      timezone: UTC
+      outputs:
+        console:
+          type: stdout
+      """
+    When I create a logger from the YAML config
+    And I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the audit call should have succeeded
+
+  # --- standard_fields in output config (#237) ---
+
+  Scenario: standard_fields with valid reserved field accepted
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      standard_fields:
+        source_ip: "10.0.0.1"
+      outputs:
+        console:
+          type: stdout
+      """
+    When I create a logger from the YAML config
+    And I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the audit call should have succeeded
+
+  Scenario: standard_fields with unknown field rejected
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      standard_fields:
+        bogus_field: "value"
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "unknown field"
+
+  Scenario: standard_fields with empty value rejected
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      standard_fields:
+        source_ip: ""
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "non-empty"

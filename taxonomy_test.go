@@ -185,7 +185,7 @@ func TestValidateTaxonomy_DurationMs_AllowedAsOptional(t *testing.T) {
 
 func TestReservedStandardFieldNames_Complete(t *testing.T) {
 	t.Parallel()
-	names := audit.ReservedStandardFieldNamesForTest()
+	names := audit.ReservedStandardFieldNames()
 	assert.Len(t, names, 31) // 28 from spec + action, target_type, session_id
 
 	expected := []string{
@@ -203,15 +203,15 @@ func TestReservedStandardFieldNames_Complete(t *testing.T) {
 
 func TestIsReservedStandardField_AllFields(t *testing.T) {
 	t.Parallel()
-	for _, name := range audit.ReservedStandardFieldNamesForTest() {
-		assert.True(t, audit.IsReservedStandardFieldForTest(name), "expected %q to be reserved", name)
+	for _, name := range audit.ReservedStandardFieldNames() {
+		assert.True(t, audit.IsReservedStandardField(name), "expected %q to be reserved", name)
 	}
 }
 
 func TestIsReservedStandardField_NonReserved(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"timestamp", "event_type", "severity", "custom_field", "foobar", ""} {
-		assert.False(t, audit.IsReservedStandardFieldForTest(name), "expected %q to NOT be reserved", name)
+		assert.False(t, audit.IsReservedStandardField(name), "expected %q to NOT be reserved", name)
 	}
 }
 

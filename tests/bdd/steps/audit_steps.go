@@ -435,6 +435,8 @@ func registerAuditThenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the output should contain an event with field "([^"]*)"$`, func(f string) error { return assertFieldPresent(tc, f) })
 	ctx.Step(`^the output should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertFieldValue(tc, f, v) })
 	ctx.Step(`^the output should contain an event matching:$`, func(t *godog.Table) error { return assertEventMatching(tc, t) })
+	ctx.Step(`^the output should contain field "([^"]*)" as a positive integer$`, func(f string) error { return assertFieldPositiveInt(tc, f) })
+	ctx.Step(`^the output should not contain field "([^"]*)"$`, func(f string) error { return assertFieldAbsent(tc, f) })
 	ctx.Step(`^the audit call should return an error wrapping "([^"]*)"$`, func(s string) error { return assertSentinelError(tc, s) })
 }
 
@@ -488,6 +490,42 @@ func assertFieldValue(tc *AuditTestContext, field, value string) error {
 		}
 	}
 	return fmt.Errorf("no event with field %q=%q found in %d events", field, value, len(events))
+}
+
+func assertFieldPositiveInt(tc *AuditTestContext, field string) error {
+	events, err := getStdoutEvents(tc)
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		v, ok := e[field]
+		if !ok {
+			continue
+		}
+		// JSON numbers decode as float64.
+		f, ok := v.(float64)
+		if !ok {
+			return fmt.Errorf("field %q is not a number: %T(%v)", field, v, v)
+		}
+		if f <= 0 {
+			return fmt.Errorf("field %q is %v, expected positive integer", field, f)
+		}
+		return nil
+	}
+	return fmt.Errorf("no event with field %q found in %d events", field, len(events))
+}
+
+func assertFieldAbsent(tc *AuditTestContext, field string) error {
+	events, err := getStdoutEvents(tc)
+	if err != nil {
+		return err
+	}
+	for _, e := range events {
+		if _, ok := e[field]; ok {
+			return fmt.Errorf("field %q should be absent but is present with value %v", field, e[field])
+		}
+	}
+	return nil
 }
 
 func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {

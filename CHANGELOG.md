@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Taxonomy.DefaultEnabled` field removed — all categories are enabled by default (#12)
 - `InjectLifecycleEvents`, `EmitStartup`, and automatic shutdown event removed (#12)
 
+### Changed
+
+- JSON post-serialisation append reduced from 6 to 1 allocs/op (#229)
+- HMAC drain-loop: hash reuse via Reset() + pre-allocated buffers, 8 → 1 extra alloc per event (#230)
+
 ### Added
 
 - `WithAppName`, `WithHost`, `WithTimezone` options for logger-wide framework fields (#237)

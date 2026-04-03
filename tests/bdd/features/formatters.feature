@@ -275,3 +275,62 @@ Feature: Event Formatters
       | actor_id | alice   |
     And I close the logger
     Then the CEF line should contain "cat=write"
+
+  # --- CEF framework fields (#237) ---
+
+  Scenario: CEF framework fields use correct extension keys
+    Given framework fields app_name "myapp" host "prod-01" timezone "UTC"
+    And a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    And I close the logger
+    Then the CEF line should contain "deviceProcessName=myapp"
+    And the CEF line should contain "dvchost=prod-01"
+    And the CEF line should contain "dtz=UTC"
+
+  Scenario: CEF pid uses dvcpid extension key
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    And I close the logger
+    Then the CEF line should contain "dvcpid="
+
+  Scenario: CEF framework fields absent when not configured
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    And I close the logger
+    Then the CEF line should not contain "deviceProcessName="
+    And the CEF line should not contain "dvchost="
+    And the CEF line should not contain "dtz="
+    And the CEF line should contain "dvcpid="
+
+  # --- CEF reserved standard field mapping (#237) ---
+
+  Scenario Outline: CEF maps <field> to <cef_key>
+    Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
+    When I audit event "user_create" with fields:
+      | field    | value    |
+      | outcome  | success  |
+      | actor_id | alice    |
+      | <field>  | <value>  |
+    And I close the logger
+    Then the CEF line should contain "<cef_key>=<value>"
+
+    Examples:
+      | field      | cef_key                  | value          |
+      | source_ip  | src                      | 10.0.0.1       |
+      | dest_ip    | dst                      | 192.168.1.1    |
+      | protocol   | app                      | HTTPS          |
+      | request_id | externalId               | req-123        |
+      | file_name  | fname                    | report.pdf     |
+      | message    | msg                      | User_created   |
+      | reason     | reason                   | valid_creds    |
+      | role       | spriv                    | admin          |
+      | target_id  | duser                    | user-42        |

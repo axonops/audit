@@ -35,6 +35,7 @@ var acronyms = map[string]string{
 	"tcp":  "TCP",
 	"tls":  "TLS",
 	"udp":  "UDP",
+	"uid":  "UID",
 	"uri":  "URI",
 	"url":  "URL",
 }

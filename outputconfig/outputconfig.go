@@ -500,8 +500,14 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 	if result.appName == "" {
 		return nil, fmt.Errorf("%w: app_name is required and must be non-empty", ErrOutputConfigInvalid)
 	}
+	if len(result.appName) > 255 {
+		return nil, fmt.Errorf("%w: app_name exceeds maximum length of 255 bytes", ErrOutputConfigInvalid)
+	}
 	if result.host == "" {
 		return nil, fmt.Errorf("%w: host is required and must be non-empty", ErrOutputConfigInvalid)
+	}
+	if len(result.host) > 255 {
+		return nil, fmt.Errorf("%w: host exceeds maximum length of 255 bytes", ErrOutputConfigInvalid)
 	}
 	if result.timezone != "" && len(result.timezone) > 64 {
 		return nil, fmt.Errorf("%w: timezone exceeds maximum length of 64 bytes", ErrOutputConfigInvalid)

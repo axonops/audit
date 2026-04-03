@@ -109,6 +109,11 @@ func WithStandardFieldDefaults(defaults map[string]string) Option {
 		if l.standardFieldDefaults != nil {
 			return fmt.Errorf("audit: standard field defaults already set -- cannot be overridden")
 		}
+		for k := range defaults {
+			if !IsReservedStandardField(k) {
+				return fmt.Errorf("audit: standard field default key %q is not a reserved standard field", k)
+			}
+		}
 		l.standardFieldDefaults = defaults
 		return nil
 	}

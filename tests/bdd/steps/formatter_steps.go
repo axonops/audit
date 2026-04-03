@@ -107,6 +107,7 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithNamedOutput(fileOut, nil, cefFmt),
 		}
+		opts = append(opts, tc.Options...)
 
 		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 		if err != nil {
@@ -408,6 +409,7 @@ func registerFormatterEdgeCaseSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 func registerFormatterCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the CEF line should contain "([^"]*)"$`, func(s string) error { return assertCEFContains(tc, s) })
+	ctx.Step(`^the CEF line should not contain "([^"]*)"$`, func(s string) error { return assertCEFNotContains(tc, s) })
 	ctx.Step(`^the CEF line should have severity (\d+)$`, func(s int) error { return assertCEFSeverity(tc, s) })
 	ctx.Step(`^the JSON file should contain valid JSON$`, func() error { return assertNamedFileHasJSON(tc, "json") })
 	ctx.Step(`^the CEF file should contain a line starting with "([^"]*)"$`, func(p string) error { return assertFileLineStartsWith(tc, "cef", p) })
@@ -574,6 +576,17 @@ func assertCEFContains(tc *AuditTestContext, substr string) error {
 	}
 	if !strings.Contains(raw, substr) {
 		return fmt.Errorf("CEF output does not contain %q", substr)
+	}
+	return nil
+}
+
+func assertCEFNotContains(tc *AuditTestContext, substr string) error {
+	raw, err := readRawFile(tc, "default")
+	if err != nil {
+		return err
+	}
+	if strings.Contains(raw, substr) {
+		return fmt.Errorf("CEF output should not contain %q but does", substr)
 	}
 	return nil
 }

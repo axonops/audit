@@ -56,9 +56,10 @@ func (s *UserService) CreateUser(actorID, email string) error {
 func (s *UserService) Login(username, password string) error {
 	// Simulate failed authentication.
 	if password != "correct" {
-		evt := NewAuthFailureEvent(username, "failure")
-		evt.Fields()["reason"] = "invalid password"
-		return s.logger.AuditEvent(evt)
+		return s.logger.AuditEvent(
+			NewAuthFailureEvent(username, "failure").
+				SetReason("invalid password"),
+		)
 	}
 	return nil
 }

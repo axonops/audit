@@ -113,6 +113,32 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 	return nil
 }
 
+// newHMACState creates a pre-constructed hmacState for drain-loop reuse.
+// Called once at logger construction per HMAC-enabled output.
+func newHMACState(cfg *HMACConfig) *hmacState {
+	hashFunc, ok := hmacAlgorithms[cfg.Algorithm]
+	if !ok {
+		return nil // unreachable: ValidateHMACConfig rejects unknown algorithms during NewLogger
+	}
+	mac := hmac.New(hashFunc, cfg.SaltValue)
+	return &hmacState{
+		mac:     mac,
+		hashLen: mac.Size(),
+	}
+}
+
+// computeHMACFast computes the HMAC using pre-allocated state, returning
+// the hex-encoded result as a byte slice from the state's buffer.
+// The returned slice is valid only until the next call. Single-goroutine
+// use only (drain loop).
+func (s *hmacState) computeHMACFast(payload []byte) []byte {
+	s.mac.Reset()
+	s.mac.Write(payload)
+	sum := s.mac.Sum(s.sumBuf[:0])
+	hex.Encode(s.hexBuf[:], sum)
+	return s.hexBuf[:s.hashLen*2]
+}
+
 // ComputeHMAC computes the HMAC for the given payload and returns the
 // lowercase hex-encoded result. The algorithm must be one of the
 // supported NIST-approved values (see [SupportedHMACAlgorithms]).

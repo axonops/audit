@@ -2822,6 +2822,40 @@ func BenchmarkAudit_EndToEnd(b *testing.B) {
 	_ = logger.Close()
 }
 
+func BenchmarkAudit_WithHMAC(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithOutputHMAC("bench", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v1",
+			SaltValue:   []byte("benchmark-salt-value-32-bytes!!!"),
+			Algorithm:   "HMAC-SHA-256",
+		}),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+	b.StopTimer()
+
+	_ = logger.Close()
+}
+
 func BenchmarkFilterCheck(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")

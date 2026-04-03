@@ -575,7 +575,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // deliverToOutputs fans out a single event to all matching outputs
 // for a given category. An empty category means the event is
 // uncategorised.
-func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocyclo,gocognit,cyclop // delivery pipeline with per-output features
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocognit // delivery pipeline with per-output features
 	for _, oe := range l.entries {
 		if !oe.matchesEvent(entry.eventType, category, def.ResolvedSeverity()) {
 			if l.metrics != nil {
@@ -602,24 +602,12 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		// Compute and append HMAC if configured for this output.
 		// HMAC is computed over the complete payload at this point
 		// (after field stripping + event_category).
-		if oe.hmacConfig != nil && oe.hmacConfig.Enabled {
-			hmacVal, hmacErr := ComputeHMAC(data, oe.hmacConfig.SaltValue, oe.hmacConfig.Algorithm)
-			if hmacErr != nil {
-				slog.Error("audit: hmac computation failed",
-					"output", oe.output.Name(),
-					"event_type", entry.eventType,
-					"error", hmacErr)
-				if l.metrics != nil {
-					l.metrics.RecordSerializationError(entry.eventType)
-				}
-				// Deliver without HMAC — don't block the event, but the
-				// operator has a signal via logs and metrics.
-			} else {
-				data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
-					{JSONKey: "_hmac", CEFKey: "_hmac", Value: hmacVal},
-					{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
-				})
-			}
+		if oe.hmac != nil {
+			hmacHex := oe.hmac.computeHMACFast(data)
+			data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
+				{JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex)},
+				{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
+			})
 		}
 
 		l.writeToOutput(oe.output, data, entry.eventType)
@@ -729,6 +717,9 @@ func (l *Logger) preAllocFormatOpts() {
 			oe.formatOpts = &FormatOptions{
 				ExcludedLabels: oe.excludedLabels,
 			}
+		}
+		if oe.hmacConfig != nil && oe.hmacConfig.Enabled {
+			oe.hmac = newHMACState(oe.hmacConfig)
 		}
 	}
 }

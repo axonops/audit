@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"hash"
 	"slices"
 	"sync/atomic"
 )
@@ -43,7 +44,18 @@ type outputEntry struct {
 	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
 	formatOpts     *FormatOptions      // pre-allocated; nil when no exclusions
 	hmacConfig     *HMACConfig         // nil = no HMAC for this output
+	hmac           *hmacState          // pre-constructed hash for drain-loop reuse; nil when no HMAC
 	route          atomic.Pointer[EventRoute]
+}
+
+// hmacState holds a pre-constructed hash.Hash and reusable buffers for
+// HMAC computation. Created once at logger construction; used
+// exclusively by the single drain goroutine — no synchronisation needed.
+type hmacState struct {
+	mac     hash.Hash // reset+reuse per event
+	sumBuf  [64]byte  // large enough for SHA-512 / SHA3-512
+	hexBuf  [128]byte // hex-encoded output (2x max hash size)
+	hashLen int       // actual hash output size in bytes
 }
 
 // matchesEvent reports whether the event should be delivered to this

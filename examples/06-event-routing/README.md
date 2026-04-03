@@ -208,13 +208,13 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- security.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 
 --- writes.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
 
 --- critical.log ---
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
 ```
 
 The `user_read` event doesn't appear in any file — no route includes

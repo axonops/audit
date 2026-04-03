@@ -256,16 +256,16 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- full-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","card_expiry":"12/28","card_number":"4111111111111111","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","amount":"99.99","card_expiry":"12/28","card_number":"4111111111111111","event_category":"write"}
 
 --- public-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","event_category":"write"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"admin","outcome":"success","department":"engineering","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
 
 --- pci-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
-{"timestamp":"...","event_type":"payment_process","severity":5,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"admin","outcome":"success","department":"engineering","email":"alice@example.com","phone":"555-0100","user_name":"alice_smith","event_category":"write"}
+{"timestamp":"...","event_type":"payment_process","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","amount":"99.99","event_category":"write"}
 ```
 
 Notice:

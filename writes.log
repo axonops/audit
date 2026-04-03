@@ -1,0 +1,1 @@
+{"timestamp":"2026-04-03T06:26:52.684043425+02:00","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":3089129,"actor_id":"alice","outcome":"success","event_category":"write"}

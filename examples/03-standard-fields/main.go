@@ -53,7 +53,8 @@ func main() {
 
 	// The standard_fields section provides deployment-wide defaults.
 	// Here, source_ip defaults to "10.0.0.1" for every event.
-	opts := result.Options
+	opts := []audit.Option{audit.WithTaxonomy(tax)}
+	opts = append(opts, result.Options...)
 	if result.StandardFields != nil {
 		opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
 	}

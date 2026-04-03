@@ -389,6 +389,31 @@ func TestLogger_FrameworkFields_InOutput(t *testing.T) {
 	assert.NotNil(t, record["pid"], "pid should always be present")
 }
 
+func TestLogger_Timezone_AutoDetected(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	// No WithTimezone — timezone should auto-detect from system.
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	record := out.GetEvent(0)
+	tz, ok := record["timezone"]
+	assert.True(t, ok, "timezone should be auto-detected when not configured")
+	assert.NotEmpty(t, tz, "auto-detected timezone should be non-empty")
+	assert.Equal(t, time.Now().Location().String(), tz, "should match system timezone")
+}
+
 // ---------------------------------------------------------------------------
 // Standard field defaults (#237)
 // ---------------------------------------------------------------------------

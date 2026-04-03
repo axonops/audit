@@ -88,7 +88,7 @@ Feature: Core Audit Logging
     And the output should not contain field "app_name"
     And the output should not contain field "host"
 
-  Scenario: Framework fields absent when not configured except pid and timezone
+  Scenario: Timezone and PID auto-detected when not configured
     Given a logger with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |

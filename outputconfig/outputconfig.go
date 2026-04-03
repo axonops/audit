@@ -444,6 +444,9 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 			if err := expandEnvInNode(val, "timezone"); err != nil {
 				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, err)
 			}
+			if val.Value == "" {
+				return nil, fmt.Errorf("%w: timezone must be non-empty when specified", ErrOutputConfigInvalid)
+			}
 			result.timezone = val.Value
 		case "standard_fields":
 			if err := expandEnvInNode(val, "standard_fields"); err != nil {

@@ -18,6 +18,21 @@ serialisation. go-audit can send the same event to multiple outputs
 at once — a local file for long-term retention, a syslog server for
 your SIEM, and a webhook for real-time alerting, all simultaneously.
 
+### Optional Interfaces
+
+Output implementations may satisfy additional optional interfaces:
+
+| Interface | Purpose |
+|-----------|---------|
+| `DestinationKeyer` | Duplicate destination detection at construction |
+| `DeliveryReporter` | Output handles its own delivery metrics |
+| `MetadataWriter` | Receives structured event metadata (event type, severity, category, timestamp) alongside pre-serialised bytes |
+
+`MetadataWriter` is used by outputs that need structured access to
+per-event fields — for example, Loki uses event_type and severity as
+stream labels. Outputs that don't implement it receive plain `Write()`
+calls with no overhead.
+
 ## ❓ Why Multiple Outputs?
 
 Different teams need audit events in different places, in different

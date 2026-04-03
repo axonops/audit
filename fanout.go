@@ -47,6 +47,7 @@ type outputEntry struct {
 	hmacConfig     *HMACConfig         // nil = no HMAC for this output
 	hmac           *hmacState          // pre-constructed hash for drain-loop reuse; nil when no HMAC
 	route          atomic.Pointer[EventRoute]
+	selfReports    bool // cached at construction; false if output doesn't implement DeliveryReporter
 }
 
 // hmacState holds a pre-constructed hash.Hash and reusable buffers for

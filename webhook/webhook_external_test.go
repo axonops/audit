@@ -1270,7 +1270,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 }
 
 func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
-	// Verify that the core writeToOutput does NOT call RecordEvent
+	// Verify that the core recordWrite does NOT call RecordEvent
 	// for webhook outputs (they report their own delivery).
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)

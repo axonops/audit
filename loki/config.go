@@ -170,13 +170,14 @@ func (c *Config) String() string {
 		c.URL, auth, c.Compress, c.BatchSize)
 }
 
-// GoString implements [fmt.GoStringer] to prevent credential leakage via %#v.
-func (c *Config) GoString() string { return c.String() }
-
-// Format implements [fmt.Formatter] to prevent credential leakage via %+v.
+// Format implements [fmt.Formatter] to prevent credential leakage via
+// all format verbs including %+v and %#v.
 func (c *Config) Format(f fmt.State, _ rune) {
 	_, _ = fmt.Fprint(f, c.String())
 }
+
+// String returns a redacted representation to prevent credential leakage.
+func (ba BasicAuth) String() string { return "BasicAuth{REDACTED}" }
 
 // GoString implements [fmt.GoStringer] to prevent credential leakage via %#v.
 func (ba BasicAuth) GoString() string { return "BasicAuth{REDACTED}" }

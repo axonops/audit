@@ -198,6 +198,18 @@ handlers. All are optional — set only what applies to your request.
 > common patterns, but `Extra` lets you add any field your taxonomy
 > defines. You are not limited to the predefined set.
 
+## Framework Fields in Middleware Events
+
+Middleware audit events include all configured framework fields
+(`app_name`, `host`, `timezone`, `pid`) just like any other event.
+These are set once at logger construction and appear automatically
+in every serialised event — no middleware configuration needed.
+
+The 31 [reserved standard fields](../examples/03-standard-fields/)
+(including `source_ip`, `method`, `path`, `user_agent`, `request_id`)
+are populated by the middleware via `AuditHints` and always accepted
+without taxonomy declaration.
+
 ## 📚 Further Reading
 
 - [Progressive Example: Middleware](../examples/10-middleware/) — complete HTTP middleware example

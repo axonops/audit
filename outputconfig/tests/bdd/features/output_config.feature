@@ -205,3 +205,23 @@ Feature: YAML Output Configuration
       """
     When I try to create a logger from the YAML config
     Then the config load should fail with an error containing "non-empty"
+
+  # --- Syslog app_name injection (#237) ---
+
+  Scenario: Global app_name injected into syslog output config
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: injected-app
+      host: test
+      outputs:
+        console:
+          type: stdout
+      """
+    When I create a logger from the YAML config
+    And I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the audit call should have succeeded

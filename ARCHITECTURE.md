@@ -77,6 +77,24 @@ import (
   set per-event in the drain goroutine (single writer, no lock needed)
 - `Logger.Close()` is idempotent via `sync.Once`
 
+## Field Categories
+
+The library distinguishes three categories of event fields:
+
+| Category | Examples | Declared in taxonomy? | Strippable? |
+|----------|----------|----------------------|-------------|
+| **Framework fields** | `timestamp`, `event_type`, `severity`, `app_name`, `host`, `timezone`, `pid`, `event_category`, `duration_ms` | No — injected by the library | No — always present |
+| **Reserved standard fields** | `actor_id`, `source_ip`, `reason`, `target_id` (31 total) | Optional — can be required or labeled | Yes — via sensitivity labels |
+| **User-defined fields** | Application-specific fields | Yes — in taxonomy YAML | Yes — via sensitivity labels |
+
+Framework fields are set once at logger construction (`WithAppName`, `WithHost`,
+`WithTimezone`; `pid` auto-captured via `os.Getpid()`). They appear in every
+serialised event before user fields.
+
+Reserved standard fields are well-known audit names that are always accepted
+without taxonomy declaration. They have generated setter methods on every builder
+and map to standard ArcSight CEF extension keys.
+
 ## Key Files
 
 | File | Purpose |

@@ -226,7 +226,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.host, coreMetrics)
+		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.appName, top.host, coreMetrics)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -581,7 +581,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its YAML node.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
+func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
 	fields, err := extractOutputFields(name, node)
 	if err != nil {
 		return nil, err
@@ -592,7 +592,7 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
 		return nil, expandErr
 	}
-	output, err := invokeFactory(name, fields, globalTLSNode, globalHost, coreMetrics)
+	output, err := invokeFactory(name, fields, globalTLSNode, globalAppName, globalHost, coreMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -724,6 +724,20 @@ func injectGlobalTLSPolicy(typeNode, globalNode *yaml.Node) {
 	typeNode.Content = append(typeNode.Content, keyNode, deepCopyNode(globalNode))
 }
 
+// injectSyslogGlobals injects global app_name and hostname into a
+// syslog output's type-config node if not already set per-output.
+func injectSyslogGlobals(f *outputFields, globalAppName, globalHost string) {
+	if f.typeName != "syslog" {
+		return
+	}
+	if globalAppName != "" {
+		injectStringField(f.typeConfigNode, "app_name", globalAppName)
+	}
+	if globalHost != "" {
+		injectStringField(f.typeConfigNode, "hostname", globalHost)
+	}
+}
+
 // injectStringField adds a string key-value pair to a YAML mapping
 // node if the key does not already exist.
 func injectStringField(typeNode *yaml.Node, key, value string) {
@@ -746,7 +760,7 @@ type yamlTLSPolicy struct {
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
 	factory := audit.LookupOutputFactory(f.typeName)
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
@@ -762,10 +776,8 @@ func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globa
 			injectGlobalTLSPolicy(f.typeConfigNode, globalTLSNode)
 		}
 	}
-	// Inject global hostname into syslog config if not already set.
-	if f.typeName == "syslog" && globalHost != "" {
-		injectStringField(f.typeConfigNode, "hostname", globalHost)
-	}
+	// Inject global app_name and hostname into syslog config if not already set.
+	injectSyslogGlobals(f, globalAppName, globalHost)
 
 	var rawConfig []byte
 	if f.typeConfigNode != nil {

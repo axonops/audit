@@ -184,6 +184,9 @@ The HMAC is always the last field. `_hmac` is lowercase hex-encoded.
   event on different outputs with different `exclude_labels` produces
   different HMACs.
 - **Event category:** HMAC covers the `event_category` field when present.
+- **Framework fields:** HMAC covers `app_name`, `host`, `timezone`, and
+  `pid` when present. These fields are part of the serialised payload
+  before HMAC computation.
 - **Format cache:** The base serialised event is cached. HMAC is
   computed per-delivery (after event_category + field stripping).
 

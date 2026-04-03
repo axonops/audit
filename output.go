@@ -14,7 +14,10 @@
 
 package audit
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // ErrOutputClosed is returned by [Output.Write] when the output has
 // already been closed.
@@ -69,4 +72,42 @@ type DestinationKeyer interface {
 // responsible for calling them after actual delivery.
 type DeliveryReporter interface {
 	ReportsDelivery() bool
+}
+
+// EventMetadata carries per-event context for outputs that need
+// structured access to framework fields (e.g., for Loki labels or
+// Elasticsearch index routing). The struct is constructed once per
+// delivery pass in [deliverToOutputs] and passed by value to
+// [MetadataWriter.WriteWithMetadata].
+//
+// The struct is small (64 bytes on amd64), passed by value, and
+// zero-allocation by design. All fields are read from existing local
+// variables in the drain goroutine.
+type EventMetadata struct { //nolint:govet // fieldalignment: readability over struct packing for a 4-field value type
+	// EventType is the taxonomy event type name (e.g. "user_create").
+	EventType string
+
+	// Severity is the resolved severity (0-10) for this event.
+	Severity int
+
+	// Category is the delivery-specific category. Empty for
+	// uncategorised events. When an event belongs to multiple
+	// categories, each delivery pass has a different Category.
+	Category string
+
+	// Timestamp is the wall-clock time recorded at drain time.
+	Timestamp time.Time
+}
+
+// MetadataWriter is an optional interface that [Output] implementations
+// may satisfy to receive structured event metadata alongside
+// pre-serialised bytes. When an output implements MetadataWriter,
+// the library calls WriteWithMetadata instead of [Output.Write].
+//
+// Implementations MUST NOT retain meta or take its address after
+// returning. The library passes meta by value on the stack; retaining
+// it forces heap allocation. The caller must not assume the value
+// remains valid after return.
+type MetadataWriter interface {
+	WriteWithMetadata(data []byte, meta EventMetadata) error
 }

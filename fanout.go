@@ -40,6 +40,7 @@ import (
 // via [Logger.SetOutputRoute]; access is lock-free via atomic.Pointer.
 type outputEntry struct {
 	output         Output
+	metadataWriter MetadataWriter      // cached at construction; nil if output doesn't implement
 	formatter      Formatter           // nil = use logger's default formatter
 	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
 	formatOpts     *FormatOptions      // pre-allocated; nil when no exclusions

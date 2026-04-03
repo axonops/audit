@@ -30,7 +30,6 @@ package audit
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -636,7 +635,7 @@ type PostField struct {
 	// CEFKey is the extension key used when appending to CEF output.
 	CEFKey string
 	// Value is the string value to emit for this field. Values are
-	// escaped automatically (JSON via encoding/json, CEF via cefEscapeExtValue).
+	// escaped automatically (JSON via writeJSONString, CEF via cefEscapeExtValue).
 	Value string
 }
 
@@ -670,28 +669,30 @@ func AppendPostFields(data []byte, formatter Formatter, fields []PostField) []by
 
 func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 	// JSON ends with }\n — insert before the closing brace.
-	// Find the last } character.
 	braceIdx := len(data) - 2 // data[len-1] is \n, data[len-2] is }
 	if braceIdx < 0 || data[braceIdx] != '}' {
 		return data // unexpected format — return unchanged
 	}
 
-	// Build suffix with proper JSON escaping for keys and values.
-	var buf bytes.Buffer
+	// Build the complete output in a pooled buffer using writeJSONString
+	// instead of json.Marshal to avoid per-field allocations.
+	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
+	buf.Reset()
+	buf.Write(data[:braceIdx])
 	for _, f := range fields {
 		buf.WriteByte(',')
-		keyBytes, _ := json.Marshal(f.JSONKey)
-		buf.Write(keyBytes)
+		writeJSONString(buf, f.JSONKey)
 		buf.WriteByte(':')
-		valBytes, _ := json.Marshal(f.Value)
-		buf.Write(valBytes)
+		writeJSONString(buf, f.Value)
 	}
-	suffix := buf.Bytes()
+	buf.Write(data[braceIdx:]) // }\n
 
-	result := make([]byte, 0, len(data)+len(suffix))
-	result = append(result, data[:braceIdx]...)
-	result = append(result, suffix...)
-	result = append(result, data[braceIdx:]...) // }\n
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	jsonBufPool.Put(buf)
 	return result
 }
 

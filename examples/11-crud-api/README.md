@@ -300,8 +300,8 @@ and severity:
 
 ## Previous
 
-[Middleware](../09-middleware/) — the HTTP middleware fundamentals.
+[Middleware](../10-middleware/) — the HTTP middleware fundamentals.
 
 ## Next
 
-[Testing](../11-testing/) — testing audit events with `audittest`.
+[Testing](../12-testing/) — testing audit events with `audittest`.

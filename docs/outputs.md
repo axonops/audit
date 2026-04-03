@@ -233,7 +233,7 @@ a failure in one output does not block or affect delivery to others.
 
 ## 📚 Further Reading
 
-- [Progressive Example: File Output](../examples/03-file-output/)
-- [Progressive Example: Multi-Output](../examples/04-multi-output/)
-- [Progressive Example: CRUD API](../examples/10-crud-api/) — five outputs in one application
+- [Progressive Example: File Output](../examples/04-file-output/)
+- [Progressive Example: Multi-Output](../examples/05-multi-output/)
+- [Progressive Example: CRUD API](../examples/11-crud-api/) — five outputs in one application
 - [Output Configuration YAML](output-configuration.md) — full YAML reference

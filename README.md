@@ -134,20 +134,25 @@ events:
     fields:
       outcome:  { required: true }
       actor_id: { required: true }
-      target_id: {}
 
   auth_failure:
     description: "An authentication attempt failed"
     fields:
       outcome:  { required: true }
       actor_id: { required: true }
-      source_ip: {}
 ```
+
+> 💡 Fields like `target_id`, `source_ip`, and `reason` are **reserved standard
+> fields** — always available on every event without declaration. Use
+> `.SetTargetID()`, `.SetSourceIP()`, etc. on any builder.
 
 ### 2️⃣ Configure outputs (`outputs.yaml`) - This is your config. 
 
 ```yaml
 version: 1
+app_name: my-service
+host: "${HOSTNAME:-localhost}"
+
 outputs:
   console:
     type: stdout
@@ -192,13 +197,18 @@ err := logger.AuditEvent(
 
 **📄 JSON** (default formatter):
 ```json
-{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"prod-01","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
 
 **🛡️ CEF** (SIEM formatter):
 ```
-CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success cat=write
+CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create deviceProcessName=my-service dvchost=prod-01 dvcpid=12345 suser=alice outcome=success cat=write
 ```
+
+> `app_name`, `host`, and `pid` are **framework fields** — set once in your
+> outputs.yaml and automatically included in every event. SIEMs use the CEF
+> extension keys (`deviceProcessName`, `dvchost`, `dvcpid`) for automatic
+> host-level correlation.
 
 ---
 
@@ -238,7 +248,7 @@ minimal third-party dependencies. Import only the outputs you use.
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 11 examples from "hello world" to a [complete CRUD API](examples/10-crud-api/) with five outputs |
+| 📖 [Progressive Examples](examples/) | 12 examples from "hello world" to a [complete CRUD API](examples/11-crud-api/) with five outputs |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

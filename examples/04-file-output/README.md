@@ -120,9 +120,9 @@ field from the taxonomy. The file is cleaned up at the end of the example.
 
 ## Previous
 
-[Code Generation](../02-code-generation/)
+[Standard Fields](../03-standard-fields/)
 
 ## Next
 
-[Multi-Output](../04-multi-output/) — send events to multiple destinations
+[Multi-Output](../05-multi-output/) — send events to multiple destinations
 simultaneously.

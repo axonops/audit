@@ -55,8 +55,8 @@ events:
         required: true
       actor_id:
         required: true
-      target_id: {}
-      reason: {}
+      # target_id, reason, source_ip are reserved standard fields —
+      # available on every event without declaration.
 
   # ... (auth_failure, auth_success, user_read, user_delete defined similarly)
 ```
@@ -74,7 +74,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../06-sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../07-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -187,7 +187,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../06-sensitivity-labels/) example.
+the [Sensitivity Labels](../07-sensitivity-labels/) example.
 
 **Performance note:** Typed builders add one small heap allocation per
 event (the `Event` interface wrapper) compared to passing raw strings
@@ -216,7 +216,7 @@ consistent — consumers can parse all events with the same schema
 regardless of which optional fields were populated.
 
 If you prefer to omit null fields entirely, the JSON formatter supports
-an `omit_empty` option (shown in the [Formatters](../08-formatters/)
+an `omit_empty` option (shown in the [Formatters](../09-formatters/)
 example).
 
 ### Configuring Outputs in YAML
@@ -337,5 +337,5 @@ on stderr — see [example 01](../01-basic/) for details.
 
 ## Next
 
-[File Output](../03-file-output/) — write events to a log file with
-rotation and size limits.
+[Standard Fields](../03-standard-fields/) — reserved standard fields,
+framework fields, and deployment-wide defaults.

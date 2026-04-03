@@ -15,7 +15,7 @@ and a PCI compliance log keeps PII but strips payment card data.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../05-event-routing/)
+- Completed: [Event Routing](../06-event-routing/)
 
 ## Files
 
@@ -149,12 +149,17 @@ using `exclude_labels` on any output also has zero cost.
 
 ### Protected Framework Fields
 
-Four framework fields can never be labeled or stripped:
+Nine framework fields can never be labeled or stripped:
 
 - `timestamp` — when the event occurred
 - `event_type` — what happened
 - `severity` — how important it is
 - `duration_ms` — how long it took (middleware events)
+- `event_category` — which category triggered delivery
+- `app_name` — application identifier (when configured)
+- `host` — hostname (when configured)
+- `timezone` — timezone context (when configured)
+- `pid` — process ID (always present)
 
 These are always present in every output regardless of exclusion rules.
 An event without `event_type` or `timestamp` would be unparseable.
@@ -279,7 +284,7 @@ Notice:
 | `sensitivity label name must not be empty` | Label name is `""` | Use a non-empty name matching `[a-z][a-z0-9_]*` |
 | `sensitivity label "X" does not match required pattern` | Uppercase or special characters | Use lowercase with underscores only |
 | `sensitivity label "X" pattern "Y" is invalid` | Regex syntax error | Fix the regex pattern |
-| `sensitivity label "X" pattern "Y" matches protected framework field "Z"` | Regex too broad | Narrow the regex to avoid matching `timestamp`, `event_type`, `severity`, `duration_ms` |
+| `sensitivity label "X" pattern "Y" matches protected framework field "Z"` | Regex too broad | Narrow the regex to avoid matching framework fields (`timestamp`, `event_type`, `severity`, `duration_ms`, `event_category`, `app_name`, `host`, `timezone`, `pid`) |
 | `event "X" field "Y" references undefined sensitivity label "Z"` | Label name typo | Check label is defined in `sensitivity.labels` |
 | `output "X" has exclude_labels but taxonomy has no sensitivity config` | Missing `sensitivity:` block | Add `sensitivity:` to your taxonomy YAML |
 | `output "X" exclude_labels references undefined sensitivity label "Z"` | Label name typo in output config | Check label is defined in taxonomy `sensitivity.labels` |
@@ -291,10 +296,10 @@ Notice:
 
 ## Previous
 
-[Event Routing](../05-event-routing/) — category and severity-based
+[Event Routing](../06-event-routing/) — category and severity-based
 routing.
 
 ## Next
 
-[HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection
+[HMAC Integrity](../08-hmac-integrity/) — per-output tamper detection
 with selective routing.

@@ -104,7 +104,7 @@ updates:
 
   # CRUD API example
   - package-ecosystem: "gomod"
-    directory: "/examples/10-crud-api"
+    directory: "/examples/11-crud-api"
     schedule:
       interval: "weekly"
       day: "monday"

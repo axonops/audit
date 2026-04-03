@@ -14,7 +14,7 @@ to one file, write events to another, and everything to the console.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Multi-Output](../04-multi-output/)
+- Completed: [Multi-Output](../05-multi-output/)
 
 ## Files
 
@@ -53,7 +53,7 @@ go-audit supports two ways to define categories:
   the event defines its own.
 
 Both formats can be mixed in the same taxonomy file. The
-[CRUD API](../10-crud-api/) example shows every category using the struct
+[CRUD API](../11-crud-api/) example shows every category using the struct
 format with different severity levels.
 
 ### Per-Event Severity Override
@@ -69,7 +69,7 @@ events:
 ```
 
 Resolution chain: event severity (if set) -> category severity -> 5.
-The [CRUD API](../10-crud-api/) example uses this: `auth_failure` is
+The [CRUD API](../11-crud-api/) example uses this: `auth_failure` is
 severity 9 while other security events are severity 8.
 
 ### Routes in YAML
@@ -230,9 +230,9 @@ independently.
 
 ## Previous
 
-[Multi-Output](../04-multi-output/)
+[Multi-Output](../05-multi-output/)
 
 ## Next
 
-[Sensitivity Labels](../06-sensitivity-labels/) — per-output field
+[Sensitivity Labels](../07-sensitivity-labels/) — per-output field
 stripping for PII and financial data.

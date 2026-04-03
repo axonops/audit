@@ -28,11 +28,15 @@ without custom field mapping.
 
 Fields are emitted in a deterministic order:
 
-1. **Framework fields** (always present, always first):
+1. **Framework fields** (always first):
    - `timestamp` — event timestamp (RFC 3339 with nanoseconds by default)
    - `event_type` — the taxonomy event type name
    - `severity` — resolved severity (0-10)
    - `duration_ms` — only present if the event includes a duration
+   - `app_name` — application name (when configured via `WithAppName` or outputs YAML)
+   - `host` — hostname (when configured via `WithHost` or outputs YAML)
+   - `timezone` — timezone name (when configured via `WithTimezone` or outputs YAML)
+   - `pid` — process ID (always present, auto-captured at logger construction)
 
 2. **Required fields** — sorted alphabetically
 3. **Optional fields** — sorted alphabetically
@@ -84,5 +88,5 @@ set of keys.
 ## 📚 Further Reading
 
 - [CEF Format](cef-format.md) — alternative format for SIEM integration
-- [Progressive Example: Formatters](../examples/08-formatters/) — JSON and CEF side-by-side
+- [Progressive Example: Formatters](../examples/09-formatters/) — JSON and CEF side-by-side
 - [API Reference: JSONFormatter](https://pkg.go.dev/github.com/axonops/go-audit#JSONFormatter)

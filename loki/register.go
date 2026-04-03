@@ -1,0 +1,201 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package loki
+
+import (
+	"bytes"
+	"fmt"
+	"time"
+
+	audit "github.com/axonops/go-audit"
+	"gopkg.in/yaml.v3"
+)
+
+func init() {
+	audit.RegisterOutputFactory("loki", defaultFactory)
+}
+
+// defaultFactory creates a Loki output from YAML config. Core metrics
+// are forwarded (Loki needs them for delivery reporting). Loki-specific
+// metrics are nil — consumers who want them should register via
+// [NewFactory] before calling the config loader.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+	return buildOutput(name, rawConfig, coreMetrics, nil)
+}
+
+// NewFactory returns an [audit.OutputFactory] that creates Loki outputs
+// from YAML configuration with the provided Loki-specific metrics
+// captured in the closure. Pass nil to disable Loki metrics.
+func NewFactory(lokiMetrics Metrics) audit.OutputFactory {
+	return func(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+		return buildOutput(name, rawConfig, coreMetrics, lokiMetrics)
+	}
+}
+
+// yamlLokiConfig is the YAML-specific representation of Loki output
+// configuration. Maps snake_case YAML fields to the Go Config struct.
+type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability preferred
+	URL        string            `yaml:"url"`
+	BasicAuth  *yamlBasicAuth    `yaml:"basic_auth"`
+	BearerTkn  string            `yaml:"bearer_token"`
+	TenantID   string            `yaml:"tenant_id"`
+	Headers    map[string]string `yaml:"headers"`
+	Labels     *yamlLabelConfig  `yaml:"labels"`
+	TLSCA      string            `yaml:"tls_ca"`
+	TLSCert    string            `yaml:"tls_cert"`
+	TLSKey     string            `yaml:"tls_key"`
+	TLSPolicy  *yamlTLSPolicy    `yaml:"tls_policy"`
+	BatchSize  int               `yaml:"batch_size"`
+	MaxBatchB  int               `yaml:"max_batch_bytes"`
+	FlushIvl   yamlDuration      `yaml:"flush_interval"`
+	BufferSize int               `yaml:"buffer_size"`
+	Timeout    yamlDuration      `yaml:"timeout"`
+	MaxRetries int               `yaml:"max_retries"`
+	Compress   *bool             `yaml:"gzip"` // YAML key is "gzip" for user clarity; maps to Compress
+	AllowHTTP  bool              `yaml:"allow_insecure_http"`
+	AllowPriv  bool              `yaml:"allow_private_ranges"`
+}
+
+type yamlBasicAuth struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+type yamlLabelConfig struct {
+	Static  map[string]string `yaml:"static"`
+	Dynamic map[string]bool   `yaml:"dynamic"`
+}
+
+type yamlTLSPolicy struct {
+	AllowTLS12       bool `yaml:"allow_tls12"`
+	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+}
+
+// yamlDuration is a time.Duration that unmarshals from a YAML string.
+type yamlDuration time.Duration
+
+func (d *yamlDuration) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return fmt.Errorf("decode duration: %w", err)
+	}
+	parsed, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", s, err)
+	}
+	*d = yamlDuration(parsed)
+	return nil
+}
+
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiMetrics Metrics) (audit.Output, error) {
+	if len(rawConfig) == 0 {
+		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
+	}
+
+	var yc yamlLokiConfig
+	dec := yaml.NewDecoder(bytes.NewReader(rawConfig))
+	dec.KnownFields(true)
+	if err := dec.Decode(&yc); err != nil {
+		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+	}
+
+	cfg := &Config{
+		URL:                yc.URL,
+		BearerToken:        yc.BearerTkn,
+		TenantID:           yc.TenantID,
+		Headers:            yc.Headers,
+		TLSCA:              yc.TLSCA,
+		TLSCert:            yc.TLSCert,
+		TLSKey:             yc.TLSKey,
+		BatchSize:          yc.BatchSize,
+		MaxBatchBytes:      yc.MaxBatchB,
+		FlushInterval:      time.Duration(yc.FlushIvl),
+		BufferSize:         yc.BufferSize,
+		Timeout:            time.Duration(yc.Timeout),
+		MaxRetries:         yc.MaxRetries,
+		AllowInsecureHTTP:  yc.AllowHTTP,
+		AllowPrivateRanges: yc.AllowPriv,
+	}
+
+	// Basic auth.
+	if yc.BasicAuth != nil {
+		cfg.BasicAuth = &BasicAuth{
+			Username: yc.BasicAuth.Username,
+			Password: yc.BasicAuth.Password,
+		}
+	}
+
+	// TLS policy.
+	if yc.TLSPolicy != nil {
+		cfg.TLSPolicy = &audit.TLSPolicy{
+			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
+			AllowWeakCiphers: yc.TLSPolicy.AllowWeakCiphers,
+		}
+	}
+
+	// Gzip: default true, explicit false overrides.
+	if yc.Compress != nil {
+		cfg.Compress = *yc.Compress
+	} else {
+		cfg.Compress = true
+	}
+
+	// Labels.
+	if yc.Labels != nil {
+		cfg.Labels.Static = yc.Labels.Static
+		if yc.Labels.Dynamic != nil {
+			if err := parseDynamicLabels(yc.Labels.Dynamic, &cfg.Labels.Dynamic); err != nil {
+				return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+			}
+		}
+	}
+
+	// Validate config.
+	if err := validateLokiConfig(cfg); err != nil {
+		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+	}
+
+	// New() not yet implemented — Phase 2 of #251 adds the Output constructor.
+	_ = coreMetrics
+	_ = lokiMetrics
+	return nil, fmt.Errorf("audit: loki output %q: not yet implemented", name)
+}
+
+// parseDynamicLabels converts the YAML dynamic labels map into the
+// DynamicLabels struct. Unknown label names are rejected.
+func parseDynamicLabels(m map[string]bool, dl *DynamicLabels) error {
+	for name, enabled := range m {
+		if _, ok := validDynamicLabels[name]; !ok {
+			return fmt.Errorf("%w: loki: unknown dynamic label %q: valid labels are app_name, host, pid, event_type, event_category, severity", audit.ErrConfigInvalid, name)
+		}
+		if !enabled {
+			switch name {
+			case "app_name":
+				dl.ExcludeAppName = true
+			case "host":
+				dl.ExcludeHost = true
+			case "pid":
+				dl.ExcludePID = true
+			case "event_type":
+				dl.ExcludeEventType = true
+			case "event_category":
+				dl.ExcludeEventCategory = true
+			case "severity":
+				dl.ExcludeSeverity = true
+			}
+		}
+	}
+	return nil
+}

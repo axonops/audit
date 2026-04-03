@@ -77,16 +77,46 @@ go-audit maps audit field names to standard CEF extension keys:
 | Audit Field | CEF Extension Key | CEF Meaning |
 |-------------|-------------------|-------------|
 | `actor_id` | `suser` | Source user |
+| `actor_uid` | `suid` | Source user ID |
+| `role` | `spriv` | Source user privileges |
+| `target_id` | `duser` | Destination user |
+| `target_uid` | `duid` | Destination user ID |
+| `target_role` | `dpriv` | Destination privileges |
 | `source_ip` | `src` | Source IP address |
+| `source_host` | `shost` | Source hostname |
+| `source_port` | `spt` | Source port |
+| `dest_ip` | `dst` | Destination IP |
+| `dest_host` | `dhost` | Destination hostname |
+| `dest_port` | `dpt` | Destination port |
+| `protocol` | `app` | Application protocol |
+| `transport` | `proto` | Transport protocol |
 | `request_id` | `externalId` | External identifier |
 | `user_agent` | `requestClientApplication` | Client application |
+| `referrer` | `requestContext` | Request context / referrer |
 | `method` | `requestMethod` | HTTP method |
 | `path` | `request` | Request path |
 | `outcome` | `outcome` | Event outcome |
+| `reason` | `reason` | Event reason |
+| `message` | `msg` | Human-readable message |
+| `start_time` | `start` | Start time |
+| `end_time` | `end` | End time |
+| `file_name` | `fname` | File name |
+| `file_path` | `filePath` | File path |
+| `file_hash` | `fileHash` | File hash |
+| `file_size` | `fsize` | File size |
 
-Framework fields are always present:
-- `rt` — event timestamp (Unix milliseconds)
-- `act` — event type identifier
+Framework extensions are always present (not configurable via `FieldMapping`):
+
+| Framework Field | CEF Extension Key | Description |
+|-----------------|-------------------|-------------|
+| timestamp | `rt` | Receipt time (Unix milliseconds) |
+| event_type | `act` | Device action |
+| duration_ms | `cn1` / `cn1Label` | Duration in ms / label "durationMs" (middleware events only) |
+| app_name | `deviceProcessName` | Application name (when configured) |
+| host | `dvchost` | Device hostname (when configured) |
+| timezone | `dtz` | Device timezone (when configured) |
+| pid | `dvcpid` | Device process ID (always present) |
+| event_category | `cat` | Event category (when categorised) |
 
 Custom field mappings can override the defaults via `CEFFormatter.FieldMapping`.
 See [`DefaultCEFFieldMapping`](https://pkg.go.dev/github.com/axonops/go-audit#DefaultCEFFieldMapping)
@@ -180,6 +210,6 @@ or structured identifiers at the application level.
 
 ## 📚 Further Reading
 
-- [Progressive Example: Formatters](../examples/08-formatters/) — JSON and CEF side-by-side
+- [Progressive Example: Formatters](../examples/09-formatters/) — JSON and CEF side-by-side
 - [Event Routing](event-routing.md) — route security events to a CEF-formatted SIEM output
 - [API Reference: CEFFormatter](https://pkg.go.dev/github.com/axonops/go-audit#CEFFormatter)

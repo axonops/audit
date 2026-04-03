@@ -24,6 +24,23 @@ logger:
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
 
+# ── Framework Fields ──────────────────────────────────────
+# Identify every event's origin. app_name and host are required.
+# Environment variables are supported in all values.
+
+app_name: "my-service"               # REQUIRED: application name
+host: "${HOSTNAME:-localhost}"        # REQUIRED: hostname / environment
+timezone: "${TZ:-UTC}"               # optional: auto-detected from system if absent
+
+# ── Standard Field Defaults (optional) ────────────────────
+# Deployment-wide default values for reserved standard fields.
+# Applied to every event unless the event sets its own value.
+# Keys must be reserved standard field names (actor_id, source_ip, etc.).
+
+standard_fields:
+  source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
+  actor_id: "${SERVICE_ACCOUNT:-system}"
+
 # ── Global TLS Policy (optional) ──────────────────────────
 # Applies to all TLS-enabled outputs (syslog tcp+tls, webhook https)
 # that don't specify their own tls_policy. Per-output tls_policy
@@ -136,6 +153,10 @@ outputs:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Must be `1`. Schema version for future migration. |
+| `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
+| `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
+| `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
+| `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/03-standard-fields/#the-solution-reserved-standard-fields). |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
 | `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |
 | `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
@@ -380,14 +401,17 @@ if err != nil {
 
 opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 opts = append(opts, result.Options...)
+if result.StandardFields != nil {
+    opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
+}
 logger, err := audit.NewLogger(result.Config, opts...)
 ```
 
 ## 📚 Further Reading
 
-- [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
-- [Progressive Example: Multi-Output](../examples/04-multi-output/) — multiple outputs in one YAML
-- [Progressive Example: CRUD API](../examples/10-crud-api/) — five outputs in a production-like setup
+- [Progressive Example: File Output](../examples/04-file-output/) — file-specific configuration
+- [Progressive Example: Multi-Output](../examples/05-multi-output/) — multiple outputs in one YAML
+- [Progressive Example: CRUD API](../examples/11-crud-api/) — five outputs in a production-like setup
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

@@ -175,7 +175,7 @@ configuration (e.g., `"siem"`, `"alerts"`, `"full_log"`).
 Route changes are thread-safe and take effect immediately for the
 next event processed by the drain goroutine.
 
-See [Progressive Example: Event Routing](../examples/05-event-routing/)
+See [Progressive Example: Event Routing](../examples/06-event-routing/)
 for runtime route changes in a working application.
 
 ## 📋 Events Without Categories
@@ -194,7 +194,7 @@ uncategorised events (they are not in the "security" category).
 
 ## 📚 Further Reading
 
-- [Progressive Example: Event Routing](../examples/05-event-routing/) — complete routing configuration
+- [Progressive Example: Event Routing](../examples/06-event-routing/) — complete routing configuration
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
 - [API Reference: EventRoute](https://pkg.go.dev/github.com/axonops/go-audit#EventRoute)

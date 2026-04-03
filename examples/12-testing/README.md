@@ -14,7 +14,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [CRUD API](../10-crud-api/)
+- Completed: [CRUD API](../11-crud-api/)
 
 ## Files
 
@@ -201,5 +201,5 @@ and shutdown — these are normal.
 
 ## Previous
 
-[CRUD API](../10-crud-api/) — complete REST API with Postgres,
+[CRUD API](../11-crud-api/) — complete REST API with Postgres,
 five outputs, and Docker Compose.

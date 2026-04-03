@@ -12,7 +12,7 @@ and a log file, both defined in `outputs.yaml`.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [File Output](../03-file-output/)
+- Completed: [File Output](../04-file-output/)
 
 ## Files
 
@@ -54,7 +54,7 @@ receive the event.
 ### When to Add Routing
 
 Without routing rules, every output gets every event. The next example
-([Event Routing](../05-event-routing/)) shows how to send different event
+([Event Routing](../06-event-routing/)) shows how to send different event
 categories to different outputs.
 
 ## Run It
@@ -71,15 +71,15 @@ read back from `audit.log`:
 ```
 INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
 INFO audit: shutdown complete duration=...
 
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
 ```
 
 Both outputs received identical events — that's fan-out. Note `outputs=2`
@@ -92,9 +92,9 @@ in the logger-created message confirms both outputs are registered.
 
 ## Previous
 
-[File Output](../03-file-output/)
+[File Output](../04-file-output/)
 
 ## Next
 
-[Event Routing](../05-event-routing/) — send different event categories to
+[Event Routing](../06-event-routing/) — send different event categories to
 different outputs.

@@ -1999,6 +1999,16 @@ func TestLoad_TimezoneTooLong_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "timezone exceeds maximum length")
 }
 
+func TestLoad_TimezoneEmptyString_Rejected(t *testing.T) {
+	t.Parallel()
+	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: \"\"\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "timezone must be non-empty")
+}
+
 func TestLoad_AppNameAtMaxLength_Accepted(t *testing.T) {
 	t.Parallel()
 	// 255 bytes — exactly at the limit.

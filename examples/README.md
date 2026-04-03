@@ -11,15 +11,16 @@ Each example introduces one new concept and builds on the previous.
 |---|---------|-----------------|
 | 1 | [basic](01-basic/) | Taxonomy, Logger, AuditEvent(), Fields, validation — programmatic setup |
 | 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, typed builders, go:embed, outputconfig.Load |
-| 3 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
-| 4 | [multi-output](04-multi-output/) | Fan-out to multiple outputs from one YAML config |
-| 5 | [event-routing](05-event-routing/) | Category and severity-based routing in YAML |
-| 6 | [sensitivity-labels](06-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
-| 7 | [hmac-integrity](07-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
-| 8 | [formatters](08-formatters/) | JSON vs CEF with category severity levels |
-| 9 | [middleware](09-middleware/) | Automatic HTTP audit logging with Hints |
-| 10 | [crud-api](10-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
-| 11 | [testing](11-testing/) | Testing audit events with audittest.NewLogger |
+| 3 | [standard-fields](03-standard-fields/) | Reserved standard fields, framework fields, standard_fields YAML defaults |
+| 4 | [file-output](04-file-output/) | File output with rotation and permissions in YAML |
+| 5 | [multi-output](05-multi-output/) | Fan-out to multiple outputs from one YAML config |
+| 6 | [event-routing](06-event-routing/) | Category and severity-based routing in YAML |
+| 7 | [sensitivity-labels](07-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
+| 8 | [hmac-integrity](08-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
+| 9 | [formatters](09-formatters/) | JSON vs CEF with category severity levels |
+| 10 | [middleware](10-middleware/) | Automatic HTTP audit logging with Hints |
+| 11 | [crud-api](11-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
+| 12 | [testing](12-testing/) | Testing audit events with audittest.NewLogger |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

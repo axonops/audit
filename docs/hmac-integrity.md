@@ -210,7 +210,7 @@ application), while storage verification proves integrity at the
 
 ## 📚 Further Reading
 
-- [Progressive Example: HMAC Integrity](../examples/07-hmac-integrity/) — per-output HMAC with selective routing
+- [Progressive Example: HMAC Integrity](../examples/08-hmac-integrity/) — per-output HMAC with selective routing
 - [Output Configuration YAML](output-configuration.md) — full HMAC config reference
 - [Event Routing](event-routing.md) — selective HMAC via routing
 - [Sensitivity Labels](sensitivity-labels.md) — interaction with field stripping

@@ -16,7 +16,7 @@ patterns side by side: **selective** (only security events) and
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Sensitivity Labels](../06-sensitivity-labels/)
+- Completed: [Sensitivity Labels](../07-sensitivity-labels/)
 
 ## Files
 
@@ -196,10 +196,10 @@ only appears in `all-audit.log` because `secure_log` routes by category.
 
 ## Previous
 
-[Sensitivity Labels](../06-sensitivity-labels/) — per-output field
+[Sensitivity Labels](../07-sensitivity-labels/) — per-output field
 stripping with PII and financial labels.
 
 ## Next
 
-[Formatters](../08-formatters/) — JSON vs CEF formatters for SIEM
+[Formatters](../09-formatters/) — JSON vs CEF formatters for SIEM
 integration.

@@ -103,11 +103,11 @@ INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=st
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"bob","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"carol","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"dave","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"eve","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"carol","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"dave","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"eve","outcome":"success","event_category":"write"}
 ```
 
 Five JSON events written to `audit.log`, each with the `event_category`
@@ -120,9 +120,9 @@ field from the taxonomy. The file is cleaned up at the end of the example.
 
 ## Previous
 
-[Code Generation](../02-code-generation/)
+[Standard Fields](../03-standard-fields/)
 
 ## Next
 
-[Multi-Output](../04-multi-output/) — send events to multiple destinations
+[Multi-Output](../05-multi-output/) — send events to multiple destinations
 simultaneously.

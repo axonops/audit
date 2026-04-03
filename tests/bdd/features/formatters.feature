@@ -299,7 +299,7 @@ Feature: Event Formatters
     And I close the logger
     Then the CEF line should contain "dvcpid="
 
-  Scenario: CEF framework fields absent when not configured
+  Scenario: CEF app_name and host absent when not configured but timezone and pid present
     Given a logger with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
     When I audit event "user_create" with fields:
       | field    | value   |
@@ -308,7 +308,7 @@ Feature: Event Formatters
     And I close the logger
     Then the CEF line should not contain "deviceProcessName="
     And the CEF line should not contain "dvchost="
-    And the CEF line should not contain "dtz="
+    And the CEF line should contain "dtz="
     And the CEF line should contain "dvcpid="
 
   # --- CEF reserved standard field mapping (#237) ---

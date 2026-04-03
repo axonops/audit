@@ -126,7 +126,7 @@ example — that's the default when no severity is configured.
 Severity becomes useful for routing: you can send high-severity events
 to a SIEM webhook while keeping low-severity events in local files.
 You'll learn how to set per-category severity levels and route by
-threshold in the [Event Routing](../05-event-routing/) example.
+threshold in the [Event Routing](../06-event-routing/) example.
 
 ### Closing the Logger
 
@@ -181,7 +181,7 @@ INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=st
 --- Invalid event (missing required field) ---
 Validation error: audit: event "user_create" missing required fields: [actor_id]
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"pid":...,"actor_id":"alice","outcome":"success"}
 INFO audit: shutdown complete duration=...
 ```
 

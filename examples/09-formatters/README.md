@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [HMAC Integrity](../07-hmac-integrity/)
+- Completed: [HMAC Integrity](../08-hmac-integrity/)
 
 ## Files
 
@@ -120,14 +120,14 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- json-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":3,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":8,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"auth_success","severity":8,"actor_id":"bob","outcome":"success","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"auth_success","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"security"}
 
 --- cef-audit.log ---
-CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create suser=alice outcome=success cat=write
-CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure suser=unknown outcome=failure cat=security
-CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success suser=bob outcome=success cat=security
+CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create deviceProcessName=example dvchost=localhost dvcpid=... suser=alice outcome=success cat=write
+CEF:0|Example|AuditDemo|1.0|auth_failure|An authentication attempt failed|8|rt=... act=auth_failure deviceProcessName=example dvchost=localhost dvcpid=... suser=unknown outcome=failure cat=security
+CEF:0|Example|AuditDemo|1.0|auth_success|An authentication attempt succeeded|8|rt=... act=auth_success deviceProcessName=example dvchost=localhost dvcpid=... suser=bob outcome=success cat=security
 ```
 
 Both files contain the same three events in different formats. The CEF
@@ -144,8 +144,8 @@ output uses the `suser` extension key for `actor_id`, and the
 
 ## Previous
 
-[HMAC Integrity](../07-hmac-integrity/) — per-output tamper detection.
+[HMAC Integrity](../08-hmac-integrity/) — per-output tamper detection.
 
 ## Next
 
-[Middleware](../09-middleware/) — automatic audit logging for HTTP handlers.
+[Middleware](../10-middleware/) — automatic audit logging for HTTP handlers.

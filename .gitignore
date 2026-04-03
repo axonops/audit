@@ -148,5 +148,6 @@ examples/11-testing/11-testing
 sbom/
 
 # Example output files (generated at runtime)
+*.log
 examples/*/*.log
-examples/07-hmac-integrity/*.log
+examples/08-hmac-integrity/*.log

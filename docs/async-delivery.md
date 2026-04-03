@@ -206,7 +206,7 @@ func main() {
 }
 ```
 
-See [Progressive Example: CRUD API](../examples/10-crud-api/) for a
+See [Progressive Example: CRUD API](../examples/11-crud-api/) for a
 complete working example with signal handling.
 
 ## 🔒 Thread Safety

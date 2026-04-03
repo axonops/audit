@@ -101,9 +101,14 @@ Framework fields are never stripped, regardless of label configuration:
 - `timestamp` — when the event was processed
 - `event_type` — the taxonomy event type name
 - `severity` — resolved severity (0-10)
-- `duration_ms` — request duration (set by the [HTTP middleware](http-middleware.md) when auditing HTTP requests; can also be set manually on any event as a `time.Duration` value)
+- `duration_ms` — request duration (middleware events)
+- `event_category` — which category triggered delivery
+- `app_name` — application identifier (when configured)
+- `host` — hostname (when configured)
+- `timezone` — timezone context (when configured)
+- `pid` — process ID (always present)
 
-This ensures every output receives a structurally valid audit event.
+This ensures every output receives a structurally valid, identifiable audit event.
 
 ## ⚡ Performance
 
@@ -114,6 +119,6 @@ pre-allocated per output at construction time.
 
 ## 📚 Further Reading
 
-- [Progressive Example: Sensitivity Labels](../examples/06-sensitivity-labels/) — complete working example with PII and financial labels
+- [Progressive Example: Sensitivity Labels](../examples/07-sensitivity-labels/) — complete working example with PII and financial labels
 - [Event Routing](event-routing.md) — per-output routing (complementary feature)
 - [API Reference: SensitivityConfig](https://pkg.go.dev/github.com/axonops/go-audit#SensitivityConfig)

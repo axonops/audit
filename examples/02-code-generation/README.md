@@ -55,8 +55,8 @@ events:
         required: true
       actor_id:
         required: true
-      target_id: {}
-      reason: {}
+      # target_id, reason, source_ip are reserved standard fields —
+      # available on every event without declaration.
 
   # ... (auth_failure, auth_success, user_read, user_delete defined similarly)
 ```
@@ -74,7 +74,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../06-sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../07-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -143,11 +143,11 @@ var EventFields = map[string]struct {
 }{
     EventUserCreate: {
         Required: []string{FieldActorID, FieldOutcome},
-        Optional: []string{FieldReason, FieldTargetID},
+        Optional: []string{},
     },
     EventAuthFailure: {
         Required: []string{FieldActorID, FieldOutcome},
-        Optional: []string{FieldReason, FieldSourceIP},
+        Optional: []string{},
     },
     // ...
 }
@@ -187,7 +187,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../06-sensitivity-labels/) example.
+the [Sensitivity Labels](../07-sensitivity-labels/) example.
 
 **Performance note:** Typed builders add one small heap allocation per
 event (the `Event` interface wrapper) compared to passing raw strings
@@ -207,17 +207,14 @@ compiles without running `go generate` first. `go generate` runs
 `audit-gen` via `go run`, which downloads and caches the tool
 automatically — no separate install step.
 
-### Null Fields in JSON Output
+### Standard Fields on Every Builder
 
-You'll notice `"reason":null` in the expected output below. When the
-taxonomy declares a field as `optional`, the JSON formatter emits it as
-`null` if you don't set it. This makes every event structurally
-consistent — consumers can parse all events with the same schema
-regardless of which optional fields were populated.
-
-If you prefer to omit null fields entirely, the JSON formatter supports
-an `omit_empty` option (shown in the [Formatters](../08-formatters/)
-example).
+Fields like `target_id`, `reason`, and `source_ip` are **reserved
+standard fields** — always available without taxonomy declaration. The
+code generator produces setter methods (`.SetTargetID()`, `.SetReason()`,
+`.SetSourceIP()`) on every builder regardless of whether those fields
+appear in the taxonomy. See [example 03](../03-standard-fields/) for the
+full explanation.
 
 ### Configuring Outputs in YAML
 
@@ -225,6 +222,8 @@ Where events are sent is defined in a separate file, `outputs.yaml`:
 
 ```yaml
 version: 1
+app_name: example
+host: localhost
 outputs:
   console:
     type: stdout
@@ -315,13 +314,15 @@ go generate .
 INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Using typed event builders ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","reason":null,"target_id":"user-42","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
-{"timestamp":"...","event_type":"user_read","severity":5,"outcome":"success","actor_id":"bob","event_category":"read"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
+{"timestamp":"...","event_type":"user_read","severity":5,"app_name":"example","host":"localhost","pid":...,"outcome":"success","actor_id":"bob","event_category":"read"}
 INFO audit: shutdown complete duration=...
 ```
 
-The `event_category` field is automatically populated from the taxonomy's
+The `app_name`, `host`, and `pid` are framework fields — set once in
+`outputs.yaml` and automatically included in every event. The
+`event_category` field is automatically populated from the taxonomy's
 category definitions. The `INFO audit:` lines are lifecycle diagnostics
 on stderr — see [example 01](../01-basic/) for details.
 
@@ -337,5 +338,5 @@ on stderr — see [example 01](../01-basic/) for details.
 
 ## Next
 
-[File Output](../03-file-output/) — write events to a log file with
-rotation and size limits.
+[Standard Fields](../03-standard-fields/) — reserved standard fields,
+framework fields, and deployment-wide defaults.

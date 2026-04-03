@@ -79,16 +79,14 @@ events:
       email: {}                    # optional field — matched by pii.fields globally
       user_name:
         labels: [pii]             # explicit per-field sensitivity label annotation
-      target_id: {}               # optional field, no labels
-      reason: {}
+      # target_id, reason, source_ip are reserved standard fields —
+      # always available without declaration. Use SetTargetID(), etc.
 
   auth_failure:
     description: "An authentication attempt failed"
     fields:
       outcome:  { required: true }   # compact syntax
       actor_id: { required: true }
-      source_ip: {}
-      reason: {}
 ```
 
 ## 📋 Top-Level Fields
@@ -169,8 +167,8 @@ fields:
   email: {}                # compact — optional field, no labels
   user_name:               # expanded — optional field with label
     labels: [pii]
-  target_id: {}            # compact — optional, no labels
-  reason:                  # bare — same as {}
+  custom_field: {}         # compact — optional, no labels
+  notes:                   # bare — same as {}
 ```
 
 | Field Property | Default | Description |
@@ -240,6 +238,12 @@ used as required or optional fields in your taxonomy:
 | `event_type` | Event type name from the taxonomy |
 | `severity` | Resolved severity (0-10) |
 | `event_category` | Delivery-specific category (see below) |
+| `app_name` | Application name (set via outputs YAML or `WithAppName`) |
+| `host` | Hostname (set via outputs YAML or `WithHost`) |
+| `timezone` | Timezone context (set via outputs YAML or `WithTimezone`) |
+| `pid` | Process ID (auto-captured at construction) |
+| `_hmac` | HMAC integrity signature (set by HMAC config) |
+| `_hmac_v` | HMAC salt version (set by HMAC config) |
 
 If you try to define any of these as a required or optional field,
 taxonomy validation fails with:

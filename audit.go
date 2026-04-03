@@ -153,7 +153,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 		return nil, err
 	}
 
-	l.preAllocFormatOpts()
+	l.prepareOutputEntries()
 
 	// Default formatter if WithFormatter was not called.
 	if l.formatter == nil {
@@ -575,9 +575,17 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // deliverToOutputs fans out a single event to all matching outputs
 // for a given category. An empty category means the event is
 // uncategorised.
-func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocognit // delivery pipeline with per-output features
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocyclo,gocognit,cyclop // delivery pipeline with per-output MetadataWriter dispatch
+	severity := def.ResolvedSeverity()
+	meta := EventMetadata{
+		EventType: entry.eventType,
+		Severity:  severity,
+		Category:  category,
+		Timestamp: ts,
+	}
+
 	for _, oe := range l.entries {
-		if !oe.matchesEvent(entry.eventType, category, def.ResolvedSeverity()) {
+		if !oe.matchesEvent(entry.eventType, category, severity) {
 			if l.metrics != nil {
 				l.metrics.RecordOutputFiltered(oe.output.Name())
 			}
@@ -610,7 +618,11 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 			})
 		}
 
-		l.writeToOutput(oe.output, data, entry.eventType)
+		if oe.metadataWriter != nil {
+			l.writeToOutputWithMetadata(oe.metadataWriter, oe.output, data, meta)
+		} else {
+			l.writeToOutput(oe.output, data, entry.eventType)
+		}
 	}
 }
 
@@ -708,11 +720,14 @@ func appendPostFieldsCEF(data []byte, fields []PostField) []byte {
 	return result
 }
 
-// preAllocFormatOpts pre-allocates FormatOptions for outputs with
-// sensitivity exclusions so the hot path avoids per-event heap
-// allocation.
-func (l *Logger) preAllocFormatOpts() {
+// prepareOutputEntries initialises derived state on each outputEntry
+// after all options are applied: format options, HMAC state, and
+// MetadataWriter assertion caching.
+func (l *Logger) prepareOutputEntries() {
 	for _, oe := range l.entries {
+		if mw, ok := oe.output.(MetadataWriter); ok {
+			oe.metadataWriter = mw
+		}
 		if oe.excludedLabels != nil {
 			oe.formatOpts = &FormatOptions{
 				ExcludedLabels: oe.excludedLabels,
@@ -825,6 +840,33 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 	}
 	cache.put(f, data)
 	return data
+}
+
+// writeToOutputWithMetadata sends data with metadata to a single output
+// that implements [MetadataWriter] and records metrics. Used when the
+// output needs structured event context (e.g., Loki labels).
+// Parallels writeToOutput — changes to error handling or metrics must
+// be applied to both. Tracked for unification in issue #252.
+func (l *Logger) writeToOutputWithMetadata(mw MetadataWriter, o Output, data []byte, meta EventMetadata) {
+	selfReports := false
+	if dr, ok := o.(DeliveryReporter); ok {
+		selfReports = dr.ReportsDelivery()
+	}
+
+	if writeErr := mw.WriteWithMetadata(data, meta); writeErr != nil {
+		slog.Error("audit: output write failed",
+			"output", o.Name(),
+			"event_type", meta.EventType,
+			"error", writeErr)
+		if l.metrics != nil && !selfReports {
+			l.metrics.RecordOutputError(o.Name())
+			l.metrics.RecordEvent(o.Name(), "error")
+		}
+		return
+	}
+	if l.metrics != nil && !selfReports {
+		l.metrics.RecordEvent(o.Name(), "success")
+	}
 }
 
 // writeToOutput sends data to a single output and records metrics.

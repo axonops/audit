@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `MetadataWriter` optional interface for outputs that need structured per-event context (#250)
+- `EventMetadata` value type: event type, severity, category, timestamp — zero-allocation, passed by value (#250)
+
 - `WithAppName`, `WithHost`, `WithTimezone` options for logger-wide framework fields (#237)
 - `FrameworkFieldSetter` interface for formatters to receive app_name, host, timezone, pid (#237)
 - `pid` framework field auto-captured via `os.Getpid()` at construction (#237)

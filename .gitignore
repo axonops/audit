@@ -151,3 +151,5 @@ sbom/
 *.log
 examples/*/*.log
 examples/08-hmac-integrity/*.log
+03-standard-fields
+11-testing

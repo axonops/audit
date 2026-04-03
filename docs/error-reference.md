@@ -146,7 +146,41 @@ audit: taxonomy validation failed
 | **When** | `ValidateTaxonomy()` or `WithTaxonomy()` is called with a taxonomy that fails semantic validation |
 | **Meaning** | The taxonomy structure is valid YAML but has logical errors |
 | **Transient?** | No — permanent. Fix the taxonomy definition. |
-| **What to do** | The error message lists all validation failures (one per line). Common causes: category references an event type not defined in `events`, event has a field in both required and optional, severity out of range (0-10), version not 1. Fix each listed issue in your taxonomy YAML. |
+| **What to do** | The error message lists all validation failures (one per line). Common causes: category references an event type not defined in `events`, event has a field in both required and optional, severity out of range (0-10), version not 1, reserved standard field declared as bare optional (use `required: true` or add labels), framework field declared as user field. Fix each listed issue in your taxonomy YAML. |
+
+### New validation errors (#237)
+
+```
+event "X" field "Y" is a reserved standard field -- it is always available without declaration; to reference it, set required: true or add labels
+```
+
+| | |
+|---|---|
+| **When** | A reserved standard field (actor_id, source_ip, reason, etc.) is declared as a bare optional field in the taxonomy |
+| **Meaning** | Reserved standard fields are always available. Bare optional declarations are redundant. |
+| **What to do** | Either remove the declaration entirely, add `required: true` to make it mandatory, or add sensitivity labels. |
+
+```
+audit: app_name must not be empty
+audit: host must not be empty
+audit: timezone must not be empty
+```
+
+| | |
+|---|---|
+| **When** | `WithAppName("")`, `WithHost("")`, or `WithTimezone("")` is called |
+| **Meaning** | Framework field values cannot be empty strings |
+| **What to do** | Provide a non-empty value. In outputs YAML, ensure `app_name` and `host` are set. |
+
+```
+audit: standard field default key "X" is not a reserved standard field
+```
+
+| | |
+|---|---|
+| **When** | `WithStandardFieldDefaults` is called with a key that is not one of the 31 reserved standard field names |
+| **Meaning** | Only reserved standard fields can have deployment-wide defaults |
+| **What to do** | Check the field name against `ReservedStandardFieldNames()`. |
 
 ### `ErrInvalidInput`
 

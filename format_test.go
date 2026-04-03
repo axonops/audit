@@ -1500,6 +1500,76 @@ func BenchmarkCEFFormatter_Format_LargeEvent(b *testing.B) {
 	}
 }
 
+func BenchmarkFormatJSON_WithConfigFields(b *testing.B) {
+	f := &audit.JSONFormatter{}
+	f.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+	def := &audit.EventDef{Required: []string{"outcome", "actor_id"}}
+	fields := audit.Fields{"outcome": "success", "actor_id": "alice"}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "user_create", fields, def, nil)
+	}
+}
+
+func BenchmarkFormatCEF_WithConfigFields(b *testing.B) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	f.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+	def := &audit.EventDef{Required: []string{"outcome", "actor_id"}}
+	fields := audit.Fields{"outcome": "success", "actor_id": "alice"}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "user_create", fields, def, nil)
+	}
+}
+
+func BenchmarkFormatJSON_WithAllReservedFields(b *testing.B) {
+	f := &audit.JSONFormatter{}
+	f.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+	def := &audit.EventDef{Required: []string{"outcome", "actor_id"}}
+	fields := audit.Fields{
+		"outcome": "success", "actor_id": "alice",
+		"source_ip": "10.0.0.1", "dest_ip": "192.168.1.1",
+		"method": "POST", "path": "/api/users",
+		"request_id": "req-12345", "user_agent": "test/1.0",
+		"reason": "admin request", "target_id": "user-42",
+		"protocol": "HTTPS", "role": "admin",
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "user_create", fields, def, nil)
+	}
+}
+
+func BenchmarkFormatCEF_WithAllReservedFields(b *testing.B) {
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	f.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
+	def := &audit.EventDef{Required: []string{"outcome", "actor_id"}}
+	fields := audit.Fields{
+		"outcome": "success", "actor_id": "alice",
+		"source_ip": "10.0.0.1", "dest_ip": "192.168.1.1",
+		"method": "POST", "path": "/api/users",
+		"request_id": "req-12345", "user_agent": "test/1.0",
+		"reason": "admin request", "target_id": "user-42",
+		"protocol": "HTTPS", "role": "admin",
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "user_create", fields, def, nil)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // FormatOptions.IsExcluded tests
 // ---------------------------------------------------------------------------

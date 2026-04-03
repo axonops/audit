@@ -165,6 +165,43 @@ goroutine will cause test failures.
 
 ---
 
+## Reserved Standard Field Declared as Bare Optional
+
+**Symptom:** `taxonomy validation failed: event "X" field "Y" is a reserved standard field`
+
+**Cause:** You declared a reserved standard field (like `source_ip`, `actor_id`, `reason`) as a bare optional in your taxonomy. Reserved standard fields are always available without declaration.
+
+**Fix:** Either remove the declaration, add `required: true`, or add sensitivity labels:
+```yaml
+# WRONG — bare optional, rejected:
+source_ip: {}
+
+# RIGHT — remove entirely (field is always available):
+# (just don't declare it)
+
+# RIGHT — make it mandatory:
+source_ip: { required: true }
+
+# RIGHT — add sensitivity labels:
+source_ip:
+  labels: [pii]
+```
+
+## Missing app_name or host in Outputs YAML
+
+**Symptom:** `output config validation failed: app_name is required and must be non-empty`
+
+**Cause:** Your `outputs.yaml` is missing the required `app_name` or `host` top-level field.
+
+**Fix:** Add both to the top of your outputs YAML:
+```yaml
+version: 1
+app_name: my-service
+host: "${HOSTNAME:-localhost}"
+outputs:
+  # ...
+```
+
 ## 📚 Further Reading
 
 - [Error Reference](error-reference.md) — all sentinel errors with recovery guidance

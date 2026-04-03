@@ -2133,6 +2133,49 @@ outputs:
 		"hostname key must be injected into syslog config")
 	assert.Contains(t, raw, "injected.example.com",
 		"global host value must appear in injected syslog config")
+	assert.Contains(t, raw, "app_name",
+		"app_name key must be injected into syslog config")
+	assert.Contains(t, raw, "test",
+		"global app_name value must appear in injected syslog config")
+
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// TestLoad_InjectStringField_SyslogAppNameNotOverridden verifies that
+// when a syslog output explicitly declares app_name, the global value
+// does not override it.
+func TestLoad_InjectStringField_SyslogAppNameNotOverridden(t *testing.T) {
+	var captured atomic.Value
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+		captured.Store(string(rawConfig))
+		return &testOutput{name: name}, nil
+	})
+
+	data := []byte(`
+version: 1
+app_name: global-app
+host: test-host
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: tcp
+      address: localhost:514
+      app_name: per-output-app
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	raw, ok := captured.Load().(string)
+	require.True(t, ok, "syslog factory must have been invoked")
+
+	assert.Contains(t, raw, "per-output-app",
+		"per-output app_name must be preserved")
+	assert.NotContains(t, raw, "global-app",
+		"global app_name must not override per-output value")
 
 	for _, o := range result.Outputs {
 		_ = o.Output.Close()

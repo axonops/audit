@@ -2856,6 +2856,38 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	_ = logger.Close()
 }
 
+func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: 100_000},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(out, nil, nil),
+		audit.WithStandardFieldDefaults(map[string]string{
+			"source_ip":  "10.0.0.1",
+			"actor_id":   "system",
+			"request_id": "default-req",
+		}),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	fields := audit.Fields{
+		"outcome": "success",
+		"subject": "my-topic",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+	b.StopTimer()
+
+	_ = logger.Close()
+}
+
 func BenchmarkFilterCheck(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")

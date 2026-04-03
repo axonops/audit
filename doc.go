@@ -169,7 +169,24 @@
 // field name mapping in [SensitivityLabel.Fields], and regex patterns in
 // [SensitivityLabel.Patterns]. Per-output field stripping is configured via
 // [WithNamedOutput] using the excludeLabels parameter. Framework fields
-// (timestamp, event_type, severity, duration_ms) are never stripped.
+// (timestamp, event_type, severity, duration_ms, event_category,
+// app_name, host, timezone, pid) are never stripped.
+//
+// # Reserved Standard Fields
+//
+// The library defines 31 well-known audit field names (actor_id,
+// source_ip, reason, target_id, etc.) that are always accepted without
+// taxonomy declaration. These reserved standard fields have generated
+// setter methods on every builder and map to standard ArcSight CEF
+// extension keys. See [ReservedStandardFieldNames] for the complete list.
+//
+// # Framework Fields
+//
+// Every serialised event includes framework fields that identify
+// the deployment: app_name, host, timezone (set via [WithAppName],
+// [WithHost], [WithTimezone] or outputs YAML), and pid (auto-captured
+// via os.Getpid). These fields cannot be stripped by sensitivity labels
+// and are emitted in both JSON and CEF output.
 //
 // # Async Delivery
 //

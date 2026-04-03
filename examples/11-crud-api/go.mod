@@ -9,7 +9,7 @@ require (
 	github.com/axonops/go-audit/syslog v0.1.0
 	github.com/axonops/go-audit/webhook v0.1.0
 	github.com/google/uuid v1.6.0
-	github.com/lib/pq v1.12.1
+	github.com/lib/pq v1.12.2
 	github.com/prometheus/client_golang v1.23.2
 )
 

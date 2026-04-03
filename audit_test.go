@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -3019,6 +3020,50 @@ func TestAppendPostFields_JSON_MultipleFields(t *testing.T) {
 	assert.Contains(t, string(result), `"event_category":"security"`)
 	assert.Contains(t, string(result), `"checksum":"abc123"`)
 	assert.True(t, strings.HasSuffix(string(result), "}\n"))
+}
+
+func TestAppendPostFields_JSON_Escaping(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		field    audit.PostField
+		contains string
+	}{
+		{
+			name:     "value with double quotes",
+			field:    audit.PostField{JSONKey: "msg", CEFKey: "msg", Value: `he said "hello"`},
+			contains: `"msg":"he said \"hello\""`,
+		},
+		{
+			name:     "value with backslash",
+			field:    audit.PostField{JSONKey: "path", CEFKey: "path", Value: `C:\Users\admin`},
+			contains: `"path":"C:\\Users\\admin"`,
+		},
+		{
+			name:     "value with newline",
+			field:    audit.PostField{JSONKey: "msg", CEFKey: "msg", Value: "line1\nline2"},
+			contains: `"msg":"line1\nline2"`,
+		},
+		{
+			name:  "value with control chars and null",
+			field: audit.PostField{JSONKey: "msg", CEFKey: "msg", Value: "tab\there\x00null"},
+		},
+		{
+			name:  "key with special chars",
+			field: audit.PostField{JSONKey: "my\"key", CEFKey: "mykey", Value: "val"},
+		},
+	}
+	data := []byte(`{"event_type":"test"}` + "\n")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := audit.AppendPostFields(data, &audit.JSONFormatter{}, []audit.PostField{tt.field})
+			assert.True(t, json.Valid(result), "output must be valid JSON, got: %s", result)
+			if tt.contains != "" {
+				assert.Contains(t, string(result), tt.contains)
+			}
+		})
+	}
 }
 
 func TestAppendPostFields_CEF_MultipleFields(t *testing.T) {

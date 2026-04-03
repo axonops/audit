@@ -249,6 +249,32 @@ func TestWithAppName_Empty_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "app_name must not be empty")
 }
 
+func TestWithAppName_ExceedsMaxLength(t *testing.T) {
+	t.Parallel()
+	// 256 bytes — one byte over the 255-byte maximum.
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName(strings.Repeat("a", 256)),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "app_name exceeds maximum length of 255 bytes")
+}
+
+func TestWithAppName_AtMaxLength(t *testing.T) {
+	t.Parallel()
+	// 255 bytes — exactly at the limit, must be accepted.
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithAppName(strings.Repeat("a", 255)),
+	)
+	require.NoError(t, err, "255-byte app_name is at the limit and must be accepted")
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+}
+
 func TestWithHost_Empty_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := audit.NewLogger(
@@ -260,6 +286,32 @@ func TestWithHost_Empty_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "host must not be empty")
 }
 
+func TestWithHost_ExceedsMaxLength(t *testing.T) {
+	t.Parallel()
+	// 256 bytes — one byte over the 255-byte maximum.
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithHost(strings.Repeat("h", 256)),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "host exceeds maximum length of 255 bytes")
+}
+
+func TestWithHost_AtMaxLength(t *testing.T) {
+	t.Parallel()
+	// 255 bytes — exactly at the limit, must be accepted.
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithHost(strings.Repeat("h", 255)),
+	)
+	require.NoError(t, err, "255-byte host is at the limit and must be accepted")
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+}
+
 func TestWithTimezone_Empty_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := audit.NewLogger(
@@ -269,6 +321,45 @@ func TestWithTimezone_Empty_ReturnsError(t *testing.T) {
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "timezone must not be empty")
+}
+
+func TestWithTimezone_ExceedsMaxLength(t *testing.T) {
+	t.Parallel()
+	// 65 bytes — one byte over the 64-byte maximum.
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithTimezone(strings.Repeat("Z", 65)),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "timezone exceeds maximum length of 64 bytes")
+}
+
+func TestWithTimezone_AtMaxLength(t *testing.T) {
+	t.Parallel()
+	// 64 bytes — exactly at the limit, must be accepted.
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithTimezone(strings.Repeat("Z", 64)),
+	)
+	require.NoError(t, err, "64-byte timezone is at the limit and must be accepted")
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+}
+
+func TestWithStandardFieldDefaults_InvalidKey(t *testing.T) {
+	t.Parallel()
+	// "bogus" is not a reserved standard field and must be rejected.
+	_, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithStandardFieldDefaults(map[string]string{"bogus": "value"}),
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	assert.Contains(t, err.Error(), "not a reserved standard field")
 }
 
 func TestLogger_FrameworkFields_InOutput(t *testing.T) {

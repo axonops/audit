@@ -65,22 +65,19 @@ func main() {
 	// A typo like "NewUserCrateEvent" would fail at compile time.
 	fmt.Println("--- Using typed event builders ---")
 
-	createEvt := NewUserCreateEvent("alice", "success")
-	createEvt.Fields()["target_id"] = "user-42"
-	if err := logger.AuditEvent(createEvt); err != nil {
+	if err := logger.AuditEvent(NewUserCreateEvent("alice", "success").
+		SetTargetID("user-42")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	authEvt := NewAuthFailureEvent("unknown", "failure")
-	authEvt.Fields()["reason"] = "invalid credentials"
-	authEvt.Fields()["source_ip"] = "192.168.1.100"
-	if err := logger.AuditEvent(authEvt); err != nil {
+	if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure").
+		SetReason("invalid credentials").
+		SetSourceIP("192.168.1.100")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	readEvt := NewUserReadEvent("success")
-	readEvt.Fields()["actor_id"] = "bob"
-	if err := logger.AuditEvent(readEvt); err != nil {
+	if err := logger.AuditEvent(NewUserReadEvent("success").
+		SetActorID("bob")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 }

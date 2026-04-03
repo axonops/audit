@@ -72,13 +72,14 @@ type categoryEventsDef struct {
 
 // builderDef describes a generated typed event builder.
 type builderDef struct {
-	StructName   string         // e.g., "UserCreateEvent"
-	FieldsStruct string         // e.g., "UserCreateFields"
-	EventConst   string         // e.g., "EventUserCreate"
-	Description  string         // taxonomy description
-	Required     []builderField // constructor params (sorted by ParamName)
-	Optional     []builderField // setter methods (sorted by SetterName)
-	Categories   []builderCat   // categories this event belongs to
+	StructName      string         // e.g., "UserCreateEvent"
+	FieldsStruct    string         // e.g., "UserCreateFields"
+	EventConst      string         // e.g., "EventUserCreate"
+	Description     string         // taxonomy description
+	Required        []builderField // constructor params (sorted by ParamName)
+	Optional        []builderField // setter methods (sorted by SetterName)
+	StandardSetters []builderField // reserved standard field setters not in Required/Optional
+	Categories      []builderCat   // categories this event belongs to
 }
 
 // builderField describes a single field on a builder.
@@ -87,6 +88,7 @@ type builderField struct {
 	ParamName  string         // Go param name, e.g., "actorID" (for constructor)
 	SetterName string         // Go method name, e.g., "SetActorID"
 	FieldConst string         // e.g., "FieldActorID"
+	FieldName  string         // raw field name, e.g., "actor_id"
 	Labels     []builderLabel // labels on this field
 }
 
@@ -205,6 +207,9 @@ type {{ $b.FieldsStruct }} struct {
 {{- range $b.Optional }}
 	{{ .GoName }} audit.FieldInfo // optional
 {{- end }}
+{{- range $b.StandardSetters }}
+	{{ .GoName }} audit.FieldInfo // reserved standard
+{{- end }}
 }
 
 {{ if $b.Description }}// {{ $b.StructName }} builds a type-safe audit event: {{ $b.Description }}.
@@ -230,6 +235,12 @@ func (e *{{ $b.StructName }}) {{ .SetterName }}(v any) *{{ $b.StructName }} {
 	e.fields[{{ .FieldConst }}] = v
 	return e
 }
+{{ end }}{{ range $b.StandardSetters }}
+// {{ .SetterName }} sets the reserved standard field "{{ .FieldName }}".
+func (e *{{ $b.StructName }}) {{ .SetterName }}(v any) *{{ $b.StructName }} {
+	e.fields[{{ .FieldConst }}] = v
+	return e
+}
 {{ end }}
 // EventType returns the event type name.
 func (e *{{ $b.StructName }}) EventType() string { return {{ $b.EventConst }} }
@@ -248,6 +259,9 @@ func (e *{{ $b.StructName }}) FieldInfo() {{ $b.FieldsStruct }} {
 {{- end }}
 {{- range $b.Optional }}
 		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}{{ if .Labels }}, Labels: []audit.LabelInfo{ {{- range $i, $l := .Labels }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }{{ end }}},
+{{- end }}
+{{- range $b.StandardSetters }}
+		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}},
 {{- end }}
 	}
 }
@@ -485,6 +499,11 @@ func collectFieldNames(tax audit.Taxonomy) []string {
 			seen[f] = struct{}{}
 		}
 	}
+	// Always include reserved standard fields so their constants
+	// are generated even when not declared in the taxonomy.
+	for _, f := range audit.ReservedStandardFieldNames() {
+		seen[f] = struct{}{}
+	}
 	keys := make([]string, 0, len(seen))
 	for k := range seen {
 		keys = append(keys, k)
@@ -636,6 +655,22 @@ func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) build
 		b.Optional = append(b.Optional, makeBuilderField(f, def, tax))
 	}
 
+	// Reserved standard field setters — for fields not already in
+	// Required or Optional.
+	handled := make(map[string]struct{}, len(req)+len(opt))
+	for _, f := range req {
+		handled[f] = struct{}{}
+	}
+	for _, f := range opt {
+		handled[f] = struct{}{}
+	}
+	for _, f := range audit.ReservedStandardFieldNames() {
+		if _, ok := handled[f]; ok {
+			continue
+		}
+		b.StandardSetters = append(b.StandardSetters, makeBuilderField(f, def, tax))
+	}
+
 	// Categories.
 	for _, catName := range def.Categories {
 		bc := builderCat{ConstName: "Category" + toPascalCase(catName)}
@@ -656,6 +691,7 @@ func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy)
 		ParamName:  toParamName(fieldName),
 		SetterName: "Set" + pascal,
 		FieldConst: "Field" + pascal,
+		FieldName:  fieldName,
 	}
 
 	// Resolve labels for this field.

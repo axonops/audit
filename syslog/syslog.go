@@ -437,7 +437,29 @@ func validateSyslogConfig(cfg *Config) error {
 		cfg.Facility = DefaultFacility
 	}
 
+	if err := validateSyslogHostname(cfg.Hostname); err != nil {
+		return err
+	}
+
 	return validateSyslogTLSFiles(cfg)
+}
+
+// validateSyslogHostname checks that the hostname conforms to RFC 5424
+// PRINTUSASCII (bytes 33-126) and does not exceed 255 bytes.
+func validateSyslogHostname(hostname string) error {
+	if hostname == "" {
+		return nil // empty is acceptable (NILVALUE "-")
+	}
+	if len(hostname) > 255 {
+		return fmt.Errorf("audit: syslog hostname exceeds RFC 5424 maximum of 255 bytes")
+	}
+	for i := 0; i < len(hostname); i++ {
+		b := hostname[i]
+		if b < 33 || b > 126 {
+			return fmt.Errorf("audit: syslog hostname contains invalid byte 0x%02x at offset %d", b, i)
+		}
+	}
+	return nil
 }
 
 // validateSyslogTLSFiles checks TLS cert/key pairing and file existence.

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1692,4 +1693,526 @@ outputs:
 	require.Error(t, err)
 	// Salt value must NOT appear in the error message.
 	assert.NotContains(t, err.Error(), "short")
+}
+
+// ---------------------------------------------------------------------------
+// parseStandardFields — Gap 1
+// ---------------------------------------------------------------------------
+
+func TestLoad_StandardFields_ValidFields(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_ip: "10.0.0.1"
+  reason: "default"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	require.NotNil(t, result.StandardFields)
+	assert.Equal(t, "10.0.0.1", result.StandardFields["source_ip"])
+	assert.Equal(t, "default", result.StandardFields["reason"])
+}
+
+func TestLoad_StandardFields_UnknownField(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  bogus_field: "x"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "unknown field")
+	assert.Contains(t, err.Error(), "bogus_field")
+}
+
+func TestLoad_StandardFields_EmptyValue(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_ip: ""
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
+func TestLoad_StandardFields_EnvVar(t *testing.T) {
+	t.Setenv("MY_TEST_IP", "192.168.99.1")
+
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_ip: "${MY_TEST_IP}"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	require.NotNil(t, result.StandardFields)
+	assert.Equal(t, "192.168.99.1", result.StandardFields["source_ip"])
+}
+
+func TestLoad_StandardFields_EnvVarMissing(t *testing.T) {
+	// Use a variable name that is guaranteed to be absent. The test
+	// does NOT call t.Parallel() because it relies on the variable being
+	// unset — running sequentially avoids a race with any parallel test
+	// that might set the same variable name.
+	const missingVar = "OUTPUTCONFIG_TEST_MISSING_SF_VAR_9c2b4e1f"
+	os.Unsetenv(missingVar) //nolint:errcheck // test cleanup — error irrelevant
+
+	data := []byte("version: 1\napp_name: test\nhost: test\nstandard_fields:\n  source_ip: \"${" + missingVar + "}\"\noutputs:\n  console:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), missingVar)
+}
+
+func TestLoad_StandardFields_NotAMapping(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields: "not a mapping"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+}
+
+func TestLoad_StandardFields_MultipleValidFields(t *testing.T) {
+	t.Parallel()
+	// Verify that multiple valid fields all land in the result map and
+	// no entry is silently dropped.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_ip: "10.1.2.3"
+  reason: "scheduled-job"
+  session_id: "sess-abc"
+  role: "admin"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	require.NotNil(t, result.StandardFields)
+	assert.Equal(t, "10.1.2.3", result.StandardFields["source_ip"])
+	assert.Equal(t, "scheduled-job", result.StandardFields["reason"])
+	assert.Equal(t, "sess-abc", result.StandardFields["session_id"])
+	assert.Equal(t, "admin", result.StandardFields["role"])
+	assert.Len(t, result.StandardFields, 4)
+}
+
+// ---------------------------------------------------------------------------
+// LoadResult fields — Gap 2
+// ---------------------------------------------------------------------------
+
+func TestLoad_AppNameAndHost_Populated(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: myapp
+host: myhost.example.com
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, "myapp", result.AppName)
+	assert.Equal(t, "myhost.example.com", result.Host)
+}
+
+func TestLoad_Timezone_Populated(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+timezone: UTC
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, "UTC", result.Timezone)
+}
+
+func TestLoad_Timezone_Omitted(t *testing.T) {
+	t.Parallel()
+	// No timezone key — result.Timezone must be empty string, not some default.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, "", result.Timezone, "omitted timezone must be empty string")
+}
+
+func TestLoad_MissingAppName_Rejected(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+host: test
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "app_name is required")
+}
+
+func TestLoad_MissingHost_Rejected(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "host is required")
+}
+
+func TestLoad_AppNameTooLong_Rejected(t *testing.T) {
+	t.Parallel()
+	// 256 bytes — one byte over the 255-byte limit.
+	longName := strings.Repeat("a", 256)
+	data := []byte("version: 1\napp_name: " + longName + "\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "app_name exceeds maximum length")
+}
+
+func TestLoad_HostTooLong_Rejected(t *testing.T) {
+	t.Parallel()
+	// 256 bytes — one byte over the 255-byte limit.
+	longHost := strings.Repeat("h", 256)
+	data := []byte("version: 1\napp_name: test\nhost: " + longHost + "\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "host exceeds maximum length")
+}
+
+func TestLoad_TimezoneTooLong_Rejected(t *testing.T) {
+	t.Parallel()
+	// 65 bytes — one byte over the 64-byte limit.
+	longTZ := strings.Repeat("Z", 65)
+	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: " + longTZ + "\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "timezone exceeds maximum length")
+}
+
+func TestLoad_AppNameAtMaxLength_Accepted(t *testing.T) {
+	t.Parallel()
+	// 255 bytes — exactly at the limit.
+	maxName := strings.Repeat("a", 255)
+	data := []byte("version: 1\napp_name: " + maxName + "\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "255-byte app_name is exactly at the limit and must be accepted")
+	assert.Equal(t, maxName, result.AppName)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_HostAtMaxLength_Accepted(t *testing.T) {
+	t.Parallel()
+	// 255 bytes — exactly at the limit.
+	maxHost := strings.Repeat("h", 255)
+	data := []byte("version: 1\napp_name: test\nhost: " + maxHost + "\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "255-byte host is exactly at the limit and must be accepted")
+	assert.Equal(t, maxHost, result.Host)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_TimezoneAtMaxLength_Accepted(t *testing.T) {
+	t.Parallel()
+	// 64 bytes — exactly at the limit.
+	maxTZ := strings.Repeat("Z", 64)
+	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: " + maxTZ + "\noutputs:\n  c:\n    type: stdout\n")
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "64-byte timezone is exactly at the limit and must be accepted")
+	assert.Equal(t, maxTZ, result.Timezone)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// injectStringField — Gap 3 (tested indirectly via Load)
+// ---------------------------------------------------------------------------
+
+// TestLoad_InjectStringField_SyslogHostnameNotOverridden verifies that
+// when a syslog output already declares a hostname, the global host is
+// NOT injected (the per-output value is preserved).
+//
+// Note: not parallel — this test overwrites the global "syslog" factory
+// registration and must run exclusively with other syslog factory tests.
+func TestLoad_InjectStringField_SyslogHostnameNotOverridden(t *testing.T) {
+	var captured atomic.Value
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+		captured.Store(string(rawConfig))
+		return &testOutput{name: name}, nil
+	})
+
+	data := []byte(`
+version: 1
+app_name: test
+host: global-host.example.com
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: tcp
+      address: localhost:514
+      hostname: per-output-hostname
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	raw, ok := captured.Load().(string)
+	require.True(t, ok, "syslog factory must have been invoked")
+
+	// The per-output hostname must win; the global host must not appear.
+	assert.Contains(t, raw, "per-output-hostname",
+		"per-output hostname must be present in factory config")
+	assert.NotContains(t, raw, "global-host.example.com",
+		"global host must not be injected when per-output hostname is already set")
+
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// TestLoad_InjectStringField_SyslogHostnameInjected verifies that when a
+// syslog output does NOT declare a hostname, the global host value is
+// injected into the factory config.
+//
+// Note: not parallel — this test overwrites the global "syslog" factory
+// registration and must run exclusively with other syslog factory tests.
+func TestLoad_InjectStringField_SyslogHostnameInjected(t *testing.T) {
+	var captured atomic.Value
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+		captured.Store(string(rawConfig))
+		return &testOutput{name: name}, nil
+	})
+
+	data := []byte(`
+version: 1
+app_name: test
+host: injected.example.com
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: tcp
+      address: localhost:514
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	raw, ok := captured.Load().(string)
+	require.True(t, ok, "syslog factory must have been invoked")
+
+	assert.Contains(t, raw, "hostname",
+		"hostname key must be injected into syslog config")
+	assert.Contains(t, raw, "injected.example.com",
+		"global host value must appear in injected syslog config")
+
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// TestLoad_InjectStringField_NonSyslogOutputNoInjection verifies that
+// the global host is NOT injected into output types other than "syslog".
+//
+// Note: not parallel — this test overwrites the global "webhook" factory
+// registration and must run exclusively with other webhook factory tests.
+func TestLoad_InjectStringField_NonSyslogOutputNoInjection(t *testing.T) {
+	var captured atomic.Value
+	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+		captured.Store(string(rawConfig))
+		return &testOutput{name: name}, nil
+	})
+
+	data := []byte(`
+version: 1
+app_name: test
+host: global-host.example.com
+outputs:
+  alerts:
+    type: webhook
+    webhook:
+      url: "https://example.com/hook"
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	raw, _ := captured.Load().(string)
+	assert.NotContains(t, raw, "hostname",
+		"hostname must not be injected into non-syslog outputs")
+
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// TestLoad_Timezone_PassedAsOption verifies that a non-empty timezone
+// results in a WithTimezone option being added to result.Options, and
+// that omitting timezone produces no WithTimezone option.
+func TestLoad_Timezone_PassedAsOption(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		yaml     string
+		wantErr  bool
+		wantOpts int // minimum expected option count
+	}{
+		{
+			name: "timezone present adds option",
+			yaml: `
+version: 1
+app_name: test
+host: test
+timezone: Europe/London
+outputs:
+  console:
+    type: stdout
+`,
+			wantOpts: 4, // WithAppName + WithHost + WithTimezone + WithNamedOutput
+		},
+		{
+			name: "timezone omitted skips option",
+			yaml: `
+version: 1
+app_name: test
+host: test
+outputs:
+  console:
+    type: stdout
+`,
+			wantOpts: 3, // WithAppName + WithHost + WithNamedOutput
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tax := testTaxonomy(t)
+			result, err := outputconfig.Load([]byte(tt.yaml), &tax, nil)
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, len(result.Options), tt.wantOpts,
+				"got %d options, want at least %d", len(result.Options), tt.wantOpts)
+			for _, o := range result.Outputs {
+				_ = o.Output.Close()
+			}
+		})
+	}
 }

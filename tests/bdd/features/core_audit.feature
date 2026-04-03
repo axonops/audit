@@ -53,6 +53,55 @@ Feature: Core Audit Logging
     And the output should contain an event with event_type "user_create"
     And the output event timestamp should be a valid RFC3339 value
 
+  # --- Framework fields (#237) ---
+
+  Scenario: Framework fields appear in JSON output
+    Given framework fields app_name "myapp" host "prod-01" timezone "UTC"
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should contain field "app_name" with value "myapp"
+    And the output should contain field "host" with value "prod-01"
+    And the output should contain field "timezone" with value "UTC"
+
+  Scenario: PID is always present in output
+    Given a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+
+  # --- Standard field defaults (#237) ---
+
+  Scenario: Standard field default applied when event omits the field
+    Given standard field defaults:
+      | field     | value    |
+      | source_ip | 10.0.0.1 |
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value   |
+      | outcome  | success |
+      | actor_id | alice   |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "10.0.0.1"
+
+  Scenario: Per-event value overrides standard field default
+    Given standard field defaults:
+      | field     | value    |
+      | source_ip | 10.0.0.1 |
+    And a logger with stdout output
+    When I audit event "user_create" with fields:
+      | field     | value       |
+      | outcome   | success     |
+      | actor_id  | alice       |
+      | source_ip | 192.168.1.1 |
+    Then the event should be delivered successfully
+    And the output should contain field "source_ip" with value "192.168.1.1"
+
   # --- Error paths ---
 
   Scenario: Unknown event type returns error with exact message

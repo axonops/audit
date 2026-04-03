@@ -716,6 +716,54 @@ func TestGenerate_Builders(t *testing.T) {
 	require.NoError(t, parseErr, "generated source must parse as valid Go:\n%s", src)
 }
 
+func TestGenerate_Builders_StandardSetters(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
+	var buf bytes.Buffer
+	err := generate(&buf, tax, generateOptions{
+		Package:  "myapp",
+		Header:   "// test",
+		Types:    true,
+		Fields:   true,
+		Builders: true,
+	})
+	require.NoError(t, err)
+
+	src := buf.String()
+
+	// Reserved standard field setters should be generated on every
+	// builder even when the field is not declared in the taxonomy.
+	// auth_failure has actor_id and outcome as required — those should
+	// NOT get standard setters (they're constructor params).
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetSourceIP(v any)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetReason(v any)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetTargetID(v any)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetMethod(v any)")
+
+	// actor_id is required for auth_failure — no standard setter for it.
+	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetActorID(v any)")
+	// outcome is required — no standard setter.
+	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetOutcome(v any)")
+
+	// Field constants generated for all reserved standard fields.
+	assert.Contains(t, src, `FieldSourceIP`)
+	assert.Contains(t, src, `"source_ip"`)
+	assert.Contains(t, src, `FieldReason`)
+	assert.Contains(t, src, `FieldTargetID`)
+	assert.Contains(t, src, `FieldProtocol`)
+
+	// UID acronym must be uppercased correctly.
+	assert.Contains(t, src, "SetActorUID")
+	assert.Contains(t, src, "FieldActorUID")
+	assert.Contains(t, src, "SetTargetUID")
+	assert.NotContains(t, src, "ActorUid", "uid must be cased as UID")
+
+	// Verify the generated source parses as valid Go.
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "standard_setters.go", src, parser.AllErrors)
+	require.NoError(t, parseErr, "generated source with standard setters must parse")
+}
+
 func TestGenerate_Builders_Disabled(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))

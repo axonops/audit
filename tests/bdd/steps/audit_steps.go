@@ -111,6 +111,24 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			Enabled: false,
 		})
 	})
+
+	ctx.Step(`^framework fields app_name "([^"]*)" host "([^"]*)" timezone "([^"]*)"$`, func(appName, host, tz string) error {
+		tc.Options = append(tc.Options,
+			audit.WithAppName(appName),
+			audit.WithHost(host),
+			audit.WithTimezone(tz),
+		)
+		return nil
+	})
+
+	ctx.Step(`^standard field defaults:$`, func(table *godog.Table) error {
+		defaults := make(map[string]string, len(table.Rows)-1)
+		for _, row := range table.Rows[1:] {
+			defaults[row.Cells[0].Value] = row.Cells[1].Value
+		}
+		tc.Options = append(tc.Options, audit.WithStandardFieldDefaults(defaults))
+		return nil
+	})
 }
 
 func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

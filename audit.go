@@ -221,9 +221,13 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
 
-	fields = l.applyStandardFieldDefaults(fields)
+	// Copy fields and merge defaults in one pass to avoid double
+	// allocation. The copy isolates the caller's map from the drain
+	// goroutine; defaults are applied into the copy so that they
+	// satisfy required: true validation without mutating the original.
+	copied := l.copyFieldsWithDefaults(fields)
 
-	if err := l.validateFields(eventType, def, fields); err != nil {
+	if err := l.validateFields(eventType, def, copied); err != nil {
 		if l.metrics != nil {
 			l.metrics.RecordValidationError(eventType)
 		}
@@ -242,7 +246,7 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		entry = new(auditEntry)
 	}
 	entry.eventType = eventType
-	entry.fields = copyFields(fields)
+	entry.fields = copied
 	return l.enqueue(entry)
 }
 
@@ -852,27 +856,29 @@ func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
 	}
 }
 
-// validateFields checks that all required fields are present and no
-// unknown fields are included (behavior depends on validation mode).
-// applyStandardFieldDefaults merges deployment-wide defaults into the
-// event fields. Per-event values take precedence (key existence check,
-// not zero value — an empty string counts as "set"). Returns the
-// possibly-initialised fields map.
-func (l *Logger) applyStandardFieldDefaults(fields Fields) Fields {
-	if len(l.standardFieldDefaults) == 0 {
-		return fields
+// copyFieldsWithDefaults creates a shallow copy of fields and merges
+// standard field defaults in a single pass. Per-event values take
+// precedence (key existence, not zero value). This avoids the double
+// allocation that would result from separate copy + merge steps.
+func (l *Logger) copyFieldsWithDefaults(fields Fields) Fields {
+	size := len(fields) + len(l.standardFieldDefaults)
+	if size == 0 {
+		return nil
 	}
-	if fields == nil {
-		fields = make(Fields, len(l.standardFieldDefaults))
+	cp := make(Fields, size)
+	for k, v := range fields {
+		cp[k] = v
 	}
 	for k, v := range l.standardFieldDefaults {
-		if _, exists := fields[k]; !exists {
-			fields[k] = v
+		if _, exists := cp[k]; !exists {
+			cp[k] = v
 		}
 	}
-	return fields
+	return cp
 }
 
+// validateFields checks that all required fields are present and no
+// unknown fields are included (behavior depends on validation mode).
 func (l *Logger) validateFields(eventType string, def *EventDef, fields Fields) error {
 	if err := checkRequiredFields(eventType, def, fields); err != nil {
 		return err

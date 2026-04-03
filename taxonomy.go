@@ -455,15 +455,15 @@ func checkReservedFieldNames(t Taxonomy) []string {
 	return errs
 }
 
-// reservedStandardFieldNames returns the well-known audit field names
+// ReservedStandardFieldNames returns the well-known audit field names
 // that are always available on any event without explicit taxonomy
 // declaration. These fields are automatically accepted by the
 // unknown-field check and have standard CEF extension key mappings.
-//
-// Consumers MAY declare a reserved standard field in their taxonomy to
-// make it required (constructor parameter in codegen) or to attach
-// sensitivity labels. Bare declarations (optional, no labels) are
-// rejected because they are redundant.
+// The returned slice is a fresh copy; callers may modify it safely.
+func ReservedStandardFieldNames() []string {
+	return reservedStandardFieldNames()
+}
+
 func reservedStandardFieldNames() []string {
 	return []string{
 		"action",

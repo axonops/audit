@@ -509,6 +509,52 @@ func TestSyslogOutput_Hostname_DefaultFallback(t *testing.T) {
 	assert.NotEmpty(t, msgs[0])
 }
 
+func TestSyslogOutput_Hostname_Validation_Invalid(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		hostname string
+		wantErr  string
+	}{
+		{"space", "my host", "invalid byte 0x20"},
+		{"newline", "host\ninjection", "invalid byte 0x0a"},
+		{"carriage_return", "host\rinjection", "invalid byte 0x0d"},
+		{"null_byte", "host\x00evil", "invalid byte 0x00"},
+		{"tab", "host\tevil", "invalid byte 0x09"},
+		{"too_long", strings.Repeat("a", 256), "exceeds RFC 5424 maximum"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Invalid hostnames are rejected during config validation
+			// before any connection attempt — no server needed.
+			_, err := syslog.New(&syslog.Config{
+				Network:  "tcp",
+				Address:  "localhost:1",
+				Hostname: tc.hostname,
+			}, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+func TestSyslogOutput_Hostname_Validation_Valid(t *testing.T) {
+	t.Parallel()
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	for _, hostname := range []string{"!", "~", "prod-01.example.com"} {
+		out, err := syslog.New(&syslog.Config{
+			Network:  "tcp",
+			Address:  srv.addr(),
+			Hostname: hostname,
+		}, nil)
+		require.NoError(t, err, "valid hostname %q should not cause an error", hostname)
+		_ = out.Close()
+	}
+}
+
 func TestSyslogOutput_WriteMultiple(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()

@@ -167,7 +167,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	}
 
 	// Propagate framework fields to all formatters that support them.
-	l.setFrameworkFieldsOnFormatters()
+	l.propagateFrameworkFields()
 
 	if !cfg.Enabled {
 		return l, nil
@@ -744,9 +744,10 @@ func (l *Logger) prepareOutputEntries() {
 	}
 }
 
-// setFrameworkFieldsOnFormatters propagates logger-wide framework
-// metadata to all formatters that implement [FrameworkFieldSetter].
-func (l *Logger) setFrameworkFieldsOnFormatters() {
+// propagateFrameworkFields propagates logger-wide framework
+// metadata to all formatters that implement [FrameworkFieldSetter]
+// and all outputs that implement [FrameworkFieldReceiver].
+func (l *Logger) propagateFrameworkFields() {
 	set := func(f Formatter) {
 		if setter, ok := f.(FrameworkFieldSetter); ok {
 			setter.SetFrameworkFields(l.appName, l.host, l.timezone, l.pid)
@@ -756,6 +757,9 @@ func (l *Logger) setFrameworkFieldsOnFormatters() {
 	for _, oe := range l.entries {
 		if oe.formatter != nil {
 			set(oe.formatter)
+		}
+		if recv, ok := oe.output.(FrameworkFieldReceiver); ok {
+			recv.SetFrameworkFields(l.appName, l.host, l.pid)
 		}
 	}
 }

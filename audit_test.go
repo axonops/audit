@@ -1952,7 +1952,7 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// DeliveryReporter — writeToOutput skips core metrics when selfReports=true
+// DeliveryReporter — recordWrite skips core metrics when selfReports=true
 // ---------------------------------------------------------------------------
 
 // deliveryReporterOutput is a mock output that implements DeliveryReporter.

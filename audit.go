@@ -618,11 +618,13 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 			})
 		}
 
+		var writeErr error
 		if oe.metadataWriter != nil {
-			l.writeToOutputWithMetadata(oe.metadataWriter, oe.output, data, meta)
+			writeErr = oe.metadataWriter.WriteWithMetadata(data, meta)
 		} else {
-			l.writeToOutput(oe.output, data, entry.eventType)
+			writeErr = oe.output.Write(data)
 		}
+		l.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
 	}
 }
 
@@ -727,6 +729,9 @@ func (l *Logger) prepareOutputEntries() {
 	for _, oe := range l.entries {
 		if mw, ok := oe.output.(MetadataWriter); ok {
 			oe.metadataWriter = mw
+		}
+		if dr, ok := oe.output.(DeliveryReporter); ok {
+			oe.selfReports = dr.ReportsDelivery()
 		}
 		if oe.excludedLabels != nil {
 			oe.formatOpts = &FormatOptions{
@@ -842,54 +847,24 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 	return data
 }
 
-// writeToOutputWithMetadata sends data with metadata to a single output
-// that implements [MetadataWriter] and records metrics. Used when the
-// output needs structured event context (e.g., Loki labels).
-// Parallels writeToOutput — changes to error handling or metrics must
-// be applied to both. Tracked for unification in issue #252.
-func (l *Logger) writeToOutputWithMetadata(mw MetadataWriter, o Output, data []byte, meta EventMetadata) {
-	selfReports := false
-	if dr, ok := o.(DeliveryReporter); ok {
-		selfReports = dr.ReportsDelivery()
-	}
-
-	if writeErr := mw.WriteWithMetadata(data, meta); writeErr != nil {
+// recordWrite handles post-write metrics and error logging for both
+// the plain Write and MetadataWriter paths. Called once per output per
+// event with the result of the write call. No closures, no interface
+// dispatch — all parameters are concrete values.
+func (l *Logger) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
+	if writeErr != nil {
 		slog.Error("audit: output write failed",
-			"output", o.Name(),
-			"event_type", meta.EventType,
-			"error", writeErr)
-		if l.metrics != nil && !selfReports {
-			l.metrics.RecordOutputError(o.Name())
-			l.metrics.RecordEvent(o.Name(), "error")
-		}
-		return
-	}
-	if l.metrics != nil && !selfReports {
-		l.metrics.RecordEvent(o.Name(), "success")
-	}
-}
-
-// writeToOutput sends data to a single output and records metrics.
-func (l *Logger) writeToOutput(o Output, data []byte, eventType string) {
-	// Check if this output reports its own delivery metrics.
-	selfReports := false
-	if dr, ok := o.(DeliveryReporter); ok {
-		selfReports = dr.ReportsDelivery()
-	}
-
-	if writeErr := o.Write(data); writeErr != nil {
-		slog.Error("audit: output write failed",
-			"output", o.Name(),
+			"output", outputName,
 			"event_type", eventType,
 			"error", writeErr)
 		if l.metrics != nil && !selfReports {
-			l.metrics.RecordOutputError(o.Name())
-			l.metrics.RecordEvent(o.Name(), "error")
+			l.metrics.RecordOutputError(outputName)
+			l.metrics.RecordEvent(outputName, "error")
 		}
 		return
 	}
 	if l.metrics != nil && !selfReports {
-		l.metrics.RecordEvent(o.Name(), "success")
+		l.metrics.RecordEvent(outputName, "success")
 	}
 }
 

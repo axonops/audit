@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ssrf_test
+package audit_test
 
 import (
 	"net"
 	"testing"
 
-	"github.com/axonops/go-audit/webhook/internal/ssrf"
+	audit "github.com/axonops/go-audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckIP_Blocked(t *testing.T) {
+func TestCheckSSRFIP_Blocked(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		ip   string
@@ -48,15 +49,17 @@ func TestCheckIP_Blocked(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ip := net.ParseIP(tt.ip)
 			require.NotNil(t, ip, "failed to parse %q", tt.ip)
-			err := ssrf.CheckIP(ip, false)
+			err := audit.CheckSSRFIP(ip, false)
 			assert.Error(t, err, "IP %s should be blocked", tt.ip)
 		})
 	}
 }
 
-func TestCheckIP_Allowed(t *testing.T) {
+func TestCheckSSRFIP_Allowed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		ip   string
@@ -69,15 +72,17 @@ func TestCheckIP_Allowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ip := net.ParseIP(tt.ip)
 			require.NotNil(t, ip, "failed to parse %q", tt.ip)
-			err := ssrf.CheckIP(ip, false)
+			err := audit.CheckSSRFIP(ip, false)
 			assert.NoError(t, err, "IP %s should be allowed", tt.ip)
 		})
 	}
 }
 
-func TestCheckIP_AllowPrivateRanges(t *testing.T) {
+func TestCheckSSRFIP_AllowPrivateRanges(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		ip      string
@@ -96,9 +101,10 @@ func TestCheckIP_AllowPrivateRanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ip := net.ParseIP(tt.ip)
 			require.NotNil(t, ip)
-			err := ssrf.CheckIP(ip, true)
+			err := audit.CheckSSRFIP(ip, true)
 			if tt.blocked {
 				assert.Error(t, err, "%s should be blocked", tt.ip)
 			} else {
@@ -108,7 +114,8 @@ func TestCheckIP_AllowPrivateRanges(t *testing.T) {
 	}
 }
 
-func TestCheckIP_IPv4MappedIPv6(t *testing.T) {
+func TestCheckSSRFIP_IPv4MappedIPv6(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		ip      string
@@ -122,9 +129,10 @@ func TestCheckIP_IPv4MappedIPv6(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ip := net.ParseIP(tt.ip)
 			require.NotNil(t, ip)
-			err := ssrf.CheckIP(ip, false)
+			err := audit.CheckSSRFIP(ip, false)
 			if tt.blocked {
 				assert.Error(t, err, "%s should be blocked", tt.ip)
 			} else {
@@ -134,27 +142,29 @@ func TestCheckIP_IPv4MappedIPv6(t *testing.T) {
 	}
 }
 
-func TestCheckAddress(t *testing.T) {
-	err := ssrf.CheckAddress("127.0.0.1:443", false)
+func TestCheckSSRFAddress(t *testing.T) {
+	t.Parallel()
+	err := audit.CheckSSRFAddress("127.0.0.1:443", false)
 	assert.Error(t, err, "loopback should be blocked")
 
-	err = ssrf.CheckAddress("8.8.8.8:443", false)
+	err = audit.CheckSSRFAddress("8.8.8.8:443", false)
 	assert.NoError(t, err, "public IP should be allowed")
 }
 
-func TestCheckAddress_Invalid(t *testing.T) {
-	err := ssrf.CheckAddress("not-valid", false)
+func TestCheckSSRFAddress_Invalid(t *testing.T) {
+	t.Parallel()
+	err := audit.CheckSSRFAddress("not-valid", false)
 	assert.Error(t, err, "invalid address should error")
 
-	err = ssrf.CheckAddress("not-an-ip:443", false)
+	err = audit.CheckSSRFAddress("not-an-ip:443", false)
 	assert.Error(t, err, "non-IP host should error")
 }
 
-func TestNewDialControl_ReturnsFunction(t *testing.T) {
-	// Verify the returned function has the correct signature.
-	fn := ssrf.NewDialControl()
+func TestNewSSRFDialControl_ReturnsFunction(t *testing.T) {
+	t.Parallel()
+	fn := audit.NewSSRFDialControl()
 	require.NotNil(t, fn)
 
-	fn2 := ssrf.NewDialControl(ssrf.AllowPrivateRanges())
+	fn2 := audit.NewSSRFDialControl(audit.AllowPrivateRanges())
 	require.NotNil(t, fn2)
 }

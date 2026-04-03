@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - JSON post-serialisation append reduced from 6 to 1 allocs/op (#229)
 - HMAC drain-loop: hash reuse via Reset() + pre-allocated buffers, 8 → 1 extra alloc per event (#230)
+- SSRF dial control extracted from webhook/internal/ssrf to core audit package (#256)
 
 ### Added
 

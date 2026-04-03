@@ -39,7 +39,6 @@ import (
 	"time"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/webhook/internal/ssrf"
 )
 
 // Compile-time assertions.
@@ -82,7 +81,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 //
 // # SSRF Prevention
 //
-// The HTTP client uses [internal/ssrf.NewDialControl] to block
+// The HTTP client uses [audit.NewSSRFDialControl] to block
 // connections to private, loopback, link-local, and cloud metadata
 // addresses. Redirects are rejected entirely. Keep-alives are disabled
 // to force fresh DNS resolution per request, preventing DNS rebinding.
@@ -129,15 +128,15 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 		return nil, fmt.Errorf("audit: webhook tls: %w", err)
 	}
 
-	var ssrfOpts []ssrf.Option
+	var ssrfOpts []audit.SSRFOption
 	if cfg.AllowPrivateRanges {
-		ssrfOpts = append(ssrfOpts, ssrf.AllowPrivateRanges())
+		ssrfOpts = append(ssrfOpts, audit.AllowPrivateRanges())
 	}
 
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout: 30 * time.Second,
-			Control: ssrf.NewDialControl(ssrfOpts...),
+			Control: audit.NewSSRFDialControl(ssrfOpts...),
 		}).DialContext,
 		TLSClientConfig:     tlsCfg,
 		DisableKeepAlives:   true, // force fresh dial per request (DNS rebinding)

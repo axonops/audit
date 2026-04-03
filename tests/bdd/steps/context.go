@@ -66,6 +66,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	CaptureOutput  *captureOutput            // raw event bytes for HMAC verification
 	CaptureOutputs map[string]*captureOutput // named outputs for multi-output HMAC tests
 
+	// MetadataWriter capture.
+	MetadataMock *MetadataWriterMock
+
 	// Metrics capture.
 	MockMetrics    *MockMetrics
 	WebhookMetrics *MockWebhookMetrics
@@ -179,4 +182,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSensitivitySteps(ctx, tc)
 	registerBuilderSteps(ctx, tc)
 	registerHMACSteps(ctx, tc)
+	registerMetadataWriterSteps(ctx, tc)
 }

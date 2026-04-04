@@ -193,7 +193,6 @@ func TestBuildPayload_StaticLabels(t *testing.T) {
 	require.NoError(t, json.Unmarshal(payload, &p))
 	require.Len(t, p.Streams, 1)
 	assert.Equal(t, "prod", p.Streams[0].Stream["environment"])
-	assert.Equal(t, "job", "job") // static label key
 	assert.Equal(t, "audit", p.Streams[0].Stream["job"])
 }
 

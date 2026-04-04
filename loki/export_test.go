@@ -44,21 +44,18 @@ type TestPayloadInput struct { //nolint:govet // fieldalignment: readability pre
 	ExcludeSeverity  bool
 }
 
-// BuildTestPayload constructs a Loki push payload from test inputs.
-// It creates a temporary Output, sets framework fields, groups events,
-// builds the payload, and returns the raw (uncompressed) JSON bytes.
-func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
-	t.Helper()
-
+// buildTestConfig creates a Config from test input parameters.
+func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // hugeParam: test helper
 	cfg := &Config{
 		URL:                "http://localhost:3100/loki/api/v1/push",
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
 		BatchSize:          1000,
-		FlushInterval:      10000000000, // 10s
-		Timeout:            5000000000,  // 5s
+		FlushInterval:      10 * 1000000000, // 10s in nanoseconds
+		Timeout:            5 * 1000000000,  // 5s in nanoseconds
 		MaxRetries:         1,
 		BufferSize:         1000,
+		Compress:           input.Compress,
 	}
 	if input.StaticLabels != nil {
 		cfg.Labels.Static = input.StaticLabels
@@ -69,12 +66,19 @@ func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:go
 	if input.ExcludeSeverity {
 		cfg.Labels.Dynamic.ExcludeSeverity = true
 	}
+	return cfg
+}
 
+// buildTestOutput creates an Output from test input and returns it
+// along with a batch of lokiEntry values.
+func buildTestOutput(t *testing.T, input TestPayloadInput) (*Output, []lokiEntry) { //nolint:gocritic // hugeParam: test helper
+	t.Helper()
+
+	cfg := buildTestConfig(input)
 	o, err := New(cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	defer func() { _ = o.Close() }()
 
 	o.SetFrameworkFields(input.AppName, input.Host, input.PID)
 
@@ -82,6 +86,17 @@ func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:go
 	for i, e := range input.Events {
 		batch[i] = lokiEntry{data: e.Data, metadata: e.Meta}
 	}
+	return o, batch
+}
+
+// BuildTestPayload constructs a Loki push payload from test inputs.
+// It creates a temporary Output, sets framework fields, groups events,
+// builds the payload, and returns the raw (uncompressed) JSON bytes.
+func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
+	t.Helper()
+
+	o, batch := buildTestOutput(t, input)
+	defer func() { _ = o.Close() }()
 
 	o.groupByStream(batch)
 	o.buildPayload()
@@ -93,30 +108,8 @@ func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:go
 func BuildTestCompressedPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
 	t.Helper()
 
-	cfg := &Config{
-		URL:                "http://localhost:3100/loki/api/v1/push",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1000,
-		FlushInterval:      10000000000,
-		Timeout:            5000000000,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Compress:           true,
-	}
-
-	o, err := New(cfg, nil, nil)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
+	o, batch := buildTestOutput(t, input)
 	defer func() { _ = o.Close() }()
-
-	o.SetFrameworkFields(input.AppName, input.Host, input.PID)
-
-	batch := make([]lokiEntry, len(input.Events))
-	for i, e := range input.Events {
-		batch[i] = lokiEntry{data: e.Data, metadata: e.Meta}
-	}
 
 	o.groupByStream(batch)
 	o.buildPayload()

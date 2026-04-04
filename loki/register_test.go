@@ -275,10 +275,9 @@ func TestLokiFactory_StaticLabels_InvalidName(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1 sentinel — valid configs reach "not yet implemented"
+// Full output creation
 // ---------------------------------------------------------------------------
 
-// TestLokiFactory_ValidConfig_ReturnsNotYetImplemented documents the current
 // TestLokiFactory_ValidConfig_ReturnsOutput verifies that a valid
 // config creates a working Output that can be closed.
 func TestLokiFactory_ValidConfig_ReturnsOutput(t *testing.T) {
@@ -354,7 +353,7 @@ func TestLokiFactory_NewFactory_NilMetrics(t *testing.T) {
 	//
 	// We exercise this path indirectly: the default factory (registered by
 	// init) uses nil lokiMetrics internally. A valid config must still reach
-	// the Phase 1 sentinel rather than panicking on nil metrics.
+	// the output rather than panicking on nil metrics.
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 

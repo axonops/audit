@@ -532,3 +532,64 @@ func TestLoki_UncompressedDelivery(t *testing.T) {
 	_, found := findLogLine(result, m)
 	assert.True(t, found, "uncompressed event should be accepted by real Loki")
 }
+
+// ---------------------------------------------------------------------------
+// Duplicate timestamps (monotonic enforcement)
+// ---------------------------------------------------------------------------
+
+func TestLoki_DuplicateTimestamps(t *testing.T) {
+	out := newLokiOutput(t, func(c *loki.Config) {
+		c.Labels.Static = map[string]string{"job": "timestamp_test"}
+	})
+	out.SetFrameworkFields("tsapp", "ts-host", 1)
+
+	m := marker(t)
+	// Send 5 events with the exact same timestamp — the library should
+	// bump each by 1ns to ensure monotonic ordering within the stream.
+	ts := time.Now()
+	for i := 0; i < 5; i++ {
+		require.NoError(t, out.WriteWithMetadata(
+			[]byte(fmt.Sprintf(`{"n":%d,"marker":"%s"}`, i, m)),
+			audit.EventMetadata{EventType: "ts_event", Severity: 6, Timestamp: ts},
+		))
+	}
+	require.NoError(t, out.Close())
+
+	result := waitForLoki(t, fmt.Sprintf(`{job="timestamp_test"} |= "%s"`, m), 5, 15*time.Second)
+	assert.Equal(t, 5, countLogLines(result),
+		"all 5 events with duplicate timestamps should be accepted by Loki")
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic label exclusion
+// ---------------------------------------------------------------------------
+
+func TestLoki_DynamicLabelExclusion(t *testing.T) {
+	out := newLokiOutput(t, func(c *loki.Config) {
+		c.Labels.Static = map[string]string{"job": "exclusion_test"}
+		c.Labels.Dynamic.ExcludeSeverity = true
+		c.Labels.Dynamic.ExcludePID = true
+	})
+	out.SetFrameworkFields("exapp", "ex-host", 42)
+
+	m := marker(t)
+	require.NoError(t, out.WriteWithMetadata(
+		[]byte(fmt.Sprintf(`{"marker":"%s"}`, m)),
+		audit.EventMetadata{EventType: "ex_event", Severity: 8, Category: "security", Timestamp: time.Now()},
+	))
+	require.NoError(t, out.Close())
+
+	result := waitForLoki(t, fmt.Sprintf(`{job="exclusion_test",event_type="ex_event"} |= "%s"`, m), 1, 15*time.Second)
+	require.NotEmpty(t, result.Data.Result)
+
+	stream := result.Data.Result[0].Stream
+	assert.Equal(t, "ex_event", stream["event_type"], "event_type should be present")
+	assert.Equal(t, "security", stream["event_category"], "event_category should be present")
+	assert.Equal(t, "exapp", stream["app_name"], "app_name should be present")
+
+	// Excluded labels should NOT be present.
+	_, hasSeverity := stream["severity"]
+	assert.False(t, hasSeverity, "severity should be excluded from labels")
+	_, hasPID := stream["pid"]
+	assert.False(t, hasPID, "pid should be excluded from labels")
+}

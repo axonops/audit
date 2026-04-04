@@ -1,0 +1,105 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Example 13: Loki Output
+//
+// Demonstrates sending audit events to Grafana Loki with stream labels,
+// gzip compression, and multi-tenant support.
+//
+// Prerequisites:
+//
+//	docker run -d --name loki -p 3100:3100 grafana/loki:3.0.0
+//
+// Run:
+//
+//	go run .
+//
+// Query events in Loki:
+//
+//	curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .
+package main
+
+import (
+	_ "embed"
+	"fmt"
+	"log"
+	"time"
+
+	audit "github.com/axonops/go-audit"
+	_ "github.com/axonops/go-audit/loki" // register "loki" output type
+	"github.com/axonops/go-audit/outputconfig"
+)
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+//go:embed outputs.yaml
+var outputsYAML []byte
+
+func main() {
+	// Parse taxonomy.
+	taxonomy, err := audit.ParseTaxonomyYAML(taxonomyYAML)
+	if err != nil {
+		log.Fatalf("parse taxonomy: %v", err)
+	}
+
+	// Load output configuration — creates the Loki output from YAML.
+	result, err := outputconfig.Load(outputsYAML, &taxonomy, nil)
+	if err != nil {
+		log.Fatalf("load outputs: %v", err)
+	}
+
+	// Create the logger with the Loki output.
+	logger, err := audit.NewLogger(
+		result.Config,
+		append(result.Options, audit.WithTaxonomy(taxonomy))...,
+	)
+	if err != nil {
+		log.Fatalf("create logger: %v", err)
+	}
+	defer func() {
+		if err := logger.Close(); err != nil {
+			log.Printf("close logger: %v", err)
+		}
+	}()
+
+	// Audit some events — these will appear in Loki with stream labels.
+	type auditEvent struct {
+		fields    audit.Fields
+		eventType string
+	}
+	events := []auditEvent{
+		{audit.Fields{"outcome": "success", "actor_id": "alice", "resource_id": "user-42"}, "user_create"},
+		{audit.Fields{"outcome": "success", "actor_id": "bob", "resource_id": "user-43"}, "user_create"},
+		{audit.Fields{"outcome": "failure", "actor_id": "mallory", "reason": "invalid_password"}, "auth_failure"},
+		{audit.Fields{"outcome": "failure", "actor_id": "mallory", "resource": "admin_panel"}, "permission_denied"},
+		{audit.Fields{"outcome": "success", "actor_id": "alice", "resource_id": "user-42"}, "user_update"},
+	}
+
+	for _, e := range events {
+		if err := logger.AuditEvent(audit.NewEvent(e.eventType, e.fields)); err != nil {
+			log.Printf("audit %s: %v", e.eventType, err)
+			continue
+		}
+		fmt.Printf("Audited: %s by %s\n", e.eventType, e.fields["actor_id"])
+	}
+
+	// Wait for the flush interval to deliver the batch.
+	fmt.Println("\nWaiting for Loki delivery...")
+	time.Sleep(2 * time.Second)
+
+	fmt.Println("Done. Query your events:")
+	fmt.Println(`  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .`)
+	fmt.Println(`  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .`)
+}

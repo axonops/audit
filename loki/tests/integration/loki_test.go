@@ -152,6 +152,8 @@ func countLogLines(result lokiQueryResult) int {
 func waitForLoki(t *testing.T, logql string, n int, timeout time.Duration) lokiQueryResult {
 	t.Helper()
 	deadline := time.After(timeout)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
 	for {
 		result := queryLoki(t, logql)
 		if countLogLines(result) >= n {
@@ -161,7 +163,7 @@ func waitForLoki(t *testing.T, logql string, n int, timeout time.Duration) lokiQ
 		case <-deadline:
 			t.Fatalf("timed out waiting for %d log lines from Loki (query: %s, got: %d)",
 				n, logql, countLogLines(result))
-		case <-time.After(500 * time.Millisecond):
+		case <-tick.C:
 		}
 	}
 }
@@ -403,16 +405,18 @@ func TestLoki_MultiTenancy(t *testing.T) {
 
 	// Wait for tenant A's event.
 	var resultA lokiQueryResult
-	deadline := time.After(15 * time.Second)
+	deadlineA := time.After(15 * time.Second)
+	tickA := time.NewTicker(500 * time.Millisecond)
+	defer tickA.Stop()
 	for {
 		resultA = queryWithTenant(tenantA, fmt.Sprintf(`{job="tenant_test"} |= "%s"`, m))
 		if countLogLines(resultA) >= 1 {
 			break
 		}
 		select {
-		case <-deadline:
+		case <-deadlineA:
 			t.Fatal("timed out waiting for tenant A event")
-		case <-time.After(500 * time.Millisecond):
+		case <-tickA.C:
 		}
 	}
 
@@ -426,16 +430,18 @@ func TestLoki_MultiTenancy(t *testing.T) {
 
 	// Tenant B should see its own event.
 	var resultB lokiQueryResult
-	deadline = time.After(15 * time.Second)
+	deadlineB := time.After(15 * time.Second)
+	tickB := time.NewTicker(500 * time.Millisecond)
+	defer tickB.Stop()
 	for {
 		resultB = queryWithTenant(tenantB, fmt.Sprintf(`{job="tenant_test"} |= "%s"`, m))
 		if countLogLines(resultB) >= 1 {
 			break
 		}
 		select {
-		case <-deadline:
+		case <-deadlineB:
 			t.Fatal("timed out waiting for tenant B event")
-		case <-time.After(500 * time.Millisecond):
+		case <-tickB.C:
 		}
 	}
 

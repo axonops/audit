@@ -211,7 +211,7 @@ Every output has these fields (plus the optional `hmac:` block):
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `type` | Yes | Output type: `"stdout"`, `"file"`, `"syslog"`, or `"webhook"` |
+| `type` | Yes | Output type: `"stdout"`, `"file"`, `"syslog"`, `"webhook"`, or `"loki"` |
 | `enabled` | No | `true` (default) or `false`. Disabled outputs are skipped. |
 | `[type_name]` | Depends | Type-specific config block. Key must match `type`. Not needed for `stdout`. |
 | `formatter` | No | Per-output formatter override. Uses `default_formatter` if omitted. |
@@ -357,6 +357,33 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
 
+## 🔶 Loki Output Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `url` | (required) | Full Loki push API endpoint. MUST be `https://` unless `allow_insecure_http` is set. Include the path: `/loki/api/v1/push`. |
+| `basic_auth.username` | — | HTTP basic auth username. MUST NOT be set alongside `bearer_token`. |
+| `basic_auth.password` | — | HTTP basic auth password. |
+| `bearer_token` | — | Sets `Authorization: Bearer <token>`. MUST NOT be set alongside `basic_auth`. |
+| `tenant_id` | — | Sets `X-Scope-OrgID` header for Loki multi-tenancy. |
+| `headers` | — | Custom HTTP headers. MUST NOT include `Authorization`, `X-Scope-OrgID`, `Content-Type`, `Content-Encoding`, or `Host`. |
+| `labels.static` | — | Constant labels on every stream. Keys MUST match `[a-zA-Z_][a-zA-Z0-9_]*`. Values MUST NOT be empty or contain control characters. |
+| `labels.dynamic` | all included | Per-event label toggles. Set to `false` to exclude. Valid keys: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity`. |
+| `gzip` | `true` | Gzip compress push request bodies. Note: YAML key is `gzip`, not `compress`. |
+| `batch_size` | `100` | Events per push. Maximum: 10,000. |
+| `max_batch_bytes` | `1048576` | Max uncompressed payload bytes (1 MiB). Min: 1,024. Max: 10,485,760 (10 MiB). |
+| `flush_interval` | `"5s"` | Time-based flush trigger. Min: `"100ms"`. Max: `"5m"`. |
+| `timeout` | `"10s"` | HTTP request timeout. Min: `"1s"`. Max: `"5m"`. |
+| `max_retries` | `3` | Retry attempts on 429/5xx with exponential backoff. Max: 20. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Events dropped when full. Min: 100. Max: 1,000,000. |
+| `tls_ca` | — | CA certificate path for TLS verification. |
+| `tls_cert` | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
+| `tls_key` | — | Client key path for mTLS. MUST be set together with `tls_cert`. |
+| `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls_policy.allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | `false` | Allow `http://` URLs. MUST NOT be `true` in production. |
+| `allow_private_ranges` | `false` | Allow private/loopback IP ranges. Disables SSRF protection. |
+
 ## 🌍 Environment Variable Substitution
 
 Values support `${VAR}` and `${VAR:-default}` syntax:
@@ -381,6 +408,7 @@ import (
     _ "github.com/axonops/go-audit/file"
     _ "github.com/axonops/go-audit/syslog"
     _ "github.com/axonops/go-audit/webhook"
+    _ "github.com/axonops/go-audit/loki"
 )
 ```
 

@@ -1,0 +1,410 @@
+// Copyright 2026 AxonOps Limited.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package steps
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/cucumber/godog"
+
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/loki"
+)
+
+// MockLokiMetrics captures Loki-specific metric calls for BDD assertions.
+type MockLokiMetrics struct {
+	mu      sync.Mutex
+	flushes int
+	drops   int
+}
+
+// RecordLokiDrop records a drop event.
+func (m *MockLokiMetrics) RecordLokiDrop() {
+	m.mu.Lock()
+	m.drops++
+	m.mu.Unlock()
+}
+
+// RecordLokiFlush records a flush event.
+func (m *MockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) {
+	m.mu.Lock()
+	m.flushes++
+	m.mu.Unlock()
+}
+
+func (m *MockLokiMetrics) flushCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.flushes
+}
+
+func (m *MockLokiMetrics) dropCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.drops
+}
+
+// localLokiReceiver is an httptest.Server that simulates Loki for
+// retry, SSRF, and metrics BDD scenarios.
+type localLokiReceiver struct {
+	server    *httptest.Server
+	status    atomic.Int32
+	pushCount atomic.Int32
+	redirect  bool
+}
+
+func newLocalLokiReceiver(status int) *localLokiReceiver {
+	r := &localLokiReceiver{}
+	r.status.Store(int32(status)) //nolint:gosec // G115: test code, HTTP status codes fit int32
+	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if r.redirect {
+			http.Redirect(w, req, "http://evil.example.com/", http.StatusFound)
+			return
+		}
+		// Drain body to prevent connection leak.
+		_, _ = io.Copy(io.Discard, req.Body)
+		_ = req.Body.Close()
+		r.pushCount.Add(1)
+		w.WriteHeader(int(r.status.Load()))
+	}))
+	return r
+}
+
+func newRedirectLokiReceiver() *localLokiReceiver {
+	r := &localLokiReceiver{redirect: true}
+	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "http://evil.example.com/", http.StatusFound)
+	}))
+	return r
+}
+
+// registerLokiReceiverSteps registers steps for local Loki receiver scenarios.
+func registerLokiReceiverSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiReceiverGivenSteps(ctx, tc)
+	registerLokiReceiverThenSteps(ctx, tc)
+}
+
+func registerLokiReceiverGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiReceiverSetupSteps(ctx, tc)
+	registerLokiReceiverLoggerSteps(ctx, tc)
+}
+
+func registerLokiReceiverSetupSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a local Loki receiver returning status (\d+)$`, func(status int) error {
+		r := newLocalLokiReceiver(status)
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.server.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a local Loki receiver accepting pushes$`, func() error {
+		r := newLocalLokiReceiver(http.StatusNoContent)
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.server.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a local Loki receiver configured to redirect$`, func() error {
+		r := newRedirectLokiReceiver()
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.server.Close() })
+		return nil
+	})
+
+	ctx.Step(`^the local Loki receiver is reconfigured to return status (\d+)$`, func(status int) error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		r.status.Store(int32(status)) //nolint:gosec // G115: test code, HTTP status codes fit int32
+		return nil
+	})
+
+	ctx.Step(`^mock loki metrics are configured$`, func() error {
+		tc.LokiMetrics = &MockLokiMetrics{}
+		return nil
+	})
+}
+
+func registerLokiReceiverLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiReceiverLoggerRetrySteps(ctx, tc)
+	registerLokiReceiverLoggerSSRFSteps(ctx, tc)
+}
+
+func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with loki output to the local receiver with max retries (\d+)$`, func(retries int) error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+			MaxRetries: retries,
+			BatchSize:  1,
+			Compress:   true,
+		})
+	})
+
+}
+
+func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^a logger with loki output to the local Loki receiver without AllowPrivateRanges$`, func() error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		cfg := &loki.Config{
+			URL:                r.server.URL + "/loki/api/v1/push",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: false, // SSRF blocks localhost
+			BatchSize:          1,
+			MaxRetries:         1,
+			FlushInterval:      200 * time.Millisecond,
+			Timeout:            5 * time.Second,
+			BufferSize:         100,
+			Compress:           true,
+		}
+		return createLokiLoggerFromConfig(tc, cfg)
+	})
+
+	ctx.Step(`^a logger with loki output to the local Loki receiver with AllowPrivateRanges$`, func() error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+			BatchSize: 1,
+			Compress:  true,
+		})
+	})
+
+	ctx.Step(`^a logger with loki output to the local Loki receiver with metrics$`, func() error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		return createLokiLoggerWithReceiverAndMetrics(tc, r, &loki.Config{
+			BatchSize: 1,
+			Compress:  true,
+		})
+	})
+
+	ctx.Step(`^a logger with loki output to the redirecting Loki receiver with metrics$`, func() error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		return createLokiLoggerWithReceiverAndMetrics(tc, r, &loki.Config{
+			BatchSize:  1,
+			MaxRetries: 1,
+			Compress:   true,
+		})
+	})
+}
+
+func registerLokiReceiverThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiReceiverCountSteps(ctx, tc)
+	registerLokiReceiverMetricSteps(ctx, tc)
+}
+
+func registerLokiReceiverCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the local Loki receiver should have at least (\d+) push(?:es)? within (\d+) seconds$`,
+		func(n, secs int) error {
+			return waitForLocalPushes(tc, n, time.Duration(secs)*time.Second)
+		})
+
+	ctx.Step(`^the local Loki receiver should have received at most (\d+) push(?:es)?$`,
+		func(n int) error {
+			return assertMaxPushes(tc, n)
+		})
+}
+
+func registerLokiReceiverMetricSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the loki metrics should have recorded at least (\d+) flush(?:es)?$`,
+		func(n int) error {
+			return assertMinFlushes(tc, n)
+		})
+
+	ctx.Step(`^the loki metrics should have recorded at least (\d+) drops? within (\d+) seconds$`,
+		func(n, secs int) error {
+			return waitForDrops(tc, n, time.Duration(secs)*time.Second)
+		})
+
+	ctx.Step(`^the loki metrics should have recorded 0 drops$`, func() error {
+		return assertZeroDrops(tc)
+	})
+}
+
+func waitForLocalPushes(tc *AuditTestContext, n int, timeout time.Duration) error {
+	r, ok := tc.LocalReceiver.(*localLokiReceiver)
+	if !ok || r == nil {
+		return fmt.Errorf("no local Loki receiver configured")
+	}
+	deadline := time.After(timeout)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if int(r.pushCount.Load()) >= n {
+			return nil
+		}
+		select {
+		case <-deadline:
+			return fmt.Errorf("timed out: wanted %d pushes, got %d", n, r.pushCount.Load())
+		case <-tick.C:
+		}
+	}
+}
+
+func assertMaxPushes(tc *AuditTestContext, n int) error {
+	r, ok := tc.LocalReceiver.(*localLokiReceiver)
+	if !ok || r == nil {
+		return fmt.Errorf("no local Loki receiver configured")
+	}
+	got := int(r.pushCount.Load())
+	if got > n {
+		return fmt.Errorf("expected at most %d pushes, got %d", n, got)
+	}
+	return nil
+}
+
+func assertMinFlushes(tc *AuditTestContext, n int) error {
+	m := tc.LokiMetrics
+	if m == nil {
+		return fmt.Errorf("no mock loki metrics configured")
+	}
+	if m.flushCount() < n {
+		return fmt.Errorf("expected at least %d flushes, got %d", n, m.flushCount())
+	}
+	return nil
+}
+
+func waitForDrops(tc *AuditTestContext, n int, timeout time.Duration) error {
+	m := tc.LokiMetrics
+	if m == nil {
+		return fmt.Errorf("no mock loki metrics configured")
+	}
+	deadline := time.After(timeout)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if m.dropCount() >= n {
+			return nil
+		}
+		select {
+		case <-deadline:
+			return fmt.Errorf("timed out: wanted %d drops, got %d", n, m.dropCount())
+		case <-tick.C:
+		}
+	}
+}
+
+func assertZeroDrops(tc *AuditTestContext) error {
+	m := tc.LokiMetrics
+	if m == nil {
+		return fmt.Errorf("no mock loki metrics configured")
+	}
+	if m.dropCount() > 0 {
+		return fmt.Errorf("expected 0 drops, got %d", m.dropCount())
+	}
+	return nil
+}
+
+// createLokiLoggerWithReceiver creates a Loki output pointing at the local receiver.
+func createLokiLoggerWithReceiver(tc *AuditTestContext, r *localLokiReceiver, cfg *loki.Config) error {
+	cfg.URL = r.server.URL + "/loki/api/v1/push"
+	cfg.AllowInsecureHTTP = true
+	cfg.AllowPrivateRanges = true
+	return createLokiLoggerFromConfig(tc, cfg)
+}
+
+// createLokiLoggerWithReceiverAndMetrics creates a Loki output with metrics.
+func createLokiLoggerWithReceiverAndMetrics(tc *AuditTestContext, r *localLokiReceiver, cfg *loki.Config) error {
+	cfg.URL = r.server.URL + "/loki/api/v1/push"
+	cfg.AllowInsecureHTTP = true
+	cfg.AllowPrivateRanges = true
+
+	if cfg.FlushInterval == 0 {
+		cfg.FlushInterval = 200 * time.Millisecond
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 5 * time.Second
+	}
+	if cfg.BufferSize == 0 {
+		cfg.BufferSize = 100
+	}
+
+	out, err := loki.New(cfg, nil, tc.LokiMetrics)
+	if err != nil {
+		return fmt.Errorf("create loki output: %w", err)
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("bdd-audit"),
+		audit.WithHost("bdd-host"),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		_ = out.Close()
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}
+
+// createLokiLoggerFromConfig creates a Loki output from the exact config.
+func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
+	if cfg.FlushInterval == 0 {
+		cfg.FlushInterval = 200 * time.Millisecond
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 5 * time.Second
+	}
+	if cfg.BufferSize == 0 {
+		cfg.BufferSize = 100
+	}
+
+	var lokiMetrics loki.Metrics
+	if tc.LokiMetrics != nil {
+		lokiMetrics = tc.LokiMetrics
+	}
+
+	out, err := loki.New(cfg, nil, lokiMetrics)
+	if err != nil {
+		return fmt.Errorf("create loki output: %w", err)
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("bdd-audit"),
+		audit.WithHost("bdd-host"),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		_ = out.Close()
+		return fmt.Errorf("create logger: %w", err)
+	}
+	tc.Logger = logger
+	tc.AddCleanup(func() { _ = logger.Close() })
+	return nil
+}

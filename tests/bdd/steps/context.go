@@ -75,6 +75,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	WebhookMetrics *MockWebhookMetrics
 	FileMetrics    *MockFileMetrics
 	SyslogMetrics  *MockSyslogMetrics
+	LokiMetrics    *MockLokiMetrics
 	AuditDuration  time.Duration // measured duration for timing assertions
 
 	// Cleanup functions run in AfterScenario (LIFO order).
@@ -122,6 +123,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.WebhookMetrics = nil
 	tc.FileMetrics = nil
 	tc.SyslogMetrics = nil
+	tc.LokiMetrics = nil
 	tc.AuditDuration = 0
 	tc.TLSReceiver = nil
 	tc.LocalReceiver = nil
@@ -186,4 +188,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerHMACSteps(ctx, tc)
 	registerMetadataWriterSteps(ctx, tc)
 	registerLokiSteps(ctx, tc)
+	registerLokiReceiverSteps(ctx, tc)
 }

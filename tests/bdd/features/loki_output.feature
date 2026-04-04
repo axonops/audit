@@ -217,3 +217,89 @@ Feature: Loki Output
     When I close the logger
     And I try to audit a "user_create" event
     Then the audit call should return an error wrapping "ErrClosed"
+
+  # --- Retry logic (httptest.Server, no Docker Loki) ---
+
+  Scenario: Retry on 503 with eventual delivery
+    Given a local Loki receiver returning status 503
+    And mock loki metrics are configured
+    And a logger with loki output to the local receiver with max retries 3
+    When I audit a uniquely marked "user_create" event
+    And the local Loki receiver is reconfigured to return status 204
+    Then the local Loki receiver should have at least 1 push within 10 seconds
+    And the loki metrics should have recorded at least 1 flush
+
+  Scenario: Retry on 429 rate limit with eventual delivery
+    Given a local Loki receiver returning status 429
+    And mock loki metrics are configured
+    And a logger with loki output to the local receiver with max retries 3
+    When I audit a uniquely marked "user_create" event
+    And the local Loki receiver is reconfigured to return status 204
+    Then the local Loki receiver should have at least 1 push within 10 seconds
+
+  Scenario: No retry on 400 client error
+    Given a local Loki receiver returning status 400
+    And mock loki metrics are configured
+    And a logger with loki output to the local receiver with max retries 5
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+    And the local Loki receiver should have received at most 1 push
+
+  Scenario: No retry on 401 unauthorized
+    Given a local Loki receiver returning status 401
+    And mock loki metrics are configured
+    And a logger with loki output to the local receiver with max retries 5
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+    And the local Loki receiver should have received at most 1 push
+
+  Scenario: Retries exhausted drops batch
+    Given a local Loki receiver returning status 503
+    And mock loki metrics are configured
+    And a logger with loki output to the local receiver with max retries 1
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+
+  # --- SSRF protection (httptest.Server, no Docker Loki) ---
+
+  Scenario: Private range blocked by default drops events
+    Given a local Loki receiver accepting pushes
+    And mock loki metrics are configured
+    And a logger with loki output to the local Loki receiver without AllowPrivateRanges
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+
+  Scenario: AllowPrivateRanges permits private addresses
+    Given a local Loki receiver accepting pushes
+    And a logger with loki output to the local Loki receiver with AllowPrivateRanges
+    When I audit a uniquely marked "user_create" event
+    Then the local Loki receiver should have at least 1 push within 10 seconds
+
+  Scenario: Redirect is rejected and not followed
+    Given a local Loki receiver configured to redirect
+    And mock loki metrics are configured
+    And a logger with loki output to the redirecting Loki receiver with metrics
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+
+  # --- Metrics (httptest.Server) ---
+
+  Scenario: Successful delivery records flush metric
+    Given a local Loki receiver accepting pushes
+    And mock loki metrics are configured
+    And a logger with loki output to the local Loki receiver with metrics
+    When I audit a uniquely marked "user_create" event
+    Then the local Loki receiver should have at least 1 push within 10 seconds
+    And the loki metrics should have recorded at least 1 flush
+    And the loki metrics should have recorded 0 drops
+
+  Scenario: Nil loki metrics does not panic
+    Given a local Loki receiver accepting pushes
+    And a logger with loki output to the local Loki receiver with AllowPrivateRanges
+    When I audit a uniquely marked "user_create" event
+    Then the local Loki receiver should have at least 1 push within 10 seconds

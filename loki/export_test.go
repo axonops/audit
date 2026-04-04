@@ -16,6 +16,7 @@ package loki
 
 import (
 	"testing"
+	"time"
 
 	audit "github.com/axonops/go-audit"
 )
@@ -51,8 +52,8 @@ func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // huge
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
 		BatchSize:          1000,
-		FlushInterval:      10 * 1000000000, // 10s in nanoseconds
-		Timeout:            5 * 1000000000,  // 5s in nanoseconds
+		FlushInterval:      10 * time.Second, // 10s in nanoseconds
+		Timeout:            5 * time.Second,  // 5s in nanoseconds
 		MaxRetries:         1,
 		BufferSize:         1000,
 		Compress:           input.Compress,

@@ -86,6 +86,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	payloadBuf  bytes.Buffer           // reused JSON payload buffer
 	compressBuf bytes.Buffer           // reused gzip output buffer
 	gzWriter    *gzip.Writer           // reused gzip writer
+	retryHint   time.Duration          // Retry-After hint from last 429
 }
 
 // New creates a new Loki [Output] from the given config. It validates
@@ -316,24 +317,17 @@ func (o *Output) drainAndFlush(batch []lokiEntry) {
 }
 
 // flush groups events into streams, builds the push payload, compresses
-// it, and delivers to Loki. Phase 4 adds HTTP delivery with retry;
-// for now metrics are recorded as if delivery succeeded (#251).
-func (o *Output) flush(_ context.Context, batch []lokiEntry) {
-	start := time.Now()
-
+// it, and delivers to Loki via HTTP POST with retry. Metrics are
+// recorded in doPostWithRetry after actual delivery outcome.
+// flush() is synchronous — it blocks until delivery or drop. The body
+// []byte from maybeCompress() points into Output buffers, which is
+// safe because the next flush cannot start until this one completes
+// (single batchLoop goroutine).
+func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 	o.groupByStream(batch)
 	o.buildPayload()
-	_ = o.maybeCompress() // Phase 4: POST this body to Loki
-
-	dur := time.Since(start)
-	if o.lokiMetrics != nil {
-		o.lokiMetrics.RecordLokiFlush(len(batch), dur)
-	}
-	if o.metrics != nil {
-		for range batch {
-			o.metrics.RecordEvent(o.Name(), "success")
-		}
-	}
+	body := o.maybeCompress()
+	o.doPostWithRetry(ctx, body, len(batch))
 }
 
 // flushFinal sends a final batch during shutdown with a fresh

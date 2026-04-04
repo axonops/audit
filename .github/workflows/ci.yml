@@ -149,6 +149,9 @@ jobs:
           - module: webhook
             target: test-webhook
             flag: webhook
+          - module: loki
+            target: test-loki
+            flag: loki
           - module: outputconfig
             target: test-outputconfig
             flag: outputconfig

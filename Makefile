@@ -1,6 +1,6 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-outputconfig test-audit-gen \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
        test-integration test-bdd test-examples \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen lint-crud-api \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -11,7 +11,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook outputconfig cmd/audit-gen
+MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen
 WORKSPACE_MODULES := $(MODULES) examples/11-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
@@ -63,13 +63,16 @@ test-syslog:
 test-webhook:
 	cd webhook && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
+test-loki:
+	cd loki && go test -race -v -count=1 -coverprofile=coverage.out ./...
+
 test-outputconfig:
 	cd outputconfig && go test -race -v -count=1 -coverprofile=coverage.out $$(go list ./... | grep -v /tests/)
 
 test-audit-gen:
 	cd cmd/audit-gen && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
-test-all: test-core test-file test-syslog test-webhook test-outputconfig test-audit-gen
+test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen
 test: test-all
 
 # Integration tests (requires Docker: make test-infra-up first)
@@ -109,6 +112,9 @@ lint-syslog:
 lint-webhook:
 	cd webhook && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-loki:
+	cd loki && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 lint-outputconfig:
 	cd outputconfig && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
@@ -118,7 +124,7 @@ lint-audit-gen:
 lint-crud-api:
 	cd examples/11-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-outputconfig lint-audit-gen lint-crud-api
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api
 lint: lint-all
 
 # --- Vet ---

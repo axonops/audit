@@ -52,6 +52,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 
 	// Docker infrastructure.
 	WebhookURL    string // "http://localhost:8080"
+	LokiURL       string // "http://localhost:3100"
 	TLSReceiver   any    // *tlsWebhookReceiver for HTTPS webhook tests
 	LocalReceiver any    // *localWebhookReceiver for SSRF/redirect tests
 
@@ -145,6 +146,7 @@ func (tc *AuditTestContext) EnsureFileDir() (string, error) {
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	tc := &AuditTestContext{
 		WebhookURL: "http://localhost:8080",
+		LokiURL:    "http://localhost:3100",
 	}
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
@@ -183,4 +185,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerBuilderSteps(ctx, tc)
 	registerHMACSteps(ctx, tc)
 	registerMetadataWriterSteps(ctx, tc)
+	registerLokiSteps(ctx, tc)
 }

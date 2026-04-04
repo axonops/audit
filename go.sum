@@ -1,5 +1,7 @@
 github.com/axonops/go-audit/file v0.1.0 h1:FqceBwyGrJenuQiuW0VWtSpfdvwr4kytjrXbFICIAIY=
 github.com/axonops/go-audit/file v0.1.0/go.mod h1:GPb3ckRf1EBjmWm6/f/qCXpmTmddFavU3RG4GU0PpOg=
+github.com/axonops/go-audit/loki v0.1.0 h1:3kmWf7Z327YbjbiNeJgrCe+lH7a0u2+lfda9mIlu4K8=
+github.com/axonops/go-audit/loki v0.1.0/go.mod h1:ovA2SR8CZj/CGIj2e86wOslTy4kwwlLSi18B0uT2NGw=
 github.com/axonops/go-audit/outputconfig v0.1.0 h1:zFRyhPmClwgPbtVWk7E26rD74FT+ABWyKsXmVp6ng38=
 github.com/axonops/go-audit/outputconfig v0.1.0/go.mod h1:vME+mFEirP1/LCiqMqIKvoxhlGaCtEAZ5OfgvkCUIbc=
 github.com/axonops/go-audit/syslog v0.1.0 h1:OYbewO9OjMZ8pA5cVy6NC+Cj04oTaTdRllE3Lz7Imcw=

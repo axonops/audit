@@ -244,7 +244,7 @@ func validateLokiURL(cfg *Config) error {
 }
 
 // validateStaticLabels checks that all static label names match the Loki
-// label name pattern and have non-empty values.
+// label name pattern and have non-empty values without control characters.
 func validateStaticLabels(labels map[string]string) error {
 	for name, val := range labels {
 		if !validLabelName.MatchString(name) {
@@ -253,8 +253,22 @@ func validateStaticLabels(labels map[string]string) error {
 		if val == "" {
 			return fmt.Errorf("%w: loki: static label %q has empty value", audit.ErrConfigInvalid, name)
 		}
+		if containsControlChar(val) {
+			return fmt.Errorf("%w: loki: static label %q value contains control characters", audit.ErrConfigInvalid, name)
+		}
 	}
 	return nil
+}
+
+// containsControlChar reports whether s contains any ASCII control
+// character (bytes 0x00-0x1F).
+func containsControlChar(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 {
+			return true
+		}
+	}
+	return false
 }
 
 // applyLokiDefaults fills zero-value fields with documented defaults.

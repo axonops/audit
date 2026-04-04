@@ -15,6 +15,8 @@
 package loki
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"log/slog"
@@ -76,6 +78,14 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	mu          sync.Mutex
 	closed      atomic.Bool
 	fw          atomic.Pointer[frameworkFields]
+
+	// Flush-path state — owned exclusively by batchLoop goroutine.
+	streams     map[string]*lokiStream // reused across flushes
+	dynFields   []dynamicField         // reused dynamic field slice
+	keyBuf      bytes.Buffer           // reused stream key builder
+	payloadBuf  bytes.Buffer           // reused JSON payload buffer
+	compressBuf bytes.Buffer           // reused gzip output buffer
+	gzWriter    *gzip.Writer           // reused gzip writer
 }
 
 // New creates a new Loki [Output] from the given config. It validates
@@ -144,6 +154,7 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 		done:        make(chan struct{}),
 		client:      client,
 		name:        lokiName(cfg.URL),
+		streams:     make(map[string]*lokiStream),
 	}
 
 	go o.batchLoop(ctx)
@@ -304,12 +315,19 @@ func (o *Output) drainAndFlush(batch []lokiEntry) {
 	}
 }
 
-// flush sends a batch to Loki. Phase 3 adds stream grouping and push
-// request construction; Phase 4 adds HTTP delivery with retry.
+// flush groups events into streams, builds the push payload, compresses
+// it, and delivers to Loki. Phase 4 adds HTTP delivery with retry;
+// for now metrics are recorded as if delivery succeeded (#251).
 func (o *Output) flush(_ context.Context, batch []lokiEntry) {
-	// Phase 2 stub: record metrics for the batch.
+	start := time.Now()
+
+	o.groupByStream(batch)
+	o.buildPayload()
+	_ = o.maybeCompress() // Phase 4: POST this body to Loki
+
+	dur := time.Since(start)
 	if o.lokiMetrics != nil {
-		o.lokiMetrics.RecordLokiFlush(len(batch), 0)
+		o.lokiMetrics.RecordLokiFlush(len(batch), dur)
 	}
 	if o.metrics != nil {
 		for range batch {

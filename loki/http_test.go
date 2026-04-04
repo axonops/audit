@@ -15,14 +15,18 @@
 package loki_test
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/loki"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -354,7 +358,7 @@ func TestHTTP_CompressedBody_ValidJSON(t *testing.T) {
 
 	// Decompress and verify valid JSON.
 	require.GreaterOrEqual(t, len(capturedBody), 2)
-	gr, err := gzip.NewReader(bytesReader(capturedBody))
+	gr, err := gzip.NewReader(bytes.NewReader(capturedBody))
 	require.NoError(t, err)
 	decompressed, err := io.ReadAll(gr)
 	require.NoError(t, err)
@@ -424,20 +428,241 @@ func TestHTTP_CustomHeaders(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// lokiBackoff
+// ---------------------------------------------------------------------------
+
+func TestLokiBackoff_Attempt0(t *testing.T) {
+	t.Parallel()
+
+	d := loki.LokiBackoff(0)
+	// 100ms base with [0.5, 1.0) jitter → [50ms, 100ms)
+	assert.GreaterOrEqual(t, d, 50*time.Millisecond)
+	assert.Less(t, d, 100*time.Millisecond)
+}
+
+func TestLokiBackoff_Attempt1(t *testing.T) {
+	t.Parallel()
+
+	d := loki.LokiBackoff(1)
+	// 200ms with [0.5, 1.0) jitter → [100ms, 200ms)
+	assert.GreaterOrEqual(t, d, 100*time.Millisecond)
+	assert.Less(t, d, 200*time.Millisecond)
+}
+
+func TestLokiBackoff_Cap(t *testing.T) {
+	t.Parallel()
+
+	d := loki.LokiBackoff(100)
+	assert.LessOrEqual(t, d, 5*time.Second,
+		"backoff must be capped at 5s")
+}
+
+func TestLokiBackoff_NonNegative(t *testing.T) {
+	t.Parallel()
+
+	for attempt := 0; attempt < 25; attempt++ {
+		d := loki.LokiBackoff(attempt)
+		assert.GreaterOrEqual(t, d, time.Duration(0),
+			"backoff must never be negative (attempt=%d)", attempt)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// parseRetryAfter
+// ---------------------------------------------------------------------------
+
+func TestParseRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  string
+		want time.Duration
+	}{
+		{"empty", "", 0},
+		{"valid 1s", "1", 1 * time.Second},
+		{"valid 5s", "5", 5 * time.Second},
+		{"zero", "0", 0},
+		{"negative", "-1", 0},
+		{"non-numeric", "banana", 0},
+		{"float", "1.5", 0},
+		{"capped at 30s", "60", 30 * time.Second},
+		{"large value capped", "86400", 30 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := loki.ParseRetryAfter(tt.val)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Core audit.Metrics integration
+// ---------------------------------------------------------------------------
+
+func TestHTTP_Success_RecordsCoreMetrics(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	coreMetrics := &mockCoreMetrics{}
+	cfg := validConfigWithURL(srv.URL)
+
+	out, err := loki.New(cfg, coreMetrics, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"core_metrics"}`)))
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, coreMetrics.successCount(), 0,
+		"core metrics RecordEvent should be called with success")
+}
+
+func TestHTTP_Drop_RecordsCoreMetrics(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest) // non-retryable
+	}))
+	t.Cleanup(srv.Close)
+
+	coreMetrics := &mockCoreMetrics{}
+	cfg := validConfigWithURL(srv.URL)
+
+	out, err := loki.New(cfg, coreMetrics, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"core_drop"}`)))
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, coreMetrics.errorCount(), 0,
+		"core metrics RecordEvent should be called with error on drop")
+}
+
+// ---------------------------------------------------------------------------
+// Context cancellation in doPost
+// ---------------------------------------------------------------------------
+
+func TestHTTP_ContextCancelled_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	// Server that delays, giving context time to cancel.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := validConfigWithURL(srv.URL)
+	cfg.MaxRetries = 1
+	cfg.Timeout = 2 * time.Second
+
+	out, err := loki.New(cfg, nil, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"cancel"}`)))
+
+	// Close immediately — cancels context, flushFinal creates a fresh
+	// short context. The important assertion is no panic or deadlock.
+	require.NoError(t, out.Close())
+}
+
+// ---------------------------------------------------------------------------
+// Redirect blocked
+// ---------------------------------------------------------------------------
+
+func TestHTTP_Redirect_NotRetried(t *testing.T) {
+	t.Parallel()
+
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		http.Redirect(w, r, "http://evil.example.com/", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	metrics := &testLokiMetrics{}
+	cfg := validConfigWithURL(srv.URL)
+	cfg.MaxRetries = 3
+
+	out, err := loki.New(cfg, nil, metrics)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"redirect"}`)))
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, metrics.drops(), 0,
+		"redirect should cause a drop")
+	assert.Equal(t, int32(1), requestCount.Load(),
+		"redirect should not be retried")
+}
+
+// ---------------------------------------------------------------------------
+// Nil metrics — no panic
+// ---------------------------------------------------------------------------
+
+func TestHTTP_NilMetrics_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := validConfigWithURL(srv.URL)
+
+	// Both metrics nil — should not panic.
+	out, err := loki.New(cfg, nil, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"nil_metrics"}`)))
+	require.NoError(t, out.Close())
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-type bytesReaderHelper struct{ data []byte }
+// mockCoreMetrics implements audit.Metrics for testing the core metrics path.
+type mockCoreMetrics struct { //nolint:govet // fieldalignment: readability preferred
+	mu     sync.Mutex
+	events map[string]int // status → count
+}
 
-func (r *bytesReaderHelper) Read(p []byte) (int, error) {
-	n := copy(p, r.data)
-	r.data = r.data[n:]
-	if len(r.data) == 0 {
-		return n, io.EOF
+func (m *mockCoreMetrics) RecordEvent(_, status string) {
+	m.mu.Lock()
+	if m.events == nil {
+		m.events = make(map[string]int)
 	}
-	return n, nil
+	m.events[status]++
+	m.mu.Unlock()
 }
 
-func bytesReader(data []byte) io.Reader {
-	return &bytesReaderHelper{data: append([]byte(nil), data...)}
+func (m *mockCoreMetrics) successCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.events["success"]
 }
+
+func (m *mockCoreMetrics) errorCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.events["error"]
+}
+
+// Satisfy the full audit.Metrics interface with no-ops.
+func (m *mockCoreMetrics) RecordOutputError(_ string)        {}
+func (m *mockCoreMetrics) RecordOutputFiltered(_ string)     {}
+func (m *mockCoreMetrics) RecordValidationError(_ string)    {}
+func (m *mockCoreMetrics) RecordFiltered(_ string)           {}
+func (m *mockCoreMetrics) RecordSerializationError(_ string) {}
+func (m *mockCoreMetrics) RecordBufferDrop()                 {}
+
+// Verify interface satisfaction.
+var _ audit.Metrics = (*mockCoreMetrics)(nil)

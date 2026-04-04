@@ -1,5 +1,5 @@
 # Full test infrastructure for go-audit integration and BDD tests.
-# Combines syslog-ng and webhook receiver for fan-out testing.
+# Combines syslog-ng, webhook receiver, and Loki for fan-out testing.
 #
 # Usage (from repo root):
 #   make test-infra-up    # creates network + starts all services
@@ -8,3 +8,4 @@
 include:
   - docker-compose.syslog.yml
   - docker-compose.webhook.yml
+  - docker-compose.loki.yml

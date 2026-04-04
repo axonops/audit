@@ -231,18 +231,27 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 
 	metrics := &testLokiMetrics{}
 	cfg := validConfig()
-	cfg.BufferSize = loki.MinBufferSize  // smallest allowed buffer
-	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush during fill
-	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush during fill
+	cfg.BufferSize = loki.MinBufferSize  // smallest allowed buffer (100)
+	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
+	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
 
 	out, err := loki.New(cfg, nil, metrics)
 	require.NoError(t, err)
 
-	// Fill the buffer beyond capacity. Some events should be dropped.
+	// Write from multiple goroutines to overwhelm the buffer faster
+	// than the batch goroutine can drain it.
 	data := []byte(`{"event":"fill"}`)
-	for i := 0; i < cfg.BufferSize+100; i++ {
-		_ = out.Write(data)
+	var wg sync.WaitGroup
+	for g := 0; g < 10; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				_ = out.Write(data)
+			}
+		}()
 	}
+	wg.Wait()
 
 	require.True(t, metrics.waitForDrops(1, 2*time.Second),
 		"at least some events should be dropped when buffer is full")

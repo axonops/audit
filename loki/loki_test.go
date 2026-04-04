@@ -232,7 +232,8 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 	metrics := &testLokiMetrics{}
 	cfg := validConfig()
 	cfg.BufferSize = loki.MinBufferSize  // smallest allowed buffer
-	cfg.FlushInterval = 10 * time.Second // large interval to prevent flush during fill
+	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush during fill
+	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush during fill
 
 	out, err := loki.New(cfg, nil, metrics)
 	require.NoError(t, err)

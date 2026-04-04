@@ -312,20 +312,19 @@ func registerLokiWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 // ---------------------------------------------------------------------------
 
 func registerLokiThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiThenDeliverySteps(ctx, tc)
+	registerLokiThenLabelSteps(ctx, tc)
+	registerLokiThenErrorSteps(ctx, tc)
+}
+
+func registerLokiThenDeliverySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+
 	ctx.Step(`^the loki server should contain the marker within (\d+) seconds$`, func(secs int) error {
 		return assertLokiContainsMarker(tc, time.Duration(secs)*time.Second)
 	})
 
 	ctx.Step(`^the loki server should have at least (\d+) events? within (\d+) seconds$`, func(n, secs int) error {
 		return assertLokiEventCount(tc, n, time.Duration(secs)*time.Second)
-	})
-
-	ctx.Step(`^the loki stream should have label "([^"]*)" with value "([^"]*)"$`, func(label, value string) error {
-		return assertLokiStreamLabel(tc, label, value)
-	})
-
-	ctx.Step(`^the loki stream should not have label "([^"]*)"$`, func(label string) error {
-		return assertLokiStreamLabelAbsent(tc, label)
 	})
 
 	ctx.Step(`^the loki event should contain field "([^"]*)" with value "([^"]*)"$`, func(field, value string) error {
@@ -344,6 +343,23 @@ func registerLokiThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return assertLokiMarkerAbsentForTenant(tc, tenant, time.Duration(secs)*time.Second)
 	})
 
+	// Complete payload assertion: verify every field in the Loki log line.
+	ctx.Step(`^the loki event payload should contain:$`, func(table *godog.Table) error {
+		return assertLokiCompletePayload(tc, table)
+	})
+}
+
+func registerLokiThenLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the loki stream should have label "([^"]*)" with value "([^"]*)"$`, func(label, value string) error {
+		return assertLokiStreamLabel(tc, label, value)
+	})
+
+	ctx.Step(`^the loki stream should not have label "([^"]*)"$`, func(label string) error {
+		return assertLokiStreamLabelAbsent(tc, label)
+	})
+}
+
+func registerLokiThenErrorSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the loki construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected construction error containing %q but got nil", substr)
@@ -623,6 +639,69 @@ func assertLokiEventField(tc *AuditTestContext, field, value string) error {
 		}
 	}
 	return fmt.Errorf("no event found with field %s=%q", field, value)
+}
+
+// assertLokiCompletePayload verifies that every field in the Gherkin table
+// matches the actual JSON log line retrieved from Loki. This is the
+// COMPLETE payload assertion — every sent field must be verified.
+//
+//nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes
+func assertLokiCompletePayload(tc *AuditTestContext, table *godog.Table) error {
+	m := tc.Markers["default"]
+	if m == "" {
+		return fmt.Errorf("no default marker set")
+	}
+	logql := fmt.Sprintf(`{test_suite="bdd"} |= "%s"`, m)
+	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+	if err != nil {
+		return err
+	}
+	return verifyPayloadInResult(result, m, table)
+}
+
+// verifyPayloadInResult finds the event with the marker and verifies
+// every field in the Gherkin table matches the parsed JSON.
+func verifyPayloadInResult(result lokiBDDQueryResult, m string, table *godog.Table) error {
+	for _, s := range result.Data.Result {
+		for _, v := range s.Values {
+			if len(v) < 2 || !strings.Contains(v[1], m) {
+				continue
+			}
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(v[1]), &parsed); err != nil {
+				return fmt.Errorf("loki event JSON is corrupt: %w\nraw: %s", err, v[1])
+			}
+			return verifyFieldsMatch(parsed, v[1], table)
+		}
+	}
+	return fmt.Errorf("no event found containing marker %s", m)
+}
+
+// verifyFieldsMatch checks every row in the Gherkin table against the
+// parsed JSON payload. Reports ALL mismatches, not just the first.
+func verifyFieldsMatch(parsed map[string]any, raw string, table *godog.Table) error {
+	var mismatches []string
+	for i, row := range table.Rows {
+		if i == 0 || len(row.Cells) < 2 {
+			continue
+		}
+		field := row.Cells[0].Value
+		expected := row.Cells[1].Value
+
+		got, ok := parsed[field]
+		if !ok {
+			mismatches = append(mismatches, fmt.Sprintf("field %q: MISSING", field))
+			continue
+		}
+		if fmt.Sprintf("%v", got) != expected {
+			mismatches = append(mismatches, fmt.Sprintf("field %q: want %q, got %q", field, expected, fmt.Sprintf("%v", got)))
+		}
+	}
+	if len(mismatches) > 0 {
+		return fmt.Errorf("payload verification failed:\n  %s\nfull payload: %s",
+			strings.Join(mismatches, "\n  "), raw)
+	}
+	return nil
 }
 
 //nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes

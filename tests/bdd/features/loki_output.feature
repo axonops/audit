@@ -12,94 +12,151 @@ Feature: Loki Output
   Background:
     Given a standard test taxonomy
 
-  # --- Basic delivery ---
+  # --- Basic delivery with complete payload verification ---
 
-  Scenario: Single event delivered to Loki with payload verification
+  Scenario: Single event delivered to Loki with complete payload
     Given a logger with loki output
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
-    And the loki event should contain field "event_type" with value "user_create"
-    And the loki event should contain field "outcome" with value "success"
-    And the loki event should contain field "actor_id" with value "test-actor"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  Scenario: Event data preserved in Loki log line
+  Scenario: Custom field values preserved in Loki log line
     Given a logger with loki output
     When I audit a uniquely marked "user_create" event with field "actor_id" = "alice"
     Then the loki server should contain the marker within 15 seconds
-    And the loki event should contain field "actor_id" with value "alice"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | alice        |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  Scenario: Multiple events delivered to Loki
+  Scenario: Multiple events all delivered with correct payloads
     Given a logger with loki output with batch size 5
     When I audit 10 loki events with a shared marker
     Then the loki server should have at least 10 events within 15 seconds
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
 
-  # --- Stream labels ---
+  # --- Stream labels with complete payload verification ---
 
-  Scenario: Dynamic labels appear on Loki stream
+  Scenario: All dynamic labels present on Loki stream
     Given a logger with loki output
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
     And the loki stream should have label "event_type" with value "user_create"
     And the loki stream should have label "app_name" with value "bdd-audit"
     And the loki stream should have label "host" with value "bdd-host"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  Scenario: Static labels appear on Loki stream with payload verification
+  Scenario: Static labels present on stream with payload intact
     Given a logger with loki output with static label "environment" = "testing"
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
     And the loki stream should have label "environment" with value "testing"
-    And the loki event should contain field "outcome" with value "success"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
 
   Scenario: Excluded dynamic label absent from stream
     Given a logger with loki output excluding dynamic label "severity"
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
     And the loki stream should not have label "severity"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
 
-  Scenario: Different event types create separate streams
+  Scenario: Different event types create separate queryable streams
     Given a logger with loki output with batch size 10
     When I audit a uniquely marked "user_create" event
     And I audit a uniquely marked "auth_failure" event
     Then the loki server should have events in stream "user_create" within 15 seconds
     And the loki server should have events in stream "auth_failure" within 15 seconds
 
-  # --- Batch delivery ---
+  # --- Batch delivery with complete payload verification ---
 
-  Scenario: Batch flushes on count threshold
+  Scenario: Batch flushes on count threshold with payload intact
     Given a logger with loki output with batch size 5 and flush interval 60s
     When I audit 5 loki events with a shared marker
     Then the loki server should have at least 5 events within 15 seconds
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
 
-  Scenario: Batch flushes on timer
+  Scenario: Batch flushes on timer with payload intact
     Given a logger with loki output with batch size 1000 and flush interval 500ms
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  Scenario: Shutdown flushes pending events
+  Scenario: Shutdown flushes pending events with payload intact
     Given a logger with loki output with batch size 1000 and flush interval 60s
     When I audit 3 loki events with a shared marker
     And I close the logger
     Then the loki server should have at least 3 events within 15 seconds
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
 
-  # --- Gzip compression ---
+  # --- Gzip compression with complete payload verification ---
 
-  Scenario: Gzip-compressed events accepted by Loki with payload verification
+  Scenario: Gzip-compressed events preserve complete payload in Loki
     Given a logger with loki output with gzip enabled
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
-    And the loki event should contain field "event_type" with value "user_create"
-    And the loki event should contain field "actor_id" with value "test-actor"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  Scenario: Uncompressed events accepted by Loki with payload verification
+  Scenario: Uncompressed events preserve complete payload in Loki
     Given a logger with loki output with gzip disabled
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
-    And the loki event should contain field "event_type" with value "user_create"
-    And the loki event should contain field "actor_id" with value "test-actor"
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
+      | app_name       | bdd-audit    |
+      | host           | bdd-host     |
 
-  # --- Multi-tenancy ---
+  # --- Multi-tenancy with payload verification ---
 
-  Scenario: Events delivered to specific tenant
+  Scenario: Events delivered to specific tenant with payload intact
     Given a logger with loki output to tenant "tenant-alpha"
     When I audit a uniquely marked "user_create" event
     Then the loki server for tenant "tenant-alpha" should contain the marker within 15 seconds
@@ -110,12 +167,17 @@ Feature: Loki Output
     Then the loki server for tenant "tenant-iso-a" should contain the marker within 15 seconds
     And the loki server for tenant "tenant-iso-b" should not contain the marker within 5 seconds
 
-  # --- Duplicate timestamps ---
+  # --- Large batch delivery ---
 
-  Scenario: Events with identical timestamps all delivered
+  Scenario: All events from large batch delivered with payloads
     Given a logger with loki output with batch size 10
-    When I audit 5 loki events with a shared marker
-    Then the loki server should have at least 5 events within 15 seconds
+    When I audit 10 loki events with a shared marker
+    Then the loki server should have at least 10 events within 15 seconds
+    And the loki event payload should contain:
+      | field          | value        |
+      | event_type     | user_create  |
+      | outcome        | success      |
+      | actor_id       | test-actor   |
 
   # --- Lifecycle ---
 

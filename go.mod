@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/axonops/go-audit/file v0.1.0
+	github.com/axonops/go-audit/loki v0.1.0
 	github.com/axonops/go-audit/outputconfig v0.1.0
 	github.com/axonops/go-audit/syslog v0.1.0
 	github.com/axonops/go-audit/webhook v0.1.0

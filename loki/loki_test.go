@@ -15,6 +15,8 @@
 package loki_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -30,11 +32,27 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-// validConfig returns a minimal Config suitable for testing. It uses
-// AllowInsecureHTTP so tests do not need real TLS certificates.
+// lokiTestServer creates an httptest.Server that returns 204 on every
+// request. The server URL is returned for use in Config.URL.
+func lokiTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// validConfig returns a minimal Config suitable for testing, pointing
+// at the provided test server URL.
 func validConfig() *loki.Config {
+	return validConfigWithURL("http://localhost:3100/loki/api/v1/push")
+}
+
+// validConfigWithURL returns a Config pointing at the given URL.
+func validConfigWithURL(url string) *loki.Config {
 	return &loki.Config{
-		URL:                "http://localhost:3100/loki/api/v1/push",
+		URL:                url,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
 		BatchSize:          100,
@@ -229,8 +247,9 @@ func TestOutput_CloseIdempotent(t *testing.T) {
 func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 	t.Parallel()
 
+	srv := lokiTestServer(t)
 	metrics := &testLokiMetrics{}
-	cfg := validConfig()
+	cfg := validConfigWithURL(srv.URL)
 	cfg.BufferSize = loki.MinBufferSize  // smallest allowed buffer (100)
 	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
 	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
@@ -266,8 +285,9 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 func TestOutput_FlushOnClose(t *testing.T) {
 	t.Parallel()
 
+	srv := lokiTestServer(t)
 	metrics := &testLokiMetrics{}
-	cfg := validConfig()
+	cfg := validConfigWithURL(srv.URL)
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
 	out, err := loki.New(cfg, nil, metrics)
@@ -287,8 +307,9 @@ func TestOutput_FlushOnClose(t *testing.T) {
 func TestOutput_FlushOnBatchSize(t *testing.T) {
 	t.Parallel()
 
+	srv := lokiTestServer(t)
 	metrics := &testLokiMetrics{}
-	cfg := validConfig()
+	cfg := validConfigWithURL(srv.URL)
 	cfg.BatchSize = 5
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
@@ -309,8 +330,9 @@ func TestOutput_FlushOnBatchSize(t *testing.T) {
 func TestOutput_FlushOnTimer(t *testing.T) {
 	t.Parallel()
 
+	srv := lokiTestServer(t)
 	metrics := &testLokiMetrics{}
-	cfg := validConfig()
+	cfg := validConfigWithURL(srv.URL)
 	cfg.BatchSize = 10000                      // large, prevent size-based flush
 	cfg.FlushInterval = 200 * time.Millisecond // short timer
 
@@ -328,8 +350,9 @@ func TestOutput_FlushOnTimer(t *testing.T) {
 func TestOutput_FlushOnMaxBatchBytes(t *testing.T) {
 	t.Parallel()
 
+	srv := lokiTestServer(t)
 	metrics := &testLokiMetrics{}
-	cfg := validConfig()
+	cfg := validConfigWithURL(srv.URL)
 	cfg.BatchSize = 10000                     // large, prevent count-based flush
 	cfg.MaxBatchBytes = loki.MinMaxBatchBytes // smallest allowed byte threshold (1024)
 	cfg.FlushInterval = 10 * time.Second      // prevent timer flush

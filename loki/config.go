@@ -159,7 +159,8 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 }
 
 // String returns a safe representation of the config without credentials.
-func (c *Config) String() string {
+// Value receiver ensures both Config and *Config are protected.
+func (c Config) String() string {
 	auth := "none"
 	if c.BasicAuth != nil {
 		auth = "basic_auth"
@@ -171,8 +172,9 @@ func (c *Config) String() string {
 }
 
 // Format implements [fmt.Formatter] to prevent credential leakage via
-// all format verbs including %+v and %#v.
-func (c *Config) Format(f fmt.State, _ rune) {
+// all format verbs including %+v and %#v. Value receiver ensures both
+// Config and *Config are protected.
+func (c Config) Format(f fmt.State, _ rune) { //nolint:gocritic // hugeParam: value receiver required to intercept fmt verbs on Config values
 	_, _ = fmt.Fprint(f, c.String())
 }
 

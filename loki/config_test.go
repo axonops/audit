@@ -643,6 +643,19 @@ func TestConfigString_Redaction(t *testing.T) {
 		assert.Contains(t, s, "REDACTED")
 	})
 
+	t.Run("value Config format does not leak BearerToken", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := loki.Config{
+			URL:         "https://loki.example.com/push",
+			BearerToken: "value-format-leak-token",
+		}
+		// cfg is a value, not &cfg — value receiver must still intercept.
+		s := fmt.Sprintf("%+v", cfg)
+		assert.NotContains(t, s, "value-format-leak-token",
+			"%%+v on Config value must NOT expose BearerToken")
+	})
+
 	t.Run("BasicAuth GoString redacts credentials", func(t *testing.T) {
 		t.Parallel()
 

@@ -367,27 +367,21 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 	cfg.AllowInsecureHTTP = true
 	cfg.AllowPrivateRanges = true
 
-	defaults := map[*time.Duration]time.Duration{
-		&cfg.Timeout:       10 * time.Second,
-		&cfg.FlushInterval: 200 * time.Millisecond,
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 10 * time.Second
 	}
-	for field, val := range defaults {
-		if *field == 0 {
-			*field = val
-		}
+	if cfg.FlushInterval == 0 {
+		cfg.FlushInterval = 200 * time.Millisecond
 	}
-
-	intDefaults := map[*int]int{
-		&cfg.BatchSize:  1,
-		&cfg.MaxRetries: 3,
-		&cfg.BufferSize: 1000,
+	if cfg.BatchSize == 0 {
+		cfg.BatchSize = 1
 	}
-	for field, val := range intDefaults {
-		if *field == 0 {
-			*field = val
-		}
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = 3
 	}
-
+	if cfg.BufferSize == 0 {
+		cfg.BufferSize = 1000
+	}
 	if cfg.TenantID == "" {
 		cfg.TenantID = defaultLokiTenant
 	}

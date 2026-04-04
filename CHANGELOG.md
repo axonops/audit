@@ -28,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Grafana Loki output** (`go-audit/loki`) — stream labels, gzip compression, multi-tenancy, batched delivery with retry (#251)
+  - Config: URL, BasicAuth/BearerToken, TenantID, static + dynamic labels, batching, compression
+  - Stream labels: app_name, host, pid, event_type, event_category, severity (individually toggleable)
+  - HTTP delivery: exponential backoff retry on 429/5xx, Retry-After support, SSRF protection
+  - `FrameworkFieldReceiver` interface for outputs to receive app_name, host, pid
+  - 11 integration tests against real Loki, 461 BDD scenarios, 95% unit test coverage
 - `MetadataWriter` optional interface for outputs that need structured per-event context (#250)
 - `EventMetadata` value type: event type, severity, category, timestamp — zero-allocation, passed by value (#250)
 

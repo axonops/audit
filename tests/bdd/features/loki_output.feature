@@ -14,10 +14,13 @@ Feature: Loki Output
 
   # --- Basic delivery ---
 
-  Scenario: Single event delivered to Loki
+  Scenario: Single event delivered to Loki with payload verification
     Given a logger with loki output
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
+    And the loki event should contain field "event_type" with value "user_create"
+    And the loki event should contain field "outcome" with value "success"
+    And the loki event should contain field "actor_id" with value "test-actor"
 
   Scenario: Event data preserved in Loki log line
     Given a logger with loki output
@@ -40,11 +43,12 @@ Feature: Loki Output
     And the loki stream should have label "app_name" with value "bdd-audit"
     And the loki stream should have label "host" with value "bdd-host"
 
-  Scenario: Static labels appear on Loki stream
+  Scenario: Static labels appear on Loki stream with payload verification
     Given a logger with loki output with static label "environment" = "testing"
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
     And the loki stream should have label "environment" with value "testing"
+    And the loki event should contain field "outcome" with value "success"
 
   Scenario: Excluded dynamic label absent from stream
     Given a logger with loki output excluding dynamic label "severity"
@@ -79,15 +83,19 @@ Feature: Loki Output
 
   # --- Gzip compression ---
 
-  Scenario: Gzip-compressed events accepted by Loki
+  Scenario: Gzip-compressed events accepted by Loki with payload verification
     Given a logger with loki output with gzip enabled
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
+    And the loki event should contain field "event_type" with value "user_create"
+    And the loki event should contain field "actor_id" with value "test-actor"
 
-  Scenario: Uncompressed events accepted by Loki
+  Scenario: Uncompressed events accepted by Loki with payload verification
     Given a logger with loki output with gzip disabled
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
+    And the loki event should contain field "event_type" with value "user_create"
+    And the loki event should contain field "actor_id" with value "test-actor"
 
   # --- Multi-tenancy ---
 

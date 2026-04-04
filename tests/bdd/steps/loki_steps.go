@@ -55,27 +55,29 @@ func registerLokiGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^a logger with loki output$`, func() error {
-		return createLokiLogger(tc, &loki.Config{})
+		return createLokiLogger(tc, &loki.Config{Compress: true})
 	})
 
 	ctx.Step(`^a logger with loki output to tenant "([^"]*)"$`, func(tenant string) error {
-		return createLokiLogger(tc, &loki.Config{TenantID: tenant})
+		return createLokiLogger(tc, &loki.Config{TenantID: tenant, Compress: true})
 	})
 
 	ctx.Step(`^a logger with loki output with static label "([^"]*)" = "([^"]*)"$`, func(name, value string) error {
 		return createLokiLogger(tc, &loki.Config{
-			Labels: loki.LabelConfig{Static: map[string]string{name: value}},
+			Compress: true,
+			Labels:   loki.LabelConfig{Static: map[string]string{name: value}},
 		})
 	})
 
 	ctx.Step(`^a logger with loki output with batch size (\d+)$`, func(size int) error {
-		return createLokiLogger(tc, &loki.Config{BatchSize: size})
+		return createLokiLogger(tc, &loki.Config{BatchSize: size, Compress: true})
 	})
 
 	ctx.Step(`^a logger with loki output with batch size (\d+) and flush interval (\d+)ms$`, func(size, ms int) error {
 		return createLokiLogger(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(ms) * time.Millisecond,
+			Compress:      true,
 		})
 	})
 
@@ -83,11 +85,12 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 		return createLokiLogger(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(s) * time.Second,
+			Compress:      true,
 		})
 	})
 
 	ctx.Step(`^a logger with loki output excluding dynamic label "([^"]*)"$`, func(label string) error {
-		cfg := &loki.Config{}
+		cfg := &loki.Config{Compress: true}
 		switch label {
 		case "severity":
 			cfg.Labels.Dynamic.ExcludeSeverity = true
@@ -388,7 +391,8 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 	if cfg.TenantID == "" {
 		cfg.TenantID = defaultLokiTenant
 	}
-	cfg.Compress = true
+	// Do NOT set cfg.Compress here — let each step control it.
+	// The default zero value (false) is overridden by individual steps.
 
 	if cfg.Labels.Static == nil {
 		cfg.Labels.Static = make(map[string]string)

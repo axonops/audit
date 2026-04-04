@@ -98,7 +98,7 @@ func TestLokiFactory_DurationParsing(t *testing.T) {
 		},
 		{
 			name:    "milliseconds suffix accepted",
-			yaml:    "url: https://loki.example.com/loki/api/v1/push\ntimeout: 100ms\n",
+			yaml:    "url: https://loki.example.com/loki/api/v1/push\nflush_interval: 500ms\n",
 			wantErr: false,
 		},
 		{
@@ -130,17 +130,15 @@ func TestLokiFactory_DurationParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := factory("dur_test", []byte(tt.yaml), nil)
+			out, err := factory("dur_test", []byte(tt.yaml), nil)
 			if tt.wantErr {
 				require.Error(t, err, "expected a parse error for YAML: %s", tt.yaml)
-				// The error must mention duration, not something unrelated.
 				assert.Contains(t, err.Error(), "duration",
 					"error for invalid duration should mention 'duration', got: %q", err.Error())
-			} else if err != nil {
-				// A valid config may still return "not yet implemented" — that is
-				// acceptable here. What must NOT happen is a duration-parse error.
-				assert.NotContains(t, err.Error(), "duration",
-					"a valid duration string must not produce a duration parse error; got: %q", err.Error())
+			} else {
+				require.NoError(t, err, "valid duration should not error")
+				require.NotNil(t, out)
+				require.NoError(t, out.Close())
 			}
 		})
 	}
@@ -189,13 +187,10 @@ func TestLokiFactory_GzipDefaultTrue(t *testing.T) {
 	require.NotNil(t, factory)
 
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\n")
-	_, err := factory("gzip_default", rawYAML, nil)
-
-	// Phase 1: a valid config is rejected only by the "not yet implemented"
-	// sentinel — the gzip field itself must not cause an error.
-	require.Error(t, err, "factory should return error in Phase 1")
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"a valid config with no gzip field must reach Phase 1 sentinel, got: %q", err.Error())
+	out, err := factory("gzip_default", rawYAML, nil)
+	require.NoError(t, err, "valid config with default gzip should succeed")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // TestLokiFactory_GzipExplicitFalse verifies that explicitly setting
@@ -208,11 +203,10 @@ func TestLokiFactory_GzipExplicitFalse(t *testing.T) {
 	require.NotNil(t, factory)
 
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\ngzip: false\n")
-	_, err := factory("gzip_explicit_false", rawYAML, nil)
-
-	require.Error(t, err, "factory should return error in Phase 1")
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"gzip: false must be accepted and reach Phase 1 sentinel, got: %q", err.Error())
+	out, err := factory("gzip_explicit_false", rawYAML, nil)
+	require.NoError(t, err, "gzip: false should be accepted")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // ---------------------------------------------------------------------------
@@ -285,10 +279,9 @@ func TestLokiFactory_StaticLabels_InvalidName(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestLokiFactory_ValidConfig_ReturnsNotYetImplemented documents the current
-// Phase 1 state: the factory validates config correctly but returns a
-// "not yet implemented" error because the output constructor is not yet built.
-// This test MUST be updated when Phase 2 (New()) is implemented.
-func TestLokiFactory_ValidConfig_ReturnsNotYetImplemented(t *testing.T) {
+// TestLokiFactory_ValidConfig_ReturnsOutput verifies that a valid
+// config creates a working Output that can be closed.
+func TestLokiFactory_ValidConfig_ReturnsOutput(t *testing.T) {
 	t.Parallel()
 
 	factory := audit.LookupOutputFactory("loki")
@@ -302,10 +295,10 @@ timeout: 5s
 max_retries: 2
 buffer_size: 500
 `)
-	_, err := factory("phase1", rawYAML, nil)
-	require.Error(t, err, "Phase 1 factory must return an error")
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"Phase 1 factory must return 'not yet implemented' for a valid config, got: %q", err.Error())
+	out, err := factory("valid", rawYAML, nil)
+	require.NoError(t, err, "valid config should produce an output")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // TestLokiFactory_ValidConfig_WithAllAuthOptions verifies that each auth
@@ -338,11 +331,10 @@ func TestLokiFactory_ValidConfig_WithAllAuthOptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := factory("auth_test", []byte(tt.yaml), nil)
-			// Each auth variant must pass validation and reach the Phase 1 gate.
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "not yet implemented",
-				"%s auth variant should reach Phase 1 sentinel, got: %q", tt.name, err.Error())
+			out, err := factory("auth_test", []byte(tt.yaml), nil)
+			require.NoError(t, err, "%s auth variant should produce output", tt.name)
+			require.NotNil(t, out)
+			require.NoError(t, out.Close())
 		})
 	}
 }
@@ -366,10 +358,10 @@ func TestLokiFactory_NewFactory_NilMetrics(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	_, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"nil coreMetrics must not panic; got: %q", err.Error())
+	out, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil)
+	require.NoError(t, err, "nil coreMetrics must not panic")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // TestLokiFactory_NewFactory_WithMetrics verifies that NewFactory with a
@@ -382,10 +374,10 @@ func TestLokiFactory_NewFactory_WithMetrics(t *testing.T) {
 	factory := loki.NewFactory(metrics)
 	require.NotNil(t, factory, "NewFactory must return a non-nil factory")
 
-	_, err := factory("custom_metrics", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil)
-	require.Error(t, err, "Phase 1: factory must return error")
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"valid config with custom metrics must reach Phase 1 sentinel, got: %q", err.Error())
+	out, err := factory("custom_metrics", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil)
+	require.NoError(t, err, "valid config with custom metrics should produce output")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // TestLokiFactory_NewFactory_WithMetrics_InvalidConfig verifies that a
@@ -431,10 +423,11 @@ func TestLokiFactory_DynamicLabels_ExcludeFields(t *testing.T) {
 			t.Parallel()
 
 			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nlabels:\n  dynamic:\n    " + labelName + ": false\n")
-			_, err := factory("dyn_"+labelName, rawYAML, nil)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "not yet implemented",
-				"disabling dynamic label %q must reach Phase 1 sentinel, got: %q", labelName, err.Error())
+			out, err := factory("dyn_"+labelName, rawYAML, nil)
+			require.NoError(t, err,
+				"disabling dynamic label %q should produce output", labelName)
+			require.NotNil(t, out)
+			require.NoError(t, out.Close())
 		})
 	}
 }
@@ -455,10 +448,10 @@ labels:
     event_type: true
     severity: false
 `)
-	_, err := factory("mixed_dynamic", rawYAML, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not yet implemented",
-		"mixed include/exclude dynamic labels must reach Phase 1 sentinel, got: %q", err.Error())
+	out, err := factory("mixed_dynamic", rawYAML, nil)
+	require.NoError(t, err, "mixed include/exclude dynamic labels should produce output")
+	require.NotNil(t, out)
+	require.NoError(t, out.Close())
 }
 
 // ---------------------------------------------------------------------------

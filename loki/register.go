@@ -162,15 +162,11 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 		}
 	}
 
-	// Validate config.
-	if err := validateLokiConfig(cfg); err != nil {
+	output, err := New(cfg, coreMetrics, lokiMetrics)
+	if err != nil {
 		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
 	}
-
-	// New() not yet implemented — Phase 2 of #251 adds the Output constructor.
-	_ = coreMetrics
-	_ = lokiMetrics
-	return nil, fmt.Errorf("audit: loki output %q: not yet implemented", name)
+	return output, nil
 }
 
 // parseDynamicLabels converts the YAML dynamic labels map into the

@@ -111,3 +111,17 @@ type EventMetadata struct { //nolint:govet // fieldalignment: readability over s
 type MetadataWriter interface {
 	WriteWithMetadata(data []byte, meta EventMetadata) error
 }
+
+// FrameworkFieldReceiver is an optional interface that [Output]
+// implementations may satisfy to receive logger-wide framework fields
+// (app_name, host, pid) at construction time. The library calls
+// SetFrameworkFields once after all options are applied and before the
+// first Write or WriteWithMetadata call.
+//
+// This is the output-side analogue of [FrameworkFieldSetter] for
+// formatters. Outputs that need framework fields for labelling or
+// routing (e.g., Loki stream labels) implement this interface.
+// Outputs that do not implement it are silently skipped.
+type FrameworkFieldReceiver interface {
+	SetFrameworkFields(appName, host string, pid int)
+}

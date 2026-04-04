@@ -618,7 +618,7 @@ func TestConfigString_Redaction(t *testing.T) {
 			"%%+v must NOT expose credentials; Format() should intercept all verbs")
 	})
 
-	t.Run("GoString prevents credential leak via %#v", func(t *testing.T) {
+	t.Run("Format prevents credential leak via %#v", func(t *testing.T) {
 		t.Parallel()
 
 		const token = "gosstring-leak-token"
@@ -628,7 +628,32 @@ func TestConfigString_Redaction(t *testing.T) {
 		}
 		s := fmt.Sprintf("%#v", cfg)
 		assert.NotContains(t, s, token,
-			"%%#v must NOT expose credentials; GoString() should intercept")
+			"%%#v must NOT expose credentials; Format() should intercept")
+	})
+
+	t.Run("BasicAuth String redacts credentials", func(t *testing.T) {
+		t.Parallel()
+
+		ba := loki.BasicAuth{Username: "alice", Password: "secret-password"}
+		s := ba.String()
+		assert.NotContains(t, s, "alice",
+			"BasicAuth String must not expose username")
+		assert.NotContains(t, s, "secret-password",
+			"BasicAuth String must not expose password")
+		assert.Contains(t, s, "REDACTED")
+	})
+
+	t.Run("value Config format does not leak BearerToken", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := loki.Config{
+			URL:         "https://loki.example.com/push",
+			BearerToken: "value-format-leak-token",
+		}
+		// cfg is a value, not &cfg — value receiver must still intercept.
+		s := fmt.Sprintf("%+v", cfg)
+		assert.NotContains(t, s, "value-format-leak-token",
+			"%%+v on Config value must NOT expose BearerToken")
 	})
 
 	t.Run("BasicAuth GoString redacts credentials", func(t *testing.T) {

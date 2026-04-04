@@ -25,6 +25,8 @@ import (
 var (
 	ValidateLokiConfig = validateLokiConfig
 	BuildLokiTLSConfig = buildLokiTLSConfig
+	LokiBackoff        = lokiBackoff
+	ParseRetryAfter    = parseRetryAfter
 )
 
 // TestEvent is a test-only event for building payloads.
@@ -72,13 +74,13 @@ func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // huge
 
 // buildTestOutput creates an Output from test input and returns it
 // along with a batch of lokiEntry values.
-func buildTestOutput(t *testing.T, input TestPayloadInput) (*Output, []lokiEntry) { //nolint:gocritic // hugeParam: test helper
-	t.Helper()
+func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntry) { //nolint:gocritic // hugeParam: test helper
+	tb.Helper()
 
 	cfg := buildTestConfig(input)
 	o, err := New(cfg, nil, nil)
 	if err != nil {
-		t.Fatalf("New() failed: %v", err)
+		tb.Fatalf("New() failed: %v", err)
 	}
 
 	o.SetFrameworkFields(input.AppName, input.Host, input.PID)
@@ -93,10 +95,10 @@ func buildTestOutput(t *testing.T, input TestPayloadInput) (*Output, []lokiEntry
 // BuildTestPayload constructs a Loki push payload from test inputs.
 // It creates a temporary Output, sets framework fields, groups events,
 // builds the payload, and returns the raw (uncompressed) JSON bytes.
-func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
-	t.Helper()
+func BuildTestPayload(tb testing.TB, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
+	tb.Helper()
 
-	o, batch := buildTestOutput(t, input)
+	o, batch := buildTestOutput(tb, input)
 	defer func() { _ = o.Close() }()
 
 	o.groupByStream(batch)
@@ -106,10 +108,10 @@ func BuildTestPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:go
 
 // BuildTestCompressedPayload is like BuildTestPayload but returns
 // gzip-compressed bytes.
-func BuildTestCompressedPayload(t *testing.T, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
-	t.Helper()
+func BuildTestCompressedPayload(tb testing.TB, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
+	tb.Helper()
 
-	o, batch := buildTestOutput(t, input)
+	o, batch := buildTestOutput(tb, input)
 	defer func() { _ = o.Close() }()
 
 	o.groupByStream(batch)

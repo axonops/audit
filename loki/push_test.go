@@ -327,7 +327,7 @@ func TestBuildPayload_SpecialCharsInData(t *testing.T) {
 
 	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
 	// Event data with special chars: quotes, backslashes, newlines,
-	// Unicode (U+2028, U+2029), invalid UTF-8, and HTML chars.
+	// Unicode (U+2028), HTML chars.
 	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
 		Events: []loki.TestEvent{
 			{
@@ -343,6 +343,29 @@ func TestBuildPayload_SpecialCharsInData(t *testing.T) {
 	var p pushPayload
 	require.NoError(t, json.Unmarshal(payload, &p),
 		"payload with special chars must be valid JSON: %s", string(payload))
+	require.Len(t, p.Streams, 1)
+}
+
+func TestBuildPayload_InvalidUTF8InData(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	// Invalid UTF-8 bytes (0xFF, 0xFE) and U+2029 paragraph separator.
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{
+				Data: []byte("{\"bad\":\"\xff\xfe\",\"para\":\"\xe2\x80\xa9\"}"),
+				Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts},
+			},
+		},
+		AppName: "app",
+		Host:    "h1",
+		PID:     1,
+	})
+
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p),
+		"payload with invalid UTF-8 and U+2029 must be valid JSON: %s", string(payload))
 	require.Len(t, p.Streams, 1)
 }
 

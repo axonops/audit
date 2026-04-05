@@ -1,4 +1,9 @@
-# Code Generation Example
+[← Back to examples](../README.md)
+
+> **Previous:** [01 — Basic](../01-basic/) |
+> **Next:** [03 — Standard Fields](../03-standard-fields/)
+
+# Example 02: Code Generation
 
 Define your audit events in a YAML file, generate type-safe Go
 constants, and configure outputs in a separate YAML file. This is the
@@ -74,7 +79,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../07-sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../12-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -187,7 +192,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../07-sensitivity-labels/) example.
+the [Sensitivity Labels](../12-sensitivity-labels/) example.
 
 **Performance note:** Typed builders add one small heap allocation per
 event (the `Event` interface wrapper) compared to passing raw strings
@@ -332,11 +337,3 @@ on stderr — see [example 01](../01-basic/) for details.
 - [Output Configuration YAML](../../docs/output-configuration.md) — outputs.yaml schema
 - [Taxonomy Validation](../../docs/taxonomy-validation.md) — validation rules and modes
 
-## Previous
-
-[Basic](../01-basic/)
-
-## Next
-
-[Standard Fields](../03-standard-fields/) — reserved standard fields,
-framework fields, and deployment-wide defaults.

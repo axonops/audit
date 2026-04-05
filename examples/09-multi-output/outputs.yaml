@@ -1,0 +1,12 @@
+version: 1
+app_name: example
+host: localhost
+outputs:
+  console:
+    type: stdout
+
+  audit_log:
+    type: file
+    file:
+      path: "./audit.log"
+      permissions: "0600"

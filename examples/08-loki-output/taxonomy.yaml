@@ -1,0 +1,31 @@
+version: 1
+
+categories:
+  security:
+    - auth_failure
+    - permission_denied
+  write:
+    - user_create
+    - user_update
+
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      resource_id: {}
+  user_update:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      resource_id: {}
+  auth_failure:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      reason: {required: true}
+  permission_denied:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      resource: {required: true}

@@ -236,7 +236,7 @@ production examples, performance tuning, and troubleshooting.
 - **SSRF protection** blocks private/loopback ranges by default
 - **Exponential backoff retry** on 429/5xx with `Retry-After` support
 
-**[→ Progressive example with real query output](../examples/13-loki-output/)**
+**[→ Progressive example with real query output](../examples/08-loki-output/)**
 
 Install: `go get github.com/axonops/go-audit/loki`
 
@@ -279,7 +279,7 @@ a failure in one output does not block or affect delivery to others.
 
 ## 📚 Further Reading
 
-- [Progressive Example: File Output](../examples/04-file-output/)
-- [Progressive Example: Multi-Output](../examples/05-multi-output/)
-- [Progressive Example: CRUD API](../examples/11-crud-api/) — five outputs in one application
+- [Progressive Example: File Output](../examples/05-file-output/)
+- [Progressive Example: Multi-Output](../examples/09-multi-output/)
+- [Progressive Example: CRUD API](../examples/16-crud-api/) — five outputs in one application
 - [Output Configuration YAML](output-configuration.md) — full YAML reference

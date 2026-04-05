@@ -1,0 +1,18 @@
+version: 1
+app_name: example
+host: localhost
+outputs:
+  json_file:
+    type: file
+    file:
+      path: "./json-audit.log"
+
+  cef_file:
+    type: file
+    file:
+      path: "./cef-audit.log"
+    formatter:
+      type: cef
+      vendor: "Example"
+      product: "AuditDemo"
+      version: "1.0"

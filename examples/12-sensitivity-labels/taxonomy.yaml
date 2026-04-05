@@ -1,0 +1,45 @@
+version: 1
+
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields:
+        - email
+        - phone
+      patterns:
+        - "^user_"
+    financial:
+      description: "Financial and payment data"
+      patterns:
+        - "^card_"
+
+categories:
+  write:
+    - user_create
+    - payment_process
+
+events:
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      email: {}
+      phone: {}
+      user_name:
+        labels: [pii]
+      department: {}
+
+  payment_process:
+    description: "A payment was processed"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      card_number: {}
+      card_expiry: {}
+      amount: {}

@@ -1,0 +1,85 @@
+version: 1
+
+categories:
+  write:
+    severity: 4
+    events:
+      - item_create
+      - item_update
+      - item_delete
+  read:
+    severity: 2
+    events:
+      - item_list
+      - item_read
+  security:
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
+  admin:
+    severity: 6
+    events:
+      - config_change
+
+events:
+  item_create:
+    description: "An item was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  item_update:
+    description: "An item was updated"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  item_delete:
+    description: "An item was deleted"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  item_list:
+    description: "Items were listed"
+    fields:
+      outcome:
+        required: true
+
+  item_read:
+    description: "An item was read"
+    fields:
+      outcome:
+        required: true
+
+  auth_failure:
+    description: "An authentication attempt failed"
+    severity: 9
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  auth_success:
+    description: "An authentication attempt succeeded"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  config_change:
+    description: "A configuration change was made"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true

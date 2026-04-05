@@ -213,7 +213,7 @@ Install: `go get github.com/axonops/go-audit/webhook`
 
 ---
 
-## 🔶 Loki Output
+## Loki Output
 
 Pushes audit events to a [Grafana Loki](https://grafana.com/oss/loki/)
 instance via the HTTP Push API. Events are batched, grouped into
@@ -288,23 +288,44 @@ identify a log stream. go-audit generates labels from three sources:
 | Framework fields | `app_name="myapp"`, `host="prod-01"`, `pid="12345"` | Logger construction |
 | Per-event metadata | `event_type="user_create"`, `severity="6"`, `event_category="write"` | Each event |
 
-**Controlling dynamic labels:** Set any dynamic label to `false` in
-the config to exclude it from stream labels. Excluded fields still
-appear in the JSON log line — they are just not indexed as labels.
+**Dynamic labels** — all six are included by default. Set to `false`
+to exclude:
+
+| Label | Source | Description |
+|-------|--------|-------------|
+| `app_name` | `WithAppName()` / YAML `app_name` | Application name |
+| `host` | `WithHost()` / YAML `host` | Hostname or environment |
+| `pid` | Auto-captured (`os.Getpid()`) | Process ID |
+| `event_type` | Per-event (`audit.NewEvent(type, ...)`) | Taxonomy event type |
+| `event_category` | Per-event (from taxonomy categories) | Event category |
+| `severity` | Per-event (from taxonomy/category/event) | Numeric severity |
+
+**Excluding labels:** Set any dynamic label to `false` to remove it
+from stream labels. The field still appears in the JSON log line —
+it is just not indexed as a Loki label.
 
 ```yaml
 labels:
   dynamic:
-    pid: false       # exclude pid from labels (high cardinality)
+    pid: false       # exclude pid (high cardinality across processes)
     severity: false   # exclude severity from labels
 ```
 
-**Querying in Grafana:** Events are queryable by label selectors and
-log line content:
+**Querying by labels in Grafana/LogQL:**
 
 ```logql
-{event_type="auth_failure", severity="8"} | json | actor_id="alice"
+# Find all authentication failures:
+{event_type="auth_failure"}
+
+# Find all security events from a specific host:
+{event_category="security", host="prod-01"}
+
+# Combine label selector with JSON parsing for user fields:
+{event_type="user_create"} | json | actor_id="alice"
 ```
+
+See the [progressive example](../examples/13-loki-output/) for real
+query output showing how label-based search works in practice.
 
 ### Security
 

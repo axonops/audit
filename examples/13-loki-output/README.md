@@ -1,20 +1,19 @@
+[← Back to examples](../README.md)
+
 # Example 13: Loki Output
 
 Sends audit events to [Grafana Loki](https://grafana.com/oss/loki/)
-with stream labels, gzip compression, and batched delivery.
+with stream labels for structured querying, gzip compression, and
+batched delivery.
 
-## What This Demonstrates
+## What You'll Learn
 
-- **Stream labels** — events are grouped by `event_type`, `severity`,
-  `event_category`, `app_name`, and `host`. Each unique combination
-  creates a separate Loki stream, queryable via LogQL.
-- **Static labels** — constant labels (`job`, `environment`) appear
-  on every stream for filtering and dashboarding.
-- **Dynamic label exclusion** — `pid` is excluded from labels to
-  avoid high cardinality in development.
-- **Gzip compression** — push payloads are compressed by default.
-- **YAML-driven config** — the Loki output is configured entirely
-  via `outputs.yaml`, loaded by `outputconfig.Load`.
+1. How audit events are pushed to Loki as JSON log lines
+2. How **stream labels** make events queryable by event type, category,
+   application, and host — without scanning every log line
+3. How to **search by labels** using LogQL to find specific audit events
+4. How the YAML configuration controls batching, compression, and labels
+5. What the actual data looks like in Loki — streams, labels, and payloads
 
 ## Prerequisites
 
@@ -24,13 +23,22 @@ Start a local Loki instance:
 docker run -d --name loki -p 3100:3100 grafana/loki:3.0.0
 ```
 
-## Running
+## Files
+
+| File | Purpose |
+|------|---------|
+| [`main.go`](main.go) | Creates a logger with a Loki output and audits 5 events |
+| [`outputs.yaml`](outputs.yaml) | YAML configuration for the Loki output |
+| [`taxonomy.yaml`](taxonomy.yaml) | Event type definitions with required fields |
+| [`README.md`](README.md) | This file |
+
+## Running the Example
 
 ```bash
 go run .
 ```
 
-Output:
+**Output:**
 
 ```
 Audited: user_create by alice
@@ -41,63 +49,340 @@ Audited: user_update by alice
 
 Waiting for Loki delivery...
 Done. Query your events:
-  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .
-  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .
 ```
 
-## Querying Events
+## What Happens Under the Hood
 
-### All events by job label
+When you run this example, here's what happens:
+
+1. **Taxonomy loaded** — `taxonomy.yaml` defines 4 event types across
+   2 categories (`write` and `security`), each with required fields
+2. **Loki output created** — `outputs.yaml` configures the Loki push
+   URL, stream labels, batching, and compression
+3. **Events audited** — 5 events are sent through the logger. Each
+   event is validated against the taxonomy, serialised as JSON, and
+   enqueued in the Loki output's internal buffer
+4. **Batch flushed** — the batch loop groups events by their stream
+   labels and pushes them to Loki as a gzip-compressed JSON payload
+5. **Events queryable** — within 1-2 seconds, the events are queryable
+   via Loki's LogQL API
+
+## Understanding Stream Labels
+
+Events are grouped into **Loki streams** based on their label values.
+Each unique combination of labels creates a separate stream:
+
+```
+Stream 1: {event_type="user_create", event_category="write", app_name="audit-example", ...}
+  → alice's user_create
+  → bob's user_create
+
+Stream 2: {event_type="auth_failure", event_category="security", ...}
+  → mallory's auth_failure
+
+Stream 3: {event_type="permission_denied", event_category="security", ...}
+  → mallory's permission_denied
+
+Stream 4: {event_type="user_update", event_category="write", ...}
+  → alice's user_update
+```
+
+The labels come from three sources:
+
+| Source | Labels | Set when |
+|--------|--------|----------|
+| **Static** (config) | `job="audit-example"`, `environment="development"` | Config load time |
+| **Framework** (logger) | `app_name="audit-example"`, `host="dev-machine"`, `pid="12345"` | Logger construction |
+| **Per-event** (metadata) | `event_type`, `event_category`, `severity` | Each audit event |
+
+### PID — Why It Matters for Auditing
+
+The `pid` (process ID) label is automatically captured via
+`os.Getpid()` at logger construction. It identifies **which process
+instance** generated each audit event. This is critical for:
+
+- **Forensics** — after an incident, correlate events to the exact
+  process that was running at the time
+- **Multi-instance deployments** — when multiple instances of the same
+  service are running, PID distinguishes their audit trails
+- **Process lifecycle tracking** — a PID change indicates a process
+  restart, which may be relevant during incident investigation
+
+Query events from a specific process:
+
+```logql
+{app_name="audit-example", pid="12345"}
+```
+
+By default PID is included as a stream label. In high-cardinality
+environments (many short-lived processes), you can exclude it:
+
+```yaml
+labels:
+  dynamic:
+    pid: false   # events still contain pid in the JSON body
+```
+
+Even when excluded from labels, the `pid` field still appears in
+every JSON log line and is queryable via LogQL's `| json` parser:
+
+```logql
+{app_name="audit-example"} | json | pid=12345
+```
+
+**This is the key insight:** labels are indexed by Loki. Querying by
+label is instant — Loki doesn't need to scan every log line. User
+fields (`actor_id`, `outcome`, `resource_id`) stay in the JSON log
+line and are queryable via LogQL's `| json` parser.
+
+## Querying Events by Labels
+
+### Query all events
 
 ```bash
-curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=20' | jq '.data.result[].values[][1]' -r | jq .
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' \
+  | jq '.data.result[] | {stream: .stream, count: (.values | length)}'
 ```
 
-### Security events only
+**Output — 4 streams, 5 total events:**
+
+```json
+{
+  "stream": {
+    "app_name": "audit-example",
+    "environment": "development",
+    "event_category": "write",
+    "event_type": "user_create",
+    "host": "dev-machine",
+    "job": "audit-example",
+    "severity": "5"
+  },
+  "count": 2
+}
+{
+  "stream": {
+    "event_category": "write",
+    "event_type": "user_update",
+    ...
+  },
+  "count": 1
+}
+{
+  "stream": {
+    "event_category": "security",
+    "event_type": "auth_failure",
+    ...
+  },
+  "count": 1
+}
+{
+  "stream": {
+    "event_category": "security",
+    "event_type": "permission_denied",
+    ...
+  },
+  "count": 1
+}
+```
+
+### Search by `event_type` — find only authentication failures
 
 ```bash
-curl -s 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq '.data.result[].values[][1]' -r | jq .
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' \
+  | jq '.data.result[].values[][1]' -r | jq .
 ```
 
-### Filter by actor in the log line
+**Output — only the auth_failure event, not user_create or others:**
+
+```json
+{
+  "timestamp": "2026-04-05T04:44:48.654192049+02:00",
+  "event_type": "auth_failure",
+  "severity": 5,
+  "app_name": "audit-example",
+  "host": "dev-machine",
+  "timezone": "Local",
+  "pid": 1695131,
+  "actor_id": "mallory",
+  "outcome": "failure",
+  "reason": "invalid_password",
+  "event_category": "security"
+}
+```
+
+### Search by `event_category` — find all security events
 
 ```bash
-curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}|="mallory"&limit=10' | jq '.data.result[].values[][1]' -r | jq .
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={event_category="security"}&limit=10' \
+  | jq '.data.result[].values[][1]' -r | jq .
 ```
 
-## Configuration Reference
+**Output — both security events (auth_failure + permission_denied), but no write events:**
 
-See [`outputs.yaml`](outputs.yaml) for the complete configuration.
-Key fields:
+```json
+{
+  "event_type": "auth_failure",
+  "actor_id": "mallory",
+  "outcome": "failure",
+  "reason": "invalid_password",
+  "event_category": "security"
+}
+{
+  "event_type": "permission_denied",
+  "actor_id": "mallory",
+  "outcome": "failure",
+  "resource": "admin_panel",
+  "event_category": "security"
+}
+```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `url` | (required) | Full Loki push API URL |
-| `tenant_id` | (empty) | `X-Scope-OrgID` for multi-tenancy |
-| `batch_size` | 100 | Events per push request |
-| `max_batch_bytes` | 1 MiB | Max uncompressed payload size |
-| `flush_interval` | "5s" | Max time between pushes |
-| `gzip` | true | Gzip compress push requests |
-| `labels.static` | (empty) | Constant labels on every stream |
-| `labels.dynamic` | all true | Per-event label toggles |
+### Search by `app_name` — isolate events from this application
 
-## How Stream Labels Work
+```bash
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={app_name="audit-example"}&limit=10' \
+  | jq '.data.result | length' -r
+```
 
-Every event gets stream labels derived from three sources:
+**Output:** `4` (4 streams containing 5 events from this app)
 
-1. **Static labels** from config: `job="audit-example"`,
-   `environment="development"`
-2. **Framework fields** from the logger: `app_name="audit-example"`,
-   `host="dev-machine"`
-3. **Per-event metadata**: `event_type="user_create"`,
-   `severity="5"`, `event_category="write"`
+### Combine labels with LogQL JSON parsing
 
-Events with the same label values are grouped into the same Loki
-stream. Different `event_type` or `severity` values create separate
-streams, each independently queryable.
+Find user_create events by alice specifically:
+
+```bash
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={event_type="user_create"}+|+json+|+actor_id="alice"&limit=10' \
+  | jq '.data.result[].values[][1]' -r | jq .
+```
+
+**Output — only alice's user_create, not bob's:**
+
+```json
+{
+  "timestamp": "2026-04-05T04:44:48.654167649+02:00",
+  "event_type": "user_create",
+  "severity": 5,
+  "app_name": "audit-example",
+  "host": "dev-machine",
+  "actor_id": "alice",
+  "outcome": "success",
+  "resource_id": "user-42",
+  "event_category": "write"
+}
+```
+
+## YAML Configuration Explained
+
+Each field in [`outputs.yaml`](outputs.yaml):
+
+```yaml
+version: 1
+
+# Framework fields — appear in every event AND as Loki stream labels.
+# These identify your application across all outputs.
+app_name: "audit-example"    # → stream label app_name="audit-example"
+host: "dev-machine"          # → stream label host="dev-machine"
+
+outputs:
+  loki_audit:
+    type: loki               # Registers via: import _ "github.com/axonops/go-audit/loki"
+    loki:
+      url: "http://localhost:3100/loki/api/v1/push"  # Full path required
+      tenant_id: "example"   # Sets X-Scope-OrgID header for multi-tenant Loki
+      allow_insecure_http: true   # http:// only — use https:// in production
+      allow_private_ranges: true  # localhost — blocked by default (SSRF protection)
+
+      # Batching — events are buffered and pushed in batches.
+      batch_size: 10         # Push after 10 events (default: 100)
+      flush_interval: "1s"   # Or push after 1 second, whichever comes first
+      timeout: "5s"          # HTTP request timeout
+      max_retries: 2         # Retry on 429/5xx with exponential backoff
+      gzip: true             # Compress push payloads (default: true)
+
+      # Stream labels control how events are indexed in Loki.
+      labels:
+        static:              # Constant labels on every stream
+          job: "audit-example"
+          environment: "development"
+        dynamic:             # Per-event labels — all included by default
+          pid: false         # Exclude PID (high cardinality in dev)
+          # To exclude other labels: severity: false, host: false, etc.
+```
+
+## What the Event JSON Looks Like
+
+Every audit event is serialised as a JSON log line in Loki. Here's
+the complete structure for a `user_create` event:
+
+```json
+{
+  "timestamp": "2026-04-05T04:44:48.654167649+02:00",
+  "event_type": "user_create",
+  "severity": 5,
+  "app_name": "audit-example",
+  "host": "dev-machine",
+  "timezone": "Local",
+  "pid": 1695131,
+  "actor_id": "alice",
+  "outcome": "success",
+  "resource_id": "user-42",
+  "event_category": "write"
+}
+```
+
+Fields come from different sources:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `timestamp` | Automatic | When the event was processed |
+| `event_type` | `audit.NewEvent("user_create", ...)` | The taxonomy event type |
+| `severity` | Taxonomy default (5) | Numeric severity level |
+| `app_name` | `outputs.yaml` top-level `app_name` | Application name |
+| `host` | `outputs.yaml` top-level `host` | Hostname |
+| `timezone` | Auto-detected | System timezone |
+| `pid` | Auto-captured | Process ID |
+| `actor_id` | Event fields | Who performed the action |
+| `outcome` | Event fields | success/failure |
+| `resource_id` | Event fields | What was affected |
+| `event_category` | Taxonomy categories | Which category this event belongs to |
+
+## Multi-Tenancy
+
+The `tenant_id: "example"` field sets the `X-Scope-OrgID` header on
+every push request. In multi-tenant Loki, this isolates your events
+from other tenants. When querying, you must include the same header:
+
+```bash
+# This header is REQUIRED when tenant_id is set:
+curl -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?...'
+```
+
+Without the header, Loki returns 401 Unauthorized.
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `401 Unauthorized` | Missing `X-Scope-OrgID` header in query | Add `-H 'X-Scope-OrgID: example'` to curl |
+| `401 Unauthorized` | Missing `tenant_id` in config | Add `tenant_id: "example"` to outputs.yaml |
+| Events not appearing | Loki ingestion delay | Wait 2-3 seconds after pushing |
+| Connection refused | Loki not running | Run `docker run -d --name loki -p 3100:3100 grafana/loki:3.0.0` |
+| `must be https` error | Using `http://` without flag | Add `allow_insecure_http: true` (dev only) |
+| SSRF blocked | Using localhost without flag | Add `allow_private_ranges: true` (dev only) |
 
 ## Cleanup
 
 ```bash
 docker stop loki && docker rm loki
 ```
+
+## Next Steps
+
+- [Output Configuration Reference](../../docs/output-configuration.md#-loki-output-fields) — all config fields with defaults and bounds
+- [Output Types](../../docs/outputs.md#-loki-output) — Loki section with security and delivery details
+- [Troubleshooting](../../docs/troubleshooting.md#-loki-events-not-appearing) — common Loki issues

@@ -134,7 +134,7 @@ func startSyslogReceiver(addr string) func() []string {
 			wg.Add(1)
 			go func(c net.Conn) {
 				defer wg.Done()
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				scanner := bufio.NewScanner(c)
 				for scanner.Scan() {
 					line := strings.TrimSpace(scanner.Text())

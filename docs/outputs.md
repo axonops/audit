@@ -101,51 +101,27 @@ Install: `go get github.com/axonops/go-audit/file`
 
 ## 📡 Syslog Output
 
-Sends events as RFC 5424 syslog messages over TCP, UDP, or TCP+TLS.
-The connection is established immediately when the output is created —
-the syslog server must be reachable at startup. TCP and TLS
-connections are re-established automatically on failure.
+Sends events as [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424)
+syslog messages over TCP, UDP, or TCP+TLS. The connection is
+established immediately when the output is created — the syslog server
+must be reachable at startup. TCP and TLS connections are
+re-established automatically on failure with exponential backoff.
 
-### YAML Configuration
+Key features:
 
-```yaml
-outputs:
-  siem:
-    type: syslog
-    syslog:
-      network: "tcp+tls"           # "tcp" (default), "udp", or "tcp+tls"
-      address: "${SYSLOG_ADDR}:6514"  # required
-      app_name: "myapp"            # RFC 5424 APP-NAME (default: "audit")
-      facility: "local0"           # syslog facility (default: "local0")
-      tls_ca: "/etc/audit/ca.pem"  # CA certificate for TLS verification
-      tls_cert: "/etc/audit/client-cert.pem"  # client cert for mTLS
-      tls_key: "/etc/audit/client-key.pem"    # client key for mTLS
-      tls_policy:                  # TLS version policy
-        allow_tls12: false         # allow TLS 1.2 (default: false — TLS 1.3 only)
-        allow_weak_ciphers: false  # weaker ciphers with TLS 1.2 (default: false)
-      max_retries: 10              # reconnection attempts (default: 10)
-    formatter:
-      type: cef
-      vendor: "MyCompany"          # CEF header field (recommended, default: empty)
-      product: "MyApp"             # CEF header field (recommended, default: empty)
-      version: "1.0"               # CEF header field (recommended, default: empty)
-    route:
-      include_categories:
-        - security
-```
+- **Standards-based** — RFC 5424 message format with octet-counting
+  framing (RFC 5425)
+- **Three transports** — TCP (default), UDP, or TCP+TLS with mTLS
+- **Automatic reconnection** — bounded exponential backoff (100ms to
+  30s with jitter)
+- **SIEM pairing** — combine with the CEF formatter for native ArcSight,
+  Splunk, and QRadar integration
 
-**CEF formatter fields:** `vendor`, `product`, and `version` are
-recommended but not required. If omitted, the CEF header positions
-are empty strings — the event is still valid CEF but less useful for
-SIEM correlation. Set them to identify your organisation and
-application in SIEM dashboards.
+**[→ Full Syslog Output Reference](syslog-output.md)** — complete
+configuration, TLS, reconnection, facility values, production examples,
+and troubleshooting.
 
-**UDP limitation:** Messages exceeding the network MTU are silently
-truncated. Use TCP or TLS for events with large payloads.
-
-**Valid facility values:** `kern`, `user`, `mail`, `daemon`, `auth`,
-`syslog`, `lpr`, `news`, `uucp`, `cron`, `authpriv`, `ftp`,
-`local0` through `local7`.
+**[→ Progressive example with embedded TCP receiver](../examples/06-syslog-output/)**
 
 Install: `go get github.com/axonops/go-audit/syslog`
 

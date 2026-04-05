@@ -1,0 +1,49 @@
+version: 1
+
+categories:
+  security:
+    - auth_login
+    - auth_failure
+  write:
+    - user_create
+    - config_change
+
+events:
+  auth_login:
+    description: "User authenticated successfully"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+  auth_failure:
+    description: "Authentication attempt failed"
+    severity: 8
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      reason:
+        required: true
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+  config_change:
+    description: "System configuration was modified"
+    severity: 7
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      setting:
+        required: true
+      old_value:
+        required: true
+      new_value:
+        required: true

@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [04 — Stdout Output](../04-stdout-output/) |
-> **Next:** [08 — Loki Output](../08-loki-output/)
+> **Next:** [06 — Syslog Output](../06-syslog-output/)
 
 # Example 05: File Output
 

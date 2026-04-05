@@ -296,9 +296,10 @@ func TestHTTP_NoAuth_NoHeader(t *testing.T) {
 func TestHTTP_ContentType_JSON(t *testing.T) {
 	t.Parallel()
 
-	var capturedCT string
+	var capturedCT, capturedCE string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedCT = r.Header.Get("Content-Type")
+		capturedCE = r.Header.Get("Content-Encoding")
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(srv.Close)
@@ -313,6 +314,8 @@ func TestHTTP_ContentType_JSON(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	assert.Equal(t, "application/json", capturedCT)
+	assert.Empty(t, capturedCE,
+		"Content-Encoding must be absent when Compress=false")
 }
 
 func TestHTTP_ContentEncoding_Gzip(t *testing.T) {

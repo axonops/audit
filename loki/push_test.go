@@ -42,60 +42,78 @@ type pushStream struct {
 // Stream grouping
 // ---------------------------------------------------------------------------
 
-func TestOutput_StreamGrouping_SingleStream(t *testing.T) {
+func TestBuildPayload_PidZero_ExcludesPidLabel(t *testing.T) {
 	t.Parallel()
-
-	cfg := validConfig()
-	cfg.BatchSize = 10
-	cfg.FlushInterval = 10 * time.Second
-
-	out, err := loki.New(cfg, nil, nil)
-	require.NoError(t, err)
-	out.SetFrameworkFields("myapp", "prod-01", 12345)
-
-	// Write events with identical metadata — should produce one stream.
-	meta := audit.EventMetadata{
-		EventType: "user_login",
-		Severity:  6,
-		Category:  "auth",
-		Timestamp: time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC),
-	}
-
-	for i := 0; i < 3; i++ {
-		require.NoError(t, out.WriteWithMetadata([]byte(`{"actor":"alice"}`), meta))
-	}
-
-	require.NoError(t, out.Close())
-}
-
-func TestOutput_StreamGrouping_MultipleStreams(t *testing.T) {
-	t.Parallel()
-
-	cfg := validConfig()
-	cfg.BatchSize = 10
-	cfg.FlushInterval = 10 * time.Second
-
-	out, err := loki.New(cfg, nil, nil)
-	require.NoError(t, err)
-	out.SetFrameworkFields("myapp", "prod-01", 1)
 
 	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"test":"pid_zero"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		AppName: "app",
+		Host:    "h1",
+		PID:     0, // zero PID should exclude pid label
+	})
 
-	// Write events with different event types — should produce multiple streams.
-	require.NoError(t, out.WriteWithMetadata(
-		[]byte(`{"action":"login"}`),
-		audit.EventMetadata{EventType: "user_login", Severity: 6, Category: "auth", Timestamp: ts},
-	))
-	require.NoError(t, out.WriteWithMetadata(
-		[]byte(`{"action":"logout"}`),
-		audit.EventMetadata{EventType: "user_logout", Severity: 6, Category: "auth", Timestamp: ts},
-	))
-	require.NoError(t, out.WriteWithMetadata(
-		[]byte(`{"action":"create"}`),
-		audit.EventMetadata{EventType: "resource_create", Severity: 4, Category: "data", Timestamp: ts},
-	))
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p))
+	require.Len(t, p.Streams, 1)
+	_, hasPID := p.Streams[0].Stream["pid"]
+	assert.False(t, hasPID, "pid=0 should exclude pid from stream labels")
+}
 
-	require.NoError(t, out.Close())
+func TestBuildPayload_NoFrameworkFields(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"test":"no_fw"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		// No AppName, Host, PID — framework fields absent.
+	})
+
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p))
+	require.Len(t, p.Streams, 1)
+	_, hasAppName := p.Streams[0].Stream["app_name"]
+	assert.False(t, hasAppName, "absent app_name should not produce a label")
+	_, hasHost := p.Streams[0].Stream["host"]
+	assert.False(t, hasHost, "absent host should not produce a label")
+}
+
+func TestBuildPayload_EscapeKeyValue_Backslash(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	// Two events with static labels that differ only by backslash vs pipe.
+	// They must produce different streams to avoid data corruption.
+	payloadA := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"v":"a"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		StaticLabels: map[string]string{"env": `a\b`},
+		AppName:      "app",
+		Host:         "h1",
+		PID:          1,
+	})
+	payloadB := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"v":"b"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		StaticLabels: map[string]string{"env": "a|b"},
+		AppName:      "app",
+		Host:         "h1",
+		PID:          1,
+	})
+
+	var pA, pB pushPayload
+	require.NoError(t, json.Unmarshal(payloadA, &pA))
+	require.NoError(t, json.Unmarshal(payloadB, &pB))
+	require.Len(t, pA.Streams, 1)
+	require.Len(t, pB.Streams, 1)
+	assert.NotEqual(t, pA.Streams[0].Stream["env"], pB.Streams[0].Stream["env"],
+		`static label values "a\\b" and "a|b" must produce different streams`)
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,47 @@ services:
       retries: 10
       start_period: 10s
 
+  loki-tls:
+    image: grafana/loki:3.0.0@sha256:757b5fadf816a1396f1fea598152947421fa49cb8b2db1ddd2a6e30fae003253
+    user: "0:0"  # Run as root so Loki can read the mounted key files
+    ports:
+      - "127.0.0.1:3101:3100"
+    volumes:
+      - ./docker/loki/loki-tls-config.yaml:/etc/loki/local-config.yaml:ro
+      - ../testdata/certs/server.crt:/etc/loki/certs/server.crt:ro
+      - ../testdata/certs/server.key:/etc/loki/certs/server.key:ro
+      - ../testdata/certs/ca.crt:/etc/loki/certs/ca.crt:ro
+    networks:
+      - audit-test
+    healthcheck:
+      # wget inside Alpine cannot do TLS verification with custom CA;
+      # use TCP socket check instead (confirms port is listening).
+      test: ["CMD-SHELL", "nc -z localhost 3100"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 15s
+
+  loki-mtls:
+    image: grafana/loki:3.0.0@sha256:757b5fadf816a1396f1fea598152947421fa49cb8b2db1ddd2a6e30fae003253
+    user: "0:0"  # Run as root so Loki can read the mounted key files
+    ports:
+      - "127.0.0.1:3102:3100"
+    volumes:
+      - ./docker/loki/loki-mtls-config.yaml:/etc/loki/local-config.yaml:ro
+      - ../testdata/certs/server.crt:/etc/loki/certs/server.crt:ro
+      - ../testdata/certs/server.key:/etc/loki/certs/server.key:ro
+      - ../testdata/certs/ca.crt:/etc/loki/certs/ca.crt:ro
+    networks:
+      - audit-test
+    healthcheck:
+      # mTLS requires client cert for health check; use TCP socket check.
+      test: ["CMD-SHELL", "nc -z localhost 3100"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 15s
+
 networks:
   audit-test:
     external: true

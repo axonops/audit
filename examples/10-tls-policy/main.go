@@ -84,24 +84,24 @@ func main() {
 // translates to concrete TLS settings.
 func demonstrateTLSPolicies() {
 	scenarios := []struct {
-		name   string
 		policy *audit.TLSPolicy
+		name   string
 	}{
 		{
-			name:   "Default (nil policy)",
 			policy: nil,
+			name:   "Default (nil policy)",
 		},
 		{
-			name:   "TLS 1.3 only (explicit)",
 			policy: &audit.TLSPolicy{AllowTLS12: false, AllowWeakCiphers: false},
+			name:   "TLS 1.3 only (explicit)",
 		},
 		{
-			name:   "TLS 1.2 allowed, secure ciphers",
 			policy: &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: false},
+			name:   "TLS 1.2 allowed, secure ciphers",
 		},
 		{
-			name:   "TLS 1.2 allowed, weak ciphers (NOT recommended)",
 			policy: &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+			name:   "TLS 1.2 allowed, weak ciphers (NOT recommended)",
 		},
 	}
 

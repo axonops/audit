@@ -30,6 +30,11 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
+// dropWarnInterval is the minimum interval between slog.Warn calls
+// for buffer-full drop events. Drops are always counted in metrics;
+// only the diagnostic log message is rate-limited.
+const dropWarnInterval = 10 * time.Second
+
 // Compile-time interface assertions.
 var (
 	_ audit.Output                 = (*Output)(nil)
@@ -78,6 +83,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	mu          sync.Mutex
 	closed      atomic.Bool
 	fw          atomic.Pointer[frameworkFields]
+	drops       dropLimiter // rate-limits buffer-full slog.Warn
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams     map[string]*lokiStream // reused across flushes
@@ -186,8 +192,11 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 	case o.ch <- lokiEntry{data: cp, metadata: meta}:
 		return nil
 	default:
-		slog.Warn("audit: loki buffer full, dropping event",
-			"buffer_size", cap(o.ch))
+		o.drops.record(dropWarnInterval, func(dropped int64) {
+			slog.Warn("audit: loki buffer full, events dropped",
+				"dropped", dropped,
+				"buffer_size", cap(o.ch))
+		})
 		if o.lokiMetrics != nil {
 			o.lokiMetrics.RecordLokiDrop()
 		}

@@ -145,8 +145,24 @@ Monitor `RecordWebhookDrop` — if this fires, the webhook's internal
 buffer is full and events are being lost. Increase `buffer_size` in
 the webhook configuration.
 
+### Loki Output Metrics (`loki.Metrics`)
+
+```go
+type Metrics interface {
+    RecordLokiDrop()                                      // event dropped (buffer full or retries exhausted)
+    RecordLokiFlush(batchSize int, dur time.Duration)     // batch delivered successfully
+}
+```
+
+Monitor `RecordLokiDrop` — if this fires, the Loki output's internal
+buffer is full or retries are exhausted and events are being lost.
+Increase `buffer_size` or check Loki connectivity.
+
+See [Loki Output Reference](loki-output.md#metrics-and-monitoring)
+for the complete Loki metrics documentation.
+
 See [Progressive Example: CRUD API](../examples/11-crud-api/) for a
-complete Prometheus implementation of all four metrics interfaces.
+complete Prometheus implementation of all five metrics interfaces.
 
 ## 🧪 Testing Metrics
 

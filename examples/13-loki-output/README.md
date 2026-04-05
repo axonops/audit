@@ -50,6 +50,7 @@ Audited: user_update by alice
 Waiting for Loki delivery...
 Done. Query your events:
   curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .
 ```
 
 ## What Happens Under the Hood

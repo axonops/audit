@@ -93,7 +93,8 @@ test-examples:
 	@for dir in examples/01-basic examples/02-code-generation examples/03-standard-fields \
 	            examples/04-stdout-output examples/05-file-output \
 	            examples/06-syslog-output examples/08-loki-output \
-	            examples/09-multi-output examples/11-event-routing \
+	            examples/09-multi-output examples/10-tls-policy \
+	            examples/11-event-routing \
 	            examples/12-sensitivity-labels examples/13-hmac-integrity \
 	            examples/14-formatters examples/15-middleware \
 	            examples/16-crud-api examples/17-testing; do \

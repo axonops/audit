@@ -1,6 +1,6 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [09 — Multi-Output](../09-multi-output/) |
+> **Previous:** [10 — TLS Policy](../10-tls-policy/) |
 > **Next:** [12 — Sensitivity Labels](../12-sensitivity-labels/)
 
 # Example 11: Event Routing

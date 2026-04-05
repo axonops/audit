@@ -121,6 +121,7 @@ mem.prof
 /06-syslog-output
 /08-loki-output
 /09-multi-output
+/10-tls-policy
 /11-event-routing
 /12-sensitivity-labels
 /13-hmac-integrity
@@ -138,6 +139,7 @@ examples/05-file-output/05-file-output
 examples/06-syslog-output/06-syslog-output
 examples/08-loki-output/08-loki-output
 examples/09-multi-output/09-multi-output
+examples/10-tls-policy/10-tls-policy
 examples/11-event-routing/11-event-routing
 examples/12-sensitivity-labels/12-sensitivity-labels
 examples/13-hmac-integrity/13-hmac-integrity

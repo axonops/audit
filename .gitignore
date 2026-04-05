@@ -112,6 +112,21 @@ mem.prof
 /audit-gen
 /cmd/audit-gen/audit-gen
 
+# Root-level binaries from go build ./examples/...
+/01-basic
+/02-code-generation
+/03-standard-fields
+/05-file-output
+/08-loki-output
+/09-multi-output
+/11-event-routing
+/12-sensitivity-labels
+/13-hmac-integrity
+/14-formatters
+/15-middleware
+/16-crud-api
+/17-testing
+
 # Example binaries — go build produces a binary named after the directory
 examples/01-basic/01-basic
 examples/02-code-generation/02-code-generation

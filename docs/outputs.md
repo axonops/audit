@@ -116,61 +116,29 @@ Install: `go get github.com/axonops/go-audit/syslog`
 
 ## 🌐 Webhook Output
 
-Batches events as newline-delimited JSON (NDJSON) and POSTs them to
-an HTTPS endpoint. Failed batches are retried with exponential
-backoff.
+Batches audit events as
+[NDJSON](https://github.com/ndjson/ndjson-spec) (newline-delimited
+JSON) and POSTs them to an HTTPS endpoint. Failed batches are retried
+with exponential backoff. Private and loopback addresses are blocked
+by default (SSRF protection).
 
-### YAML Configuration
+Key features:
 
-```yaml
-outputs:
-  alerts:
-    type: webhook
-    webhook:
-      url: "https://ingest.example.com/audit"  # required, must be https://
-      batch_size: 50              # events per batch (default: 100, max: 10,000)
-      buffer_size: 10000          # internal buffer capacity (default: 10,000, max: 1,000,000)
-      flush_interval: "5s"        # flush after this duration (default: "5s")
-      timeout: "10s"              # HTTP request timeout (default: "10s")
-      max_retries: 3              # retry attempts (default: 3, max: 20)
-      headers:                    # custom HTTP headers
-        Authorization: "Bearer my-token"
-        X-Custom-Header: "my-value"
-      tls_ca: "/etc/audit/ca.pem"           # CA cert for TLS verification
-      tls_cert: "/etc/audit/client-cert.pem" # client cert for mTLS
-      tls_key: "/etc/audit/client-key.pem"   # client key for mTLS
-      tls_policy:                 # TLS version policy
-        allow_tls12: false        # allow TLS 1.2 (default: false — TLS 1.3 only)
-        allow_weak_ciphers: false # weaker ciphers with TLS 1.2 (default: false)
-      # allow_insecure_http: true # MUST NOT be true in production
-      # allow_private_ranges: true # SSRF protection — enable only for local dev
-    route:
-      min_severity: 7             # only high-severity events
-    exclude_labels:
-      - pii
-      - financial
-```
+- **Batched delivery** — configurable batch size and flush interval
+  reduce HTTP overhead
+- **Retry with backoff** — 5xx and 429 responses trigger exponential
+  backoff with jitter
+- **SSRF protection** — private/loopback ranges blocked by default;
+  redirects rejected
+- **Custom headers** — authentication tokens, correlation IDs on every
+  request
+- **At-least-once delivery** — batches retried on transient failure
 
-**Custom headers:** Use `headers` to add authentication tokens,
-correlation IDs, or any custom HTTP headers to every request. Header
-values are plain strings — use environment variables for secrets
-(e.g., read from `os.Getenv` in your Go code before passing to the
-programmatic API).
+**[→ Full Webhook Output Reference](webhook-output.md)** — complete
+configuration, authentication, TLS, NDJSON format, retry logic, SSRF
+protection, production examples, and troubleshooting.
 
-**Security:** HTTPS is required by default. `allow_insecure_http`
-MUST NOT be enabled in production — plaintext HTTP exposes
-credentials in request headers to network observers. Private and
-loopback IP ranges are blocked unless `allow_private_ranges` is
-explicitly enabled (SSRF protection).
-
-**Delivery:** At-least-once — a batch may be delivered more than once
-if the server accepts the payload but the acknowledgement is lost.
-Design your receiver to handle duplicate batches.
-
-**Buffer drops:** If the webhook's internal buffer fills (events
-arrive faster than batches can be sent), events are dropped and
-`webhook.Metrics.RecordWebhookDrop()` is called. Increase
-`buffer_size` if you see drops.
+**[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
 
 Install: `go get github.com/axonops/go-audit/webhook`
 

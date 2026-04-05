@@ -20,6 +20,7 @@ outputs:
     type: loki
     loki:
       url: "http://localhost:3100/loki/api/v1/push"
+      tenant_id: "example"          # X-Scope-OrgID header for multi-tenant Loki
       allow_insecure_http: true     # local dev only — use https in production
       allow_private_ranges: true    # local dev only — blocks private IPs by default
       batch_size: 10                # small batch for demo visibility

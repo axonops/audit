@@ -23,9 +23,9 @@ events:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-      reason: {}
+      reason: {required: true}
   permission_denied:
     fields:
       outcome: {required: true}
       actor_id: {required: true}
-      resource: {}
+      resource: {required: true}

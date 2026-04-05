@@ -8,6 +8,7 @@
 - [Validation Errors on Valid-Looking Events](#validation-errors-on-valid-looking-events)
 - [Syslog Connection Failures](#syslog-connection-failures)
 - [Webhook Events Not Delivered](#webhook-events-not-delivered)
+- [Loki Events Not Appearing](#loki-events-not-appearing)
 - [File Output Not Writing](#file-output-not-writing)
 - [Goroutine Leak in Tests](#goroutine-leak-in-tests)
 
@@ -133,6 +134,22 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 | **Server returning errors** | 4xx errors are not retried (client error). 5xx errors are retried up to `max_retries` times. Check the server-side logs. |
 | **Buffer full** | The webhook has its own internal buffer. If events arrive faster than batches can be sent, events are dropped. Monitor `RecordWebhookDrop` and increase `buffer_size` if needed. |
 | **Redirect blocked** | Webhook follows no redirects. Make sure the URL is the final endpoint, not a redirect. |
+
+---
+
+## 🔶 Loki Events Not Appearing
+
+| Cause | Fix |
+|-------|-----|
+| **Missing blank import** | Add `_ "github.com/axonops/go-audit/loki"` to register the Loki output type. |
+| **`allow_private_ranges` not set** | For local development with `localhost:3100`, set `allow_private_ranges: true`. Private IPs are blocked by default (SSRF protection). |
+| **`allow_insecure_http` not set** | For `http://` URLs, set `allow_insecure_http: true`. HTTPS is required by default. |
+| **Loki ingestion delay** | Loki has a short delay between push and query availability. Wait 2-5 seconds, or query with a wider time range. |
+| **Tenant ID mismatch** | If `tenant_id` is set, queries MUST include the `X-Scope-OrgID` header with the same value. |
+| **429 rate limiting** | Loki is rate-limiting pushes. Monitor `RecordLokiDrop` metrics. Increase `flush_interval` or reduce event volume. |
+| **High cardinality rejection** | Too many unique label combinations. Exclude high-cardinality labels: set `pid: false` or `severity: false` in `labels.dynamic`. |
+| **Buffer full, events dropped** | The internal buffer is full. Monitor `RecordLokiDrop` and increase `buffer_size`. |
+| **Redirect blocked** | Loki output never follows HTTP redirects. Ensure the URL is the final endpoint. |
 
 ---
 

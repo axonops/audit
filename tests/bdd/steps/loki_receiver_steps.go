@@ -200,7 +200,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiverAndMetrics(tc, r, &loki.Config{
+		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
 			BatchSize: 1,
 			Compress:  true,
 		})
@@ -211,7 +211,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiverAndMetrics(tc, r, &loki.Config{
+		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
 			BatchSize:  1,
 			MaxRetries: 1,
 			Compress:   true,
@@ -332,43 +332,6 @@ func createLokiLoggerWithReceiver(tc *AuditTestContext, r *localLokiReceiver, cf
 	cfg.AllowInsecureHTTP = true
 	cfg.AllowPrivateRanges = true
 	return createLokiLoggerFromConfig(tc, cfg)
-}
-
-// createLokiLoggerWithReceiverAndMetrics creates a Loki output with metrics.
-func createLokiLoggerWithReceiverAndMetrics(tc *AuditTestContext, r *localLokiReceiver, cfg *loki.Config) error {
-	cfg.URL = r.server.URL + "/loki/api/v1/push"
-	cfg.AllowInsecureHTTP = true
-	cfg.AllowPrivateRanges = true
-
-	if cfg.FlushInterval == 0 {
-		cfg.FlushInterval = 200 * time.Millisecond
-	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = 5 * time.Second
-	}
-	if cfg.BufferSize == 0 {
-		cfg.BufferSize = 100
-	}
-
-	out, err := loki.New(cfg, nil, tc.LokiMetrics)
-	if err != nil {
-		return fmt.Errorf("create loki output: %w", err)
-	}
-
-	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
-		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithAppName("bdd-audit"),
-		audit.WithHost("bdd-host"),
-		audit.WithOutputs(out),
-	)
-	if err != nil {
-		_ = out.Close()
-		return fmt.Errorf("create logger: %w", err)
-	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
-	return nil
 }
 
 // createLokiLoggerFromConfig creates a Loki output from the exact config.

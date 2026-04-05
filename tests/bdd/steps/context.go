@@ -54,7 +54,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	WebhookURL    string // "http://localhost:8080"
 	LokiURL       string // "http://localhost:3100"
 	TLSReceiver   any    // *tlsWebhookReceiver for HTTPS webhook tests
-	LocalReceiver any    // *localWebhookReceiver for SSRF/redirect tests
+	LocalReceiver any    // *localWebhookReceiver or *localLokiReceiver for SSRF/redirect/retry tests
 
 	// Middleware state.
 	TestServer   *httptest.Server

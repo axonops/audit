@@ -146,7 +146,9 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 	Timeout       time.Duration // HTTP request timeout (default 10s)
 	MaxRetries    int           // Retry count for 429/5xx (default 3, max 20)
 
-	// Compress enables gzip compression of push requests (default true).
+	// Compress enables gzip compression of push requests. The YAML
+	// factory defaults to true when the gzip key is omitted; the Go
+	// zero value is false for programmatic construction.
 	Compress bool
 
 	// AllowInsecureHTTP permits http:// URLs. MUST NOT be true in

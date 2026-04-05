@@ -61,39 +61,26 @@ filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
 ## 📁 File Output
 
-Writes one event per line to a local file. Rotates automatically when
-the file reaches the configured size. Old files are compressed with
-gzip and retained up to the configured count and age.
+Writes one audit event per line to a local file with automatic
+size-based rotation, gzip compression, and backup retention.
 
-### YAML Configuration
+Key features:
 
-```yaml
-outputs:
-  audit_log:
-    type: file
-    file:
-      path: "${AUDIT_LOG_PATH:-./audit.log}"  # env vars supported
-      max_size_mb: 100        # rotate at this size (default: 100, max: 10,240)
-      max_backups: 5          # rotated files to keep (default: 5, max: 100)
-      max_age_days: 90        # delete older than this (default: 30, max: 365)
-      permissions: "0600"     # file permissions (default: "0600", must be quoted)
-      compress: true          # gzip rotated files (default: true)
-    route:                    # optional — filter which events reach this output
-      exclude_categories:
-        - read
-    exclude_labels:           # optional — strip fields with these sensitivity labels
-      - pii
-```
+- **Size-based rotation** — automatic rollover at configurable file
+  size (default: 100 MB, max: 10 GB)
+- **Gzip compression** — rotated backups compressed automatically
+  (80–90% reduction)
+- **Backup retention** — configurable count (max: 100) and age (max:
+  365 days)
+- **Secure permissions** — default `0600` (owner only); symlinks
+  rejected to prevent path traversal
+- **No infrastructure dependencies** — local filesystem only
 
-### Validation
+**[→ Full File Output Reference](file-output.md)** — complete
+configuration, rotation mechanics, permissions, production examples,
+and troubleshooting.
 
-- The parent directory of `path` must exist — the library creates
-  the file but not the directory.
-- **Symlinks are rejected.** The library resolves the parent directory
-  path and rejects symlinks to prevent path traversal attacks. This
-  check occurs on the first write.
-- The `permissions` field must be quoted in YAML (e.g., `"0600"`) —
-  unquoted `0600` is parsed as the integer 384 by YAML.
+**[→ Progressive example](../examples/05-file-output/)**
 
 Install: `go get github.com/axonops/go-audit/file`
 

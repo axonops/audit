@@ -15,7 +15,7 @@ Each example introduces one new concept and builds on the previous.
 | 4 | [stdout-output](04-stdout-output/) | Stdout output for development, debugging, and piping to jq |
 | 5 | [file-output](05-file-output/) | File output with rotation and permissions in YAML |
 | 6 | [syslog-output](06-syslog-output/) | Syslog output with RFC 5424, TCP/UDP/TLS, facility values |
-| 7 | webhook-output *(coming soon)* | Webhook output with NDJSON batching, retry, SSRF protection |
+| 7 | [webhook-output](07-webhook-output/) | Webhook output with NDJSON batching, retry, SSRF protection |
 | 8 | [loki-output](08-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
 | 9 | [multi-output](09-multi-output/) | Fan-out to multiple outputs from one YAML config |
 | 10 | [tls-policy](10-tls-policy/) | Global and per-output TLS policy configuration |

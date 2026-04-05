@@ -119,6 +119,7 @@ mem.prof
 /04-stdout-output
 /05-file-output
 /06-syslog-output
+/07-webhook-output
 /08-loki-output
 /09-multi-output
 /10-tls-policy
@@ -137,6 +138,7 @@ examples/03-standard-fields/03-standard-fields
 examples/04-stdout-output/04-stdout-output
 examples/05-file-output/05-file-output
 examples/06-syslog-output/06-syslog-output
+examples/07-webhook-output/07-webhook-output
 examples/08-loki-output/08-loki-output
 examples/09-multi-output/09-multi-output
 examples/10-tls-policy/10-tls-policy

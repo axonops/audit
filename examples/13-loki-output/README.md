@@ -93,8 +93,43 @@ The labels come from three sources:
 | Source | Labels | Set when |
 |--------|--------|----------|
 | **Static** (config) | `job="audit-example"`, `environment="development"` | Config load time |
-| **Framework** (logger) | `app_name="audit-example"`, `host="dev-machine"` | Logger construction |
+| **Framework** (logger) | `app_name="audit-example"`, `host="dev-machine"`, `pid="12345"` | Logger construction |
 | **Per-event** (metadata) | `event_type`, `event_category`, `severity` | Each audit event |
+
+### PID — Why It Matters for Auditing
+
+The `pid` (process ID) label is automatically captured via
+`os.Getpid()` at logger construction. It identifies **which process
+instance** generated each audit event. This is critical for:
+
+- **Forensics** — after an incident, correlate events to the exact
+  process that was running at the time
+- **Multi-instance deployments** — when multiple instances of the same
+  service are running, PID distinguishes their audit trails
+- **Process lifecycle tracking** — a PID change indicates a process
+  restart, which may be relevant during incident investigation
+
+Query events from a specific process:
+
+```logql
+{app_name="audit-example", pid="12345"}
+```
+
+By default PID is included as a stream label. In high-cardinality
+environments (many short-lived processes), you can exclude it:
+
+```yaml
+labels:
+  dynamic:
+    pid: false   # events still contain pid in the JSON body
+```
+
+Even when excluded from labels, the `pid` field still appears in
+every JSON log line and is queryable via LogQL's `| json` parser:
+
+```logql
+{app_name="audit-example"} | json | pid=12345
+```
 
 **This is the key insight:** labels are indexed by Loki. Querying by
 label is instant — Loki doesn't need to scan every log line. User

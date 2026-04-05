@@ -136,16 +136,20 @@ filtered out even though they pass the exclude filter.
 
 ## 🔧 How Events Flow
 
-```
-AuditEvent()
-  ├── validate fields
-  ├── check category enabled (all enabled by default;
-  │   DisableCategory() can disable at runtime)
-  │
-  └── for each output:
-       ├── per-output route filter (include/exclude + severity)
-       ├── per-output sensitivity filter (label exclusion)
-       └── write to output
+```mermaid
+flowchart TD
+    A["AuditEvent()"] --> B{Category enabled?}
+    B -->|No| C[Dropped]
+    B -->|Yes| D[For each output]
+    D --> E{Route configured?}
+    E -->|No| G[Accept all]
+    E -->|Yes| F{Matches route filter?}
+    F -->|No| H[Filtered out]
+    F -->|Yes| I{Severity >= min?}
+    I -->|No| H
+    I -->|Yes| J[Sensitivity filter]
+    J --> K["Output.Write()"]
+    G --> J
 ```
 
 An event must pass the category check AND the per-output route filter

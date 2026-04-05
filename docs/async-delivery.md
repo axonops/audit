@@ -11,17 +11,18 @@
 
 ## 🔧 How Events Flow
 
-```
-AuditEvent(event)
-  ├── validate fields against taxonomy
-  ├── check category enabled (DisableCategory can disable at runtime)
-  └── enqueue to buffered channel ──► drain goroutine (reads continuously)
-                                        ├── set timestamp
-                                        ├── serialize (JSON or CEF)
-                                        └── fan-out to each output
-                                             ├── per-output route filter
-                                             ├── per-output sensitivity filter
-                                             └── Output.Write(bytes)
+```mermaid
+flowchart LR
+    A["AuditEvent()"] --> B[Validate fields]
+    B --> C[Check category enabled]
+    C --> D[Enqueue to channel]
+    D --> E[Drain goroutine]
+    E --> F[Set timestamp]
+    F --> G["Serialize (JSON/CEF)"]
+    G --> H[Fan-out to outputs]
+    H --> I[Route filter]
+    I --> J[Sensitivity filter]
+    J --> K["Output.Write()"]
 ```
 
 ## ❓ Why Async?

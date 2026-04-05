@@ -209,6 +209,17 @@ Every output supports these optional features:
 
 ## 📡 Fan-Out Architecture
 
+```mermaid
+flowchart TD
+    A[Drain goroutine] --> B["Serialize (JSON)"]
+    A --> C["Serialize (CEF)"]
+    B --> D[File output]
+    B --> E[Stdout output]
+    C --> F[Syslog output]
+    B --> G[Webhook output]
+    B --> H[Loki output]
+```
+
 The drain goroutine serialises each event once per unique format and
 delivers to all outputs in sequence. Each output is independent —
 a failure in one output does not block or affect delivery to others.

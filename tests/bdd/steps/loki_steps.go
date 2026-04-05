@@ -253,6 +253,11 @@ func registerLokiGivenConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 // ---------------------------------------------------------------------------
 
 func registerLokiWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiWhenAuditSteps(ctx, tc)
+	registerLokiWhenLifecycleSteps(ctx, tc)
+}
+
+func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with field "([^"]*)" = "([^"]*)"$`,
 		func(eventType, field, value string) error {
 			m := marker("BDD")
@@ -276,6 +281,19 @@ func registerLokiWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+	ctx.Step(`^I audit (?:a|an) "([^"]*)" event with marker "([^"]*)"$`,
+		func(eventType, markerName string) error {
+			m := marker("BDD")
+			tc.Markers[markerName] = m
+			// Also set as default if not already set.
+			if tc.Markers["default"] == "" {
+				tc.Markers["default"] = m
+			}
+			fields := defaultRequiredFields(tc.Taxonomy, eventType)
+			fields["marker"] = m
+			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		})
+
 	ctx.Step(`^I audit (\d+) uniquely marked events with the same timestamp$`,
 		func(count int) error {
 			for i := range count {
@@ -293,6 +311,9 @@ func registerLokiWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return nil
 		})
 
+}
+
+func registerLokiWhenLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to audit a "([^"]*)" event$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
@@ -313,6 +334,7 @@ func registerLokiWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerLokiThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	registerLokiThenDeliverySteps(ctx, tc)
+	registerLokiThenLabelQuerySteps(ctx, tc)
 	registerLokiThenLabelSteps(ctx, tc)
 	registerLokiThenErrorSteps(ctx, tc)
 }
@@ -347,6 +369,28 @@ func registerLokiThenDeliverySteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	ctx.Step(`^the loki event payload should contain:$`, func(table *godog.Table) error {
 		return assertLokiCompletePayload(tc, table)
 	})
+}
+
+// registerLokiThenLabelQuerySteps registers steps that QUERY Loki using
+// label selectors — proving the labels work as search criteria.
+func registerLokiThenLabelQuerySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	// Query by a specific label value and verify the event payload.
+	ctx.Step(`^querying Loki by label "([^"]*)" = "([^"]*)" should return the marker event within (\d+) seconds$`,
+		func(label, value string, secs int) error {
+			return assertLokiQueryByLabel(tc, label, value, time.Duration(secs)*time.Second)
+		})
+
+	// Query by label and verify exact payload fields.
+	ctx.Step(`^querying Loki by label "([^"]*)" = "([^"]*)" should return an event with:$`,
+		func(label, value string, table *godog.Table) error {
+			return assertLokiQueryByLabelWithPayload(tc, label, value, table)
+		})
+
+	// Negative: query by a label value and verify NO events match.
+	ctx.Step(`^querying Loki by label "([^"]*)" = "([^"]*)" should return no events within (\d+) seconds$`,
+		func(label, value string, secs int) error {
+			return assertLokiQueryByLabelEmpty(tc, label, value, time.Duration(secs)*time.Second)
+		})
 }
 
 func registerLokiThenLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -728,6 +772,92 @@ func pollLoki(tc *AuditTestContext, logql, tenant string, minCount int, timeout 
 		select {
 		case <-deadline:
 			return fmt.Errorf("timed out: wanted %d events, got %d (query: %s)", minCount, lastCount, logql)
+		case <-tick.C:
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Label query assertions — prove labels work as search criteria
+// ---------------------------------------------------------------------------
+
+// assertLokiQueryByLabel queries Loki using a specific label selector
+// and verifies the marker event is found. This proves the label is
+// indexed and usable as a search criterion.
+//
+//nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes
+func assertLokiQueryByLabel(tc *AuditTestContext, label, value string, timeout time.Duration) error {
+	m := tc.Markers["default"]
+	if m == "" {
+		return fmt.Errorf("no default marker set")
+	}
+	// Query using ONLY the label as the selector — not the marker.
+	// The marker is used only to find our specific event in the results.
+	logql := fmt.Sprintf(`{test_suite="bdd",%s="%s"} |= "%s"`, label, value, m)
+	return pollLoki(tc, logql, defaultLokiTenant, 1, timeout)
+}
+
+// assertLokiQueryByLabelWithPayload queries by label and verifies the
+// complete payload of the found event.
+//
+//nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes
+func assertLokiQueryByLabelWithPayload(tc *AuditTestContext, label, value string, table *godog.Table) error {
+	// Query using ONLY the label selector — no marker filter.
+	// The label is the search criterion we're testing.
+	logql := fmt.Sprintf(`{test_suite="bdd",%s="%s"}`, label, value)
+
+	// Poll until at least one event appears.
+	deadline := time.After(15 * time.Second)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+		if err == nil && countLokiLines(result) > 0 {
+			// Verify the payload of the FIRST event found.
+			return verifyFirstEventPayload(result, table)
+		}
+		select {
+		case <-deadline:
+			return fmt.Errorf("no events found querying by %s=%q", label, value)
+		case <-tick.C:
+		}
+	}
+}
+
+// verifyFirstEventPayload verifies the Gherkin table against the first
+// event found in the query result.
+func verifyFirstEventPayload(result lokiBDDQueryResult, table *godog.Table) error {
+	for _, s := range result.Data.Result {
+		for _, v := range s.Values {
+			if len(v) < 2 {
+				continue
+			}
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(v[1]), &parsed); err != nil {
+				return fmt.Errorf("loki event JSON is corrupt: %w\nraw: %s", err, v[1])
+			}
+			return verifyFieldsMatch(parsed, v[1], table)
+		}
+	}
+	return fmt.Errorf("no events with parseable JSON in result")
+}
+
+// assertLokiQueryByLabelEmpty queries by label and verifies NO events match.
+//
+//nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes
+func assertLokiQueryByLabelEmpty(tc *AuditTestContext, label, value string, timeout time.Duration) error {
+	logql := fmt.Sprintf(`{test_suite="bdd",%s="%s"}`, label, value)
+	deadline := time.After(timeout)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+		if err == nil && countLokiLines(result) > 0 {
+			return fmt.Errorf("expected no events for %s=%q but found %d", label, value, countLokiLines(result))
+		}
+		select {
+		case <-deadline:
+			return nil // timeout without finding events = success
 		case <-tick.C:
 		}
 	}

@@ -16,19 +16,80 @@ permissions:
   contents: read
 
 # Job dependency chain (fail-fast ordering):
-#   hygiene (fmt, tidy, replace, todos) — no deps, runs immediately
-#   validate-release — no deps, runs immediately (independent)
-#   lint (vet, golangci-lint) — needs: hygiene
-#   security (govulncheck, go mod verify) — needs: hygiene
-#   test x5 matrix — needs: lint (transitively: hygiene)
-#   cross-build — needs: lint (transitively: hygiene)
-#   integration — needs: test (transitively: lint, hygiene)
-#   bdd — needs: test (transitively: lint, hygiene)
-#   benchmark — needs: test (transitively: lint, hygiene)
-#   ci-pass — explicit needs for all required jobs (always() aggregation)
+#   changes — detects docs-only PRs; outputs.code = true/false
+#   hygiene (fmt, tidy, replace, todos) — always runs
+#   validate-release — always runs (independent)
+#   lint (vet, golangci-lint) — needs: hygiene; SKIPPED for docs-only
+#   security (govulncheck, go mod verify) — needs: hygiene; SKIPPED for docs-only
+#   test x7 matrix — needs: lint; SKIPPED for docs-only
+#   cross-build — needs: lint; SKIPPED for docs-only
+#   integration — needs: test; SKIPPED for docs-only
+#   bdd — needs: test; SKIPPED for docs-only
+#   benchmark — needs: test; SKIPPED for docs-only
+#   ci-pass — allows "skipped" results for docs-only PRs
 #   dependency-review — PR-only, blocks PRs adding vulnerable dependencies
 
 jobs:
+  # Detect whether code changed or only docs/markdown changed.
+  # Docs-only PRs skip test, build, integration, BDD, and benchmark jobs.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Check for code changes
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For PRs, diff against the base branch. For pushes, diff against parent.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          # If BASE is empty or all zeros (new branch), run everything.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Verify base commit is reachable (handles force-pushes).
+          if ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Base commit $BASE not reachable — running full CI"
+            exit 0
+          fi
+
+          # Check if any non-docs files changed.
+          # ':!*.md' matches .md at all directory levels in git pathspec.
+          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
+            ':!*.md' \
+            ':!docs/**' \
+            ':!LICENSE' \
+            ':!.claude/**' \
+          )
+
+          if [ -z "$CHANGED" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change detected — skipping test/build jobs"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Code changes detected:"
+            echo "$CHANGED" | head -20
+          fi
+
   # Requires Dependency Graph enabled in repo settings:
   # https://github.com/axonops/go-audit/settings/security_analysis
   dependency-review:
@@ -87,7 +148,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [hygiene]
+    needs: [hygiene, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -133,7 +195,8 @@ jobs:
     name: Test (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint]
+    needs: [lint, changes]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
         include:
@@ -185,7 +248,8 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test]
+    needs: [test, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -213,7 +277,8 @@ jobs:
     name: BDD Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [test]
+    needs: [test, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -241,7 +306,8 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [hygiene]
+    needs: [hygiene, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -274,7 +340,8 @@ jobs:
     name: Cross Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint]
+    needs: [lint, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -298,7 +365,8 @@ jobs:
     name: Benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test]
+    needs: [test, changes]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -336,11 +404,13 @@ jobs:
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
-    needs: [hygiene, lint, test, integration, bdd, security, cross-build, validate-release]
+    needs: [changes, hygiene, lint, test, integration, bdd, security, cross-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
+          # Docs-only PRs skip test/build jobs (result = "skipped").
+          # Only "failure" and "cancelled" are errors.
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
             echo "One or more required jobs failed"
             exit 1
@@ -349,4 +419,4 @@ jobs:
             echo "One or more required jobs were cancelled"
             exit 1
           fi
-          echo "All CI checks passed"
+          echo "All CI checks passed (skipped jobs are OK for docs-only changes)"

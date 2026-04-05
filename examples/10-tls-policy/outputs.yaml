@@ -1,0 +1,55 @@
+# TLS policy configuration — demonstrates global and per-output TLS settings.
+#
+# This example shows three TLS policy scenarios:
+#   1. Global default: TLS 1.3 only (most secure)
+#   2. Per-output override: one output allows TLS 1.2 for a legacy server
+#   3. Stdout: unaffected by TLS policy (no network transport)
+#
+# The global tls_policy applies to all TLS-enabled outputs unless
+# overridden by a per-output tls_policy block.
+
+version: 1
+
+app_name: "tls-policy-example"
+host: "dev-machine"
+
+# Global TLS policy — applies to all outputs by default.
+# Omitting this block or setting it to empty enforces TLS 1.3 only.
+tls_policy:
+  allow_tls12: false        # TLS 1.3 only (this is the default)
+  allow_weak_ciphers: false  # only secure cipher suites
+
+outputs:
+  # This output uses the global TLS policy (TLS 1.3 only).
+  # No per-output tls_policy block needed.
+  console:
+    type: stdout
+
+  # In production, you would configure TLS-enabled outputs like:
+  #
+  # modern_siem:
+  #   type: syslog
+  #   syslog:
+  #     network: "tcp+tls"
+  #     address: "modern-syslog.internal:6514"
+  #     tls_ca: "/etc/audit/tls/ca.pem"
+  #     # No tls_policy block — inherits global (TLS 1.3 only)
+  #
+  # legacy_siem:
+  #   type: syslog
+  #   syslog:
+  #     network: "tcp+tls"
+  #     address: "legacy-syslog.internal:6514"
+  #     tls_ca: "/etc/audit/tls/ca.pem"
+  #     tls_policy:
+  #       allow_tls12: true           # override: allow TLS 1.2 for this output
+  #       allow_weak_ciphers: false   # still restrict cipher suites
+  #
+  # webhook_alerts:
+  #   type: webhook
+  #   webhook:
+  #     url: "https://alerts.internal/audit"
+  #     tls_ca: "/etc/audit/tls/ca.pem"
+  #     tls_cert: "/etc/audit/tls/client.pem"   # mTLS client cert
+  #     tls_key: "/etc/audit/tls/client-key.pem" # mTLS client key
+  #     # No tls_policy — inherits global (TLS 1.3 only)

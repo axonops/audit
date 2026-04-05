@@ -18,7 +18,7 @@ Each example introduces one new concept and builds on the previous.
 | 7 | webhook-output *(coming soon)* | Webhook output with NDJSON batching, retry, SSRF protection |
 | 8 | [loki-output](08-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
 | 9 | [multi-output](09-multi-output/) | Fan-out to multiple outputs from one YAML config |
-| 10 | tls-policy *(coming soon)* | Global and per-output TLS policy configuration |
+| 10 | [tls-policy](10-tls-policy/) | Global and per-output TLS policy configuration |
 | 11 | [event-routing](11-event-routing/) | Category and severity-based routing in YAML |
 | 12 | [sensitivity-labels](12-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
 | 13 | [hmac-integrity](13-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |

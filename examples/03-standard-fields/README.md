@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [02 — Code Generation](../02-code-generation/) |
-> **Next:** [05 — File Output](../05-file-output/)
+> **Next:** [04 — Stdout Output](../04-stdout-output/)
 
 # Example 03: Standard Fields & Framework Configuration
 

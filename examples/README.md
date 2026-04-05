@@ -12,7 +12,7 @@ Each example introduces one new concept and builds on the previous.
 | 1 | [basic](01-basic/) | Taxonomy, Logger, AuditEvent(), Fields, validation — programmatic setup |
 | 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, typed builders, go:embed, outputconfig.Load |
 | 3 | [standard-fields](03-standard-fields/) | Reserved standard fields, framework fields, standard_fields YAML defaults |
-| 4 | stdout-output *(coming soon)* | Stdout output for development, debugging, and piping |
+| 4 | [stdout-output](04-stdout-output/) | Stdout output for development, debugging, and piping to jq |
 | 5 | [file-output](05-file-output/) | File output with rotation and permissions in YAML |
 | 6 | syslog-output *(coming soon)* | Syslog output with RFC 5424, TCP/UDP/TLS, facility values |
 | 7 | webhook-output *(coming soon)* | Webhook output with NDJSON batching, retry, SSRF protection |

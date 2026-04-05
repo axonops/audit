@@ -243,7 +243,7 @@ outputs:
       tenant_id: "my-service"      # X-Scope-OrgID header (optional)
       batch_size: 100              # events per push (default: 100, max: 10,000)
       max_batch_bytes: 1048576     # max payload bytes (default: 1 MiB, max: 10 MiB)
-      buffer_size: 10000           # internal buffer capacity (default: 10,000)
+      buffer_size: 10000           # internal buffer capacity (default: 10,000, min: 100, max: 1,000,000)
       flush_interval: "5s"         # flush after this duration (default: "5s")
       timeout: "10s"               # HTTP request timeout (default: "10s")
       max_retries: 3               # retry attempts for 429/5xx (default: 3, max: 20)
@@ -252,13 +252,10 @@ outputs:
         static:                    # constant labels on every stream
           job: "audit"
           environment: "production"
-        dynamic:                   # per-event labels from EventMetadata
-          app_name: true           # default: true (include)
-          host: true               # default: true
-          pid: true                # default: true
-          event_type: true         # default: true
-          event_category: true     # default: true
-          severity: true           # default: true
+        dynamic:                   # per-event labels — all included by default
+          # Set to false to exclude (all are included when omitted):
+          # pid: false             # exclude pid (high cardinality)
+          # severity: false        # exclude severity
       basic_auth:                  # mutually exclusive with bearer_token
         username: "loki-writer"
         password: "${LOKI_PASSWORD}"

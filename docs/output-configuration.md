@@ -146,6 +146,35 @@ outputs:
     exclude_labels:
       - pii
       - financial                  # strip sensitive fields
+
+  # ── Loki Output ───────────────────────────────────────────
+  loki_audit:
+    type: loki
+    loki:
+      url: "https://loki.example.com/loki/api/v1/push"
+      tenant_id: "${LOKI_TENANT:-}"
+      batch_size: 100                # events per push (default: 100)
+      max_batch_bytes: 1048576       # max payload bytes (default: 1 MiB)
+      flush_interval: "5s"           # time-based flush (default: "5s")
+      timeout: "10s"                 # HTTP request timeout (default: "10s")
+      max_retries: 3                 # retry on 429/5xx (default: 3)
+      gzip: true                     # gzip compression (default: true)
+      labels:
+        static:
+          environment: "production"
+          job: "audit"
+        dynamic:                     # all included by default; set false to exclude
+          # pid: false               # exclude pid (high cardinality)
+      # basic_auth:
+      #   username: "loki-writer"
+      #   password: "${LOKI_PASSWORD}"
+      # bearer_token: "${LOKI_TOKEN}"
+      # tls_ca: "/etc/audit/ca.pem"
+      # allow_insecure_http: true    # MUST NOT be true in production
+      # allow_private_ranges: true   # disable SSRF protection (dev only)
+    route:
+      include_categories:
+        - security
 ```
 
 ## 📋 Top-Level Fields
@@ -362,7 +391,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `url` | (required) | Full Loki push API endpoint. MUST be `https://` unless `allow_insecure_http` is set. Include the path: `/loki/api/v1/push`. |
-| `basic_auth.username` | — | HTTP basic auth username. MUST NOT be set alongside `bearer_token`. |
+| `basic_auth.username` | — | HTTP basic auth username. MUST NOT be empty when `basic_auth` is set. MUST NOT be set alongside `bearer_token`. |
 | `basic_auth.password` | — | HTTP basic auth password. |
 | `bearer_token` | — | Sets `Authorization: Bearer <token>`. MUST NOT be set alongside `basic_auth`. |
 | `tenant_id` | — | Sets `X-Scope-OrgID` header for Loki multi-tenancy. |

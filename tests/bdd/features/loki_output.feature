@@ -263,6 +263,15 @@ Feature: Loki Output
     And I close the logger
     Then the loki metrics should have recorded at least 1 drop within 5 seconds
 
+  # --- Loki unavailable ---
+
+  Scenario: Loki unreachable drops events and records metrics
+    Given mock loki metrics are configured
+    And a logger with loki output to unreachable server with metrics
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 drop within 5 seconds
+
   # --- SSRF protection (httptest.Server, no Docker Loki) ---
 
   Scenario: Private range blocked by default drops events

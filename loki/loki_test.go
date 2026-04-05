@@ -225,6 +225,39 @@ func TestOutput_WriteAfterClose(t *testing.T) {
 		"WriteWithMetadata after Close must return ErrOutputClosed")
 }
 
+func TestOutput_ConcurrentWriteAndClose(t *testing.T) {
+	t.Parallel()
+
+	srv := lokiTestServer(t)
+	cfg := validConfigWithURL(srv.URL)
+	cfg.BufferSize = 10000
+
+	out, err := loki.New(cfg, nil, nil)
+	require.NoError(t, err)
+
+	// Launch 50 goroutines writing concurrently.
+	var wg sync.WaitGroup
+	for g := 0; g < 50; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 20; i++ {
+				_ = out.Write([]byte(`{"event":"concurrent"}`))
+			}
+		}()
+	}
+
+	// Close while writers are still running.
+	require.NoError(t, out.Close())
+
+	// Wait for all writers to finish.
+	wg.Wait()
+
+	// Post-close writes must return ErrOutputClosed (no panic).
+	err = out.Write([]byte(`{"event":"after_close"}`))
+	assert.ErrorIs(t, err, audit.ErrOutputClosed)
+}
+
 // ---------------------------------------------------------------------------
 // Close() — idempotent
 // ---------------------------------------------------------------------------

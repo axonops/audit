@@ -639,7 +639,10 @@ type Metrics interface {
 }
 ```
 
-Register your implementation before loading config:
+Register your implementation before calling `outputconfig.Load`. This
+replaces the default factory registered by the blank import. If you
+don't need Loki-specific metrics, the blank import
+`_ "github.com/axonops/go-audit/loki"` is sufficient.
 
 ```go
 audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))

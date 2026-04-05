@@ -100,6 +100,6 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("Done. Query your events:")
-	fmt.Println(`  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .`)
-	fmt.Println(`  curl -s 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .`)
 }

@@ -21,6 +21,7 @@ Each example introduces one new concept and builds on the previous.
 | 10 | [middleware](10-middleware/) | Automatic HTTP audit logging with Hints |
 | 11 | [crud-api](11-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
 | 12 | [testing](12-testing/) | Testing audit events with audittest.NewLogger |
+| 13 | [loki-output](13-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
@@ -57,6 +58,7 @@ go get github.com/axonops/go-audit/outputconfig
 go get github.com/axonops/go-audit/file
 go get github.com/axonops/go-audit/syslog
 go get github.com/axonops/go-audit/webhook
+go get github.com/axonops/go-audit/loki
 
 # CRUD API also needs:
 go get github.com/lib/pq

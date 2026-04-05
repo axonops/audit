@@ -802,8 +802,7 @@ func assertLokiQueryByLabel(tc *AuditTestContext, label, value string, timeout t
 //
 //nolint:gocritic // sprintfQuotedString: LogQL requires literal quotes
 func assertLokiQueryByLabelWithPayload(tc *AuditTestContext, label, value string, table *godog.Table) error {
-	// Query using ONLY the label selector — no marker filter.
-	// The label is the search criterion we're testing.
+	// Query using ONLY the label selector — proving the label works as a filter.
 	logql := fmt.Sprintf(`{test_suite="bdd",%s="%s"}`, label, value)
 
 	// Poll until at least one event appears.
@@ -813,8 +812,9 @@ func assertLokiQueryByLabelWithPayload(tc *AuditTestContext, label, value string
 	for {
 		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 		if err == nil && countLokiLines(result) > 0 {
-			// Verify the payload of the FIRST event found.
-			return verifyFirstEventPayload(result, table)
+			// Find THIS scenario's event by scanning for any known marker,
+			// then verify its payload. This avoids cross-pollution from other scenarios.
+			return verifyScenarioEventPayload(tc, result, table)
 		}
 		select {
 		case <-deadline:
@@ -824,12 +824,15 @@ func assertLokiQueryByLabelWithPayload(tc *AuditTestContext, label, value string
 	}
 }
 
-// verifyFirstEventPayload verifies the Gherkin table against the first
-// event found in the query result.
-func verifyFirstEventPayload(result lokiBDDQueryResult, table *godog.Table) error {
+// verifyScenarioEventPayload finds an event belonging to this scenario
+// (by checking all known markers) and verifies the payload table.
+func verifyScenarioEventPayload(tc *AuditTestContext, result lokiBDDQueryResult, table *godog.Table) error {
 	for _, s := range result.Data.Result {
 		for _, v := range s.Values {
 			if len(v) < 2 {
+				continue
+			}
+			if !eventBelongsToScenario(tc, v[1]) {
 				continue
 			}
 			var parsed map[string]any
@@ -839,7 +842,18 @@ func verifyFirstEventPayload(result lokiBDDQueryResult, table *godog.Table) erro
 			return verifyFieldsMatch(parsed, v[1], table)
 		}
 	}
-	return fmt.Errorf("no events with parseable JSON in result")
+	return fmt.Errorf("no event belonging to this scenario found in label query results")
+}
+
+// eventBelongsToScenario checks if a log line contains any marker from
+// the current scenario's marker set.
+func eventBelongsToScenario(tc *AuditTestContext, line string) bool {
+	for _, m := range tc.Markers {
+		if strings.Contains(line, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // assertLokiQueryByLabelEmpty queries by label and verifies NO events match.

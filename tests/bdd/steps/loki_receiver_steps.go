@@ -162,6 +162,17 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		})
 	})
 
+	ctx.Step(`^a logger with loki output to unreachable server with metrics$`, func() error {
+		cfg := &loki.Config{
+			URL:                "http://127.0.0.1:19999/loki/api/v1/push", // nothing listening
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			MaxRetries:         1,
+			Compress:           true,
+		}
+		return createLokiLoggerFromConfig(tc, cfg)
+	})
 }
 
 func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

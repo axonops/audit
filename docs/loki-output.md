@@ -1,0 +1,695 @@
+[← Back to Output Types](outputs.md)
+
+# Loki Output — Detailed Reference
+
+The Loki output pushes audit events to [Grafana Loki](https://grafana.com/oss/loki/)
+via the HTTP Push API. Events are batched, grouped into streams by
+label values, gzip-compressed, and delivered with exponential backoff
+retry.
+
+- [Why Loki for Audit Logging?](#why-loki-for-audit-logging)
+- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
+- [Stream Labels](#stream-labels)
+- [Complete Configuration Reference](#complete-configuration-reference)
+- [Authentication](#authentication)
+- [TLS Configuration](#tls-configuration)
+- [Multi-Tenancy](#multi-tenancy)
+- [Batching and Delivery](#batching-and-delivery)
+- [Retry and Error Handling](#retry-and-error-handling)
+- [Security](#security)
+- [Querying Events with LogQL](#querying-events-with-logql)
+- [Production Configuration](#production-configuration)
+- [Performance Tuning](#performance-tuning)
+- [Metrics and Monitoring](#metrics-and-monitoring)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Why Loki for Audit Logging?
+
+Loki is purpose-built for log aggregation with these properties that
+make it ideal for audit trails:
+
+- **Stream labels** derived from event metadata (`event_type`,
+  `severity`, `event_category`) make audit events instantly queryable
+  without scanning every log line
+- **Immutable storage** — once ingested, events cannot be modified,
+  providing tamper evidence for compliance
+- **Multi-tenancy** via `X-Scope-OrgID` isolates different
+  applications or environments in a shared Loki cluster
+- **Grafana integration** provides dashboards, alerting, and LogQL
+  exploration — see [Grafana Dashboard for go-audit](https://github.com/axonops/go-audit/issues/273)
+- **Cost-effective** — Loki indexes only labels (not full-text),
+  making it significantly cheaper than traditional SIEM at scale
+
+---
+
+## Quick Start
+
+```bash
+# 1. Install the module
+go get github.com/axonops/go-audit/loki
+
+# 2. Import for side-effect registration
+import _ "github.com/axonops/go-audit/loki"
+
+# 3. Add to your outputs.yaml
+# See Complete Configuration Reference below
+```
+
+For a working example with code, see the
+[progressive example](../examples/13-loki-output/).
+
+---
+
+## How It Works
+
+When you audit an event, here's what happens:
+
+```
+Your code                    go-audit core              Loki output
+─────────                    ──────────────             ───────────
+logger.AuditEvent(event) →   validate + serialize →     WriteWithMetadata()
+                                                          ↓
+                                                        enqueue in buffer
+                                                          ↓ (non-blocking)
+                                                        batchLoop goroutine
+                                                          ↓
+                                                        group by stream labels
+                                                          ↓
+                                                        build JSON push payload
+                                                          ↓
+                                                        gzip compress
+                                                          ↓
+                                                        POST to Loki
+                                                          ↓
+                                                        retry on 429/5xx
+```
+
+The Loki output runs its own goroutine (`batchLoop`) that:
+1. Reads events from an internal buffered channel
+2. Groups them by stream labels (events with the same label values
+   go into the same stream)
+3. Flushes when: batch size reached, byte limit reached, or timer fires
+4. Builds the Loki push API JSON payload
+5. Gzip-compresses it
+6. POSTs it to Loki with retry on failure
+
+---
+
+## Stream Labels
+
+### What Are Stream Labels?
+
+Stream labels are key-value pairs that identify a log stream in Loki.
+They are **indexed** — Loki can instantly find events matching a label
+query without scanning every log line. This is the primary mechanism
+for searching audit events.
+
+### Label Sources
+
+go-audit generates labels from three sources:
+
+| Source | Labels | Set when | Example |
+|--------|--------|----------|---------|
+| **Static** | Configured in YAML | Config load | `job="audit"`, `environment="prod"` |
+| **Framework** | From logger options | Logger construction | `app_name="myservice"`, `host="prod-01"`, `pid="12345"` |
+| **Per-event** | From event metadata | Each audit event | `event_type="user_create"`, `event_category="write"`, `severity="5"` |
+
+### The Six Dynamic Labels
+
+| Label | Source | Typical values | Why it matters |
+|-------|--------|---------------|----------------|
+| `app_name` | `WithAppName()` or YAML `app_name` | `"myservice"`, `"auth-gateway"` | Isolate events from different applications |
+| `host` | `WithHost()` or YAML `host` | `"prod-01"`, `"us-east-1a"` | Identify which server generated the event |
+| `pid` | Auto-captured `os.Getpid()` | `"12345"` | **Forensics** — identify which process instance generated each event. Critical for multi-instance deployments and incident investigation. A PID change indicates a process restart. |
+| `event_type` | From `audit.NewEvent(type, ...)` | `"user_create"`, `"auth_failure"` | Primary query axis — what happened |
+| `event_category` | From taxonomy categories | `"write"`, `"security"` | Group related event types for broad queries |
+| `severity` | From taxonomy/category/event | `"0"` to `"10"` | Filter by importance level |
+
+### Stream Label vs JSON Log Line
+
+This is a critical distinction:
+
+```
+STREAM LABELS (indexed, fast query via {selector}):
+  event_type="user_create"
+  event_category="write"
+  app_name="myservice"
+  host="prod-01"
+  pid="12345"
+  severity="5"
+  job="audit"            ← static label
+  environment="prod"     ← static label
+
+JSON LOG LINE (full event, searched via | json or |= text):
+  {
+    "timestamp": "2026-04-05T...",
+    "event_type": "user_create",
+    "severity": 5,
+    "app_name": "myservice",
+    "host": "prod-01",
+    "pid": 12345,
+    "actor_id": "alice",          ← NOT a label
+    "outcome": "success",         ← NOT a label
+    "resource_id": "user-42",     ← NOT a label
+    "event_category": "write"
+  }
+```
+
+User fields (`actor_id`, `outcome`, `resource_id`) are **never** labels.
+To search by them, use LogQL's JSON parser:
+
+```logql
+{event_type="user_create"} | json | actor_id="alice"
+```
+
+### Excluding Dynamic Labels
+
+All six dynamic labels are included by default. Set to `false` to
+exclude:
+
+```yaml
+labels:
+  dynamic:
+    pid: false       # exclude PID (high cardinality across processes)
+    severity: false   # exclude severity from labels
+```
+
+**When excluded**, the field still appears in every JSON log line. It
+is just not indexed as a Loki label. You can still query it:
+
+```logql
+# pid excluded from labels, but still in JSON:
+{app_name="myservice"} | json | pid=12345
+```
+
+### Cardinality Considerations
+
+Each unique combination of label values creates a separate Loki stream.
+Loki has configurable limits on active stream count (typically 5,000
+per tenant by default). High-cardinality labels create too many streams
+and degrade performance or trigger rejection.
+
+**Safe labels** (bounded cardinality):
+- `event_type` — bounded by your taxonomy definition
+- `event_category` — bounded by your taxonomy definition
+- `severity` — bounded (0-10)
+- `app_name` — bounded (one per service)
+- `host` — bounded (one per server)
+
+**Potentially dangerous labels** (unbounded cardinality):
+- `pid` — changes on every process restart. Safe for long-lived
+  services, risky for short-lived workers (serverless, cron jobs).
+  Exclude with `pid: false` if you see "too many streams" errors.
+
+---
+
+## Complete Configuration Reference
+
+### YAML Configuration
+
+```yaml
+outputs:
+  loki_audit:
+    type: loki
+    loki:
+      # --- Required ---
+      url: "https://loki.example.com/loki/api/v1/push"
+
+      # --- Authentication (choose one) ---
+      basic_auth:
+        username: "${LOKI_USERNAME}"
+        password: "${LOKI_PASSWORD}"
+      # bearer_token: "${LOKI_TOKEN}"     # alternative to basic_auth
+
+      # --- Multi-tenancy ---
+      tenant_id: "${LOKI_TENANT:-}"       # X-Scope-OrgID header
+
+      # --- Stream labels ---
+      labels:
+        static:
+          job: "audit"
+          environment: "${ENVIRONMENT:-production}"
+        dynamic:                          # all included by default
+          # pid: false                    # exclude if high cardinality
+
+      # --- Batching ---
+      batch_size: 100                     # events per push (default: 100)
+      max_batch_bytes: 1048576            # bytes per push (default: 1 MiB)
+      flush_interval: "5s"               # time-based flush (default: "5s")
+      buffer_size: 10000                  # internal buffer (default: 10,000)
+
+      # --- HTTP ---
+      timeout: "10s"                      # request timeout (default: "10s")
+      max_retries: 3                      # retry on 429/5xx (default: 3)
+      gzip: true                          # compress payloads (default: true)
+
+      # --- Custom headers ---
+      headers:
+        X-Custom-Header: "my-value"
+
+      # --- TLS ---
+      tls_ca: "/etc/audit/ca.pem"
+      tls_cert: "/etc/audit/client.pem"   # for mTLS
+      tls_key: "/etc/audit/client-key.pem"
+      tls_policy:
+        allow_tls12: false                # TLS 1.3 only by default
+        allow_weak_ciphers: false
+
+      # --- Development only ---
+      # allow_insecure_http: true         # MUST NOT be true in production
+      # allow_private_ranges: true        # disables SSRF protection
+
+    # --- Per-output features ---
+    route:
+      include_categories:
+        - security
+    exclude_labels:
+      - pii
+    hmac:
+      enabled: true
+      salt: "${HMAC_SALT}"
+      version: "v1"
+      hash: "HMAC-SHA-256"
+```
+
+### Field Reference
+
+| Field | Type | Default | Range | Description |
+|-------|------|---------|-------|-------------|
+| `url` | string | (required) | — | Full Loki push API endpoint including path (`/loki/api/v1/push`). MUST be `https://` unless `allow_insecure_http` is set. |
+| `basic_auth.username` | string | — | — | HTTP basic auth username. MUST NOT be empty when `basic_auth` is present. MUST NOT be set alongside `bearer_token`. |
+| `basic_auth.password` | string | — | — | HTTP basic auth password. |
+| `bearer_token` | string | — | — | Sets `Authorization: Bearer <token>`. MUST NOT be set alongside `basic_auth`. |
+| `tenant_id` | string | — | — | Sets `X-Scope-OrgID` header for Loki multi-tenancy. When set, queries MUST include the same header. |
+| `headers` | map | — | — | Custom HTTP headers. MUST NOT include `Authorization`, `X-Scope-OrgID`, `Content-Type`, `Content-Encoding`, or `Host` — use the dedicated fields. |
+| `labels.static` | map | — | — | Constant labels on every stream. Keys MUST match `[a-zA-Z_][a-zA-Z0-9_]*`. Values MUST NOT be empty or contain control characters (0x00-0x1F). |
+| `labels.dynamic` | map | all included | — | Per-event label toggles. Valid keys: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity`. Set to `false` to exclude. Unknown keys are rejected. |
+| `gzip` | bool | `true` | — | Gzip compress push request bodies. **Note**: the YAML key is `gzip`, not `compress`. |
+| `batch_size` | int | `100` | 1 – 10,000 | Maximum events per push request. |
+| `max_batch_bytes` | int | `1048576` | 1,024 – 10,485,760 | Maximum uncompressed payload bytes per push (1 MiB default, 10 MiB max). |
+| `flush_interval` | duration | `"5s"` | 100ms – 5m | Time between flushes when batch is not full. |
+| `timeout` | duration | `"10s"` | 1s – 5m | HTTP request timeout. |
+| `max_retries` | int | `3` | 1 – 20 | Retry attempts on 429 or 5xx responses. |
+| `buffer_size` | int | `10000` | 100 – 1,000,000 | Internal async buffer capacity. Events are dropped when full. |
+| `tls_ca` | string | — | — | CA certificate path for TLS verification. |
+| `tls_cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
+| `tls_key` | string | — | — | Client key path for mTLS. MUST be set together with `tls_cert`. |
+| `tls_policy.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
+| `tls_policy.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
+| `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. |
+| `allow_private_ranges` | bool | `false` | — | Allow private/loopback IP ranges. Disables SSRF protection. |
+
+---
+
+## Authentication
+
+### Basic Auth (Grafana Cloud)
+
+```yaml
+loki:
+  url: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+  basic_auth:
+    username: "${GRAFANA_CLOUD_USER}"   # numeric user ID
+    password: "${GRAFANA_CLOUD_KEY}"    # API key
+```
+
+### Bearer Token
+
+```yaml
+loki:
+  url: "https://loki.internal:3100/loki/api/v1/push"
+  bearer_token: "${LOKI_TOKEN}"
+```
+
+### No Authentication
+
+For Loki instances without auth (development, private networks):
+
+```yaml
+loki:
+  url: "http://loki.internal:3100/loki/api/v1/push"
+  allow_insecure_http: true    # only if using http://
+  allow_private_ranges: true   # only if Loki is on private network
+```
+
+**Mutual exclusivity**: `basic_auth` and `bearer_token` MUST NOT both
+be set. The library rejects this at construction time.
+
+---
+
+## TLS Configuration
+
+### Server Certificate Verification
+
+```yaml
+loki:
+  url: "https://loki.internal:3100/loki/api/v1/push"
+  tls_ca: "/etc/audit/internal-ca.pem"
+```
+
+### Mutual TLS (mTLS)
+
+```yaml
+loki:
+  url: "https://loki.internal:3100/loki/api/v1/push"
+  tls_ca: "/etc/audit/ca.pem"
+  tls_cert: "/etc/audit/client-cert.pem"
+  tls_key: "/etc/audit/client-key.pem"
+```
+
+### TLS Policy
+
+By default, only TLS 1.3 is accepted. For legacy infrastructure:
+
+```yaml
+loki:
+  tls_policy:
+    allow_tls12: true          # accept TLS 1.2 connections
+    allow_weak_ciphers: false  # keep strong ciphers even with TLS 1.2
+```
+
+---
+
+## Multi-Tenancy
+
+Loki supports multi-tenancy via the `X-Scope-OrgID` header. Set
+`tenant_id` to isolate your events:
+
+```yaml
+loki:
+  tenant_id: "team-security"
+```
+
+**Critical**: when querying events pushed with a `tenant_id`, you MUST
+include the same header in your query:
+
+```bash
+curl -H 'X-Scope-OrgID: team-security' \
+  'http://loki:3100/loki/api/v1/query_range?query={job="audit"}&limit=10'
+```
+
+Without the header, Loki returns 401 or empty results depending on
+its configuration.
+
+---
+
+## Batching and Delivery
+
+Events are delivered in batches. A batch is flushed when ANY of these
+conditions is met:
+
+| Trigger | Default | Description |
+|---------|---------|-------------|
+| **Count** | 100 events | `batch_size` events accumulated |
+| **Bytes** | 1 MiB | `max_batch_bytes` uncompressed bytes |
+| **Timer** | 5 seconds | `flush_interval` elapsed since last flush |
+| **Shutdown** | — | `logger.Close()` flushes remaining events |
+
+### Delivery Guarantee
+
+**At-least-once** — a batch may be delivered more than once if Loki
+accepts the payload but the acknowledgement is lost. Design your log
+pipeline to tolerate duplicate entries.
+
+### Buffer Drops
+
+If events arrive faster than batches can be delivered, the internal
+buffer fills. When full, new events are **silently dropped** (the
+`Write` call returns `nil` to avoid blocking the audit pipeline).
+
+Monitor drops via `loki.Metrics.RecordLokiDrop()`. Increase
+`buffer_size` if you see drops.
+
+---
+
+## Retry and Error Handling
+
+| Response | Action | Description |
+|----------|--------|-------------|
+| **2xx** | Success | Event delivered. `RecordLokiFlush()` called. |
+| **429** | Retry | Rate limited. Respects `Retry-After` header (capped at 30s). |
+| **5xx** | Retry | Server error. Exponential backoff. |
+| **4xx** (not 429) | Drop | Client error (bad config). `RecordLokiDrop()` called. No retry. |
+| **Network error** | Retry | Connection refused, DNS failure, etc. |
+| **Redirect** | Drop | All redirects are rejected (SSRF protection). |
+
+### Exponential Backoff
+
+- **Base**: 100ms
+- **Factor**: 2x per attempt
+- **Cap**: 5 seconds
+- **Jitter**: [0.5, 1.0) multiplicative (via `crypto/rand`)
+- **Max attempts**: `max_retries` (default 3, max 20)
+
+After all retries are exhausted, the batch is dropped and
+`RecordLokiDrop()` is called for each event.
+
+---
+
+## Security
+
+### SSRF Protection
+
+Private and loopback IP ranges are **blocked by default**:
+- `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
+- `127.0.0.0/8`, `::1`
+- `169.254.0.0/16` (link-local, including cloud metadata `169.254.169.254`)
+
+Set `allow_private_ranges: true` only for private network deployments.
+
+### Redirect Blocking
+
+HTTP redirects are **never followed**. This prevents SSRF via open
+redirects where an attacker controls the Loki URL and redirects to
+an internal service.
+
+### Credential Redaction
+
+`Config.String()`, `fmt.Sprintf("%+v", cfg)`, and `fmt.Sprintf("%#v", cfg)`
+all redact credentials. Passwords and bearer tokens never appear in
+log output or error messages.
+
+### Restricted Headers
+
+The `headers` map MUST NOT include these library-managed headers:
+`Authorization`, `X-Scope-OrgID`, `Content-Type`, `Content-Encoding`, `Host`.
+Use the dedicated config fields instead.
+
+---
+
+## Querying Events with LogQL
+
+### By Event Type
+
+```logql
+{event_type="auth_failure"}
+```
+
+Returns only authentication failure events — user_create, user_update,
+etc. are excluded.
+
+### By Category
+
+```logql
+{event_category="security"}
+```
+
+Returns all security events (auth_failure, permission_denied, etc.)
+but not write events (user_create, user_update).
+
+### By Application and Host
+
+```logql
+{app_name="myservice", host="prod-01"}
+```
+
+### By PID (Process Instance)
+
+```logql
+{pid="12345"}
+```
+
+Useful for forensics — correlate events to a specific process instance.
+
+### Combining Labels with JSON Field Search
+
+```logql
+{event_type="user_create"} | json | actor_id="alice"
+```
+
+The `| json` stage parses the log line as JSON, then
+`actor_id="alice"` filters on the parsed field.
+
+### Aggregation Queries
+
+```logql
+# Count events per type in the last hour
+sum by (event_type) (count_over_time({job="audit"}[1h]))
+
+# Rate of security events per minute
+rate({event_category="security"}[5m])
+
+# Count of failures
+count_over_time({job="audit"} | json | outcome="failure" [1h])
+```
+
+---
+
+## Production Configuration
+
+### Grafana Cloud
+
+```yaml
+outputs:
+  loki_prod:
+    type: loki
+    loki:
+      url: "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
+      basic_auth:
+        username: "${GRAFANA_CLOUD_USER}"
+        password: "${GRAFANA_CLOUD_KEY}"
+      batch_size: 100
+      flush_interval: "5s"
+      timeout: "30s"
+      max_retries: 5
+      gzip: true
+      labels:
+        static:
+          job: "audit"
+          environment: "${ENVIRONMENT}"
+          cluster: "${CLUSTER_NAME}"
+```
+
+### Private Loki Cluster with mTLS
+
+```yaml
+outputs:
+  loki_internal:
+    type: loki
+    loki:
+      url: "https://loki.internal:3100/loki/api/v1/push"
+      tenant_id: "${SERVICE_NAME}"
+      tls_ca: "/etc/audit/ca.pem"
+      tls_cert: "/etc/audit/client.pem"
+      tls_key: "/etc/audit/client-key.pem"
+      batch_size: 200
+      max_batch_bytes: 5242880          # 5 MiB
+      flush_interval: "10s"
+      buffer_size: 50000
+      max_retries: 5
+      labels:
+        static:
+          job: "audit"
+          environment: "production"
+```
+
+### Development
+
+```yaml
+outputs:
+  loki_dev:
+    type: loki
+    loki:
+      url: "http://localhost:3100/loki/api/v1/push"
+      allow_insecure_http: true
+      allow_private_ranges: true
+      batch_size: 1                     # immediate delivery for debugging
+      flush_interval: "100ms"
+      labels:
+        static:
+          job: "audit-dev"
+        dynamic:
+          pid: false                    # exclude PID in dev
+```
+
+---
+
+## Performance Tuning
+
+| Parameter | Trade-off |
+|-----------|-----------|
+| `batch_size` ↑ | Fewer HTTP requests, higher latency per event |
+| `batch_size` ↓ | More HTTP requests, lower latency |
+| `max_batch_bytes` ↑ | Larger payloads, more memory per batch |
+| `flush_interval` ↑ | Longer delays before events reach Loki |
+| `flush_interval` ↓ | More frequent pushes, higher overhead |
+| `buffer_size` ↑ | Handles burst traffic, more memory |
+| `gzip: false` | Less CPU, larger network payloads |
+| `timeout` ↑ | Tolerates slow Loki, longer shutdown drain |
+
+**Recommended production defaults**: the library defaults (batch_size=100,
+flush_interval=5s, buffer_size=10000, gzip=true) are suitable for most
+deployments up to ~1000 events/second.
+
+---
+
+## Metrics and Monitoring
+
+### Loki-Specific Metrics
+
+Implement the `loki.Metrics` interface to receive delivery telemetry:
+
+```go
+type Metrics interface {
+    RecordLokiDrop()                              // event dropped (buffer full or retries exhausted)
+    RecordLokiFlush(batchSize int, dur time.Duration) // batch delivered successfully
+}
+```
+
+Register your implementation before loading config:
+
+```go
+audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
+```
+
+### What to Alert On
+
+| Metric | Condition | Action |
+|--------|-----------|--------|
+| `RecordLokiDrop` rate > 0 | Events being lost | Increase `buffer_size`, check Loki health, reduce event volume |
+| `RecordLokiFlush` duration > timeout | Pushes timing out | Increase `timeout`, check network latency to Loki |
+| `RecordLokiFlush` batch_size consistently = max | Batches always full | Increase `batch_size` or decrease `flush_interval` |
+
+---
+
+## Troubleshooting
+
+| Error / Symptom | Cause | Fix |
+|-----------------|-------|-----|
+| `loki: url must not be empty` | No URL configured | Set `url` in loki config block |
+| `loki: url must be https` | Using `http://` without flag | Use `https://` or set `allow_insecure_http: true` (dev only) |
+| `loki: url must not contain credentials` | URL has `user:pass@host` | Use `basic_auth` block instead |
+| `loki: basic_auth and bearer_token are mutually exclusive` | Both set | Choose one authentication method |
+| `loki: basic_auth.username must not be empty` | Empty username | Set the username |
+| `loki: tls_cert and tls_key must both be set or both empty` | Only one provided | Provide both cert and key, or neither |
+| `loki: static label name "X" is invalid` | Label has hyphens/dots/spaces | Use only `[a-zA-Z_][a-zA-Z0-9_]*` |
+| `loki: static label "X" has empty value` | Empty string value | Provide a non-empty value |
+| `loki: static label "X" value contains control characters` | Newlines or other control chars | Remove control characters |
+| `loki: header "X" contains CR/LF` | CRLF injection attempt | Remove `\r\n` from header values |
+| `loki: header "Authorization" is managed by the library` | Set restricted header via `headers` | Use `basic_auth` or `bearer_token` instead |
+| `loki: unknown dynamic label "X"` | Typo in dynamic label name | Valid: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity` |
+| `loki: batch_size X out of range` | Value < 1 or > 10000 | Set within range |
+| Events not appearing in Loki | Ingestion delay | Wait 2-5 seconds, or query with wider time range |
+| Events not appearing | `tenant_id` mismatch | Query MUST include `X-Scope-OrgID` header matching `tenant_id` |
+| Events not appearing | `allow_private_ranges` not set | Set `allow_private_ranges: true` for local/private Loki |
+| 429 errors, events dropped | Loki rate limiting | Check `RecordLokiDrop`; increase `flush_interval` or reduce event volume |
+| High cardinality rejection | Too many unique label combos | Exclude high-cardinality labels (e.g., `pid: false`) |
+| Events dropped silently | Internal buffer full | Increase `buffer_size`; monitor `RecordLokiDrop` |
+
+---
+
+## Related Documentation
+
+- [Output Types Overview](outputs.md) — summary of all outputs
+- [Output Configuration Reference](output-configuration.md) — YAML field tables
+- [Progressive Example](../examples/13-loki-output/) — working code with real query output
+- [Grafana Dashboard Issue](https://github.com/axonops/go-audit/issues/273) — pre-built dashboard for go-audit
+- [Event Routing](event-routing.md) — per-output event filtering
+- [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
+- [HMAC Integrity](hmac-integrity.md) — tamper detection on Loki events
+- [Async Delivery](async-delivery.md) — buffer architecture and delivery guarantees
+
+Install: `go get github.com/axonops/go-audit/loki`

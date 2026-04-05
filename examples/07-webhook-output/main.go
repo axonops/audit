@@ -114,8 +114,8 @@ type webhookBatch struct {
 
 type webhookReceiver struct {
 	server  *http.Server
-	mu      sync.Mutex
 	batches []webhookBatch
+	mu      sync.Mutex
 }
 
 func startWebhookReceiver(addr string) *webhookReceiver {
@@ -159,7 +159,7 @@ func startWebhookReceiver(addr string) *webhookReceiver {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r.server = &http.Server{Addr: addr, Handler: mux}
+	r.server = &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = r.server.ListenAndServe() }()
 	return r
 }

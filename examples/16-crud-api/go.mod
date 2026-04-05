@@ -1,4 +1,4 @@
-module github.com/axonops/go-audit/examples/10-crud-api
+module github.com/axonops/go-audit/examples/16-crud-api
 
 go 1.26.1
 

@@ -1,4 +1,9 @@
-# Middleware Example
+[← Back to examples](../README.md)
+
+> **Previous:** [14 — Formatters](../14-formatters/) |
+> **Next:** [16 — CRUD API](../16-crud-api/)
+
+# Example 15: HTTP Middleware
 
 Automatic HTTP audit logging: the middleware captures request metadata,
 handlers set domain hints (who did it, what happened), and health
@@ -20,7 +25,7 @@ checks are silently skipped.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Formatters](../09-formatters/)
+- Completed: [Formatters](../14-formatters/)
 
 ## Files
 
@@ -108,7 +113,7 @@ Available hints:
 | `Outcome` | `"success"` or `"failure"` |
 | `TargetID` | The resource affected |
 | `TargetType` | Type of resource (e.g., `"item"`, `"user"`) |
-| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../11-crud-api/)) |
+| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../16-crud-api/)) |
 | `ActorType` | `"user"`, `"service"`, `"api_key"`, etc. |
 | `AuthMethod` | How the actor authenticated (e.g., `"bearer"`, `"api_key"`) |
 | `Role` | Actor's role at request time |
@@ -132,7 +137,7 @@ Available hints:
 
 Place the audit middleware at the outermost layer — it needs to wrap
 everything including auth middleware so it can capture the final response
-status code. The [CRUD API](../11-crud-api/) example shows this with auth
+status code. The [CRUD API](../16-crud-api/) example shows this with auth
 middleware and audit middleware composed together.
 
 ## Run It
@@ -166,11 +171,3 @@ skipped because the `EventBuilder` returned `nil` for requests to
 - [HTTP Middleware](../../docs/http-middleware.md) — full middleware reference, Hints API, EventBuilder
 - [Async Delivery](../../docs/async-delivery.md) — how middleware events flow through the pipeline
 
-## Previous
-
-[Formatters](../09-formatters/) — JSON vs CEF formatters configured in YAML.
-
-## Next
-
-[CRUD API](../11-crud-api/) — a complete REST API with Postgres, five
-outputs, Prometheus metrics, and Docker Compose.

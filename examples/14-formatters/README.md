@@ -1,4 +1,9 @@
-# Formatters Example
+[← Back to examples](../README.md)
+
+> **Previous:** [13 — HMAC Integrity](../13-hmac-integrity/) |
+> **Next:** [15 — Middleware](../15-middleware/)
+
+# Example 14: Formatters
 
 Output the same events in two formats side by side: JSON for log
 aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
@@ -13,7 +18,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [HMAC Integrity](../08-hmac-integrity/)
+- Completed: [HMAC Integrity](../13-hmac-integrity/)
 
 ## Files
 
@@ -142,10 +147,3 @@ output uses the `suser` extension key for `actor_id`, and the
 - [CEF Format](../../docs/cef-format.md) — CEF structure, field mapping, and SIEM integration
 - [Output Configuration YAML](../../docs/output-configuration.md) — formatter: block syntax
 
-## Previous
-
-[HMAC Integrity](../08-hmac-integrity/) — per-output tamper detection.
-
-## Next
-
-[Middleware](../10-middleware/) — automatic audit logging for HTTP handlers.

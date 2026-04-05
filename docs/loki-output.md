@@ -59,7 +59,7 @@ import _ "github.com/axonops/go-audit/loki"
 ```
 
 For a working example with code, see the
-[progressive example](../examples/13-loki-output/).
+[progressive example](../examples/08-loki-output/).
 
 ---
 
@@ -688,7 +688,7 @@ audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
 
 - [Output Types Overview](outputs.md) — summary of all outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/13-loki-output/) — working code with real query output
+- [Progressive Example](../examples/08-loki-output/) — working code with real query output
 - [Grafana Dashboard Issue](https://github.com/axonops/go-audit/issues/273) — pre-built dashboard for go-audit
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

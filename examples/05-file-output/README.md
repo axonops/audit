@@ -1,4 +1,9 @@
-# File Output Example
+[← Back to examples](../README.md)
+
+> **Previous:** [03 — Standard Fields](../03-standard-fields/) |
+> **Next:** [08 — Loki Output](../08-loki-output/)
+
+# Example 05: File Output
 
 Write audit events to a log file with automatic rotation, size limits,
 and restricted file permissions.
@@ -118,11 +123,3 @@ field from the taxonomy. The file is cleaned up at the end of the example.
 - [Outputs](../../docs/outputs.md) — output types and fan-out architecture
 - [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
 
-## Previous
-
-[Standard Fields](../03-standard-fields/)
-
-## Next
-
-[Multi-Output](../05-multi-output/) — send events to multiple destinations
-simultaneously.

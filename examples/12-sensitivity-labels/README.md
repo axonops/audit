@@ -1,4 +1,9 @@
-# Sensitivity Labels Example
+[← Back to examples](../README.md)
+
+> **Previous:** [11 — Event Routing](../11-event-routing/) |
+> **Next:** [13 — HMAC Integrity](../13-hmac-integrity/)
+
+# Example 12: Sensitivity Labels
 
 Strip sensitive fields from specific outputs: an internal log receives
 all fields, a public analytics log has PII and financial data removed,
@@ -15,7 +20,7 @@ and a PCI compliance log keeps PII but strips payment card data.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../06-event-routing/)
+- Completed: [Event Routing](../11-event-routing/)
 
 ## Files
 
@@ -294,12 +299,3 @@ Notice:
 - [Sensitivity Labels](../../docs/sensitivity-labels.md) — full label reference and regex patterns
 - [Output Configuration YAML](../../docs/output-configuration.md) — exclude_labels syntax
 
-## Previous
-
-[Event Routing](../06-event-routing/) — category and severity-based
-routing.
-
-## Next
-
-[HMAC Integrity](../08-hmac-integrity/) — per-output tamper detection
-with selective routing.

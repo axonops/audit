@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- Progressive examples renumbered: outputs grouped together, 04-12 → 05-17 with gaps for new examples (#278)
 - Progressive examples renumbered: new 03-standard-fields inserted, 03-11 → 04-12 (#237)
 - Bare optional declaration of reserved standard fields now rejected by `ValidateTaxonomy` — use `required: true` or add labels (#237)
 - CEF `event_category` extension key changed from `eventCategory` to `cat` (ArcSight `deviceEventCategory`) (#237)

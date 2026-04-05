@@ -248,7 +248,7 @@ minimal third-party dependencies. Import only the outputs you use.
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 13 examples from "hello world" to a [complete CRUD API](examples/11-crud-api/) and [Loki output](examples/13-loki-output/) |
+| 📖 [Progressive Examples](examples/) | 13 examples from "hello world" to a [complete CRUD API](examples/16-crud-api/) and [Loki output](examples/08-loki-output/) |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

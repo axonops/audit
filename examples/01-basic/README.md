@@ -1,4 +1,8 @@
-# Basic Audit Example
+[← Back to examples](../README.md)
+
+> **Next:** [02 — Code Generation](../02-code-generation/)
+
+# Example 01: Basic Audit Logging
 
 The minimum viable audit event: create a logger, emit an event, and see
 what happens when validation catches a missing field.
@@ -126,7 +130,7 @@ example — that's the default when no severity is configured.
 Severity becomes useful for routing: you can send high-severity events
 to a SIEM webhook while keeping low-severity events in local files.
 You'll learn how to set per-category severity levels and route by
-threshold in the [Event Routing](../06-event-routing/) example.
+threshold in the [Event Routing](../11-event-routing/) example.
 
 ### Closing the Logger
 
@@ -200,7 +204,3 @@ events are delivered before it returns.
 - [Async Delivery](../../docs/async-delivery.md) — buffering, backpressure, and shutdown
 - [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) — full godoc
 
-## Next
-
-[Code Generation](../02-code-generation/) — define your events in YAML and
-generate type-safe Go constants.

@@ -1,4 +1,8 @@
-# Testing Example
+[← Back to examples](../README.md)
+
+> **Previous:** [16 — CRUD API](../16-crud-api/)
+
+# Example 17: Testing
 
 How to test code that uses go-audit. The `audittest` package provides
 an in-memory test logger that captures events and metrics for assertion.
@@ -14,7 +18,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [CRUD API](../11-crud-api/)
+- Completed: [CRUD API](../16-crud-api/)
 
 ## Files
 
@@ -199,7 +203,3 @@ and shutdown — these are normal.
 - [Testing](../../docs/testing.md) — full audittest reference and testing patterns
 - [Troubleshooting](../../docs/troubleshooting.md) — common issues and solutions
 
-## Previous
-
-[CRUD API](../11-crud-api/) — complete REST API with Postgres,
-five outputs, and Docker Compose.

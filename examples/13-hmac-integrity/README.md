@@ -1,4 +1,9 @@
-# HMAC Integrity Example
+[← Back to examples](../README.md)
+
+> **Previous:** [12 — Sensitivity Labels](../12-sensitivity-labels/) |
+> **Next:** [14 — Formatters](../14-formatters/)
+
+# Example 13: HMAC Integrity
 
 Per-output tamper detection using HMAC. This example shows two HMAC
 patterns side by side: **selective** (only security events) and
@@ -16,7 +21,7 @@ patterns side by side: **selective** (only security events) and
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Sensitivity Labels](../07-sensitivity-labels/)
+- Completed: [Sensitivity Labels](../12-sensitivity-labels/)
 
 ## Files
 
@@ -194,12 +199,3 @@ only appears in `all-audit.log` because `secure_log` routes by category.
 - [Sensitivity Labels](../../docs/sensitivity-labels.md) — field stripping that changes the HMAC payload
 - [Output Configuration YAML](../../docs/output-configuration.md) — hmac: block syntax
 
-## Previous
-
-[Sensitivity Labels](../07-sensitivity-labels/) — per-output field
-stripping with PII and financial labels.
-
-## Next
-
-[Formatters](../09-formatters/) — JSON vs CEF formatters for SIEM
-integration.

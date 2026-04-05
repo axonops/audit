@@ -1,4 +1,9 @@
-# CRUD API Example
+[← Back to examples](../README.md)
+
+> **Previous:** [15 — Middleware](../15-middleware/) |
+> **Next:** [17 — Testing](../17-testing/)
+
+# Example 16: CRUD API
 
 A complete REST API with Postgres, five audit outputs, Prometheus
 metrics, HTTP middleware, lifecycle events, and graceful shutdown.
@@ -298,10 +303,3 @@ and severity:
 - [Async Delivery](../../docs/async-delivery.md) — graceful shutdown and drain timeout
 - [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
 
-## Previous
-
-[Middleware](../10-middleware/) — the HTTP middleware fundamentals.
-
-## Next
-
-[Testing](../12-testing/) — testing audit events with `audittest`.

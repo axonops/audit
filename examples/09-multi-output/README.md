@@ -1,4 +1,9 @@
-# Multi-Output Example
+[← Back to examples](../README.md)
+
+> **Previous:** [08 — Loki Output](../08-loki-output/) |
+> **Next:** [11 — Event Routing](../11-event-routing/)
+
+# Example 09: Multi-Output Fan-Out
 
 Send every audit event to multiple destinations simultaneously — stdout
 and a log file, both defined in `outputs.yaml`.
@@ -12,7 +17,7 @@ and a log file, both defined in `outputs.yaml`.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [File Output](../04-file-output/)
+- Completed: [File Output](../05-file-output/)
 
 ## Files
 
@@ -54,7 +59,7 @@ receive the event.
 ### When to Add Routing
 
 Without routing rules, every output gets every event. The next example
-([Event Routing](../06-event-routing/)) shows how to send different event
+([Event Routing](../11-event-routing/)) shows how to send different event
 categories to different outputs.
 
 ## Run It
@@ -90,11 +95,3 @@ in the logger-created message confirms both outputs are registered.
 - [Outputs](../../docs/outputs.md) — fan-out architecture and delivery guarantees
 - [Async Delivery](../../docs/async-delivery.md) — how events flow through the pipeline
 
-## Previous
-
-[File Output](../04-file-output/)
-
-## Next
-
-[Event Routing](../06-event-routing/) — send different event categories to
-different outputs.

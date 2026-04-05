@@ -1,7 +1,9 @@
-# Example 03: Standard Fields & Framework Configuration
+[← Back to examples](../README.md)
 
 > **Previous:** [02 — Code Generation](../02-code-generation/) |
-> **Next:** [04 — File Output](../04-file-output/)
+> **Next:** [05 — File Output](../05-file-output/)
+
+# Example 03: Standard Fields & Framework Configuration
 
 ## What You'll Learn
 
@@ -216,10 +218,3 @@ field extraction rules needed.
 - [CEF Format: Field Mapping](../../docs/cef-format.md)
 - [Output Configuration: Framework Fields](../../docs/output-configuration.md)
 
-## Previous
-
-[02 — Code Generation](../02-code-generation/) — YAML taxonomies and typed builders
-
-## Next
-
-[04 — File Output](../04-file-output/) — Writing audit events to log files with rotation

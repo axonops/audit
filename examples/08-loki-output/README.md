@@ -1,6 +1,9 @@
 [← Back to examples](../README.md)
 
-# Example 13: Loki Output
+> **Previous:** [05 — File Output](../05-file-output/) |
+> **Next:** [09 — Multi-Output](../09-multi-output/)
+
+# Example 08: Loki Output
 
 Sends audit events to [Grafana Loki](https://grafana.com/oss/loki/)
 with stream labels for structured querying, gzip compression, and
@@ -382,7 +385,7 @@ Without the header, Loki returns 401 Unauthorized.
 docker stop loki && docker rm loki
 ```
 
-## Next Steps
+## Further Reading
 
 - [Output Configuration Reference](../../docs/output-configuration.md#-loki-output-fields) — all config fields with defaults and bounds
 - [Output Types](../../docs/outputs.md#-loki-output) — Loki section with security and delivery details

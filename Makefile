@@ -12,7 +12,7 @@
 # --- Configuration ---
 
 MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen
-WORKSPACE_MODULES := $(MODULES) examples/11-crud-api
+WORKSPACE_MODULES := $(MODULES) examples/16-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.1
 
@@ -91,10 +91,11 @@ test-bdd:
 # Example compilation tests (no runtime — examples are documentation)
 test-examples:
 	@for dir in examples/01-basic examples/02-code-generation examples/03-standard-fields \
-	            examples/04-file-output examples/05-multi-output \
-	            examples/06-event-routing examples/07-sensitivity-labels \
-	            examples/08-hmac-integrity examples/09-formatters \
-	            examples/10-middleware examples/11-crud-api examples/12-testing; do \
+	            examples/05-file-output examples/08-loki-output \
+	            examples/09-multi-output examples/11-event-routing \
+	            examples/12-sensitivity-labels examples/13-hmac-integrity \
+	            examples/14-formatters examples/15-middleware \
+	            examples/16-crud-api examples/17-testing; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
@@ -123,7 +124,7 @@ lint-audit-gen:
 	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-crud-api:
-	cd examples/11-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+	cd examples/16-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api
 lint: lint-all

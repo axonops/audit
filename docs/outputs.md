@@ -258,6 +258,11 @@ outputs:
 
 No additional configuration fields are needed.
 
+**[→ Full Stdout Output Reference](stdout-output.md)** — container
+deployment, piping patterns, limitations.
+
+**[→ Progressive example](../examples/04-stdout-output/)**
+
 ---
 
 ## 🔀 Per-Output Features

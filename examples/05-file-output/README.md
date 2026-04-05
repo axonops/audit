@@ -1,6 +1,6 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [03 — Standard Fields](../03-standard-fields/) |
+> **Previous:** [04 — Stdout Output](../04-stdout-output/) |
 > **Next:** [08 — Loki Output](../08-loki-output/)
 
 # Example 05: File Output

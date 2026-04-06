@@ -180,7 +180,7 @@ func assertLokiNegationQueryExcludesMarker(tc *AuditTestContext, categories, mar
 
 // buildNegationQuery constructs a LogQL query that excludes all
 // named categories. E.g., for "write,security":
-// {test_suite="bdd",event_category!="write",event_category!="security"} |= "marker"
+// {test_suite="bdd",event_category!="write",event_category!="security"} |= "marker".
 func buildNegationQuery(categories, markerVal string) string {
 	cats := strings.Split(categories, ",")
 	var negations []string

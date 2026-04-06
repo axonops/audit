@@ -35,7 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Stream labels: app_name, host, pid, event_type, event_category, severity (individually toggleable)
   - HTTP delivery: exponential backoff retry on 429/5xx, Retry-After support, SSRF protection
   - `FrameworkFieldReceiver` interface for outputs to receive app_name, host, pid
-  - 11 integration tests against real Loki, 461 BDD scenarios, 95% unit test coverage
+  - 11 integration tests against real Loki, 480+ BDD scenarios, 95% unit test coverage
+  - HMAC integrity: end-to-end verification through Loki pipeline (7 BDD scenarios)
+  - Multi-output fan-out with Loki: file+Loki, routing, HMAC consistency, failure isolation (7 BDD scenarios)
+  - Docker TLS infrastructure: loki-tls (port 3101) and loki-mtls (port 3102) containers
 - `MetadataWriter` optional interface for outputs that need structured per-event context (#250)
 - `EventMetadata` value type: event type, severity, category, timestamp — zero-allocation, passed by value (#250)
 

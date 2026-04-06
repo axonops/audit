@@ -417,8 +417,20 @@ pipeline to tolerate duplicate entries.
 ### Buffer Drops
 
 If events arrive faster than batches can be delivered, the internal
-buffer fills. When full, new events are **silently dropped** (the
-`Write` call returns `nil` to avoid blocking the audit pipeline).
+buffer fills. When full, new events are **dropped** (the `Write` call
+returns `nil` to avoid blocking the audit pipeline).
+
+A `slog.Warn` diagnostic message fires **at most once per 10 seconds**
+during sustained drops, reporting the accumulated drop count:
+
+```
+WARN audit: loki buffer full, events dropped  dropped=1523  buffer_size=10000
+```
+
+This rate-limiting prevents the warning itself from becoming a
+performance bottleneck under backpressure. The `RecordLokiDrop()`
+metric fires on **every** drop regardless of the warning interval —
+use metrics, not log lines, for precise drop monitoring.
 
 Monitor drops via `loki.Metrics.RecordLokiDrop()`. Increase
 `buffer_size` if you see drops.
@@ -681,6 +693,85 @@ audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
 | 429 errors, events dropped | Loki rate limiting | Check `RecordLokiDrop`; increase `flush_interval` or reduce event volume |
 | High cardinality rejection | Too many unique label combos | Exclude high-cardinality labels (e.g., `pid: false`) |
 | Events dropped silently | Internal buffer full | Increase `buffer_size`; monitor `RecordLokiDrop` |
+
+---
+
+## HMAC Integrity with Loki
+
+When HMAC is enabled on a Loki output, the `_hmac` and `_hmac_v`
+fields are appended to every event before delivery. These fields
+appear in the JSON log line stored in Loki and are queryable via
+LogQL:
+
+```logql
+{app_name="my-app"} | json | _hmac_v="v1"
+```
+
+The HMAC is computed over the serialised payload **after** sensitivity
+label stripping but **before** `_hmac`/`_hmac_v` are appended. This
+means:
+
+- Events stored in Loki can be independently verified by stripping
+  the HMAC fields, recomputing the HMAC with the same salt, and
+  comparing
+- If the Loki output strips PII fields (via `exclude_labels`), the
+  HMAC covers the stripped payload — the HMAC will differ from a
+  full-output HMAC using the same salt
+- Different HMAC salts per output produce different HMACs for the
+  same event, enabling per-destination tamper detection
+
+See [HMAC Integrity](hmac-integrity.md) for the full HMAC reference.
+
+## Multi-Output Patterns with Loki
+
+Loki works alongside any combination of file, syslog, and webhook
+outputs. Common patterns:
+
+### Redundant Storage (File + Loki)
+
+```yaml
+outputs:
+  local_archive:
+    type: file
+    file:
+      path: "/var/log/audit/events.log"
+  loki_query:
+    type: loki
+    loki:
+      url: "https://loki.internal/loki/api/v1/push"
+```
+
+The file provides guaranteed local retention; Loki provides real-time
+querying via LogQL and Grafana dashboards.
+
+### SIEM + Query (Syslog + Loki)
+
+```yaml
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: "tcp+tls"
+      address: "siem.internal:6514"
+    formatter:
+      type: cef
+    route:
+      include_categories: [security]
+  loki_all:
+    type: loki
+    loki:
+      url: "https://loki.internal/loki/api/v1/push"
+```
+
+Security events go to the SIEM in CEF format; all events go to Loki
+in JSON for operational querying.
+
+### Failure Isolation
+
+Each output is independent. A Loki outage (unreachable server, full
+buffer, HTTP errors) does **not** block or affect delivery to file,
+syslog, or webhook outputs. Events dropped by one output are still
+delivered to all others.
 
 ---
 

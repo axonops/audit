@@ -100,12 +100,19 @@ func (d *yamlDuration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
-// default if nil (field not specified in YAML).
+// default if nil (field not specified in YAML). When the pointer is
+// non-nil and the value is zero, returns -1 as a sentinel so that
+// applyDefaults (which treats 0 as "not set") does not silently
+// override the explicit zero. The -1 sentinel is caught by validation
+// which rejects values < 1.
 func intPtrOrDefault(p *int, def int) int {
-	if p != nil {
-		return *p
+	if p == nil {
+		return def
 	}
-	return def
+	if *p == 0 {
+		return -1 // sentinel: explicit zero from YAML
+	}
+	return *p
 }
 
 func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiMetrics Metrics) (audit.Output, error) {

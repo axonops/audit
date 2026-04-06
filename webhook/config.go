@@ -176,8 +176,8 @@ func validateWebhookHeaders(headers map[string]string) error {
 }
 
 // applyWebhookDefaults fills zero-valued fields with documented defaults.
-// Zero means "not set" for the programmatic API; explicit values
-// (including negative) are passed through to validation.
+// For the programmatic API, zero means "not set". Negative values from
+// the YAML path (sentinel for explicit zero) pass through to validation.
 func applyWebhookDefaults(cfg *Config) {
 	if cfg.BatchSize == 0 {
 		cfg.BatchSize = DefaultBatchSize

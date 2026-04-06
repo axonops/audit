@@ -273,6 +273,8 @@ func containsControlChar(s string) bool {
 }
 
 // applyLokiDefaults fills zero-value fields with documented defaults.
+// For the programmatic API, zero means "not set". Negative values from
+// the YAML path (sentinel for explicit zero) pass through to validation.
 func applyLokiDefaults(cfg *Config) {
 	if cfg.BatchSize == 0 {
 		cfg.BatchSize = DefaultBatchSize

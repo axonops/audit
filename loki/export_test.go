@@ -55,7 +55,7 @@ func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // huge
 		AllowPrivateRanges: true,
 		BatchSize:          1000,
 		FlushInterval:      10 * time.Second, // 10s in nanoseconds
-		Timeout:            5 * time.Second,  // 5s in nanoseconds
+		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         1000,
 		Compress:           input.Compress,

@@ -214,3 +214,36 @@ type mockWebhookMetrics struct{}
 
 func (m *mockWebhookMetrics) RecordWebhookDrop()                        {}
 func (m *mockWebhookMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
+
+func TestWebhookFactory_ExplicitZeroMaxRetries_Rejected(t *testing.T) {
+	yaml := []byte("url: https://example.com/events\nmax_retries: 0\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	_, err := factory("zero_retries", yaml, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max_retries must be at least 1")
+}
+
+func TestWebhookFactory_ExplicitZeroBatchSize_Rejected(t *testing.T) {
+	yaml := []byte("url: https://example.com/events\nbatch_size: 0\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	_, err := factory("zero_batch", yaml, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "batch_size must be at least 1")
+}
+
+func TestWebhookFactory_OmittedMaxRetries_DefaultsTo3(t *testing.T) {
+	yaml := []byte("url: https://example.com/events\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("default_retries", yaml, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+}

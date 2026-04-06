@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/file"
@@ -64,16 +65,8 @@ func registerLokiFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		})
 
 	// --- Then steps ---
-
-	ctx.Step(`^the file should contain the marker$`,
-		func() error {
-			return assertFileContainsMarkerDefault(tc, tc.Markers["default"])
-		})
-
-	ctx.Step(`^the file should contain "([^"]*)"$`,
-		func(text string) error {
-			return assertFileContainsText(tc, "default", text)
-		})
+	// Note: "the file should contain the marker" and "the file should
+	// contain X" are registered in fanout_steps.go — not duplicated here.
 
 	ctx.Step(`^the file should contain both markers$`,
 		func() error {
@@ -129,17 +122,21 @@ func registerLokiFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		})
 
 	ctx.Step(`^the loki server should have at least (\d+) events within (\d+) seconds$`,
-		func(minEvents, _ int) error {
-			logql := `{app_name="bdd-audit"}`
-			result, err := queryLokiBDD(tc, logql, "")
-			if err != nil {
-				return err
+		func(minEvents, timeoutSec int) error {
+			logql := `{app_name="bdd-audit", test_suite="bdd"}`
+			deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+			for time.Now().Before(deadline) {
+				result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+				if err != nil {
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+				if countLokiLines(result) >= minEvents {
+					return nil
+				}
+				time.Sleep(500 * time.Millisecond)
 			}
-			n := countLokiLines(result)
-			if n < minEvents {
-				return fmt.Errorf("expected at least %d events, got %d", minEvents, n)
-			}
-			return nil
+			return fmt.Errorf("expected at least %d events within %ds", minEvents, timeoutSec)
 		})
 
 	ctx.Step(`^I audit (\d+) uniquely marked "([^"]*)" events with actor "([^"]*)" and outcome "([^"]*)"$`,
@@ -182,18 +179,7 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 		return fmt.Errorf("create file output: %w", err)
 	}
 
-	lokiCfg := &loki.Config{
-		URL:                tc.LokiURL + "/loki/api/v1/push",
-		TenantID:           "bdd-fanout",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          10,
-		FlushInterval:      1e9,
-		Timeout:            5e9,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Compress:           true,
-	}
+	lokiCfg := defaultLokiTestConfig(tc)
 
 	lokiOut, err := loki.New(lokiCfg, nil, nil)
 	if err != nil {
@@ -244,18 +230,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		return fmt.Errorf("create file output: %w", err)
 	}
 
-	lokiCfg := &loki.Config{
-		URL:                tc.LokiURL + "/loki/api/v1/push",
-		TenantID:           "bdd-fanout-pii",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          10,
-		FlushInterval:      1e9,
-		Timeout:            5e9,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Compress:           true,
-	}
+	lokiCfg := defaultLokiTestConfig(tc)
 
 	lokiOut, err := loki.New(lokiCfg, nil, nil)
 	if err != nil {
@@ -268,7 +243,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut, nil, nil),                      // no exclusions
+		audit.WithNamedOutput(fileOut, nil, nil),                // no exclusions
 		audit.WithNamedOutput(lokiOut, nil, nil, excludeLabel), // strip PII
 	)
 	if err != nil {
@@ -406,25 +381,37 @@ func assertFileAndLokiHMACMatch(tc *AuditTestContext) error {
 	return nil
 }
 
-func assertLokiLabelQueryReturnsMarker(tc *AuditTestContext, label, value, marker string, _ int) error {
+func assertLokiLabelQueryReturnsMarker(tc *AuditTestContext, label, value, marker string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{%s=%q, app_name="bdd-audit"}`, label, value)
-	result, err := queryLokiBDD(tc, logql, "")
-	if err != nil {
-		return err
-	}
-	for _, stream := range result.Data.Result {
-		for _, v := range stream.Values {
-			if len(v) >= 2 && strings.Contains(v[1], marker) {
-				return nil
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+		if err != nil {
+			lastErr = err
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		for _, stream := range result.Data.Result {
+			for _, v := range stream.Values {
+				if len(v) >= 2 && strings.Contains(v[1], marker) {
+					return nil
+				}
 			}
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	return fmt.Errorf("marker %q not found in Loki query {%s=%q}", marker, label, value)
+	if lastErr != nil {
+		return fmt.Errorf("loki query failed: %w", lastErr)
+	}
+	return fmt.Errorf("marker %q not found in Loki query {%s=%q} within %ds", marker, label, value, timeoutSec)
 }
 
-func assertLokiLabelQueryReturnsNoEvents(tc *AuditTestContext, label, value string, _ int) error {
+func assertLokiLabelQueryReturnsNoEvents(tc *AuditTestContext, label, value string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{%s=%q, app_name="bdd-audit"}`, label, value)
-	result, err := queryLokiBDD(tc, logql, "")
+	// Wait the full timeout, then check — events may still be ingesting.
+	time.Sleep(time.Duration(timeoutSec) * time.Second)
+	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 	if err != nil {
 		return err
 	}

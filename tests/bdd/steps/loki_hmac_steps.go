@@ -112,6 +112,50 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	// --- Then steps ---
 
+	ctx.Step(`^the loki event payload should contain field "([^"]*)"$`,
+		func(field string) error {
+			marker := tc.Markers["default"]
+			raw, err := queryLokiForMarkerEvent(tc, marker)
+			if err != nil {
+				return err
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return fmt.Errorf("parse loki event: %w", err)
+			}
+			if _, ok := m[field]; !ok {
+				return fmt.Errorf("loki event does not contain field %q", field)
+			}
+			return nil
+		})
+
+	ctx.Step(`^the loki event payload should contain field "([^"]*)" with value "([^"]*)"$`,
+		func(field, want string) error {
+			marker := tc.Markers["default"]
+			raw, err := queryLokiForMarkerEvent(tc, marker)
+			if err != nil {
+				return err
+			}
+			return assertJSONField(raw, field, want)
+		})
+
+	ctx.Step(`^the loki event payload should not contain field "([^"]*)"$`,
+		func(field string) error {
+			marker := tc.Markers["default"]
+			raw, err := queryLokiForMarkerEvent(tc, marker)
+			if err != nil {
+				return err
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return fmt.Errorf("parse loki event: %w", err)
+			}
+			if _, ok := m[field]; ok {
+				return fmt.Errorf("loki event contains field %q but should not", field)
+			}
+			return nil
+		})
+
 	ctx.Step(`^independently recomputing HMAC-SHA-256 over the loki payload with salt "([^"]*)" matches the "_hmac" value$`,
 		func(salt string) error {
 			return verifyLokiEventHMAC(tc, salt)
@@ -166,18 +210,7 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 // is applied to the Loki output. A captureOutput is also added for
 // cross-output comparison when excludeLabels is set.
 func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, excludeLabels []string) error {
-	cfg := &loki.Config{
-		URL:                tc.LokiURL + "/loki/api/v1/push",
-		TenantID:           "bdd-hmac",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          10,
-		FlushInterval:      1e9, // 1s in nanoseconds
-		Timeout:            5e9,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Compress:           true,
-	}
+	cfg := defaultLokiTestConfig(tc)
 
 	out, err := loki.New(cfg, nil, nil)
 	if err != nil {
@@ -229,18 +262,7 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 // createLokiLoggerWithHMACAndCapture creates a Loki+capture logger
 // for cross-output HMAC comparison (different salts).
 func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVersion string) error {
-	cfg := &loki.Config{
-		URL:                tc.LokiURL + "/loki/api/v1/push",
-		TenantID:           "bdd-hmac-compare",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          10,
-		FlushInterval:      1e9,
-		Timeout:            5e9,
-		MaxRetries:         1,
-		BufferSize:         1000,
-		Compress:           true,
-	}
+	cfg := defaultLokiTestConfig(tc)
 
 	out, err := loki.New(cfg, nil, nil)
 	if err != nil {
@@ -323,6 +345,30 @@ func assertBothOutputsHaveHMAC(tc *AuditTestContext) error {
 		return fmt.Errorf("capture: %w", err)
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Config helpers
+// ---------------------------------------------------------------------------
+
+// defaultLokiTestConfig returns a Loki config with defaults matching
+// the existing BDD test infrastructure (same tenant, static labels).
+func defaultLokiTestConfig(tc *AuditTestContext) *loki.Config {
+	return &loki.Config{
+		URL:                tc.LokiURL + "/loki/api/v1/push",
+		TenantID:           defaultLokiTenant,
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          10,
+		FlushInterval:      1e9,
+		Timeout:            5e9,
+		MaxRetries:         1,
+		BufferSize:         1000,
+		Compress:           true,
+		Labels: loki.LabelConfig{
+			Static: map[string]string{"test_suite": "bdd"},
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------

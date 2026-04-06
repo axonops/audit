@@ -274,6 +274,13 @@ formatter:
 | `product` | CEF only | — | Required for CEF. Application name. |
 | `version` | CEF only | — | Required for CEF. Application version. |
 
+> **Note:** Loki outputs do not support custom formatters — they are
+> locked to JSON. Specifying a non-JSON `formatter` on a `type: loki`
+> output returns an error. If a global `default_formatter` is non-JSON,
+> Loki outputs override it with JSON and emit a `slog.Warn` at startup.
+> See [Loki Output: Formatter Restriction](loki-output.md#formatter-restriction)
+> for details.
+
 ## 🔀 Event Route Configuration
 
 Routes control which events reach an output. Include and exclude
@@ -397,7 +404,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tenant_id` | — | Sets `X-Scope-OrgID` header for Loki multi-tenancy. |
 | `headers` | — | Custom HTTP headers. MUST NOT include `Authorization`, `X-Scope-OrgID`, `Content-Type`, `Content-Encoding`, or `Host`. |
 | `labels.static` | — | Constant labels on every stream. Keys MUST match `[a-zA-Z_][a-zA-Z0-9_]*`. Values MUST NOT be empty or contain control characters. |
-| `labels.dynamic` | all included | Per-event label toggles. Set to `false` to exclude. Valid keys: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity`. |
+| `labels.dynamic` | all included | Per-event label toggles. Set to `false` to exclude. Valid keys: `app_name`, `host`, `timezone`, `pid`, `event_type`, `event_category`, `severity`. |
 | `gzip` | `true` | Gzip compress push request bodies. Note: YAML key is `gzip`, not `compress`. |
 | `batch_size` | `100` | Events per push. Maximum: 10,000. |
 | `max_batch_bytes` | `1048576` | Max uncompressed payload bytes (1 MiB). Min: 1,024. Max: 10,485,760 (10 MiB). |

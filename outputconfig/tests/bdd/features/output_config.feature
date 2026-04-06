@@ -206,6 +206,76 @@ Feature: YAML Output Configuration
     When I try to create a logger from the YAML config
     Then the config load should fail with an error containing "non-empty"
 
+  # --- Loki formatter validation (#304) ---
+
+  Scenario: Loki output rejects CEF formatter
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        loki_out:
+          type: loki
+          formatter:
+            type: cef
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "loki does not support custom formatters"
+
+  Scenario: Loki output rejects CloudEvents formatter
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        loki_out:
+          type: loki
+          formatter:
+            type: cloudevents
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should fail with an error containing "loki does not support custom formatters"
+
+  Scenario: Loki output accepts explicit JSON formatter
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        loki_out:
+          type: loki
+          formatter:
+            type: json
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should succeed
+
+  Scenario: Loki output ignores global default_formatter
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      default_formatter:
+        type: cef
+        vendor: Test
+        product: Test
+        version: "1.0"
+      outputs:
+        loki_out:
+          type: loki
+      """
+    When I try to create a logger from the YAML config
+    Then the config load should succeed
+    And the loki output formatter should be JSON
+
   # --- Syslog app_name injection (#237) ---
 
   Scenario: Global app_name injected into syslog output config

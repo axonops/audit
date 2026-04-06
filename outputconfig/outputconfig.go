@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -211,6 +212,17 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 	}
 
+	// lokiFallbackJSON is a shared JSONFormatter for Loki outputs that
+	// need to override a non-JSON default_formatter. A single instance
+	// is shared across all Loki outputs to preserve format cache
+	// sharing (the cache compares Formatter by pointer identity).
+	var lokiFallbackJSON audit.Formatter
+	if top.defaultFmt != nil {
+		if _, isJSON := top.defaultFmt.(*audit.JSONFormatter); !isJSON {
+			lokiFallbackJSON = &audit.JSONFormatter{Timestamp: audit.TimestampRFC3339Nano}
+		}
+	}
+
 	seen := make(map[string]struct{})
 	var outputs []NamedOutput
 
@@ -226,7 +238,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.appName, top.host, coreMetrics)
+		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.appName, top.host, coreMetrics, lokiFallbackJSON)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -581,7 +593,10 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its YAML node.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
+// lokiFallbackJSON is a shared JSONFormatter used when a Loki output
+// needs to override a non-JSON default_formatter; nil when no override
+// is needed.
+func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics, lokiFallbackJSON audit.Formatter) (*NamedOutput, error) {
 	fields, err := extractOutputFields(name, node)
 	if err != nil {
 		return nil, err
@@ -592,6 +607,11 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
 		return nil, expandErr
 	}
+
+	if fmtErr := validateLokiFormatter(name, fields); fmtErr != nil {
+		return nil, fmtErr
+	}
+
 	output, err := invokeFactory(name, fields, globalTLSNode, globalAppName, globalHost, coreMetrics)
 	if err != nil {
 		return nil, err
@@ -606,6 +626,8 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
+	formatter = resolveLokiFormatter(name, fields, formatter, lokiFallbackJSON)
+
 	hmacCfg, err := buildHMACConfig(name, fields.hmacNode)
 	if err != nil {
 		_ = output.Close()
@@ -616,6 +638,35 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 		no.ExcludeLabels = fields.excludeLabels
 	}
 	return no, nil
+}
+
+// validateLokiFormatter rejects non-JSON formatters on Loki outputs
+// before invoking the factory. Loki requires JSON format for label
+// extraction and LogQL queries.
+func validateLokiFormatter(name string, fields *outputFields) error {
+	if fields.typeName != "loki" || fields.formatterNode == nil {
+		return nil
+	}
+	fmtType := extractFormatterType(fields.formatterNode)
+	if fmtType != "" && fmtType != "json" {
+		return fmt.Errorf("output %q: loki does not support custom formatters; "+
+			"loki requires JSON format for label extraction and LogQL queries", name)
+	}
+	return nil
+}
+
+// resolveLokiFormatter ensures Loki outputs use JSON regardless of
+// the global default_formatter. When the default is non-JSON and the
+// Loki output has no per-output formatter, the shared lokiFallbackJSON
+// is used to prevent non-JSON inheritance at runtime while preserving
+// format cache sharing across multiple Loki outputs.
+func resolveLokiFormatter(name string, fields *outputFields, formatter, lokiFallbackJSON audit.Formatter) audit.Formatter {
+	if fields.typeName != "loki" || formatter != nil || lokiFallbackJSON == nil {
+		return formatter
+	}
+	slog.Warn("audit: loki output ignoring default_formatter; loki requires JSON format",
+		"output", name)
+	return lokiFallbackJSON
 }
 
 func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { //nolint:gocognit,gocyclo,cyclop // YAML field extraction with validation

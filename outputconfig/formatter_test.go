@@ -170,3 +170,30 @@ func TestBuildFormatter_InvalidYAML_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "formatter")
 }
+
+func TestExtractFormatterType(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"nil node", "", ""},
+		{"scalar cef", "cef", "cef"},
+		{"scalar json", "json", "json"},
+		{"mapping with type", "type: cef", "cef"},
+		{"mapping with type json", "type: json\ntimestamp: unix_ms", "json"},
+		{"mapping without type", "timestamp: unix_ms", ""},
+		{"empty scalar", `""`, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.yaml == "" {
+				assert.Equal(t, "", extractFormatterType(nil))
+				return
+			}
+			node := formatterNode(t, tt.yaml)
+			assert.Equal(t, tt.want, extractFormatterType(node))
+		})
+	}
+}

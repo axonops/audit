@@ -430,6 +430,9 @@ func (m *testLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) {
 	m.mu.Unlock()
 }
 
+func (m *testLokiMetrics) RecordLokiRetry(_, _ int) {}
+func (m *testLokiMetrics) RecordLokiError(_ int)    {}
+
 func (m *testLokiMetrics) drops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

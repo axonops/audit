@@ -50,6 +50,12 @@ func (m *MockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) {
 	m.mu.Unlock()
 }
 
+// RecordLokiRetry records a retry event (satisfies loki.Metrics).
+func (m *MockLokiMetrics) RecordLokiRetry(_, _ int) {}
+
+// RecordLokiError records a non-retryable error (satisfies loki.Metrics).
+func (m *MockLokiMetrics) RecordLokiError(_ int) {}
+
 func (m *MockLokiMetrics) flushCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

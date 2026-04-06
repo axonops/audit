@@ -63,6 +63,9 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// Route query result.
 	QueriedRoute *audit.EventRoute
 
+	// Loki output name (dynamic: "loki:<host>").
+	LokiOutputName string
+
 	// HMAC capture.
 	CaptureOutput  *captureOutput            // raw event bytes for HMAC verification
 	CaptureOutputs map[string]*captureOutput // named outputs for multi-output HMAC tests
@@ -189,4 +192,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerMetadataWriterSteps(ctx, tc)
 	registerLokiSteps(ctx, tc)
 	registerLokiReceiverSteps(ctx, tc)
+	registerLokiHMACSteps(ctx, tc)
+	registerLokiFanoutSteps(ctx, tc)
 }

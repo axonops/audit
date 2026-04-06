@@ -80,6 +80,26 @@ When you run this example, here's what happens:
 5. **Events queryable** — within 1-2 seconds, the events are queryable
    via Loki's LogQL API
 
+## Why Loki Is JSON-Only
+
+Unlike other outputs (file, syslog, webhook), Loki outputs do **not**
+support a `formatter:` block. Loki is locked to JSON because LogQL
+queries use `| json` to parse event fields from stored log lines:
+
+```logql
+{job="audit-example"} | json | actor_id = "alice"
+```
+
+If events were CEF-formatted, this query would silently return no
+results. The library enforces this at config load time — specifying
+`formatter: cef` on a Loki output returns an error. If you set a
+global `default_formatter: cef`, Loki outputs override it with JSON
+and log a warning.
+
+You can still customise JSON options (e.g. `timestamp: unix_ms`) by
+explicitly setting `formatter: { type: json, timestamp: unix_ms }` on
+the Loki output.
+
 ## Understanding Stream Labels
 
 Events are grouped into **Loki streams** based on their label values.

@@ -29,19 +29,38 @@ import (
 	"github.com/axonops/go-audit/outputconfig"
 )
 
+func init() {
+	// Register a stub "loki" factory for BDD tests that validate
+	// outputconfig formatter behaviour without depending on the real
+	// Loki module. The stub ignores the raw config and returns a
+	// minimal output.
+	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		return &lokiStub{}, nil
+	})
+}
+
+// lokiStub is a minimal output stub for Loki formatter BDD tests.
+type lokiStub struct{}
+
+func (l *lokiStub) Write([]byte) error { return nil }
+func (l *lokiStub) Close() error       { return nil }
+func (l *lokiStub) Name() string       { return "loki-stub" }
+
 // TestContext holds mutable state for a single BDD scenario.
 type TestContext struct { //nolint:govet // fieldalignment: readability preferred
-	Taxonomy audit.Taxonomy
-	Logger   *audit.Logger
-	Options  []audit.Option
-	LastErr  error
-	FileDir  string
+	Taxonomy   audit.Taxonomy
+	Logger     *audit.Logger
+	Options    []audit.Option
+	LoadResult *outputconfig.LoadResult
+	LastErr    error
+	FileDir    string
 }
 
 // Reset prepares the context for a new scenario.
 func (tc *TestContext) Reset() {
 	tc.Logger = nil
 	tc.Options = nil
+	tc.LoadResult = nil
 	tc.LastErr = nil
 	tc.FileDir = ""
 }
@@ -119,6 +138,7 @@ events:
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr
 		}
 		tc.Options = result.Options
+		tc.LoadResult = result
 		return nil
 	})
 }
@@ -186,10 +206,25 @@ func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		return assertError(tc, substr)
 	})
 
+	ctx.Step(`^the config load should succeed$`, func() error {
+		if tc.LastErr != nil {
+			return fmt.Errorf("expected config load to succeed, got: %w", tc.LastErr)
+		}
+		return nil
+	})
+
 	ctx.Step(`^the config load error should contain "([^"]*)"$`, func(substr string) error {
 		return assertError(tc, substr)
 	})
 
+	ctx.Step(`^the loki output formatter should be JSON$`, func() error {
+		return assertLokiFormatterJSON(tc)
+	})
+
+	registerFileAssertionSteps(ctx, tc)
+}
+
+func registerFileAssertionSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	ctx.Step(`^the file "([^"]*)" should contain "([^"]*)"$`, func(filename, text string) error {
 		path := filepath.Join(tc.FileDir, filename)
 		data, err := os.ReadFile(path) //nolint:gosec // test fixture path
@@ -213,6 +248,25 @@ func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		}
 		return nil
 	})
+}
+
+// assertLokiFormatterJSON verifies the loki_out output has a JSON formatter.
+func assertLokiFormatterJSON(tc *TestContext) error {
+	if tc.LoadResult == nil {
+		return fmt.Errorf("no load result available")
+	}
+	for _, o := range tc.LoadResult.Outputs {
+		if o.Name == "loki_out" {
+			if o.Formatter == nil {
+				return fmt.Errorf("loki output formatter is nil (would inherit default)")
+			}
+			if _, ok := o.Formatter.(*audit.JSONFormatter); !ok {
+				return fmt.Errorf("loki output formatter is %T, want *audit.JSONFormatter", o.Formatter)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no output named 'loki_out' found")
 }
 
 func assertError(tc *TestContext, substr string) error {

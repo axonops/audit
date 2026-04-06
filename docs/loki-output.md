@@ -336,6 +336,41 @@ outputs:
       hash: "HMAC-SHA-256"
 ```
 
+### Formatter Restriction
+
+Loki outputs are locked to JSON format. Specifying `formatter: cef` (or
+any non-JSON formatter) on a Loki output returns an error at config load
+time:
+
+```text
+audit: output config validation failed: output "loki_audit": loki does not support custom formatters; loki requires JSON format for label extraction and LogQL queries
+```
+
+If a global `default_formatter` is set to a non-JSON format, Loki
+outputs override it and use JSON. A `WARN`-level log message is emitted
+at config load time for each affected Loki output:
+
+```text
+WARN audit: loki output ignoring default_formatter; loki requires JSON format  output=loki_audit
+```
+
+**Why?** Loki depends on JSON for two reasons:
+
+1. **LogQL `| json`** — the primary query pattern for extracting event
+   fields from stored log lines requires JSON-formatted entries
+2. **Flat field access** — LogQL `| json | actor_id = "alice"` works
+   only with JSON; CEF extension key-value pairs are not natively
+   parseable by Loki
+
+> Note: Stream labels (`event_type`, `app_name`, etc.) are derived from
+> Go metadata structs, not from the formatted log line. The formatter
+> restriction exists because of LogQL's JSON dependency for querying
+> stored events, not label derivation.
+
+To customise JSON options (e.g. `timestamp: unix_ms` or
+`omit_empty: true`), set `formatter: { type: json, ... }` explicitly on
+the Loki output.
+
 ### Field Reference
 
 | Field | Type | Default | Range | Description |
@@ -347,7 +382,7 @@ outputs:
 | `tenant_id` | string | — | — | Sets `X-Scope-OrgID` header for Loki multi-tenancy. When set, queries MUST include the same header. |
 | `headers` | map | — | — | Custom HTTP headers. MUST NOT include `Authorization`, `X-Scope-OrgID`, `Content-Type`, `Content-Encoding`, or `Host` — use the dedicated fields. |
 | `labels.static` | map | — | — | Constant labels on every stream. Keys MUST match `[a-zA-Z_][a-zA-Z0-9_]*`. Values MUST NOT be empty or contain control characters (0x00-0x1F). |
-| `labels.dynamic` | map | all included | — | Per-event label toggles. Valid keys: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity`. Set to `false` to exclude. Unknown keys are rejected. |
+| `labels.dynamic` | map | all included | — | Per-event label toggles. Valid keys: `app_name`, `host`, `timezone`, `pid`, `event_type`, `event_category`, `severity`. Set to `false` to exclude. Unknown keys are rejected. |
 | `gzip` | bool | `true` | — | Gzip compress push request bodies. **Note**: the YAML key is `gzip`, not `compress`. |
 | `batch_size` | int | `100` | 1 – 10,000 | Maximum events per push request. |
 | `max_batch_bytes` | int | `1048576` | 1,024 – 10,485,760 | Maximum uncompressed payload bytes per push (1 MiB default, 10 MiB max). |

@@ -76,15 +76,15 @@ read back from `audit.log`:
 ```
 INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
 INFO audit: shutdown complete duration=...
 
 --- Contents of audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"bob","outcome":"success","event_category":"write"}
 ```
 
 Both outputs received identical events — that's fan-out. Note `outputs=2`

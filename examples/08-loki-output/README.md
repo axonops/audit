@@ -197,6 +197,17 @@ curl -s -H 'X-Scope-OrgID: example' \
   },
   "count": 1
 }
+{
+  "stream": {
+    "app_name": "audit-example",
+    "environment": "development",
+    "event_type": "health_check",
+    "host": "dev-machine",
+    "job": "audit-example",
+    "severity": "5"
+  },
+  "count": 2
+}
 ```
 
 ### Search by `event_type` — find only authentication failures

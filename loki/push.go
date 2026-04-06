@@ -90,6 +90,7 @@ func (o *Output) resolveDynamicFields(meta audit.EventMetadata, fw *frameworkFie
 		fields = append(fields,
 			dynamicField{"an", "app_name", dl.ExcludeAppName, fw.appName},
 			dynamicField{"h", "host", dl.ExcludeHost, fw.host},
+			dynamicField{"tz", "timezone", dl.ExcludeTimezone, fw.timezone},
 			dynamicField{"p", "pid", dl.ExcludePID, strconv.Itoa(fw.pid)},
 		)
 		// pid=0 means unset.

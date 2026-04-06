@@ -183,7 +183,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 func parseDynamicLabels(m map[string]bool, dl *DynamicLabels) error {
 	for name, enabled := range m {
 		if _, ok := validDynamicLabels[name]; !ok {
-			return fmt.Errorf("%w: loki: unknown dynamic label %q: valid labels are app_name, host, pid, event_type, event_category, severity", audit.ErrConfigInvalid, name)
+			return fmt.Errorf("%w: loki: unknown dynamic label %q: valid labels are app_name, host, timezone, pid, event_type, event_category, severity", audit.ErrConfigInvalid, name)
 		}
 		if !enabled {
 			switch name {
@@ -191,6 +191,8 @@ func parseDynamicLabels(m map[string]bool, dl *DynamicLabels) error {
 				dl.ExcludeAppName = true
 			case "host":
 				dl.ExcludeHost = true
+			case "timezone":
+				dl.ExcludeTimezone = true
 			case "pid":
 				dl.ExcludePID = true
 			case "event_type":

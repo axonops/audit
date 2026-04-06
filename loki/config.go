@@ -81,6 +81,7 @@ var validLabelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 var validDynamicLabels = map[string]struct{}{
 	"app_name":       {},
 	"host":           {},
+	"timezone":       {},
 	"pid":            {},
 	"event_type":     {},
 	"event_category": {},
@@ -110,6 +111,7 @@ type LabelConfig struct {
 type DynamicLabels struct {
 	ExcludeAppName       bool
 	ExcludeHost          bool
+	ExcludeTimezone      bool
 	ExcludePID           bool
 	ExcludeEventType     bool
 	ExcludeEventCategory bool

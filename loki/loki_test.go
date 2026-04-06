@@ -173,7 +173,7 @@ func TestOutput_SetFrameworkFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// SetFrameworkFields should not panic with any values.
-	out.SetFrameworkFields("myapp", "prod-01", 12345)
+	out.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
 	require.NoError(t, out.Close())
 }
 

@@ -766,7 +766,7 @@ func (l *Logger) propagateFrameworkFields() {
 			set(oe.formatter)
 		}
 		if recv, ok := oe.output.(FrameworkFieldReceiver); ok {
-			recv.SetFrameworkFields(l.appName, l.host, l.pid)
+			recv.SetFrameworkFields(l.appName, l.host, l.timezone, l.pid)
 		}
 	}
 }

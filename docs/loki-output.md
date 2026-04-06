@@ -167,6 +167,65 @@ To search by them, use LogQL's JSON parser:
 {event_type="user_create"} | json | actor_id="alice"
 ```
 
+### Uncategorised Events in Loki
+
+Events that are not assigned to any category in the taxonomy are
+**uncategorised** — they have no `event_category` value. In Loki,
+this means:
+
+- The `event_category` label is **absent** from the stream (not
+  empty — absent entirely)
+- The `event_category` field is **omitted** from the JSON log line
+- Uncategorised events end up in a **separate stream** from
+  categorised events (even if all other labels match)
+
+**This does NOT affect searchability.** All events — categorised and
+uncategorised — are fully queryable. You just need the right LogQL
+pattern:
+
+```logql
+# Find ALL events (categorised + uncategorised) for an actor:
+{app_name="myservice"} | json | actor_id="alice"
+
+# Find only categorised events in the "write" category:
+{event_category="write"}
+
+# Find only uncategorised events (no event_category label):
+{app_name="myservice"} | json | event_category=""
+
+# Or via label negation (events NOT in any known category):
+{app_name="myservice", event_category!="write", event_category!="security"}
+```
+
+The label negation approach works because Loki's `!=` matcher matches
+streams where the label is absent OR has a different value.
+Uncategorised events (no `event_category` label) match
+`event_category!="write"`.
+
+**What does "separate streams" actually mean?**
+
+A Loki stream is a sequence of log lines that share the same label
+set. Loki stores and indexes each stream independently. When
+uncategorised events lack the `event_category` label, they form a
+label set that differs from categorised events — so Loki puts them
+in a separate stream.
+
+In practice, this has **no negative impact**:
+
+- **Query performance** is unaffected — Loki is designed to handle
+  thousands of streams efficiently. One extra stream per unique
+  uncategorised event type is negligible
+- **Storage** is unaffected — log lines are compressed per-stream,
+  and uncategorised events compress just as well
+- **You don't need to avoid uncategorised events** — they are a
+  normal and expected part of audit logging (health checks, system
+  events, custom events not yet categorised)
+
+The only practical effect is that `{event_category="write"}` won't
+return uncategorised events, which is the correct behaviour — they
+genuinely have no category. Use `{app_name="myservice"}` or the
+JSON parser to search across all events regardless of category.
+
 ### Excluding Dynamic Labels
 
 All seven dynamic labels are included by default. Set to `false` to

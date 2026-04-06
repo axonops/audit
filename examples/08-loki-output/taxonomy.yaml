@@ -29,3 +29,11 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       resource: {required: true}
+  # health_check is intentionally NOT in any category.
+  # It demonstrates how uncategorised events work in Loki —
+  # they appear in their own stream without an event_category label.
+  health_check:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      component: {required: true}

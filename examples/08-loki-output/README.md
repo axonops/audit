@@ -49,11 +49,19 @@ Audited: user_create by bob
 Audited: auth_failure by mallory
 Audited: permission_denied by mallory
 Audited: user_update by alice
+Audited: health_check by alice
+Audited: health_check by bob
 
 Waiting for Loki delivery...
 Done. Query your events:
-  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .
-  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .
+  # All events (categorised + uncategorised):
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=20' | jq .
+  # Only categorised "write" events:
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_category="write"}&limit=10' | jq .
+  # Only uncategorised events (no event_category label):
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+event_category=""&limit=10' | jq .
+  # All events by alice (across all categories):
+  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+actor_id="alice"&limit=10' | jq .
 ```
 
 ## What Happens Under the Hood
@@ -150,7 +158,7 @@ curl -s -H 'X-Scope-OrgID: example' \
   | jq '.data.result[] | {stream: .stream, count: (.values | length)}'
 ```
 
-**Output — 4 streams, 5 total events:**
+**Output — 5 streams, 7 total events** (4 categorised streams + 1 uncategorised stream):
 
 ```json
 {
@@ -279,6 +287,54 @@ curl -s -H 'X-Scope-OrgID: example' \
   "event_category": "write"
 }
 ```
+
+### Uncategorised events — health_check has no event_category
+
+The `health_check` event type is intentionally NOT in any category.
+In Loki, this means:
+
+- It has **no `event_category` label** — it won't appear in
+  `{event_category="write"}` or `{event_category="security"}` queries
+- It has **no `event_category` field** in the JSON log line
+- It forms its **own stream** in Loki (separate from categorised events)
+
+**Find only uncategorised events:**
+
+```bash
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+event_category=""&limit=10' \
+  | jq '.data.result[].values[][1]' -r | jq .
+```
+
+**Output — only health_check events (no event_category field):**
+
+```json
+{
+  "timestamp": "...",
+  "event_type": "health_check",
+  "severity": 5,
+  "app_name": "audit-example",
+  "host": "dev-machine",
+  "actor_id": "alice",
+  "outcome": "success",
+  "component": "database"
+}
+```
+
+Notice: no `event_category` field. Categorised events like
+`user_create` have `"event_category": "write"` — health_check doesn't.
+
+**Find ALL events by alice (categorised + uncategorised):**
+
+```bash
+curl -s -H 'X-Scope-OrgID: example' \
+  'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+actor_id="alice"&limit=10' \
+  | jq '.data.result[].values[][1]' -r | jq .
+```
+
+This returns alice's `user_create`, `user_update`, AND `health_check`
+events — searching by actor works across all categories (and no
+category).
 
 ## YAML Configuration Explained
 

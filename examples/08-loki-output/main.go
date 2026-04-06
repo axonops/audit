@@ -80,11 +80,15 @@ func main() {
 		eventType string
 	}
 	events := []auditEvent{
+		// Categorised events (in "write" or "security" categories):
 		{audit.Fields{"outcome": "success", "actor_id": "alice", "resource_id": "user-42"}, "user_create"},
 		{audit.Fields{"outcome": "success", "actor_id": "bob", "resource_id": "user-43"}, "user_create"},
 		{audit.Fields{"outcome": "failure", "actor_id": "mallory", "reason": "invalid_password"}, "auth_failure"},
 		{audit.Fields{"outcome": "failure", "actor_id": "mallory", "resource": "admin_panel"}, "permission_denied"},
 		{audit.Fields{"outcome": "success", "actor_id": "alice", "resource_id": "user-42"}, "user_update"},
+		// Uncategorised event (not in any category — no event_category label in Loki):
+		{audit.Fields{"outcome": "success", "actor_id": "alice", "component": "database"}, "health_check"},
+		{audit.Fields{"outcome": "success", "actor_id": "bob", "component": "cache"}, "health_check"},
 	}
 
 	for _, e := range events {
@@ -100,6 +104,12 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("Done. Query your events:")
-	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=10' | jq .`)
-	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_type="auth_failure"}&limit=10' | jq .`)
+	fmt.Println(`  # All events (categorised + uncategorised):`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}&limit=20' | jq .`)
+	fmt.Println(`  # Only categorised "write" events:`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={event_category="write"}&limit=10' | jq .`)
+	fmt.Println(`  # Only uncategorised events (no event_category label):`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+event_category=""&limit=10' | jq .`)
+	fmt.Println(`  # All events by alice (across all categories):`)
+	fmt.Println(`  curl -s -H 'X-Scope-OrgID: example' 'http://localhost:3100/loki/api/v1/query_range?query={job="audit-example"}+|+json+|+actor_id="alice"&limit=10' | jq .`)
 }

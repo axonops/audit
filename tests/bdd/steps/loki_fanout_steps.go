@@ -327,7 +327,6 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 // File assertion helpers
 // ---------------------------------------------------------------------------
 
-
 func assertFileEventHasField(tc *AuditTestContext, marker, field string) error {
 	raw, err := findFileEventByMarker(tc, marker)
 	if err != nil {

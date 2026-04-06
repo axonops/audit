@@ -17,7 +17,7 @@ without custom field mapping.
 ## Example Output
 
 ```json
-{"timestamp":"2026-01-15T10:30:00.123456789Z","event_type":"user_create","severity":5,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"2026-01-15T10:30:00.123456789Z","event_type":"user_create","severity":5,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
 
 > 💡 The `event_category` field is appended automatically when the

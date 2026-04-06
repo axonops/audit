@@ -167,7 +167,7 @@ ok, err := audit.VerifyHMAC(
 
 **JSON:**
 ```json
-{"timestamp":"...","event_type":"auth_failure","severity":8,"outcome":"failure","event_category":"security","_hmac":"a1b2c3d4...","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"outcome":"failure","event_category":"security","_hmac":"a1b2c3d4...","_hmac_v":"2026-Q1"}
 ```
 
 **CEF:**

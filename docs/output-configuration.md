@@ -30,7 +30,7 @@ logger:
 
 app_name: "my-service"               # REQUIRED: application name
 host: "${HOSTNAME:-localhost}"        # REQUIRED: hostname / environment
-timezone: "${TZ:-UTC}"               # optional: auto-detected from system if absent
+timezone: "${TZ:-UTC}"               # optional in YAML — auto-detected from system if omitted; always present in output
 
 # ── Standard Field Defaults (optional) ────────────────────
 # Deployment-wide default values for reserved standard fields.

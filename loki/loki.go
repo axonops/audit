@@ -59,9 +59,10 @@ type lokiEntry struct { //nolint:govet // fieldalignment: readability preferred
 // stream labels. Stored atomically to avoid data races between the
 // core library's SetFrameworkFields call and the batchLoop goroutine.
 type frameworkFields struct {
-	appName string
-	host    string
-	pid     int
+	appName  string
+	host     string
+	timezone string
+	pid      int
 }
 
 // Output pushes audit events to a Grafana Loki instance via the HTTP
@@ -172,8 +173,8 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 // as Loki stream labels. Called once by the core library at logger
 // construction time. The data is stored atomically, safe for
 // concurrent access from the batchLoop goroutine.
-func (o *Output) SetFrameworkFields(appName, host string, pid int) {
-	o.fw.Store(&frameworkFields{appName: appName, host: host, pid: pid})
+func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
+	o.fw.Store(&frameworkFields{appName: appName, host: host, timezone: timezone, pid: pid})
 }
 
 // WriteWithMetadata enqueues a serialised audit event with per-event

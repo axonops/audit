@@ -140,7 +140,7 @@ func BenchmarkLokiOutput_MetadataWriter(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	out.SetFrameworkFields("bench-app", "bench-host", 12345)
+	out.SetFrameworkFields("bench-app", "bench-host", "UTC", 12345)
 	defer func() { _ = out.Close() }()
 
 	// Realistic audit event payload (~200 bytes).

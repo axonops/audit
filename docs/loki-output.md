@@ -117,12 +117,13 @@ go-audit generates labels from three sources:
 | **Framework** | From logger options | Logger construction | `app_name="myservice"`, `host="prod-01"`, `pid="12345"` |
 | **Per-event** | From event metadata | Each audit event | `event_type="user_create"`, `event_category="write"`, `severity="5"` |
 
-### The Six Dynamic Labels
+### The Seven Dynamic Labels
 
 | Label | Source | Typical values | Why it matters |
 |-------|--------|---------------|----------------|
 | `app_name` | `WithAppName()` or YAML `app_name` | `"myservice"`, `"auth-gateway"` | Isolate events from different applications |
 | `host` | `WithHost()` or YAML `host` | `"prod-01"`, `"us-east-1a"` | Identify which server generated the event |
+| `timezone` | `WithTimezone()` or auto-detected | `"UTC"`, `"Europe/London"` | **Forensics** — correlate events across regions; compliance requirement for unambiguous timestamps. See [Why Timezone?](#why-timezone-is-always-included) |
 | `pid` | Auto-captured `os.Getpid()` | `"12345"` | **Forensics** — identify which process instance generated each event. Critical for multi-instance deployments and incident investigation. A PID change indicates a process restart. |
 | `event_type` | From `audit.NewEvent(type, ...)` | `"user_create"`, `"auth_failure"` | Primary query axis — what happened |
 | `event_category` | From taxonomy categories | `"write"`, `"security"` | Group related event types for broad queries |
@@ -138,6 +139,7 @@ STREAM LABELS (indexed, fast query via {selector}):
   event_category="write"
   app_name="myservice"
   host="prod-01"
+  timezone="UTC"
   pid="12345"
   severity="5"
   job="audit"            ← static label
@@ -167,7 +169,7 @@ To search by them, use LogQL's JSON parser:
 
 ### Excluding Dynamic Labels
 
-All six dynamic labels are included by default. Set to `false` to
+All seven dynamic labels are included by default. Set to `false` to
 exclude:
 
 ```yaml
@@ -685,7 +687,7 @@ audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
 | `loki: static label "X" value contains control characters` | Newlines or other control chars | Remove control characters |
 | `loki: header "X" contains CR/LF` | CRLF injection attempt | Remove `\r\n` from header values |
 | `loki: header "Authorization" is managed by the library` | Set restricted header via `headers` | Use `basic_auth` or `bearer_token` instead |
-| `loki: unknown dynamic label "X"` | Typo in dynamic label name | Valid: `app_name`, `host`, `pid`, `event_type`, `event_category`, `severity` |
+| `loki: unknown dynamic label "X"` | Typo in dynamic label name | Valid: `app_name`, `host`, `timezone`, `pid`, `event_type`, `event_category`, `severity` |
 | `loki: batch_size X out of range` | Value < 1 or > 10000 | Set within range |
 | Events not appearing in Loki | Ingestion delay | Wait 2-5 seconds, or query with wider time range |
 | Events not appearing | `tenant_id` mismatch | Query MUST include `X-Scope-OrgID` header matching `tenant_id` |
@@ -693,6 +695,40 @@ audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
 | 429 errors, events dropped | Loki rate limiting | Check `RecordLokiDrop`; increase `flush_interval` or reduce event volume |
 | High cardinality rejection | Too many unique label combos | Exclude high-cardinality labels (e.g., `pid: false`) |
 | Events dropped silently | Internal buffer full | Increase `buffer_size`; monitor `RecordLokiDrop` |
+
+---
+
+## Why Timezone Is Always Included
+
+The `timezone` field is a framework field that is **always** populated
+in every audit event — either from the user's YAML configuration or
+auto-detected from the system timezone at logger construction.
+
+Timezone is included because:
+
+- **Forensic correlation** — when audit events from servers in
+  different regions need to be correlated, timezone context resolves
+  timestamp ambiguity. A `user_create` event at `12:00:00` could be
+  noon UTC or noon US/Eastern — the timezone field disambiguates
+- **Compliance** — SOC 2 and PCI DSS require audit timestamps to be
+  unambiguous. Timezone context prevents misinterpretation of local
+  timestamps during audits
+- **Incident response** — during cross-timezone incidents, the timezone
+  field immediately identifies which region or datacenter generated
+  each event without parsing the timestamp offset
+- **Tamper detection** — a timezone mismatch between a server's known
+  location and the event's timezone may indicate log injection or
+  process migration
+
+As a Loki dynamic label, timezone enables efficient cross-region
+queries:
+
+```logql
+{timezone="Europe/London"} | json | event_type="auth_failure"
+```
+
+To exclude timezone from Loki labels (keeping it in the JSON log line
+only): `labels.dynamic.timezone: false`.
 
 ---
 

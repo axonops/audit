@@ -181,25 +181,24 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 // parseDynamicLabels converts the YAML dynamic labels map into the
 // DynamicLabels struct. Unknown label names are rejected.
 func parseDynamicLabels(m map[string]bool, dl *DynamicLabels) error {
+	// Map label names to the corresponding Exclude* field pointers.
+	excludeFields := map[string]*bool{
+		"app_name":       &dl.ExcludeAppName,
+		"host":           &dl.ExcludeHost,
+		"timezone":       &dl.ExcludeTimezone,
+		"pid":            &dl.ExcludePID,
+		"event_type":     &dl.ExcludeEventType,
+		"event_category": &dl.ExcludeEventCategory,
+		"severity":       &dl.ExcludeSeverity,
+	}
+
 	for name, enabled := range m {
-		if _, ok := validDynamicLabels[name]; !ok {
-			return fmt.Errorf("%w: loki: unknown dynamic label %q: valid labels are app_name, host, pid, event_type, event_category, severity", audit.ErrConfigInvalid, name)
+		field, ok := excludeFields[name]
+		if !ok {
+			return fmt.Errorf("%w: loki: unknown dynamic label %q: valid labels are app_name, host, timezone, pid, event_type, event_category, severity", audit.ErrConfigInvalid, name)
 		}
 		if !enabled {
-			switch name {
-			case "app_name":
-				dl.ExcludeAppName = true
-			case "host":
-				dl.ExcludeHost = true
-			case "pid":
-				dl.ExcludePID = true
-			case "event_type":
-				dl.ExcludeEventType = true
-			case "event_category":
-				dl.ExcludeEventCategory = true
-			case "severity":
-				dl.ExcludeSeverity = true
-			}
+			*field = true
 		}
 	}
 	return nil

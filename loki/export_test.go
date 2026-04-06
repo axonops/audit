@@ -83,7 +83,7 @@ func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntr
 		tb.Fatalf("New() failed: %v", err)
 	}
 
-	o.SetFrameworkFields(input.AppName, input.Host, input.PID)
+	o.SetFrameworkFields(input.AppName, input.Host, "UTC", input.PID)
 
 	batch := make([]lokiEntry, len(input.Events))
 	for i, e := range input.Events {

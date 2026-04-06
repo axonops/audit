@@ -77,16 +77,6 @@ type Metrics interface {
 // validLabelName matches Loki's label name requirement.
 var validLabelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// validDynamicLabels is the set of allowed dynamic label names.
-var validDynamicLabels = map[string]struct{}{
-	"app_name":       {},
-	"host":           {},
-	"timezone":       {},
-	"pid":            {},
-	"event_type":     {},
-	"event_category": {},
-	"severity":       {},
-}
 
 // BasicAuth holds HTTP basic authentication credentials.
 type BasicAuth struct {

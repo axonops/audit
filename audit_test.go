@@ -4271,3 +4271,95 @@ func TestMetadataWriter_CachedAssertion_Correct(t *testing.T) {
 	assert.Equal(t, 1, plainOut.EventCount(),
 		"cached nil metadataWriter assertion must route to Write for non-implementing output")
 }
+
+func TestTimezoneAlwaysPopulated(t *testing.T) {
+	// Create a logger with NO timezone config — it should auto-detect.
+	tax := audit.Taxonomy{
+		Version: 1,
+		Events:  map[string]*audit.EventDef{"test_event": {}},
+		Categories: map[string]*audit.CategoryDef{
+			"test": {Events: []string{"test_event"}},
+		},
+	}
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+		audit.WithAppName("test"),
+		audit.WithHost("test"),
+		// No WithTimezone — should auto-detect
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("test_event", audit.Fields{})))
+	require.NoError(t, logger.Close())
+
+	assert.Contains(t, buf.String(), `"timezone":`,
+		"timezone must always be present in output even when not explicitly configured")
+}
+
+func TestTimezoneAutoDetect(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Events:  map[string]*audit.EventDef{"test_event": {}},
+		Categories: map[string]*audit.CategoryDef{
+			"test": {Events: []string{"test_event"}},
+		},
+	}
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+		audit.WithAppName("test"),
+		audit.WithHost("test"),
+		// No WithTimezone
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("test_event", audit.Fields{})))
+	require.NoError(t, logger.Close())
+
+	// Auto-detected timezone should match the system timezone.
+	expected := time.Now().Location().String()
+	assert.Contains(t, buf.String(), `"timezone":"`+expected+`"`,
+		"auto-detected timezone should match system timezone")
+}
+
+func TestTimezoneOverride(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Events:  map[string]*audit.EventDef{"test_event": {}},
+		Categories: map[string]*audit.CategoryDef{
+			"test": {Events: []string{"test_event"}},
+		},
+	}
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	require.NoError(t, err)
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+		audit.WithAppName("test"),
+		audit.WithHost("test"),
+		audit.WithTimezone("America/New_York"),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("test_event", audit.Fields{})))
+	require.NoError(t, logger.Close())
+
+	assert.Contains(t, buf.String(), `"timezone":"America/New_York"`,
+		"timezone override should appear in output")
+	assert.NotContains(t, buf.String(), `"timezone":"Local"`,
+		"auto-detected timezone should not appear when overridden")
+}

@@ -197,7 +197,7 @@ err := logger.AuditEvent(
 
 **📄 JSON** (default formatter):
 ```json
-{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"prod-01","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
 ```
 
 **🛡️ CEF** (SIEM formatter):

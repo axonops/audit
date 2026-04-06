@@ -130,3 +130,10 @@ Feature: Loki Label Search and Filtering
       | event_category | security       |
       | app_name       | bdd-audit      |
       | host           | bdd-host       |
+
+  Scenario: Timezone present in Loki event payload
+    Given a logger with loki output with batch size 10
+    When I audit a "user_create" event with marker "tz_payload"
+    And I close the logger
+    Then the loki server should contain the named marker "tz_payload" within 15 seconds
+    And the loki event payload should contain field "timezone"

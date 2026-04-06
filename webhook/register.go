@@ -56,9 +56,9 @@ type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability pr
 	TLSPolicy          *yamlTLSPolicy    `yaml:"tls_policy"`
 	FlushInterval      yamlDuration      `yaml:"flush_interval"`
 	Timeout            yamlDuration      `yaml:"timeout"`
-	BatchSize          int               `yaml:"batch_size"`
-	BufferSize         int               `yaml:"buffer_size"`
-	MaxRetries         int               `yaml:"max_retries"`
+	BatchSize          *int              `yaml:"batch_size"`
+	BufferSize         *int              `yaml:"buffer_size"`
+	MaxRetries         *int              `yaml:"max_retries"`
 	AllowInsecureHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPrivateRanges bool              `yaml:"allow_private_ranges"`
 }
@@ -86,6 +86,15 @@ func (d *yamlDuration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// intPtrOrDefault returns the pointed-to value if non-nil, or the
+// default if nil (field not specified in YAML).
+func intPtrOrDefault(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
 func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, webhookMetrics Metrics) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: webhook output %q: config is required", name)
@@ -106,9 +115,9 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, webho
 		TLSKey:             yc.TLSKey,
 		FlushInterval:      time.Duration(yc.FlushInterval),
 		Timeout:            time.Duration(yc.Timeout),
-		BatchSize:          yc.BatchSize,
-		BufferSize:         yc.BufferSize,
-		MaxRetries:         yc.MaxRetries,
+		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
+		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		MaxRetries:         intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
 		AllowInsecureHTTP:  yc.AllowInsecureHTTP,
 		AllowPrivateRanges: yc.AllowPrivateRanges,
 	}

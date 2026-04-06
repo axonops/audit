@@ -57,12 +57,12 @@ type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability prefe
 	TLSCert    string            `yaml:"tls_cert"`
 	TLSKey     string            `yaml:"tls_key"`
 	TLSPolicy  *yamlTLSPolicy    `yaml:"tls_policy"`
-	BatchSize  int               `yaml:"batch_size"`
-	MaxBatchB  int               `yaml:"max_batch_bytes"`
+	BatchSize  *int              `yaml:"batch_size"`
+	MaxBatchB  *int              `yaml:"max_batch_bytes"`
 	FlushIvl   yamlDuration      `yaml:"flush_interval"`
-	BufferSize int               `yaml:"buffer_size"`
+	BufferSize *int              `yaml:"buffer_size"`
 	Timeout    yamlDuration      `yaml:"timeout"`
-	MaxRetries int               `yaml:"max_retries"`
+	MaxRetries *int              `yaml:"max_retries"`
 	Compress   *bool             `yaml:"gzip"` // YAML key is "gzip" for user clarity; maps to Compress
 	AllowHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPriv  bool              `yaml:"allow_private_ranges"`
@@ -99,6 +99,15 @@ func (d *yamlDuration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// intPtrOrDefault returns the pointed-to value if non-nil, or the
+// default if nil (field not specified in YAML).
+func intPtrOrDefault(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
 func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiMetrics Metrics) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
@@ -119,12 +128,12 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 		TLSCA:              yc.TLSCA,
 		TLSCert:            yc.TLSCert,
 		TLSKey:             yc.TLSKey,
-		BatchSize:          yc.BatchSize,
-		MaxBatchBytes:      yc.MaxBatchB,
+		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
+		MaxBatchBytes:      intPtrOrDefault(yc.MaxBatchB, DefaultMaxBatchBytes),
 		FlushInterval:      time.Duration(yc.FlushIvl),
-		BufferSize:         yc.BufferSize,
+		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 		Timeout:            time.Duration(yc.Timeout),
-		MaxRetries:         yc.MaxRetries,
+		MaxRetries:         intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
 		AllowInsecureHTTP:  yc.AllowHTTP,
 		AllowPrivateRanges: yc.AllowPriv,
 	}

@@ -92,9 +92,7 @@ queries use `| json` to parse event fields from stored log lines:
 
 If events were CEF-formatted, this query would silently return no
 results. The library enforces this at config load time — specifying
-`formatter: cef` on a Loki output returns an error. If you set a
-global `default_formatter: cef`, Loki outputs override it with JSON
-and log a warning.
+`formatter: cef` on a Loki output returns an error.
 
 You can still customise JSON options (e.g. `timestamp: unix_ms`) by
 explicitly setting `formatter: { type: json, timestamp: unix_ms }` on

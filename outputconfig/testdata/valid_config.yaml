@@ -1,9 +1,6 @@
 version: 1
 app_name: test-app
 host: test-host
-default_formatter:
-  type: json
-  timestamp: rfc3339nano
 outputs:
   console:
     type: stdout

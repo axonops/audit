@@ -83,7 +83,6 @@ func TestLoad_MinimalStdout(t *testing.T) {
 	assert.Equal(t, "console", result.Outputs[0].Name)
 	assert.Nil(t, result.Outputs[0].Route)
 	assert.Nil(t, result.Outputs[0].Formatter)
-	assert.Nil(t, result.DefaultFormatter)
 	assert.NotEmpty(t, result.Options)
 }
 
@@ -112,9 +111,6 @@ func TestLoad_FileWithRoute(t *testing.T) {
 	assert.Equal(t, "audit_log", result.Outputs[1].Name)
 	require.NotNil(t, result.Outputs[1].Route)
 	assert.Equal(t, []string{"write", "security"}, result.Outputs[1].Route.IncludeCategories)
-
-	// Default formatter should be set
-	require.NotNil(t, result.DefaultFormatter)
 }
 
 func TestLoad_MultipleOutputs(t *testing.T) {
@@ -245,7 +241,7 @@ outputs:
 	}
 }
 
-func TestLoad_LokiIgnoresDefaultCEFFormatter(t *testing.T) {
+func TestLoad_DefaultFormatterRejected(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	data := []byte(`
@@ -258,41 +254,17 @@ default_formatter:
   product: Test
   version: "1.0"
 outputs:
-  loki_out:
-    type: loki
+  console:
+    type: stdout
 `)
-	result, err := outputconfig.Load(data, &tax, nil)
-	require.NoError(t, err)
-
-	assert.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Formatter,
-		"Loki output must have explicit JSON formatter when default is CEF")
-	_, isJSON := result.Outputs[0].Formatter.(*audit.JSONFormatter)
-	assert.True(t, isJSON, "Loki formatter must be *audit.JSONFormatter, not inherited CEF")
-	_ = result.Outputs[0].Output.Close()
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default_formatter has been removed")
+	assert.Contains(t, err.Error(), "set formatter on each output individually")
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
 
-func TestLoad_LokiNoFormatter_UsesDefault(t *testing.T) {
-	t.Parallel()
-	tax := testTaxonomy(t)
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-outputs:
-  loki_out:
-    type: loki
-`)
-	result, err := outputconfig.Load(data, &tax, nil)
-	require.NoError(t, err)
-
-	assert.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].Formatter,
-		"Loki output with no default_formatter should have nil per-output formatter (inherits JSON default)")
-	_ = result.Outputs[0].Output.Close()
-}
-
-func TestLoad_LokiWithDefaultJSON_NoOverride(t *testing.T) {
+func TestLoad_DefaultFormatterJSON_AlsoRejected(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	data := []byte(`
@@ -302,87 +274,35 @@ host: test
 default_formatter:
   type: json
 outputs:
-  loki_out:
-    type: loki
+  console:
+    type: stdout
 `)
-	result, err := outputconfig.Load(data, &tax, nil)
-	require.NoError(t, err)
-
-	assert.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].Formatter,
-		"Loki output should not override when default_formatter is already JSON (cache-safe)")
-	_ = result.Outputs[0].Output.Close()
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default_formatter has been removed")
 }
 
-func TestLoad_LokiFormatterCacheSharing(t *testing.T) {
+func TestLoad_NoFormatterDefaultsToJSON(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	data := []byte(`
 version: 1
 app_name: test
 host: test
-default_formatter:
-  type: cef
-  vendor: Test
-  product: Test
-  version: "1.0"
 outputs:
-  loki_a:
-    type: loki
-  loki_b:
+  console:
+    type: stdout
+  loki_out:
     type: loki
 `)
 	result, err := outputconfig.Load(data, &tax, nil)
 	require.NoError(t, err)
 
-	require.Len(t, result.Outputs, 2)
-	require.NotNil(t, result.Outputs[0].Formatter)
-	require.NotNil(t, result.Outputs[1].Formatter)
-
-	// Both Loki outputs must share the same JSONFormatter pointer
-	// for format cache efficiency.
-	assert.Same(t, result.Outputs[0].Formatter, result.Outputs[1].Formatter,
-		"multiple Loki outputs must share the same fallback JSONFormatter instance")
-	_ = result.Outputs[0].Output.Close()
-	_ = result.Outputs[1].Output.Close()
-}
-
-func TestLoad_LokiMixedOutputWithCEFDefault(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	tax := testTaxonomy(t)
-	data := []byte(fmt.Sprintf(`
-version: 1
-app_name: test
-host: test
-default_formatter:
-  type: cef
-  vendor: Test
-  product: Test
-  version: "1.0"
-outputs:
-  file_out:
-    type: file
-    file:
-      path: %s/audit.log
-  loki_out:
-    type: loki
-`, dir))
-	result, err := outputconfig.Load(data, &tax, nil)
-	require.NoError(t, err)
-
-	require.Len(t, result.Outputs, 2)
-
-	// File output inherits the CEF default (nil per-output formatter).
-	assert.Nil(t, result.Outputs[0].Formatter,
-		"file output should inherit default CEF formatter (nil per-output)")
-
-	// Loki output overrides with JSON.
-	require.NotNil(t, result.Outputs[1].Formatter,
-		"Loki output must have explicit JSON formatter when default is CEF")
-	_, isJSON := result.Outputs[1].Formatter.(*audit.JSONFormatter)
-	assert.True(t, isJSON, "Loki formatter must be *audit.JSONFormatter")
-
+	assert.Len(t, result.Outputs, 2)
+	// Both outputs have nil per-output formatter — they inherit the
+	// logger's default JSONFormatter at runtime via effectiveFormatter.
+	assert.Nil(t, result.Outputs[0].Formatter)
+	assert.Nil(t, result.Outputs[1].Formatter)
 	_ = result.Outputs[0].Output.Close()
 	_ = result.Outputs[1].Output.Close()
 }
@@ -696,51 +616,6 @@ outputs:
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "TOTALLY_MISSING_VAR")
-}
-
-func TestLoad_DefaultFormatter(t *testing.T) {
-	yaml := []byte(`
-version: 1
-app_name: test
-host: test
-default_formatter:
-  type: json
-  timestamp: unix_ms
-  omit_empty: true
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(yaml, &tax, nil)
-	require.NoError(t, err)
-
-	require.NotNil(t, result.DefaultFormatter)
-	jf, ok := result.DefaultFormatter.(*audit.JSONFormatter)
-	require.True(t, ok)
-	assert.Equal(t, audit.TimestampUnixMillis, jf.Timestamp)
-	assert.True(t, jf.OmitEmpty)
-
-	_ = result.Outputs[0].Output.Close()
-}
-
-func TestLoad_InvalidDefaultFormatter(t *testing.T) {
-	yaml := []byte(`
-version: 1
-app_name: test
-host: test
-default_formatter:
-  type: protobuf
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(yaml, &tax, nil)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "default_formatter")
-	assert.Contains(t, err.Error(), "protobuf")
 }
 
 func TestLoad_OptionsContainWithNamedOutput(t *testing.T) {

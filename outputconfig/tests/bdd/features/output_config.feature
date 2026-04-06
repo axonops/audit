@@ -257,7 +257,7 @@ Feature: YAML Output Configuration
     Then the config load should succeed
     And the loki output formatter should be JSON
 
-  Scenario: Loki output ignores global default_formatter
+  Scenario: default_formatter key rejected with error
     Given a test taxonomy
     And the following output configuration YAML:
       """
@@ -266,16 +266,13 @@ Feature: YAML Output Configuration
       host: test
       default_formatter:
         type: cef
-        vendor: Test
-        product: Test
-        version: "1.0"
       outputs:
-        loki_out:
-          type: loki
+        console:
+          type: stdout
       """
     When I try to create a logger from the YAML config
-    Then the config load should succeed
-    And the loki output formatter should be JSON
+    Then the config load should fail with an error containing "default_formatter has been removed"
+    And the config load error should contain "set formatter on each output individually"
 
   # --- Syslog app_name injection (#237) ---
 

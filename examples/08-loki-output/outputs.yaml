@@ -38,4 +38,4 @@ outputs:
           event_type: true
           event_category: true
           severity: true
-          # pid: false              # uncomment to exclude PID from labels (high cardinality)
+          pid: false               # exclude PID from labels (high cardinality in dev)

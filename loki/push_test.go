@@ -62,6 +62,86 @@ func TestBuildPayload_PidZero_ExcludesPidLabel(t *testing.T) {
 	assert.False(t, hasPID, "pid=0 should exclude pid from stream labels")
 }
 
+func TestBuildPayload_UncategorisedEvent_ExcludesEventCategoryLabel(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"test":"uncategorised"}`), Meta: audit.EventMetadata{
+				EventType: "health_check",
+				Severity:  5,
+				Category:  "", // uncategorised — no category
+				Timestamp: ts,
+			}},
+		},
+		AppName: "app",
+		Host:    "h1",
+		PID:     12345,
+	})
+
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p))
+	require.Len(t, p.Streams, 1)
+
+	// event_category should NOT be in stream labels.
+	_, hasCat := p.Streams[0].Stream["event_category"]
+	assert.False(t, hasCat, "uncategorised event should not have event_category label")
+
+	// Other labels should still be present.
+	assert.Equal(t, "health_check", p.Streams[0].Stream["event_type"])
+	assert.Equal(t, "5", p.Streams[0].Stream["severity"])
+	assert.Equal(t, "app", p.Streams[0].Stream["app_name"])
+	assert.Equal(t, "h1", p.Streams[0].Stream["host"])
+}
+
+func TestBuildPayload_MixedCategorisedAndUncategorised_SeparateStreams(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"actor":"alice","type":"categorised"}`), Meta: audit.EventMetadata{
+				EventType: "user_create",
+				Severity:  5,
+				Category:  "write",
+				Timestamp: ts,
+			}},
+			{Data: []byte(`{"actor":"alice","type":"uncategorised"}`), Meta: audit.EventMetadata{
+				EventType: "health_check",
+				Severity:  5,
+				Category:  "", // uncategorised
+				Timestamp: ts.Add(time.Millisecond),
+			}},
+		},
+		AppName: "app",
+		Host:    "h1",
+		PID:     12345,
+	})
+
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p))
+
+	// Two different streams — one with event_category, one without.
+	assert.Len(t, p.Streams, 2, "categorised and uncategorised events should be in different streams")
+
+	// Find which stream has event_category.
+	var withCat, withoutCat *pushStream
+	for i := range p.Streams {
+		if _, ok := p.Streams[i].Stream["event_category"]; ok {
+			withCat = &p.Streams[i]
+		} else {
+			withoutCat = &p.Streams[i]
+		}
+	}
+	require.NotNil(t, withCat, "should have a stream with event_category")
+	require.NotNil(t, withoutCat, "should have a stream without event_category")
+
+	assert.Equal(t, "write", withCat.Stream["event_category"])
+	assert.Equal(t, "user_create", withCat.Stream["event_type"])
+	assert.Equal(t, "health_check", withoutCat.Stream["event_type"])
+}
+
 func TestBuildPayload_NoFrameworkFields(t *testing.T) {
 	t.Parallel()
 

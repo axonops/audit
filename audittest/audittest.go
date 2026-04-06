@@ -47,7 +47,11 @@ func WithValidationMode(mode audit.ValidationMode) Option {
 // and [MetricsRecorder]. The taxonomy is parsed from YAML bytes.
 //
 // The logger is created with sensible test defaults: Enabled=true,
-// Version=1, BufferSize=1000. tb.Cleanup is registered to call
+// Version=1, BufferSize=100. The buffer size is intentionally small
+// since the in-memory recorder has no I/O cost — large buffers only
+// increase the window where events may not yet be flushed before
+// assertions run. Override with [WithConfig] if needed.
+// tb.Cleanup is registered to call
 // logger.Close() as a safety net against goroutine leaks.
 //
 // Callers MUST call logger.Close() before making assertions — events
@@ -98,7 +102,7 @@ func newTestLogger(tb testing.TB, tax audit.Taxonomy, opts ...Option) (*audit.Lo
 		cfg: audit.Config{
 			Version:    1,
 			Enabled:    true,
-			BufferSize: 1000,
+			BufferSize: 100,
 		},
 	}
 	for _, o := range opts {

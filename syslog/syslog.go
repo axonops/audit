@@ -34,11 +34,52 @@ import (
 	"github.com/axonops/srslog"
 )
 
-// Compile-time assertion: Output satisfies audit.Output.
+// Compile-time assertion: Output satisfies audit.Output and
+// audit.MetadataWriter (for per-event severity mapping).
 var (
 	_ audit.Output           = (*Output)(nil)
 	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.MetadataWriter   = (*Output)(nil)
 )
+
+// syslogSeverities maps audit severity (0-10) to srslog severity.
+// Indexed by audit severity. The mapping follows RFC 5424 severity
+// semantics where lower syslog values are more critical:
+//
+//   - Audit 10 → LOG_CRIT (2): critical security events
+//   - Audit 8-9 → LOG_ERR (3): high-severity events
+//   - Audit 6-7 → LOG_WARNING (4): medium-severity events
+//   - Audit 4-5 → LOG_NOTICE (5): normal operational events
+//   - Audit 1-3 → LOG_INFO (6): low-severity informational events
+//   - Audit 0 → LOG_DEBUG (7): debug/trace events
+//
+// LOG_EMERG (0) and LOG_ALERT (1) are intentionally excluded — they
+// are reserved for system-level emergencies (kernel panics, imminent
+// hardware failure) and can trigger console broadcasts and pager
+// alerts on many syslog receivers. An audit library should never emit
+// these severities.
+var syslogSeverities = [11]srslog.Priority{
+	srslog.LOG_DEBUG,   // audit 0
+	srslog.LOG_INFO,    // audit 1
+	srslog.LOG_INFO,    // audit 2
+	srslog.LOG_INFO,    // audit 3
+	srslog.LOG_NOTICE,  // audit 4
+	srslog.LOG_NOTICE,  // audit 5
+	srslog.LOG_WARNING, // audit 6
+	srslog.LOG_WARNING, // audit 7
+	srslog.LOG_ERR,     // audit 8
+	srslog.LOG_ERR,     // audit 9
+	srslog.LOG_CRIT,    // audit 10
+}
+
+// mapSeverity converts an audit event severity (0-10) to an srslog
+// severity constant. Out-of-range values fall back to LOG_INFO.
+func mapSeverity(auditSeverity int) srslog.Priority {
+	if auditSeverity < 0 || auditSeverity > 10 {
+		return srslog.LOG_INFO
+	}
+	return syslogSeverities[auditSeverity]
+}
 
 // Metrics is an optional interface for syslog-specific
 // instrumentation. Pass an implementation to [New] to
@@ -171,8 +212,8 @@ type Output struct {
 	appName       string
 	hostname      string
 	mu            sync.Mutex
-	priority      srslog.Priority
-	failures      int // consecutive failure count
+	facility      srslog.Priority // facility bits only (no severity)
+	failures      int             // consecutive failure count
 	maxRetry      int
 	closed        bool
 }
@@ -222,7 +263,7 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 		network:       cfg.Network,
 		appName:       cfg.AppName,
 		hostname:      hostname,
-		priority:      priority | srslog.LOG_INFO,
+		facility:      priority, // parseFacility returns facility bits only
 		maxRetry:      maxRetry,
 	}
 
@@ -234,11 +275,31 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 	return s, nil
 }
 
-// Write sends a serialised audit event to the syslog server. On
-// connection failure, Write attempts reconnection with bounded
-// exponential backoff. Write returns [audit.ErrOutputClosed] if the
-// output has been closed.
+// Write sends a serialised audit event to the syslog server with the
+// default severity (LOG_INFO). For per-event severity mapping based on
+// the audit event's severity field, the logger calls
+// [WriteWithMetadata] instead. On connection failure, Write attempts
+// reconnection with bounded exponential backoff. Write returns
+// [audit.ErrOutputClosed] if the output has been closed.
 func (s *Output) Write(data []byte) error {
+	return s.writeWithPriority(data, s.facility|srslog.LOG_INFO)
+}
+
+// WriteWithMetadata sends a serialised audit event to the syslog
+// server with the syslog severity derived from the audit event's
+// severity field. The mapping follows RFC 5424 severity semantics:
+// audit severity 10 → LOG_CRIT, 8-9 → LOG_ERR, 6-7 → LOG_WARNING,
+// 4-5 → LOG_NOTICE, 1-3 → LOG_INFO, 0 → LOG_DEBUG. See the
+// package-level syslogSeverities table for the complete mapping.
+func (s *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error {
+	return s.writeWithPriority(data, s.facility|mapSeverity(meta.Severity))
+}
+
+// writeWithPriority is the internal write path shared by [Write] and
+// [WriteWithMetadata]. It sends data to the syslog server with the
+// given priority (facility | severity) and handles reconnection on
+// failure.
+func (s *Output) writeWithPriority(data []byte, priority srslog.Priority) error {
 	s.mu.Lock()
 
 	if s.closed {
@@ -253,12 +314,12 @@ func (s *Output) Write(data []byte) error {
 	var writeAttemptErr error
 	if s.writer == nil {
 		writeAttemptErr = fmt.Errorf("audit: syslog writer not connected")
-	} else if _, err := s.writer.Write(data); err != nil {
+	} else if _, err := s.writer.WriteWithPriority(priority, data); err != nil {
 		writeAttemptErr = err
 	}
 
 	if writeAttemptErr != nil {
-		reconnected, writeErr := s.handleWriteFailure(data, writeAttemptErr)
+		reconnected, writeErr := s.handleWriteFailure(data, priority, writeAttemptErr)
 		s.mu.Unlock()
 		if reconnected != nil && s.syslogMetrics != nil {
 			s.syslogMetrics.RecordSyslogReconnect(s.address, *reconnected)
@@ -302,16 +363,20 @@ func (s *Output) DestinationKey() string {
 	return s.address
 }
 
-// connect establishes a connection to the syslog server.
+// connect establishes a connection to the syslog server. The default
+// priority passed to srslog.Dial is facility|LOG_INFO, which is used
+// by srslog internally for Write() calls. Per-event severity is
+// applied via WriteWithPriority in writeWithPriority.
 func (s *Output) connect() error {
 	var w *srslog.Writer
 	var err error
 
+	defaultPriority := s.facility | srslog.LOG_INFO
 	if s.tlsCfg != nil {
 		w, err = srslog.DialWithTLSConfig(
-			"tcp+tls", s.address, s.priority, s.appName, s.tlsCfg)
+			"tcp+tls", s.address, defaultPriority, s.appName, s.tlsCfg)
 	} else {
-		w, err = srslog.Dial(s.network, s.address, s.priority, s.appName)
+		w, err = srslog.Dial(s.network, s.address, defaultPriority, s.appName)
 	}
 	if err != nil {
 		return fmt.Errorf("audit: syslog connect %s://%s: %w", s.network, s.address, err)
@@ -333,8 +398,10 @@ func (s *Output) connect() error {
 // Releases the mutex during the backoff sleep so Close() is not blocked.
 // The second return value is non-nil when a reconnection was attempted:
 // *true for success, *false for failure. The caller uses this to invoke
-// [Metrics.RecordSyslogReconnect] outside the mutex.
-func (s *Output) handleWriteFailure(data []byte, writeErr error) (*bool, error) {
+// [Metrics.RecordSyslogReconnect] outside the mutex. The priority
+// parameter ensures the retry uses the same facility+severity as the
+// original write attempt.
+func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, writeErr error) (*bool, error) {
 	s.failures++
 
 	if s.failures > s.maxRetry {
@@ -385,8 +452,8 @@ func (s *Output) handleWriteFailure(data []byte, writeErr error) (*bool, error) 
 	slog.Info("audit: syslog reconnected", "address", s.address)
 	reconnected := true
 
-	// Retry the write on the new connection.
-	if _, err := s.writer.Write(data); err != nil {
+	// Retry the write on the new connection with the original priority.
+	if _, err := s.writer.WriteWithPriority(priority, data); err != nil {
 		return &reconnected, fmt.Errorf("audit: syslog write after reconnect: %w", err)
 	}
 

@@ -34,6 +34,26 @@ type yamlFormatterConfig struct { //nolint:govet // fieldalignment: readability 
 	Version   string `yaml:"version"`
 }
 
+// extractFormatterType returns the formatter type string from a YAML
+// node without constructing the formatter. Returns "" for nil nodes
+// or nodes with no explicit type (which default to JSON).
+func extractFormatterType(node *yaml.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Kind == yaml.ScalarNode {
+		return node.Value
+	}
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == "type" {
+				return node.Content[i+1].Value
+			}
+		}
+	}
+	return ""
+}
+
 // buildFormatter constructs a [audit.Formatter] from a YAML node.
 // Returns nil if the node is nil or empty (use logger default).
 // Returns an error for unknown formatter types or invalid options.

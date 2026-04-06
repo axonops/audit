@@ -146,6 +146,287 @@ outputs:
 	}
 }
 
+// lokiStubOutput is a minimal output stub for testing Loki formatter
+// validation without depending on the real Loki module.
+type lokiStubOutput struct{}
+
+func (l *lokiStubOutput) Write([]byte) error { return nil }
+func (l *lokiStubOutput) Close() error       { return nil }
+func (l *lokiStubOutput) Name() string       { return "loki-stub" }
+
+func init() {
+	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		return &lokiStubOutput{}, nil
+	})
+}
+
+func TestLoad_LokiRejectsNonJSONFormatter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		formatter string
+	}{
+		{"cef", "cef"},
+		{"cloudevents", "cloudevents"},
+		{"unknown", "protobuf"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tax := testTaxonomy(t)
+			data := []byte(fmt.Sprintf(`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+    formatter:
+      type: %s
+`, tt.formatter))
+			_, err := outputconfig.Load(data, &tax, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "loki does not support custom formatters")
+			assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+		})
+	}
+}
+
+func TestLoad_LokiAcceptsExplicitJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{
+			"explicit json type",
+			`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+    formatter:
+      type: json
+`,
+		},
+		{
+			"json with custom timestamp",
+			`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+    formatter:
+      type: json
+      timestamp: unix_ms
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tax := testTaxonomy(t)
+			result, err := outputconfig.Load([]byte(tt.yaml), &tax, nil)
+			require.NoError(t, err)
+			assert.Len(t, result.Outputs, 1)
+			require.NotNil(t, result.Outputs[0].Formatter, "explicit JSON should set per-output formatter")
+			_, isJSON := result.Outputs[0].Formatter.(*audit.JSONFormatter)
+			assert.True(t, isJSON, "formatter should be *audit.JSONFormatter")
+			_ = result.Outputs[0].Output.Close()
+		})
+	}
+}
+
+func TestLoad_LokiIgnoresDefaultCEFFormatter(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+default_formatter:
+  type: cef
+  vendor: Test
+  product: Test
+  version: "1.0"
+outputs:
+  loki_out:
+    type: loki
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Len(t, result.Outputs, 1)
+	require.NotNil(t, result.Outputs[0].Formatter,
+		"Loki output must have explicit JSON formatter when default is CEF")
+	_, isJSON := result.Outputs[0].Formatter.(*audit.JSONFormatter)
+	assert.True(t, isJSON, "Loki formatter must be *audit.JSONFormatter, not inherited CEF")
+	_ = result.Outputs[0].Output.Close()
+}
+
+func TestLoad_LokiNoFormatter_UsesDefault(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Len(t, result.Outputs, 1)
+	assert.Nil(t, result.Outputs[0].Formatter,
+		"Loki output with no default_formatter should have nil per-output formatter (inherits JSON default)")
+	_ = result.Outputs[0].Output.Close()
+}
+
+func TestLoad_LokiWithDefaultJSON_NoOverride(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+default_formatter:
+  type: json
+outputs:
+  loki_out:
+    type: loki
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	assert.Len(t, result.Outputs, 1)
+	assert.Nil(t, result.Outputs[0].Formatter,
+		"Loki output should not override when default_formatter is already JSON (cache-safe)")
+	_ = result.Outputs[0].Output.Close()
+}
+
+func TestLoad_LokiFormatterCacheSharing(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+default_formatter:
+  type: cef
+  vendor: Test
+  product: Test
+  version: "1.0"
+outputs:
+  loki_a:
+    type: loki
+  loki_b:
+    type: loki
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	require.Len(t, result.Outputs, 2)
+	require.NotNil(t, result.Outputs[0].Formatter)
+	require.NotNil(t, result.Outputs[1].Formatter)
+
+	// Both Loki outputs must share the same JSONFormatter pointer
+	// for format cache efficiency.
+	assert.Same(t, result.Outputs[0].Formatter, result.Outputs[1].Formatter,
+		"multiple Loki outputs must share the same fallback JSONFormatter instance")
+	_ = result.Outputs[0].Output.Close()
+	_ = result.Outputs[1].Output.Close()
+}
+
+func TestLoad_LokiMixedOutputWithCEFDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tax := testTaxonomy(t)
+	data := []byte(fmt.Sprintf(`
+version: 1
+app_name: test
+host: test
+default_formatter:
+  type: cef
+  vendor: Test
+  product: Test
+  version: "1.0"
+outputs:
+  file_out:
+    type: file
+    file:
+      path: %s/audit.log
+  loki_out:
+    type: loki
+`, dir))
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	require.Len(t, result.Outputs, 2)
+
+	// File output inherits the CEF default (nil per-output formatter).
+	assert.Nil(t, result.Outputs[0].Formatter,
+		"file output should inherit default CEF formatter (nil per-output)")
+
+	// Loki output overrides with JSON.
+	require.NotNil(t, result.Outputs[1].Formatter,
+		"Loki output must have explicit JSON formatter when default is CEF")
+	_, isJSON := result.Outputs[1].Formatter.(*audit.JSONFormatter)
+	assert.True(t, isJSON, "Loki formatter must be *audit.JSONFormatter")
+
+	_ = result.Outputs[0].Output.Close()
+	_ = result.Outputs[1].Output.Close()
+}
+
+func TestLoad_LokiDisabledWithCEF_NoError(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  console:
+    type: stdout
+  loki_out:
+    type: loki
+    enabled: false
+    formatter:
+      type: cef
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "disabled Loki output with CEF formatter should not cause an error")
+	assert.Len(t, result.Outputs, 1, "only the stdout output should be active")
+	_ = result.Outputs[0].Output.Close()
+}
+
+func TestLoad_LokiRejectsScalarCEF(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+    formatter: cef
+`)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loki does not support custom formatters")
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+}
+
 func TestLoad_WithPerOutputFormatter(t *testing.T) {
 	dir := t.TempDir()
 	yaml := []byte(`

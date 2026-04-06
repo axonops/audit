@@ -319,9 +319,9 @@ go generate .
 INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Using typed event builders ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
-{"timestamp":"...","event_type":"user_read","severity":5,"app_name":"example","host":"localhost","pid":...,"outcome":"success","actor_id":"bob","event_category":"read"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
+{"timestamp":"...","event_type":"user_read","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"outcome":"success","actor_id":"bob","event_category":"read"}
 INFO audit: shutdown complete duration=...
 ```
 

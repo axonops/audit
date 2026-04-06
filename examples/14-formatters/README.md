@@ -125,9 +125,9 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- json-audit.log ---
-{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"example","host":"localhost","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
-{"timestamp":"...","event_type":"auth_success","severity":8,"app_name":"example","host":"localhost","pid":...,"actor_id":"bob","outcome":"success","event_category":"security"}
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}
+{"timestamp":"...","event_type":"auth_success","severity":8,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"bob","outcome":"success","event_category":"security"}
 
 --- cef-audit.log ---
 CEF:0|Example|AuditDemo|1.0|user_create|A new user account was created|3|rt=... act=user_create deviceProcessName=example dvchost=localhost dvcpid=... suser=alice outcome=success cat=write

@@ -195,7 +195,7 @@ func TestLoki_BasicDelivery(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "go_audit_test"}
 	})
-	out.SetFrameworkFields("testapp", "test-host", 9999)
+	out.SetFrameworkFields("testapp", "test-host", "UTC", 9999)
 
 	m := marker(t)
 	meta := audit.EventMetadata{
@@ -224,7 +224,7 @@ func TestLoki_StreamLabels(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"environment": "integration_test"}
 	})
-	out.SetFrameworkFields("labelapp", "label-host", 42)
+	out.SetFrameworkFields("labelapp", "label-host", "UTC", 42)
 
 	m := marker(t)
 	meta := audit.EventMetadata{
@@ -260,7 +260,7 @@ func TestLoki_MultiStream(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "multi_stream_test"}
 	})
-	out.SetFrameworkFields("msapp", "ms-host", 1)
+	out.SetFrameworkFields("msapp", "ms-host", "UTC", 1)
 
 	m := marker(t)
 	ts := time.Now()
@@ -293,7 +293,7 @@ func TestLoki_BatchDelivery(t *testing.T) {
 		c.BatchSize = 5
 		c.FlushInterval = 100 * time.Millisecond
 	})
-	out.SetFrameworkFields("batchapp", "batch-host", 1)
+	out.SetFrameworkFields("batchapp", "batch-host", "UTC", 1)
 
 	m := marker(t)
 	ts := time.Now()
@@ -328,7 +328,7 @@ func TestLoki_ShutdownFlush(t *testing.T) {
 		c.BatchSize = 100             // large — won't trigger size flush
 		c.FlushInterval = time.Minute // long — won't trigger timer
 	})
-	out.SetFrameworkFields("shutapp", "shut-host", 1)
+	out.SetFrameworkFields("shutapp", "shut-host", "UTC", 1)
 
 	m := marker(t)
 	for i := 0; i < 3; i++ {
@@ -360,7 +360,7 @@ func TestLoki_MultiTenancy(t *testing.T) {
 		c.TenantID = tenantA
 		c.Labels.Static = map[string]string{"job": "tenant_test"}
 	})
-	outA.SetFrameworkFields("app", "host", 1)
+	outA.SetFrameworkFields("app", "host", "UTC", 1)
 	require.NoError(t, outA.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"tenant":"A","marker":"%s"}`, m)),
 		audit.EventMetadata{EventType: "tenant_event", Severity: 6, Timestamp: time.Now()},
@@ -372,7 +372,7 @@ func TestLoki_MultiTenancy(t *testing.T) {
 		c.TenantID = tenantB
 		c.Labels.Static = map[string]string{"job": "tenant_test"}
 	})
-	outB.SetFrameworkFields("app", "host", 1)
+	outB.SetFrameworkFields("app", "host", "UTC", 1)
 	require.NoError(t, outB.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"tenant":"B","marker":"%s"}`, m)),
 		audit.EventMetadata{EventType: "tenant_event", Severity: 6, Timestamp: time.Now()},
@@ -458,7 +458,7 @@ func TestLoki_EventDataIntegrity(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "integrity_test"}
 	})
-	out.SetFrameworkFields("intapp", "int-host", 1)
+	out.SetFrameworkFields("intapp", "int-host", "UTC", 1)
 
 	m := marker(t)
 	eventJSON := fmt.Sprintf(`{"actor_id":"bob","action":"delete","resource_id":"res-123","marker":"%s","nested":{"key":"value"}}`, m)
@@ -496,7 +496,7 @@ func TestLoki_GzipCompression(t *testing.T) {
 		c.Labels.Static = map[string]string{"job": "gzip_test"}
 		c.Compress = true
 	})
-	out.SetFrameworkFields("gzapp", "gz-host", 1)
+	out.SetFrameworkFields("gzapp", "gz-host", "UTC", 1)
 
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(
@@ -519,7 +519,7 @@ func TestLoki_UncompressedDelivery(t *testing.T) {
 		c.Labels.Static = map[string]string{"job": "nogzip_test"}
 		c.Compress = false
 	})
-	out.SetFrameworkFields("noapp", "no-host", 1)
+	out.SetFrameworkFields("noapp", "no-host", "UTC", 1)
 
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(
@@ -541,7 +541,7 @@ func TestLoki_DuplicateTimestamps(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "timestamp_test"}
 	})
-	out.SetFrameworkFields("tsapp", "ts-host", 1)
+	out.SetFrameworkFields("tsapp", "ts-host", "UTC", 1)
 
 	m := marker(t)
 	// Send 5 events with the exact same timestamp — the library should
@@ -570,7 +570,7 @@ func TestLoki_DynamicLabelExclusion(t *testing.T) {
 		c.Labels.Dynamic.ExcludeSeverity = true
 		c.Labels.Dynamic.ExcludePID = true
 	})
-	out.SetFrameworkFields("exapp", "ex-host", 42)
+	out.SetFrameworkFields("exapp", "ex-host", "UTC", 42)
 
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(

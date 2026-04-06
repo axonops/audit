@@ -30,7 +30,11 @@ import (
 // registerLokiFanoutSteps registers BDD steps for multi-output
 // fan-out scenarios involving Loki alongside file, syslog, and webhook.
 func registerLokiFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	// --- Given steps ---
+	registerLokiFanoutGivenSteps(ctx, tc)
+	registerLokiFanoutThenSteps(ctx, tc)
+}
+
+func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^a logger with file and loki outputs$`,
 		func() error {
@@ -64,7 +68,9 @@ func registerLokiFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return createFileAndLokiLoggerUnreachable(tc)
 		})
 
-	// --- Then steps ---
+}
+
+func registerLokiFanoutThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	// Note: "the file should contain the marker" and "the file should
 	// contain X" are registered in fanout_steps.go — not duplicated here.
 
@@ -429,7 +435,7 @@ func findFileEventByMarker(tc *AuditTestContext, marker string) ([]byte, error) 
 	if path == "" {
 		return nil, fmt.Errorf("no file output configured")
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is from test temp dir, not user input
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}

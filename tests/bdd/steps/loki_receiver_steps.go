@@ -51,7 +51,7 @@ func (m *MockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) {
 }
 
 // RecordLokiRetry records a retry event (satisfies loki.Metrics).
-func (m *MockLokiMetrics) RecordLokiRetry(_ int, _ int) {}
+func (m *MockLokiMetrics) RecordLokiRetry(_, _ int) {}
 
 // RecordLokiError records a non-retryable error (satisfies loki.Metrics).
 func (m *MockLokiMetrics) RecordLokiError(_ int) {}

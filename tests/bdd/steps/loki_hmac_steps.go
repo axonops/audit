@@ -28,7 +28,12 @@ import (
 // registerLokiHMACSteps registers BDD steps for HMAC integrity
 // verification on events stored in Loki.
 func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	// --- Given steps ---
+	registerLokiHMACGivenSteps(ctx, tc)
+	registerLokiHMACWhenSteps(ctx, tc)
+	registerLokiHMACThenSteps(ctx, tc)
+}
+
+func registerLokiHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^a logger with loki output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
@@ -61,7 +66,9 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return nil
 		})
 
-	// --- When steps ---
+}
+
+func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)"$`,
 		func(eventType, actor, outcome string) error {
@@ -110,8 +117,9 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
-	// --- Then steps ---
+}
 
+func registerLokiHMACThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the loki event payload should contain field "([^"]*)"$`,
 		func(field string) error {
 			marker := tc.Markers["default"]
@@ -236,13 +244,15 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 		// Also add a capture output with no exclusions for comparison.
 		capture := newCaptureOutput("capture-full")
 		tc.CaptureOutput = capture
-		opts = append(opts, audit.WithNamedOutput(capture, nil, nil))
-		opts = append(opts, audit.WithOutputHMAC(capture.Name(), &audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v-capture",
-			SaltValue:   []byte("capture-comparison16"),
-			Algorithm:   "HMAC-SHA-256",
-		}))
+		opts = append(opts,
+			audit.WithNamedOutput(capture, nil, nil),
+			audit.WithOutputHMAC(capture.Name(), &audit.HMACConfig{
+				Enabled:     true,
+				SaltVersion: "v-capture",
+				SaltValue:   []byte("capture-comparison16"),
+				Algorithm:   "HMAC-SHA-256",
+			}),
+		)
 	} else {
 		opts = append(opts, audit.WithNamedOutput(out, nil, nil))
 	}

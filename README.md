@@ -58,7 +58,7 @@ both [JSON](docs/json-format.md) and
 | ⚙️ **Code Generation** | `audit-gen` generates typed builders; typos become compile errors | [Learn more](docs/code-generation.md) |
 | 🛡️ **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
 | 📄 **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
-| 📡 **Multi-Output Fan-Out** | File, syslog, webhook, Loki, stdout — simultaneously with per-output config | [Learn more](docs/outputs.md) |
+| 📡 **5 Output Types** | File (rotation), syslog (RFC 5424), webhook (NDJSON), Loki (stream labels), stdout — fan-out to all simultaneously | [Learn more](docs/outputs.md) |
 | 🔀 **Event Routing** | Route events by category or severity to specific outputs | [Learn more](docs/event-routing.md) |
 | 🔒 **Sensitivity Labels** | Classify fields as PII/financial; strip per-output for compliance | [Learn more](docs/sensitivity-labels.md) |
 | ⚡ **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |

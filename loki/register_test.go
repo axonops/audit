@@ -467,5 +467,5 @@ type mockLokiMetrics struct {
 
 func (m *mockLokiMetrics) RecordLokiDrop()                        { m.drops++ }
 func (m *mockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) { m.flushes++ }
-func (m *mockLokiMetrics) RecordLokiRetry(_ int, _ int)           {}
+func (m *mockLokiMetrics) RecordLokiRetry(_, _ int)               {}
 func (m *mockLokiMetrics) RecordLokiError(_ int)                  {}

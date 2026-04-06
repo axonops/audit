@@ -84,16 +84,12 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			slog.Error("audit: loki non-retryable error",
 				"error", err,
 				"batch_size", batchSize)
-			if o.lokiMetrics != nil && status > 0 {
-				o.lokiMetrics.RecordLokiError(status)
-			}
+			o.recordError(status)
 			o.recordDrop(batchSize)
 			return
 		}
 
-		if o.lokiMetrics != nil && status > 0 {
-			o.lokiMetrics.RecordLokiRetry(status, attempt+1)
-		}
+		o.recordRetry(status, attempt+1)
 		slog.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
@@ -202,6 +198,20 @@ func (o *Output) recordDrop(count int) {
 		if o.metrics != nil {
 			o.metrics.RecordEvent(name, "error")
 		}
+	}
+}
+
+// recordRetry records a retry attempt in loki-specific metrics.
+func (o *Output) recordRetry(statusCode, attempt int) {
+	if o.lokiMetrics != nil && statusCode > 0 {
+		o.lokiMetrics.RecordLokiRetry(statusCode, attempt)
+	}
+}
+
+// recordError records a non-retryable error in loki-specific metrics.
+func (o *Output) recordError(statusCode int) {
+	if o.lokiMetrics != nil && statusCode > 0 {
+		o.lokiMetrics.RecordLokiError(statusCode)
 	}
 }
 

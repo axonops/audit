@@ -77,7 +77,6 @@ type Metrics interface {
 // validLabelName matches Loki's label name requirement.
 var validLabelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-
 // BasicAuth holds HTTP basic authentication credentials.
 type BasicAuth struct {
 	Username string

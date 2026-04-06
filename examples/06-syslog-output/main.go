@@ -89,11 +89,18 @@ func main() {
 		log.Printf("close logger: %v", closeErr)
 	}
 
-	// 6. Print what the syslog receiver captured.
+	// 6. Print what the syslog receiver captured, highlighting the
+	//    RFC 5424 PRI field which now reflects the audit event severity.
 	time.Sleep(100 * time.Millisecond) // allow receiver goroutine to finish
 	messages := received()
 
 	fmt.Fprintln(os.Stderr, "\n--- RFC 5424 messages received by syslog server ---")
+	fmt.Fprintln(os.Stderr, "Note: PRI = facility(local0=128) + syslog severity")
+	fmt.Fprintln(os.Stderr, "  <130> = LOG_CRIT (audit severity 10)")
+	fmt.Fprintln(os.Stderr, "  <131> = LOG_ERR (audit severity 8-9)")
+	fmt.Fprintln(os.Stderr, "  <132> = LOG_WARNING (audit severity 6-7)")
+	fmt.Fprintln(os.Stderr, "  <133> = LOG_NOTICE (audit severity 4-5)")
+	fmt.Fprintln(os.Stderr, "  <134> = LOG_INFO (audit severity 1-3)")
 	for i, msg := range messages {
 		fmt.Fprintf(os.Stderr, "\n[Message %d]\n", i+1)
 		// Show the full RFC 5424 message (truncated for readability).

@@ -16,3 +16,6 @@ package syslog
 
 // BackoffDuration is exported for testing only.
 var BackoffDuration = backoffDuration
+
+// MapSeverity is exported for testing only.
+var MapSeverity = mapSeverity

@@ -43,25 +43,38 @@ RFC 5424-compatible receiver).
 go run .
 ```
 
-**Output** (4 RFC 5424 messages received by the embedded syslog server):
+**Output** (4 RFC 5424 messages — note how the PRI field changes based
+on event severity):
 
 ```
 --- RFC 5424 messages received by syslog server ---
+Note: PRI = facility(local0=128) + syslog severity
+  <131> = LOG_ERR (audit severity 8-9)
+  <132> = LOG_WARNING (audit severity 6-7)
+  <133> = LOG_NOTICE (audit severity 4-5)
 
-[Message 1]
-<134>1 2026-04-05T12:00:00+02:00 dev-machine audit-example 12345 audit-example - {"timestamp":"...","event_type":"auth_login","severity":5,"app_name":"syslog-example","host":"dev-machine",...,"actor_id":"alice","outcome":"success","event_category":"security"}
+[Message 1]  auth_login (severity 5 → LOG_NOTICE)
+<133>1 2026-04-05T... dev-machine audit-example 12345 audit-example - {"event_type":"auth_login","severity":5,...,"actor_id":"alice","outcome":"success","event_category":"security"}
 
-[Message 2]
-<134>1 2026-04-05T12:00:00+02:00 dev-machine audit-example 12345 audit-example - {"timestamp":"...","event_type":"user_create",...,"actor_id":"bob","outcome":"success","event_category":"write"}
+[Message 2]  user_create (severity 5 → LOG_NOTICE)
+<133>1 2026-04-05T... dev-machine audit-example 12345 audit-example - {"event_type":"user_create","severity":5,...,"actor_id":"bob","outcome":"success","event_category":"write"}
 
-[Message 3]
-<134>1 2026-04-05T12:00:00+02:00 dev-machine audit-example 12345 audit-example - {"timestamp":"...","event_type":"auth_failure","severity":8,...,"actor_id":"mallory","outcome":"failure","reason":"invalid_password","event_category":"security"}
+[Message 3]  auth_failure (severity 8 → LOG_ERR)
+<131>1 2026-04-05T... dev-machine audit-example 12345 audit-example - {"event_type":"auth_failure","severity":8,...,"actor_id":"mallory","outcome":"failure","reason":"invalid_password","event_category":"security"}
 
-[Message 4]
-<134>1 2026-04-05T12:00:00+02:00 dev-machine audit-example 12345 audit-example - {"timestamp":"...","event_type":"config_change","severity":7,...,"actor_id":"alice","outcome":"success","setting":"max_retries","old_value":"3","new_value":"5","event_category":"write"}
+[Message 4]  config_change (severity 7 → LOG_WARNING)
+<132>1 2026-04-05T... dev-machine audit-example 12345 audit-example - {"event_type":"config_change","severity":7,...,"actor_id":"alice","outcome":"success","setting":"max_retries","event_category":"write"}
 
 Total: 4 RFC 5424 messages received
 ```
+
+Notice how each message has a different PRI value:
+- `<133>` for severity 5 events (128 + 5 = LOG_NOTICE)
+- `<132>` for severity 7 events (128 + 4 = LOG_WARNING)
+- `<131>` for severity 8 events (128 + 3 = LOG_ERR)
+
+SIEM systems can filter and route on these syslog severity levels without
+parsing the JSON body.
 
 ## Key Concepts
 
@@ -89,11 +102,61 @@ Breaking down a real message from this example:
  └────────────────────────────────────────────────────────────────────────────────── PRIORITY: facility × 8 + severity
 ```
 
-**Priority calculation:** `<134>` = facility `local0` (16) × 8 +
-severity `informational` (6) = 134. The syslog severity bits are always
-`informational` (6), hardcoded at construction — the audit event's
-`severity` field (e.g., 8 for `auth_failure`) does NOT affect the
-syslog priority. The event severity is preserved in the JSON payload.
+### Understanding the PRIORITY Field
+
+The `<NNN>` at the start of every syslog message is the **PRIORITY**
+(PRI) — a single number that encodes two pieces of information:
+
+1. **Facility** — which subsystem generated the message (configured in
+   your `outputs.yaml`)
+2. **Severity** — how critical the message is (derived automatically
+   from the audit event's severity field)
+
+The formula is: **`PRI = facility_number × 8 + syslog_severity`**
+
+**Facility** is a syslog concept from
+[RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424). It tells
+the syslog receiver which part of the system generated the message.
+For audit logging, you typically use `local0` through `local7` (these
+are reserved for local/custom use). Each facility name maps to a
+number:
+
+| Facility | Number | `Number × 8` |
+|----------|--------|--------------|
+| `local0` (default) | 16 | 128 |
+| `local1` | 17 | 136 |
+| `auth` | 4 | 32 |
+
+So when you see `<133>`, that's `128 + 5` — facility `local0` (128)
+plus syslog severity `notice` (5).
+
+**Severity** is mapped automatically from your taxonomy's audit event
+severity (0-10) to the RFC 5424 syslog severity scale (0-7):
+
+| Audit Severity | Syslog Severity | RFC 5424 Name | PRI with local0 |
+|---------------|----------------|---------------|-----------------|
+| 10 | 2 | Critical | `<130>` |
+| 8-9 | 3 | Error | `<131>` |
+| 6-7 | 4 | Warning | `<132>` |
+| 4-5 | 5 | Notice | `<133>` |
+| 1-3 | 6 | Informational | `<134>` |
+| 0 | 7 | Debug | `<135>` |
+
+In this example:
+- `auth_login` has no explicit severity → inherits category default (5)
+  → PRI = 128 + 5 = `<133>` (notice)
+- `auth_failure` has `severity: 8` → PRI = 128 + 3 = `<131>` (error)
+- `config_change` has `severity: 7` → PRI = 128 + 4 = `<132>` (warning)
+
+This means your SIEM can filter and route events at the syslog protocol
+level — `auth_failure` events arrive as LOG_ERR and can trigger alerts,
+while `auth_login` events arrive as LOG_NOTICE and go to standard
+logging. No JSON parsing needed.
+
+`LOG_EMERG` (0) and `LOG_ALERT` (1) are intentionally excluded — they
+are reserved for system-level emergencies (kernel panics, hardware
+failure) and can trigger console broadcasts and pager alerts on many
+syslog receivers.
 
 ### Transport Options
 

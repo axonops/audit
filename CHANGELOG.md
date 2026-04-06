@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - HMAC integrity: end-to-end verification through Loki pipeline (7 BDD scenarios)
   - Multi-output fan-out with Loki: file+Loki, routing, HMAC consistency, failure isolation (7 BDD scenarios)
   - Docker TLS infrastructure: loki-tls (port 3101) and loki-mtls (port 3102) containers
+- Syslog output severity mapped dynamically from audit event severity: audit 10→LOG_CRIT, 8-9→LOG_ERR, 6-7→LOG_WARNING, 4-5→LOG_NOTICE, 1-3→LOG_INFO, 0→LOG_DEBUG. Syslog output now implements `MetadataWriter` (#285)
 - `MetadataWriter` optional interface for outputs that need structured per-event context (#250)
 - `EventMetadata` value type: event type, severity, category, timestamp — zero-allocation, passed by value (#250)
 

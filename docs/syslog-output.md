@@ -110,7 +110,7 @@ Example (annotated):
 
 | Field | Value | Source |
 |-------|-------|--------|
-| `PRIORITY` | `<134>` | Facility (local0=16) × 8 + Severity (always informational=6) |
+| `PRIORITY` | `<134>` | Facility (local0=16) × 8 + Severity (mapped from audit event severity) |
 | `VERSION` | `1` | Always RFC 5424 version 1 |
 | `TIMESTAMP` | `2026-04-05T12:00:00.123456789+02:00` | RFC 3339 with nanosecond precision |
 | `HOSTNAME` | `prod-web-01` | From `Config.Hostname` or `os.Hostname()` |
@@ -120,10 +120,111 @@ Example (annotated):
 | `SD` | `-` | No structured data elements |
 | `MSG` | `{"event_type":...}` | The serialised audit event (JSON or CEF) |
 
-**Syslog severity is always `informational` (6).** The audit event's
-`severity` field (e.g., 8 for `auth_failure`) does NOT affect the
-syslog priority — it is preserved in the JSON/CEF payload. The syslog
-severity is hardcoded to `LOG_INFO` at construction time.
+### Understanding the PRIORITY Field
+
+Every syslog message starts with a number in angle brackets like
+`<133>`. This is the **PRIORITY** (PRI) field. It tells the syslog
+receiver two things about the message:
+
+1. **Where it came from** (the "facility")
+2. **How important it is** (the "severity")
+
+These two values are packed into a single number using the formula:
+
+**`PRI = facility × 8 + severity`**
+
+You don't need to calculate this yourself — go-audit handles it
+automatically. But understanding it helps when reading syslog output
+or configuring your SIEM's filtering rules.
+
+### What Is a Facility?
+
+A **facility** is a syslog concept that identifies which part of a
+system generated a message. Think of it as a "channel" or "category"
+that syslog receivers use to route messages to different log files,
+dashboards, or alert pipelines.
+
+Syslog was originally designed for Unix systems, so facilities include
+things like `kern` (kernel), `mail` (mail server), and `cron`
+(scheduled tasks). Most of these are irrelevant for audit logging.
+
+The ones that matter for your application are `local0` through
+`local7`. These are eight facilities specifically reserved for custom
+applications — they have no predefined meaning, so you can use them
+however you want. For example:
+
+- `local0` — your audit events (the default)
+- `local1` — your application's operational logs
+- `local2` — a different service's audit events
+
+Your syslog receiver (rsyslog, syslog-ng, Splunk) can then route
+messages based on facility. For example, in rsyslog:
+
+```
+# Route local0 messages (audit events) to a dedicated file
+local0.*  /var/log/audit/events.log
+
+# Route local1 messages (operational logs) elsewhere
+local1.*  /var/log/app/operational.log
+```
+
+You configure the facility in your `outputs.yaml`:
+
+```yaml
+syslog:
+  facility: "local0"   # default — use local0 through local7
+```
+
+If you only have one audit stream, the default `local0` is fine. You
+never need to change it unless your syslog administrator asks you to
+use a specific facility for routing purposes.
+
+**Facility reference:**
+
+| Name | Number | Use |
+|------|--------|-----|
+| `local0` (default) | 16 | Custom use — recommended for audit logging |
+| `local1`–`local7` | 17–23 | Additional custom channels |
+| `auth` | 4 | Authentication subsystem (OS-level) |
+| `authpriv` | 10 | Private authentication messages |
+| `daemon` | 3 | System daemons |
+
+### How Severity Mapping Works
+
+go-audit automatically maps the audit event severity from your taxonomy
+(a number 0-10) to the syslog severity scale (0-7). The syslog scale
+is inverted — lower numbers are MORE critical:
+
+| Your Taxonomy Severity | Syslog Severity | Name | What It Means |
+|----------------------|----------------|------|---------------|
+| 10 | 2 | Critical | A critical security event (e.g., data breach) |
+| 8-9 | 3 | Error | High-severity event (e.g., `auth_failure`) |
+| 6-7 | 4 | Warning | Medium-severity event (e.g., configuration change) |
+| 4-5 | 5 | Notice | Normal operational event (e.g., `user_create`) |
+| 1-3 | 6 | Informational | Low-severity event (e.g., read operations) |
+| 0 | 7 | Debug | Debug/trace events |
+
+Syslog severity levels 0 (Emergency) and 1 (Alert) are intentionally
+never used — they are reserved for system-level emergencies like kernel
+panics or hardware failures, and can trigger console broadcasts and
+pager alerts on many syslog receivers.
+
+### Putting It Together: PRI Calculation
+
+With the default facility `local0` (number 16):
+
+| Event | Taxonomy Severity | Syslog Severity | PRI = 16×8 + sev | Message starts with |
+|-------|------------------|----------------|------------------|-------------------|
+| `user_create` | 5 | 5 (Notice) | 133 | `<133>` |
+| `auth_failure` | 8 | 3 (Error) | 131 | `<131>` |
+| `config_change` | 7 | 4 (Warning) | 132 | `<132>` |
+
+This means your SIEM can filter events by syslog severity without
+parsing the JSON body:
+- `auth_failure` arrives as syslog Error → triggers alerts
+- `user_create` arrives as syslog Notice → goes to standard audit log
+- `config_change` arrives as syslog Warning → goes to change
+  management dashboard
 
 **Important:** The audit payload is placed in the MSG portion, not in
 SD (structured data) elements. This means no SD-escaping is required

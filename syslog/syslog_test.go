@@ -36,6 +36,7 @@ import (
 
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/syslog"
+	"github.com/axonops/srslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -1954,4 +1955,124 @@ func TestSyslogOutput_Close_WriterCloseError(t *testing.T) {
 	}
 	// Second close must always be nil (idempotent).
 	assert.NoError(t, out.Close())
+}
+
+func TestMapSeverity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		audit  int
+		syslog srslog.Priority
+	}{
+		{name: "audit 0 → LOG_DEBUG", audit: 0, syslog: srslog.LOG_DEBUG},
+		{name: "audit 1 → LOG_INFO", audit: 1, syslog: srslog.LOG_INFO},
+		{name: "audit 2 → LOG_INFO", audit: 2, syslog: srslog.LOG_INFO},
+		{name: "audit 3 → LOG_INFO", audit: 3, syslog: srslog.LOG_INFO},
+		{name: "audit 4 → LOG_NOTICE", audit: 4, syslog: srslog.LOG_NOTICE},
+		{name: "audit 5 → LOG_NOTICE", audit: 5, syslog: srslog.LOG_NOTICE},
+		{name: "audit 6 → LOG_WARNING", audit: 6, syslog: srslog.LOG_WARNING},
+		{name: "audit 7 → LOG_WARNING", audit: 7, syslog: srslog.LOG_WARNING},
+		{name: "audit 8 → LOG_ERR", audit: 8, syslog: srslog.LOG_ERR},
+		{name: "audit 9 → LOG_ERR", audit: 9, syslog: srslog.LOG_ERR},
+		{name: "audit 10 → LOG_CRIT", audit: 10, syslog: srslog.LOG_CRIT},
+		// Out-of-range values fall back to LOG_INFO.
+		{name: "audit -1 → LOG_INFO (fallback)", audit: -1, syslog: srslog.LOG_INFO},
+		{name: "audit 11 → LOG_INFO (fallback)", audit: 11, syslog: srslog.LOG_INFO},
+		{name: "audit 100 → LOG_INFO (fallback)", audit: 100, syslog: srslog.LOG_INFO},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.syslog, syslog.MapSeverity(tt.audit))
+		})
+	}
+}
+
+func TestMapSeverity_NeverEmitsEmergOrAlert(t *testing.T) {
+	t.Parallel()
+	for sev := 0; sev <= 10; sev++ {
+		got := syslog.MapSeverity(sev)
+		assert.NotEqual(t, srslog.LOG_EMERG, got, "severity %d must not map to LOG_EMERG", sev)
+		assert.NotEqual(t, srslog.LOG_ALERT, got, "severity %d must not map to LOG_ALERT", sev)
+	}
+}
+
+func TestSyslogOutput_WriteWithMetadata_SeverityMapping(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	// Facility defaults to local0 (16), so PRI = 128 + syslogSeverity.
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	tests := []struct {
+		wantPRI  string // "<facility*8 + syslogSev>"
+		auditSev int
+	}{
+		{auditSev: 0, wantPRI: "<135>"},  // 128 + 7 (LOG_DEBUG)
+		{auditSev: 3, wantPRI: "<134>"},  // 128 + 6 (LOG_INFO)
+		{auditSev: 5, wantPRI: "<133>"},  // 128 + 5 (LOG_NOTICE)
+		{auditSev: 7, wantPRI: "<132>"},  // 128 + 4 (LOG_WARNING)
+		{auditSev: 10, wantPRI: "<130>"}, // 128 + 2 (LOG_CRIT)
+	}
+
+	wantPRIs := make([]string, 0, len(tests))
+	for _, tt := range tests {
+		meta := audit.EventMetadata{
+			EventType: "test_event",
+			Severity:  tt.auditSev,
+		}
+		marker := fmt.Sprintf(`{"sev":%d}`, tt.auditSev)
+		writeErr := out.WriteWithMetadata([]byte(marker), meta)
+		require.NoError(t, writeErr, "severity %d", tt.auditSev)
+		wantPRIs = append(wantPRIs, tt.wantPRI)
+	}
+
+	require.True(t, srv.waitForContent(wantPRIs, 2*time.Second),
+		"timed out waiting for all PRI values in syslog output")
+
+	all := strings.Join(srv.getMessages(), "\n")
+	for _, tt := range tests {
+		assert.Contains(t, all, tt.wantPRI,
+			"audit severity %d should produce PRI %s", tt.auditSev, tt.wantPRI)
+	}
+}
+
+func TestSyslogOutput_WriteWithMetadata_ImplementsInterface(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	var mw audit.MetadataWriter = out
+	writeErr := mw.WriteWithMetadata([]byte(`{"test":"interface"}`), audit.EventMetadata{
+		Severity: 8,
+	})
+	require.NoError(t, writeErr)
+}
+
+func TestSyslogOutput_WriteWithMetadata_AfterClose(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	writeErr := out.WriteWithMetadata([]byte(`{"test":"closed"}`), audit.EventMetadata{
+		Severity: 5,
+	})
+	assert.ErrorIs(t, writeErr, audit.ErrOutputClosed)
 }

@@ -101,7 +101,7 @@ multi-output fan-out and SIEM-native format support:
 
 - 📋 **Schema enforcement** — every event validated against your taxonomy; missing required fields are rejected, not silently dropped
 - 🛡️ **SIEM-native output** — [CEF format](docs/cef-format.md) understood by Splunk, ArcSight, QRadar out of the box, alongside [JSON](docs/json-format.md) for log aggregators
-- 📡 **Multi-output fan-out** — send events to [files, syslog, webhooks, and stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
+- 📡 **Multi-output fan-out** — send events to [files, syslog, webhooks, Loki, and stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
 - 🔒 **Sensitive field stripping** — [classify fields as PII or financial](docs/sensitivity-labels.md); strip them per-output for GDPR/PCI compliance
 - ⚡ **Non-blocking** — sub-microsecond `AuditEvent()` calls; [async delivery](docs/async-delivery.md) via a background drain goroutine with completeness monitoring
 - 🔌 **No vendor lock-in** — [pluggable metrics interface](docs/metrics-monitoring.md); no Prometheus, OpenTelemetry, or logging framework dependency in core

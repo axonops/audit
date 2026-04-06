@@ -64,6 +64,14 @@ type Metrics interface {
 
 	// RecordLokiFlush is called after each successful push to Loki.
 	RecordLokiFlush(batchSize int, dur time.Duration)
+
+	// RecordLokiRetry is called when a push is retried after a 429
+	// or 5xx response.
+	RecordLokiRetry(statusCode int, attempt int)
+
+	// RecordLokiError is called when a push fails with a non-retryable
+	// error (4xx except 429) or after all retries are exhausted.
+	RecordLokiError(statusCode int)
 }
 
 // validLabelName matches Loki's label name requirement.

@@ -58,7 +58,7 @@ both [JSON](docs/json-format.md) and
 | ⚙️ **Code Generation** | `audit-gen` generates typed builders; typos become compile errors | [Learn more](docs/code-generation.md) |
 | 🛡️ **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
 | 📄 **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
-| 📡 **Multi-Output Fan-Out** | File, syslog, webhook, stdout — simultaneously with per-output config | [Learn more](docs/outputs.md) |
+| 📡 **Multi-Output Fan-Out** | File, syslog, webhook, Loki, stdout — simultaneously with per-output config | [Learn more](docs/outputs.md) |
 | 🔀 **Event Routing** | Route events by category or severity to specific outputs | [Learn more](docs/event-routing.md) |
 | 🔒 **Sensitivity Labels** | Classify fields as PII/financial; strip per-output for compliance | [Learn more](docs/sensitivity-labels.md) |
 | ⚡ **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |
@@ -221,6 +221,7 @@ go get github.com/axonops/go-audit             # core: logger, taxonomy, validat
 go get github.com/axonops/go-audit/file         # file output with rotation
 go get github.com/axonops/go-audit/syslog       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
 go get github.com/axonops/go-audit/webhook      # batched HTTP webhook with SSRF protection
+go get github.com/axonops/go-audit/loki         # Grafana Loki with stream labels and gzip
 go get github.com/axonops/go-audit/outputconfig # YAML-based output configuration
 ```
 
@@ -237,6 +238,7 @@ go get github.com/axonops/go-audit/outputconfig # YAML-based output configuratio
 | `github.com/axonops/go-audit/file` | File output with size-based rotation and gzip compression |
 | `github.com/axonops/go-audit/syslog` | RFC 5424 syslog output (TCP/UDP/TLS/mTLS) |
 | `github.com/axonops/go-audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
+| `github.com/axonops/go-audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
 | `github.com/axonops/go-audit/outputconfig` | YAML-based output configuration with env var substitution |
 
 Outputs are isolated in separate modules so the core library carries

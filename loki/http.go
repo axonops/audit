@@ -74,7 +74,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			}
 		}
 
-		retryable, err := o.doPost(ctx, body)
+		retryable, status, err := o.doPost(ctx, body)
 		if err == nil {
 			o.recordSuccess(batchSize, time.Since(start))
 			return
@@ -84,10 +84,16 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			slog.Error("audit: loki non-retryable error",
 				"error", err,
 				"batch_size", batchSize)
+			if o.lokiMetrics != nil && status > 0 {
+				o.lokiMetrics.RecordLokiError(status)
+			}
 			o.recordDrop(batchSize)
 			return
 		}
 
+		if o.lokiMetrics != nil && status > 0 {
+			o.lokiMetrics.RecordLokiRetry(status, attempt+1)
+		}
 		slog.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
@@ -105,10 +111,10 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 // (retryable, error). A nil error means success (2xx). Redirect
 // rejections and 4xx (except 429) are non-retryable. 5xx, 429, and
 // network errors are retryable.
-func (o *Output) doPost(ctx context.Context, body []byte) (bool, error) {
+func (o *Output) doPost(ctx context.Context, body []byte) (retryable bool, statusCode int, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.cfg.URL, bytes.NewReader(body))
 	if err != nil {
-		return false, fmt.Errorf("audit: loki request: %w", err)
+		return false, 0, fmt.Errorf("audit: loki request: %w", err)
 	}
 
 	o.applyRequestHeaders(req)
@@ -116,12 +122,12 @@ func (o *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	resp, err := o.client.Do(req)
 	if err != nil {
 		if errors.Is(err, errRedirectBlocked) {
-			return false, fmt.Errorf("audit: loki redirect blocked: %w", err)
+			return false, 0, fmt.Errorf("audit: loki redirect blocked: %w", err)
 		}
 		if ctx.Err() != nil {
-			return false, fmt.Errorf("audit: loki cancelled: %w", ctx.Err())
+			return false, 0, fmt.Errorf("audit: loki cancelled: %w", ctx.Err())
 		}
-		return true, fmt.Errorf("audit: loki request failed: %w", err)
+		return true, 0, fmt.Errorf("audit: loki request failed: %w", err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBody))
@@ -129,20 +135,20 @@ func (o *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	}()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return false, nil // success
+		return false, resp.StatusCode, nil // success
 	}
 
 	if resp.StatusCode == 429 {
 		o.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
-		return true, fmt.Errorf("audit: loki rate limited (429)")
+		return true, 429, fmt.Errorf("audit: loki rate limited (429)")
 	}
 
 	if resp.StatusCode >= 500 {
-		return true, fmt.Errorf("audit: loki server error %d", resp.StatusCode)
+		return true, resp.StatusCode, fmt.Errorf("audit: loki server error %d", resp.StatusCode)
 	}
 
 	// 4xx (not 429) — client error, not retryable.
-	return false, fmt.Errorf("audit: loki client error %d", resp.StatusCode)
+	return false, resp.StatusCode, fmt.Errorf("audit: loki client error %d", resp.StatusCode)
 }
 
 // applyRequestHeaders sets all HTTP headers on the request. Consumer

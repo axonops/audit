@@ -176,26 +176,40 @@ func validateWebhookHeaders(headers map[string]string) error {
 }
 
 // applyWebhookDefaults fills zero-valued fields with documented defaults.
+// Zero means "not set" for the programmatic API; explicit values
+// (including negative) are passed through to validation.
 func applyWebhookDefaults(cfg *Config) {
-	if cfg.BatchSize <= 0 {
+	if cfg.BatchSize == 0 {
 		cfg.BatchSize = DefaultBatchSize
 	}
-	if cfg.FlushInterval <= 0 {
+	if cfg.FlushInterval == 0 {
 		cfg.FlushInterval = DefaultFlushInterval
 	}
-	if cfg.Timeout <= 0 {
+	if cfg.Timeout == 0 {
 		cfg.Timeout = DefaultTimeout
 	}
-	if cfg.MaxRetries <= 0 {
+	if cfg.MaxRetries == 0 {
 		cfg.MaxRetries = DefaultMaxRetries
 	}
-	if cfg.BufferSize <= 0 {
+	if cfg.BufferSize == 0 {
 		cfg.BufferSize = DefaultBufferSize
 	}
 }
 
-// validateWebhookLimits checks upper bounds on numeric fields.
+// validateWebhookLimits checks bounds on numeric fields.
 func validateWebhookLimits(cfg *Config) error {
+	if cfg.BatchSize < 1 {
+		return fmt.Errorf("%w: webhook batch_size must be at least 1 (got %d)",
+			audit.ErrConfigInvalid, cfg.BatchSize)
+	}
+	if cfg.MaxRetries < 1 {
+		return fmt.Errorf("%w: webhook max_retries must be at least 1 (got %d); this is the total number of delivery attempts",
+			audit.ErrConfigInvalid, cfg.MaxRetries)
+	}
+	if cfg.BufferSize < 1 {
+		return fmt.Errorf("%w: webhook buffer_size must be at least 1 (got %d)",
+			audit.ErrConfigInvalid, cfg.BufferSize)
+	}
 	if cfg.BatchSize > MaxBatchSize {
 		return fmt.Errorf("%w: webhook batch_size %d exceeds maximum %d",
 			audit.ErrConfigInvalid, cfg.BatchSize, MaxBatchSize)

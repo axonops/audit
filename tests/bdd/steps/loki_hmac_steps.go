@@ -89,7 +89,7 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 				"actor_id": actor,
 				"outcome":  outcome,
 				"marker":   m,
-				field:       value,
+				field:      value,
 			}
 			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		})
@@ -105,7 +105,7 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 				"actor_id": actor,
 				"outcome":  outcome,
 				"marker":   m,
-				field:       value,
+				field:      value,
 			}
 			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		})

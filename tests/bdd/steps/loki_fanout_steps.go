@@ -243,7 +243,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut, nil, nil),                // no exclusions
+		audit.WithNamedOutput(fileOut, nil, nil),               // no exclusions
 		audit.WithNamedOutput(lokiOut, nil, nil, excludeLabel), // strip PII
 	)
 	if err != nil {

@@ -38,6 +38,9 @@
 // The configuration document has the following top-level keys:
 //
 //	version: 1                      # required, must be 1
+//	app_name: "my-service"          # required, application name (max 255 bytes)
+//	host: "${HOSTNAME:-localhost}"   # required, hostname (max 255 bytes; env vars supported)
+//	timezone: "UTC"                 # optional, overrides auto-detected timezone
 //	logger:                         # optional, core logger settings
 //	  enabled: true                 # default: true
 //	  buffer_size: 10000            # default: 10,000 (max: 1,000,000)
@@ -54,7 +57,7 @@
 //	    file:                       # output-specific config block
 //	      path: /var/log/audit.log
 //	      max_size_mb: 100
-//	    formatter:                  # optional per-output override
+//	    formatter:                  # optional per-output formatter
 //	      type: cef
 //	      vendor: MyCompany
 //	      product: MyApp

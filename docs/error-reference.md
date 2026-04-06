@@ -99,7 +99,7 @@ audit: output config validation failed
 | **When** | `outputconfig.Load()` is called with invalid YAML output configuration |
 | **Meaning** | Output configuration parsing or validation failed |
 | **Transient?** | No — permanent configuration error |
-| **What to do** | Check the error message for details. Common causes: unknown output type (forgot a blank import), invalid YAML syntax, missing required fields (e.g., `url` for webhook, `path` for file), unknown YAML keys (check for typos). See [Output Configuration YAML](output-configuration.md). |
+| **What to do** | Check the error message for details. Common causes: unknown output type (forgot a blank import), invalid YAML syntax, missing required fields (e.g., `url` for webhook, `path` for file), unknown YAML keys (check for typos), using removed `default_formatter` key (set `formatter:` on each output instead), non-JSON `formatter` on a Loki output. See [Output Configuration YAML](output-configuration.md). |
 
 ---
 

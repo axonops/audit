@@ -41,6 +41,10 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
+// dropWarnInterval is the minimum interval between slog.Warn calls
+// for buffer-full drop events.
+const dropWarnInterval = 10 * time.Second
+
 // Compile-time assertions.
 var (
 	_ audit.Output           = (*Output)(nil)
@@ -108,6 +112,7 @@ type Output struct {
 	timeout        time.Duration
 	mu             sync.Mutex
 	closed         atomic.Bool
+	drops          dropLimiter // rate-limits buffer-full slog.Warn
 }
 
 // New creates a new [Output] from the given config.
@@ -202,8 +207,11 @@ func (w *Output) Write(data []byte) error {
 	case w.ch <- cp:
 		return nil
 	default:
-		slog.Warn("audit: webhook buffer full, dropping event",
-			"buffer_size", cap(w.ch))
+		w.drops.record(dropWarnInterval, func(dropped int64) {
+			slog.Warn("audit: webhook buffer full, events dropped",
+				"dropped", dropped,
+				"buffer_size", cap(w.ch))
+		})
 		if w.webhookMetrics != nil {
 			w.webhookMetrics.RecordWebhookDrop()
 		}

@@ -41,6 +41,10 @@ import (
 	"time"
 )
 
+// dropWarnInterval is the minimum interval between slog.Warn calls
+// for buffer-full drop events.
+const dropWarnInterval = 10 * time.Second
+
 // Sentinel errors returned by Logger methods.
 var (
 	// ErrClosed is returned by [Logger.AuditEvent] when the logger has
@@ -113,6 +117,7 @@ type Logger struct {
 	// read-only after construction. Applied in auditInternal before
 	// validation so that defaults satisfy required: true constraints.
 	standardFieldDefaults map[string]string
+	drops                 dropLimiter // rate-limits buffer-full slog.Warn
 }
 
 // NewLogger creates a new audit [Logger] with the given configuration
@@ -260,9 +265,11 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 	case l.ch <- entry:
 		return nil
 	default:
-		slog.Warn("audit: buffer full, dropping event",
-			"event_type", entry.eventType,
-			"buffer_size", l.cfg.BufferSize)
+		l.drops.record(dropWarnInterval, func(dropped int64) {
+			slog.Warn("audit: buffer full, events dropped",
+				"dropped", dropped,
+				"buffer_size", cap(l.ch))
+		})
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}

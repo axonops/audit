@@ -120,6 +120,11 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 }
 
 func registerLokiHMACThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiHMACFieldAssertionSteps(ctx, tc)
+	registerLokiHMACVerificationSteps(ctx, tc)
+}
+
+func registerLokiHMACFieldAssertionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the loki event payload should contain field "([^"]*)"$`,
 		func(field string) error {
 			marker := tc.Markers["default"]
@@ -169,6 +174,9 @@ func registerLokiHMACThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			return verifyLokiEventHMAC(tc, salt)
 		})
 
+}
+
+func registerLokiHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the HMAC in Loki should differ from the HMAC in the capture output$`,
 		func() error {
 			return assertLokiAndCaptureHMACDiffer(tc)

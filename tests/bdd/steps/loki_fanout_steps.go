@@ -71,6 +71,11 @@ func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 }
 
 func registerLokiFanoutThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiFanoutFileSteps(ctx, tc)
+	registerLokiFanoutQuerySteps(ctx, tc)
+}
+
+func registerLokiFanoutFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	// Note: "the file should contain the marker" and "the file should
 	// contain X" are registered in fanout_steps.go — not duplicated here.
 
@@ -103,6 +108,9 @@ func registerLokiFanoutThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 			return assertFileEventHasField(tc, tc.Markers["default"], "_hmac")
 		})
 
+}
+
+func registerLokiFanoutQuerySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file and Loki "_hmac" values should match for the same event$`,
 		func() error {
 			return assertFileAndLokiHMACMatch(tc)
@@ -367,8 +375,8 @@ func assertFileAndLokiHMACMatch(tc *AuditTestContext) error {
 		return fmt.Errorf("file: %w", err)
 	}
 	var fileMap map[string]any
-	if err := json.Unmarshal(raw, &fileMap); err != nil {
-		return fmt.Errorf("parse file event: %w", err)
+	if unmarshalErr := json.Unmarshal(raw, &fileMap); unmarshalErr != nil {
+		return fmt.Errorf("parse file event: %w", unmarshalErr)
 	}
 	fileHMAC, ok := fileMap["_hmac"].(string)
 	if !ok {

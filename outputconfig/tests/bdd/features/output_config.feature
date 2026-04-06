@@ -255,6 +255,7 @@ Feature: YAML Output Configuration
       """
     When I try to create a logger from the YAML config
     Then the config load should succeed
+    And the loki output formatter should be JSON
 
   Scenario: Loki output ignores global default_formatter
     Given a test taxonomy

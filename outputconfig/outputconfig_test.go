@@ -347,6 +347,86 @@ outputs:
 	_ = result.Outputs[1].Output.Close()
 }
 
+func TestLoad_LokiMixedOutputWithCEFDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	tax := testTaxonomy(t)
+	data := []byte(fmt.Sprintf(`
+version: 1
+app_name: test
+host: test
+default_formatter:
+  type: cef
+  vendor: Test
+  product: Test
+  version: "1.0"
+outputs:
+  file_out:
+    type: file
+    file:
+      path: %s/audit.log
+  loki_out:
+    type: loki
+`, dir))
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err)
+
+	require.Len(t, result.Outputs, 2)
+
+	// File output inherits the CEF default (nil per-output formatter).
+	assert.Nil(t, result.Outputs[0].Formatter,
+		"file output should inherit default CEF formatter (nil per-output)")
+
+	// Loki output overrides with JSON.
+	require.NotNil(t, result.Outputs[1].Formatter,
+		"Loki output must have explicit JSON formatter when default is CEF")
+	_, isJSON := result.Outputs[1].Formatter.(*audit.JSONFormatter)
+	assert.True(t, isJSON, "Loki formatter must be *audit.JSONFormatter")
+
+	_ = result.Outputs[0].Output.Close()
+	_ = result.Outputs[1].Output.Close()
+}
+
+func TestLoad_LokiDisabledWithCEF_NoError(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  console:
+    type: stdout
+  loki_out:
+    type: loki
+    enabled: false
+    formatter:
+      type: cef
+`)
+	result, err := outputconfig.Load(data, &tax, nil)
+	require.NoError(t, err, "disabled Loki output with CEF formatter should not cause an error")
+	assert.Len(t, result.Outputs, 1, "only the stdout output should be active")
+	_ = result.Outputs[0].Output.Close()
+}
+
+func TestLoad_LokiRejectsScalarCEF(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  loki_out:
+    type: loki
+    formatter: cef
+`)
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loki does not support custom formatters")
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+}
+
 func TestLoad_WithPerOutputFormatter(t *testing.T) {
 	dir := t.TempDir()
 	yaml := []byte(`

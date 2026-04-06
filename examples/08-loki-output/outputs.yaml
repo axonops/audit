@@ -15,6 +15,10 @@ version: 1
 app_name: "audit-example"
 host: "dev-machine"
 
+# NOTE: Loki outputs do not support a "formatter:" block. Loki is
+# locked to JSON format because LogQL queries use "| json" to parse
+# events. Specifying formatter: cef (or any non-JSON) returns an error.
+
 outputs:
   loki_audit:
     type: loki

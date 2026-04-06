@@ -50,24 +50,6 @@ tls_policy:
   allow_tls12: false               # default: false (TLS 1.3 only)
   allow_weak_ciphers: false        # default: false
 
-# ── Default Formatter (optional) ───────────────────────────
-# Applies to all outputs that don't specify their own formatter.
-# If omitted, JSON with RFC 3339 nanosecond timestamps is used.
-
-# JSON default formatter example:
-default_formatter:
-  type: json                       # "json" (default) or "cef"
-  timestamp: rfc3339nano           # "rfc3339nano" (default) or "unix_ms"
-  omit_empty: false                # default: false
-
-# CEF default formatter example (use instead of JSON above):
-# default_formatter:
-#   type: cef
-#   vendor: "MyCompany"             # recommended (empty string if not set)
-#   product: "MyApp"                # recommended (empty string if not set)
-#   version: "1.0"                  # recommended (empty string if not set)
-#   omit_empty: false               # default: false
-
 # ── Outputs ─────────────────────────────────────────────────
 # Map of named outputs. Each output has a type, optional config,
 # optional formatter override, optional event route, and optional
@@ -188,7 +170,6 @@ outputs:
 | `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/03-standard-fields/#the-solution-reserved-standard-fields). |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
 | `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |
-| `default_formatter` | No | Default formatter for all outputs. JSON if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
 ## ⚙️ Logger Configuration
@@ -202,7 +183,7 @@ fields are optional — omitted fields use sensible defaults.
 | `buffer_size` | `10000` | Async channel capacity. Events dropped when full. Maximum: 1,000,000. |
 | `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
 | `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
-| `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no `default_formatter` or per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
+| `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
 
 All values support environment variable substitution:
 
@@ -243,7 +224,7 @@ Every output has these fields (plus the optional `hmac:` block):
 | `type` | Yes | Output type: `"stdout"`, `"file"`, `"syslog"`, `"webhook"`, or `"loki"` |
 | `enabled` | No | `true` (default) or `false`. Disabled outputs are skipped. |
 | `[type_name]` | Depends | Type-specific config block. Key must match `type`. Not needed for `stdout`. |
-| `formatter` | No | Per-output formatter override. Uses `default_formatter` if omitted. |
+| `formatter` | No | Per-output formatter. Defaults to JSON if omitted. |
 | `route` | No | Per-output event filter. Receives all events if omitted. |
 | `exclude_labels` | No | List of sensitivity labels to strip from events before delivery. |
 | `hmac` | No | Per-output HMAC integrity config. See [HMAC Integrity](hmac-integrity.md). |
@@ -276,9 +257,8 @@ formatter:
 
 > **Note:** Loki outputs do not support custom formatters — they are
 > locked to JSON. Specifying a non-JSON `formatter` on a `type: loki`
-> output returns an error. If a global `default_formatter` is non-JSON,
-> Loki outputs override it with JSON and emit a `slog.Warn` at startup.
-> See [Loki Output: Formatter Restriction](loki-output.md#formatter-restriction)
+> output returns an error at config load time. See
+> [Loki Output: Formatter Restriction](loki-output.md#formatter-restriction)
 > for details.
 
 ## 🔀 Event Route Configuration

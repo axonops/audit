@@ -47,10 +47,6 @@
 //	tls_policy:                     # optional, global TLS policy
 //	  allow_tls12: false            # default: false (TLS 1.3 only)
 //	  allow_weak_ciphers: false     # default: false
-//	default_formatter:              # optional, applies to all outputs
-//	  type: json                    # "json" or "cef"
-//	  timestamp: rfc3339nano        # "rfc3339nano" or "unix_ms"
-//	  omit_empty: false             # default: false
 //	outputs:                        # required, map of named outputs
 //	  audit_log:
 //	    type: file                  # registered output type

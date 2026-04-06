@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- `default_formatter` YAML key removed — set `formatter:` on each output individually. Outputs without a `formatter:` block default to JSON. If you previously used `default_formatter: { type: json, timestamp: unix_ms }` or `default_formatter: { omit_empty: true }`, move those settings to each output's `formatter:` block or use `logger: { omit_empty: true }` for the `omit_empty` case (#305)
 - Progressive examples renumbered: outputs grouped together, 04-12 → 05-17 with gaps for new examples (#278)
 - Progressive examples renumbered: new 03-standard-fields inserted, 03-11 → 04-12 (#237)
 - Bare optional declaration of reserved standard fields now rejected by `ValidateTaxonomy` — use `required: true` or add labels (#237)

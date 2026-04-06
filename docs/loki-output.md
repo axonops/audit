@@ -346,14 +346,6 @@ time:
 audit: output config validation failed: output "loki_audit": loki does not support custom formatters; loki requires JSON format for label extraction and LogQL queries
 ```
 
-If a global `default_formatter` is set to a non-JSON format, Loki
-outputs override it and use JSON. A `WARN`-level log message is emitted
-at config load time for each affected Loki output:
-
-```text
-WARN audit: loki output ignoring default_formatter; loki requires JSON format  output=loki_audit
-```
-
 **Why?** Loki depends on JSON for two reasons:
 
 1. **LogQL `| json`** — the primary query pattern for extracting event

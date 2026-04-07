@@ -247,9 +247,9 @@ func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
 	}
 	o.compressBuf.Reset()
 	if o.gzWriter == nil {
-		o.gzWriter = gzip.NewWriter(&o.compressBuf)
+		o.gzWriter = gzip.NewWriter(o.compressDest)
 	} else {
-		o.gzWriter.Reset(&o.compressBuf)
+		o.gzWriter.Reset(o.compressDest)
 	}
 	if _, wErr := o.gzWriter.Write(o.payloadBuf.Bytes()); wErr != nil {
 		return nil, false, fmt.Errorf("audit: loki: gzip write: %w", wErr)

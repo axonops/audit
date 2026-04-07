@@ -163,3 +163,36 @@ func TestValidateConfig_BoundaryValues(t *testing.T) {
 	}
 	require.NoError(t, validateWebhookConfig(&cfg))
 }
+
+func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{
+			name: "nonexistent CA",
+			cfg: Config{
+				URL:   "https://example.com/webhook",
+				TLSCA: "/nonexistent/ca.pem",
+			},
+			wantErr: "ca",
+		},
+		{
+			name: "nonexistent cert and key",
+			cfg: Config{
+				URL:     "https://example.com/webhook",
+				TLSCert: "/nonexistent/cert.pem",
+				TLSKey:  "/nonexistent/key.pem",
+			},
+			wantErr: "cert",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(&tt.cfg, nil, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}

@@ -424,6 +424,28 @@ func TestCEFFormatter_ExtensionFields(t *testing.T) {
 	assert.Contains(t, line, "outcome=success")
 }
 
+func TestCEFFormatter_AllDefaultFieldMappings(t *testing.T) {
+	t.Parallel()
+	mapping := audit.DefaultCEFFieldMapping()
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+
+	for auditField, cefKey := range mapping {
+		t.Run(auditField+"→"+cefKey, func(t *testing.T) {
+			t.Parallel()
+			fields := audit.Fields{auditField: "test_value"}
+			def := &audit.EventDef{Required: []string{auditField}}
+
+			data, err := f.Format(testTime, "test_event", fields, def, nil)
+			require.NoError(t, err)
+
+			line := string(data)
+			expected := cefKey + "=test_value"
+			assert.Contains(t, line, expected,
+				"field %q should map to CEF key %q", auditField, cefKey)
+		})
+	}
+}
+
 func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
 	f := &audit.CEFFormatter{
 		Vendor:  "V",

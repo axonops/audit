@@ -265,7 +265,7 @@ func capturedLines(tc *AuditTestContext) [][]byte {
 }
 
 // captureOutput is a simple audit.Output that stores raw event bytes.
-type captureOutput struct {
+type captureOutput struct { //nolint:govet // fieldalignment: readability preferred
 	mu     sync.Mutex
 	name   string
 	events [][]byte

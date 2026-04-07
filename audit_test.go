@@ -2815,6 +2815,28 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	}
 }
 
+func TestDropLimiter_FirstDropAlwaysTriggers(t *testing.T) {
+	t.Parallel()
+	dl := &audit.DropLimiterForTest{}
+	var triggered int
+	dl.Record(10*time.Second, func(dropped int64) {
+		triggered++
+		assert.Equal(t, int64(1), dropped)
+	})
+	assert.Equal(t, 1, triggered, "first drop must trigger warning")
+}
+
+func TestDropLimiter_SubsequentDropsSuppressed(t *testing.T) {
+	t.Parallel()
+	dl := &audit.DropLimiterForTest{}
+	var triggered int
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	// Second drop within interval should NOT trigger.
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	assert.Equal(t, 1, triggered, "drops within interval must not trigger")
+}
+
 func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
 	tax := audit.Taxonomy{
 		Version: 1,

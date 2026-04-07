@@ -1633,6 +1633,55 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 	wg.Wait()
 }
 
+func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithNamedOutput(out, nil, nil),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	// 50 goroutines auditing events.
+	for i := range 50 {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for range 10 {
+				_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+					"outcome": "success",
+				}))
+			}
+		}(i)
+	}
+
+	// 10 goroutines toggling routes.
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 5 {
+				_ = logger.SetOutputRoute("test", &audit.EventRoute{
+					IncludeCategories: []string{"write"},
+				})
+				_ = logger.SetOutputRoute("test", &audit.EventRoute{})
+			}
+		}()
+	}
+
+	// 1 goroutine closing.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = logger.Close()
+	}()
+
+	wg.Wait()
+	// Success = no panic, no race detector violation.
+}
+
 // ---------------------------------------------------------------------------
 // Handle.AuditEvent after Close
 // ---------------------------------------------------------------------------

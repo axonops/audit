@@ -450,7 +450,7 @@ func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
 	// Create a CA file with invalid PEM content.
 	tmpFile, err := os.CreateTemp("", "bad-ca-*.pem")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	_, _ = tmpFile.WriteString("not valid pem data")
 	_ = tmpFile.Close()
 

@@ -121,6 +121,10 @@ func registerSyslogSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 const sensitivityTaxonomyYAML = `
 version: 1
 
+sensitivity:
+  labels:
+    - pii
+
 categories:
   write:
     events:
@@ -243,21 +247,47 @@ func registerSyslogSeverityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			return assertSyslogMarkerLineContainsPRI(m, pri)
 		})
 
-	ctx.Step(`^the syslog line with "([^"]*)" should not contain "([^"]*)"$`,
-		func(searchMarker, text string) error {
-			m, ok := tc.Markers[searchMarker]
+	ctx.Step(`^the syslog line with marker "([^"]*)" should contain "([^"]*)"$`,
+		func(markerName, text string) error {
+			m, ok := tc.Markers[markerName]
 			if !ok {
-				m = searchMarker
+				return fmt.Errorf("no marker named %q", markerName)
+			}
+			return assertSyslogLineContainsBoth(m, text)
+		})
+
+	ctx.Step(`^the syslog line with marker "([^"]*)" should not contain "([^"]*)"$`,
+		func(markerName, text string) error {
+			m, ok := tc.Markers[markerName]
+			if !ok {
+				return fmt.Errorf("no marker named %q", markerName)
 			}
 			return assertSyslogMarkerLineNotContains(m, text)
 		})
 
-	ctx.Step(`^the syslog server should not contain "([^"]*)" within (\d+) seconds$`,
-		func(text string, timeout int) error {
-			// Resolve marker name to actual marker value.
-			m, ok := tc.Markers[text]
+	ctx.Step(`^the syslog line with marker "([^"]*)" should contain PRI "([^"]*)"$`,
+		func(markerName, pri string) error {
+			m, ok := tc.Markers[markerName]
 			if !ok {
-				m = text
+				return fmt.Errorf("no marker named %q", markerName)
+			}
+			return assertSyslogMarkerLineContainsPRI(m, pri)
+		})
+
+	ctx.Step(`^the syslog server should contain marker "([^"]*)" within (\d+) seconds$`,
+		func(markerName string, timeout int) error {
+			m, ok := tc.Markers[markerName]
+			if !ok {
+				return fmt.Errorf("no marker named %q", markerName)
+			}
+			return assertSyslogContains(m, time.Duration(timeout)*time.Second)
+		})
+
+	ctx.Step(`^the syslog server should not contain marker "([^"]*)" within (\d+) seconds$`,
+		func(markerName string, timeout int) error {
+			m, ok := tc.Markers[markerName]
+			if !ok {
+				return fmt.Errorf("no marker named %q", markerName)
 			}
 			return assertSyslogNotContains(m, time.Duration(timeout)*time.Second)
 		})

@@ -50,10 +50,10 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | success |
       | actor_id | bob     |
     And I close the logger
-    Then the syslog server should contain "pri_high" within 10 seconds
-    And the syslog server should contain "pri_low" within 10 seconds
-    And the syslog line with "pri_high" should contain PRI "131"
-    And the syslog line with "pri_low" should contain PRI "134"
+    Then the syslog server should contain marker "pri_high" within 10 seconds
+    And the syslog server should contain marker "pri_low" within 10 seconds
+    And the syslog line with marker "pri_high" should contain PRI "131"
+    And the syslog line with marker "pri_low" should contain PRI "134"
 
   # --- RFC 5424 message structure ---
 
@@ -74,9 +74,9 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | success |
       | actor_id | alice   |
     And I close the logger
-    Then the syslog server should contain "fw_fields" within 10 seconds
-    And the syslog line with "fw_fields" should contain "bdd-syslog"
-    And the syslog line with "fw_fields" should contain "bdd-host"
+    Then the syslog server should contain marker "fw_fields" within 10 seconds
+    And the syslog line with marker "fw_fields" should contain "bdd-syslog"
+    And the syslog line with marker "fw_fields" should contain "bdd-host"
 
   # --- event_category verification ---
 
@@ -87,9 +87,9 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | success |
       | actor_id | alice   |
     And I close the logger
-    Then the syslog server should contain "cat_check" within 10 seconds
-    And the syslog line with "cat_check" should contain "event_category"
-    And the syslog line with "cat_check" should contain "write"
+    Then the syslog server should contain marker "cat_check" within 10 seconds
+    And the syslog line with marker "cat_check" should contain "event_category"
+    And the syslog line with marker "cat_check" should contain "write"
 
   # --- CEF formatter with syslog ---
 
@@ -100,11 +100,11 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | failure |
       | actor_id | mallory |
     And I close the logger
-    Then the syslog server should contain "cef_syslog" within 10 seconds
-    And the syslog line with "cef_syslog" should contain "CEF:0|"
-    And the syslog line with "cef_syslog" should contain "BDDTest"
-    And the syslog line with "cef_syslog" should contain "outcome=failure"
-    And the syslog line with "cef_syslog" should contain "suser=mallory"
+    Then the syslog server should contain marker "cef_syslog" within 10 seconds
+    And the syslog line with marker "cef_syslog" should contain "CEF:0|"
+    And the syslog line with marker "cef_syslog" should contain "BDDTest"
+    And the syslog line with marker "cef_syslog" should contain "outcome=failure"
+    And the syslog line with marker "cef_syslog" should contain "suser=mallory"
 
   # --- Event routing: include mode ---
 
@@ -120,8 +120,8 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | failure |
       | actor_id | mallory |
     And I close the logger
-    Then the syslog server should contain "inc_included" within 10 seconds
-    And the syslog server should not contain "inc_excluded" within 5 seconds
+    Then the syslog server should contain marker "inc_included" within 10 seconds
+    And the syslog server should not contain marker "inc_excluded" within 5 seconds
 
   # --- Event routing: exclude mode ---
 
@@ -137,8 +137,8 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | failure |
       | actor_id | mallory |
     And I close the logger
-    Then the syslog server should contain "exc_included" within 10 seconds
-    And the syslog server should not contain "exc_excluded" within 5 seconds
+    Then the syslog server should contain marker "exc_included" within 10 seconds
+    And the syslog server should not contain marker "exc_excluded" within 5 seconds
 
   # --- HMAC integrity with syslog ---
 
@@ -149,10 +149,10 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | success |
       | actor_id | alice   |
     And I close the logger
-    Then the syslog server should contain "hmac_present" within 10 seconds
-    And the syslog line with "hmac_present" should contain "_hmac"
-    And the syslog line with "hmac_present" should contain "_hmac_v"
-    And the syslog line with "hmac_present" should contain "v1"
+    Then the syslog server should contain marker "hmac_present" within 10 seconds
+    And the syslog line with marker "hmac_present" should contain "_hmac"
+    And the syslog line with marker "hmac_present" should contain "_hmac_v"
+    And the syslog line with marker "hmac_present" should contain "v1"
 
   Scenario: HMAC fields absent in syslog output when not configured
     Given a logger with syslog output on "tcp" to "localhost:5514"
@@ -161,8 +161,8 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | success |
       | actor_id | alice   |
     And I close the logger
-    Then the syslog server should contain "hmac_absent" within 10 seconds
-    And the syslog line with "hmac_absent" should not contain "_hmac"
+    Then the syslog server should contain marker "hmac_absent" within 10 seconds
+    And the syslog line with marker "hmac_absent" should not contain "_hmac"
 
   Scenario: HMAC-enabled syslog output preserves all event fields
     Given a logger with syslog output on "tcp" to "localhost:5514" and HMAC enabled with salt "syslog-hmac-full16!" version "v1" hash "HMAC-SHA-256"
@@ -171,12 +171,12 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | outcome  | failure |
       | actor_id | mallory |
     And I close the logger
-    Then the syslog server should contain "hmac_full" within 10 seconds
-    And the syslog line with "hmac_full" should contain "sev8_event"
-    And the syslog line with "hmac_full" should contain "failure"
-    And the syslog line with "hmac_full" should contain "mallory"
-    And the syslog line with "hmac_full" should contain "_hmac"
-    And the syslog line with "hmac_full" should contain "event_category"
+    Then the syslog server should contain marker "hmac_full" within 10 seconds
+    And the syslog line with marker "hmac_full" should contain "sev8_event"
+    And the syslog line with marker "hmac_full" should contain "failure"
+    And the syslog line with marker "hmac_full" should contain "mallory"
+    And the syslog line with marker "hmac_full" should contain "_hmac"
+    And the syslog line with marker "hmac_full" should contain "event_category"
 
   # --- Sensitivity label stripping with syslog ---
 
@@ -189,9 +189,9 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | actor_id | alice             |
       | email    | alice@example.com |
     And I close the logger
-    Then the syslog server should contain "strip_pii" within 10 seconds
-    And the syslog line with "strip_pii" should contain "alice"
-    And the syslog line with "strip_pii" should not contain "alice@example.com"
+    Then the syslog server should contain marker "strip_pii" within 10 seconds
+    And the syslog line with marker "strip_pii" should contain "alice"
+    And the syslog line with marker "strip_pii" should not contain "alice@example.com"
 
   Scenario: Non-excluded fields preserved when PII stripped from syslog
     Given a sensitivity test taxonomy
@@ -202,8 +202,8 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | actor_id | bob              |
       | email    | bob@example.com  |
     And I close the logger
-    Then the syslog server should contain "keep_fields" within 10 seconds
-    And the syslog line with "keep_fields" should contain "user_create"
-    And the syslog line with "keep_fields" should contain "bob"
-    And the syslog line with "keep_fields" should contain "success"
-    And the syslog line with "keep_fields" should not contain "bob@example.com"
+    Then the syslog server should contain marker "keep_fields" within 10 seconds
+    And the syslog line with marker "keep_fields" should contain "user_create"
+    And the syslog line with marker "keep_fields" should contain "bob"
+    And the syslog line with marker "keep_fields" should contain "success"
+    And the syslog line with marker "keep_fields" should not contain "bob@example.com"

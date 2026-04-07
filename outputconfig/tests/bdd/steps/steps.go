@@ -81,6 +81,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		if tc.FileDir != "" {
 			_ = os.RemoveAll(tc.FileDir)
 		}
+		_ = os.Unsetenv("AUDIT_BDD_DIR")
 		return goctx, nil
 	})
 

@@ -256,7 +256,7 @@ type mockMetadataWriter struct { //nolint:govet // fieldalignment: readability p
 func (m *mockMetadataWriter) WriteWithMetadata(data []byte, meta audit.EventMetadata) error {
 	m.metadataCalls++
 	m.lastMeta = meta
-	return m.Write(data) //nolint:wrapcheck // test helper
+	return m.Write(data)
 }
 
 // mockFrameworkFieldReceiver wraps MockOutput with FrameworkFieldReceiver.

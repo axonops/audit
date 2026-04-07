@@ -15,11 +15,20 @@
 package loki
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	audit "github.com/axonops/go-audit"
 )
+
+// FailingWriter is an io.Writer that always returns an error.
+// Used to test the gzip error fallback path in maybeCompress.
+type FailingWriter struct{}
+
+func (fw *FailingWriter) Write(_ []byte) (int, error) {
+	return 0, errors.New("injected compression failure")
+}
 
 // Exported aliases for internal functions needed by black-box tests.
 var (
@@ -116,6 +125,42 @@ func BuildTestCompressedPayload(tb testing.TB, input TestPayloadInput) []byte { 
 
 	o.groupByStream(batch)
 	o.buildPayload()
-	compressed := o.maybeCompress()
-	return append([]byte(nil), compressed...)
+	body, _, _ := o.maybeCompress()
+	return append([]byte(nil), body...)
+}
+
+// MaybeCompressForTest exposes maybeCompress for testing.
+func (o *Output) MaybeCompressForTest() (body []byte, compressed bool, err error) {
+	return o.maybeCompress()
+}
+
+// ForceCompressError replaces compressDest with a FailingWriter,
+// causing the gzip.Writer to fail on Write. This exercises the
+// gzip error fallback path in flush/maybeCompress.
+func (o *Output) ForceCompressError() {
+	o.compressDest = &FailingWriter{}
+	o.gzWriter = nil // force re-creation with failing dest
+}
+
+// PreparePayloadForTest creates an Output from test input, groups events
+// into streams, and builds the payload. Returns the Output ready for
+// compression testing via MaybeCompressForTest.
+func PreparePayloadForTest(tb testing.TB, input TestPayloadInput) *Output { //nolint:gocritic // hugeParam: test helper
+	tb.Helper()
+	o, batch := buildTestOutput(tb, input)
+	o.groupByStream(batch)
+	o.buildPayload()
+	return o
+}
+
+// RebuildPayloadForTest re-groups and rebuilds the payload. Used after
+// injecting a failing writer to re-prepare data for compression testing.
+func (o *Output) RebuildPayloadForTest(tb testing.TB, input TestPayloadInput) { //nolint:gocritic // hugeParam: test helper
+	tb.Helper()
+	batch := make([]lokiEntry, len(input.Events))
+	for i, e := range input.Events {
+		batch[i] = lokiEntry{data: e.Data, metadata: e.Meta}
+	}
+	o.groupByStream(batch)
+	o.buildPayload()
 }

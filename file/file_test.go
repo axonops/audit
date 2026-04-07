@@ -213,6 +213,27 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 	}
 }
 
+func TestFileOutput_NegativeMaxSizeMB_DefaultsTo100(t *testing.T) {
+	dir := t.TempDir()
+	out, err := file.New(file.Config{
+		Path:      filepath.Join(dir, "neg.log"),
+		MaxSizeMB: -1,
+	}, nil)
+	require.NoError(t, err, "negative MaxSizeMB should default, not error")
+	_ = out.Close()
+}
+
+func TestFileOutput_Permissions0000_Rejected(t *testing.T) {
+	dir := t.TempDir()
+	_, err := file.New(file.Config{
+		Path:        filepath.Join(dir, "noaccess.log"),
+		Permissions: "0000",
+	}, nil)
+	// "0000" is valid octal but the rotation library rejects zero mode.
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-zero")
+}
+
 func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 	dir := t.TempDir()
 	out, err := file.New(file.Config{

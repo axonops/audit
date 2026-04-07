@@ -392,6 +392,7 @@ func registerFormatterJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^the file should contain exactly (\d+) event$`, func(n int) error { return assertFileEventCount(tc, "default", n) })
 	ctx.Step(`^the file should contain a line starting with "([^"]*)"$`, func(p string) error { return assertFileLineStartsWith(tc, "default", p) })
 	ctx.Step(`^every event in the file should have exactly (\d+) line$`, func(n int) error { return assertFileExactlyNLines(tc, "default", n) })
+	ctx.Step(`^the file should be empty$`, func() error { return assertFileEventCount(tc, "default", 0) })
 }
 
 func registerFormatterEdgeCaseSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

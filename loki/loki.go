@@ -19,6 +19,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -88,13 +89,14 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	drops       dropLimiter // rate-limits buffer-full slog.Warn
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
-	streams     map[string]*lokiStream // reused across flushes
-	dynFields   []dynamicField         // reused dynamic field slice
-	keyBuf      bytes.Buffer           // reused stream key builder
-	payloadBuf  bytes.Buffer           // reused JSON payload buffer
-	compressBuf bytes.Buffer           // reused gzip output buffer
-	gzWriter    *gzip.Writer           // reused gzip writer
-	retryHint   time.Duration          // Retry-After hint from last 429
+	streams      map[string]*lokiStream // reused across flushes
+	dynFields    []dynamicField         // reused dynamic field slice
+	keyBuf       bytes.Buffer           // reused stream key builder
+	payloadBuf   bytes.Buffer           // reused JSON payload buffer
+	compressBuf  bytes.Buffer           // reused gzip output buffer
+	compressDest io.Writer              // target for gzip; defaults to &compressBuf
+	gzWriter     *gzip.Writer           // reused gzip writer
+	retryHint    time.Duration          // Retry-After hint from last 429
 }
 
 // New creates a new Loki [Output] from the given config. It validates
@@ -166,6 +168,7 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 		name:        lokiName(cfg.URL),
 		streams:     make(map[string]*lokiStream),
 	}
+	o.compressDest = &o.compressBuf // default; overridden in tests
 
 	go o.batchLoop(ctx)
 	return o, nil
@@ -347,8 +350,16 @@ func (o *Output) drainAndFlush(ctx context.Context, batch []lokiEntry) {
 func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 	o.groupByStream(batch)
 	o.buildPayload()
-	body := o.maybeCompress()
-	o.doPostWithRetry(ctx, body, len(batch))
+
+	body, compressed, err := o.maybeCompress()
+	if err != nil {
+		slog.Warn("audit: loki compression failed, sending uncompressed",
+			"error", err, "batch_size", len(batch))
+		body = o.payloadBuf.Bytes()
+		compressed = false
+	}
+
+	o.doPostWithRetry(ctx, body, len(batch), compressed)
 }
 
 // resetLokiTimer safely resets a timer, draining the channel first

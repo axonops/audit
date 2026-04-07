@@ -21,6 +21,7 @@ Feature: Per-Output Event Routing
     And the file should contain "route_inc_w"
     And the file should contain "route_inc_s"
     And the webhook event body should contain field "event_type" with value "auth_failure"
+    And the webhook should not contain event_type "user_create"
 
   Scenario: Include event types restricts output to specific events
     Given a logger with file receiving all events and webhook including event types "auth_failure"
@@ -52,6 +53,7 @@ Feature: Per-Output Event Routing
     And I close the logger
     And the file should contain "route_exc_w"
     And the file should contain "route_exc_s"
+    And the webhook should not contain event_type "user_create"
 
   # --- Validation ---
 

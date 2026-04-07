@@ -86,7 +86,7 @@ Feature: Metrics Interface
 
   Scenario: Serialization error records serialization metric
     Given mock metrics are configured
-    And a logger with panicking formatter and metrics
+    And a logger with error-returning formatter and metrics
     When I audit event "user_create" with required fields
     And I close the logger
     Then the metrics should have recorded a serialization error

@@ -95,9 +95,11 @@ func TestNewLogger_CustomDrainTimeout(t *testing.T) {
 }
 
 func TestNewLogger_DisabledNoOp(t *testing.T) {
+	out := testhelper.NewMockOutput("disabled-check")
 	logger, err := audit.NewLogger(
 		audit.Config{Version: 1, Enabled: false},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, logger)
@@ -111,4 +113,42 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 	assert.NoError(t, err)
 
 	require.NoError(t, logger.Close())
+	assert.Equal(t, 0, out.EventCount(), "disabled logger must not deliver events")
+}
+
+func TestNewLogger_NegativeBufferSize_DefaultsCorrectly(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, BufferSize: -1},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// Verify the defaulted buffer actually works by sending an event.
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "alice",
+	}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 1, out.EventCount(), "event should be delivered through defaulted buffer")
+}
+
+func TestNewLogger_NegativeDrainTimeout_DefaultsCorrectly(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true, DrainTimeout: -1},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "alice",
+	}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 1, out.EventCount(), "event should be delivered with defaulted drain timeout")
 }

@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -305,16 +306,16 @@ func (l *Logger) Close() error {
 		l.cancel()
 		l.waitForDrain()
 
+		var closeErrs []error
 		for _, oe := range l.entries {
 			if err := oe.output.Close(); err != nil {
 				slog.Error("audit: output close failed",
 					"output", oe.output.Name(),
 					"error", err)
-				if l.closeErr == nil {
-					l.closeErr = fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
-				}
+				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err))
 			}
 		}
+		l.closeErr = errors.Join(closeErrs...)
 
 		slog.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
@@ -582,7 +583,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 // deliverToOutputs fans out a single event to all matching outputs
 // for a given category. An empty category means the event is
 // uncategorised.
-func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) { //nolint:gocyclo,gocognit,cyclop // delivery pipeline with per-output MetadataWriter dispatch
+func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
 	severity := def.ResolvedSeverity()
 	meta := EventMetadata{
 		EventType: entry.eventType,
@@ -592,47 +593,74 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 	}
 
 	for _, oe := range l.entries {
-		if !oe.matchesEvent(entry.eventType, category, severity) {
-			if l.metrics != nil {
-				l.metrics.RecordOutputFiltered(oe.output.Name())
-			}
-			continue
-		}
-
-		var data []byte
-		if oe.formatOpts != nil && def.FieldLabels != nil {
-			data = l.formatWithExclusion(oe, entry, ts, def)
-		} else {
-			data = l.formatCached(oe, entry, ts, def, fc)
-		}
-		if data == nil {
-			continue
-		}
-
-		// Append event_category if enabled and the event has a category.
-		if category != "" && l.taxonomy.EmitEventCategory {
-			data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
-		}
-
-		// Compute and append HMAC if configured for this output.
-		// HMAC is computed over the complete payload at this point
-		// (after field stripping + event_category).
-		if oe.hmac != nil {
-			hmacHex := oe.hmac.computeHMACFast(data)
-			data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
-				{JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex)},
-				{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
-			})
-		}
-
-		var writeErr error
-		if oe.metadataWriter != nil {
-			writeErr = oe.metadataWriter.WriteWithMetadata(data, meta)
-		} else {
-			writeErr = oe.output.Write(data)
-		}
-		l.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
+		l.deliverToOutput(oe, entry, category, ts, def, fc, meta)
 	}
+}
+
+// deliverToOutput handles delivery to a single output with per-output
+// panic recovery. A panic in one output's Write (or format/HMAC path)
+// does not prevent delivery to subsequent outputs. This is critical
+// for the fan-out guarantee: a buggy output must not take down the
+// entire delivery pipeline.
+func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache, meta EventMetadata) { //nolint:gocyclo,gocognit,cyclop // per-output delivery with panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			slog.Error("audit: panic in output write",
+				"output", oe.output.Name(),
+				"event_type", entry.eventType,
+				"panic", r,
+				"stack", string(buf[:n]))
+			// Always record the panic in core metrics, even for
+			// DeliveryReporter outputs — the output clearly did not
+			// self-report if it panicked.
+			if l.metrics != nil {
+				l.metrics.RecordOutputError(oe.output.Name())
+			}
+		}
+	}()
+
+	if !oe.matchesEvent(entry.eventType, category, meta.Severity) {
+		if l.metrics != nil {
+			l.metrics.RecordOutputFiltered(oe.output.Name())
+		}
+		return
+	}
+
+	var data []byte
+	if oe.formatOpts != nil && def.FieldLabels != nil {
+		data = l.formatWithExclusion(oe, entry, ts, def)
+	} else {
+		data = l.formatCached(oe, entry, ts, def, fc)
+	}
+	if data == nil {
+		return
+	}
+
+	// Append event_category if enabled and the event has a category.
+	if category != "" && l.taxonomy.EmitEventCategory {
+		data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
+	}
+
+	// Compute and append HMAC if configured for this output.
+	// HMAC is computed over the complete payload at this point
+	// (after field stripping + event_category).
+	if oe.hmac != nil {
+		hmacHex := oe.hmac.computeHMACFast(data)
+		data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
+			{JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex)},
+			{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
+		})
+	}
+
+	var writeErr error
+	if oe.metadataWriter != nil {
+		writeErr = oe.metadataWriter.WriteWithMetadata(data, meta)
+	} else {
+		writeErr = oe.output.Write(data)
+	}
+	l.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
 }
 
 // PostField represents a field appended to serialised bytes after
@@ -956,19 +984,6 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		// Silently accept unknown fields.
 	}
 	return nil
-}
-
-// copyFields creates a shallow copy of the fields map to avoid data
-// races when the caller modifies the map after Audit returns.
-func copyFields(fields Fields) Fields {
-	if fields == nil {
-		return nil
-	}
-	cp := make(Fields, len(fields))
-	for k, v := range fields {
-		cp[k] = v
-	}
-	return cp
 }
 
 // isZeroValue reports whether v is a zero value for its type. It uses

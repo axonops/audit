@@ -267,8 +267,11 @@ outputs:
       permissions: "0600"
       compress: true
     hmac:
-      algorithm: "sha256"
-      salt: "${HMAC_SALT}"
+      enabled: true
+      salt:
+        version: "2026-Q1"
+        value: "${HMAC_SALT}"
+      hash: HMAC-SHA-256
 ```
 
 The [HMAC integrity](hmac-integrity.md) option adds a tamper-detection

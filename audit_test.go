@@ -925,6 +925,49 @@ func (e *errorOutput) Write(_ []byte) error { return nil }
 func (e *errorOutput) Close() error         { return e.closeErr }
 func (e *errorOutput) Name() string         { return e.name }
 
+func TestLogger_Close_MultipleOutputErrors(t *testing.T) {
+	errAlpha := errors.New("alpha broke")
+	errBeta := errors.New("beta broke")
+
+	outA := &errorOutput{name: "alpha", closeErr: errAlpha}
+	outB := &errorOutput{name: "beta", closeErr: errBeta}
+	outC := &errorOutput{name: "gamma"} // succeeds
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(outA, outB, outC),
+	)
+	require.NoError(t, err)
+
+	err = logger.Close()
+	require.Error(t, err)
+
+	// Both failures are reported via errors.Join.
+	assert.ErrorIs(t, err, errAlpha)
+	assert.ErrorIs(t, err, errBeta)
+	assert.Contains(t, err.Error(), "alpha")
+	assert.Contains(t, err.Error(), "beta")
+	// Successful output does not appear in the error.
+	assert.NotContains(t, err.Error(), "gamma")
+}
+
+func TestLogger_Close_AllOutputsCloseCalledOnError(t *testing.T) {
+	// Verify output B's Close() is called even when output A's Close() fails.
+	outA := &errorOutput{name: "fail-first", closeErr: errors.New("first fail")}
+	outB := testhelper.NewMockOutput("second")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(outA, outB),
+	)
+	require.NoError(t, err)
+
+	_ = logger.Close()
+	assert.True(t, outB.IsClosed(), "output B's Close() must be called even when A fails")
+}
+
 // ---------------------------------------------------------------------------
 // Filter tests
 // ---------------------------------------------------------------------------
@@ -1523,7 +1566,6 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// copyFields with nil input
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
@@ -1589,6 +1631,55 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithNamedOutput(out, nil, nil),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	// 50 goroutines auditing events.
+	for i := range 50 {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for range 10 {
+				_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+					"outcome": "success",
+				}))
+			}
+		}(i)
+	}
+
+	// 10 goroutines toggling routes.
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 5 {
+				_ = logger.SetOutputRoute("test", &audit.EventRoute{
+					IncludeCategories: []string{"write"},
+				})
+				_ = logger.SetOutputRoute("test", &audit.EventRoute{})
+			}
+		}()
+	}
+
+	// 1 goroutine closing.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = logger.Close()
+	}()
+
+	wg.Wait()
+	// Success = no panic, no race detector violation.
 }
 
 // ---------------------------------------------------------------------------
@@ -2773,21 +2864,60 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	}
 }
 
-func BenchmarkCopyFields(b *testing.B) {
-	fields := audit.Fields{
-		"outcome":    "success",
-		"actor_id":   "alice",
-		"source_ip":  "10.0.0.1",
-		"request_id": "550e8400-e29b-41d4-a716-446655440000",
-		"method":     "POST",
-		"path":       "/api/v1/schemas",
+func TestDropLimiter_FirstDropAlwaysTriggers(t *testing.T) {
+	t.Parallel()
+	dl := &audit.DropLimiterForTest{}
+	var triggered int
+	dl.Record(10*time.Second, func(dropped int64) {
+		triggered++
+		assert.Equal(t, int64(1), dropped)
+	})
+	assert.Equal(t, 1, triggered, "first drop must trigger warning")
+}
+
+func TestDropLimiter_SubsequentDropsSuppressed(t *testing.T) {
+	t.Parallel()
+	dl := &audit.DropLimiterForTest{}
+	var triggered int
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	// Second drop within interval should NOT trigger.
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	dl.Record(10*time.Second, func(_ int64) { triggered++ })
+	assert.Equal(t, 1, triggered, "drops within interval must not trigger")
+}
+
+func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"user_create":  {Required: []string{"outcome"}},
+			"health_check": {Required: []string{"outcome"}}, // uncategorised
+		},
 	}
 
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = audit.CopyFieldsForTest(fields)
-	}
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// health_check is uncategorised — always delivered by default.
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("health_check", audit.Fields{"outcome": "ok"})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount())
+
+	// Disable it explicitly.
+	require.NoError(t, logger.DisableEvent("health_check"))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("health_check", audit.Fields{"outcome": "ok"})))
+
+	// Close drains all pending events, guaranteeing processing is complete.
+	require.NoError(t, logger.Close())
+	assert.Equal(t, 1, out.EventCount(), "disabled uncategorised event must not be delivered")
 }
 
 // BenchmarkAudit_EndToEnd measures the full Audit() path including
@@ -3616,6 +3746,155 @@ events:
 		"HMAC should differ between outputs with different field stripping and different salts")
 }
 
+// TestHMAC_EndToEnd_DrainLoopVerification verifies that the HMAC produced
+// by the drain loop can be verified against the actual payload. Uses two
+// outputs sharing the same formatter: one with HMAC enabled, one without.
+// The non-HMAC output captures the exact base payload that HMAC is
+// computed over. We extract the HMAC from the HMAC output and verify it
+// against the non-HMAC output's raw bytes.
+func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
+	t.Parallel()
+
+	hmacOut := testhelper.NewMockOutput("with-hmac")
+	baseOut := testhelper.NewMockOutput("without-hmac")
+
+	salt := []byte("e2e-verification-salt-value!!")
+
+	tax := audit.Taxonomy{
+		Version:           1,
+		EmitEventCategory: true,
+		Categories:        map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
+		Events: map[string]*audit.EventDef{
+			"auth_failure": {Required: []string{"outcome", "actor_id"}},
+		},
+	}
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(hmacOut, nil, nil),
+		audit.WithOutputHMAC("with-hmac", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v1",
+			SaltValue:   salt,
+			Algorithm:   "HMAC-SHA-256",
+		}),
+		audit.WithNamedOutput(baseOut, nil, nil),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "eve",
+	}))
+	require.NoError(t, err)
+
+	require.True(t, hmacOut.WaitForEvents(1, 2*time.Second))
+	require.True(t, baseOut.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	// Extract the HMAC from the HMAC output.
+	hmacEvent := hmacOut.GetEvent(0)
+	hmacHex, ok := hmacEvent["_hmac"].(string)
+	require.True(t, ok, "HMAC output must contain _hmac field")
+	require.NotEmpty(t, hmacHex)
+
+	// The base output's raw bytes are the exact payload HMAC was computed over.
+	basePayload := baseOut.GetEvents()[0]
+
+	// Verify the HMAC against the base payload using the same salt.
+	verified, err := audit.VerifyHMAC(basePayload, hmacHex, salt, "HMAC-SHA-256")
+	require.NoError(t, err)
+	assert.True(t, verified,
+		"HMAC from drain loop must verify against the base payload captured by the non-HMAC output")
+}
+
+// TestHMAC_EndToEnd_SensitivityExclusion_Verification verifies that HMAC
+// computed after sensitivity label stripping can be verified against the
+// stripped payload. Uses a dual-output setup: the HMAC output has PII
+// exclusion and HMAC enabled; a second output has the same PII exclusion
+// but no HMAC. Both receive the same stripped payload, allowing us to
+// verify the HMAC against the second output's raw bytes.
+func TestHMAC_EndToEnd_SensitivityExclusion_Verification(t *testing.T) {
+	t.Parallel()
+
+	const taxYAML = `
+version: 1
+categories:
+  emit_event_category: true
+  write:
+    events: [user_create]
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields: [email, phone]
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email:
+        labels: [pii]
+      phone:
+        labels: [pii]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(taxYAML))
+	require.NoError(t, err)
+
+	salt := []byte("sensitivity-hmac-e2e-salt!!")
+
+	hmacOut := testhelper.NewMockOutput("hmac-stripped")
+	baseOut := testhelper.NewMockOutput("base-stripped")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		// Both outputs exclude PII — same payload, one with HMAC.
+		audit.WithNamedOutput(hmacOut, nil, nil, "pii"),
+		audit.WithOutputHMAC("hmac-stripped", &audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v1",
+			SaltValue:   salt,
+			Algorithm:   "HMAC-SHA-256",
+		}),
+		audit.WithNamedOutput(baseOut, nil, nil, "pii"),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+		"phone":    "+1-555-0100",
+	}))
+	require.NoError(t, err)
+
+	require.True(t, hmacOut.WaitForEvents(1, 2*time.Second))
+	require.True(t, baseOut.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, logger.Close())
+
+	// Verify email and phone are stripped from both outputs.
+	hmacEvent := hmacOut.GetEvent(0)
+	baseEvent := baseOut.GetEvent(0)
+	for _, out := range []map[string]interface{}{hmacEvent, baseEvent} {
+		_, hasEmail := out["email"]
+		_, hasPhone := out["phone"]
+		assert.False(t, hasEmail, "email should be stripped (PII)")
+		assert.False(t, hasPhone, "phone should be stripped (PII)")
+	}
+
+	// Extract HMAC and verify against the stripped base payload.
+	hmacHex, ok := hmacEvent["_hmac"].(string)
+	require.True(t, ok, "HMAC output must contain _hmac field")
+
+	basePayload := baseOut.GetEvents()[0]
+	verified, err := audit.VerifyHMAC(basePayload, hmacHex, salt, "HMAC-SHA-256")
+	require.NoError(t, err)
+	assert.True(t, verified,
+		"HMAC computed after PII stripping must verify against the stripped base payload")
+}
+
 // ---------------------------------------------------------------------------
 // MetadataWriter tests
 // ---------------------------------------------------------------------------
@@ -4362,4 +4641,74 @@ func TestTimezoneOverride(t *testing.T) {
 		"timezone override should appear in output")
 	assert.NotContains(t, buf.String(), `"timezone":"Local"`,
 		"auto-detected timezone should not appear when overridden")
+}
+
+// ---------------------------------------------------------------------------
+// formatWithExclusion error path (#316)
+// ---------------------------------------------------------------------------
+
+// exclusionErrorFormatter returns an error only when FormatOptions is non-nil
+// (i.e. when called through the formatWithExclusion path). This distinguishes
+// it from the formatCached path where opts is nil.
+type exclusionErrorFormatter struct{}
+
+func (e *exclusionErrorFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, opts *audit.FormatOptions) ([]byte, error) {
+	if opts != nil {
+		return nil, errors.New("format error on exclusion path")
+	}
+	return []byte(`{"ok":true}` + "\n"), nil
+}
+
+// TestFormatWithExclusion_ErrorPath verifies that when Format returns an error
+// through the formatWithExclusion path (sensitivity label stripping), the
+// event is dropped and the serialization error is recorded in metrics.
+func TestFormatWithExclusion_ErrorPath(t *testing.T) {
+	t.Parallel()
+
+	const taxYAML = `
+version: 1
+categories:
+  write:
+    events: [user_create]
+sensitivity:
+  labels:
+    pii:
+      description: "PII"
+      fields: [email]
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      email:
+        labels: [pii]
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(taxYAML))
+	require.NoError(t, err)
+
+	out := testhelper.NewMockOutput("excluded")
+	metrics := testhelper.NewMockMetrics()
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		// Excluding "pii" triggers formatWithExclusion (FormatOptions non-nil).
+		audit.WithNamedOutput(out, nil, &exclusionErrorFormatter{}, "pii"),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome": "success",
+		"email":   "alice@example.com",
+	}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+
+	// The event should be dropped — formatter returned error on exclusion path.
+	assert.Equal(t, 0, out.EventCount(),
+		"output should receive nothing when formatter errors on exclusion path")
+
+	// Serialization error metric should be recorded.
+	assert.Greater(t, metrics.GetSerializationErrorCount("user_create"), 0,
+		"serialization error metric must be recorded for format failure on exclusion path")
 }

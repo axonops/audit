@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
 
@@ -264,7 +265,8 @@ func capturedLines(tc *AuditTestContext) [][]byte {
 }
 
 // captureOutput is a simple audit.Output that stores raw event bytes.
-type captureOutput struct {
+type captureOutput struct { //nolint:govet // fieldalignment: readability preferred
+	mu     sync.Mutex
 	name   string
 	events [][]byte
 }
@@ -274,6 +276,8 @@ func newCaptureOutput(name string) *captureOutput {
 }
 
 func (o *captureOutput) Write(data []byte) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	cp := make([]byte, len(data))
 	copy(cp, data)
 	o.events = append(o.events, cp)
@@ -284,7 +288,11 @@ func (o *captureOutput) Close() error { return nil }
 func (o *captureOutput) Name() string { return o.name }
 
 func (o *captureOutput) Events() [][]byte {
-	return o.events
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	cp := make([][]byte, len(o.events))
+	copy(cp, o.events)
+	return cp
 }
 
 // registerHMACLabelSteps registers steps for testing HMAC with

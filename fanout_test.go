@@ -509,6 +509,38 @@ func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.
 	panic("formatter panic")
 }
 
+func TestFanout_PanicInOutputWrite_OtherOutputsStillReceive(t *testing.T) {
+	panicOut := &panicOnWriteOutput{MockOutput: *testhelper.NewMockOutput("panicker")}
+	survivor := testhelper.NewMockOutput("survivor")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(panicOut, survivor),
+	)
+	require.NoError(t, err)
+
+	// The panic in panicOut.Write is recovered per-output.
+	// The survivor output must still receive the event.
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, 0, panicOut.EventCount(), "panicking output should have 0 events (panic before recording)")
+	assert.Equal(t, 1, survivor.EventCount(), "survivor output must receive the event despite earlier panic")
+}
+
+// panicOnWriteOutput is an output whose Write always panics.
+type panicOnWriteOutput struct {
+	testhelper.MockOutput
+}
+
+func (p *panicOnWriteOutput) Write(_ []byte) error {
+	panic("output write panic")
+}
+
 func TestFanout_SharedFormatter_DeliversSameBytes(t *testing.T) {
 	out1 := testhelper.NewMockOutput("a")
 	out2 := testhelper.NewMockOutput("b")

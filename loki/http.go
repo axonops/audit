@@ -49,7 +49,7 @@ const maxResponseBody = 64 << 10 // 64 KiB
 // called from flush(), which runs in the single batchLoop goroutine.
 // The body []byte comes from maybeCompress() and points into Output
 // buffers that are safe to use because flush() is synchronous.
-func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int) {
+func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int, compressed bool) {
 	start := time.Now()
 	o.retryHint = 0 // clear stale hint from previous batch
 
@@ -74,7 +74,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			}
 		}
 
-		retryable, status, err := o.doPost(ctx, body)
+		retryable, status, err := o.doPost(ctx, body, compressed)
 		if err == nil {
 			o.recordSuccess(batchSize, time.Since(start))
 			return
@@ -107,13 +107,13 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 // (retryable, error). A nil error means success (2xx). Redirect
 // rejections and 4xx (except 429) are non-retryable. 5xx, 429, and
 // network errors are retryable.
-func (o *Output) doPost(ctx context.Context, body []byte) (retryable bool, statusCode int, err error) {
+func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retryable bool, statusCode int, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.cfg.URL, bytes.NewReader(body))
 	if err != nil {
 		return false, 0, fmt.Errorf("audit: loki request: %w", err)
 	}
 
-	o.applyRequestHeaders(req)
+	o.applyRequestHeaders(req, compressed)
 
 	resp, err := o.client.Do(req)
 	if err != nil {
@@ -151,7 +151,7 @@ func (o *Output) doPost(ctx context.Context, body []byte) (retryable bool, statu
 // headers are applied first; library-managed headers override them
 // (defence in depth — config validation already blocks restricted
 // header names).
-func (o *Output) applyRequestHeaders(req *http.Request) {
+func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 	// Consumer headers first.
 	for k, v := range o.cfg.Headers {
 		req.Header.Set(k, v)
@@ -159,7 +159,7 @@ func (o *Output) applyRequestHeaders(req *http.Request) {
 
 	// Library-managed headers override — these are non-negotiable.
 	req.Header.Set("Content-Type", "application/json")
-	if o.cfg.Compress {
+	if compressed {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
 

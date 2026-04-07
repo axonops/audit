@@ -16,6 +16,7 @@ package webhook
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -111,6 +112,22 @@ func TestValidateConfig(t *testing.T) {
 			},
 			wantErr: "max_retries",
 		},
+		{
+			name: "negative flush interval",
+			cfg: Config{
+				URL:           "https://example.com/webhook",
+				FlushInterval: -1 * time.Second,
+			},
+			wantErr: "flush_interval must not be negative",
+		},
+		{
+			name: "negative timeout",
+			cfg: Config{
+				URL:     "https://example.com/webhook",
+				Timeout: -1 * time.Second,
+			},
+			wantErr: "timeout must not be negative",
+		},
 	}
 
 	for _, tt := range tests {
@@ -145,4 +162,37 @@ func TestValidateConfig_BoundaryValues(t *testing.T) {
 		MaxRetries: MaxMaxRetries,
 	}
 	require.NoError(t, validateWebhookConfig(&cfg))
+}
+
+func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr string
+		cfg     Config
+	}{
+		{
+			name: "nonexistent CA",
+			cfg: Config{
+				URL:   "https://example.com/webhook",
+				TLSCA: "/nonexistent/ca.pem",
+			},
+			wantErr: "ca",
+		},
+		{
+			name: "nonexistent cert and key",
+			cfg: Config{
+				URL:     "https://example.com/webhook",
+				TLSCert: "/nonexistent/cert.pem",
+				TLSKey:  "/nonexistent/key.pem",
+			},
+			wantErr: "cert",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(&tt.cfg, nil, nil)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
 }

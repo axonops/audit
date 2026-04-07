@@ -222,6 +222,14 @@ func validateWebhookLimits(cfg *Config) error {
 		return fmt.Errorf("%w: webhook max_retries %d exceeds maximum %d",
 			audit.ErrConfigInvalid, cfg.MaxRetries, MaxMaxRetries)
 	}
+	if cfg.FlushInterval < 0 {
+		return fmt.Errorf("%w: webhook flush_interval must not be negative (got %v)",
+			audit.ErrConfigInvalid, cfg.FlushInterval)
+	}
+	if cfg.Timeout < 0 {
+		return fmt.Errorf("%w: webhook timeout must not be negative (got %v)",
+			audit.ErrConfigInvalid, cfg.Timeout)
+	}
 	return nil
 }
 

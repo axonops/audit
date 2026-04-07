@@ -133,6 +133,70 @@ audit: underlying ResponseWriter does not support hijacking
 
 ---
 
+## 🔐 HMAC Errors
+
+HMAC validation errors occur when `outputconfig.Load()` encounters an
+invalid HMAC configuration on an output, or when the programmatic API
+receives invalid HMAC parameters.
+
+| Error | When |
+|-------|------|
+| `audit: hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
+| `audit: hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
+| `audit: hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
+| `audit: hmac salt must be at least 16 bytes` | Salt is too short for security |
+| `audit: unknown hmac algorithm "X"` | Hash is not one of: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 |
+
+HMAC errors use `errors.New` / `fmt.Errorf` — use `strings.Contains` for matching, not `errors.Is`.
+
+---
+
+## 📡 Loki Output Errors
+
+| Error | When |
+|-------|------|
+| `url must not be empty` | Loki output has no URL configured |
+| `must be https` | URL uses HTTP without `allow_insecure_http: true` |
+| `must not contain credentials` | URL has embedded user:pass |
+| `mutually exclusive` | Both `basic_auth` and `bearer_token` are set |
+| `unknown dynamic label` | A `labels.dynamic` key is not one of the valid label names |
+| `invalid` static label name | Label name doesn't match `[a-zA-Z_][a-zA-Z0-9_]*` |
+| `loki does not support custom formatters` | `formatter: cef` or non-JSON on a Loki output |
+
+---
+
+## 📡 Webhook Output Errors
+
+| Error | When |
+|-------|------|
+| `url must not be empty` | Webhook has no URL configured |
+| `must be https` | URL uses HTTP without `allow_insecure_http: true` |
+| `must not contain credentials` | URL has embedded user:pass |
+| `batch_size must be at least 1` | Explicit zero or negative `batch_size` |
+| `max_retries must be at least 1` | Negative `max_retries` (zero defaults to 3) |
+| `buffer_size must be at least 1` | Explicit zero or negative `buffer_size` |
+| `batch_size N exceeds maximum` | `batch_size` > 10,000 |
+| `max_retries N exceeds maximum` | `max_retries` > 20 |
+| `flush_interval must not be negative` | Negative duration |
+| `timeout must not be negative` | Negative duration |
+| `CR/LF` in header | Header contains carriage return or line feed |
+
+---
+
+## 📡 Syslog Output Errors
+
+| Error | When |
+|-------|------|
+| `address must not be empty` | No syslog server address |
+| `network must be tcp, udp, or tcp+tls` | Invalid transport protocol |
+| `unknown syslog facility` | Facility name not in the standard set |
+| `max_retries N exceeds maximum 20` | `max_retries` > 20 |
+| `tls_cert and tls_key must both be set or both empty` | Only one of cert/key provided |
+| `hostname exceeds RFC 5424 maximum` | Hostname > 255 bytes |
+| `invalid byte` in hostname | Hostname contains non-PRINTUSASCII characters |
+
+---
+
 ## 📋 Taxonomy Errors
 
 ### `ErrTaxonomyInvalid`

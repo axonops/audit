@@ -622,6 +622,13 @@ func (p *panicFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.
 	panic("intentional panic in formatter")
 }
 
+// errorReturningFormatter returns an error on every Format call (no panic).
+type errorReturningFormatter struct{}
+
+func (e *errorReturningFormatter) Format(_ time.Time, _ string, _ audit.Fields, _ *audit.EventDef, _ *audit.FormatOptions) ([]byte, error) {
+	return nil, fmt.Errorf("intentional format error")
+}
+
 // devNullOutput discards all writes.
 type devNullOutput struct{}
 

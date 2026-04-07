@@ -50,7 +50,11 @@ CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=170406
 CEF:0|MyCompany|MyApp|1.0|auth_failure|An authentication attempt failed|8|rt=1704067200000 act=auth_failure suser=unknown outcome=failure reason=invalid_credentials cat=security
 ```
 
-> 💡 The `cat` extension (ArcSight `deviceEventCategory`) is appended automatically when the
+> 💡 The severity `|3|` and `|8|` come from the taxonomy's category-level severity settings
+> (e.g., `write: severity: 3`, `security: severity: 8`). The default category severity is 5
+> when not explicitly set.
+>
+> The `cat` extension (ArcSight `deviceEventCategory`) is appended automatically when the
 > event belongs to a category. See [Taxonomy: Event Category](taxonomy-validation.md#-event-category-in-output).
 
 ## ⚖️ CEF vs JSON

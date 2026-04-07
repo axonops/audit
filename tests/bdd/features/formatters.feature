@@ -164,6 +164,7 @@ Feature: Event Formatters
     When I audit event "user_create" with required fields
     And I close the logger
     Then no panic should have occurred
+    And the file should be empty
 
   Scenario: Per-output formatter overrides default
     Given a logger with two file outputs using JSON and CEF formatters

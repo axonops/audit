@@ -481,3 +481,33 @@ func TestValidateConfig_StaticLabelControlChars(t *testing.T) {
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "control characters")
 }
+
+func TestMaybeCompress_GzipError_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	input := loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"event_type":"test"}`), Meta: audit.EventMetadata{Severity: 5}},
+		},
+		StaticLabels: map[string]string{"env": "test"},
+		AppName:      "test",
+		Host:         "localhost",
+		Compress:     true,
+	}
+	o := loki.PreparePayloadForTest(t, input)
+	defer func() { _ = o.Close() }()
+
+	// Verify compression works normally first.
+	body, compressed, err := o.MaybeCompressForTest()
+	require.NoError(t, err)
+	assert.True(t, compressed, "normal compression should succeed")
+	assert.NotEmpty(t, body)
+
+	// Now inject the failing writer and rebuild payload.
+	o.ForceCompressError()
+	o.RebuildPayloadForTest(t, input)
+
+	_, _, err = o.MaybeCompressForTest()
+	require.Error(t, err, "maybeCompress should return error with failing writer")
+	assert.Contains(t, err.Error(), "gzip write")
+}

@@ -15,8 +15,7 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
-// CopyFieldsForTest exposes copyFields for benchmarking.
-var CopyFieldsForTest = copyFields
+import "time"
 
 // IsEnabledForTest checks whether the given event type is enabled in
 // the logger's current filter state. Lock-free, matching the
@@ -42,4 +41,14 @@ func (w *FormatCacheForTest) Get(f Formatter) ([]byte, bool) {
 // Put delegates to the unexported formatCache.put.
 func (w *FormatCacheForTest) Put(f Formatter, data []byte) {
 	w.C.put(f, data)
+}
+
+// DropLimiterForTest wraps dropLimiter for testing.
+type DropLimiterForTest struct {
+	D dropLimiter
+}
+
+// Record delegates to the unexported dropLimiter.record.
+func (w *DropLimiterForTest) Record(interval time.Duration, warnFn func(dropped int64)) {
+	w.D.record(interval, warnFn)
 }

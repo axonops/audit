@@ -430,6 +430,11 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 			},
 			wantErr: "tls file",
 		},
+		{
+			name:    "max_retries exceeds maximum",
+			cfg:     syslog.Config{Network: "udp", Address: "localhost:514", MaxRetries: 1000},
+			wantErr: "max_retries 1000 exceeds maximum 20",
+		},
 	}
 
 	for _, tt := range tests {
@@ -439,6 +444,23 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
+	// Create a CA file with invalid PEM content.
+	tmpFile, err := os.CreateTemp("", "bad-ca-*.pem")
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_, _ = tmpFile.WriteString("not valid pem data")
+	_ = tmpFile.Close()
+
+	_, err = syslog.New(&syslog.Config{
+		Network: "tcp+tls",
+		Address: "localhost:6514",
+		TLSCA:   tmpFile.Name(),
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse")
 }
 
 // ---------------------------------------------------------------------------
@@ -1733,7 +1755,7 @@ func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T
 	out, err := syslog.New(&syslog.Config{
 		Network:    "tcp",
 		Address:    addr,
-		MaxRetries: 50, // high so we never exhaust retries before Close fires
+		MaxRetries: 20, // max allowed; high so we never exhaust retries before Close fires
 	}, nil)
 	require.NoError(t, err)
 

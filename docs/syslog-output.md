@@ -287,8 +287,8 @@ See [TLS and mTLS Configuration](#tls-and-mtls-configuration) below.
 | `address` | string | *(required)* | Syslog server in `host:port` format |
 | `app_name` | string | `"audit"` | RFC 5424 APP-NAME header field |
 | `facility` | string | `"local0"` | Syslog facility name (see [Facility Values](#facility-values)) |
-| `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency |
-| `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Values <= 0 default to 10 |
+| `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency. **In container environments** (Docker, Kubernetes), `os.Hostname()` typically returns the container ID — set this explicitly to the pod name or service name for meaningful SIEM correlation. |
+| `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Range: 0-20 (0 defaults to 10, values > 20 rejected) |
 | `tls_ca` | string | *(none)* | Path to CA certificate for server verification |
 | `tls_cert` | string | *(none)* | Path to client certificate for mTLS |
 | `tls_key` | string | *(none)* | Path to client private key for mTLS |

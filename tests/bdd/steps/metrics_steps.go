@@ -164,6 +164,31 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		return nil
 	})
 
+	ctx.Step(`^a logger with error-returning formatter and metrics$`, func() error {
+		buf := &bytes.Buffer{}
+		tc.StdoutBuf = buf
+
+		stdoutOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+		if err != nil {
+			return fmt.Errorf("create stdout: %w", err)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithMetrics(tc.MockMetrics),
+			audit.WithFormatter(&errorReturningFormatter{}),
+			audit.WithOutputs(stdoutOut),
+		}
+
+		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
 	ctx.Step(`^a logger with error output and metrics$`, func() error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),

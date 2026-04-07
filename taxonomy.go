@@ -17,7 +17,6 @@ package audit
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"regexp"
 	"slices"
 	"sort"
@@ -199,7 +198,7 @@ var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 // the categories map (for Go-level construction where categories
 // are not set on EventDef directly) and building the field lookup
 // structures. Must be called after validation succeeds.
-func precomputeTaxonomy(t *Taxonomy) {
+func precomputeTaxonomy(t *Taxonomy) error {
 	// Derive EventDef.Categories from the categories map. This
 	// ensures Categories is populated for both YAML-parsed and
 	// Go-constructed taxonomies.
@@ -230,7 +229,7 @@ func precomputeTaxonomy(t *Taxonomy) {
 		precomputeEventDef(def)
 	}
 
-	precomputeSensitivity(t)
+	return precomputeSensitivity(t)
 }
 
 // resolveEventSeverity computes the effective severity for an event.
@@ -748,16 +747,15 @@ func compileSensitivityPatterns(sc *SensitivityConfig) error {
 // fields from all three sources: explicit per-event annotation, global
 // field name mapping, and regex patterns. Results are stored in
 // EventDef.FieldLabels for use during field stripping at delivery time.
-func precomputeSensitivity(t *Taxonomy) {
+func precomputeSensitivity(t *Taxonomy) error {
 	if t.Sensitivity == nil || len(t.Sensitivity.Labels) == 0 {
-		return
+		return nil
 	}
 	// Compile patterns. ValidateTaxonomy already checked pattern
 	// validity, so compilation errors here indicate a programming
 	// error (e.g., precomputeTaxonomy called without validation).
 	if err := compileSensitivityPatterns(t.Sensitivity); err != nil {
-		slog.Error("audit: unexpected pattern compilation failure in precomputeSensitivity", "error", err)
-		return
+		return fmt.Errorf("audit: sensitivity pattern compilation: %w", err)
 	}
 
 	globalFieldLabels := buildGlobalFieldLabels(t.Sensitivity)
@@ -768,6 +766,7 @@ func precomputeSensitivity(t *Taxonomy) {
 		}
 		resolveEventFieldLabels(def, t.Sensitivity, globalFieldLabels)
 	}
+	return nil
 }
 
 // buildGlobalFieldLabels builds a lookup from field names to the set

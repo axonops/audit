@@ -173,8 +173,8 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	// Phase 4-6: Parse top-level fields, validate version, resolve config.
 	// Extract ordered outputs separately (goccy/go-yaml decodes nested
 	// maps as map[string]any which loses key order).
-	orderedOutputs, _ := extractOutputsOrdered(data)
-	top, err := parseTopLevel(doc, orderedOutputs)
+	orderedOutputs, orderedErr := extractOutputsOrdered(data)
+	top, err := parseTopLevel(doc, orderedOutputs, orderedErr)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func defaultLoggerConfig() audit.Config {
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
-func parseTopLevel(doc, orderedOutputs yaml.MapSlice) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
+func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
 	if len(doc) == 0 {
 		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
 	}
@@ -393,6 +393,9 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice) (*topLevel, error) { //nol
 			result.tlsPolicyRaw = item.Value
 		case "outputs":
 			if orderedOutputs == nil {
+				if orderedErr != nil {
+					return nil, fmt.Errorf("%w: outputs: %w", ErrOutputConfigInvalid, orderedErr)
+				}
 				return nil, fmt.Errorf("%w: outputs must be a YAML mapping",
 					ErrOutputConfigInvalid)
 			}

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -138,6 +139,8 @@ func TestValidateConfig(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.ErrorIs(t, err, audit.ErrConfigInvalid,
+					"all webhook config validation errors must wrap audit.ErrConfigInvalid")
 			}
 		})
 	}

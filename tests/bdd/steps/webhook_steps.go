@@ -525,6 +525,7 @@ func registerWebhookThenBodySteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the received webhook event should have header "([^"]*)" with value "([^"]*)"$`, func(n, v string) error { return assertWebhookHeader(tc, n, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertWebhookBodyField(tc, f, v) })
 	ctx.Step(`^the webhook event body should contain field "([^"]*)"$`, func(f string) error { return assertWebhookBodyFieldPresent(tc, f) })
+	ctx.Step(`^the webhook should not contain event_type "([^"]*)"$`, func(eventType string) error { return assertWebhookNoEventType(tc, eventType) })
 }
 
 func registerWebhookThenLocalReceiverSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -822,6 +823,25 @@ func assertWebhookBodyFieldPresent(tc *AuditTestContext, field string) error {
 	}
 	if _, ok := body[field]; !ok {
 		return fmt.Errorf("field %q not found in webhook body (keys: %v)", field, mapKeys(body))
+	}
+	return nil
+}
+
+// assertWebhookNoEventType verifies that NO webhook event has the given
+// event_type. Used for routing exclusion tests.
+func assertWebhookNoEventType(tc *AuditTestContext, eventType string) error {
+	events, err := getWebhookEvents(tc.WebhookURL)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		var body map[string]any
+		if jErr := json.Unmarshal(event.Body, &body); jErr != nil {
+			continue
+		}
+		if et, ok := body["event_type"]; ok && fmt.Sprintf("%v", et) == eventType {
+			return fmt.Errorf("webhook unexpectedly contains event_type %q", eventType)
+		}
 	}
 	return nil
 }

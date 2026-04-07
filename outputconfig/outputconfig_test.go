@@ -849,6 +849,20 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 	assert.True(t, spy.closed.Load(), "output must be closed when buildOutputFormatter fails")
 }
 
+func TestLoad_ClosesEarlierOutputsWhenLaterFails(t *testing.T) {
+	spy := &spyOutput{}
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		return spy, nil
+	})
+	tax := testTaxonomy(t)
+	// First output (spy) succeeds. Second output (unknown type) fails.
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  good:\n    type: spy\n  bad:\n    type: nonexistent_type\n")
+	_, err := outputconfig.Load(data, &tax, nil)
+	require.Error(t, err)
+	assert.True(t, spy.closed.Load(),
+		"first output must be closed when second output construction fails")
+}
+
 func TestLoadResult_String_NoCredentials(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  console:\n    type: stdout\n")

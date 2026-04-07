@@ -25,6 +25,7 @@ permissions:
 #   cross-build — needs: lint; SKIPPED for docs-only
 #   integration — needs: test; SKIPPED for docs-only
 #   bdd x6 matrix — needs: test; SKIPPED for docs-only
+#   bdd-verify — needs: bdd; SKIPPED for docs-only; verifies all scenarios were executed
 #   benchmark — needs: test; SKIPPED for docs-only; SKIPPED on PRs/feature branches
 #   ci-pass — allows "skipped" results for docs-only PRs
 #   dependency-review — PR-only, blocks PRs adding vulnerable dependencies
@@ -337,11 +338,84 @@ jobs:
         run: make ${{ matrix.infra-up }}
 
       - name: Run BDD tests
-        run: make ${{ matrix.target }}
+        run: make ${{ matrix.target }} 2>&1 | tee /tmp/bdd-output.txt
+
+      - name: Extract scenario count
+        if: always()
+        run: |
+          # Count executed scenarios from go test -v subtest output.
+          # Each scenario becomes a "--- PASS: Test*Features/..." or "--- FAIL: Test*Features/..." line.
+          # Match both TestFeatures (main suite) and TestOutputConfigFeatures (outputconfig suite).
+          if [ -f /tmp/bdd-output.txt ]; then
+            count=$(grep -cE '^\s*--- (PASS|FAIL): Test(OutputConfig)?Features/' /tmp/bdd-output.txt || echo 0)
+          else
+            count=0
+          fi
+          echo "$count" > /tmp/bdd-count.txt
+          echo "BDD suite '${{ matrix.suite }}' executed $count scenarios"
+
+      - name: Upload scenario count
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bdd-count-${{ matrix.suite }}
+          path: /tmp/bdd-count.txt
+          retention-days: 1
 
       - name: Stop test infrastructure
         if: always() && matrix.infra-down != ''
         run: make ${{ matrix.infra-down }}
+
+  bdd-verify:
+    name: BDD Coverage Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [bdd, changes]
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Static tag coverage check
+        run: make test-bdd-verify
+
+      - name: Download all scenario counts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: bdd-count-*
+          path: /tmp/bdd-counts
+
+      - name: Verify executed scenario totals
+        run: |
+          expected=$(./scripts/count-bdd-scenarios.sh tests/bdd/features outputconfig/tests/bdd/features)
+          echo "Expected total scenarios: $expected"
+
+          # Sum all runner counts.
+          actual=0
+          for count_file in /tmp/bdd-counts/bdd-count-*/bdd-count.txt; do
+            if [ -f "$count_file" ]; then
+              suite_name=$(basename "$(dirname "$count_file")" | sed 's/bdd-count-//')
+              n=$(cat "$count_file")
+              echo "  $suite_name: $n scenarios"
+              actual=$((actual + n))
+            fi
+          done
+          echo "Actual total executed:    $actual"
+
+          if [ "$actual" -ne "$expected" ]; then
+            echo ""
+            echo "FAIL: scenario count mismatch!"
+            echo "  Expected: $expected (from feature files)"
+            echo "  Actual:   $actual (sum of runner executions)"
+            echo ""
+            echo "This means some scenarios were not executed by any runner."
+            echo "Check that all feature files have appropriate tags and that"
+            echo "the BDD matrix runner tag expressions cover all scenarios."
+            exit 1
+          fi
+
+          echo ""
+          echo "PASS: all $expected scenarios were executed across the BDD matrix."
 
   security:
     name: Security Scan
@@ -445,7 +519,7 @@ jobs:
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
-    needs: [changes, hygiene, lint, test, integration, bdd, security, cross-build, validate-release]
+    needs: [changes, hygiene, lint, test, integration, bdd, bdd-verify, security, cross-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed

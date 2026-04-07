@@ -85,13 +85,18 @@ func RegisteredOutputTypes() []string {
 	return types
 }
 
+// Compile-time assertions: namedOutput satisfies all optional output
+// interfaces so the wrapper is transparent to the core logger.
+var (
+	_ MetadataWriter         = (*namedOutput)(nil)
+	_ FrameworkFieldReceiver = (*namedOutput)(nil)
+)
+
 // namedOutput wraps an [Output] to override its [Output.Name] method
 // with a consumer-chosen name from the YAML config. All other methods
-// delegate to the inner output.
-//
-// This preserves [DestinationKeyer] behaviour: if the inner output
-// implements DestinationKeyer, the wrapper forwards DestinationKey()
-// to the inner output — destination collision detection is unaffected.
+// delegate to the inner output, including optional interfaces
+// ([MetadataWriter], [FrameworkFieldReceiver], [DestinationKeyer],
+// [DeliveryReporter]).
 type namedOutput struct {
 	Output
 	outputName string
@@ -121,17 +126,39 @@ func (n *namedOutput) ReportsDelivery() bool {
 	return false
 }
 
+// WriteWithMetadata forwards to the inner output if it implements
+// [MetadataWriter]. This preserves per-event metadata (severity,
+// category, timestamp) for outputs like syslog that map audit
+// severity to protocol-level severity. When the inner output does
+// not implement MetadataWriter, the call falls back to plain Write.
+func (n *namedOutput) WriteWithMetadata(data []byte, meta EventMetadata) error {
+	if mw, ok := n.Output.(MetadataWriter); ok {
+		return mw.WriteWithMetadata(data, meta) //nolint:wrapcheck // transparent proxy
+	}
+	return n.Write(data)
+}
+
+// SetFrameworkFields forwards to the inner output if it implements
+// [FrameworkFieldReceiver]. This preserves framework field injection
+// for outputs like Loki that use app_name, host, timezone, and pid
+// as stream labels.
+func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int) {
+	if fr, ok := n.Output.(FrameworkFieldReceiver); ok {
+		fr.SetFrameworkFields(appName, host, timezone, pid)
+	}
+}
+
 // WrapOutput wraps an [Output] with a consumer-chosen name. The
 // returned output delegates all methods to the inner output except
 // [Output.Name], which returns the provided name.
 //
-// The returned output always satisfies [DestinationKeyer] and
-// [DeliveryReporter] regardless of the inner output. When the inner
-// output does not implement these interfaces, the wrapper returns
-// zero values ("" and false respectively), which opt out of the
-// corresponding behaviour. This preserves destination collision
-// detection (via [DestinationKeyer]) and delivery self-reporting
-// (via [DeliveryReporter]) for outputs that support them.
+// The returned output always satisfies [DestinationKeyer],
+// [DeliveryReporter], [MetadataWriter], and [FrameworkFieldReceiver]
+// regardless of the inner output. When the inner output does not
+// implement these interfaces, the wrapper returns zero-value behaviour:
+// empty string for DestinationKey, false for ReportsDelivery,
+// delegation to Write for WriteWithMetadata, and no-op for
+// SetFrameworkFields.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

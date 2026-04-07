@@ -352,6 +352,7 @@ func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(out),
 	}
+	opts = append(opts, tc.Options...)
 
 	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {
@@ -381,6 +382,7 @@ func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) err
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(out),
 	}
+	opts = append(opts, tc.Options...)
 
 	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
 	if err != nil {

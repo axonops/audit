@@ -181,7 +181,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 	if err != nil {
 		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
 	}
-	return output, nil
+	return audit.WrapOutput(output, name), nil
 }
 
 // parseDynamicLabels converts the YAML dynamic labels map into the

@@ -896,11 +896,6 @@ func buildHMACConfig(name string, raw any) (*audit.HMACConfig, error) {
 	return cfg, nil
 }
 
-// toMapSlice converts a raw YAML value to yaml.MapSlice. If the value
-// is already a yaml.MapSlice it is returned directly. If it is a
-// map[string]any, it is marshalled and unmarshalled to preserve the
-// MapSlice contract (though ordering from map[string]any is not
-// guaranteed by Go maps).
 // outputsOrderHelper is used to extract outputs with preserved key
 // ordering. goccy/go-yaml decodes nested mappings as map[string]any
 // which loses order. This struct uses yaml.MapSlice for the outputs

@@ -225,23 +225,22 @@ func registerSyslogSeverityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 }
 
 func registerSyslogSeverityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the syslog line with the marker should start with "([^"]*)"$`,
-		func(prefix string) error {
+	ctx.Step(`^the syslog line with the marker should contain PRI "([^"]*)"$`,
+		func(pri string) error {
 			m, ok := tc.Markers["default"]
 			if !ok {
 				return fmt.Errorf("no default marker set")
 			}
-			return assertSyslogMarkerLineStartsWith(m, prefix)
+			return assertSyslogMarkerLineContainsPRI(m, pri)
 		})
 
-	ctx.Step(`^the syslog line with "([^"]*)" should start with "([^"]*)"$`,
-		func(searchMarker, prefix string) error {
-			// searchMarker may be a marker name or literal text.
+	ctx.Step(`^the syslog line with "([^"]*)" should contain PRI "([^"]*)"$`,
+		func(searchMarker, pri string) error {
 			m, ok := tc.Markers[searchMarker]
 			if !ok {
-				m = searchMarker // fall back to literal
+				m = searchMarker
 			}
-			return assertSyslogMarkerLineStartsWith(m, prefix)
+			return assertSyslogMarkerLineContainsPRI(m, pri)
 		})
 
 	ctx.Step(`^the syslog line with "([^"]*)" should not contain "([^"]*)"$`,
@@ -267,16 +266,20 @@ func registerSyslogSeverityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 // assertSyslogMarkerLineStartsWith finds the syslog line containing
 // the marker and asserts it starts with the given prefix (typically
 // an RFC 5424 PRI field like "<131>").
-func assertSyslogMarkerLineStartsWith(searchMarker, prefix string) error {
+// assertSyslogMarkerLineContainsPRI finds the syslog line containing
+// the marker and asserts it contains "PRI=NNN" where NNN is the
+// expected priority value. The PRI= prefix comes from the syslog-ng
+// destination template: template("PRI=${PRI} ${MSG}\n").
+func assertSyslogMarkerLineContainsPRI(searchMarker, expectedPRI string) error {
+	priToken := "PRI=" + expectedPRI
 	log := readSyslogLogFromDocker()
 	for _, line := range strings.Split(log, "\n") {
 		if strings.Contains(line, searchMarker) {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, prefix) {
+			if strings.Contains(line, priToken) {
 				return nil
 			}
-			return fmt.Errorf("syslog line with marker %q starts with %q, want prefix %q\nfull line: %s",
-				searchMarker, trimmed[:min(len(trimmed), 10)], prefix, trimmed)
+			return fmt.Errorf("syslog line with marker %q does not contain %q\nfull line: %s",
+				searchMarker, priToken, strings.TrimSpace(line))
 		}
 	}
 	return fmt.Errorf("no syslog line found with marker %q", searchMarker)

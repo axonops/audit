@@ -446,6 +446,21 @@ func TestCEFFormatter_AllDefaultFieldMappings(t *testing.T) {
 	}
 }
 
+func TestCEFFormatter_EventDefDescription(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
+	def := &audit.EventDef{
+		Required:    []string{"outcome"},
+		Description: "A schema was registered",
+	}
+	data, err := f.Format(testTime, "schema_register", audit.Fields{"outcome": "success"}, def, nil)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "A schema was registered",
+		"CEF header should contain EventDef.Description")
+}
+
 func TestCEFFormatter_CustomFieldMapping(t *testing.T) {
 	f := &audit.CEFFormatter{
 		Vendor:  "V",

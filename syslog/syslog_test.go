@@ -446,6 +446,23 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 	}
 }
 
+func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
+	// Create a CA file with invalid PEM content.
+	tmpFile, err := os.CreateTemp("", "bad-ca-*.pem")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	_, _ = tmpFile.WriteString("not valid pem data")
+	_ = tmpFile.Close()
+
+	_, err = syslog.New(&syslog.Config{
+		Network: "tcp+tls",
+		Address: "localhost:6514",
+		TLSCA:   tmpFile.Name(),
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse")
+}
+
 // ---------------------------------------------------------------------------
 // Write / Close contract
 // ---------------------------------------------------------------------------

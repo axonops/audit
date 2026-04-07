@@ -1755,7 +1755,7 @@ func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T
 	out, err := syslog.New(&syslog.Config{
 		Network:    "tcp",
 		Address:    addr,
-		MaxRetries: 50, // high so we never exhaust retries before Close fires
+		MaxRetries: 20, // max allowed; high so we never exhaust retries before Close fires
 	}, nil)
 	require.NoError(t, err)
 

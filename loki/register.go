@@ -20,7 +20,7 @@ import (
 	"time"
 
 	audit "github.com/axonops/go-audit"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 func init() {
@@ -86,9 +86,9 @@ type yamlTLSPolicy struct {
 // yamlDuration is a time.Duration that unmarshals from a YAML string.
 type yamlDuration time.Duration
 
-func (d *yamlDuration) UnmarshalYAML(value *yaml.Node) error {
+func (d *yamlDuration) UnmarshalYAML(data []byte) error {
 	var s string
-	if err := value.Decode(&s); err != nil {
+	if err := yaml.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("decode duration: %w", err)
 	}
 	parsed, err := time.ParseDuration(s)
@@ -121,8 +121,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 	}
 
 	var yc yamlLokiConfig
-	dec := yaml.NewDecoder(bytes.NewReader(rawConfig))
-	dec.KnownFields(true)
+	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
 		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
 	}

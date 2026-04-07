@@ -15,11 +15,11 @@
 package outputconfig
 
 import (
-	"bytes"
 	"fmt"
 
+	"github.com/goccy/go-yaml"
+
 	audit "github.com/axonops/go-audit"
-	"gopkg.in/yaml.v3"
 )
 
 // yamlFormatterConfig is the YAML representation of a formatter.
@@ -34,42 +34,45 @@ type yamlFormatterConfig struct { //nolint:govet // fieldalignment: readability 
 	Version   string `yaml:"version"`
 }
 
-// extractFormatterType returns the formatter type string from a YAML
-// node without constructing the formatter. Returns "" for nil nodes
-// or nodes with no explicit type (which default to JSON).
-func extractFormatterType(node *yaml.Node) string {
-	if node == nil {
+// extractFormatterType returns the formatter type string from a raw
+// YAML value without constructing the formatter. Returns "" for nil
+// values or values with no explicit type (which default to JSON).
+func extractFormatterType(raw any) string {
+	if raw == nil {
 		return ""
 	}
-	if node.Kind == yaml.ScalarNode {
-		return node.Value
+	// Scalar: formatter: cef
+	if s, ok := raw.(string); ok {
+		return s
 	}
-	if node.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			if node.Content[i].Value == "type" {
-				return node.Content[i+1].Value
+	// Mapping: formatter: { type: cef, ... }
+	if m, ok := raw.(map[string]any); ok {
+		if t, ok := m["type"]; ok {
+			if s, ok := t.(string); ok {
+				return s
 			}
 		}
 	}
 	return ""
 }
 
-// buildFormatter constructs a [audit.Formatter] from a YAML node.
-// Returns nil if the node is nil or empty (use logger default).
+// buildFormatter constructs an [audit.Formatter] from a raw YAML value.
+// Returns nil if the value is nil or empty (use logger default).
 // Returns an error for unknown formatter types or invalid options.
-func buildFormatter(node *yaml.Node) (audit.Formatter, error) {
-	if node == nil || (node.Kind == yaml.ScalarNode && node.Value == "") {
+func buildFormatter(raw any) (audit.Formatter, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	if s, ok := raw.(string); ok && s == "" {
 		return nil, nil
 	}
 
-	fmtBytes, marshalErr := yaml.Marshal(node)
+	fmtBytes, marshalErr := yaml.Marshal(raw)
 	if marshalErr != nil {
 		return nil, fmt.Errorf("formatter: %w", marshalErr)
 	}
 	var cfg yamlFormatterConfig
-	dec := yaml.NewDecoder(bytes.NewReader(fmtBytes))
-	dec.KnownFields(true)
-	if err := dec.Decode(&cfg); err != nil {
+	if err := yaml.UnmarshalWithOptions(fmtBytes, &cfg, yaml.DisallowUnknownField()); err != nil {
 		return nil, fmt.Errorf("formatter: %w", err)
 	}
 

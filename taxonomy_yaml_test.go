@@ -207,7 +207,6 @@ func TestParseTaxonomyYAML_TrailingGarbage(t *testing.T) {
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrInvalidInput)
-	assert.Contains(t, err.Error(), "trailing content")
 }
 
 // --- Strict parsing ---

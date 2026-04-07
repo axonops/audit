@@ -94,7 +94,7 @@ force-updated once created.
 ## Dependencies
 
 Dependencies are kept minimal. The core library depends on
-`gopkg.in/yaml.v3` (taxonomy parsing) and `go-syncmap` (lock-free
+`github.com/goccy/go-yaml` (taxonomy parsing) and `go-syncmap` (lock-free
 category lookups). Output modules carry their own dependencies
 (e.g., `github.com/axonops/srslog` for syslog).
 

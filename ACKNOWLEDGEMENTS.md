@@ -7,7 +7,7 @@ grateful to their authors and contributors.
 
 | Project | License | Copyright | Used For |
 |---------|---------|-----------|----------|
-| [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) | MIT / Apache-2.0 | 2011-2016 Canonical Ltd. | YAML parsing for taxonomy and output configuration |
+| [github.com/goccy/go-yaml](https://github.com/goccy/go-yaml) | MIT | Masaaki Goshima | YAML parsing for taxonomy and output configuration |
 | [github.com/axonops/srslog](https://github.com/axonops/srslog) | BSD-3-Clause | 2015 Rackspace | RFC 5424 syslog client (fork of [gravwell/srslog](https://github.com/gravwell/srslog)) |
 | [github.com/rgooding/go-syncmap](https://github.com/rgooding/go-syncmap) | Apache-2.0 | Richard Gooding | Generic `sync.Map` for lock-free category lookups |
 

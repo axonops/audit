@@ -24,7 +24,7 @@ import (
 	"time"
 
 	audit "github.com/axonops/go-audit"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // ErrOutputConfigInvalid is the sentinel error wrapped by output
@@ -155,15 +155,15 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 			ErrOutputConfigInvalid, len(data), MaxOutputConfigSize)
 	}
 
-	// Phase 2: Parse top-level YAML.
-	var doc yaml.Node
+	// Phase 2: Parse top-level YAML into a MapSlice (preserves key ordering).
+	var doc yaml.MapSlice
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
 	}
 
 	// Phase 3: Reject multi-document.
-	var discard yaml.Node
+	var discard any
 	if err := dec.Decode(&discard); err == nil {
 		return nil, fmt.Errorf("%w: multiple YAML documents", ErrOutputConfigInvalid)
 	} else if !errors.Is(err, io.EOF) {
@@ -171,31 +171,24 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	}
 
 	// Phase 4-6: Parse top-level fields, validate version, resolve config.
-	top, err := parseTopLevel(&doc)
+	// Extract ordered outputs separately (goccy/go-yaml decodes nested
+	// maps as map[string]any which loses key order).
+	orderedOutputs, _ := extractOutputsOrdered(data)
+	top, err := parseTopLevel(doc, orderedOutputs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Phase 7: Process outputs from the raw YAML node (preserves order,
+	// Phase 7: Process outputs from the raw MapSlice (preserves order,
 	// detects duplicate names).
-	if top.outputsNode == nil {
-		return nil, fmt.Errorf("%w: at least one output is required",
-			ErrOutputConfigInvalid)
-	}
-	if top.outputsNode.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%w: outputs must be a YAML mapping",
-			ErrOutputConfigInvalid)
-	}
-
-	outputNodes := top.outputsNode.Content
-	if len(outputNodes) == 0 {
+	if len(top.outputsRaw) == 0 {
 		return nil, fmt.Errorf("%w: at least one output is required",
 			ErrOutputConfigInvalid)
 	}
 
 	// Pre-count outputs before constructing any (prevents resource
 	// exhaustion from a config with hundreds of output entries).
-	outputCount := len(outputNodes) / 2
+	outputCount := len(top.outputsRaw)
 	if outputCount > MaxOutputCount {
 		return nil, fmt.Errorf("%w: %d outputs exceed maximum %d",
 			ErrOutputConfigInvalid, outputCount, MaxOutputCount)
@@ -209,12 +202,15 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	}
 
 	seen := make(map[string]struct{})
-	var outputs []NamedOutput
+	outputs := make([]NamedOutput, 0, outputCount)
 
-	for i := 0; i+1 < len(outputNodes); i += 2 {
-		nameNode := outputNodes[i]
-		valueNode := outputNodes[i+1]
-		name := nameNode.Value
+	for _, item := range top.outputsRaw {
+		name, ok := item.Key.(string)
+		if !ok {
+			closeAll(outputs)
+			return nil, fmt.Errorf("%w: output name must be a string",
+				ErrOutputConfigInvalid)
+		}
 
 		if _, dup := seen[name]; dup {
 			closeAll(outputs)
@@ -223,7 +219,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, valueNode, taxonomy, top.tlsPolicyNode, top.appName, top.host, coreMetrics)
+		no, err := buildOutput(name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, coreMetrics)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -270,8 +266,8 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 
 // topLevel holds parsed top-level YAML fields.
 type topLevel struct {
-	outputsNode    *yaml.Node
-	tlsPolicyNode  *yaml.Node // global tls_policy, injected into outputs that don't specify their own
+	outputsRaw     yaml.MapSlice // preserves output declaration order
+	tlsPolicyRaw   any           // global tls_policy, injected into outputs that don't specify their own
 	standardFields map[string]string
 	appName        string
 	host           string
@@ -279,48 +275,31 @@ type topLevel struct {
 	config         audit.Config
 }
 
-// parseLoggerConfig parses the logger: YAML node into an audit.Config.
-// It walks the mapping manually (like parseTopLevel) so that env-var-
-// expanded string values are correctly handled for numeric fields.
-func parseLoggerConfig(node *yaml.Node) (audit.Config, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
-	if node.Kind != yaml.MappingNode {
-		return audit.Config{}, fmt.Errorf("expected mapping, got %v", node.Kind)
+// parseLoggerConfig parses the logger: value into an audit.Config.
+// It accepts any (expected to be map[string]any after YAML decoding)
+// and walks the map manually so that env-var-expanded string values
+// are correctly handled for numeric fields.
+func parseLoggerConfig(raw any) (audit.Config, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return audit.Config{}, fmt.Errorf("expected mapping, got %T", raw)
 	}
 	cfg := audit.Config{
 		Version: 1,
 		Enabled: true,
 	}
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i].Value
-		val := node.Content[i+1]
+	for key, val := range m {
 		switch key {
 		case "enabled":
-			var v bool
-			if err := val.Decode(&v); err != nil {
-				var s string
-				if sErr := val.Decode(&s); sErr != nil {
-					return cfg, fmt.Errorf("enabled: %w", err)
-				}
-				parsed, pErr := strconv.ParseBool(s)
-				if pErr != nil {
-					return cfg, fmt.Errorf("enabled: invalid boolean %q: %w", s, pErr)
-				}
-				v = parsed
+			v, err := toBool(val)
+			if err != nil {
+				return cfg, fmt.Errorf("enabled: %w", err)
 			}
 			cfg.Enabled = v
 		case "buffer_size":
-			var v int
-			if err := val.Decode(&v); err != nil {
-				// After env expansion, the value may be a string.
-				var s string
-				if sErr := val.Decode(&s); sErr != nil {
-					return cfg, fmt.Errorf("buffer_size: %w", err)
-				}
-				n, pErr := strconv.Atoi(s)
-				if pErr != nil {
-					return cfg, fmt.Errorf("buffer_size: invalid integer %q: %w", s, pErr)
-				}
-				v = n
+			v, err := toInt(val)
+			if err != nil {
+				return cfg, fmt.Errorf("buffer_size: %w", err)
 			}
 			if v < 0 {
 				return cfg, fmt.Errorf("buffer_size: must be non-negative, got %d", v)
@@ -330,8 +309,8 @@ func parseLoggerConfig(node *yaml.Node) (audit.Config, error) { //nolint:gocyclo
 			}
 			cfg.BufferSize = v
 		case "drain_timeout":
-			var s string
-			if err := val.Decode(&s); err != nil {
+			s, err := toString(val)
+			if err != nil {
 				return cfg, fmt.Errorf("drain_timeout: %w", err)
 			}
 			if s != "" {
@@ -348,8 +327,8 @@ func parseLoggerConfig(node *yaml.Node) (audit.Config, error) { //nolint:gocyclo
 				cfg.DrainTimeout = d
 			}
 		case "validation_mode":
-			var s string
-			if err := val.Decode(&s); err != nil {
+			s, err := toString(val)
+			if err != nil {
 				return cfg, fmt.Errorf("validation_mode: %w", err)
 			}
 			if s != "" {
@@ -361,17 +340,9 @@ func parseLoggerConfig(node *yaml.Node) (audit.Config, error) { //nolint:gocyclo
 				}
 			}
 		case "omit_empty":
-			var v bool
-			if err := val.Decode(&v); err != nil {
-				var s string
-				if sErr := val.Decode(&s); sErr != nil {
-					return cfg, fmt.Errorf("omit_empty: %w", err)
-				}
-				parsed, pErr := strconv.ParseBool(s)
-				if pErr != nil {
-					return cfg, fmt.Errorf("omit_empty: invalid boolean %q: %w", s, pErr)
-				}
-				v = parsed
+			v, err := toBool(val)
+			if err != nil {
+				return cfg, fmt.Errorf("omit_empty: %w", err)
 			}
 			cfg.OmitEmpty = v
 		default:
@@ -391,62 +362,82 @@ func defaultLoggerConfig() audit.Config {
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
-func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+func parseTopLevel(doc, orderedOutputs yaml.MapSlice) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
+	if len(doc) == 0 {
 		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
-	}
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%w: expected a YAML mapping at top level", ErrOutputConfigInvalid)
 	}
 
 	var (
-		version    int
-		loggerNode *yaml.Node
-		result     topLevel
+		version   int
+		loggerRaw any
+		result    topLevel
 	)
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key := root.Content[i].Value
-		val := root.Content[i+1]
+	for _, item := range doc {
+		key, ok := item.Key.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: top-level key must be a string", ErrOutputConfigInvalid)
+		}
 		switch key {
 		case "version":
-			if err := val.Decode(&version); err != nil {
+			v, err := toInt(item.Value)
+			if err != nil {
 				return nil, fmt.Errorf("%w: version: %w", ErrOutputConfigInvalid, err)
 			}
+			version = v
 		case "default_formatter":
 			return nil, fmt.Errorf("%w: default_formatter has been removed; set formatter on each output individually",
 				ErrOutputConfigInvalid)
 		case "logger":
-			loggerNode = val
+			loggerRaw = item.Value
 		case "tls_policy":
-			result.tlsPolicyNode = val
+			result.tlsPolicyRaw = item.Value
 		case "outputs":
-			result.outputsNode = val
+			if orderedOutputs == nil {
+				return nil, fmt.Errorf("%w: outputs must be a YAML mapping",
+					ErrOutputConfigInvalid)
+			}
+			result.outputsRaw = orderedOutputs
 		case "app_name":
-			if err := expandEnvInNode(val, "app_name"); err != nil {
+			expanded, err := expandEnvInValue(item.Value, "app_name")
+			if err != nil {
 				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, err)
 			}
-			result.appName = val.Value
+			s, sErr := toString(expanded)
+			if sErr != nil {
+				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, sErr)
+			}
+			result.appName = s
 		case "host":
-			if err := expandEnvInNode(val, "host"); err != nil {
+			expanded, err := expandEnvInValue(item.Value, "host")
+			if err != nil {
 				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, err)
 			}
-			result.host = val.Value
+			s, sErr := toString(expanded)
+			if sErr != nil {
+				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, sErr)
+			}
+			result.host = s
 		case "timezone":
-			if err := expandEnvInNode(val, "timezone"); err != nil {
+			expanded, err := expandEnvInValue(item.Value, "timezone")
+			if err != nil {
 				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, err)
 			}
-			if val.Value == "" {
+			s, sErr := toString(expanded)
+			if sErr != nil {
+				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, sErr)
+			}
+			if s == "" {
 				return nil, fmt.Errorf("%w: timezone must be non-empty when specified", ErrOutputConfigInvalid)
 			}
-			result.timezone = val.Value
+			result.timezone = s
 		case "standard_fields":
-			if err := expandEnvInNode(val, "standard_fields"); err != nil {
+			expanded, err := expandEnvInValue(item.Value, "standard_fields")
+			if err != nil {
 				return nil, fmt.Errorf("%w: standard_fields: %w", ErrOutputConfigInvalid, err)
 			}
-			sf, err := parseStandardFields(val)
-			if err != nil {
-				return nil, err
+			sf, sfErr := parseStandardFields(expanded)
+			if sfErr != nil {
+				return nil, sfErr
 			}
 			result.standardFields = sf
 		default:
@@ -459,13 +450,14 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 			ErrOutputConfigInvalid, version)
 	}
 
-	if loggerNode != nil {
-		if err := expandEnvInNode(loggerNode, "logger"); err != nil {
-			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
-		}
-		cfg, err := parseLoggerConfig(loggerNode)
+	if loggerRaw != nil {
+		expanded, err := expandEnvInValue(loggerRaw, "logger")
 		if err != nil {
 			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
+		}
+		cfg, cfgErr := parseLoggerConfig(expanded)
+		if cfgErr != nil {
+			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, cfgErr)
 		}
 		result.config = cfg
 	} else {
@@ -475,20 +467,20 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 	// Expand env vars and validate global TLS policy eagerly so that
 	// typos and unknown fields are caught at startup, not deferred to
 	// individual output factory invocations.
-	if result.tlsPolicyNode != nil {
-		if err := expandEnvInNode(result.tlsPolicyNode, "tls_policy"); err != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
-		}
-		// Validate structure — reject unknown fields like typos.
-		tlsBytes, err := yaml.Marshal(result.tlsPolicyNode)
+	if result.tlsPolicyRaw != nil {
+		expanded, err := expandEnvInValue(result.tlsPolicyRaw, "tls_policy")
 		if err != nil {
 			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
 		}
-		dec := yaml.NewDecoder(bytes.NewReader(tlsBytes))
-		dec.KnownFields(true)
+		result.tlsPolicyRaw = expanded
+		// Validate structure — reject unknown fields like typos.
+		tlsBytes, mErr := yaml.Marshal(expanded)
+		if mErr != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, mErr)
+		}
 		var validated yamlTLSPolicy
-		if err := dec.Decode(&validated); err != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
+		if uErr := yaml.UnmarshalWithOptions(tlsBytes, &validated, yaml.DisallowUnknownField()); uErr != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, uErr)
 		}
 	}
 
@@ -511,26 +503,30 @@ func parseTopLevel(doc *yaml.Node) (*topLevel, error) { //nolint:gocyclo,cyclop,
 	return &result, nil
 }
 
-// parseStandardFields parses the standard_fields: YAML mapping into a
+// parseStandardFields parses the standard_fields: value into a
 // map[string]string. Keys must be reserved standard field names; values
 // must be non-empty strings.
-func parseStandardFields(node *yaml.Node) (map[string]string, error) {
-	if node.Kind != yaml.MappingNode {
+func parseStandardFields(raw any) (map[string]string, error) {
+	m, ok := raw.(map[string]any)
+	if !ok {
 		return nil, fmt.Errorf("%w: standard_fields must be a mapping", ErrOutputConfigInvalid)
 	}
-	result := make(map[string]string, len(node.Content)/2)
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i].Value
-		val := node.Content[i+1].Value
+	result := make(map[string]string, len(m))
+	for key, val := range m {
 		if !audit.IsReservedStandardField(key) {
 			return nil, fmt.Errorf("%w: standard_fields: unknown field %q -- only reserved standard field names are accepted",
 				ErrOutputConfigInvalid, key)
 		}
-		if val == "" {
+		s, err := toString(val)
+		if err != nil {
+			return nil, fmt.Errorf("%w: standard_fields: field %q: %w",
+				ErrOutputConfigInvalid, key, err)
+		}
+		if s == "" {
 			return nil, fmt.Errorf("%w: standard_fields: field %q must have a non-empty value",
 				ErrOutputConfigInvalid, key)
 		}
-		result[key] = val
+		result[key] = s
 	}
 	return result, nil
 }
@@ -549,21 +545,21 @@ type yamlRoute struct {
 	ExcludeEventTypes []string `yaml:"exclude_event_types"`
 }
 
-// outputFields holds parsed fields from a single output YAML node.
+// outputFields holds parsed fields from a single output value.
 type outputFields struct { //nolint:govet // fieldalignment: readability preferred
-	typeName       string
-	excludeLabels  []string
-	enabled        bool
-	routeNode      *yaml.Node
-	formatterNode  *yaml.Node
-	typeConfigNode *yaml.Node
-	hmacNode       *yaml.Node
+	typeName      string
+	excludeLabels []string
+	enabled       bool
+	routeRaw      any
+	formatterRaw  any
+	typeConfigRaw any
+	hmacRaw       any
 }
 
-// buildOutput constructs a single named output from its YAML node.
+// buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
-	fields, err := extractOutputFields(name, node)
+func buildOutput(name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
+	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -578,22 +574,22 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 		return nil, fmtErr
 	}
 
-	output, err := invokeFactory(name, fields, globalTLSNode, globalAppName, globalHost, coreMetrics)
+	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics)
 	if err != nil {
 		return nil, err
 	}
-	route, err := buildRoute(name, fields.routeNode, taxonomy)
+	route, err := buildRoute(name, fields.routeRaw, taxonomy)
 	if err != nil {
 		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
-	formatter, err := buildOutputFormatter(name, fields.formatterNode)
+	formatter, err := buildOutputFormatter(name, fields.formatterRaw)
 	if err != nil {
 		_ = output.Close() // best-effort cleanup; returning the original error
 		return nil, err
 	}
 
-	hmacCfg, err := buildHMACConfig(name, fields.hmacNode)
+	hmacCfg, err := buildHMACConfig(name, fields.hmacRaw)
 	if err != nil {
 		_ = output.Close()
 		return nil, err
@@ -609,10 +605,10 @@ func buildOutput(name string, node *yaml.Node, taxonomy *audit.Taxonomy, globalT
 // before invoking the factory. Loki requires JSON format for label
 // extraction and LogQL queries.
 func validateLokiFormatter(name string, fields *outputFields) error {
-	if fields.typeName != "loki" || fields.formatterNode == nil {
+	if fields.typeName != "loki" || fields.formatterRaw == nil {
 		return nil
 	}
-	fmtType := extractFormatterType(fields.formatterNode)
+	fmtType := extractFormatterType(fields.formatterRaw)
 	if fmtType != "" && fmtType != "json" {
 		return fmt.Errorf("output %q: loki does not support custom formatters; "+
 			"loki requires JSON format for label extraction and LogQL queries", name)
@@ -620,140 +616,151 @@ func validateLokiFormatter(name string, fields *outputFields) error {
 	return nil
 }
 
-func extractOutputFields(name string, node *yaml.Node) (*outputFields, error) { //nolint:gocognit,gocyclo,cyclop // YAML field extraction with validation
-	if node.Kind != yaml.MappingNode {
+func extractOutputFields(name string, raw any) (*outputFields, error) { //nolint:gocognit,gocyclo,cyclop // YAML field extraction with validation
+	m, ok := raw.(map[string]any)
+	if !ok {
 		return nil, fmt.Errorf("output %q: expected a YAML mapping", name)
 	}
 	f := &outputFields{enabled: true}
 	var foundType bool
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key := node.Content[i].Value
-		val := node.Content[i+1]
+	var typeConfigKey string
+	for key, val := range m {
 		switch key {
 		case "type":
-			f.typeName = val.Value
+			s, err := toString(val)
+			if err != nil {
+				return nil, fmt.Errorf("output %q: type: %w", name, err)
+			}
+			f.typeName = s
 			foundType = true
 		case "enabled":
-			if err := val.Decode(&f.enabled); err != nil {
+			v, err := toBool(val)
+			if err != nil {
 				return nil, fmt.Errorf("output %q: enabled: %w", name, err)
 			}
+			f.enabled = v
 		case "route":
-			f.routeNode = val
+			f.routeRaw = val
 		case "formatter":
-			f.formatterNode = val
+			f.formatterRaw = val
 		case "exclude_labels":
-			if err := val.Decode(&f.excludeLabels); err != nil {
+			labels, err := toStringSlice(val)
+			if err != nil {
 				return nil, fmt.Errorf("output %q: exclude_labels: %w", name, err)
 			}
+			f.excludeLabels = labels
 		case "hmac":
-			f.hmacNode = val
+			f.hmacRaw = val
 		default:
-			if f.typeConfigNode != nil {
+			if f.typeConfigRaw != nil {
 				return nil, fmt.Errorf("output %q: unexpected key %q; only 'type', 'enabled', 'route', 'formatter', 'exclude_labels', 'hmac', and one type-specific config block are allowed", name, key)
 			}
-			f.typeConfigNode = val
+			f.typeConfigRaw = val
+			typeConfigKey = key
 		}
 	}
 	if !foundType {
 		return nil, fmt.Errorf("output %q: missing required field 'type'", name)
 	}
 	// Validate config key matches type name.
-	if f.typeConfigNode != nil {
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			if node.Content[i+1] == f.typeConfigNode {
-				if configKey := node.Content[i].Value; configKey != f.typeName {
-					return nil, fmt.Errorf("output %q: config key %q does not match type %q", name, configKey, f.typeName)
-				}
-				break
-			}
-		}
+	if f.typeConfigRaw != nil && typeConfigKey != f.typeName {
+		return nil, fmt.Errorf("output %q: config key %q does not match type %q", name, typeConfigKey, f.typeName)
 	}
 	return f, nil
 }
 
 func expandOutputEnvVars(name string, f *outputFields) error {
 	base := "outputs." + name
-	if f.typeConfigNode != nil {
-		if err := expandEnvInNode(f.typeConfigNode, base+"."+f.typeName); err != nil {
+	if f.typeConfigRaw != nil {
+		expanded, err := expandEnvInValue(f.typeConfigRaw, base+"."+f.typeName)
+		if err != nil {
 			return fmt.Errorf("output %q: %w", name, err)
 		}
+		f.typeConfigRaw = expanded
 	}
-	if f.routeNode != nil {
-		if err := expandEnvInNode(f.routeNode, base+".route"); err != nil {
+	if f.routeRaw != nil {
+		expanded, err := expandEnvInValue(f.routeRaw, base+".route")
+		if err != nil {
 			return fmt.Errorf("output %q: %w", name, err)
 		}
+		f.routeRaw = expanded
 	}
-	if f.formatterNode != nil {
-		if err := expandEnvInNode(f.formatterNode, base+".formatter"); err != nil {
+	if f.formatterRaw != nil {
+		expanded, err := expandEnvInValue(f.formatterRaw, base+".formatter")
+		if err != nil {
 			return fmt.Errorf("output %q: %w", name, err)
 		}
+		f.formatterRaw = expanded
 	}
 	return nil
 }
 
-// deepCopyNode creates a deep copy of a YAML node tree so that
+// deepCopyValue creates a deep copy of a YAML value tree so that
 // mutations in one consumer do not affect others.
-func deepCopyNode(n *yaml.Node) *yaml.Node {
-	if n == nil {
-		return nil
-	}
-	cp := *n
-	if len(n.Content) > 0 {
-		cp.Content = make([]*yaml.Node, len(n.Content))
-		for i, child := range n.Content {
-			cp.Content[i] = deepCopyNode(child)
+func deepCopyValue(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		cp := make(map[string]any, len(val))
+		for k, child := range val {
+			cp[k] = deepCopyValue(child)
 		}
+		return cp
+	case []any:
+		cp := make([]any, len(val))
+		for i, child := range val {
+			cp[i] = deepCopyValue(child)
+		}
+		return cp
+	default:
+		// Scalars (string, int, float64, bool, nil) are immutable.
+		return v
 	}
-	return &cp
 }
 
 // injectGlobalTLSPolicy adds the global tls_policy to an output's
-// type-specific config node if the output does not already define one.
-// A deep copy of the global node is injected so that per-output env
+// type-specific config map if the output does not already define one.
+// A deep copy of the global value is injected so that per-output env
 // var expansion does not mutate the shared original.
-func injectGlobalTLSPolicy(typeNode, globalNode *yaml.Node) {
-	if typeNode == nil || globalNode == nil || typeNode.Kind != yaml.MappingNode {
+func injectGlobalTLSPolicy(typeConfig map[string]any, globalTLS any) {
+	if typeConfig == nil || globalTLS == nil {
 		return
 	}
 	// Check if the output already has a tls_policy key.
-	for i := 0; i+1 < len(typeNode.Content); i += 2 {
-		if typeNode.Content[i].Value == "tls_policy" {
-			return // per-output policy exists — do not override
-		}
+	if _, exists := typeConfig["tls_policy"]; exists {
+		return // per-output policy exists — do not override
 	}
 	// Inject a deep copy so mutations don't affect other outputs.
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: "tls_policy", Tag: "!!str"}
-	typeNode.Content = append(typeNode.Content, keyNode, deepCopyNode(globalNode))
+	typeConfig["tls_policy"] = deepCopyValue(globalTLS)
 }
 
 // injectSyslogGlobals injects global app_name and hostname into a
-// syslog output's type-config node if not already set per-output.
+// syslog output's type-config map if not already set per-output.
 func injectSyslogGlobals(f *outputFields, globalAppName, globalHost string) {
 	if f.typeName != "syslog" {
 		return
 	}
+	m, ok := f.typeConfigRaw.(map[string]any)
+	if !ok {
+		return
+	}
 	if globalAppName != "" {
-		injectStringField(f.typeConfigNode, "app_name", globalAppName)
+		injectStringField(m, "app_name", globalAppName)
 	}
 	if globalHost != "" {
-		injectStringField(f.typeConfigNode, "hostname", globalHost)
+		injectStringField(m, "hostname", globalHost)
 	}
 }
 
-// injectStringField adds a string key-value pair to a YAML mapping
-// node if the key does not already exist.
-func injectStringField(typeNode *yaml.Node, key, value string) {
-	if typeNode == nil || typeNode.Kind != yaml.MappingNode {
+// injectStringField adds a string key-value pair to a map if the key
+// does not already exist.
+func injectStringField(m map[string]any, key, value string) {
+	if m == nil {
 		return
 	}
-	for i := 0; i+1 < len(typeNode.Content); i += 2 {
-		if typeNode.Content[i].Value == key {
-			return // per-output value exists — do not override
-		}
+	if _, exists := m[key]; exists {
+		return // per-output value exists — do not override
 	}
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key, Tag: "!!str"}
-	valNode := &yaml.Node{Kind: yaml.ScalarNode, Value: value, Tag: "!!str"}
-	typeNode.Content = append(typeNode.Content, keyNode, valNode)
+	m[key] = value
 }
 
 // yamlTLSPolicy is used for eager validation of the global tls_policy.
@@ -762,7 +769,7 @@ type yamlTLSPolicy struct {
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globalAppName, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
 	factory := audit.LookupOutputFactory(f.typeName)
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
@@ -772,19 +779,21 @@ func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globa
 	// Inject global TLS policy for output types that support it.
 	// Only syslog and webhook parse tls_policy — injecting into other
 	// types (file, stdout) would cause unknown-field errors.
-	if f.typeConfigNode != nil && globalTLSNode != nil {
-		switch f.typeName {
-		case "syslog", "webhook":
-			injectGlobalTLSPolicy(f.typeConfigNode, globalTLSNode)
+	if f.typeConfigRaw != nil && globalTLSRaw != nil {
+		if m, ok := f.typeConfigRaw.(map[string]any); ok {
+			switch f.typeName {
+			case "syslog", "webhook":
+				injectGlobalTLSPolicy(m, globalTLSRaw)
+			}
 		}
 	}
 	// Inject global app_name and hostname into syslog config if not already set.
 	injectSyslogGlobals(f, globalAppName, globalHost)
 
 	var rawConfig []byte
-	if f.typeConfigNode != nil {
+	if f.typeConfigRaw != nil {
 		var err error
-		rawConfig, err = yaml.Marshal(f.typeConfigNode)
+		rawConfig, err = yaml.Marshal(f.typeConfigRaw)
 		if err != nil {
 			return nil, fmt.Errorf("output %q: marshal %q config: %w", name, f.typeName, err)
 		}
@@ -796,19 +805,17 @@ func invokeFactory(name string, f *outputFields, globalTLSNode *yaml.Node, globa
 	return output, nil
 }
 
-func buildRoute(name string, routeNode *yaml.Node, taxonomy *audit.Taxonomy) (*audit.EventRoute, error) {
-	if routeNode == nil {
+func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRoute, error) {
+	if raw == nil {
 		return nil, nil //nolint:nilnil // nil route = receive all events
 	}
-	routeBytes, err := yaml.Marshal(routeNode)
+	routeBytes, err := yaml.Marshal(raw)
 	if err != nil {
 		return nil, fmt.Errorf("output %q route: %w", name, err)
 	}
 	var yr yamlRoute
-	routeDec := yaml.NewDecoder(bytes.NewReader(routeBytes))
-	routeDec.KnownFields(true)
-	if err := routeDec.Decode(&yr); err != nil {
-		return nil, fmt.Errorf("output %q route: %w", name, err)
+	if uErr := yaml.UnmarshalWithOptions(routeBytes, &yr, yaml.DisallowUnknownField()); uErr != nil {
+		return nil, fmt.Errorf("output %q route: %w", name, uErr)
 	}
 	route := &audit.EventRoute{
 		IncludeCategories: yr.IncludeCategories,
@@ -824,11 +831,11 @@ func buildRoute(name string, routeNode *yaml.Node, taxonomy *audit.Taxonomy) (*a
 	return route, nil
 }
 
-func buildOutputFormatter(name string, fmtNode *yaml.Node) (audit.Formatter, error) {
-	if fmtNode == nil {
+func buildOutputFormatter(name string, raw any) (audit.Formatter, error) {
+	if raw == nil {
 		return nil, nil //nolint:nilnil // nil = use logger default
 	}
-	f, err := buildFormatter(fmtNode)
+	f, err := buildFormatter(raw)
 	if err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}
@@ -849,27 +856,26 @@ type yamlHMACSalt struct {
 	Value   string `yaml:"value"`
 }
 
-// buildHMACConfig parses and validates the hmac: YAML node for an output.
-func buildHMACConfig(name string, hmacNode *yaml.Node) (*audit.HMACConfig, error) {
-	if hmacNode == nil {
+// buildHMACConfig parses and validates the hmac: value for an output.
+func buildHMACConfig(name string, raw any) (*audit.HMACConfig, error) {
+	if raw == nil {
 		return nil, nil //nolint:nilnil // nil = no HMAC
 	}
 
 	// Expand env vars in the hmac block.
-	if err := expandEnvInNode(hmacNode, fmt.Sprintf("outputs.%s.hmac", name)); err != nil {
+	expanded, err := expandEnvInValue(raw, fmt.Sprintf("outputs.%s.hmac", name))
+	if err != nil {
 		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
 	}
 
 	// Parse with strict field checking.
-	hmacBytes, err := yaml.Marshal(hmacNode)
-	if err != nil {
-		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	hmacBytes, mErr := yaml.Marshal(expanded)
+	if mErr != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, mErr)
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(hmacBytes))
-	dec.KnownFields(true)
 	var yc yamlHMACConfig
-	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	if uErr := yaml.UnmarshalWithOptions(hmacBytes, &yc, yaml.DisallowUnknownField()); uErr != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, uErr)
 	}
 
 	if !yc.Enabled {
@@ -888,4 +894,97 @@ func buildHMACConfig(name string, hmacNode *yaml.Node) (*audit.HMACConfig, error
 	}
 
 	return cfg, nil
+}
+
+// toMapSlice converts a raw YAML value to yaml.MapSlice. If the value
+// is already a yaml.MapSlice it is returned directly. If it is a
+// map[string]any, it is marshalled and unmarshalled to preserve the
+// MapSlice contract (though ordering from map[string]any is not
+// guaranteed by Go maps).
+// outputsOrderHelper is used to extract outputs with preserved key
+// ordering. goccy/go-yaml decodes nested mappings as map[string]any
+// which loses order. This struct uses yaml.MapSlice for the outputs
+// field specifically.
+type outputsOrderHelper struct {
+	Outputs yaml.MapSlice `yaml:"outputs"`
+}
+
+func extractOutputsOrdered(rawYAML []byte) (yaml.MapSlice, error) {
+	var helper outputsOrderHelper
+	if err := yaml.Unmarshal(rawYAML, &helper); err != nil {
+		return nil, fmt.Errorf("extract outputs: %w", err)
+	}
+	return helper.Outputs, nil
+}
+
+// toBool converts a YAML-decoded value to bool. Handles both direct
+// bool values and string representations (from env var expansion).
+func toBool(v any) (bool, error) {
+	switch val := v.(type) {
+	case bool:
+		return val, nil
+	case string:
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			return false, fmt.Errorf("invalid boolean %q: %w", val, err)
+		}
+		return parsed, nil
+	default:
+		return false, fmt.Errorf("expected boolean, got %T", v)
+	}
+}
+
+// toInt converts a YAML-decoded value to int. Handles int, uint64,
+// float64 (YAML numbers), and string representations (from env var
+// expansion).
+func toInt(v any) (int, error) {
+	switch val := v.(type) {
+	case int:
+		return val, nil
+	case int64:
+		return int(val), nil
+	case uint64:
+		return int(val), nil //nolint:gosec // config values are small integers, no overflow risk
+	case float64:
+		return int(val), nil
+	case string:
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return 0, fmt.Errorf("invalid integer %q: %w", val, err)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("expected integer, got %T", v)
+	}
+}
+
+// toString converts a YAML-decoded value to string. Handles string
+// values directly and converts numeric/bool types via fmt.Sprintf.
+func toString(v any) (string, error) {
+	switch val := v.(type) {
+	case string:
+		return val, nil
+	case nil:
+		return "", nil
+	default:
+		return fmt.Sprintf("%v", val), nil
+	}
+}
+
+// toStringSlice converts a YAML-decoded value to []string. Handles
+// []any containing string elements.
+func toStringSlice(v any) ([]string, error) {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected sequence, got %T", v)
+	}
+	result := make([]string, 0, len(arr))
+	for i, elem := range arr {
+		s, ok := elem.(string)
+		if !ok {
+			return nil, fmt.Errorf("element [%d]: expected string, got %T", i, elem)
+		}
+		result = append(result, s)
+	}
+	return result, nil
 }

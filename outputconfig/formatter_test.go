@@ -17,19 +17,20 @@ package outputconfig
 import (
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	audit "github.com/axonops/go-audit"
-	"gopkg.in/yaml.v3"
 )
 
-func formatterNode(t *testing.T, yamlStr string) *yaml.Node {
+// parseFormatterValue parses a YAML string into the value type that
+// buildFormatter expects (map[string]any for mappings, string for scalars).
+func parseFormatterValue(t *testing.T, yamlStr string) any {
 	t.Helper()
-	var doc yaml.Node
-	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &doc))
-	// doc is DocumentNode → Content[0] is the actual node.
-	return doc.Content[0]
+	var v any
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &v))
+	return v
 }
 
 func TestBuildFormatter_Nil_ReturnsNil(t *testing.T) {
@@ -38,16 +39,15 @@ func TestBuildFormatter_Nil_ReturnsNil(t *testing.T) {
 	assert.Nil(t, f)
 }
 
-func TestBuildFormatter_EmptyScalar_ReturnsNil(t *testing.T) {
-	node := &yaml.Node{Kind: yaml.ScalarNode, Value: ""}
-	f, err := buildFormatter(node)
+func TestBuildFormatter_EmptyString_ReturnsNil(t *testing.T) {
+	f, err := buildFormatter("")
 	assert.NoError(t, err)
 	assert.Nil(t, f)
 }
 
 func TestBuildFormatter_JSON_Default(t *testing.T) {
-	node := formatterNode(t, "type: json\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: json\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 
@@ -58,8 +58,8 @@ func TestBuildFormatter_JSON_Default(t *testing.T) {
 }
 
 func TestBuildFormatter_JSON_EmptyType_DefaultsToJSON(t *testing.T) {
-	node := formatterNode(t, "timestamp: unix_ms\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "timestamp: unix_ms\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 
@@ -69,8 +69,8 @@ func TestBuildFormatter_JSON_EmptyType_DefaultsToJSON(t *testing.T) {
 }
 
 func TestBuildFormatter_JSON_UnixMs(t *testing.T) {
-	node := formatterNode(t, "type: json\ntimestamp: unix_ms\nomit_empty: true\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: json\ntimestamp: unix_ms\nomit_empty: true\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 
 	jf, ok := f.(*audit.JSONFormatter)
@@ -80,16 +80,16 @@ func TestBuildFormatter_JSON_UnixMs(t *testing.T) {
 }
 
 func TestBuildFormatter_JSON_InvalidTimestamp_Error(t *testing.T) {
-	node := formatterNode(t, "type: json\ntimestamp: epoch_seconds\n")
-	_, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: json\ntimestamp: epoch_seconds\n")
+	_, err := buildFormatter(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown timestamp format")
 	assert.Contains(t, err.Error(), "epoch_seconds")
 }
 
 func TestBuildFormatter_CEF_WithVendorProduct(t *testing.T) {
-	node := formatterNode(t, "type: cef\nvendor: AxonOps\nproduct: SchemaRegistry\nversion: \"1.0\"\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: cef\nvendor: AxonOps\nproduct: SchemaRegistry\nversion: \"1.0\"\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -100,8 +100,8 @@ func TestBuildFormatter_CEF_WithVendorProduct(t *testing.T) {
 }
 
 func TestBuildFormatter_CEF_OmitEmpty(t *testing.T) {
-	node := formatterNode(t, "type: cef\nomit_empty: true\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: cef\nomit_empty: true\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -110,9 +110,8 @@ func TestBuildFormatter_CEF_OmitEmpty(t *testing.T) {
 }
 
 func TestBuildFormatter_CEF_NoSeverityFunc(t *testing.T) {
-	// SeverityFunc is not configurable via YAML.
-	node := formatterNode(t, "type: cef\nvendor: Test\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: cef\nvendor: Test\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -121,8 +120,8 @@ func TestBuildFormatter_CEF_NoSeverityFunc(t *testing.T) {
 }
 
 func TestBuildFormatter_CEF_Defaults(t *testing.T) {
-	node := formatterNode(t, "type: cef\n")
-	f, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: cef\n")
+	f, err := buildFormatter(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -137,36 +136,31 @@ func TestBuildFormatter_CEF_Defaults(t *testing.T) {
 }
 
 func TestBuildFormatter_CEF_RejectsTimestamp(t *testing.T) {
-	node := formatterNode(t, "type: cef\ntimestamp: unix_ms\nvendor: Test\n")
-	_, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: cef\ntimestamp: unix_ms\nvendor: Test\n")
+	_, err := buildFormatter(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cef does not support timestamp")
 }
 
 func TestBuildFormatter_JSON_RejectsVendorProductVersion(t *testing.T) {
-	node := formatterNode(t, "type: json\nvendor: AxonOps\n")
-	_, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: json\nvendor: AxonOps\n")
+	_, err := buildFormatter(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json does not support vendor")
 }
 
 func TestBuildFormatter_UnknownType_Error(t *testing.T) {
-	node := formatterNode(t, "type: protobuf\n")
-	_, err := buildFormatter(node)
+	v := parseFormatterValue(t, "type: protobuf\n")
+	_, err := buildFormatter(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown type")
 	assert.Contains(t, err.Error(), "protobuf")
 }
 
-func TestBuildFormatter_InvalidYAML_Error(t *testing.T) {
-	// Pass a sequence node where a mapping is expected.
-	node := &yaml.Node{
-		Kind: yaml.SequenceNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "item"},
-		},
-	}
-	_, err := buildFormatter(node)
+func TestBuildFormatter_InvalidStructure_Error(t *testing.T) {
+	// Pass a slice where a mapping is expected.
+	v := []any{"item"}
+	_, err := buildFormatter(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "formatter")
 }
@@ -177,7 +171,7 @@ func TestExtractFormatterType(t *testing.T) {
 		yaml string
 		want string
 	}{
-		{"nil node", "", ""},
+		{"nil value", "", ""},
 		{"scalar cef", "cef", "cef"},
 		{"scalar json", "json", "json"},
 		{"mapping with type", "type: cef", "cef"},
@@ -192,8 +186,8 @@ func TestExtractFormatterType(t *testing.T) {
 				assert.Equal(t, "", extractFormatterType(nil))
 				return
 			}
-			node := formatterNode(t, tt.yaml)
-			assert.Equal(t, tt.want, extractFormatterType(node))
+			v := parseFormatterValue(t, tt.yaml)
+			assert.Equal(t, tt.want, extractFormatterType(v))
 		})
 	}
 }

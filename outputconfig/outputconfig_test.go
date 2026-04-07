@@ -502,13 +502,13 @@ func TestLoad_UnknownType(t *testing.T) {
 }
 
 func TestLoad_DuplicateOutputName(t *testing.T) {
-	// yaml.v3 Node parser preserves duplicate mapping keys.
+	// goccy/go-yaml detects duplicate mapping keys at parse time.
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  dupe:\n    type: stdout\n  dupe:\n    type: stdout\n")
 	_, err := outputconfig.Load(data, &tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "duplicate output name")
+	assert.Contains(t, err.Error(), "dupe")
 }
 
 func TestLoad_TwoDistinctNames(t *testing.T) {

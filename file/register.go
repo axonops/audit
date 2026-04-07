@@ -19,7 +19,7 @@ import (
 	"fmt"
 
 	audit "github.com/axonops/go-audit"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 func init() {
@@ -59,8 +59,7 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Outp
 	}
 
 	var yc yamlFileConfig
-	dec := yaml.NewDecoder(bytes.NewReader(rawConfig))
-	dec.KnownFields(true)
+	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
 		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
 	}

@@ -39,14 +39,14 @@ github.com/axonops/go-audit           ← core (Logger, Output, taxonomy, format
 github.com/axonops/go-audit/file      ← file output (depends on core)
 github.com/axonops/go-audit/syslog    ← syslog output (depends on core + srslog)
 github.com/axonops/go-audit/webhook   ← webhook output (depends on core)
-github.com/axonops/go-audit/outputconfig ← YAML config loader (depends on core + yaml.v3)
+github.com/axonops/go-audit/outputconfig ← YAML config loader (depends on core + go-yaml)
 ```
 
 Outputs are separate Go modules so the core carries no third-party
 output dependencies. A consumer importing only `go-audit/file` does
 not pull in srslog or the webhook's SSRF filter.
 
-The core module depends on `gopkg.in/yaml.v3` for `ParseTaxonomyYAML`.
+The core module depends on `github.com/goccy/go-yaml` for `ParseTaxonomyYAML`.
 `StdoutOutput` ships with core and has no extra dependencies.
 
 ## Factory Registry

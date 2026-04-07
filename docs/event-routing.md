@@ -186,7 +186,9 @@ for runtime route changes in a working application.
 
 Events that are not assigned to any category in the taxonomy are
 always delivered at the global level — they cannot be disabled via
-`DisableCategory()` since they have no category.
+`DisableCategory()` since they have no category. However, they CAN
+be disabled via `DisableEvent("event_name")` which targets the
+specific event type regardless of category membership.
 
 However, they CAN be filtered by per-output routes using
 `exclude_event_types` or severity filtering. They also pass

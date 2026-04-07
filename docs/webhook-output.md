@@ -111,7 +111,7 @@ NDJSON is:
 | `buffer_size` | int | `10,000` | 1–1,000,000 | Internal async buffer capacity. Events dropped when full |
 | `flush_interval` | duration | `"5s"` | — | Maximum time between batch flushes |
 | `timeout` | duration | `"10s"` | — | HTTP request timeout (full request/response lifecycle) |
-| `max_retries` | int | `3` | 1–20 | Retry count for 5xx and 429 responses. Values <= 0 default to 3 |
+| `max_retries` | int | `3` | 0–20 | Retry count for 5xx and 429 responses. 0 defaults to 3. Values > 20 rejected |
 | `headers` | map | *(none)* | — | Custom HTTP headers on every request |
 | `tls_ca` | string | *(none)* | — | Path to CA certificate for server verification |
 | `tls_cert` | string | *(none)* | — | Path to client certificate for mTLS |

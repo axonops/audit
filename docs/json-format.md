@@ -41,7 +41,7 @@ Fields are emitted in a deterministic order:
 2. **Required fields** — sorted alphabetically
 3. **Optional fields** — sorted alphabetically
 4. **Extra fields** — any fields not declared in the taxonomy, sorted alphabetically
-5. **`event_category`** — appended last, only for categorised events (when `emit_event_category` is true)
+5. **`event_category`** — appended last, only for categorised events
 
 This deterministic ordering makes JSON output diff-friendly and
 predictable for downstream parsers.

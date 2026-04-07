@@ -106,6 +106,10 @@ const (
 	// attempts before giving up.
 	DefaultMaxRetries = 10
 
+	// MaxMaxRetries is the upper bound for MaxRetries. Values above
+	// this are rejected to prevent unbounded retry loops.
+	MaxMaxRetries = 20
+
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
 
@@ -502,6 +506,10 @@ func validateSyslogConfig(cfg *Config) error {
 	}
 	if cfg.Facility == "" {
 		cfg.Facility = DefaultFacility
+	}
+
+	if cfg.MaxRetries > MaxMaxRetries {
+		return fmt.Errorf("audit: syslog max_retries %d exceeds maximum %d", cfg.MaxRetries, MaxMaxRetries)
 	}
 
 	if err := validateSyslogHostname(cfg.Hostname); err != nil {

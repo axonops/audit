@@ -430,6 +430,11 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 			},
 			wantErr: "tls file",
 		},
+		{
+			name:    "max_retries exceeds maximum",
+			cfg:     syslog.Config{Network: "udp", Address: "localhost:514", MaxRetries: 1000},
+			wantErr: "max_retries 1000 exceeds maximum 20",
+		},
 	}
 
 	for _, tt := range tests {

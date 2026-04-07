@@ -347,8 +347,16 @@ func (o *Output) drainAndFlush(ctx context.Context, batch []lokiEntry) {
 func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 	o.groupByStream(batch)
 	o.buildPayload()
-	body := o.maybeCompress()
-	o.doPostWithRetry(ctx, body, len(batch))
+
+	body, compressed, err := o.maybeCompress()
+	if err != nil {
+		slog.Warn("audit: loki compression failed, sending uncompressed",
+			"error", err, "batch_size", len(batch))
+		body = o.payloadBuf.Bytes()
+		compressed = false
+	}
+
+	o.doPostWithRetry(ctx, body, len(batch), compressed)
 }
 
 // resetLokiTimer safely resets a timer, draining the channel first

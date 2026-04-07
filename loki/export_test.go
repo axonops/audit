@@ -116,6 +116,6 @@ func BuildTestCompressedPayload(tb testing.TB, input TestPayloadInput) []byte { 
 
 	o.groupByStream(batch)
 	o.buildPayload()
-	compressed := o.maybeCompress()
-	return append([]byte(nil), compressed...)
+	body, _, _ := o.maybeCompress()
+	return append([]byte(nil), body...)
 }

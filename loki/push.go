@@ -17,6 +17,7 @@ package loki
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"sort"
 	"strconv"
 	"unicode/utf8"
@@ -233,10 +234,16 @@ func writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
 }
 
 // maybeCompress applies gzip compression if cfg.Compress is true.
-// Returns the payload bytes (compressed or uncompressed).
-func (o *Output) maybeCompress() []byte {
+// Returns the payload bytes, whether they are compressed, and any
+// compression error. On error the caller should fall back to the
+// uncompressed payload in payloadBuf.
+//
+// In practice, gzip.Writer writing to a bytes.Buffer will not fail
+// (bytes.Buffer.Write always returns nil error). The error handling
+// is defensive — a safety net for correctness.
+func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
 	if !o.cfg.Compress {
-		return o.payloadBuf.Bytes()
+		return o.payloadBuf.Bytes(), false, nil
 	}
 	o.compressBuf.Reset()
 	if o.gzWriter == nil {
@@ -244,9 +251,13 @@ func (o *Output) maybeCompress() []byte {
 	} else {
 		o.gzWriter.Reset(&o.compressBuf)
 	}
-	_, _ = o.gzWriter.Write(o.payloadBuf.Bytes())
-	_ = o.gzWriter.Close() // must Close to flush gzip trailer
-	return o.compressBuf.Bytes()
+	if _, wErr := o.gzWriter.Write(o.payloadBuf.Bytes()); wErr != nil {
+		return nil, false, fmt.Errorf("audit: loki: gzip write: %w", wErr)
+	}
+	if cErr := o.gzWriter.Close(); cErr != nil {
+		return nil, false, fmt.Errorf("audit: loki: gzip close: %w", cErr)
+	}
+	return o.compressBuf.Bytes(), true, nil
 }
 
 // bytesToString converts a byte slice to a string. This is a simple

@@ -190,7 +190,7 @@ always delivered at the global level — they cannot be disabled via
 be disabled via `DisableEvent("event_name")` which targets the
 specific event type regardless of category membership.
 
-However, they CAN be filtered by per-output routes using
+They can also be filtered by per-output routes using
 `exclude_event_types` or severity filtering. They also pass
 `include_event_types` if explicitly listed.
 

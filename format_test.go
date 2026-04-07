@@ -325,6 +325,92 @@ func TestJSONFormatter_ExtraFieldsSorted(t *testing.T) {
 	assert.Less(t, aIdx, zIdx, "extra fields should be sorted")
 }
 
+// TestCEFFormatter_AllFieldKeysSortedSlow exercises the allFieldKeysSortedSlow
+// path (knownFields == nil) with required, optional, and extra fields. This
+// path triggers when EventDef is constructed manually without taxonomy
+// registration. CEF formatter uses allFieldKeysSorted for extension field
+// ordering — JSON formatter uses separate per-group sorting.
+func TestCEFFormatter_AllFieldKeysSortedSlow(t *testing.T) {
+	t.Parallel()
+	// Use empty FieldMapping so fields are not remapped to CEF standard keys.
+	f := &audit.CEFFormatter{Vendor: "T", Product: "T", Version: "1", FieldMapping: map[string]string{}}
+
+	// Manually-constructed EventDef has no knownFields (nil) —
+	// triggers allFieldKeysSortedSlow.
+	def := &audit.EventDef{
+		Required: []string{"field_c", "field_a"},
+		Optional: []string{"field_d", "field_b"},
+	}
+	data, err := f.Format(testTime, "manual_event", audit.Fields{
+		"field_c": "c",
+		"field_a": "a",
+		"field_d": "d",
+		"field_b": "b",
+		"zebra":   "z",
+		"alpha":   "aa",
+	}, def, nil)
+	require.NoError(t, err)
+
+	raw := string(data)
+	// All fields should be present in CEF extensions.
+	for _, key := range []string{"field_a", "field_b", "field_c", "field_d", "alpha", "zebra"} {
+		assert.Contains(t, raw, key+"=", "extension key %q should be in output", key)
+	}
+	// CEF uses allFieldKeysSorted — all keys globally sorted alphabetically.
+	alphaIdx := strings.Index(raw, "alpha=")
+	fieldAIdx := strings.Index(raw, "field_a=")
+	fieldDIdx := strings.Index(raw, "field_d=")
+	zebraIdx := strings.Index(raw, "zebra=")
+	assert.Less(t, alphaIdx, fieldAIdx, "alpha should appear before field_a")
+	assert.Less(t, fieldDIdx, zebraIdx, "field_d should appear before zebra")
+}
+
+// TestCEFFormatter_ExtraFieldsWithKnownFields exercises the middle path
+// in allFieldKeysSorted: knownFields exists (taxonomy-registered) but extra
+// fields are present (permissive mode). This builds a combined sorted list
+// from the pre-computed known keys and the extra keys.
+func TestCEFFormatter_ExtraFieldsWithKnownFields(t *testing.T) {
+	t.Parallel()
+
+	const taxYAML = `
+version: 1
+categories:
+  write:
+    events: [user_create]
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      note: {}
+`
+	tax, err := audit.ParseTaxonomyYAML([]byte(taxYAML))
+	require.NoError(t, err)
+
+	def := tax.Events["user_create"]
+	require.NotNil(t, def)
+
+	f := &audit.CEFFormatter{Vendor: "T", Product: "T", Version: "1"}
+	data, err := f.Format(testTime, "user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"note":     "a note",
+		"extra_b":  "b",
+		"extra_a":  "a",
+	}, def, nil)
+	require.NoError(t, err)
+
+	raw := string(data)
+	// Extra fields should be present and sorted among known fields.
+	for _, key := range []string{"extra_a", "extra_b"} {
+		assert.Contains(t, raw, key+"=", "extra extension key %q should be in output", key)
+	}
+	// Extra fields should be alphabetically sorted relative to each other.
+	extraAIdx := strings.Index(raw, "extra_a=")
+	extraBIdx := strings.Index(raw, "extra_b=")
+	assert.Less(t, extraAIdx, extraBIdx, "extra_a should appear before extra_b")
+}
+
 // ---------------------------------------------------------------------------
 // CEFFormatter tests
 // ---------------------------------------------------------------------------

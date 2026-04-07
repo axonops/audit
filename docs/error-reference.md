@@ -141,13 +141,13 @@ receives invalid HMAC parameters.
 
 | Error | When |
 |-------|------|
-| `hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
-| `hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
-| `hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
-| `hmac salt value must be at least 16 bytes` | Salt is too short for security |
-| `unknown hmac hash algorithm` | Hash is not one of: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 |
+| `audit: hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
+| `audit: hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
+| `audit: hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
+| `audit: hmac salt must be at least 16 bytes` | Salt is too short for security |
+| `audit: unknown hmac algorithm "X"` | Hash is not one of: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 |
 
-All HMAC errors wrap `audit.ErrConfigInvalid`.
+HMAC errors use `errors.New` / `fmt.Errorf` — use `strings.Contains` for matching, not `errors.Is`.
 
 ---
 
@@ -173,7 +173,7 @@ All HMAC errors wrap `audit.ErrConfigInvalid`.
 | `must be https` | URL uses HTTP without `allow_insecure_http: true` |
 | `must not contain credentials` | URL has embedded user:pass |
 | `batch_size must be at least 1` | Explicit zero or negative `batch_size` |
-| `max_retries must be at least 1` | Explicit zero or negative `max_retries` |
+| `max_retries must be at least 1` | Negative `max_retries` (zero defaults to 3) |
 | `buffer_size must be at least 1` | Explicit zero or negative `buffer_size` |
 | `batch_size N exceeds maximum` | `batch_size` > 10,000 |
 | `max_retries N exceeds maximum` | `max_retries` > 20 |

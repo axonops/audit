@@ -143,3 +143,26 @@ func TestExpandEnv_UnclosedBrace_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed")
 }
+
+func TestExpandEnv_YAMLAnchorAlias(t *testing.T) {
+	// YAML anchors (&anchor) and aliases (*anchor) are resolved by the
+	// YAML parser before expandEnvInValue runs. Both the anchor and the
+	// alias reference should have env vars expanded.
+	t.Setenv("TEST_ALIAS_HOST", "anchor.example.com")
+	yamlDoc := "defaults: &defaults\n  host: ${TEST_ALIAS_HOST}\noutput:\n  <<: *defaults\n  port: 514\n"
+	m := parseToMap(t, yamlDoc)
+
+	_, err := expandEnvInValue(m, "")
+	require.NoError(t, err)
+
+	// The anchor's value should be expanded.
+	defaults, ok := m["defaults"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "anchor.example.com", defaults["host"])
+
+	// The alias inherits the same value — also expanded.
+	output, ok := m["output"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "anchor.example.com", output["host"])
+	assert.Equal(t, uint64(514), output["port"])
+}

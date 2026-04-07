@@ -21,7 +21,7 @@ import (
 	"io"
 	"slices"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 // ErrInvalidInput is returned when the YAML input to
@@ -66,24 +66,29 @@ type yamlCategoriesResult struct {
 
 // UnmarshalYAML parses the categories section, extracting both category
 // definitions and the optional emit_event_category setting.
-func (r *yamlCategoriesResult) UnmarshalYAML(value *yaml.Node) error {
-	if value.Kind != yaml.MappingNode {
+func (r *yamlCategoriesResult) UnmarshalYAML(data []byte) error {
+	// First pass: unmarshal into a raw map to iterate keys.
+	var raw yaml.MapSlice
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("categories must be a YAML mapping")
 	}
 
-	r.categories = make(yamlCategories, len(value.Content)/2)
+	r.categories = make(yamlCategories, len(raw))
 
-	for i := 0; i+1 < len(value.Content); i += 2 {
-		catName := value.Content[i].Value
+	for _, item := range raw {
+		catName, ok := item.Key.(string)
+		if !ok {
+			return fmt.Errorf("category key must be a string")
+		}
 		if catName == "emit_event_category" {
-			var v bool
-			if err := value.Content[i+1].Decode(&v); err != nil {
-				return fmt.Errorf("emit_event_category: %w", err)
+			v, vOK := item.Value.(bool)
+			if !vOK {
+				return fmt.Errorf("emit_event_category: expected boolean")
 			}
 			r.emitEventCategory = &v
 			continue
 		}
-		def, err := parseCategoryNode(catName, value.Content[i+1])
+		def, err := parseCategoryValue(catName, item.Value)
 		if err != nil {
 			return err
 		}
@@ -103,43 +108,88 @@ type yamlCategoryDef struct {
 	Events   []string `yaml:"events"`
 }
 
-// parseCategoryNode handles polymorphic category parsing: a category
-// value can be a sequence (simple list) or a mapping (struct with
-// severity and events).
-func parseCategoryNode(catName string, node *yaml.Node) (*yamlCategoryDef, error) {
-	switch node.Kind {
-	case yaml.SequenceNode:
-		var events []string
-		if err := node.Decode(&events); err != nil {
-			return nil, fmt.Errorf("category %q: %w", catName, err)
+// parseCategoryValue handles polymorphic category parsing: a category
+// value can be a sequence (simple list of event names) or a mapping
+// (struct with severity and events).
+func parseCategoryValue(catName string, value any) (*yamlCategoryDef, error) {
+	switch v := value.(type) {
+	case []any:
+		// Simple list format: category: [event1, event2]
+		events := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("category %q: event name must be a string", catName)
+			}
+			events = append(events, s)
 		}
 		return &yamlCategoryDef{Events: events}, nil
 
-	case yaml.MappingNode:
-		return parseCategoryMapping(catName, node)
-
-	case yaml.ScalarNode, yaml.DocumentNode, yaml.AliasNode:
-		return nil, fmt.Errorf("category %q: expected a sequence or mapping, got %v", catName, node.Kind)
+	case map[string]any:
+		// Struct format: category: {severity: N, events: [...]}
+		return parseCategoryMap(catName, v)
 
 	default:
 		return nil, fmt.Errorf("category %q: expected a sequence or mapping", catName)
 	}
 }
 
-// parseCategoryMapping decodes a struct-format category and validates
-// that only known fields (severity, events) are present.
-func parseCategoryMapping(catName string, node *yaml.Node) (*yamlCategoryDef, error) {
+// parseCategoryMap decodes a struct-format category from a map and
+// validates that only known fields (severity, events) are present.
+func parseCategoryMap(catName string, m map[string]any) (*yamlCategoryDef, error) {
 	allowed := map[string]struct{}{"severity": {}, "events": {}}
-	for j := 0; j+1 < len(node.Content); j += 2 {
-		if _, ok := allowed[node.Content[j].Value]; !ok {
-			return nil, fmt.Errorf("category %q: unknown field %q", catName, node.Content[j].Value)
+	for key := range m {
+		if _, ok := allowed[key]; !ok {
+			return nil, fmt.Errorf("category %q: unknown field %q", catName, key)
 		}
 	}
 	var def yamlCategoryDef
-	if err := node.Decode(&def); err != nil {
-		return nil, fmt.Errorf("category %q: %w", catName, err)
+	if sv, ok := m["severity"]; ok {
+		s, err := toInt(sv)
+		if err != nil {
+			return nil, fmt.Errorf("category %q: severity must be an integer", catName)
+		}
+		def.Severity = &s
+	}
+	if ev, ok := m["events"]; ok {
+		events, err := toStringSlice(ev)
+		if err != nil {
+			return nil, fmt.Errorf("category %q: %w", catName, err)
+		}
+		def.Events = events
 	}
 	return &def, nil
+}
+
+// toInt converts a YAML numeric value to int.
+func toInt(v any) (int, error) {
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case uint64:
+		return int(n), nil //nolint:gosec // severity range 0-10, no overflow risk
+	case float64:
+		return int(n), nil
+	default:
+		return 0, fmt.Errorf("expected integer, got %T", v)
+	}
+}
+
+// toStringSlice converts a YAML sequence value to []string.
+func toStringSlice(v any) ([]string, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected a sequence")
+	}
+	result := make([]string, 0, len(list))
+	for _, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("expected string, got %T", item)
+		}
+		result = append(result, s)
+	}
+	return result, nil
 }
 
 // yamlEventDef is the intermediate representation of a single event
@@ -185,8 +235,7 @@ func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
 		return Taxonomy{}, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxTaxonomyInputSize)
 	}
 
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
+	dec := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField())
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {

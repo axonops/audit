@@ -91,6 +91,7 @@ Feature: Metrics Interface
     And I close the logger
     Then the metrics should have recorded a serialization error
 
+  @docker @webhook
   Scenario: DeliveryReporter output does not double-record in core metrics
     Given mock metrics are configured
     And a logger with webhook output and metrics

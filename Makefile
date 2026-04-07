@@ -1,5 +1,6 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
-       test-integration test-bdd test-examples \
+       test-integration test-bdd test-bdd-core test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
+       test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
@@ -7,6 +8,9 @@
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
+       test-infra-syslog-up test-infra-syslog-down \
+       test-infra-webhook-up test-infra-webhook-down \
+       test-infra-loki-up test-infra-loki-down \
        sbom sbom-validate
 
 # --- Configuration ---
@@ -83,10 +87,31 @@ test-integration:
 	cd loki && go test -race -v -count=1 -tags=integration ./tests/integration/...
 	go test -race -v -count=1 -tags=integration ./tests/integration/...
 
-# BDD tests (requires Docker for syslog/webhook scenarios)
+# BDD tests — all scenarios (requires Docker for syslog/webhook/loki scenarios)
 test-bdd:
 	go test -race -v -count=1 -tags=integration ./tests/bdd/...
 	cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
+
+# BDD tests — per-tag runners for parallel CI execution.
+# Core and file need no Docker. Others require specific infrastructure.
+test-bdd-core:
+	BDD_TAGS="@core && ~@docker" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+	cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
+
+test-bdd-file:
+	BDD_TAGS=@file go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-syslog:
+	BDD_TAGS=@syslog go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-webhook:
+	BDD_TAGS="@webhook, @routing" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-loki:
+	BDD_TAGS="@loki && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-fanout:
+	BDD_TAGS=@fanout go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 # Example compilation tests (no runtime — examples are documentation)
 test-examples:
@@ -308,3 +333,33 @@ test-infra-down:
 
 test-infra-logs:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.full.yml logs
+
+# Per-service infrastructure targets for parallel CI runners.
+# Each creates the shared network, starts only what it needs, and tears down cleanly.
+
+test-infra-syslog-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.syslog.yml up -d --build --wait
+	@echo "Syslog infrastructure is ready."
+
+test-infra-syslog-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.syslog.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-webhook-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.webhook.yml up -d --build --wait
+	@echo "Webhook infrastructure is ready."
+
+test-infra-webhook-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.webhook.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-loki-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml up -d --build --wait
+	@echo "Loki infrastructure is ready."
+
+test-infra-loki-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v
+	docker network rm audit-test 2>/dev/null || true

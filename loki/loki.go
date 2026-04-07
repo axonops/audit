@@ -78,6 +78,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	lokiMetrics Metrics        // loki-specific metrics (optional)
 	ch          chan lokiEntry // buffered input channel
 	done        chan struct{}  // signals batch goroutine exit
+	closeCh     chan struct{}  // signals batchLoop to drain and exit
 	cancel      context.CancelFunc
 	client      *http.Client
 	name        string // "loki:<host>", cached at construction
@@ -158,6 +159,7 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 		metrics:     metrics,
 		lokiMetrics: lokiMetrics,
 		ch:          make(chan lokiEntry, cfg.BufferSize),
+		closeCh:     make(chan struct{}),
 		cancel:      cancel,
 		done:        make(chan struct{}),
 		client:      client,
@@ -227,7 +229,10 @@ func (o *Output) Close() error {
 		return nil
 	}
 
-	o.cancel()
+	// Signal the batch loop to drain and exit. The batch loop will
+	// flush any pending events using the LIVE context (not cancelled),
+	// ensuring in-flight HTTP POSTs complete successfully.
+	close(o.closeCh)
 
 	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
 	// final flush) plus 5s buffer for backoff and channel drain.
@@ -239,6 +244,9 @@ func (o *Output) Close() error {
 			"timeout", shutdownTimeout)
 	}
 
+	// Cancel the context AFTER the batch loop exits to clean up any
+	// resources tied to it, then close idle HTTP connections.
+	o.cancel()
 	o.client.CloseIdleConnections()
 	return nil
 }
@@ -303,23 +311,26 @@ func (o *Output) batchLoop(ctx context.Context) {
 			}
 			resetLokiTimer(timer, o.cfg.FlushInterval)
 
-		case <-ctx.Done():
-			o.drainAndFlush(batch)
+		case <-o.closeCh:
+			// Drain remaining events from the channel and flush
+			// with the live context so HTTP POSTs complete.
+			o.drainAndFlush(ctx, batch)
 			return
 		}
 	}
 }
 
 // drainAndFlush reads remaining events from the channel and does a
-// final flush with a fresh context.
-func (o *Output) drainAndFlush(batch []lokiEntry) {
+// final flush using the provided context. The context is still live
+// (not cancelled) so HTTP POSTs complete successfully.
+func (o *Output) drainAndFlush(ctx context.Context, batch []lokiEntry) {
 	for {
 		select {
 		case entry := <-o.ch:
 			batch = append(batch, entry)
 		default:
 			if len(batch) > 0 {
-				o.flushFinal(batch)
+				o.flush(ctx, batch)
 			}
 			return
 		}
@@ -338,14 +349,6 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 	o.buildPayload()
 	body := o.maybeCompress()
 	o.doPostWithRetry(ctx, body, len(batch))
-}
-
-// flushFinal sends a final batch during shutdown with a fresh
-// short-deadline context (the main context is already cancelled).
-func (o *Output) flushFinal(batch []lokiEntry) {
-	ctx, cancel := context.WithTimeout(context.Background(), o.cfg.Timeout)
-	defer cancel()
-	o.flush(ctx, batch)
 }
 
 // resetLokiTimer safely resets a timer, draining the channel first

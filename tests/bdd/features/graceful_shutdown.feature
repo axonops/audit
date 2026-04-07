@@ -49,6 +49,7 @@ Feature: Graceful Shutdown
     And I close the logger from 5 goroutines concurrently
     Then no panic should have occurred
 
+  @docker @syslog
   Scenario: Close with multiple outputs closes all
     Given a logger with file and syslog outputs
     When I audit a uniquely marked "user_create" event

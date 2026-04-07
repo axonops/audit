@@ -26,10 +26,12 @@ Feature: HMAC Integrity with Loki Output
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
         user_create:
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
       """
 
   Scenario: HMAC fields present on event stored in Loki
@@ -96,6 +98,7 @@ Feature: HMAC Integrity with Loki Output
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
             email:
               labels: [pii]
       """

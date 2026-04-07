@@ -111,6 +111,11 @@ func registerLokiFanoutFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 }
 
 func registerLokiFanoutQuerySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	registerLokiFanoutAssertionSteps(ctx, tc)
+	registerLokiFanoutCountSteps(ctx, tc)
+}
+
+func registerLokiFanoutAssertionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file and Loki "_hmac" values should match for the same event$`,
 		func() error {
 			return assertFileAndLokiHMACMatch(tc)
@@ -135,7 +140,27 @@ func registerLokiFanoutQuerySteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			return assertLokiLabelQueryReturnsNoEvents(tc, "event_type", eventType, timeout)
 		})
 
-	ctx.Step(`^the loki server should have at least (\d+) events within (\d+) seconds$`,
+	ctx.Step(`^querying Loki for the user_create marker should return no events within (\d+) seconds$`,
+		func(timeout int) error {
+			marker := tc.Markers["multi_0"]
+			if marker == "" {
+				marker = tc.Markers["default"]
+			}
+			return assertLokiMarkerAbsent(tc, marker, timeout)
+		})
+
+	ctx.Step(`^the loki server should not contain marker "([^"]*)" within (\d+) seconds$`,
+		func(markerName string, timeout int) error {
+			m, ok := tc.Markers[markerName]
+			if !ok {
+				return fmt.Errorf("no marker named %q", markerName)
+			}
+			return assertLokiMarkerAbsent(tc, m, timeout)
+		})
+}
+
+func registerLokiFanoutCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^the loki fanout server should have at least (\d+) events within (\d+) seconds$`,
 		func(minEvents, timeoutSec int) error {
 			logql := `{app_name="bdd-audit", test_suite="bdd"}`
 			deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
@@ -415,6 +440,23 @@ func assertLokiLabelQueryReturnsMarker(tc *AuditTestContext, label, value, marke
 		return fmt.Errorf("loki query failed: %w", lastErr)
 	}
 	return fmt.Errorf("marker %q not found in Loki query {%s=%q} within %ds", marker, label, value, timeoutSec)
+}
+
+// assertLokiMarkerAbsent checks that a specific marker string does NOT
+// appear in Loki. This is more precise than assertLokiLabelQueryReturnsNoEvents
+// which queries by label and can find stale data from previous runs.
+func assertLokiMarkerAbsent(tc *AuditTestContext, marker string, timeoutSec int) error {
+	logql := fmt.Sprintf(`{app_name="bdd-audit"} |= %q`, marker)
+	time.Sleep(time.Duration(timeoutSec) * time.Second)
+	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
+	if err != nil {
+		return err
+	}
+	n := countLokiLines(result)
+	if n > 0 {
+		return fmt.Errorf("expected marker %q absent from Loki but found %d events", marker, n)
+	}
+	return nil
 }
 
 func assertLokiLabelQueryReturnsNoEvents(tc *AuditTestContext, label, value string, timeoutSec int) error {

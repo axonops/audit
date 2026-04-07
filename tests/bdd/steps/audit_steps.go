@@ -82,6 +82,15 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
+	ctx.Step(`^the following taxonomy:$`, func(doc *godog.DocString) error {
+		tax, err := audit.ParseTaxonomyYAML([]byte(doc.Content))
+		if err != nil {
+			return fmt.Errorf("parse inline taxonomy: %w", err)
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
+
 	ctx.Step(`^a logger with stdout output$`, func() error {
 		return createStdoutLogger(tc, audit.Config{
 			Version: 1,

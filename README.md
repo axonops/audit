@@ -275,7 +275,7 @@ go-audit builds on excellent open-source projects. See
 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for full attribution and
 license details.
 
-- [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) — YAML parsing (MIT / Apache-2.0)
+- [github.com/goccy/go-yaml](https://github.com/goccy/go-yaml) — YAML parsing (MIT)
 - [github.com/axonops/srslog](https://github.com/axonops/srslog) — RFC 5424 syslog (BSD-3-Clause)
 - [github.com/rgooding/go-syncmap](https://github.com/rgooding/go-syncmap) — Generic sync.Map (Apache-2.0)
 

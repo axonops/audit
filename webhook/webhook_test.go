@@ -167,8 +167,8 @@ func TestValidateConfig_BoundaryValues(t *testing.T) {
 func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     Config
 		wantErr string
+		cfg     Config
 	}{
 		{
 			name: "nonexistent CA",

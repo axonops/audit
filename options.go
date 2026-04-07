@@ -34,7 +34,9 @@ func WithTaxonomy(t Taxonomy) Option {
 		if err := ValidateTaxonomy(t); err != nil {
 			return err
 		}
-		precomputeTaxonomy(&t)
+		if err := precomputeTaxonomy(&t); err != nil {
+			return err
+		}
 		l.taxonomy = &t
 		l.filter = newFilterState(&t)
 		return nil

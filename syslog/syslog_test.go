@@ -442,6 +442,8 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 			_, err := syslog.New(&tt.cfg, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
+				"all syslog config validation errors must wrap audit.ErrConfigInvalid")
 		})
 	}
 }
@@ -558,6 +560,8 @@ func TestSyslogOutput_Hostname_Validation_Invalid(t *testing.T) {
 			}, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
+			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
+				"hostname validation errors must wrap audit.ErrConfigInvalid")
 		})
 	}
 }

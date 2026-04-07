@@ -488,7 +488,7 @@ func backoffDuration(attempt int) time.Duration {
 // defaults where needed.
 func validateSyslogConfig(cfg *Config) error {
 	if cfg.Address == "" {
-		return fmt.Errorf("audit: syslog address must not be empty")
+		return fmt.Errorf("%w: syslog address must not be empty", audit.ErrConfigInvalid)
 	}
 
 	if cfg.Network == "" {
@@ -498,7 +498,7 @@ func validateSyslogConfig(cfg *Config) error {
 	case "tcp", "udp", "tcp+tls":
 		// valid
 	default:
-		return fmt.Errorf("audit: syslog network %q must be tcp, udp, or tcp+tls", cfg.Network)
+		return fmt.Errorf("%w: syslog network %q must be tcp, udp, or tcp+tls", audit.ErrConfigInvalid, cfg.Network)
 	}
 
 	if cfg.AppName == "" {
@@ -509,7 +509,7 @@ func validateSyslogConfig(cfg *Config) error {
 	}
 
 	if cfg.MaxRetries > MaxMaxRetries {
-		return fmt.Errorf("audit: syslog max_retries %d exceeds maximum %d", cfg.MaxRetries, MaxMaxRetries)
+		return fmt.Errorf("%w: syslog max_retries %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.MaxRetries, MaxMaxRetries)
 	}
 
 	if err := validateSyslogHostname(cfg.Hostname); err != nil {
@@ -526,12 +526,12 @@ func validateSyslogHostname(hostname string) error {
 		return nil // empty is acceptable (NILVALUE "-")
 	}
 	if len(hostname) > 255 {
-		return fmt.Errorf("audit: syslog hostname exceeds RFC 5424 maximum of 255 bytes")
+		return fmt.Errorf("%w: syslog hostname exceeds RFC 5424 maximum of 255 bytes", audit.ErrConfigInvalid)
 	}
 	for i := 0; i < len(hostname); i++ {
 		b := hostname[i]
 		if b < 33 || b > 126 {
-			return fmt.Errorf("audit: syslog hostname contains invalid byte 0x%02x at offset %d", b, i)
+			return fmt.Errorf("%w: syslog hostname contains invalid byte 0x%02x at offset %d", audit.ErrConfigInvalid, b, i)
 		}
 	}
 	return nil
@@ -540,17 +540,17 @@ func validateSyslogHostname(hostname string) error {
 // validateSyslogTLSFiles checks TLS cert/key pairing and file existence.
 func validateSyslogTLSFiles(cfg *Config) error {
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("audit: syslog tls_cert and tls_key must both be set or both empty")
+		return fmt.Errorf("%w: syslog tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 
 	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
 		if path != "" {
 			fi, err := os.Stat(path)
 			if err != nil {
-				return fmt.Errorf("audit: syslog tls file %q: %w", path, err)
+				return fmt.Errorf("%w: syslog tls file %q: %w", audit.ErrConfigInvalid, path, err)
 			}
 			if fi.IsDir() {
-				return fmt.Errorf("audit: syslog tls file %q is a directory", path)
+				return fmt.Errorf("%w: syslog tls file %q is a directory", audit.ErrConfigInvalid, path)
 			}
 		}
 	}
@@ -620,7 +620,7 @@ var syslogFacilities = map[string]srslog.Priority{
 func parseFacility(name string) (srslog.Priority, error) {
 	p, ok := syslogFacilities[name]
 	if !ok {
-		return 0, fmt.Errorf("audit: unknown syslog facility %q", name)
+		return 0, fmt.Errorf("%w: unknown syslog facility %q", audit.ErrConfigInvalid, name)
 	}
 	return p, nil
 }

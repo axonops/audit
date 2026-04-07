@@ -128,25 +128,25 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 // defaults where needed.
 func validateWebhookConfig(cfg *Config) error {
 	if cfg.URL == "" {
-		return fmt.Errorf("audit: webhook url must not be empty")
+		return fmt.Errorf("%w: webhook url must not be empty", audit.ErrConfigInvalid)
 	}
 
 	u, err := url.Parse(cfg.URL)
 	if err != nil {
-		return fmt.Errorf("audit: webhook url invalid: %w", err)
+		return fmt.Errorf("%w: webhook url invalid: %w", audit.ErrConfigInvalid, err)
 	}
 
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("audit: webhook url scheme must be http or https (got %q)", u.Scheme)
+		return fmt.Errorf("%w: webhook url scheme must be http or https (got %q)", audit.ErrConfigInvalid, u.Scheme)
 	}
 
 	if !cfg.AllowInsecureHTTP && u.Scheme != "https" {
-		return fmt.Errorf("audit: webhook url must be https (got %q); set AllowInsecureHTTP for testing", u.Scheme)
+		return fmt.Errorf("%w: webhook url must be https (got %q); set AllowInsecureHTTP for testing", audit.ErrConfigInvalid, u.Scheme)
 	}
 
 	// Reject URLs with embedded credentials — they would leak in logs.
 	if u.User != nil {
-		return fmt.Errorf("audit: webhook url must not contain credentials; use Headers for auth")
+		return fmt.Errorf("%w: webhook url must not contain credentials; use Headers for auth", audit.ErrConfigInvalid)
 	}
 
 	if err := validateWebhookHeaders(cfg.Headers); err != nil {
@@ -155,7 +155,7 @@ func validateWebhookConfig(cfg *Config) error {
 
 	// TLS cert/key pairing.
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("audit: webhook tls_cert and tls_key must both be set or both empty")
+		return fmt.Errorf("%w: webhook tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 
 	applyWebhookDefaults(cfg)
@@ -166,10 +166,10 @@ func validateWebhookConfig(cfg *Config) error {
 func validateWebhookHeaders(headers map[string]string) error {
 	for k, v := range headers {
 		if strings.ContainsAny(k, "\r\n") {
-			return fmt.Errorf("audit: webhook header name %q contains invalid characters", k)
+			return fmt.Errorf("%w: webhook header name %q contains invalid characters", audit.ErrConfigInvalid, k)
 		}
 		if strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("audit: webhook header value for %q contains invalid characters", k)
+			return fmt.Errorf("%w: webhook header value for %q contains invalid characters", audit.ErrConfigInvalid, k)
 		}
 	}
 	return nil

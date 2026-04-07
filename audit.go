@@ -981,7 +981,8 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 			"event_type", eventType,
 			"unknown_fields", unknown)
 	case ValidationPermissive:
-		// Silently accept unknown fields.
+		// Unreachable: early return at function entry guards this case.
+		// Kept to satisfy exhaustive switch linter.
 	}
 	return nil
 }

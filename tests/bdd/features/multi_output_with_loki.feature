@@ -23,16 +23,19 @@ Feature: Multi-Output Fan-Out with Loki
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
         auth_failure:
           severity: 8
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
             reason: {required: true}
         user_create:
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
       """
 
   Scenario: Event delivered to file and Loki simultaneously
@@ -52,12 +55,12 @@ Feature: Multi-Output Fan-Out with Loki
 
   Scenario: Different routes per output with Loki receiving only security
     Given a logger with file receiving all events and loki receiving only "security"
-    When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I audit a uniquely marked "auth_failure" event with actor "mallory" and outcome "failure" and field "reason" = "invalid_password"
+    When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success" named "write_event"
+    And I audit a uniquely marked "auth_failure" event with actor "mallory" and outcome "failure" and field "reason" = "invalid_password" named "security_event"
     And I close the logger
     Then the file should contain both markers
-    And querying Loki by label event_type = "auth_failure" should return the security marker within 10 seconds
-    And querying Loki by label event_type = "user_create" should return no events within 5 seconds
+    And querying Loki by label event_type = "auth_failure" should return the security_event marker within 10 seconds
+    And the loki server should not contain marker "write_event" within 5 seconds
 
   Scenario: HMAC present on both file and Loki with same salt
     Given a logger with file and loki outputs both HMAC-enabled with salt "fanout-hmac-salt-16!" version "v1"
@@ -86,6 +89,7 @@ Feature: Multi-Output Fan-Out with Loki
           fields:
             outcome: {required: true}
             actor_id: {required: true}
+            marker: {}
             email:
               labels: [pii]
       """
@@ -137,5 +141,5 @@ Feature: Multi-Output Fan-Out with Loki
     Given a logger with file and loki outputs
     When I audit 3 uniquely marked "user_create" events with actor "alice" and outcome "success"
     And I close the logger
-    Then the loki server should have at least 3 events within 10 seconds
+    Then the loki fanout server should have at least 3 events within 10 seconds
     And the file should contain all 3 markers

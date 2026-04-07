@@ -497,10 +497,6 @@ func registerWebhookThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 func registerWebhookThenCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the webhook receiver should have at least (\d+) event within (\d+) seconds$`, func(n, timeout int) error {
-		return assertWebhookEventCount(tc, n, time.Duration(timeout)*time.Second)
-	})
-
 	ctx.Step(`^the webhook receiver should have at least (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
 		return assertWebhookEventCount(tc, n, time.Duration(timeout)*time.Second)
 	})

@@ -96,24 +96,10 @@ func registerSensitivityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		func(field, value string) error {
 			return assertOutputContainsFieldValue(tc, field, value)
 		})
-	ctx.Step(`^the output should not contain field "([^"]*)"$`,
-		func(field string) error {
-			return assertOutputDoesNotContainField(tc, field)
-		})
-	ctx.Step(`^the output should contain an event with field "([^"]*)"$`,
-		func(field string) error {
-			return assertOutputContainsField(tc, field)
-		})
-	ctx.Step(`^logger creation should fail with an error containing "([^"]*)"$`,
-		func(substr string) error {
-			if tc.LastErr == nil {
-				return fmt.Errorf("expected logger creation to fail, but it succeeded")
-			}
-			if !strings.Contains(tc.LastErr.Error(), substr) {
-				return fmt.Errorf("expected error containing %q, got: %w", substr, tc.LastErr)
-			}
-			return nil
-		})
+	// Note: "the output should not contain field" is registered in audit_steps.go.
+	// Note: "the output should contain an event with field" is registered in audit_steps.go.
+	// Note: "logger creation should fail with an error containing" is registered in hmac_steps.go.
+	// Do not duplicate any of these here.
 }
 
 func parseSensitivityTaxonomy(tc *AuditTestContext, yamlContent string) error {
@@ -173,61 +159,6 @@ func assertOutputContainsFieldValue(tc *AuditTestContext, field, value string) e
 	}
 	return fmt.Errorf("no event found with field %q = %q in output:\n%s",
 		field, value, tc.StdoutBuf.String())
-}
-
-func assertOutputContainsField(tc *AuditTestContext, field string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
-		tc.Logger = nil
-	}
-	if tc.StdoutBuf == nil {
-		return fmt.Errorf("no stdout buffer configured")
-	}
-	lines := strings.Split(strings.TrimSpace(tc.StdoutBuf.String()), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			continue
-		}
-		if _, ok := m[field]; ok {
-			return nil
-		}
-	}
-	return fmt.Errorf("no event found with field %q in output:\n%s",
-		field, tc.StdoutBuf.String())
-}
-
-func assertOutputDoesNotContainField(tc *AuditTestContext, field string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
-		tc.Logger = nil
-	}
-	if tc.StdoutBuf == nil {
-		return fmt.Errorf("no stdout buffer configured")
-	}
-	lines := strings.Split(strings.TrimSpace(tc.StdoutBuf.String()), "\n")
-	eventCount := 0
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			continue
-		}
-		eventCount++
-		if _, ok := m[field]; ok {
-			return fmt.Errorf("event contains field %q which should have been stripped:\n%s",
-				field, line)
-		}
-	}
-	if eventCount == 0 {
-		return fmt.Errorf("no events in output — field absence assertion is vacuous")
-	}
-	return nil
 }
 
 func assertFieldNotLabeled(tc *AuditTestContext, eventType, field string) error {

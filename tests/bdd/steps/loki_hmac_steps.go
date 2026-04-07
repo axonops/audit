@@ -101,6 +101,21 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
+	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)" named "([^"]*)"$`,
+		func(eventType, actor, outcome, name string) error {
+			if tc.Logger == nil {
+				return fmt.Errorf("logger is nil")
+			}
+			m := marker("BDD")
+			tc.Markers[name] = m
+			fields := audit.Fields{
+				"actor_id": actor,
+				"outcome":  outcome,
+				"marker":   m,
+			}
+			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		})
+
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)" and field "([^"]*)" = "([^"]*)" named "([^"]*)"$`,
 		func(eventType, actor, outcome, field, value, name string) error {
 			if tc.Logger == nil {
@@ -182,10 +197,8 @@ func registerLokiHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			return assertLokiAndCaptureHMACDiffer(tc)
 		})
 
-	ctx.Step(`^both outputs should have "_hmac" fields$`,
-		func() error {
-			return assertBothOutputsHaveHMAC(tc)
-		})
+	// Note: "both outputs should have _hmac fields" is registered in
+	// hmac_steps.go. Do not duplicate here.
 
 	ctx.Step(`^the HMAC values should differ between Loki and the capture output$`,
 		func() error {
@@ -348,19 +361,6 @@ func assertLokiAndCaptureHMACDiffer(tc *AuditTestContext) error {
 
 	if lokiHMAC == captureHMAC {
 		return fmt.Errorf("expected different HMACs but both are %q", lokiHMAC)
-	}
-	return nil
-}
-
-// assertBothOutputsHaveHMAC verifies both Loki and capture events
-// contain _hmac fields.
-func assertBothOutputsHaveHMAC(tc *AuditTestContext) error {
-	marker := tc.Markers["default"]
-	if _, err := extractLokiHMACField(tc, marker); err != nil {
-		return fmt.Errorf("loki: %w", err)
-	}
-	if _, err := extractCaptureHMACField(tc, marker); err != nil {
-		return fmt.Errorf("capture: %w", err)
 	}
 	return nil
 }

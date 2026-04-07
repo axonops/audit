@@ -141,12 +141,8 @@ func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
-	ctx.Step(`^the logger should be created successfully$`, func() error {
-		if tc.Logger == nil {
-			return fmt.Errorf("logger was not created")
-		}
-		return nil
-	})
+	// Note: "the logger should be created successfully" is registered
+	// in config_steps.go. Do not duplicate here.
 }
 
 func createSeverityRoutedLogger(tc *AuditTestContext, minSev, maxSev *int, includeCats, excludeCats []string) error {

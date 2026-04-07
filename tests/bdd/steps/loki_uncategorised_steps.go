@@ -30,10 +30,8 @@ func registerLokiUncategorisedSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 }
 
 func registerLokiUncategorisedThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^querying Loki by label "([^"]*)" = "([^"]*)" should return an event with:$`,
-		func(label, value string, table *godog.Table) error {
-			return assertLokiLabelQueryReturnsEventWithTable(tc, label, value, table)
-		})
+	// Note: "querying Loki by label ... should return an event with:"
+	// is registered in loki_steps.go. Do not duplicate here.
 
 	ctx.Step(`^the loki event payload for the marker should not contain field "([^"]*)"$`,
 		func(field string) error {
@@ -196,56 +194,4 @@ func buildNegationQuery(categories, markerVal string) string {
 		}
 	}
 	return fmt.Sprintf(`{test_suite="bdd",%s} |= %q`, strings.Join(negations, ","), markerVal)
-}
-
-// assertLokiLabelQueryReturnsEventWithTable queries Loki by label and
-// verifies an event matching all fields in the table is returned.
-func assertLokiLabelQueryReturnsEventWithTable(tc *AuditTestContext, label, value string, table *godog.Table) error {
-	logql := fmt.Sprintf(`{test_suite="bdd",%s=%q}`, label, value)
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
-		if err != nil {
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-		if findEventMatchingTable(result, table) {
-			return nil
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("no event matching table found in {%s=%q} within 15s", label, value)
-}
-
-// findEventMatchingTable scans a Loki query result for an event whose
-// JSON fields match every row in the Gherkin table.
-func findEventMatchingTable(result lokiBDDQueryResult, table *godog.Table) bool {
-	for _, stream := range result.Data.Result {
-		for _, v := range stream.Values {
-			if len(v) < 2 {
-				continue
-			}
-			var m map[string]any
-			if err := json.Unmarshal([]byte(v[1]), &m); err != nil {
-				continue
-			}
-			if eventMatchesTable(m, table) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// eventMatchesTable checks if a parsed JSON map matches all field/value
-// pairs in a Gherkin table (skipping the header row).
-func eventMatchesTable(m map[string]any, table *godog.Table) bool {
-	for _, row := range table.Rows[1:] {
-		field := row.Cells[0].Value
-		want := row.Cells[1].Value
-		if fmt.Sprint(m[field]) != want {
-			return false
-		}
-	}
-	return true
 }

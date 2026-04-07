@@ -19,7 +19,7 @@
 // step definitions in steps/ translate Gherkin to API calls.
 //
 // Run with: make test-bdd (requires Docker for syslog/webhook scenarios)
-// Run core-only: go test -tags=integration ./tests/bdd/... --godog.tags=@core
+// Run core-only: make test-bdd-core (or BDD_TAGS=@core go test ...)
 package bdd_test
 
 import (
@@ -45,12 +45,24 @@ func TestFeatures(t *testing.T) {
 		goleak.IgnoreAnyFunction("internal/poll.runtime_pollWait"),
 		goleak.IgnoreAnyFunction("crypto/tls.(*Conn).Read"),
 	)
+
+	// BDD_TAGS allows filtering scenarios by godog tag expression.
+	// Examples:
+	//   BDD_TAGS=@core          — run only @core scenarios (no Docker needed)
+	//   BDD_TAGS=@syslog        — run only @syslog scenarios
+	//   BDD_TAGS="@loki and not @fanout" — loki scenarios excluding fan-out
+	//
+	// When unset, all scenarios run (original behaviour).
+	tags := os.Getenv("BDD_TAGS")
+
 	opts := godog.Options{
 		Output:      colors.Colored(os.Stdout),
 		Format:      "pretty",
 		Paths:       []string{"features"},
+		Tags:        tags,
 		Randomize:   0,
-		Concurrency: 1, // sequential: shared Docker infrastructure
+		Strict:      true, // undefined steps are failures, not silent skips
+		Concurrency: 1,    // sequential: shared Docker infrastructure
 		TestingT:    t,
 	}
 

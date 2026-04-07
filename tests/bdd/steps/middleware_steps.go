@@ -158,7 +158,7 @@ func registerMiddlewareWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 
 func registerMiddlewareThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the file event should have field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertFileEventFieldValue(tc, f, v) })
-	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(f string) error { return assertFileEventFieldExists(tc, f) })
+	// Note: "the file event should have field ... present" is registered in file_steps.go.
 	ctx.Step(`^the response status should be (\d+)$`, func(s int) error { return assertHTTPStatus(tc, s) })
 }
 
@@ -173,20 +173,6 @@ func assertFileEventFieldValue(tc *AuditTestContext, field, value string) error 
 		}
 	}
 	return fmt.Errorf("no file event with %s=%q (%d events)", field, value, len(events))
-}
-
-func assertFileEventFieldExists(tc *AuditTestContext, field string) error {
-	events, err := readFileEvents(tc, "default")
-	if err != nil {
-		return err
-	}
-	if len(events) == 0 {
-		return fmt.Errorf("no events in file")
-	}
-	if _, ok := events[0][field]; !ok {
-		return fmt.Errorf("field %q not present in event", field)
-	}
-	return nil
 }
 
 func assertHTTPStatus(tc *AuditTestContext, status int) error {

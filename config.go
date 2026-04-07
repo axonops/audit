@@ -110,9 +110,10 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// validateConfig checks the config for correctness. It returns an error
-// wrapping [ErrConfigInvalid] on failure. Version checks are handled by
-// [migrateConfig] which runs before this function.
+// validateConfig applies defaults to zero-valued fields, then checks the
+// config for correctness. It mutates c (via [Config.applyDefaults]) before
+// validation. Returns an error wrapping [ErrConfigInvalid] on failure.
+// Version checks are handled by [migrateConfig] which runs before this.
 func validateConfig(c *Config) error {
 	c.applyDefaults()
 

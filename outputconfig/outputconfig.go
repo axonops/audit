@@ -944,7 +944,11 @@ func toInt(v any) (int, error) {
 	case uint64:
 		return int(val), nil //nolint:gosec // config values are small integers, no overflow risk
 	case float64:
-		return int(val), nil
+		iv := int(val)
+		if float64(iv) != val {
+			return 0, fmt.Errorf("expected integer, got fractional number %v", val)
+		}
+		return iv, nil
 	case string:
 		n, err := strconv.Atoi(val)
 		if err != nil {

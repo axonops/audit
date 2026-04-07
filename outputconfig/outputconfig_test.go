@@ -2439,3 +2439,31 @@ outputs:
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// toInt conversion tests (#325)
+// ---------------------------------------------------------------------------
+
+func TestToInt_Float64_WholeNumber(t *testing.T) {
+	n, err := outputconfig.ToIntForTest(float64(42))
+	require.NoError(t, err)
+	assert.Equal(t, 42, n)
+}
+
+func TestToInt_Float64_Zero(t *testing.T) {
+	n, err := outputconfig.ToIntForTest(float64(0))
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+}
+
+func TestToInt_Float64_Fractional_ReturnsError(t *testing.T) {
+	_, err := outputconfig.ToIntForTest(float64(10.7))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fractional")
+}
+
+func TestToInt_Float64_NegativeFractional_ReturnsError(t *testing.T) {
+	_, err := outputconfig.ToIntForTest(float64(-3.5))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fractional")
+}

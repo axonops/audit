@@ -290,7 +290,9 @@ func (o *captureOutput) Name() string { return o.name }
 func (o *captureOutput) Events() [][]byte {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.events
+	cp := make([][]byte, len(o.events))
+	copy(cp, o.events)
+	return cp
 }
 
 // registerHMACLabelSteps registers steps for testing HMAC with

@@ -186,6 +186,13 @@ func (m *MockMetrics) GetEventCount(output, status string) int {
 	return m.Events[output+":"+status]
 }
 
+// GetSerializationErrorCount returns the count of serialization errors for the event type.
+func (m *MockMetrics) GetSerializationErrorCount(eventType string) int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.SerializationErrors[eventType]
+}
+
 // GetWebhookDrops returns the total number of webhook drops recorded.
 func (m *MockMetrics) GetWebhookDrops() int {
 	m.Mu.Lock()

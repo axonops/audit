@@ -2815,6 +2815,42 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	}
 }
 
+func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
+	tax := audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"user_create":  {Required: []string{"outcome"}},
+			"health_check": {Required: []string{"outcome"}}, // uncategorised
+		},
+	}
+
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	// health_check is uncategorised — always delivered by default.
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("health_check", audit.Fields{"outcome": "ok"})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	assert.Equal(t, 1, out.EventCount())
+
+	// Disable it explicitly.
+	require.NoError(t, logger.DisableEvent("health_check"))
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("health_check", audit.Fields{"outcome": "ok"})))
+
+	// Give drain loop time to process, then verify no new events.
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 1, out.EventCount(), "disabled uncategorised event must not be delivered")
+
+	require.NoError(t, logger.Close())
+}
+
 // BenchmarkAudit_EndToEnd measures the full Audit() path including
 // enqueue with a large buffer. Events that overflow are silently
 // dropped — the benchmark measures the amortised caller-side cost

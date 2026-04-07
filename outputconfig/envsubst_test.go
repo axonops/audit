@@ -127,6 +127,15 @@ func TestExpandEnv_MultipleVarsInOneValue(t *testing.T) {
 	assert.Equal(t, "tcp+tls://syslog.local:514", m["url"])
 }
 
+func TestExpandEnv_EmptyDefault(t *testing.T) {
+	// ${VAR:-} with variable unset should produce empty string (not error).
+	m := parseToMap(t, "value: ${UNSET_EMPTY_DEFAULT_VAR:-}\n")
+
+	_, err := expandEnvInValue(m, "")
+	require.NoError(t, err)
+	assert.Equal(t, "", m["value"])
+}
+
 func TestExpandEnv_UnclosedBrace_Error(t *testing.T) {
 	m := parseToMap(t, "bad: ${UNCLOSED\n")
 

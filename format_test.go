@@ -552,9 +552,9 @@ func TestCEFEscapeHeader(t *testing.T) {
 		{"both", `a\b|c`, `a\\b\|c`},
 		{"newline stripped", "line1\nline2", "line1 line2"},
 		{"cr stripped", "line1\rline2", "line1 line2"},
-		{"null byte", "hello\x00world", "hello\x00world"},       // C0 controls pass through in headers
-		{"tab", "hello\tworld", "hello\tworld"},                   // tab passes through
-		{"bell", "hello\x07world", "hello\x07world"},             // bell passes through
+		{"null byte", "hello\x00world", "hello\x00world"}, // C0 controls pass through in headers
+		{"tab", "hello\tworld", "hello\tworld"},           // tab passes through
+		{"bell", "hello\x07world", "hello\x07world"},      // bell passes through
 		{"clean", "hello", "hello"},
 	}
 	for _, tt := range tests {

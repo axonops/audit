@@ -16,6 +16,7 @@ package webhook
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,6 +111,22 @@ func TestValidateConfig(t *testing.T) {
 				MaxRetries: MaxMaxRetries + 1,
 			},
 			wantErr: "max_retries",
+		},
+		{
+			name: "negative flush interval",
+			cfg: Config{
+				URL:           "https://example.com/webhook",
+				FlushInterval: -1 * time.Second,
+			},
+			wantErr: "flush_interval must not be negative",
+		},
+		{
+			name: "negative timeout",
+			cfg: Config{
+				URL:     "https://example.com/webhook",
+				Timeout: -1 * time.Second,
+			},
+			wantErr: "timeout must not be negative",
 		},
 	}
 

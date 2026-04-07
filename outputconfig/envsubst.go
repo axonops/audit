@@ -19,85 +19,56 @@ import (
 	"os"
 	"regexp"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // validVarName matches POSIX portable environment variable names.
 var validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// expandEnvInNode walks a parsed YAML tree and expands ${VAR} and
-// ${VAR:-default} patterns in string scalar values.
+// expandEnvInValue walks a parsed YAML value (map, slice, or string)
+// and expands ${VAR} and ${VAR:-default} patterns in string values.
 //
 // Security: expansion happens AFTER YAML parsing (not on raw bytes)
 // to prevent YAML injection via env var values containing YAML syntax.
 // Only string-typed leaf values are expanded — map keys are never
-// modified. A visited set prevents double-expansion of YAML alias
-// targets that are shared between multiple references.
+// modified. No recursive expansion — a single pass.
 //
-// Unset variables without a default cause an error naming the variable
-// (but NOT its expected value). No recursive expansion — a single pass.
-func expandEnvInNode(node *yaml.Node, fieldPath string) error {
-	return expandEnvInNodeVisited(node, fieldPath, make(map[*yaml.Node]bool))
-}
+// Returns the expanded value (maps and slices are modified in place
+// and returned; strings are replaced).
+func expandEnvInValue(v any, fieldPath string) (any, error) { //nolint:gocognit // recursive tree walk
+	switch val := v.(type) {
+	case string:
+		return expandEnvString(val, fieldPath)
 
-func expandEnvInNodeVisited(node *yaml.Node, fieldPath string, visited map[*yaml.Node]bool) error { //nolint:gocognit,gocyclo,cyclop // tree walking is inherently complex
-	if node == nil || visited[node] {
-		return nil
-	}
-	visited[node] = true
-
-	switch node.Kind {
-	case yaml.DocumentNode:
-		for _, child := range node.Content {
-			if err := expandEnvInNodeVisited(child, fieldPath, visited); err != nil {
-				return err
-			}
-		}
-
-	case yaml.MappingNode:
-		// Content is [key, value, key, value, ...]
-		// Expand only values (odd indices), never keys (even indices).
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			keyNode := node.Content[i]
-			valNode := node.Content[i+1]
+	case map[string]any:
+		for key, child := range val {
 			childPath := fieldPath
 			if childPath != "" {
 				childPath += "."
 			}
-			childPath += keyNode.Value
-			if err := expandEnvInNodeVisited(valNode, childPath, visited); err != nil {
-				return err
-			}
-		}
-
-	case yaml.SequenceNode:
-		for i, child := range node.Content {
-			childPath := fmt.Sprintf("%s[%d]", fieldPath, i)
-			if err := expandEnvInNodeVisited(child, childPath, visited); err != nil {
-				return err
-			}
-		}
-
-	case yaml.ScalarNode:
-		if node.Tag == "!!str" || node.Tag == "" {
-			expanded, err := expandEnvString(node.Value, fieldPath)
+			childPath += key
+			expanded, err := expandEnvInValue(child, childPath)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			node.Value = expanded
+			val[key] = expanded
 		}
+		return val, nil
 
-	case yaml.AliasNode:
-		// Expand the alias target. The visited set prevents
-		// double-expansion when multiple aliases reference the
-		// same anchor.
-		if err := expandEnvInNodeVisited(node.Alias, fieldPath, visited); err != nil {
-			return err
+	case []any:
+		for i, child := range val {
+			childPath := fmt.Sprintf("%s[%d]", fieldPath, i)
+			expanded, err := expandEnvInValue(child, childPath)
+			if err != nil {
+				return nil, err
+			}
+			val[i] = expanded
 		}
+		return val, nil
+
+	default:
+		// Numbers, booleans, nil — no expansion needed.
+		return v, nil
 	}
-
-	return nil
 }
 
 // expandEnvString expands ${VAR} and ${VAR:-default} in a single string.

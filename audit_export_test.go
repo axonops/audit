@@ -15,9 +15,6 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
-// CopyFieldsForTest exposes copyFields for benchmarking.
-var CopyFieldsForTest = copyFields
-
 // IsEnabledForTest checks whether the given event type is enabled in
 // the logger's current filter state. Lock-free, matching the
 // production Audit() hot path.

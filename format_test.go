@@ -1367,6 +1367,37 @@ func TestJSONFormatter_PoolSafety(t *testing.T) {
 	assert.NotEqual(t, result1, result2)
 }
 
+func TestJSONFormatter_HTMLSafeEscaping(t *testing.T) {
+	t.Parallel()
+	f := &audit.JSONFormatter{}
+	def := &audit.EventDef{Required: []string{"payload"}}
+	fields := audit.Fields{"payload": `<script>alert("xss")</script>`}
+
+	data, err := f.Format(time.Now(), "test_event", fields, def, nil)
+	require.NoError(t, err)
+
+	// HTML-special chars must be escaped (matching json.Marshal behaviour).
+	output := string(data)
+	assert.NotContains(t, output, "<script>", "< must be escaped")
+	assert.NotContains(t, output, "</script>", "> must be escaped")
+	assert.Contains(t, output, `\u003c`, "< should be escaped as \\u003c")
+	assert.Contains(t, output, `\u003e`, "> should be escaped as \\u003e")
+}
+
+func TestJSONFormatter_InvalidUTF8Replacement(t *testing.T) {
+	t.Parallel()
+	f := &audit.JSONFormatter{}
+	def := &audit.EventDef{Required: []string{"data"}}
+	// \x80\x81 are invalid UTF-8 continuation bytes.
+	fields := audit.Fields{"data": "hello\x80\x81world"}
+
+	data, err := f.Format(time.Now(), "test_event", fields, def, nil)
+	require.NoError(t, err)
+
+	output := string(data)
+	assert.Contains(t, output, `\ufffd`, "invalid UTF-8 should be replaced with U+FFFD")
+}
+
 func TestWriteJSONString_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		var buf bytes.Buffer

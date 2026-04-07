@@ -1566,7 +1566,6 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// copyFields with nil input
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
@@ -2813,23 +2812,6 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
-	}
-}
-
-func BenchmarkCopyFields(b *testing.B) {
-	fields := audit.Fields{
-		"outcome":    "success",
-		"actor_id":   "alice",
-		"source_ip":  "10.0.0.1",
-		"request_id": "550e8400-e29b-41d4-a716-446655440000",
-		"method":     "POST",
-		"path":       "/api/v1/schemas",
-	}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = audit.CopyFieldsForTest(fields)
 	}
 }
 

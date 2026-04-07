@@ -986,19 +986,6 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 	return nil
 }
 
-// copyFields creates a shallow copy of the fields map to avoid data
-// races when the caller modifies the map after Audit returns.
-func copyFields(fields Fields) Fields {
-	if fields == nil {
-		return nil
-	}
-	cp := make(Fields, len(fields))
-	for k, v := range fields {
-		cp[k] = v
-	}
-	return cp
-}
-
 // isZeroValue reports whether v is a zero value for its type. It uses
 // a type switch for common types to avoid reflection overhead and
 // panics. Unknown types fall back to a non-nil check only.

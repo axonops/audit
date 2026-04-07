@@ -123,7 +123,8 @@ version: 1
 
 sensitivity:
   labels:
-    - pii
+    pii:
+      fields: [email]
 
 categories:
   write:
@@ -136,7 +137,7 @@ events:
       outcome: {required: true}
       actor_id: {required: true}
       marker: {}
-      email: {labels: [pii]}
+      email: {}
 `
 
 func registerSyslogSeverityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

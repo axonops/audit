@@ -171,6 +171,64 @@ func TestWrapOutput_CloseDelegatesToInner(t *testing.T) {
 	assert.True(t, inner.IsClosed())
 }
 
+func TestWrapOutput_PreservesMetadataWriter(t *testing.T) {
+	inner := &mockMetadataWriter{
+		MockOutput: *testhelper.NewMockOutput("syslog:localhost:514"),
+	}
+	wrapped := audit.WrapOutput(inner, "my_syslog")
+
+	mw, ok := wrapped.(audit.MetadataWriter)
+	require.True(t, ok, "wrapped output should implement MetadataWriter")
+
+	meta := audit.EventMetadata{Severity: 8, EventType: "auth_failure"}
+	err := mw.WriteWithMetadata([]byte(`{"test":true}`), meta)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, inner.metadataCalls, "WriteWithMetadata should forward to inner")
+	assert.Equal(t, 8, inner.lastMeta.Severity, "severity should be forwarded")
+}
+
+func TestWrapOutput_NonMetadataWriter_FallsBackToWrite(t *testing.T) {
+	inner := testhelper.NewMockOutput("file:/tmp/test.log")
+	wrapped := audit.WrapOutput(inner, "my_file")
+
+	mw, ok := wrapped.(audit.MetadataWriter)
+	require.True(t, ok, "namedOutput always implements MetadataWriter")
+
+	meta := audit.EventMetadata{Severity: 5}
+	err := mw.WriteWithMetadata([]byte(`{"test":true}`), meta)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, inner.EventCount(), "should fall back to Write")
+}
+
+func TestWrapOutput_PreservesFrameworkFieldReceiver(t *testing.T) {
+	inner := &mockFrameworkFieldReceiver{
+		MockOutput: *testhelper.NewMockOutput("loki:localhost:3100"),
+	}
+	wrapped := audit.WrapOutput(inner, "my_loki")
+
+	fr, ok := wrapped.(audit.FrameworkFieldReceiver)
+	require.True(t, ok, "wrapped output should implement FrameworkFieldReceiver")
+
+	fr.SetFrameworkFields("my-app", "my-host", "UTC", 12345)
+	assert.Equal(t, "my-app", inner.appName, "appName should be forwarded")
+	assert.Equal(t, "my-host", inner.host, "host should be forwarded")
+	assert.Equal(t, "UTC", inner.timezone, "timezone should be forwarded")
+	assert.Equal(t, 12345, inner.pid, "pid should be forwarded")
+}
+
+func TestWrapOutput_NonFrameworkFieldReceiver_NoOp(t *testing.T) {
+	inner := testhelper.NewMockOutput("file:/tmp/test.log")
+	wrapped := audit.WrapOutput(inner, "my_file")
+
+	fr, ok := wrapped.(audit.FrameworkFieldReceiver)
+	require.True(t, ok, "namedOutput always implements FrameworkFieldReceiver")
+
+	// Should not panic.
+	fr.SetFrameworkFields("app", "host", "UTC", 1)
+}
+
 // --- Test helper types ---
 
 // mockDestKeyer wraps MockOutput with DestinationKeyer.
@@ -187,3 +245,32 @@ type mockDeliveryReporter struct {
 }
 
 func (m *mockDeliveryReporter) ReportsDelivery() bool { return true }
+
+// mockMetadataWriter wraps MockOutput with MetadataWriter.
+type mockMetadataWriter struct { //nolint:govet // fieldalignment: readability preferred
+	testhelper.MockOutput
+	lastMeta      audit.EventMetadata
+	metadataCalls int
+}
+
+func (m *mockMetadataWriter) WriteWithMetadata(data []byte, meta audit.EventMetadata) error {
+	m.metadataCalls++
+	m.lastMeta = meta
+	return m.Write(data) //nolint:wrapcheck // test helper
+}
+
+// mockFrameworkFieldReceiver wraps MockOutput with FrameworkFieldReceiver.
+type mockFrameworkFieldReceiver struct { //nolint:govet // fieldalignment: test struct
+	testhelper.MockOutput
+	appName  string
+	host     string
+	timezone string
+	pid      int
+}
+
+func (m *mockFrameworkFieldReceiver) SetFrameworkFields(appName, host, timezone string, pid int) {
+	m.appName = appName
+	m.host = host
+	m.timezone = timezone
+	m.pid = pid
+}

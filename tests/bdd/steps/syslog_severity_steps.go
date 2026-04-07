@@ -267,18 +267,18 @@ func registerSyslogSeverityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 // the marker and asserts it starts with the given prefix (typically
 // an RFC 5424 PRI field like "<131>").
 // assertSyslogMarkerLineContainsPRI finds the syslog line containing
-// the marker and asserts it contains "PRI=NNN" where NNN is the
-// expected priority value. The PRI= prefix comes from the syslog-ng
-// destination template: template("PRI=${PRI} ${MSG}\n").
+// the marker and asserts it contains the RFC 5424 PRI field "<NNN>"
+// where NNN is the expected priority value. The raw RFC 5424 message
+// (including the <PRI> prefix) is preserved in syslog-ng's $MSG macro.
 func assertSyslogMarkerLineContainsPRI(searchMarker, expectedPRI string) error {
-	priToken := "PRI=" + expectedPRI
+	priToken := "<" + expectedPRI + ">"
 	log := readSyslogLogFromDocker()
 	for _, line := range strings.Split(log, "\n") {
 		if strings.Contains(line, searchMarker) {
 			if strings.Contains(line, priToken) {
 				return nil
 			}
-			return fmt.Errorf("syslog line with marker %q does not contain %q\nfull line: %s",
+			return fmt.Errorf("syslog line with marker %q does not contain PRI %q\nfull line: %s",
 				searchMarker, priToken, strings.TrimSpace(line))
 		}
 	}

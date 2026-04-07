@@ -925,6 +925,49 @@ func (e *errorOutput) Write(_ []byte) error { return nil }
 func (e *errorOutput) Close() error         { return e.closeErr }
 func (e *errorOutput) Name() string         { return e.name }
 
+func TestLogger_Close_MultipleOutputErrors(t *testing.T) {
+	errAlpha := errors.New("alpha broke")
+	errBeta := errors.New("beta broke")
+
+	outA := &errorOutput{name: "alpha", closeErr: errAlpha}
+	outB := &errorOutput{name: "beta", closeErr: errBeta}
+	outC := &errorOutput{name: "gamma"} // succeeds
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(outA, outB, outC),
+	)
+	require.NoError(t, err)
+
+	err = logger.Close()
+	require.Error(t, err)
+
+	// Both failures are reported via errors.Join.
+	assert.ErrorIs(t, err, errAlpha)
+	assert.ErrorIs(t, err, errBeta)
+	assert.Contains(t, err.Error(), "alpha")
+	assert.Contains(t, err.Error(), "beta")
+	// Successful output does not appear in the error.
+	assert.NotContains(t, err.Error(), "gamma")
+}
+
+func TestLogger_Close_AllOutputsCloseCalledOnError(t *testing.T) {
+	// Verify output B's Close() is called even when output A's Close() fails.
+	outA := &errorOutput{name: "fail-first", closeErr: errors.New("first fail")}
+	outB := testhelper.NewMockOutput("second")
+
+	logger, err := audit.NewLogger(
+		audit.Config{Version: 1, Enabled: true},
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(outA, outB),
+	)
+	require.NoError(t, err)
+
+	_ = logger.Close()
+	assert.True(t, outB.IsClosed(), "output B's Close() must be called even when A fails")
+}
+
 // ---------------------------------------------------------------------------
 // Filter tests
 // ---------------------------------------------------------------------------

@@ -306,16 +306,16 @@ func (l *Logger) Close() error {
 		l.cancel()
 		l.waitForDrain()
 
+		var closeErrs []error
 		for _, oe := range l.entries {
 			if err := oe.output.Close(); err != nil {
 				slog.Error("audit: output close failed",
 					"output", oe.output.Name(),
 					"error", err)
-				if l.closeErr == nil {
-					l.closeErr = fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
-				}
+				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err))
 			}
 		}
+		l.closeErr = errors.Join(closeErrs...)
 
 		slog.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))

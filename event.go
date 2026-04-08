@@ -14,8 +14,6 @@
 
 package audit
 
-import "errors"
-
 // LabelInfo describes a sensitivity label defined in the taxonomy.
 type LabelInfo struct {
 	Name        string // label name, e.g., "pii"
@@ -96,8 +94,3 @@ type auditEntry struct {
 	fields    Fields
 	eventType string
 }
-
-// ErrHandleNotFound is returned by [Logger.Handle], and wrapped in
-// the panic value of [Logger.MustHandle], when the requested event
-// type is not registered in the taxonomy.
-var ErrHandleNotFound = errors.New("audit: event type not found")

@@ -146,7 +146,10 @@ func HintsFromContext(ctx context.Context) *Hints {
 // consumers to conditionally disable audit middleware without
 // nil-checking at every call site.
 //
-// Middleware panics if builder is nil (programming error).
+// Middleware panics if builder is nil. Passing a nil builder is a
+// programming error: there is no recoverable behaviour when the
+// event-building callback is absent. Pass a nil *[Logger] instead
+// to disable auditing without removing the middleware.
 func Middleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Handler {
 	if logger == nil {
 		return func(next http.Handler) http.Handler { return next }

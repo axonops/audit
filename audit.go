@@ -46,24 +46,6 @@ import (
 // for buffer-full drop events.
 const dropWarnInterval = 10 * time.Second
 
-// Sentinel errors returned by Logger methods.
-var (
-	// ErrClosed is returned by [Logger.AuditEvent] when the logger has
-	// been closed.
-	ErrClosed = errors.New("audit: logger is closed")
-
-	// ErrBufferFull is returned by [Logger.AuditEvent] when the async buffer
-	// is at capacity and the event is dropped. Callers SHOULD treat
-	// this as a drop notification. Increasing [Config.BufferSize] or
-	// reducing event emission rate will reduce frequency.
-	ErrBufferFull = errors.New("audit: buffer full")
-
-	// ErrDuplicateDestination is returned by [WithOutputs] or
-	// [WithNamedOutput] when two outputs implement [DestinationKeyer]
-	// and return the same key.
-	ErrDuplicateDestination = errors.New("audit: duplicate destination")
-)
-
 // auditEntryPool caches auditEntry instances to avoid per-Audit heap
 // allocation. Entries are retrieved in AuditEvent(), sent through the
 // channel, processed by the drain goroutine, and returned to the pool

@@ -155,7 +155,7 @@
 //   - [WithOutputHMAC] — configures HMAC on a named output
 //   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
-// # Taxonomy
+// # How Taxonomy Validation Works
 //
 // The framework does not hardcode event types, field names, or categories.
 // Consumers register their entire audit taxonomy at bootstrap via

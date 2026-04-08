@@ -15,7 +15,6 @@
 package audit
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -188,10 +187,6 @@ const (
 	// version the library can migrate from.
 	minSupportedTaxonomyVersion = 1
 )
-
-// ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
-// validation failures.
-var ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 
 // precomputeTaxonomy populates the pre-computed fields on every
 // EventDef in the taxonomy. This includes deriving Categories from

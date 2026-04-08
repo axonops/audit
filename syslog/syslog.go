@@ -91,10 +91,10 @@ type Metrics interface {
 	RecordSyslogReconnect(address string, success bool)
 }
 
-// Default values for [Config] fields.
-// payload (JSON or CEF) as the message body. The payload is placed in
-// the MSG portion of the RFC 5424 message, not in structured data
-// elements, so no SD escaping is required.
+// Output writes serialised audit events to a syslog server over
+// TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
+// RFC 5424 structured syslog messages with the pre-serialised audit
+// payload (JSON or CEF) as the message body.
 //
 // # Reconnection
 //

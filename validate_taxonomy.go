@@ -21,6 +21,12 @@ import (
 	"strings"
 )
 
+// ValidateTaxonomy checks the taxonomy for internal consistency. It verifies
+// version bounds, category-event references, severity ranges, field overlaps,
+// reserved field names, and sensitivity label validity. Returns an error
+// wrapping [ErrTaxonomyInvalid] containing all problems found, with
+// deterministic output. Callers MUST use [errors.Is] to test for
+// [ErrTaxonomyInvalid].
 func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string
 	errs = append(errs, checkTaxonomyVersion(t)...)

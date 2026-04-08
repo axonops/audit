@@ -19,8 +19,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/axonops/srslog"
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/srslog"
 )
 
 const (

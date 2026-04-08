@@ -21,8 +21,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/axonops/srslog"
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/srslog"
 )
 
 func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, writeErr error) (*bool, error) {

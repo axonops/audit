@@ -297,6 +297,8 @@ buffer_size: 500
 	out, err := factory("valid", rawYAML, nil)
 	require.NoError(t, err, "valid config should produce an output")
 	require.NotNil(t, out)
+	assert.Equal(t, "valid", out.Name(),
+		"factory output Name() must return the consumer-specified name, not the internal loki:<host> name")
 	require.NoError(t, out.Close())
 }
 

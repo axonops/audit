@@ -947,6 +947,7 @@ func TestNewWebhookOutput_TLSCA_NonexistentFile(t *testing.T) {
 		TLSCA: "/nonexistent/ca.pem",
 	}, nil, nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "tls file")
 }
 
@@ -970,6 +971,7 @@ func TestNewWebhookOutput_TLSCert_NonexistentFile(t *testing.T) {
 		TLSKey:  "/nonexistent/key.pem",
 	}, nil, nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "tls file")
 }
 
@@ -1367,4 +1369,107 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 	errorCount := m.events[out.Name()+":error"]
 	m.mu.Unlock()
 	assert.Greater(t, errorCount, 0, "RecordEvent(error) should be called for drops")
+}
+
+// ---------------------------------------------------------------------------
+// Close lifecycle tests (#325 — missing test for closeCh pattern)
+// ---------------------------------------------------------------------------
+
+// TestWebhookOutput_Close_InFlightRequestCompletes verifies that an HTTP
+// POST in progress when Close() is called completes successfully instead
+// of being cancelled. This tests the closeCh pattern: Close signals via
+// channel, context stays live until batch loop exits.
+func TestWebhookOutput_Close_InFlightRequestCompletes(t *testing.T) {
+	var received atomic.Int32
+	requestStarted := make(chan struct{})
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		close(requestStarted) // signal: request is in-flight
+		time.Sleep(200 * time.Millisecond)
+		received.Add(1)
+		w.WriteHeader(200)
+	})
+
+	out, err := webhook.New(&webhook.Config{
+		URL:                srv.url(),
+		BatchSize:          1, // immediate flush on first event
+		FlushInterval:      10 * time.Second,
+		Timeout:            2 * time.Second, // plenty of time for 200ms delay
+		MaxRetries:         1,
+		BufferSize:         10,
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+	}, nil, nil)
+	require.NoError(t, err)
+
+	// Write one event — BatchSize=1 triggers immediate flush (HTTP in-flight).
+	require.NoError(t, out.Write([]byte(`{"event":"inflight"}`+"\n")))
+
+	// Wait for the server handler to confirm the request arrived
+	// (deterministic, no time.Sleep). The request is now in-flight.
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for HTTP request to start")
+	}
+
+	// Close while HTTP is in-flight. With the closeCh pattern, the context
+	// stays live so the 200ms-delayed request completes. With the old
+	// cancel() pattern, the request would be aborted.
+	require.NoError(t, out.Close())
+
+	// The server must have received the complete request.
+	assert.Equal(t, int32(1), received.Load(),
+		"in-flight HTTP request must complete during Close, not be cancelled")
+}
+
+// ---------------------------------------------------------------------------
+// TLS file validation tests (#325 — directory rejection)
+// ---------------------------------------------------------------------------
+
+func TestNewWebhookOutput_TLSCert_IsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	_, err := webhook.New(&webhook.Config{
+		URL:     "https://example.com/webhook",
+		TLSCert: dir,
+		TLSKey:  dir,
+	}, nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), "directory")
+}
+
+func TestNewWebhookOutput_TLSCA_IsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	_, err := webhook.New(&webhook.Config{
+		URL:   "https://example.com/webhook",
+		TLSCA: dir,
+	}, nil, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), "directory")
+}
+
+// ---------------------------------------------------------------------------
+// Config.String() credential redaction tests (#325)
+// ---------------------------------------------------------------------------
+
+func TestWebhookConfig_String_RedactsHeaders(t *testing.T) {
+	cfg := webhook.Config{
+		URL:       "https://example.com/hook",
+		Headers:   map[string]string{"Authorization": "Bearer super-secret-token"},
+		BatchSize: 10,
+		Timeout:   5 * time.Second,
+	}
+	s := cfg.String()
+	assert.Contains(t, s, "WebhookConfig{")
+	assert.Contains(t, s, "https://example.com/hook")
+	assert.Contains(t, s, "headers=1")
+	assert.NotContains(t, s, "super-secret-token")
+	assert.NotContains(t, s, "Bearer")
+}
+
+func TestWebhookConfig_String_NoHeaders(t *testing.T) {
+	cfg := webhook.Config{URL: "https://example.com/hook"}
+	s := cfg.String()
+	assert.Contains(t, s, "headers=0")
 }

@@ -1,10 +1,13 @@
-# Create release tags for all Go modules.
-# Runs the FULL CI pipeline (unit tests, BDD, integration, lint, security)
-# and only creates tags after everything passes.
+# End-to-end release workflow for go-audit.
 #
-# Usage: trigger manually via GitHub Actions UI with a version string.
-# The workflow creates 7 tags (one per module) at HEAD of main and pushes
-# them. The v* tag push then triggers goreleaser.yml automatically.
+# Trigger manually with a version string. The workflow:
+#   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)
+#   2. Creates annotated tags for all 7 modules and pushes them
+#   3. Verifies all modules are indexed on proxy.golang.org
+#   4. Runs a smoke test (go get + compile in a fresh module)
+#
+# The v* tag push also triggers goreleaser.yml automatically, which
+# builds binaries, generates SBOMs, and creates the GitHub Release.
 #
 # See: docs/releasing.md
 name: Release
@@ -18,22 +21,36 @@ on:
         type: string
 
 concurrency:
-  group: release-tag
+  group: release
   cancel-in-progress: false # do not cancel an in-progress release
 
 permissions: {}
 
 env:
   # Assign input to env var to prevent shell injection.
+  # All run: blocks use $PUBLISH_VERSION, never ${{ inputs.version }}.
   PUBLISH_VERSION: ${{ inputs.version }}
+  # Single source of truth for publishable modules (space-separated).
+  PUBLISH_MODULES: >-
+    github.com/axonops/go-audit
+    github.com/axonops/go-audit/file
+    github.com/axonops/go-audit/syslog
+    github.com/axonops/go-audit/webhook
+    github.com/axonops/go-audit/loki
+    github.com/axonops/go-audit/outputconfig
+    github.com/axonops/go-audit/cmd/audit-gen
 
 jobs:
-  # Step 1: Run the FULL CI pipeline — every test, every check.
+  # =====================================================================
+  # Job 1: Run the FULL CI pipeline — every test, every check.
+  # =====================================================================
   ci:
     name: CI Gate
     uses: ./.github/workflows/ci.yml
 
-  # Step 2: Only after CI passes — validate and create tags.
+  # =====================================================================
+  # Job 2: Create and push tags (only after CI passes).
+  # =====================================================================
   tag:
     name: Create Tags
     runs-on: ubuntu-latest
@@ -100,15 +117,13 @@ jobs:
             "cmd/audit-gen/$PUBLISH_VERSION"
           )
 
-          # Create annotated tags (not lightweight) — carries tagger
-          # identity and timestamp, required by some tooling.
           for tag in "${TAGS[@]}"; do
             git tag -a "$tag" -m "Release $tag" "$HEAD"
             echo "  Created: $tag"
           done
 
           echo ""
-          echo "Pushing tags individually (for partial-failure recovery)..."
+          echo "Pushing tags individually..."
           FAILED=()
           for tag in "${TAGS[@]}"; do
             if git push origin "$tag"; then
@@ -125,27 +140,120 @@ jobs:
             echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
             exit 1
           fi
-          echo ""
-          echo "✓ All 7 tags pushed. release.yml will trigger automatically."
+          echo "✓ All 7 tags pushed. goreleaser.yml will trigger automatically."
 
+  # =====================================================================
+  # Job 3: Verify modules are published and usable (after tags are pushed).
+  # =====================================================================
+  verify:
+    name: Verify Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [tag]
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.2"
+
+      - name: Trigger proxy indexing
+        run: |
+          set -euo pipefail
+          for mod in $PUBLISH_MODULES; do
+            echo "Indexing $mod@$PUBLISH_VERSION ..."
+            GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION"
+            echo "  ✓ indexed"
+          done
+
+      - name: Verify proxy serves modules
+        run: |
+          set -euo pipefail
+          for mod in $PUBLISH_MODULES; do
+            proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
+            info_url="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
+
+            echo "Verifying $mod ..."
+            info=$(curl -sS --fail "$info_url") || {
+              echo "::error::proxy.golang.org failed for $mod@$PUBLISH_VERSION"
+              exit 1
+            }
+            echo "  ✓ $info"
+          done
+
+      - name: Verify checksums
+        run: |
+          set -euo pipefail
+          export GOPATH=$(mktemp -d)
+          trap 'rm -rf "$GOPATH"' EXIT
+          for mod in $PUBLISH_MODULES; do
+            echo "Downloading $mod@$PUBLISH_VERSION ..."
+            go mod download "$mod@$PUBLISH_VERSION"
+            echo "  ✓ checksum verified"
+          done
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          dir=$(mktemp -d)
+          trap 'rm -rf "$dir"' EXIT
+          cd "$dir"
+
+          go mod init smoketest
+          for mod in $PUBLISH_MODULES; do
+            go get "$mod@$PUBLISH_VERSION"
+          done
+
+          cat > main.go << 'GOEOF'
+          package main
+          import (
+            _ "github.com/axonops/go-audit"
+            _ "github.com/axonops/go-audit/file"
+            _ "github.com/axonops/go-audit/syslog"
+            _ "github.com/axonops/go-audit/webhook"
+            _ "github.com/axonops/go-audit/loki"
+            _ "github.com/axonops/go-audit/outputconfig"
+          )
+          func main() {}
+          GOEOF
+          go build -o /dev/null .
+
+          go install "github.com/axonops/go-audit/cmd/audit-gen@$PUBLISH_VERSION"
+          echo "✓ All modules compile and install successfully"
+
+  # =====================================================================
+  # Summary (always runs)
+  # =====================================================================
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    needs: [ci, tag, verify]
+    if: always()
+    steps:
       - name: Generate summary
         run: |
+          set -euo pipefail
           cat >> "$GITHUB_STEP_SUMMARY" << EOF
-          ## Release Tags Created: $PUBLISH_VERSION
+          ## Release: $PUBLISH_VERSION
 
-          All 7 module tags created at \`$(git rev-parse HEAD)\`:
+          | Step | Status |
+          |------|--------|
+          | CI Gate | ${{ needs.ci.result }} |
+          | Create Tags | ${{ needs.tag.result }} |
+          | Verify Release | ${{ needs.verify.result }} |
 
-          | Tag | Module |
-          |-----|--------|
-          | \`$PUBLISH_VERSION\` | \`github.com/axonops/go-audit\` |
-          | \`file/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/file\` |
-          | \`syslog/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/syslog\` |
-          | \`webhook/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/webhook\` |
-          | \`loki/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/loki\` |
-          | \`outputconfig/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/outputconfig\` |
-          | \`cmd/audit-gen/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/cmd/audit-gen\` |
+          **Modules:**
 
-          **Next steps:**
-          1. Wait for [Release workflow](../actions/workflows/release.yml) to complete (GoReleaser)
-          2. Trigger [Publish Verify](../actions/workflows/publish.yml) with version \`$PUBLISH_VERSION\`
+          | Module | proxy | docs |
+          |--------|-------|------|
           EOF
+
+          for mod in $PUBLISH_MODULES; do
+            proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
+            proxy="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
+            pkgdev="https://pkg.go.dev/${mod}@${PUBLISH_VERSION}"
+            echo "| \`$mod\` | [proxy]($proxy) | [docs]($pkgdev) |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**GoReleaser** runs automatically via [goreleaser.yml](../actions/workflows/goreleaser.yml) — check separately." >> "$GITHUB_STEP_SUMMARY"

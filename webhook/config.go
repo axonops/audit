@@ -124,6 +124,15 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	AllowPrivateRanges bool
 }
 
+// String returns a human-readable representation of the config with
+// sensitive header values redacted. This prevents credential leakage
+// when configs are accidentally logged via %v or %+v.
+func (c Config) String() string {
+	hdrs := len(c.Headers)
+	return fmt.Sprintf("WebhookConfig{url=%q, headers=%d, batch_size=%d, timeout=%s}",
+		c.URL, hdrs, c.BatchSize, c.Timeout)
+}
+
 // validateWebhookConfig checks the config for correctness, applying
 // defaults where needed.
 func validateWebhookConfig(cfg *Config) error {
@@ -153,13 +162,31 @@ func validateWebhookConfig(cfg *Config) error {
 		return err
 	}
 
-	// TLS cert/key pairing.
-	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("%w: webhook tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+	if err := validateWebhookTLSFiles(cfg); err != nil {
+		return err
 	}
 
 	applyWebhookDefaults(cfg)
 	return validateWebhookLimits(cfg)
+}
+
+// validateWebhookTLSFiles checks TLS cert/key pairing and file existence.
+func validateWebhookTLSFiles(cfg *Config) error {
+	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
+		return fmt.Errorf("%w: webhook tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+	}
+	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
+		if path != "" {
+			fi, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("%w: webhook tls file %q: %w", audit.ErrConfigInvalid, path, err)
+			}
+			if fi.IsDir() {
+				return fmt.Errorf("%w: webhook tls file %q is a directory", audit.ErrConfigInvalid, path)
+			}
+		}
+	}
+	return nil
 }
 
 // validateWebhookHeaders checks header names and values for CRLF injection.

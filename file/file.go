@@ -131,6 +131,11 @@ func resolvePath(path string) (string, error) {
 // New creates a new [Output] from the given config.
 // It validates the path, permissions, and parent directory existence.
 // The fileMetrics parameter is optional (may be nil).
+//
+// Unlike other output constructors (syslog, webhook, loki) which take
+// *Config, New takes Config by value. This is intentional: file Config
+// has no pointer fields, so the value copy prevents caller mutation
+// without requiring an explicit defensive copy inside New.
 func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")

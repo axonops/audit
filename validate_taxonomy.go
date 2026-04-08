@@ -185,10 +185,6 @@ func checkReservedFieldNames(t Taxonomy) []string {
 // unknown-field check and have standard CEF extension key mappings.
 // The returned slice is a fresh copy; callers may modify it safely.
 func ReservedStandardFieldNames() []string {
-	return reservedStandardFieldNames()
-}
-
-func reservedStandardFieldNames() []string {
 	return []string{
 		"action",
 		"actor_id",
@@ -229,7 +225,7 @@ func reservedStandardFieldNames() []string {
 // reservedStandardFieldNames. Read-only after init — safe for
 // concurrent access without synchronisation.
 var reservedStandardFieldMap = func() map[string]struct{} {
-	names := reservedStandardFieldNames()
+	names := ReservedStandardFieldNames()
 	m := make(map[string]struct{}, len(names))
 	for _, n := range names {
 		m[n] = struct{}{}
@@ -244,11 +240,6 @@ var reservedStandardFieldMap = func() map[string]struct{} {
 func IsReservedStandardField(name string) bool {
 	_, ok := reservedStandardFieldMap[name]
 	return ok
-}
-
-// isReservedStandardField is the package-internal alias.
-func isReservedStandardField(name string) bool {
-	return IsReservedStandardField(name)
 }
 
 // checkReservedStandardFields validates that no event declares a

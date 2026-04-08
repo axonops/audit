@@ -228,6 +228,9 @@ func (w *Output) Write(data []byte) error {
 // for completion. In-flight HTTP requests complete using the live
 // context before the context is cancelled. Close is idempotent.
 func (w *Output) Close() error {
+	// Dual mechanism: mutex serialises the full Close sequence (signal,
+	// wait, cancel, cleanup). Atomic provides fast-path rejection in
+	// Write() without acquiring the mutex on every call.
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -318,6 +321,9 @@ func (w *Output) batchLoop(ctx context.Context) {
 			resetWebhookTimer(timer, w.flushIvl)
 
 		case <-w.closeCh:
+			// Go's select picks randomly among ready cases. If both
+			// closeCh and w.ch are ready, data may be read first —
+			// drainAndFlush handles any remaining channel items.
 			w.drainAndFlush(ctx, batch)
 			return
 		}

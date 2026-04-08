@@ -53,7 +53,7 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 	known := effectiveKnownFields(def)
 	var unknown []string
 	for k := range fields {
-		if _, ok := known[k]; !ok && !isReservedStandardField(k) {
+		if _, ok := known[k]; !ok && !IsReservedStandardField(k) {
 			unknown = append(unknown, k)
 		}
 	}

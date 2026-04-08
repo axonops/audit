@@ -229,7 +229,6 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	}
 
 	if len(outputs) == 0 {
-		closeAll(outputs)
 		return nil, fmt.Errorf("%w: all outputs are disabled; at least one enabled output is required",
 			ErrOutputConfigInvalid)
 	}

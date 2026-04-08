@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	audit "github.com/axonops/go-audit"
 )
@@ -583,10 +584,10 @@ func toParamName(s string) string {
 	// last uppercase letter which starts the next word.
 	if upper > 1 {
 		for i := range upper - 1 {
-			runes[i] = rune(strings.ToLower(string(runes[i]))[0])
+			runes[i] = unicode.ToLower(runes[i])
 		}
 	} else {
-		runes[0] = rune(strings.ToLower(string(runes[0]))[0])
+		runes[0] = unicode.ToLower(runes[0])
 	}
 	return string(runes)
 }

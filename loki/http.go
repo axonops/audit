@@ -235,7 +235,9 @@ func parseRetryAfter(val string) time.Duration {
 
 // lokiBackoff returns a jittered exponential backoff duration:
 // 100ms * 2^attempt with [0.5, 1.0) jitter, capped at 5s.
-// Duplicated from webhook/http.go webhookBackoff — keep in sync.
+//
+// SYNC: identical to webhook/http.go (webhookBackoff, 5s cap).
+// Similar to syslog/syslog.go (backoffDuration, 30s cap).
 func lokiBackoff(attempt int) time.Duration {
 	exp := float64(attempt)
 	if exp > 20 {

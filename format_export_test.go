@@ -16,7 +16,6 @@
 package audit
 
 import (
-	"bytes"
 	"strings"
 )
 
@@ -50,12 +49,6 @@ func CEFEscapeExtValueOldForTest(s string) string {
 		return r
 	}, s)
 	return s
-}
-
-// WriteJSONStringForTest exposes writeJSONString for property-based
-// testing against encoding/json.Marshal.
-func WriteJSONStringForTest(buf *bytes.Buffer, s string) {
-	writeJSONString(buf, s)
 }
 
 // PrecomputeEventDefForTest exposes precomputeEventDef so benchmarks

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"unicode/utf8"
 
 	audit "github.com/axonops/go-audit"
 )
@@ -190,7 +189,7 @@ func (o *Output) buildPayload() {
 			buf.WriteString(`["`)
 			buf.Write(strconv.AppendInt(buf.AvailableBuffer(), e.tsNano, 10))
 			buf.WriteString(`",`)
-			writeJSONString(buf, bytesToString(e.line))
+			audit.WriteJSONString(buf, bytesToString(e.line))
 			buf.WriteByte(']')
 		}
 
@@ -227,9 +226,9 @@ func writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		writeJSONString(buf, k)
+		audit.WriteJSONString(buf, k)
 		buf.WriteByte(':')
-		writeJSONString(buf, labels[k])
+		audit.WriteJSONString(buf, labels[k])
 	}
 }
 
@@ -266,91 +265,3 @@ func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
 func bytesToString(b []byte) string {
 	return string(b)
 }
-
-// ---------------------------------------------------------------------------
-// JSON string escaping — duplicated from format_json.go writeJSONString.
-// The loki module is a separate Go module and cannot import unexported
-// functions from the core audit package. Keep this implementation in
-// sync with format_json.go.
-// ---------------------------------------------------------------------------
-
-// writeJSONString writes s as a JSON string (with surrounding quotes)
-// to buf. It escapes all characters required by RFC 8259 plus HTML-safe
-// escaping of <, >, & (matching encoding/json behaviour).
-func writeJSONString(buf *bytes.Buffer, s string) { //nolint:gocyclo,cyclop // inherent to JSON escaping; duplicated from format_json.go
-	buf.WriteByte('"')
-	start := 0
-	for i := 0; i < len(s); {
-		b := s[i]
-		if b >= utf8.RuneSelf {
-			var size int
-			start, size = writeJSONMultibyte(buf, s, i, start)
-			i += size
-			continue
-		}
-		if jsonSafeASCII[b] {
-			i++
-			continue
-		}
-		buf.WriteString(s[start:i])
-		switch b {
-		case '"':
-			buf.WriteString(`\"`)
-		case '\\':
-			buf.WriteString(`\\`)
-		case '\b':
-			buf.WriteString(`\b`)
-		case '\f':
-			buf.WriteString(`\f`)
-		case '\n':
-			buf.WriteString(`\n`)
-		case '\r':
-			buf.WriteString(`\r`)
-		case '\t':
-			buf.WriteString(`\t`)
-		default:
-			buf.WriteString(`\u00`)
-			buf.WriteByte(hexDigits[b>>4])
-			buf.WriteByte(hexDigits[b&0xf])
-		}
-		i++
-		start = i
-	}
-	buf.WriteString(s[start:])
-	buf.WriteByte('"')
-}
-
-func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) (newStart, size int) {
-	r, size := utf8.DecodeRuneInString(s[i:])
-	switch {
-	case r == utf8.RuneError && size == 1:
-		buf.WriteString(s[start:i])
-		buf.WriteString(`\ufffd`)
-		return i + size, size
-	case r == '\u2028':
-		buf.WriteString(s[start:i])
-		buf.WriteString(`\u2028`)
-		return i + size, size
-	case r == '\u2029':
-		buf.WriteString(s[start:i])
-		buf.WriteString(`\u2029`)
-		return i + size, size
-	default:
-		return start, size
-	}
-}
-
-const hexDigits = "0123456789abcdef"
-
-var jsonSafeASCII = func() [256]bool {
-	var t [256]bool
-	for i := 0x20; i < utf8.RuneSelf; i++ {
-		t[i] = true
-	}
-	t['"'] = false
-	t['\\'] = false
-	t['<'] = false
-	t['>'] = false
-	t['&'] = false
-	return t
-}()

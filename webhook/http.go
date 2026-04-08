@@ -171,6 +171,9 @@ func buildNDJSON(events [][]byte) []byte {
 // webhookBackoff returns a jittered exponential backoff duration
 // for webhook retry: 100ms * 2^attempt with [0.5, 1.0) jitter,
 // capped at 5s.
+//
+// SYNC: similar implementations in syslog/syslog.go (backoffDuration,
+// 30s cap) and loki/http.go (lokiBackoff, identical 5s cap).
 func webhookBackoff(attempt int) time.Duration {
 	const (
 		base    = 100 * time.Millisecond

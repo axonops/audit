@@ -88,8 +88,8 @@ func (oe *outputEntry) setRoute(route *EventRoute) {
 		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
-		MinSeverity:       cloneIntPtr(route.MinSeverity),
-		MaxSeverity:       cloneIntPtr(route.MaxSeverity),
+		MinSeverity:       copyIntPtr(route.MinSeverity),
+		MaxSeverity:       copyIntPtr(route.MaxSeverity),
 	}
 	buildRouteSets(cp)
 	oe.route.Store(cp)
@@ -106,16 +106,7 @@ func (oe *outputEntry) getRoute() EventRoute {
 		IncludeEventTypes: slices.Clone(route.IncludeEventTypes),
 		ExcludeCategories: slices.Clone(route.ExcludeCategories),
 		ExcludeEventTypes: slices.Clone(route.ExcludeEventTypes),
-		MinSeverity:       cloneIntPtr(route.MinSeverity),
-		MaxSeverity:       cloneIntPtr(route.MaxSeverity),
+		MinSeverity:       copyIntPtr(route.MinSeverity),
+		MaxSeverity:       copyIntPtr(route.MaxSeverity),
 	}
-}
-
-// cloneIntPtr returns a deep copy of p. A nil input returns nil.
-func cloneIntPtr(p *int) *int {
-	if p == nil {
-		return nil
-	}
-	v := *p
-	return &v
 }

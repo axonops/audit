@@ -1,11 +1,11 @@
 # Manual publish verification workflow for Go module releases.
-# Triggered AFTER GoReleaser creates the GitHub Release (via release.yml).
+# Triggered AFTER GoReleaser creates the GitHub Release (via goreleaser.yml).
 # This workflow does NOT create tags — it verifies that published modules
 # are correctly indexed, downloadable, and usable.
 #
 # Usage:
-#   1. Create and push tags (see docs/releasing.md)
-#   2. Wait for release.yml to complete (GoReleaser)
+#   1. Trigger release.yml to create tags (runs full CI first)
+#   2. Wait for goreleaser.yml to complete (builds binaries + GitHub Release)
 #   3. Trigger this workflow manually with the version string
 #
 # See: https://github.com/axonops/go-audit/issues/29

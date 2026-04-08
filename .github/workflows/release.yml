@@ -1,55 +1,151 @@
+# Create release tags for all Go modules.
+# Runs the FULL CI pipeline (unit tests, BDD, integration, lint, security)
+# and only creates tags after everything passes.
+#
+# Usage: trigger manually via GitHub Actions UI with a version string.
+# The workflow creates 7 tags (one per module) at HEAD of main and pushes
+# them. The v* tag push then triggers goreleaser.yml automatically.
+#
+# See: docs/releasing.md
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. v0.1.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false # do not cancel an in-progress release
 
 permissions: {}
 
+env:
+  # Assign input to env var to prevent shell injection.
+  PUBLISH_VERSION: ${{ inputs.version }}
+
 jobs:
+  # Step 1: Run the FULL CI pipeline — every test, every check.
   ci:
     name: CI Gate
     uses: ./.github/workflows/ci.yml
 
-  release:
-    name: Release
+  # Step 2: Only after CI passes — validate and create tags.
+  tag:
+    name: Create Tags
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     needs: [ci]
     permissions:
       contents: write
     steps:
+      - name: Validate version format
+        run: |
+          if ! echo "$PUBLISH_VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.\-]+)?$'; then
+            echo "::error::Invalid version format: $PUBLISH_VERSION (expected vX.Y.Z or vX.Y.Z-pre.N)"
+            exit 1
+          fi
+          echo "Version: $PUBLISH_VERSION"
+
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Verify tag is on main
+      - name: Verify on main branch
         run: |
           git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "ERROR: tag must point to a commit on main"
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::HEAD is not on the main branch"
             exit 1
           fi
+          echo "HEAD is on main: $(git rev-parse HEAD)"
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
+      - name: Check tags do not already exist
+        run: |
+          set -euo pipefail
+          TAGS=(
+            "$PUBLISH_VERSION"
+            "file/$PUBLISH_VERSION"
+            "syslog/$PUBLISH_VERSION"
+            "webhook/$PUBLISH_VERSION"
+            "loki/$PUBLISH_VERSION"
+            "outputconfig/$PUBLISH_VERSION"
+            "cmd/audit-gen/$PUBLISH_VERSION"
+          )
+          for tag in "${TAGS[@]}"; do
+            if git tag -l "$tag" | grep -q .; then
+              echo "::error::Tag $tag already exists — cannot overwrite a published tag"
+              exit 1
+            fi
+          done
+          echo "No conflicting tags found"
 
-      - name: Set up go.work
-        run: make workspace
+      - name: Create and push all module tags
+        run: |
+          set -euo pipefail
+          HEAD=$(git rev-parse HEAD)
+          echo "Tagging commit: $HEAD"
 
-      - name: Install syft (SBOM generation)
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+          TAGS=(
+            "$PUBLISH_VERSION"
+            "file/$PUBLISH_VERSION"
+            "syslog/$PUBLISH_VERSION"
+            "webhook/$PUBLISH_VERSION"
+            "loki/$PUBLISH_VERSION"
+            "outputconfig/$PUBLISH_VERSION"
+            "cmd/audit-gen/$PUBLISH_VERSION"
+          )
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
-        with:
-          version: 'v2.15.0'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Create annotated tags (not lightweight) — carries tagger
+          # identity and timestamp, required by some tooling.
+          for tag in "${TAGS[@]}"; do
+            git tag -a "$tag" -m "Release $tag" "$HEAD"
+            echo "  Created: $tag"
+          done
+
+          echo ""
+          echo "Pushing tags individually (for partial-failure recovery)..."
+          FAILED=()
+          for tag in "${TAGS[@]}"; do
+            if git push origin "$tag"; then
+              echo "  Pushed: $tag"
+            else
+              echo "::error::Failed to push tag: $tag"
+              FAILED+=("$tag")
+            fi
+          done
+
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::Failed to push ${#FAILED[*]} tag(s): ${FAILED[*]}"
+            echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
+            exit 1
+          fi
+          echo ""
+          echo "✓ All 7 tags pushed. release.yml will trigger automatically."
+
+      - name: Generate summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Release Tags Created: $PUBLISH_VERSION
+
+          All 7 module tags created at \`$(git rev-parse HEAD)\`:
+
+          | Tag | Module |
+          |-----|--------|
+          | \`$PUBLISH_VERSION\` | \`github.com/axonops/go-audit\` |
+          | \`file/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/file\` |
+          | \`syslog/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/syslog\` |
+          | \`webhook/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/webhook\` |
+          | \`loki/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/loki\` |
+          | \`outputconfig/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/outputconfig\` |
+          | \`cmd/audit-gen/$PUBLISH_VERSION\` | \`github.com/axonops/go-audit/cmd/audit-gen\` |
+
+          **Next steps:**
+          1. Wait for [Release workflow](../actions/workflows/release.yml) to complete (GoReleaser)
+          2. Trigger [Publish Verify](../actions/workflows/publish.yml) with version \`$PUBLISH_VERSION\`
+          EOF

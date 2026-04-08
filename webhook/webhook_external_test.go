@@ -947,7 +947,7 @@ func TestNewWebhookOutput_TLSCA_NonexistentFile(t *testing.T) {
 		TLSCA: "/nonexistent/ca.pem",
 	}, nil, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ca certificate")
+	assert.Contains(t, err.Error(), "tls file")
 }
 
 func TestNewWebhookOutput_TLSCA_InvalidPEM(t *testing.T) {
@@ -970,7 +970,7 @@ func TestNewWebhookOutput_TLSCert_NonexistentFile(t *testing.T) {
 		TLSKey:  "/nonexistent/key.pem",
 	}, nil, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "client certificate")
+	assert.Contains(t, err.Error(), "tls file")
 }
 
 func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {

@@ -201,8 +201,8 @@ func validateLokiConfig(cfg *Config) error {
 		return fmt.Errorf("%w: loki: basic_auth.username must not be empty", audit.ErrConfigInvalid)
 	}
 
-	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("%w: loki: tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+	if err := validateLokiTLSFiles(cfg); err != nil {
+		return err
 	}
 
 	if err := validateStaticLabels(cfg.Labels.Static); err != nil {
@@ -216,6 +216,25 @@ func validateLokiConfig(cfg *Config) error {
 	}
 
 	return validateHeaders(cfg.Headers)
+}
+
+// validateLokiTLSFiles checks TLS cert/key pairing and file existence.
+func validateLokiTLSFiles(cfg *Config) error {
+	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
+		return fmt.Errorf("%w: loki: tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+	}
+	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
+		if path != "" {
+			fi, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("%w: loki: tls file %q: %w", audit.ErrConfigInvalid, path, err)
+			}
+			if fi.IsDir() {
+				return fmt.Errorf("%w: loki: tls file %q is a directory", audit.ErrConfigInvalid, path)
+			}
+		}
+	}
+	return nil
 }
 
 // validateLokiURL checks the URL field for presence, scheme, and credentials.
@@ -358,15 +377,9 @@ func validateHeaders(headers map[string]string) error {
 // buildLokiTLSConfig creates a TLS configuration from the Loki config.
 // Warnings from TLS policy application are returned for the caller to log.
 func buildLokiTLSConfig(cfg *Config) (*tls.Config, []string, error) {
-	var tlsCfg *tls.Config
-	var warnings []string
-	if cfg.TLSPolicy != nil {
-		tlsCfg, warnings = cfg.TLSPolicy.Apply(nil)
-	}
-
-	if tlsCfg == nil {
-		tlsCfg = &tls.Config{MinVersion: tls.VersionTLS13}
-	}
+	// Apply handles nil TLSPolicy (defaults to TLS 1.3 only),
+	// consistent with webhook and syslog builders.
+	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 
 	if cfg.TLSCert != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)

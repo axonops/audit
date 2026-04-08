@@ -169,6 +169,20 @@ type Config struct {
 	MaxRetries int
 }
 
+// String returns a human-readable representation of the config with
+// TLS key paths redacted. This prevents credential path leakage
+// when configs are accidentally logged via %v or %+v.
+func (c Config) String() string {
+	tlsMode := "none"
+	if c.TLSCert != "" {
+		tlsMode = "mtls"
+	} else if c.TLSCA != "" {
+		tlsMode = "tls"
+	}
+	return fmt.Sprintf("SyslogConfig{network=%s, address=%s, tls=%s, facility=%s}",
+		c.Network, c.Address, tlsMode, c.Facility)
+}
+
 // Output writes serialised audit events to a syslog server over
 // TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
 // RFC 5424 structured syslog messages with the pre-serialised audit

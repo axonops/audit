@@ -145,13 +145,19 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "tls_cert and tls_key both set accepted at validation stage",
-			// Note: file loading happens in buildLokiTLSConfig, not here.
-			// validateLokiConfig only checks that both are present together.
-			cfg: loki.Config{
-				URL:     "https://loki.example.com/loki/api/v1/push",
-				TLSCert: "/tmp/client.crt",
-				TLSKey:  "/tmp/client.key",
-			},
+			// Uses real temp files since validateLokiConfig now checks existence.
+			cfg: func() loki.Config {
+				dir := t.TempDir()
+				certPath := filepath.Join(dir, "client.crt")
+				keyPath := filepath.Join(dir, "client.key")
+				_ = os.WriteFile(certPath, []byte("placeholder"), 0o600)
+				_ = os.WriteFile(keyPath, []byte("placeholder"), 0o600)
+				return loki.Config{
+					URL:     "https://loki.example.com/loki/api/v1/push",
+					TLSCert: certPath,
+					TLSKey:  keyPath,
+				}
+			}(),
 		},
 
 		// --- Static label name validation --------------------------------

@@ -18,7 +18,7 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 
 **Date:** 2026-04-03
 **Commit:** 7aa14b7 (perf/hmac-hash-reuse branch)
-**Go:** 1.26.1
+**Go:** 1.26.2
 **CPU:** AMD Ryzen 9 7950X 16-Core (32 threads)
 **OS:** Linux 6.14.0
 

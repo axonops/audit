@@ -14,6 +14,10 @@
 
 package loki
 
+// SYNC: this file is a copy of droplimit.go from the core audit
+// package. The type is unexported and cannot be shared across Go
+// modules. Keep both copies in sync when making changes.
+
 import (
 	"sync/atomic"
 	"time"

@@ -201,7 +201,7 @@ func (e *jsonEncoder) writeTimestamp(ts time.Time, format TimestampFormat) {
 func (e *jsonEncoder) writeStringField(key, value string) {
 	e.writeComma()
 	e.writeKey(key)
-	writeJSONString(e.buf, value)
+	WriteJSONString(e.buf, value)
 }
 
 func (e *jsonEncoder) writeInt64Field(key string, value int64) {
@@ -212,7 +212,7 @@ func (e *jsonEncoder) writeInt64Field(key string, value int64) {
 }
 
 func (e *jsonEncoder) writeKey(key string) {
-	writeJSONString(e.buf, key)
+	WriteJSONString(e.buf, key)
 	e.buf.WriteByte(':')
 }
 
@@ -232,7 +232,7 @@ func (e *jsonEncoder) writeField(key string, value any) {
 	e.writeKey(key)
 	switch v := value.(type) {
 	case string:
-		writeJSONString(e.buf, v)
+		WriteJSONString(e.buf, v)
 	case int:
 		b := strconv.AppendInt(e.buf.AvailableBuffer(), int64(v), 10)
 		_, _ = e.buf.Write(b)
@@ -263,7 +263,7 @@ func (e *jsonEncoder) writeField(key string, value any) {
 	}
 }
 
-// writeJSONString writes the JSON-encoded form of s directly to buf,
+// WriteJSONString writes the JSON-encoded form of s directly to buf,
 // producing byte-for-byte identical output to [encoding/json.Marshal]
 // for string values. This includes HTML-safe escaping of <, >, and &,
 // and JavaScript-safe escaping of U+2028/U+2029 line/paragraph
@@ -272,8 +272,11 @@ func (e *jsonEncoder) writeField(key string, value any) {
 // Writing directly to the buffer eliminates the per-call allocation
 // that json.Marshal incurs for its return value.
 //
+// WriteJSONString is exported for use by output modules (e.g. loki)
+// that construct JSON payloads and need allocation-free string escaping.
+//
 //nolint:gocyclo,cyclop // single-pass byte scanner; complexity is inherent in JSON escaping rules
-func writeJSONString(buf *bytes.Buffer, s string) {
+func WriteJSONString(buf *bytes.Buffer, s string) {
 	buf.WriteByte('"')
 	start := 0
 	for i := 0; i < len(s); {
@@ -318,7 +321,7 @@ func writeJSONString(buf *bytes.Buffer, s string) {
 }
 
 // writeJSONMultibyte handles multi-byte UTF-8 sequences in
-// writeJSONString. Returns the updated start position and the rune
+// [WriteJSONString]. Returns the updated start position and the rune
 // size in bytes (avoiding a redundant DecodeRuneInString in the caller).
 func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) (newStart, size int) {
 	r, size := utf8.DecodeRuneInString(s[i:])
@@ -342,7 +345,7 @@ func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) (newStart, si
 
 const hexDigits = "0123456789abcdef"
 
-// jsonSafeASCII marks ASCII bytes safe to pass through writeJSONString
+// jsonSafeASCII marks ASCII bytes safe to pass through [WriteJSONString]
 // without escaping. Bytes with false entries need escaping.
 var jsonSafeASCII = func() [256]bool {
 	var t [256]bool

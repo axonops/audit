@@ -672,7 +672,7 @@ type PostField struct {
 	// CEFKey is the extension key used when appending to CEF output.
 	CEFKey string
 	// Value is the string value to emit for this field. Values are
-	// escaped automatically (JSON via writeJSONString, CEF via cefEscapeExtValue).
+	// escaped automatically (JSON via [WriteJSONString], CEF via cefEscapeExtValue).
 	Value string
 }
 
@@ -711,7 +711,7 @@ func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 		return data // unexpected format — return unchanged
 	}
 
-	// Build the complete output in a pooled buffer using writeJSONString
+	// Build the complete output in a pooled buffer using WriteJSONString
 	// instead of json.Marshal to avoid per-field allocations.
 	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
 	if !ok {
@@ -721,9 +721,9 @@ func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 	buf.Write(data[:braceIdx])
 	for _, f := range fields {
 		buf.WriteByte(',')
-		writeJSONString(buf, f.JSONKey)
+		WriteJSONString(buf, f.JSONKey)
 		buf.WriteByte(':')
-		writeJSONString(buf, f.Value)
+		WriteJSONString(buf, f.Value)
 	}
 	buf.Write(data[braceIdx:]) // }\n
 

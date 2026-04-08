@@ -1398,7 +1398,7 @@ func TestJSONFormatter_FrameworkFields_Ordering(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// writeJSONString tests
+// WriteJSONString tests
 // ---------------------------------------------------------------------------
 
 func TestWriteJSONString(t *testing.T) {
@@ -1431,14 +1431,14 @@ func TestWriteJSONString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			audit.WriteJSONStringForTest(&buf, tt.input)
+			audit.WriteJSONString(&buf, tt.input)
 			got := buf.Bytes()
 
 			want, err := json.Marshal(tt.input)
 			require.NoError(t, err)
 
 			assert.Equal(t, string(want), string(got),
-				"writeJSONString output must match json.Marshal")
+				"WriteJSONString output must match json.Marshal")
 		})
 	}
 }
@@ -1527,7 +1527,7 @@ func TestJSONFormatter_InvalidUTF8Replacement(t *testing.T) {
 func TestWriteJSONString_QuickCheck(t *testing.T) {
 	f := func(s string) bool {
 		var buf bytes.Buffer
-		audit.WriteJSONStringForTest(&buf, s)
+		audit.WriteJSONString(&buf, s)
 
 		want, err := json.Marshal(s)
 		if err != nil {
@@ -1536,7 +1536,7 @@ func TestWriteJSONString_QuickCheck(t *testing.T) {
 		return bytes.Equal(buf.Bytes(), want)
 	}
 	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
-		t.Errorf("writeJSONString diverges from json.Marshal: %v", err)
+		t.Errorf("WriteJSONString diverges from json.Marshal: %v", err)
 	}
 }
 

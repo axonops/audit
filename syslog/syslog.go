@@ -481,8 +481,14 @@ func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, write
 
 // backoffDuration returns the backoff duration for the given attempt
 // number using bounded exponential backoff with jitter
-// (100ms * 2^attempt * [0.5, 1.0], capped at 30s). Jitter prevents
+// (100ms * 2^(attempt-1) * [0.5, 1.0], capped at 30s). Jitter prevents
 // thundering herd when multiple clients reconnect simultaneously.
+//
+// SYNC: similar implementations in webhook/http.go (webhookBackoff)
+// and loki/http.go (lokiBackoff). Syslog uses a 30s cap (persistent
+// TCP reconnection) vs 5s for HTTP outputs. The exponent uses
+// attempt-1 because s.failures is pre-incremented before this call,
+// so attempt=1 yields the initial 100ms base delay.
 func backoffDuration(attempt int) time.Duration {
 	exp := math.Min(float64(attempt-1), 20) // clamp exponent to avoid overflow
 	d := syslogBaseBackoff * time.Duration(math.Pow(2, exp))

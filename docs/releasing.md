@@ -117,46 +117,32 @@ cannot be undone.
       are about to create
 - [ ] `go.sum` files are committed and up to date — `make tidy-check` passes
 
-### Step-by-Step Tagging
+### Creating a Release
 
-> **Warning:** Once pushed, tags are permanent. Complete the pre-release
-> checklist before running these commands.
+> **Warning:** Once tags are pushed, they are permanent. Complete the
+> pre-release checklist before triggering the workflow.
 
-All tags MUST point to the same commit. Determine the target commit hash first:
+Releases are created via the
+[Release Tag workflow](https://github.com/axonops/go-audit/actions/workflows/release-tag.yml).
+**Do not create tags manually** — the workflow runs the full CI pipeline
+(unit tests, BDD, integration, lint, security) and only creates tags
+after everything passes.
 
-```bash
-HEAD=$(git rev-parse HEAD)
-echo "Tagging commit: $HEAD"
-```
+1. Go to **Actions → Release Tag → Run workflow**
+2. Enter the version string (e.g. `v0.1.1`)
+3. Click **Run workflow**
 
-Create all 7 tags:
+The workflow will:
+1. Run the entire CI pipeline (same as a PR check — all tests, all modules)
+2. Validate the version format and confirm HEAD is on `main`
+3. Verify no tags already exist for this version
+4. Create annotated tags for all 7 modules at HEAD
+5. Push all tags — the `v*` root tag triggers `release.yml` (GoReleaser) automatically
 
-```bash
-git tag v0.1.1            "$HEAD"
-git tag file/v0.1.1       "$HEAD"
-git tag syslog/v0.1.1     "$HEAD"
-git tag webhook/v0.1.1    "$HEAD"
-git tag loki/v0.1.1       "$HEAD"
-git tag outputconfig/v0.1.1 "$HEAD"
-git tag cmd/audit-gen/v0.1.1 "$HEAD"
-```
+If you need to test the workflow without burning a real version number,
+use a pre-release tag like `v0.1.1-alpha.1` or `v0.1.1-rc.1`.
 
-Verify all tags are on the correct commit before pushing:
-
-```bash
-git tag -v v0.1.1 file/v0.1.1 syslog/v0.1.1 webhook/v0.1.1 \
-    loki/v0.1.1 outputconfig/v0.1.1 cmd/audit-gen/v0.1.1 2>/dev/null || \
-git log --oneline --decorate | head -5
-```
-
-Push the tags. The `v0.1.1` root tag triggers `release.yml` (GoReleaser):
-
-```bash
-git push origin v0.1.1 file/v0.1.1 syslog/v0.1.1 webhook/v0.1.1 \
-    loki/v0.1.1 outputconfig/v0.1.1 cmd/audit-gen/v0.1.1
-```
-
-### After Pushing Tags
+### After the Release
 
 1. **Wait for `release.yml` to complete.** This runs CI and then GoReleaser,
    which creates the GitHub Release with archives, checksums, and SBOMs.

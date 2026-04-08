@@ -67,16 +67,26 @@ func (c HMACConfig) GoString() string {
 	return c.String()
 }
 
-// hmacAlgorithms maps config string values to hash constructor functions.
+// hmacHashFunc returns the hash constructor for the given algorithm name.
 // Only NIST SP 800-224 approved algorithms are included.
-// SHA-1 and MD5 are explicitly excluded.
-var hmacAlgorithms = map[string]func() hash.Hash{
-	"HMAC-SHA-256":  sha256.New,
-	"HMAC-SHA-384":  sha512.New384,
-	"HMAC-SHA-512":  sha512.New,
-	"HMAC-SHA3-256": func() hash.Hash { return sha3.New256() },
-	"HMAC-SHA3-384": func() hash.Hash { return sha3.New384() },
-	"HMAC-SHA3-512": func() hash.Hash { return sha3.New512() },
+// SHA-1 and MD5 are explicitly excluded. Returns nil for unknown names.
+func hmacHashFunc(name string) func() hash.Hash {
+	switch name {
+	case "HMAC-SHA-256":
+		return sha256.New
+	case "HMAC-SHA-384":
+		return sha512.New384
+	case "HMAC-SHA-512":
+		return sha512.New
+	case "HMAC-SHA3-256":
+		return func() hash.Hash { return sha3.New256() }
+	case "HMAC-SHA3-384":
+		return func() hash.Hash { return sha3.New384() }
+	case "HMAC-SHA3-512":
+		return func() hash.Hash { return sha3.New512() }
+	default:
+		return nil
+	}
 }
 
 // SupportedHMACAlgorithms returns the list of supported HMAC algorithm
@@ -107,7 +117,7 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 	if cfg.Algorithm == "" {
 		return errors.New("audit: hmac hash algorithm is required when hmac is enabled")
 	}
-	if _, ok := hmacAlgorithms[cfg.Algorithm]; !ok {
+	if hmacHashFunc(cfg.Algorithm) == nil {
 		return fmt.Errorf("audit: unknown hmac algorithm %q (supported: %v)", cfg.Algorithm, SupportedHMACAlgorithms())
 	}
 	return nil
@@ -116,8 +126,8 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 // newHMACState creates a pre-constructed hmacState for drain-loop reuse.
 // Called once at logger construction per HMAC-enabled output.
 func newHMACState(cfg *HMACConfig) *hmacState {
-	hashFunc, ok := hmacAlgorithms[cfg.Algorithm]
-	if !ok {
+	hashFunc := hmacHashFunc(cfg.Algorithm)
+	if hashFunc == nil {
 		return nil // unreachable: ValidateHMACConfig rejects unknown algorithms during NewLogger
 	}
 	mac := hmac.New(hashFunc, cfg.SaltValue)
@@ -149,8 +159,8 @@ func ComputeHMAC(payload, salt []byte, algorithm string) (string, error) {
 	if len(salt) == 0 {
 		return "", errors.New("audit: hmac salt must not be empty")
 	}
-	hashFunc, ok := hmacAlgorithms[algorithm]
-	if !ok {
+	hashFunc := hmacHashFunc(algorithm)
+	if hashFunc == nil {
 		return "", fmt.Errorf("audit: unknown hmac algorithm %q", algorithm)
 	}
 	mac := hmac.New(hashFunc, salt)

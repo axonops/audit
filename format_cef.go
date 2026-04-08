@@ -459,7 +459,7 @@ func mapFieldKey(fieldName string, mapping map[string]string) string {
 
 // formatFieldValue converts a field value to a string for CEF
 // extension values.
-func formatFieldValue(v any) string {
+func formatFieldValue(v any) string { //nolint:gocyclo,cyclop // type switch; complexity is inherent
 	if v == nil {
 		return ""
 	}
@@ -474,6 +474,14 @@ func formatFieldValue(v any) string {
 		return strconv.FormatInt(val, 10)
 	case float64:
 		return strconv.FormatFloat(val, 'g', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(val), 'g', -1, 32)
+	case int32:
+		return strconv.FormatInt(int64(val), 10)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	case uint64:
+		return strconv.FormatUint(val, 10)
 	case time.Duration:
 		return strconv.FormatInt(val.Milliseconds(), 10)
 	case time.Time:

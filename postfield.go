@@ -94,18 +94,23 @@ func appendPostFieldsCEF(data []byte, fields []PostField) []byte {
 	}
 
 	// Build suffix with proper CEF escaping for values.
-	var buf bytes.Buffer
+	// Use the shared CEF buffer pool (same pool as CEFFormatter.Format).
+	buf, ok := cefBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
+	buf.Reset()
 	for _, f := range fields {
 		buf.WriteByte(' ')
 		buf.WriteString(f.CEFKey)
 		buf.WriteByte('=')
 		buf.WriteString(cefEscapeExtValue(f.Value))
 	}
-	suffix := buf.Bytes()
 
-	result := make([]byte, 0, len(data)+len(suffix))
+	result := make([]byte, 0, len(data)+buf.Len())
 	result = append(result, data[:nlIdx]...)
-	result = append(result, suffix...)
+	result = append(result, buf.Bytes()...)
 	result = append(result, '\n')
+	cefBufPool.Put(buf)
 	return result
 }

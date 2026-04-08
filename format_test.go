@@ -906,7 +906,11 @@ func TestCEFFormatter_FieldValueTypes(t *testing.T) {
 		"outcome":  "ok",
 		"count":    42,
 		"count64":  int64(100),
+		"count32":  int32(99),
 		"ratio":    3.14,
+		"ratio32":  float32(2.5),
+		"size":     uint(999),
+		"bigcount": uint64(18446744073709551615),
 		"active":   true,
 		"inactive": false,
 		"dur":      2 * time.Second,
@@ -915,14 +919,18 @@ func TestCEFFormatter_FieldValueTypes(t *testing.T) {
 		"custom":   []string{"a", "b"},
 	}, &audit.EventDef{
 		Required: []string{"outcome"},
-		Optional: []string{"count", "count64", "ratio", "active", "inactive", "dur", "when", "nilfield", "custom"},
+		Optional: []string{"count", "count64", "count32", "ratio", "ratio32", "size", "bigcount", "active", "inactive", "dur", "when", "nilfield", "custom"},
 	}, nil)
 	require.NoError(t, err)
 
 	line := string(data)
 	assert.Contains(t, line, "count=42")
 	assert.Contains(t, line, "count64=100")
+	assert.Contains(t, line, "count32=99")
 	assert.Contains(t, line, "ratio=3.14")
+	assert.Contains(t, line, "ratio32=2.5")
+	assert.Contains(t, line, "size=999")
+	assert.Contains(t, line, "bigcount=18446744073709551615")
 	assert.Contains(t, line, "active=true")
 	assert.Contains(t, line, "inactive=false")
 	assert.Contains(t, line, "dur=2000")

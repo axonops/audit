@@ -100,6 +100,7 @@ type Output struct {
 	metrics        audit.Metrics
 	webhookMetrics Metrics
 	done           chan struct{}
+	closeCh        chan struct{} // signals batchLoop to drain and exit
 	headers        map[string]string
 	ch             chan []byte
 	cancel         context.CancelFunc
@@ -179,6 +180,7 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 		metrics:        metrics,
 		webhookMetrics: webhookMetrics,
 		ch:             make(chan []byte, cfg.BufferSize),
+		closeCh:        make(chan struct{}),
 		cancel:         cancel,
 		done:           make(chan struct{}),
 		batchSize:      cfg.BatchSize,
@@ -223,8 +225,8 @@ func (w *Output) Write(data []byte) error {
 }
 
 // Close signals the batch goroutine to drain and flush, then waits
-// for completion. In-flight HTTP retries are cancelled via context.
-// Close is idempotent.
+// for completion. In-flight HTTP requests complete using the live
+// context before the context is cancelled. Close is idempotent.
 func (w *Output) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -233,10 +235,10 @@ func (w *Output) Close() error {
 		return nil
 	}
 
-	// Cancel the context to stop the batch loop and abort in-flight
-	// HTTP requests. The batch goroutine will drain remaining events
-	// and do a final flush with a fresh short-deadline context.
-	w.cancel()
+	// Signal the batch loop to drain and exit. The batch loop will
+	// flush any pending events using the LIVE context (not cancelled),
+	// ensuring in-flight HTTP POSTs complete successfully.
+	close(w.closeCh)
 
 	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
 	// final flush) plus 5s buffer for backoff and channel drain.
@@ -248,6 +250,9 @@ func (w *Output) Close() error {
 			"timeout", shutdownTimeout)
 	}
 
+	// Cancel the context AFTER the batch loop exits to clean up any
+	// resources tied to it, then close idle HTTP connections.
+	w.cancel()
 	w.client.CloseIdleConnections()
 	return nil
 }
@@ -312,23 +317,24 @@ func (w *Output) batchLoop(ctx context.Context) {
 			}
 			resetWebhookTimer(timer, w.flushIvl)
 
-		case <-ctx.Done():
-			w.drainAndFlush(batch)
+		case <-w.closeCh:
+			w.drainAndFlush(ctx, batch)
 			return
 		}
 	}
 }
 
 // drainAndFlush reads remaining events from the channel and does a
-// final flush with a fresh context.
-func (w *Output) drainAndFlush(batch [][]byte) {
+// final flush using the live (not-yet-cancelled) context. This ensures
+// in-flight HTTP requests complete successfully during shutdown.
+func (w *Output) drainAndFlush(ctx context.Context, batch [][]byte) {
 	for {
 		select {
 		case data := <-w.ch:
 			batch = append(batch, data)
 		default:
 			if len(batch) > 0 {
-				w.flushFinal(batch)
+				w.flush(ctx, batch)
 			}
 			return
 		}
@@ -337,14 +343,6 @@ func (w *Output) drainAndFlush(batch [][]byte) {
 
 // flush sends a batch via HTTP POST with retry.
 func (w *Output) flush(ctx context.Context, batch [][]byte) {
-	w.doPostWithRetry(ctx, batch)
-}
-
-// flushFinal sends a final batch during shutdown with a fresh
-// short-deadline context (the main context is already cancelled).
-func (w *Output) flushFinal(batch [][]byte) {
-	ctx, cancel := context.WithTimeout(context.Background(), w.timeout)
-	defer cancel()
 	w.doPostWithRetry(ctx, batch)
 }
 

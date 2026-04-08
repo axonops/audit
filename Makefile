@@ -370,3 +370,64 @@ test-infra-loki-up:
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v
 	docker network rm audit-test 2>/dev/null || true
+
+# --- Publish verification (issue #29) ---
+
+# Module definitions for publish targets: directory|module_path|tag_prefix
+PUBLISH_MODULES := \
+  .|github.com/axonops/go-audit| \
+  file|github.com/axonops/go-audit/file|file/ \
+  syslog|github.com/axonops/go-audit/syslog|syslog/ \
+  webhook|github.com/axonops/go-audit/webhook|webhook/ \
+  loki|github.com/axonops/go-audit/loki|loki/ \
+  outputconfig|github.com/axonops/go-audit/outputconfig|outputconfig/ \
+  cmd/audit-gen|github.com/axonops/go-audit/cmd/audit-gen|cmd/audit-gen/
+
+.PHONY: publish-trigger publish-verify publish-smoke
+
+publish-trigger: ## Trigger proxy.golang.org indexing for VERSION (e.g. make publish-trigger VERSION=v0.1.1)
+ifndef VERSION
+	$(error VERSION is required, e.g. make publish-trigger VERSION=v0.1.1)
+endif
+	@for entry in $(PUBLISH_MODULES); do \
+		mod=$$(echo "$$entry" | cut -d'|' -f2); \
+		echo "Indexing $$mod@$(VERSION) ..."; \
+		GOPROXY=https://proxy.golang.org go list -m "$$mod@$(VERSION)"; \
+		echo "  ✓ $$mod@$(VERSION)"; \
+	done
+
+publish-verify: ## Verify modules on proxy.golang.org and pkg.go.dev for VERSION
+ifndef VERSION
+	$(error VERSION is required, e.g. make publish-verify VERSION=v0.1.1)
+endif
+	@for entry in $(PUBLISH_MODULES); do \
+		mod=$$(echo "$$entry" | cut -d'|' -f2); \
+		proxy_path=$$(echo "$$mod" | tr '[:upper:]' '[:lower:]'); \
+		echo "Verifying $$mod@$(VERSION) ..."; \
+		curl -sS --fail "https://proxy.golang.org/$${proxy_path}/@v/$(VERSION).info" > /dev/null || \
+			{ echo "  ✗ proxy.golang.org FAILED for $$mod"; exit 1; }; \
+		echo "  ✓ proxy.golang.org"; \
+		status=$$(curl -sS -o /dev/null -w "%{http_code}" "https://pkg.go.dev/$${mod}@$(VERSION)"); \
+		if [ "$$status" = "200" ]; then echo "  ✓ pkg.go.dev"; else echo "  ⚠ pkg.go.dev HTTP $$status (may still be indexing)"; fi; \
+	done
+
+publish-smoke: ## Smoke test: go get + compile all modules for VERSION
+ifndef VERSION
+	$(error VERSION is required, e.g. make publish-smoke VERSION=v0.1.1)
+endif
+	@dir=$$(mktemp -d) && \
+	trap 'rm -rf "$$dir"' EXIT && \
+	cd "$$dir" && \
+	go mod init smoketest && \
+	echo "Installing modules ..." && \
+	go get "github.com/axonops/go-audit@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/file@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/syslog@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/webhook@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/loki@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/outputconfig@$(VERSION)" && \
+	go get "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
+	printf 'package main\n\nimport (\n\t_ "github.com/axonops/go-audit"\n\t_ "github.com/axonops/go-audit/file"\n\t_ "github.com/axonops/go-audit/syslog"\n\t_ "github.com/axonops/go-audit/webhook"\n\t_ "github.com/axonops/go-audit/loki"\n\t_ "github.com/axonops/go-audit/outputconfig"\n)\n\nfunc main() {}\n' > main.go && \
+	go build -o /dev/null . && \
+	go install "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
+	echo "✓ All modules compile successfully"

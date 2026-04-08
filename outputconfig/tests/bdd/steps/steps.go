@@ -131,7 +131,9 @@ events:
 			return fmt.Errorf("create temp dir: %w", err)
 		}
 		tc.FileDir = dir
-		_ = os.Setenv("AUDIT_BDD_DIR", dir)
+		if err := os.Setenv("AUDIT_BDD_DIR", dir); err != nil {
+			return fmt.Errorf("set AUDIT_BDD_DIR: %w", err)
+		}
 
 		result, loadErr := outputconfig.Load([]byte(doc.Content), &tc.Taxonomy, nil)
 		if loadErr != nil {

@@ -99,7 +99,8 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	}
 	defer func() {
 		// Always consume response body to prevent connection leaks.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		const maxResponseDrain = 1 << 20 // 1 MiB
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseDrain))
 		_ = resp.Body.Close()
 	}()
 

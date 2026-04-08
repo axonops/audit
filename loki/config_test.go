@@ -768,7 +768,7 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		}
 		_, _, err := loki.BuildLokiTLSConfig(cfg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "read CA certificate")
+		assert.Contains(t, err.Error(), "read ca certificate")
 	})
 
 	t.Run("invalid CA PEM returns error", func(t *testing.T) {
@@ -785,6 +785,6 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		}
 		_, _, err := loki.BuildLokiTLSConfig(cfg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no valid PEM blocks")
+		assert.Contains(t, err.Error(), "no valid pem blocks")
 	})
 }

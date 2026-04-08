@@ -24,14 +24,14 @@ var _ audit.Metrics = (*MetricsRecorder)(nil)
 
 // MetricsRecorder implements [audit.Metrics] and captures all metric
 // calls for assertion. It is safe for concurrent use.
-type MetricsRecorder struct {
+type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over alignment
+	mu                  sync.Mutex     // guards all fields below
 	events              map[string]int // "output:status" → count
 	outputErrors        map[string]int
 	outputFiltered      map[string]int
 	validationErrors    map[string]int
 	filtered            map[string]int
 	serializationErrors map[string]int
-	mu                  sync.Mutex
 	bufferDrops         int
 }
 

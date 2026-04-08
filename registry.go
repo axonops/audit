@@ -37,6 +37,11 @@ import (
 // captured in the factory closure at registration time.
 type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics) (Output, error)
 
+// registry is a global mutable map protected by registryMu. This is an
+// intentional exception to the "no global mutable state" convention in
+// CLAUDE.md — output factory registration via init() is a standard Go
+// idiom (database/sql, image, encoding) and is the only practical
+// pattern for compile-time output plugin discovery.
 var (
 	registryMu sync.RWMutex
 	registry   = make(map[string]OutputFactory)

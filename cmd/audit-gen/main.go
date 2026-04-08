@@ -70,6 +70,10 @@ type cliConfig struct {
 	labels, builders           bool
 }
 
+// exitCodeContinue signals that parseFlags completed successfully
+// and the caller should proceed with code generation (not exit).
+const exitCodeContinue = -1
+
 func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCode int) {
 	fs := flag.NewFlagSet("audit-gen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -111,7 +115,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		input: *input, output: *output, pkg: *pkg, header: *header,
 		types: *types, fields: *fields, categories: *categories,
 		labels: *labels, builders: *builders,
-	}, -1 // -1 signals "continue"
+	}, exitCodeContinue
 }
 
 // maxInputSize is the maximum taxonomy file size (matches audit.MaxTaxonomyInputSize).

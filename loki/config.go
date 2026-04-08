@@ -467,11 +467,11 @@ func buildLokiTLSConfig(cfg *Config) (*tls.Config, []string, error) {
 	if cfg.TLSCA != "" {
 		caPEM, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, nil, fmt.Errorf("audit: loki: read CA certificate: %w", err)
+			return nil, nil, fmt.Errorf("audit: loki: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caPEM) {
-			return nil, nil, fmt.Errorf("audit: loki: CA certificate contains no valid PEM blocks")
+			return nil, nil, fmt.Errorf("audit: loki: ca certificate contains no valid pem blocks")
 		}
 		tlsCfg.RootCAs = pool
 	}

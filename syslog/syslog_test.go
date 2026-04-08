@@ -2102,3 +2102,60 @@ func TestSyslogOutput_WriteWithMetadata_AfterClose(t *testing.T) {
 	})
 	assert.ErrorIs(t, writeErr, audit.ErrOutputClosed)
 }
+
+// ---------------------------------------------------------------------------
+// Config.String() tests (#325)
+// ---------------------------------------------------------------------------
+
+func TestSyslogConfig_String_Format(t *testing.T) {
+	t.Parallel()
+	cfg := syslog.Config{
+		Network:  "tcp+tls",
+		Address:  "siem:6514",
+		TLSCA:    "/secret/ca.pem",
+		TLSCert:  "/secret/cert.pem",
+		TLSKey:   "/secret/key.pem",
+		Facility: "local0",
+	}
+	s := cfg.String()
+	assert.Contains(t, s, "SyslogConfig{")
+	assert.Contains(t, s, "network=tcp+tls")
+	assert.Contains(t, s, "address=siem:6514")
+	assert.Contains(t, s, "tls=mtls")
+	assert.Contains(t, s, "facility=local0")
+	// TLS file paths must NOT appear in String() output.
+	assert.NotContains(t, s, "/secret/")
+	assert.NotContains(t, s, "cert.pem")
+	assert.NotContains(t, s, "key.pem")
+}
+
+func TestSyslogConfig_String_TLSModes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		want string
+		cfg  syslog.Config
+	}{
+		{
+			name: "no TLS",
+			cfg:  syslog.Config{Network: "tcp", Address: "host:514"},
+			want: "tls=none",
+		},
+		{
+			name: "CA only (TLS)",
+			cfg:  syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCA: "/ca.pem"},
+			want: "tls=tls",
+		},
+		{
+			name: "cert+key (mTLS)",
+			cfg:  syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCert: "/c.pem", TLSKey: "/k.pem"},
+			want: "tls=mtls",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Contains(t, tt.cfg.String(), tt.want)
+		})
+	}
+}

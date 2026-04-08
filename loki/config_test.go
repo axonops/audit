@@ -160,6 +160,44 @@ func TestValidateConfig(t *testing.T) {
 			}(),
 		},
 
+		// --- TLS file validation (#325) -----------------------------------
+		{
+			name: "tls_cert is directory rejected",
+			cfg: func() loki.Config {
+				return loki.Config{
+					URL:     "https://loki.example.com/loki/api/v1/push",
+					TLSCert: t.TempDir(),
+					TLSKey:  t.TempDir(),
+				}
+			}(),
+			wantErr: "directory",
+		},
+		{
+			name: "tls_ca is directory rejected",
+			cfg: loki.Config{
+				URL:   "https://loki.example.com/loki/api/v1/push",
+				TLSCA: t.TempDir(),
+			},
+			wantErr: "directory",
+		},
+		{
+			name: "nonexistent tls_cert rejected at validation",
+			cfg: loki.Config{
+				URL:     "https://loki.example.com/loki/api/v1/push",
+				TLSCert: "/nonexistent/cert.pem",
+				TLSKey:  "/nonexistent/key.pem",
+			},
+			wantErr: "tls file",
+		},
+		{
+			name: "nonexistent tls_ca rejected at validation",
+			cfg: loki.Config{
+				URL:   "https://loki.example.com/loki/api/v1/push",
+				TLSCA: "/nonexistent/ca.pem",
+			},
+			wantErr: "tls file",
+		},
+
 		// --- Static label name validation --------------------------------
 		{
 			name: "static label name with hyphen rejected",

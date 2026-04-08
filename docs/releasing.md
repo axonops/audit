@@ -94,15 +94,14 @@ If a release contains a serious bug, the correct response is:
 
 ### Release Workflow Overview
 
-Three GitHub Actions workflows handle the release pipeline:
+Two GitHub Actions workflows handle the release pipeline:
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
-| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates all 7 module tags, pushes them |
+| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates tags, verifies proxy indexing, runs smoke test |
 | **GoReleaser** | `goreleaser.yml` | Automatic (on `v*` tag push) | Builds binaries, SBOMs, creates GitHub Release |
-| **Publish Verify** | `publish.yml` | Manual (workflow_dispatch) | Verifies proxy indexing, checksums, pkg.go.dev |
 
-**You only trigger `Release`.** The rest happens automatically or on-demand.
+**You only trigger `Release`.** It runs the entire pipeline end-to-end: CI → tags → proxy verification → smoke test. GoReleaser triggers automatically when the tags are pushed.
 
 ### Pre-Release Checklist
 
@@ -156,23 +155,20 @@ use a pre-release tag like `v0.1.1-alpha.1` or `v0.1.1-rc.1`.
 
 ### After the Release
 
-1. **Wait for `goreleaser.yml` to complete.** This runs CI and then GoReleaser,
-   which creates the GitHub Release with archives, checksums, and SBOMs.
-   Monitor at:
-   [Actions → GoReleaser](https://github.com/axonops/go-audit/actions/workflows/goreleaser.yml)
+The `release.yml` workflow handles everything end-to-end: after creating
+tags, it automatically verifies proxy indexing, checksums, and runs a
+smoke test. Monitor the workflow run for the final status.
 
-2. **Trigger `Publish Verify`.** Once `goreleaser.yml` is green, trigger the
-   [Publish Verify workflow](https://github.com/axonops/go-audit/actions/workflows/publish.yml)
-   manually with the version string `v0.1.1`. This workflow verifies proxy
-   indexing, checksums, and smoke-tests all 7 modules. See
-   [For Maintainers: Verification Tools](#for-maintainers-verification-tools).
+`goreleaser.yml` runs in parallel (triggered by the `v*` tag push) and
+creates the GitHub Release with binaries, checksums, and SBOMs. Monitor at:
+[Actions → GoReleaser](https://github.com/axonops/go-audit/actions/workflows/goreleaser.yml)
 
-3. **Verify locally** (optional but recommended):
+Optionally verify locally:
 
-   ```bash
-   make publish-verify VERSION=v0.1.1
-   make publish-smoke  VERSION=v0.1.1
-   ```
+```bash
+make publish-verify VERSION=v0.1.1
+make publish-smoke  VERSION=v0.1.1
+```
 
 ### First Release: v0.1.1
 
@@ -221,37 +217,28 @@ per-module, not repository-wide.
 
 ## For Maintainers: Verification Tools
 
-### The `publish.yml` Workflow
+### The Release Workflow
 
-The [Publish Verify workflow](../.github/workflows/publish.yml) runs after
-GoReleaser completes and verifies the release is fully published and usable.
-It is triggered manually via `workflow_dispatch`.
+The [Release workflow](../.github/workflows/release.yml) handles the
+entire release pipeline end-to-end. It is triggered manually via
+`workflow_dispatch` with a single `version` input.
 
-**Inputs:**
+**What it does, in order:**
 
-| Input | Required | Description |
-|-------|----------|-------------|
-| `version` | Yes | Version string, e.g. `v0.1.1` |
-| `skip_pkg_dev` | No (default: false) | Skip pkg.go.dev check — useful when verifying immediately after release, before the 30-minute indexing window |
+1. Runs the full CI pipeline (every test, lint, security check)
+2. Validates version format and confirms HEAD is on `main`
+3. Creates annotated tags for all 7 modules and pushes them
+4. Triggers `proxy.golang.org` indexing for all modules
+5. Verifies proxy serves `.info` for each module
+6. Verifies checksums via `go mod download`
+7. Runs a smoke test (`go get` + compile + install audit-gen)
 
-**What it verifies, in order:**
-
-1. All 7 tags exist and point to commits on `main`
-2. `make check` passes at the tagged commit
-3. `proxy.golang.org` returns `.info` and `.mod` for all 7 modules
-4. `sum.golang.org` checksums verified via `go mod download`
-5. `pkg.go.dev` returns HTTP 200 for all 7 modules (non-blocking warning if slow)
-6. GitHub Release exists with `checksums.txt` and SBOM assets
-7. All 7 modules can be installed with `go get` and compile successfully
-
-Steps 5 and 6 are non-fatal — they emit workflow warnings rather than failing
-the job, because both pkg.go.dev and GitHub Releases can have brief delays
-after the proxy has already indexed the module.
+If any step fails, the workflow stops. Tags that were already pushed
+cannot be undone — see [Retracting a Bad Release](#retracting-a-bad-release).
 
 ### Makefile Targets
 
-These targets run locally and replicate subsets of the `publish.yml`
-workflow for faster iteration:
+These targets run locally for manual verification:
 
 ```bash
 # Trigger proxy.golang.org indexing for a version

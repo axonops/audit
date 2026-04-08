@@ -92,6 +92,18 @@ If a release contains a serious bug, the correct response is:
 
 ## For Maintainers: Cutting a Release
 
+### Release Workflow Overview
+
+Three GitHub Actions workflows handle the release pipeline:
+
+| Workflow | File | Trigger | Purpose |
+|----------|------|---------|---------|
+| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates all 7 module tags, pushes them |
+| **GoReleaser** | `goreleaser.yml` | Automatic (on `v*` tag push) | Builds binaries, SBOMs, creates GitHub Release |
+| **Publish Verify** | `publish.yml` | Manual (workflow_dispatch) | Verifies proxy indexing, checksums, pkg.go.dev |
+
+**You only trigger `Release`.** The rest happens automatically or on-demand.
+
 ### Pre-Release Checklist
 
 Complete every item before creating any tags. A partial or incorrect release
@@ -123,12 +135,12 @@ cannot be undone.
 > pre-release checklist before triggering the workflow.
 
 Releases are created via the
-[Release Tag workflow](https://github.com/axonops/go-audit/actions/workflows/release-tag.yml).
+[Release workflow](https://github.com/axonops/go-audit/actions/workflows/release.yml).
 **Do not create tags manually** — the workflow runs the full CI pipeline
 (unit tests, BDD, integration, lint, security) and only creates tags
 after everything passes.
 
-1. Go to **Actions → Release Tag → Run workflow**
+1. Go to **Actions → Release → Run workflow**
 2. Enter the version string (e.g. `v0.1.1`)
 3. Click **Run workflow**
 
@@ -144,12 +156,12 @@ use a pre-release tag like `v0.1.1-alpha.1` or `v0.1.1-rc.1`.
 
 ### After the Release
 
-1. **Wait for `release.yml` to complete.** This runs CI and then GoReleaser,
+1. **Wait for `goreleaser.yml` to complete.** This runs CI and then GoReleaser,
    which creates the GitHub Release with archives, checksums, and SBOMs.
    Monitor at:
-   [Actions → Release](https://github.com/axonops/go-audit/actions/workflows/release.yml)
+   [Actions → GoReleaser](https://github.com/axonops/go-audit/actions/workflows/goreleaser.yml)
 
-2. **Trigger `Publish Verify`.** Once `release.yml` is green, trigger the
+2. **Trigger `Publish Verify`.** Once `goreleaser.yml` is green, trigger the
    [Publish Verify workflow](https://github.com/axonops/go-audit/actions/workflows/publish.yml)
    manually with the version string `v0.1.1`. This workflow verifies proxy
    indexing, checksums, and smoke-tests all 7 modules. See

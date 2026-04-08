@@ -24,12 +24,6 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// ErrInvalidInput is returned when the YAML input to
-// [ParseTaxonomyYAML] is structurally unsuitable (empty, oversized,
-// multi-document, or syntactically invalid). Taxonomy validation
-// errors wrap [ErrTaxonomyInvalid] instead.
-var ErrInvalidInput = errors.New("audit: invalid input")
-
 // MaxTaxonomyInputSize is the maximum YAML input size accepted by
 // [ParseTaxonomyYAML]. Inputs exceeding this limit are rejected
 // with [ErrInvalidInput].

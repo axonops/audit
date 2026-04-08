@@ -29,30 +29,61 @@ import (
 
 // Default values for [Config] fields.
 const (
-	DefaultBatchSize     = 100
-	DefaultMaxBatchBytes = 1 << 20 // 1 MiB
+	// DefaultBatchSize is the default maximum events per push request.
+	DefaultBatchSize = 100
+
+	// DefaultMaxBatchBytes is the default maximum uncompressed push
+	// payload size in bytes (1 MiB).
+	DefaultMaxBatchBytes = 1 << 20
+
+	// DefaultFlushInterval is the default maximum time between push
+	// requests when the batch has not yet reached [DefaultBatchSize].
 	DefaultFlushInterval = 5 * time.Second
-	DefaultTimeout       = 10 * time.Second
-	DefaultMaxRetries    = 3
-	DefaultBufferSize    = 10_000
+
+	// DefaultTimeout is the default HTTP request timeout.
+	DefaultTimeout = 10 * time.Second
+
+	// DefaultMaxRetries is the default retry count for 429/5xx.
+	DefaultMaxRetries = 3
+
+	// DefaultBufferSize is the default internal event buffer capacity.
+	DefaultBufferSize = 10_000
 )
 
 // Upper bounds for [Config] fields.
 const (
-	MaxBatchSize     = 10_000
-	MaxMaxBatchBytes = 10 << 20 // 10 MiB
+	// MaxBatchSize is the upper bound for [Config.BatchSize].
+	MaxBatchSize = 10_000
+
+	// MaxMaxBatchBytes is the upper bound for [Config.MaxBatchBytes] (10 MiB).
+	MaxMaxBatchBytes = 10 << 20
+
+	// MaxFlushInterval is the upper bound for [Config.FlushInterval].
 	MaxFlushInterval = 5 * time.Minute
-	MaxTimeout       = 5 * time.Minute
-	MaxMaxRetries    = 20
-	MaxBufferSize    = 1_000_000
+
+	// MaxTimeout is the upper bound for [Config.Timeout].
+	MaxTimeout = 5 * time.Minute
+
+	// MaxMaxRetries is the upper bound for [Config.MaxRetries].
+	MaxMaxRetries = 20
+
+	// MaxBufferSize is the upper bound for [Config.BufferSize].
+	MaxBufferSize = 1_000_000
 )
 
 // Lower bounds for [Config] fields.
 const (
+	// MinMaxBatchBytes is the lower bound for [Config.MaxBatchBytes] (1 KiB).
 	MinMaxBatchBytes = 1024
+
+	// MinFlushInterval is the lower bound for [Config.FlushInterval].
 	MinFlushInterval = 100 * time.Millisecond
-	MinTimeout       = 1 * time.Second
-	MinBufferSize    = 100
+
+	// MinTimeout is the lower bound for [Config.Timeout].
+	MinTimeout = 1 * time.Second
+
+	// MinBufferSize is the lower bound for [Config.BufferSize].
+	MinBufferSize = 100
 )
 
 // Metrics is an optional interface for recording Loki output
@@ -77,9 +108,16 @@ type Metrics interface {
 // validLabelName matches Loki's label name requirement.
 var validLabelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// BasicAuth holds HTTP basic authentication credentials.
+// BasicAuth holds HTTP basic authentication credentials for Loki push
+// requests. Mutually exclusive with [Config.BearerToken]. The library
+// redacts credentials in all log output and string representations.
 type BasicAuth struct {
+	// Username is the HTTP basic auth username. REQUIRED when BasicAuth
+	// is non-nil; an empty value causes [New] to return an error.
 	Username string
+
+	// Password is the HTTP basic auth password. MAY be empty when the
+	// Loki endpoint accepts username-only authentication.
 	Password string
 }
 
@@ -131,19 +169,56 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 	// Labels controls stream label configuration.
 	Labels LabelConfig
 
-	// TLS configuration.
-	TLSCA     string
-	TLSCert   string
-	TLSKey    string
+	// TLSCA is the path to a PEM-encoded CA certificate used to verify
+	// the Loki server certificate. When empty, the system root CA pool
+	// is used. Use this field when Loki is configured with a private or
+	// self-signed CA.
+	TLSCA string
+
+	// TLSCert is the path to a PEM-encoded client certificate for mTLS
+	// authentication. MUST be set together with [Config.TLSKey]; setting
+	// one without the other causes [New] to return an error.
+	TLSCert string
+
+	// TLSKey is the path to the PEM-encoded private key for the client
+	// certificate. MUST be set together with [Config.TLSCert]; setting
+	// one without the other causes [New] to return an error.
+	TLSKey string
+
+	// TLSPolicy controls the TLS version and cipher suite policy applied
+	// to all Loki connections. When nil, the default policy (TLS 1.3
+	// only) is used. See [audit.TLSPolicy] for details on enabling TLS
+	// 1.2 fallback.
 	TLSPolicy *audit.TLSPolicy
 
-	// Batching.
-	BatchSize     int           // Max events per push (default 100, max 10000)
-	MaxBatchBytes int           // Max uncompressed bytes per push (default 1MB, max 10MB)
-	FlushInterval time.Duration // Max time between pushes (default 5s)
-	BufferSize    int           // Internal event buffer capacity (default 10000)
-	Timeout       time.Duration // HTTP request timeout (default 10s)
-	MaxRetries    int           // Retry count for 429/5xx (default 3, max 20)
+	// BatchSize is the maximum events per push request.
+	// Zero defaults to [DefaultBatchSize] (100).
+	// Values above [MaxBatchSize] (10,000) are rejected.
+	BatchSize int
+
+	// MaxBatchBytes is the maximum uncompressed payload size per push
+	// request. Zero defaults to [DefaultMaxBatchBytes] (1 MiB).
+	// Valid range: [MinMaxBatchBytes] (1 KiB) to [MaxMaxBatchBytes] (10 MiB).
+	MaxBatchBytes int
+
+	// FlushInterval is the maximum time between push requests when the
+	// batch has not yet reached BatchSize. The timer resets after
+	// every flush. Zero defaults to [DefaultFlushInterval] (5s).
+	FlushInterval time.Duration
+
+	// BufferSize is the internal async event buffer capacity. When full,
+	// new events are dropped. Zero defaults to [DefaultBufferSize]
+	// (10,000).
+	BufferSize int
+
+	// Timeout is the HTTP request timeout covering the full push
+	// request/response lifecycle. Zero defaults to [DefaultTimeout]
+	// (10s).
+	Timeout time.Duration
+
+	// MaxRetries is the retry count for 429 and 5xx responses.
+	// Zero defaults to [DefaultMaxRetries] (3).
+	MaxRetries int
 
 	// Compress enables gzip compression of push requests. The YAML
 	// factory defaults to true when the gzip key is omitted; the Go

@@ -15,7 +15,6 @@
 package audit
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -53,10 +52,6 @@ const (
 	// high-throughput system causes events to be lost at shutdown.
 	MaxDrainTimeout = 60 * time.Second
 )
-
-// ErrConfigInvalid is the sentinel error wrapped by configuration
-// validation failures.
-var ErrConfigInvalid = errors.New("audit: config validation failed")
 
 // Config holds configuration for the audit [Logger].
 type Config struct {

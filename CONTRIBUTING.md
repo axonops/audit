@@ -116,6 +116,23 @@ webhook, outputconfig). Each has its own `go.mod`.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the pipeline design, module
 boundaries, and key source files.
 
+## Release Process
+
+Releases are cut by maintainers. Contributors do not create release tags.
+
+The full release procedure — pre-release checklist, tagging commands for all
+7 modules, proxy verification, and retraction policy — is documented in
+[docs/releasing.md](docs/releasing.md).
+
+Key points for contributors:
+
+- Do not create tags matching `v*`, `file/v*`, `syslog/v*`, `webhook/v*`,
+  `loki/v*`, `outputconfig/v*`, or `cmd/audit-gen/v*`.
+- Do not add `replace` directives to `go.mod` on any branch intended for
+  merge — `make check-replace` enforces this in CI.
+- Use `make workspace` to create a `go.work` file for local cross-module
+  development. It is gitignored and does not affect published modules.
+
 ## Code of Conduct
 
 This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).

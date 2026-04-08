@@ -1,0 +1,405 @@
+[&larr; Back to README](../README.md)
+
+# Releasing go-audit
+
+- [How Go Module Publishing Works](#how-go-module-publishing-works)
+- [For Maintainers: Cutting a Release](#for-maintainers-cutting-a-release)
+- [For Maintainers: Verification Tools](#for-maintainers-verification-tools)
+- [For Contributors](#for-contributors)
+- [For Consumers](#for-consumers)
+
+---
+
+## How Go Module Publishing Works
+
+### The Go Module Proxy
+
+When a consumer runs `go get github.com/axonops/go-audit@v0.1.1`, the Go
+toolchain contacts [proxy.golang.org](https://proxy.golang.org). The proxy
+fetches and permanently caches the module source from GitHub at the exact
+commit pointed to by that tag. The checksum is recorded in
+[sum.golang.org](https://sum.golang.org) — a transparency log.
+
+Two consequences follow directly from this:
+
+- **A published tag is permanent.** Once a version is fetched through the
+  proxy, it exists in the checksum database forever. Deleting or force-pushing
+  a tag does not remove it from the proxy or the checksum log. Consumers who
+  already fetched that version will get a checksum mismatch error if the tag
+  is later changed. A tag that has been pushed MUST NOT be modified.
+
+- **Publication is automatic.** There is no `go publish` command. Pushing a
+  tag triggers indexing the next time any consumer (or the
+  `publish-verify` workflow) requests that version. The proxy fetches from
+  GitHub on demand.
+
+[pkg.go.dev](https://pkg.go.dev) pulls its documentation from the same proxy.
+It indexes asynchronously — expect up to 30 minutes after the first `go get`
+before the documentation page appears.
+
+### Multi-Module Tagging Scheme
+
+This repository contains 7 Go modules. Each module has its own `go.mod` and
+its own independent version history. The Go toolchain identifies module
+versions by tag, using a path prefix for sub-modules:
+
+| Module | Directory | Tag format | Example |
+|--------|-----------|------------|---------|
+| `github.com/axonops/go-audit` | `.` (root) | `vX.Y.Z` | `v0.1.1` |
+| `github.com/axonops/go-audit/file` | `file/` | `file/vX.Y.Z` | `file/v0.1.1` |
+| `github.com/axonops/go-audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | `syslog/v0.1.1` |
+| `github.com/axonops/go-audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | `webhook/v0.1.1` |
+| `github.com/axonops/go-audit/loki` | `loki/` | `loki/vX.Y.Z` | `loki/v0.1.1` |
+| `github.com/axonops/go-audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | `outputconfig/v0.1.1` |
+| `github.com/axonops/go-audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | `cmd/audit-gen/v0.1.1` |
+
+All 7 tags MUST point to the same commit on `main`. Tagging individual modules
+at different commits creates inconsistent releases — consumers who install
+multiple modules will get code from different commits.
+
+### v0.x Stability Contract
+
+This library is pre-release (`v0.x`). The Go module system treats v0 the same
+as v1 for import paths — no `/v2` suffix is needed. However, v0.x releases
+carry no API stability guarantee. Breaking changes MAY occur between minor
+versions (`v0.1.x` → `v0.2.x`). Consumers MUST pin to a specific version:
+
+```bash
+go get github.com/axonops/go-audit@v0.1.1
+```
+
+The library will increment to v1.0.0 when the API is considered stable. At
+that point the stability guarantees described in the
+[Go module compatibility rules](https://go.dev/blog/module-compatibility) will
+apply: no breaking changes within a major version.
+
+### The "Never Modify a Published Tag" Rule
+
+Once any of the 7 tags has been fetched through `proxy.golang.org` or recorded
+in `sum.golang.org`, it is sealed. The constraint is absolute:
+
+- Force-pushing a tag causes `go mod verify` to fail for every consumer who
+  already fetched that version.
+- Deleting a tag does not remove it from the proxy cache.
+- Moving a tag to a different commit changes the source code the tag resolves
+  to, which breaks the checksum verification for anyone who downloaded it.
+
+If a release contains a serious bug, the correct response is:
+1. Publish a new patch version with the fix.
+2. Add a `retract` directive (see [Retracting a Bad Release](#retracting-a-bad-release)).
+
+---
+
+## For Maintainers: Cutting a Release
+
+### Pre-Release Checklist
+
+Complete every item before creating any tags. A partial or incorrect release
+cannot be undone.
+
+- [ ] CI is green on `main` — check the
+      [CI workflow](https://github.com/axonops/go-audit/actions/workflows/ci.yml)
+- [ ] `make check` passes locally with no errors or diffs
+- [ ] No `replace` directives in any `go.mod` — `make check-replace` confirms this
+- [ ] All inter-module dependencies reference the correct version. Each
+      sub-module's `go.mod` MUST require `github.com/axonops/go-audit` at the
+      version being released (or the most recent stable version if releasing
+      only a subset of modules). Verify with:
+
+      ```bash
+      grep "axonops/go-audit" file/go.mod syslog/go.mod webhook/go.mod \
+          loki/go.mod outputconfig/go.mod cmd/audit-gen/go.mod
+      ```
+
+- [ ] `CHANGELOG.md` updated — the `## [Unreleased]` section converted to
+      `## [0.1.1] - 2026-01-01` (or the actual date)
+- [ ] The version string is consistent across `CHANGELOG.md` and all tags you
+      are about to create
+- [ ] `go.sum` files are committed and up to date — `make tidy-check` passes
+
+### Step-by-Step Tagging
+
+> **Warning:** Once pushed, tags are permanent. Complete the pre-release
+> checklist before running these commands.
+
+All tags MUST point to the same commit. Determine the target commit hash first:
+
+```bash
+HEAD=$(git rev-parse HEAD)
+echo "Tagging commit: $HEAD"
+```
+
+Create all 7 tags:
+
+```bash
+git tag v0.1.1            "$HEAD"
+git tag file/v0.1.1       "$HEAD"
+git tag syslog/v0.1.1     "$HEAD"
+git tag webhook/v0.1.1    "$HEAD"
+git tag loki/v0.1.1       "$HEAD"
+git tag outputconfig/v0.1.1 "$HEAD"
+git tag cmd/audit-gen/v0.1.1 "$HEAD"
+```
+
+Verify all tags are on the correct commit before pushing:
+
+```bash
+git tag -v v0.1.1 file/v0.1.1 syslog/v0.1.1 webhook/v0.1.1 \
+    loki/v0.1.1 outputconfig/v0.1.1 cmd/audit-gen/v0.1.1 2>/dev/null || \
+git log --oneline --decorate | head -5
+```
+
+Push the tags. The `v0.1.1` root tag triggers `release.yml` (GoReleaser):
+
+```bash
+git push origin v0.1.1 file/v0.1.1 syslog/v0.1.1 webhook/v0.1.1 \
+    loki/v0.1.1 outputconfig/v0.1.1 cmd/audit-gen/v0.1.1
+```
+
+### After Pushing Tags
+
+1. **Wait for `release.yml` to complete.** This runs CI and then GoReleaser,
+   which creates the GitHub Release with archives, checksums, and SBOMs.
+   Monitor at:
+   [Actions → Release](https://github.com/axonops/go-audit/actions/workflows/release.yml)
+
+2. **Trigger `Publish Verify`.** Once `release.yml` is green, trigger the
+   [Publish Verify workflow](https://github.com/axonops/go-audit/actions/workflows/publish.yml)
+   manually with the version string `v0.1.1`. This workflow verifies proxy
+   indexing, checksums, and smoke-tests all 7 modules. See
+   [For Maintainers: Verification Tools](#for-maintainers-verification-tools).
+
+3. **Verify locally** (optional but recommended):
+
+   ```bash
+   make publish-verify VERSION=v0.1.1
+   make publish-smoke  VERSION=v0.1.1
+   ```
+
+### First Release: v0.1.1
+
+The first release for this repository is `v0.1.1`. Version `v0.1.0` was
+skipped because `loki/v0.1.0` was already sealed in the Go checksum database
+before the loki module was ready to publish. Using `v0.1.1` as the first
+coordinated release across all modules avoids a version mismatch where `loki`
+appears to have a `v0.1.0` that predates the rest of the library.
+
+No `retract` directive is required for `loki/v0.1.0` in the loki module's
+`go.mod` because that version was never published with importable code — it
+was sealed at a commit that did not contain the `loki` directory's current
+code. If consumers report resolution issues with `loki/v0.1.0`, add:
+
+```go
+// loki/go.mod
+retract v0.1.0 // sealed in sum DB before module was complete; use v0.1.1
+```
+
+### Retracting a Bad Release
+
+If a published release contains a serious bug or security vulnerability,
+publish a fix as a new version and add a `retract` directive. The retraction
+MUST be in the module's `go.mod`, and the retraction itself MUST be released
+as a new version for the Go toolchain to surface the warning to consumers.
+
+Example — retracting `v0.1.1` from the core module after publishing `v0.1.2`:
+
+```go
+// go.mod
+module github.com/axonops/go-audit
+
+go 1.26.2
+
+retract v0.1.1 // contains data loss bug in drain loop; use v0.1.2
+```
+
+The retraction comment is displayed by `go get` and `go list` when a consumer
+has the retracted version. It MUST explain why the version was retracted and
+what version to use instead.
+
+Each affected module MUST have its own `retract` directive — retraction is
+per-module, not repository-wide.
+
+---
+
+## For Maintainers: Verification Tools
+
+### The `publish.yml` Workflow
+
+The [Publish Verify workflow](../.github/workflows/publish.yml) runs after
+GoReleaser completes and verifies the release is fully published and usable.
+It is triggered manually via `workflow_dispatch`.
+
+**Inputs:**
+
+| Input | Required | Description |
+|-------|----------|-------------|
+| `version` | Yes | Version string, e.g. `v0.1.1` |
+| `skip_pkg_dev` | No (default: false) | Skip pkg.go.dev check — useful when verifying immediately after release, before the 30-minute indexing window |
+
+**What it verifies, in order:**
+
+1. All 7 tags exist and point to commits on `main`
+2. `make check` passes at the tagged commit
+3. `proxy.golang.org` returns `.info` and `.mod` for all 7 modules
+4. `sum.golang.org` checksums verified via `go mod download`
+5. `pkg.go.dev` returns HTTP 200 for all 7 modules (non-blocking warning if slow)
+6. GitHub Release exists with `checksums.txt` and SBOM assets
+7. All 7 modules can be installed with `go get` and compile successfully
+
+Steps 5 and 6 are non-fatal — they emit workflow warnings rather than failing
+the job, because both pkg.go.dev and GitHub Releases can have brief delays
+after the proxy has already indexed the module.
+
+### Makefile Targets
+
+These targets run locally and replicate subsets of the `publish.yml`
+workflow for faster iteration:
+
+```bash
+# Trigger proxy.golang.org indexing for a version
+make publish-trigger VERSION=v0.1.1
+
+# Verify proxy.golang.org and pkg.go.dev for a version
+make publish-verify VERSION=v0.1.1
+
+# Smoke test: go get + compile all modules for a version
+make publish-smoke VERSION=v0.1.1
+```
+
+`publish-trigger` calls `go list -m` against `GOPROXY=https://proxy.golang.org`
+for each module. This is the same operation that a consumer's first `go get`
+performs — it forces the proxy to fetch and cache the module from GitHub.
+
+`publish-verify` checks the `.info` endpoint on `proxy.golang.org` and the
+HTTP status of `pkg.go.dev` for each module. It does not fail on a non-200
+from `pkg.go.dev` — use it as a quick sanity check, not a gate.
+
+`publish-smoke` creates a temporary module in `$(mktemp -d)`, installs all
+7 modules at the specified version, compiles a program that imports all of
+them, and installs `audit-gen`. This is the closest local equivalent to
+"does this release actually work for a consumer."
+
+---
+
+## For Contributors
+
+Contributors do not cut releases. This section explains how Go module
+publishing works so that contributor actions (tags, `go.mod` changes) do not
+accidentally interfere with the release process.
+
+### How a Consumer Gets Your Code
+
+When a consumer runs `go get github.com/axonops/go-audit@v0.1.1`:
+
+1. The Go toolchain asks `proxy.golang.org` for the module at that version.
+2. The proxy fetches the source from GitHub at the commit pointed to by the
+   `v0.1.1` tag, if it has not already cached it.
+3. The proxy records the module hash in `sum.golang.org`.
+4. The source is extracted into the consumer's module cache.
+5. The consumer's `go.sum` is updated with the verified hash.
+
+The proxy caches the module permanently. If the tag is later deleted or moved,
+consumers who already fetched it are unaffected — they get the same bytes
+from the proxy cache. New consumers would get an error (tag not found on
+GitHub), but the proxy cache would still serve the old bytes for existing
+`go.sum` entries.
+
+### What Contributors MUST NOT Do
+
+- **Do not create release tags.** Tags matching `v*`, `file/v*`, `syslog/v*`,
+  `webhook/v*`, `loki/v*`, `outputconfig/v*`, or `cmd/audit-gen/v*` are
+  protected on `main` and can only be created by maintainers.
+- **Do not add `replace` directives to `go.mod` on any branch intended for
+  merge.** `replace` directives in published modules break consumer builds.
+  `make check-replace` enforces this in CI.
+- **Do not modify `go.mod` to point inter-module dependencies at local paths.**
+  Use `make workspace` to create a `go.work` file for local development — it is
+  gitignored and does not affect the published modules.
+
+### Inter-Module Dependencies
+
+Each sub-module depends on `github.com/axonops/go-audit` (the core module).
+During development, `go.work` resolves these to your local checkout. In
+published modules, the `go.mod` MUST reference a released version of the
+core module — there is no `replace` directive in the committed `go.mod`.
+
+Before a release, maintainers update each sub-module's `go.mod` to reference
+the correct core version. Contributors do not need to manage this — just
+ensure `make check` passes on your branch.
+
+---
+
+## For Consumers
+
+### Installing Modules
+
+Requires **Go 1.26.2+**.
+
+Install only the modules you need. The core module provides the logger,
+taxonomy validation, formatters, stdout output, HTTP middleware, and the
+`audittest` testing package. Output modules are separate to keep the core
+dependency footprint minimal.
+
+```bash
+# Core (always required)
+go get github.com/axonops/go-audit@v0.1.1
+
+# Output modules — install only what you use
+go get github.com/axonops/go-audit/file@v0.1.1         # file output with rotation
+go get github.com/axonops/go-audit/syslog@v0.1.1       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
+go get github.com/axonops/go-audit/webhook@v0.1.1      # batched HTTP webhook
+go get github.com/axonops/go-audit/loki@v0.1.1         # Grafana Loki
+go get github.com/axonops/go-audit/outputconfig@v0.1.1 # YAML-based output configuration
+
+# Code generator (dev/build tooling, not a runtime dependency)
+go get github.com/axonops/go-audit/cmd/audit-gen@v0.1.1
+```
+
+Each module is versioned independently. You MUST use the same version across
+all modules you install — mixing versions (e.g. core at `v0.1.1` and syslog
+at `v0.2.0`) is unsupported and may cause compile errors or unexpected
+behaviour.
+
+### Version Pinning
+
+This library is pre-release (v0.x). The API MAY change between minor
+versions. Pin to an exact version in your `go.mod`:
+
+```bash
+go get github.com/axonops/go-audit@v0.1.1
+```
+
+Do not use `@latest` in production `go.mod` files — a new minor release may
+introduce breaking changes.
+
+### Verifying Your Install
+
+After installation, verify the checksums against the transparency log:
+
+```bash
+go mod verify
+```
+
+This confirms that the module source in your local cache has not been tampered
+with. It checks against the hashes recorded in your `go.sum`, which were
+verified against `sum.golang.org` when the module was first downloaded.
+
+### SBOM
+
+Every GitHub Release includes SBOMs in both CycloneDX and SPDX formats,
+generated by GoReleaser using [syft](https://github.com/anchore/syft). They
+are attached to the release as assets named `sbom.cdx.json` and
+`sbom.spdx.json`.
+
+Download them from the
+[Releases page](https://github.com/axonops/go-audit/releases) or via the
+GitHub CLI:
+
+```bash
+gh release download v0.1.1 --pattern "sbom.*" --repo axonops/go-audit
+```
+
+The SBOMs cover the compiled binaries produced by GoReleaser (including
+`audit-gen`). For the full transitive dependency graph of a specific module,
+use `go mod graph` or generate your own SBOM with syft against your built
+binary.

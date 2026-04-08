@@ -1,6 +1,6 @@
 module github.com/axonops/go-audit
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/axonops/go-audit/file v0.1.0

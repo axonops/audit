@@ -19,7 +19,7 @@
 MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen
 WORKSPACE_MODULES := $(MODULES) examples/16-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
-GO_TOOLCHAIN      := go1.26.1
+GO_TOOLCHAIN      := go1.26.2
 
 # Tool versions — pinned for supply chain safety. To update:
 #   1. Change the version constant below

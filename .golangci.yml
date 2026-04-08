@@ -147,6 +147,11 @@ linters:
           - wrapcheck
           - gocognit
 
+      # Test files legitimately return unwrapped errors from helpers.
+      - path: _test\.go
+        linters:
+          - wrapcheck
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

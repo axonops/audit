@@ -2066,7 +2066,7 @@ func (d *deliveryReporterOutput) Write(data []byte) error {
 	if d.writeErrToReturn != nil {
 		return d.writeErrToReturn
 	}
-	return d.MockOutput.Write(data) //nolint:wrapcheck // test helper, wrapping not needed
+	return d.MockOutput.Write(data)
 }
 
 var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)

@@ -6,6 +6,7 @@
 - [Core Errors](#core-errors)
 - [Configuration Errors](#configuration-errors)
 - [Output Errors](#output-errors)
+- [Secret Resolution Errors](#secret-resolution-errors)
 - [Taxonomy Errors](#taxonomy-errors)
 
 ## How to Check Errors
@@ -194,6 +195,78 @@ All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconf
 | `tls_cert and tls_key must both be set or both empty` | Only one of cert/key provided |
 | `hostname exceeds RFC 5424 maximum` | Hostname > 255 bytes |
 | `invalid byte` in hostname | Hostname contains non-PRINTUSASCII characters |
+
+---
+
+## Secret Resolution Errors
+
+Secret resolution errors occur during `outputconfig.Load` when ref+
+URIs cannot be resolved. All errors are in `github.com/axonops/go-audit/secrets`.
+
+### `ErrMalformedRef`
+
+```
+secrets: malformed secret reference
+```
+
+| | |
+|---|---|
+| **When** | `ParseRef` encounters a `ref+` URI with structural errors: empty scheme, empty path, empty key, path traversal (`..`), percent-encoded characters, or missing `://` separator |
+| **Meaning** | The ref URI syntax is invalid -- the provider is never contacted |
+| **Transient?** | No -- fix the ref URI in the YAML configuration |
+| **What to do** | Check the exact error message for the specific validation failure. Common causes: missing `#key` fragment, leading `/` in path, consecutive slashes (`//`) in path. See [URI Syntax](secrets.md#uri-syntax). |
+
+### `ErrProviderNotRegistered`
+
+```
+secrets: no provider registered for scheme
+```
+
+| | |
+|---|---|
+| **When** | A ref URI references a scheme for which no `WithSecretProvider` was registered |
+| **Meaning** | The library cannot resolve this ref because no provider handles the scheme |
+| **Transient?** | No -- register the correct provider or fix the scheme in the ref URI |
+| **What to do** | The error message includes the scheme and the field path: `secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)`. Add the missing `outputconfig.WithSecretProvider(provider)` call, or correct the scheme in the ref URI. |
+
+### `ErrSecretNotFound`
+
+```
+secrets: secret not found at path
+```
+
+| | |
+|---|---|
+| **When** | The provider received a 404 from the server, or the requested key does not exist at the path |
+| **Meaning** | The secret path or key does not exist in the backend |
+| **Transient?** | No -- fix the path or key in the ref URI |
+| **What to do** | The most common cause is using the CLI path instead of the API path. For KV v2, the CLI path `secret/audit/hmac` maps to API path `secret/data/audit/hmac`. Verify the secret exists with `bao kv get` or `vault kv get`. |
+
+### `ErrSecretResolveFailed`
+
+```
+secrets: secret resolution failed
+```
+
+| | |
+|---|---|
+| **When** | Network error, authentication failure (403), unexpected server response, timeout, or response size limit exceeded |
+| **Meaning** | The provider contacted the server but the request failed |
+| **Transient?** | Possibly -- authentication failures are permanent until the token is rotated; network errors may be transient |
+| **What to do** | Check the wrapped error message for specifics: `authentication failed (403)` means the token lacks permission or is expired; `unexpected status N` means the server returned an error; `context deadline exceeded` means the resolution timeout was reached (increase with `WithSecretTimeout`). |
+
+### `ErrUnresolvedRef`
+
+```
+secrets: unresolved secret reference in config
+```
+
+| | |
+|---|---|
+| **When** | After all resolution passes, a string value in the config still contains a `ref+` pattern |
+| **Meaning** | A ref URI was not resolved -- either no provider was registered, the scheme was wrong, or the ref was embedded in a larger string |
+| **Transient?** | No -- fix the configuration or register the required provider |
+| **What to do** | The error includes the field path: `field outputs.siem.webhook.headers.Authorization still contains a secret reference`. Check that: (1) a provider for the scheme is registered, (2) the ref is the entire string value (not embedded in a larger string), (3) the `ref+` prefix is exactly lowercase. |
 
 ---
 

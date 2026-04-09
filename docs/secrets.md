@@ -3,13 +3,19 @@
 # Secret Provider Integration
 
 - [Overview](#overview)
+- [Installation](#installation)
 - [URI Syntax](#uri-syntax)
 - [Resolution Pipeline](#resolution-pipeline)
 - [Supported Providers](#supported-providers)
 - [Provider Setup](#provider-setup)
+- [Authentication](#authentication)
 - [YAML Configuration Examples](#yaml-configuration-examples)
+- [Fields That Cannot Contain Refs](#fields-that-cannot-contain-refs)
 - [Caching Behaviour](#caching-behaviour)
+- [Timeout Behaviour](#timeout-behaviour)
+- [Secret Rotation](#secret-rotation)
 - [Security Model](#security-model)
+- [Testing](#testing)
 - [Error Reference](#error-reference)
 - [Anti-Patterns](#anti-patterns)
 
@@ -17,7 +23,8 @@
 
 go-audit resolves secret references in YAML configuration values at
 startup. Any string value in the output configuration YAML can contain
-a `ref+SCHEME://PATH#KEY` URI instead of a literal value. During
+a `ref+SCHEME://PATH#KEY` URI instead of a literal value, with
+[specific exceptions](#fields-that-cannot-contain-refs). During
 `outputconfig.Load`, the library replaces each ref URI with the
 plaintext value fetched from the corresponding secret provider.
 
@@ -25,6 +32,24 @@ This keeps credentials, HMAC salts, and bearer tokens out of
 configuration files and environment variables.
 
 The URI convention follows [vals](https://github.com/helmfile/vals).
+
+## Installation
+
+Install the core secrets package and the provider for your backend:
+
+```bash
+# OpenBao provider
+go get github.com/axonops/go-audit/secrets/openbao
+
+# HashiCorp Vault provider
+go get github.com/axonops/go-audit/secrets/vault
+
+# The outputconfig package (required for Load)
+go get github.com/axonops/go-audit/outputconfig
+```
+
+Both providers are separate Go modules. Import them alongside
+`outputconfig` in your application code.
 
 ## URI Syntax
 
@@ -67,6 +92,11 @@ Not:
 ```
 ref+openbao://secret/audit/hmac#salt
 ```
+
+> **Warning:** Using the CLI path instead of the API path is the
+> single most common misconfiguration. The provider returns a 404
+> (`ErrSecretNotFound`) because the KV v2 engine expects the `/data/`
+> segment in the API path.
 
 ## Resolution Pipeline
 
@@ -129,24 +159,26 @@ caching (see [Caching Behaviour](#caching-behaviour)).
 
 ```go
 import (
-    "context"
-    "os"
+	"context"
+	"fmt"
+	"os"
 
-    "github.com/axonops/go-audit/outputconfig"
-    "github.com/axonops/go-audit/secrets/openbao"
+	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/go-audit/secrets/openbao"
 )
 
+// ctx, yamlData, taxonomy, metrics defined by caller
 provider, err := openbao.New(&openbao.Config{
-    Address: os.Getenv("BAO_ADDR"),
-    Token:   os.Getenv("BAO_TOKEN"),
+	Address: os.Getenv("BAO_ADDR"),
+	Token:   os.Getenv("BAO_TOKEN"),
 })
 if err != nil {
-    return fmt.Errorf("openbao provider: %w", err)
+	return fmt.Errorf("openbao provider: %w", err)
 }
 defer provider.Close()
 
 result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
-    outputconfig.WithSecretProvider(provider),
+	outputconfig.WithSecretProvider(provider),
 )
 ```
 
@@ -154,36 +186,39 @@ result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
 
 ```go
 import (
-    "context"
-    "os"
+	"context"
+	"fmt"
+	"os"
 
-    "github.com/axonops/go-audit/outputconfig"
-    "github.com/axonops/go-audit/secrets/vault"
+	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/go-audit/secrets/vault"
 )
 
+// ctx, yamlData, taxonomy, metrics defined by caller
 provider, err := vault.New(&vault.Config{
-    Address: os.Getenv("VAULT_ADDR"),
-    Token:   os.Getenv("VAULT_TOKEN"),
+	Address: os.Getenv("VAULT_ADDR"),
+	Token:   os.Getenv("VAULT_TOKEN"),
 })
 if err != nil {
-    return fmt.Errorf("vault provider: %w", err)
+	return fmt.Errorf("vault provider: %w", err)
 }
 defer provider.Close()
 
 result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
-    outputconfig.WithSecretProvider(provider),
+	outputconfig.WithSecretProvider(provider),
 )
 ```
 
 ### Multiple Providers
 
-Register one provider per scheme. `Load` returns an error if two
-providers share the same scheme.
+Register one provider per scheme. `Load` returns an error wrapping
+`ErrOutputConfigInvalid` if two providers share the same scheme.
 
 ```go
+// ctx, yamlData, taxonomy, metrics defined by caller
 result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
-    outputconfig.WithSecretProvider(baoProvider),
-    outputconfig.WithSecretProvider(vaultProvider),
+	outputconfig.WithSecretProvider(baoProvider),
+	outputconfig.WithSecretProvider(vaultProvider),
 )
 ```
 
@@ -212,13 +247,13 @@ Both `openbao.Config` and `vault.Config` share the same field set:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `Address` | Yes | Server URL. MUST use `https://`. |
-| `Token` | Yes | Authentication token. |
+| `Token` | Yes | Authentication token. See [Authentication](#authentication). |
 | `Namespace` | No | Namespace prefix. Sent as `X-Vault-Namespace` header. |
 | `TLSCA` | No | Path to CA certificate PEM file for server verification. |
 | `TLSCert` | No | Client certificate path for mTLS. MUST be set together with `TLSKey`. |
 | `TLSKey` | No | Client private key path for mTLS. MUST be set together with `TLSCert`. |
 | `TLSPolicy` | No | `*audit.TLSPolicy`. Nil defaults to TLS 1.3 only. |
-| `AllowPrivateRanges` | No | Permit connections to RFC 1918 addresses and loopback. Required for local development. Default: `false`. |
+| `AllowPrivateRanges` | No | Permit connections to RFC 1918 addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), IPv6 ULA (`fc00::/7`), and loopback (`127.0.0.0/8`, `::1`). Cloud metadata endpoints (`169.254.169.254`) remain blocked even when this is `true`. Required for local development. Default: `false`. |
 
 ### WithSecretTimeout
 
@@ -227,13 +262,94 @@ secret resolution during a single `Load` call. The caller's context
 deadline takes precedence when it is earlier.
 
 ```go
+// ctx, yamlData, taxonomy, metrics, provider defined by caller
 result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
-    outputconfig.WithSecretProvider(provider),
-    outputconfig.WithSecretTimeout(30*time.Second),
+	outputconfig.WithSecretProvider(provider),
+	outputconfig.WithSecretTimeout(30*time.Second),
 )
 ```
 
 Default: `10s` (`outputconfig.DefaultSecretTimeout`).
+
+## Authentication
+
+Both providers authenticate with a token passed via the
+`X-Vault-Token` HTTP header. The token MUST have a policy granting
+`read` capability on the secret paths referenced in the YAML
+configuration.
+
+### Obtaining a Token
+
+**Development (root token):** OpenBao and Vault dev servers emit a
+root token at startup. Pass it via environment variable:
+
+```bash
+export BAO_ADDR=https://127.0.0.1:8200
+export BAO_TOKEN=dev-root-token
+```
+
+**Production (AppRole login):** Use AppRole authentication to obtain
+a short-lived token. The token is the `.auth.client_token` field of
+the login response:
+
+```bash
+# Log in with AppRole, extract the client token
+TOKEN=$(curl -s \
+  --request POST \
+  --data '{"role_id":"...","secret_id":"..."}' \
+  "${BAO_ADDR}/v1/auth/approle/login" | jq -r '.auth.client_token')
+export BAO_TOKEN="${TOKEN}"
+```
+
+**Production (Kubernetes auth):** The Kubernetes auth method
+exchanges a service account JWT for a Vault/OpenBao token:
+
+```bash
+SA_JWT=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+TOKEN=$(curl -s \
+  --request POST \
+  --data "{\"role\":\"audit-reader\",\"jwt\":\"${SA_JWT}\"}" \
+  "${BAO_ADDR}/v1/auth/kubernetes/login" | jq -r '.auth.client_token')
+export BAO_TOKEN="${TOKEN}"
+```
+
+**Direct token creation:**
+
+```bash
+bao token create -policy=audit-reader -ttl=1h -format=json | jq -r '.auth.client_token'
+```
+
+### Required Policy
+
+The token MUST have `read` capability on every secret path referenced
+in the YAML configuration. A minimal policy:
+
+```hcl
+path "secret/data/audit/*" {
+  capabilities = ["read"]
+}
+```
+
+### Token Lifecycle
+
+The provider stores the token at construction time (`New`). The token
+is used for the lifetime of the provider. There is no built-in token
+renewal. If the token expires during a `Load` call, the provider
+returns `ErrSecretResolveFailed` wrapping a 403 status.
+
+### Environment Variables
+
+| Variable | Provider | Description |
+|----------|----------|-------------|
+| `BAO_ADDR` | OpenBao | Server URL (`https://bao.example.com:8200`) |
+| `BAO_TOKEN` | OpenBao | Authentication token |
+| `VAULT_ADDR` | Vault | Server URL (`https://vault.example.com:8200`) |
+| `VAULT_TOKEN` | Vault | Authentication token |
+
+> **Warning:** These environment variables contain credentials. They
+> MUST NOT be logged, exposed in process listings with `ps`, or
+> included in container image layers. Use Kubernetes secrets,
+> Docker secrets, or your platform's secrets injection mechanism.
 
 ## YAML Configuration Examples
 
@@ -310,6 +426,27 @@ In staging: `BAO_HMAC_PATH=secret/data/staging/hmac`
 
 In production: `BAO_HMAC_PATH=secret/data/prod/hmac`
 
+## Fields That Cannot Contain Refs
+
+Secret resolution applies to string values in the type-specific
+config block, route, formatter, and HMAC sections. The following
+output-level fields are parsed **before** secret expansion and MUST
+NOT contain `ref+` URIs:
+
+| Field | Why | Parsed As |
+|-------|-----|-----------|
+| `type` | Determines which factory to invoke; MUST be a literal string. | `string` |
+| `enabled` (output-level) | Determines whether the output is constructed at all. | `bool` |
+| `exclude_labels` | Converted to a string slice before expansion. | `[]string` |
+
+The HMAC `enabled` field is a special case: it IS resolved from a
+ref+ URI (via `extractAndResolveEnabled`), but the resolved value
+MUST be a valid boolean string (`true`, `false`, `1`, `0`).
+
+All other string values in the YAML tree -- including `app_name`,
+`host`, `timezone`, `standard_fields`, `logger` settings, and
+`tls_policy` -- support ref+ URIs when a provider is registered.
+
 ## Caching Behaviour
 
 The resolver deduplicates API calls within a single `Load` invocation.
@@ -333,6 +470,89 @@ caching**: one call per unique scheme + path + key combination.
 The cache is not shared across `Load` calls. Each `Load` invocation
 starts with an empty cache.
 
+## Timeout Behaviour
+
+`outputconfig.Load` applies a timeout to all secret resolution
+network I/O. The default is `10s` (`outputconfig.DefaultSecretTimeout`).
+
+When the timeout fires:
+
+1. The `context.Context` passed to `Provider.Resolve` (or
+   `BatchProvider.ResolvePath`) is cancelled.
+2. The provider's HTTP request fails with a context deadline exceeded
+   error.
+3. The resolver wraps the error as `ErrSecretResolveFailed` and
+   `Load` returns it.
+4. No partial configuration is returned. All outputs constructed so
+   far are closed.
+
+The caller's context deadline takes precedence when it is earlier than
+the configured secret timeout. Both timeouts apply to all provider
+calls combined, not per-call.
+
+To increase the timeout:
+
+```go
+// ctx, yamlData, taxonomy, metrics, provider defined by caller
+result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+	outputconfig.WithSecretProvider(provider),
+	outputconfig.WithSecretTimeout(60*time.Second),
+)
+```
+
+## Secret Rotation
+
+Secrets are resolved once, at `outputconfig.Load` time. The resolved
+plaintext values are embedded in the constructed outputs for the
+lifetime of the `Logger`.
+
+To rotate a secret (e.g. an HMAC salt or webhook bearer token):
+
+1. Update the secret in OpenBao/Vault.
+2. Restart the application process (or the component that creates the
+   `Logger`).
+
+There is no built-in hot-reload mechanism. A reload pattern for
+long-running services:
+
+```go
+import (
+	"context"
+	"fmt"
+	"os"
+
+	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/go-audit/secrets/openbao"
+)
+
+// reload rebuilds the logger with fresh secrets.
+func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy, metrics audit.Metrics) (*audit.Logger, error) {
+	provider, err := openbao.New(&openbao.Config{
+		Address: os.Getenv("BAO_ADDR"),
+		Token:   os.Getenv("BAO_TOKEN"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("openbao: %w", err)
+	}
+	defer provider.Close()
+
+	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics,
+		outputconfig.WithSecretProvider(provider),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
+	opts = append(opts, result.Options...)
+	return audit.NewLogger(result.Config, opts...)
+}
+```
+
+Trigger the reload on SIGHUP or via an admin endpoint. Close the old
+logger before replacing it -- `Close` drains buffered events.
+
 ## Security Model
 
 ### HTTPS-Only
@@ -351,14 +571,18 @@ There is no `AllowInsecureHTTP` escape hatch for provider connections.
 Provider HTTP clients use `audit.NewSSRFDialControl` to block
 connections to:
 
+- Loopback addresses (`127.0.0.0/8`, `::1`)
 - Link-local addresses (`169.254.0.0/16`, `fe80::/10`)
 - Cloud metadata endpoints (`169.254.169.254`)
-- IPv6 mapped/embedded IPv4 addresses
+- RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+- IPv6 unique local addresses (`fc00::/7`)
+- Multicast addresses (`224.0.0.0/4`, `ff00::/8`)
+- Unspecified addresses (`0.0.0.0`, `::`)
 
-By default, private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
-`192.168.0.0/16`, `127.0.0.0/8`) are also blocked. Set
-`AllowPrivateRanges: true` for local development where the secret
-backend runs on `127.0.0.1`.
+Setting `AllowPrivateRanges: true` permits RFC 1918 private ranges,
+IPv6 ULA (`fc00::/7`), and loopback (`127.0.0.0/8`, `::1`). Cloud
+metadata endpoints (`169.254.169.254`) remain blocked even when
+private ranges are allowed.
 
 ### Redirect Blocking
 
@@ -372,8 +596,10 @@ token to a different host.
   zeroing on `Close()`
 - `Close()` zeroes the token bytes (best-effort; Go GC may retain copies)
 - `String()`, `GoString()`, and `Format()` on the provider all return
-  `vault{host: ..., token: [REDACTED]}` -- the token never appears in
-  `fmt.Printf`, `%v`, `%+v`, or `%#v` output
+  a redacted form -- the token never appears in `fmt.Printf`, `%v`,
+  `%+v`, or `%#v` output:
+  - OpenBao: `openbao{host: bao.example.com:8200, token: [REDACTED]}`
+  - Vault: `vault{host: vault.example.com:8200, token: [REDACTED]}`
 
 ### Ref Path Redaction
 
@@ -385,8 +611,9 @@ that MUST NOT appear in application logs.
 `Ref.Format()` ensures this redaction applies across all `fmt` verbs
 (`%v`, `%+v`, `%#v`, `%s`).
 
-Error messages from `ParseRef` that include the raw input use
-`redactRef()` to show the scheme only: `ref+openbao://...`.
+Error messages from `ParseRef` that reference the raw input when the
+`://` separator is missing use `redactRef()` to return the fixed
+string `ref+[malformed]`.
 
 ### Error Message Redaction
 
@@ -421,24 +648,103 @@ This prevents a confused-deputy attack where a secret value at path A
 contains `ref+openbao://path-B#key`, causing the library to fetch a
 path the operator did not intend.
 
+## Testing
+
+Both providers expose a `NewWithHTTPClient` constructor that accepts
+a custom `*http.Client`. Use this with `net/http/httptest` to test
+secret resolution without a running OpenBao or Vault server.
+
+```go
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/go-audit/secrets/openbao"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSecretResolution(t *testing.T) {
+	// Fake KV v2 response. NOTE: do not use require/assert inside
+	// the handler — it runs in a separate goroutine and FailNow
+	// would silently exit without failing the test.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/secret/data/audit/hmac" {
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
+		}
+		resp := map[string]any{
+			"data": map[string]any{
+				"data": map[string]any{
+					"salt": "test-salt-value-at-least-16-bytes",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	provider, err := openbao.NewWithHTTPClient(
+		&openbao.Config{
+			Address: srv.URL,
+			Token:   "test-token",
+		},
+		srv.Client(),
+	)
+	require.NoError(t, err)
+	defer provider.Close()
+
+	ref, err := secrets.ParseRef("ref+openbao://secret/data/audit/hmac#salt")
+	require.NoError(t, err)
+
+	val, err := provider.Resolve(context.Background(), ref)
+	require.NoError(t, err)
+	require.Equal(t, "test-salt-value-at-least-16-bytes", val)
+}
+```
+
+> **Note:** `httptest.NewTLSServer` uses a self-signed certificate.
+> `srv.Client()` returns an `*http.Client` that trusts this
+> certificate. `NewWithHTTPClient` skips TLS configuration from the
+> `Config` struct when a custom client is provided, and accepts
+> `https://127.0.0.1:PORT` addresses because the custom client
+> bypasses the SSRF dial control.
+
 ## Error Reference
 
 All errors wrap one of the sentinel values in `github.com/axonops/go-audit/secrets`.
 Use `errors.Is` to check:
 
 ```go
+import (
+	"errors"
+
+	"github.com/axonops/go-audit/secrets"
+)
+
 if errors.Is(err, secrets.ErrMalformedRef) {
-    // ref+ URI is structurally invalid
+	// ref+ URI is structurally invalid
 }
 ```
 
 | Sentinel | When | Example Message |
 |----------|------|-----------------|
 | `ErrMalformedRef` | `ParseRef` finds a structural error in a `ref+` URI | `secrets: malformed secret reference: empty key fragment` |
-| `ErrProviderNotRegistered` | No provider registered for the scheme in a ref URI | `secrets: no provider registered for scheme: scheme "openbao"` |
+| `ErrProviderNotRegistered` | No provider registered for the scheme in a ref URI | `secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)` |
 | `ErrSecretNotFound` | Secret path exists but the requested key is missing, or the path does not exist (404) | `secrets: secret not found at path: path returned 404` |
 | `ErrSecretResolveFailed` | Network error, authentication failure, or server error during resolution | `secrets: secret resolution failed: authentication failed (403)` |
 | `ErrUnresolvedRef` | After all resolution passes, a config value still contains a `ref+` URI | `secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference` |
+
+Duplicate-scheme errors from registering two providers with the same
+scheme wrap `ErrOutputConfigInvalid`:
+
+```
+audit: output config validation failed: duplicate secret provider for scheme "openbao"
+```
 
 ### Provider-Specific Errors
 
@@ -493,8 +799,8 @@ provider, err := openbao.New(&openbao.Config{
 ```
 
 `AllowPrivateRanges` MUST NOT be `true` in production. It permits
-connections to private IP ranges, disabling SSRF protection that
-guards against server-side request forgery.
+connections to private IP ranges and IPv6 ULA, disabling SSRF
+protection that guards against server-side request forgery.
 
 ### Embedding Refs in Larger Strings
 
@@ -524,6 +830,7 @@ headers:
 - [Output Configuration YAML](output-configuration.md) -- full YAML schema reference
 - [HMAC Integrity](hmac-integrity.md) -- per-output HMAC with salt management
 - [Error Reference](error-reference.md) -- all go-audit error sentinels
+- [Troubleshooting](troubleshooting.md#secret-provider-failures) -- diagnosing secret resolution problems
 - [API Reference: secrets](https://pkg.go.dev/github.com/axonops/go-audit/secrets) -- `Provider`, `Ref`, `ParseRef`
 - [API Reference: secrets/openbao](https://pkg.go.dev/github.com/axonops/go-audit/secrets/openbao) -- OpenBao provider
 - [API Reference: secrets/vault](https://pkg.go.dev/github.com/axonops/go-audit/secrets/vault) -- Vault provider

@@ -30,9 +30,11 @@
 //	}
 //	defer provider.Close()
 //
-//	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
-//	    outputconfig.WithSecretProvider(provider),
-//	)
+//	val, err := provider.Resolve(ctx, ref)
+//
+// Pass the provider to outputconfig.Load via
+// outputconfig.WithSecretProvider to resolve ref+ URIs in YAML
+// configuration files automatically.
 //
 // # KV v2 Path Convention
 //

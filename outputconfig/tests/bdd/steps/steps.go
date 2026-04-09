@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 
@@ -48,12 +49,16 @@ func (l *lokiStub) Name() string       { return "loki-stub" }
 
 // TestContext holds mutable state for a single BDD scenario.
 type TestContext struct { //nolint:govet // fieldalignment: readability preferred
-	Taxonomy   audit.Taxonomy
-	Logger     *audit.Logger
-	Options    []audit.Option
-	LoadResult *outputconfig.LoadResult
-	LastErr    error
-	FileDir    string
+	Taxonomy      audit.Taxonomy
+	Logger        *audit.Logger
+	Options       []audit.Option
+	LoadResult    *outputconfig.LoadResult
+	LastErr       error
+	FileDir       string
+	MockProvider  *mockSecretProvider       // most recently registered mock provider
+	LoadOptions   []outputconfig.LoadOption // accumulated options for Load (providers, timeout)
+	SecretTimeout time.Duration             // secret resolution timeout for WithSecretTimeout
+	envVarsSet    []string                  // env vars set by steps, cleaned up in After
 }
 
 // Reset prepares the context for a new scenario.
@@ -63,6 +68,10 @@ func (tc *TestContext) Reset() {
 	tc.LoadResult = nil
 	tc.LastErr = nil
 	tc.FileDir = ""
+	tc.MockProvider = nil
+	tc.LoadOptions = nil
+	tc.SecretTimeout = 0
+	tc.envVarsSet = nil
 }
 
 // InitializeScenario wires all step definitions.
@@ -76,18 +85,29 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	ctx.After(func(goctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 		if tc.Logger != nil {
+			// Logger.Close drains and closes its wrapped outputs.
 			_ = tc.Logger.Close()
+		} else if tc.LoadResult != nil {
+			// Outputs were constructed but never handed to a Logger —
+			// close them directly to avoid resource leaks.
+			for _, o := range tc.LoadResult.Outputs {
+				_ = o.Output.Close()
+			}
 		}
 		if tc.FileDir != "" {
 			_ = os.RemoveAll(tc.FileDir)
 		}
 		_ = os.Unsetenv("AUDIT_BDD_DIR")
+		for _, name := range tc.envVarsSet {
+			_ = os.Unsetenv(name)
+		}
 		return goctx, nil
 	})
 
 	registerGivenSteps(ctx, tc)
 	registerWhenSteps(ctx, tc)
 	registerThenSteps(ctx, tc)
+	registerSecretSteps(ctx, tc)
 }
 
 func registerGivenSteps(ctx *godog.ScenarioContext, tc *TestContext) {

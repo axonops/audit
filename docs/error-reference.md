@@ -139,15 +139,15 @@ HMAC validation errors occur when `outputconfig.Load()` encounters an
 invalid HMAC configuration on an output, or when the programmatic API
 receives invalid HMAC parameters.
 
-| Error | When |
-|-------|------|
-| `audit: hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
-| `audit: hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
-| `audit: hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
-| `audit: hmac salt must be at least 16 bytes` | Salt is too short for security |
-| `audit: unknown hmac algorithm "X"` | Hash is not one of: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512 |
+| Error (contains) | When |
+|------------------|------|
+| `hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
+| `hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
+| `hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
+| `hmac salt must be at least` | Salt is shorter than `audit.MinSaltLength` (currently 16) bytes |
+| `unknown hmac algorithm` | Algorithm is not in `audit.SupportedHMACAlgorithms()` (currently: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512) |
 
-HMAC errors use `errors.New` / `fmt.Errorf` — use `strings.Contains` for matching, not `errors.Is`.
+All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconfig.Load()`, and `NewLogger`) wrap `audit.ErrConfigInvalid`. Use `errors.Is(err, audit.ErrConfigInvalid)` to detect them programmatically. Errors returned by `ComputeHMAC` and `VerifyHMAC` do not wrap this sentinel and must be handled separately.
 
 ---
 

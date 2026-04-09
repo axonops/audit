@@ -39,23 +39,40 @@ before the documentation page appears.
 
 ### Multi-Module Tagging Scheme
 
-This repository contains 7 Go modules. Each module has its own `go.mod` and
+This repository contains 10 Go modules. Each module has its own `go.mod` and
 its own independent version history. The Go toolchain identifies module
 versions by tag, using a path prefix for sub-modules:
 
-| Module | Directory | Tag format | Example |
-|--------|-----------|------------|---------|
-| `github.com/axonops/go-audit` | `.` (root) | `vX.Y.Z` | `v0.1.1` |
-| `github.com/axonops/go-audit/file` | `file/` | `file/vX.Y.Z` | `file/v0.1.1` |
-| `github.com/axonops/go-audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | `syslog/v0.1.1` |
-| `github.com/axonops/go-audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | `webhook/v0.1.1` |
-| `github.com/axonops/go-audit/loki` | `loki/` | `loki/vX.Y.Z` | `loki/v0.1.1` |
-| `github.com/axonops/go-audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | `outputconfig/v0.1.1` |
-| `github.com/axonops/go-audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | `cmd/audit-gen/v0.1.1` |
+| Module | Directory | Tag format | Tier |
+|--------|-----------|------------|------|
+| `github.com/axonops/go-audit` | `.` (root) | `vX.Y.Z` | 0 |
+| `github.com/axonops/go-audit/secrets` | `secrets/` | `secrets/vX.Y.Z` | 0 |
+| `github.com/axonops/go-audit/file` | `file/` | `file/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/loki` | `loki/` | `loki/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/secrets/openbao` | `secrets/openbao/` | `secrets/openbao/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/secrets/vault` | `secrets/vault/` | `secrets/vault/vX.Y.Z` | 1 |
+| `github.com/axonops/go-audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | 2 |
 
-All 7 tags MUST point to the same commit on `main`. Tagging individual modules
-at different commits creates inconsistent releases — consumers who install
-multiple modules will get code from different commits.
+### Three-Tier Tagging
+
+Tags are created in three phases based on the inter-module dependency graph:
+
+- **Tier 0** (core + secrets): no internal dependencies. Tagged at the
+  CI-tested commit.
+- **Tier 1** (file, syslog, webhook, loki, cmd/audit-gen, secrets/openbao,
+  secrets/vault): depend on Tier 0 modules. Their `go.mod` files are updated
+  to reference the Tier 0 release version, committed to `main`, then tagged
+  at the new commit.
+- **Tier 2** (outputconfig): depends on Tier 0 + Tier 1 modules. Its `go.mod`
+  is updated after Tier 1 is indexed on the proxy, committed, then tagged.
+
+This means Tier 0, Tier 1, and Tier 2 tags point at **three different commits**
+on `main`. This is the standard Go multi-module release pattern — it ensures
+external consumers who `go get` any sub-module receive `go.mod` files that
+reference the correct release version of their dependencies.
 
 ### v0.x Stability Contract
 

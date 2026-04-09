@@ -1305,3 +1305,137 @@ outputs:
 	// the HMAC salt lookup hits the cache and finds the key absent.
 	assert.Equal(t, int64(1), mock.calls.Load())
 }
+
+// ---------------------------------------------------------------------------
+// Cached-path edge cases
+// ---------------------------------------------------------------------------
+
+func TestLoad_BatchProvider_CachedPathEmptyValue(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Seed two refs to same path. First resolves "name" (populates cache).
+	// Second hits cache for "empty" which has empty value.
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/config": {"name": "my-app", "empty": ""},
+	})
+	data := []byte(`
+version: 1
+app_name: ref+mock://secret/data/config#name
+host: ref+mock://secret/data/config#empty
+outputs:
+  c:
+    type: stdout
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestLoad_BatchProvider_EmptyMapFromResolvePath(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Provider returns an empty map — no keys at all.
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/empty": {},
+	})
+	data := []byte(`
+version: 1
+app_name: ref+mock://secret/data/empty#name
+host: test
+outputs:
+  c:
+    type: stdout
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+}
+
+func TestLoad_WithSecretProvider_SameInstanceTwice_Error(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", nil)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+		outputconfig.WithSecretProvider(mock), // same instance
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
+}
+
+func TestLoad_WithSecretTimeout_ZeroIgnored(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	// Zero timeout should be silently ignored (keeps 10s default).
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretTimeout(0),
+	)
+	require.NoError(t, err)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithSecretTimeout_NegativeIgnored(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretTimeout(-5*time.Second),
+	)
+	require.NoError(t, err)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// toBool secret value leak prevention
+// ---------------------------------------------------------------------------
+
+func TestLoad_HMACEnabled_NonBooleanRef_DoesNotLeakSecret(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	secretPassword := "hunter2-super-secret"
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/creds": {
+			"password": secretPassword,
+		},
+	})
+	// enabled points to a non-boolean secret — the error must NOT
+	// contain the resolved secret value.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: ref+mock://secret/data/creds#password
+      salt:
+        version: v1
+        value: some-salt-value-that-is-32-bytes
+      hash: HMAC-SHA-256
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), secretPassword,
+		"resolved secret value must not leak in error message")
+	assert.Contains(t, err.Error(), "not a valid boolean")
+}

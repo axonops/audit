@@ -164,6 +164,12 @@ func New(cfg *Config) (*Provider, error) {
 // This is primarily for testing with [net/http/httptest] servers.
 // The Config.Address and Config.Token are still validated.
 func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("vault: config must not be nil")
+	}
+	if client == nil {
+		return nil, fmt.Errorf("vault: http client must not be nil")
+	}
 	if cfg.Address == "" {
 		return nil, fmt.Errorf("vault: address is required")
 	}
@@ -218,6 +224,9 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 // Vault KV v2 engine. Implements [secrets.BatchProvider] for
 // path-level caching.
 func (p *Provider) ResolvePath(ctx context.Context, path string) (map[string]string, error) {
+	if err := secrets.ValidatePath(path); err != nil {
+		return nil, fmt.Errorf("vault: %w", err)
+	}
 	return p.fetchPath(ctx, path)
 }
 
@@ -227,7 +236,8 @@ func (p *Provider) fetchPath(ctx context.Context, path string) (map[string]strin
 	reqURL := p.addr + "/v1/" + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("%w: build request: %w", secrets.ErrSecretResolveFailed, err)
+		// Strip stdlib error to prevent vault path leakage.
+		return nil, fmt.Errorf("%w: failed to build HTTP request", secrets.ErrSecretResolveFailed)
 	}
 	req.Header.Set("X-Vault-Token", string(p.token))
 	if p.ns != "" {

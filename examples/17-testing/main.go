@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -70,7 +71,7 @@ func main() {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	result, err := outputconfig.Load([]byte("version: 1\napp_name: testing-demo\nhost: localhost\noutputs:\n  console:\n    type: stdout\n"), &tax, nil)
+	result, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: testing-demo\nhost: localhost\noutputs:\n  console:\n    type: stdout\n"), &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

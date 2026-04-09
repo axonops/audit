@@ -16,6 +16,7 @@ package outputconfig
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -143,7 +144,19 @@ func (o *NamedOutput) String() string {
 // Environment variable substitution (${VAR} and ${VAR:-default}) runs
 // on string values in the parsed YAML tree, NOT on raw bytes. This
 // prevents YAML injection via env var values.
-func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8 phases
+//
+// Secret reference resolution (ref+SCHEME://PATH#KEY) runs after env
+// var expansion. Use [WithSecretProvider] to register providers. When
+// no providers are registered, the resolution phase is skipped but
+// unresolved ref+ strings are still detected and cause an error.
+//
+// The ctx parameter controls timeout for network I/O during secret
+// resolution. Use [WithSecretTimeout] to set a timeout shorter than
+// the context deadline.
+func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8 phases
+	// Resolve options (unused until secret resolution is wired in PR 3).
+	_ = resolveOptions(opts)
+	_ = ctx
 	// Phase 1: Size check.
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrOutputConfigInvalid)

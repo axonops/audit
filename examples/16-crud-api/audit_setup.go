@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"log"
 
@@ -51,7 +52,7 @@ func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error
 	// Load all five outputs from YAML. Environment variables in the
 	// YAML (like ${SYSLOG_ADDR:-localhost:5514}) are resolved at
 	// load time.
-	result, err := outputconfig.Load(outputsYAML, &tax, m)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
 	if err != nil {
 		log.Printf("load outputs: %v", err)
 		log.Printf("hint: run 'docker compose up -d' to start the infrastructure")

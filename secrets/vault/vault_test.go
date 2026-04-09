@@ -269,3 +269,289 @@ func TestResolve_NonStringValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-string")
 	assert.NotContains(t, err.Error(), "count")
 }
+
+// ---------------------------------------------------------------------------
+// ResolvePath — gap 6: direct unit tests for the BatchProvider method
+// ---------------------------------------------------------------------------
+
+func TestResolvePath_Success(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{
+		"salt":    "my-secret-salt",
+		"version": "v1",
+	}, "test-token"))
+	p := testProvider(t, srv)
+
+	got, err := p.ResolvePath(context.Background(), "secret/data/hmac")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"salt": "my-secret-salt", "version": "v1"}, got)
+}
+
+func TestResolvePath_NotFound(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.ResolvePath(context.Background(), "secret/data/missing")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+}
+
+func TestResolvePath_AuthFailure(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{"key": "value"}, "correct-token"))
+	p, err := vault.NewWithHTTPClient(&vault.Config{
+		Address: srv.URL, Token: "wrong-token", AllowPrivateRanges: true,
+	}, srv.Client())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.ResolvePath(context.Background(), "secret/data/test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestResolvePath_ReturnsAllKeys(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{
+		"alpha": "a",
+		"beta":  "b",
+		"gamma": "c",
+	}, "test-token"))
+	p := testProvider(t, srv)
+
+	got, err := p.ResolvePath(context.Background(), "secret/data/multi")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"alpha": "a", "beta": "b", "gamma": "c"}, got)
+}
+
+// ---------------------------------------------------------------------------
+// Gap 2: url.Error unwrapping — secret path must not appear in error message
+// ---------------------------------------------------------------------------
+
+func TestFetchPath_URLErrorUnwrapped_PathNotLeaked(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		conn, _, _ := hj.Hijack()
+		_ = conn.Close()
+	}))
+	p := testProvider(t, srv)
+
+	const secretPath = "very/secret/path/that/must/not/leak"
+	_, err := p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "vault",
+		Path:   secretPath,
+		Key:    "key",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.NotContains(t, err.Error(), secretPath,
+		"vault path must not leak through url.Error into error message")
+	assert.NotContains(t, err.Error(), srv.URL+"/v1/"+secretPath,
+		"full request URL must not leak into error message")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 3: SSRF protection — metadata endpoint and loopback without flag
+// ---------------------------------------------------------------------------
+
+func TestNew_SSRFDialControl_BlocksMetadataEndpoint(t *testing.T) {
+	t.Parallel()
+	p, err := vault.New(&vault.Config{
+		Address: "https://169.254.169.254",
+		Token:   "test-token",
+		// AllowPrivateRanges: false (default)
+	})
+	require.NoError(t, err, "New() must succeed — lazy connection")
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "vault",
+		Path:   "latest/meta-data/iam/security-credentials/role",
+		Key:    "SecretAccessKey",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "blocked")
+}
+
+func TestNew_SSRFDialControl_BlocksLoopbackWithoutFlag(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewTLSServer(kvV2Handler(map[string]any{"key": "value"}, "test-token"))
+	t.Cleanup(srv.Close)
+
+	p, err := vault.New(&vault.Config{
+		Address: srv.URL,
+		Token:   "test-token",
+		// AllowPrivateRanges: false
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "vault",
+		Path:   "secret/data/test",
+		Key:    "key",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "blocked")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 4: Unexpected HTTP status codes (500, 429)
+// ---------------------------------------------------------------------------
+
+func TestResolve_InternalServerError_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestResolve_TooManyRequests_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "429")
+}
+
+func TestResolve_ServiceUnavailable_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "503")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 5: Nil/empty data field — soft-deleted KV v2 secrets
+// ---------------------------------------------------------------------------
+
+func TestResolve_NullDataField_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		resp := `{"data": {"data": null}}`
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, resp)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/deleted", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+	assert.Contains(t, err.Error(), "no data")
+}
+
+func TestResolve_NullOuterData_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		resp := `{"data": null}`
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, resp)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/deleted", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+	assert.Contains(t, err.Error(), "no data")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 8: Malformed JSON response
+// ---------------------------------------------------------------------------
+
+func TestResolve_MalformedJSON_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"data": {"data": {not valid json`)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "parse response")
+}
+
+func TestResolve_EmptyBody_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+}
+
+// ---------------------------------------------------------------------------
+// Gap 9: Oversized response body
+// ---------------------------------------------------------------------------
+
+func TestResolve_OversizedResponse_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	const maxResponseSize = 1 << 20 // mirrors the package constant
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		payload := make([]byte, maxResponseSize+2)
+		for i := range payload {
+			payload[i] = 'x'
+		}
+		_, _ = w.Write(payload)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "exceeds")
+}

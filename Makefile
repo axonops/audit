@@ -14,6 +14,9 @@
        test-infra-syslog-up test-infra-syslog-down \
        test-infra-webhook-up test-infra-webhook-down \
        test-infra-loki-up test-infra-loki-down \
+       test-infra-openbao-up test-infra-openbao-down \
+       test-infra-vault-up test-infra-vault-down \
+       test-bdd-secrets \
        sbom sbom-validate
 
 # --- Configuration ---
@@ -98,6 +101,8 @@ test-integration:
 	cd webhook && go test -race -v -count=1 -tags=integration ./tests/integration/...
 	cd loki && go test -race -v -count=1 -tags=integration ./tests/integration/...
 	go test -race -v -count=1 -tags=integration ./tests/integration/...
+	cd secrets/openbao && go test -race -v -count=1 -tags=integration ./tests/integration/...
+	cd secrets/vault && go test -race -v -count=1 -tags=integration ./tests/integration/...
 
 # BDD tests — all scenarios (requires Docker for syslog/webhook/loki scenarios)
 test-bdd:
@@ -124,6 +129,9 @@ test-bdd-loki:
 
 test-bdd-fanout:
 	BDD_TAGS=@fanout go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-secrets:
+	BDD_TAGS=@secrets cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
 
 # BDD coverage verification — ensure every scenario is covered by at least one runner.
 # This is a static check that evaluates tag expressions against feature files.
@@ -389,6 +397,24 @@ test-infra-loki-up:
 
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-openbao-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.openbao.yml up -d --wait
+	@echo "OpenBao infrastructure is ready."
+
+test-infra-openbao-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.openbao.yml down -v
+	docker network rm audit-test 2>/dev/null || true
+
+test-infra-vault-up:
+	docker network create audit-test 2>/dev/null || true
+	docker compose -f $(COMPOSE_DIR)/docker-compose.vault.yml up -d --wait
+	@echo "Vault infrastructure is ready."
+
+test-infra-vault-down:
+	docker compose -f $(COMPOSE_DIR)/docker-compose.vault.yml down -v
 	docker network rm audit-test 2>/dev/null || true
 
 # --- Publish verification (issue #29) ---

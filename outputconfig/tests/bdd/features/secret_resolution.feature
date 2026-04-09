@@ -387,3 +387,99 @@ Feature: Secret reference resolution in output configuration
             format: ref+nonexistent://path/does/not/matter#format
       """
     Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 18: HMAC enabled as literal boolean true with ref salt
+  # ---------------------------------------------------------------------------
+  Scenario: HMAC enabled as literal boolean true resolves ref+ salt value from a provider
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "literal-true-resolved-salt-32bytes"
+    And the mock provider has secret at path "secret/data/hmac" key "version" value "v4"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: ref+mock://secret/data/hmac#version
+              value: ref+mock://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 19: Secret reference resolved in a non-HMAC field
+  # ---------------------------------------------------------------------------
+  Scenario: Secret reference in a CEF formatter vendor field is resolved from a provider
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/cef" key "vendor" value "AcmeCorp"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          formatter:
+            type: cef
+            vendor: ref+mock://secret/data/cef#vendor
+            product: AuditService
+            version: "1.0"
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 20: Duplicate provider scheme returns error
+  # ---------------------------------------------------------------------------
+  Scenario: Registering two providers with the same scheme causes Load to fail with a clear error
+    Given a mock secret provider with scheme "mock"
+    And a mock secret provider with scheme "mock"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+      """
+    Then the config load should fail with an error containing "duplicate secret provider for scheme"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 21: Nil provider rejected
+  # ---------------------------------------------------------------------------
+  Scenario: A nil secret provider passed to WithSecretProvider is rejected with a clear error
+    Given a nil secret provider is registered
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+      """
+    Then the config load should fail with an error containing "secret provider must not be nil"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 22: Single-pass guarantee
+  # ---------------------------------------------------------------------------
+  Scenario: A provider that returns a value containing ref+ causes the safety-net to reject the config
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "ref+mock://secret/data/hmac#other"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: ref+mock://secret/data/hmac#salt
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+      """
+    Then the config load should fail with an error containing "unresolved secret reference"

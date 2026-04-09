@@ -77,6 +77,21 @@
 // happens after YAML parsing for injection safety — the raw YAML
 // structure is validated first, then string values are expanded.
 //
+// # Secret References
+//
+// String values in the YAML configuration can contain ref+SCHEME://PATH#KEY
+// URIs that are resolved from external secret backends (OpenBao, Vault)
+// at load time. Register providers with [WithSecretProvider]:
+//
+//	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+//	    outputconfig.WithSecretProvider(provider),
+//	    outputconfig.WithSecretTimeout(30*time.Second),
+//	)
+//
+// [WithSecretTimeout] controls the overall timeout for all secret
+// resolution network I/O. Default: [DefaultSecretTimeout] (10s).
+// The caller's context deadline takes precedence when earlier.
+//
 // # Usage
 //
 //	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics)
@@ -86,6 +101,9 @@
 //
 //	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 //	opts = append(opts, result.Options...)
+//	if result.StandardFields != nil {
+//	    opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
+//	}
 //	logger, err := audit.NewLogger(result.Config, opts...)
 //
 // [Load] fails hard on any configuration error — partial configurations

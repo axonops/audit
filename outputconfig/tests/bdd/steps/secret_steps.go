@@ -124,6 +124,14 @@ func registerSecretSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	)
 
 	ctx.Step(
+		`^a nil secret provider is registered$`,
+		func() error {
+			tc.LoadOptions = append(tc.LoadOptions, outputconfig.WithSecretProvider(nil))
+			return nil
+		},
+	)
+
+	ctx.Step(
 		`^the mock provider has secret at path "([^"]*)" key "([^"]*)" value "([^"]*)"$`,
 		tc.stepAddSecret,
 	)
@@ -166,6 +174,11 @@ func registerSecretSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 // Step implementations
 // ---------------------------------------------------------------------------
 
+// stepRegisterMockProvider creates a new mock and appends it to LoadOptions.
+// MockProvider always points to the LAST registered mock. When called twice
+// with the same scheme (duplicate-scheme test), both providers land in
+// LoadOptions but MockProvider tracks only the second — this is intentional
+// since duplicate-scheme scenarios never call stepAddSecret or stepAssertCallCount.
 func (tc *TestContext) stepRegisterMockProvider(scheme string, delay time.Duration) error {
 	tc.MockProvider = &mockSecretProvider{
 		scheme: scheme,

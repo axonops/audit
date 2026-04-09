@@ -11,6 +11,7 @@
 - [Loki Events Not Appearing](#loki-events-not-appearing)
 - [File Output Not Writing](#file-output-not-writing)
 - [Goroutine Leak in Tests](#goroutine-leak-in-tests)
+- [Secret Provider Failures](#secret-provider-failures)
 
 ---
 
@@ -219,9 +220,83 @@ outputs:
   # ...
 ```
 
+## Secret Provider Failures
+
+Secret resolution errors occur during `outputconfig.Load` when ref+
+URIs in the YAML configuration cannot be resolved. `Load` fails hard
+-- no partial configuration is returned.
+
+### 403 Authentication Failure
+
+```
+secrets: secret resolution failed: authentication failed (403)
+```
+
+| Cause | Fix |
+|-------|-----|
+| **Token expired** | Generate a new token and set `BAO_TOKEN` / `VAULT_TOKEN` before restarting |
+| **Token lacks read capability** | Verify the token's policy grants `read` on the secret path: `bao token lookup` or `vault token lookup`, then check the attached policies |
+| **Wrong namespace** | If using OpenBao/Vault namespaces, verify `Config.Namespace` matches the namespace where the secret is stored |
+
+### 404 Path Not Found
+
+```
+secrets: secret not found at path: path returned 404
+```
+
+| Cause | Fix |
+|-------|-----|
+| **CLI path instead of API path** | The most common mistake. The CLI path `secret/audit/hmac` maps to API path `secret/data/audit/hmac`. Ref URIs MUST use the API path with the `/data/` segment. |
+| **Secret does not exist** | Verify the secret exists: `bao kv get secret/audit/hmac` or `vault kv get secret/audit/hmac` |
+| **KV engine not mounted** | Verify the secret engine is mounted: `bao secrets list` or `vault secrets list` |
+
+### Timeout During Resolution
+
+```
+secret resolution cancelled (field outputs.siem.webhook.headers.Authorization): context deadline exceeded
+```
+
+The default secret resolution timeout is `10s`
+(`outputconfig.DefaultSecretTimeout`). All provider calls share this
+single timeout budget.
+
+| Cause | Fix |
+|-------|-----|
+| **Server unreachable** | Check network connectivity to the OpenBao/Vault address |
+| **DNS resolution slow** | Verify DNS resolves the server hostname promptly |
+| **Many secrets to resolve** | If the config references many secrets across different paths, increase the timeout with `outputconfig.WithSecretTimeout(30 * time.Second)` |
+| **TLS handshake timeout** | The provider's HTTP transport has a 10-second TLS handshake timeout. Check that the server's TLS certificate is valid and the CA is correct. |
+
+### Unresolved Ref After Resolution
+
+```
+secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference
+```
+
+| Cause | Fix |
+|-------|-----|
+| **No provider registered** | Add `outputconfig.WithSecretProvider(provider)` to the `Load` call |
+| **Wrong scheme** | Check the scheme in the ref URI matches the provider's `Scheme()` return value (`openbao` or `vault`) |
+| **Ref embedded in a larger string** | `ref+` MUST be at the start of the string value. `"Bearer ref+vault://..."` does not parse as a ref. Store the complete value as the secret. |
+| **Typo in ref+ prefix** | Check for `Ref+`, `REF+`, or `ref +` -- the prefix MUST be exactly `ref+` (lowercase, no space) |
+
+### SSRF Blocking the Connection
+
+```
+secrets: secret resolution failed: loopback address 127.0.0.1 blocked
+```
+
+| Cause | Fix |
+|-------|-----|
+| **Local development server** | Set `AllowPrivateRanges: true` in the provider `Config`. This permits loopback and RFC 1918 addresses. |
+| **Cloud metadata blocked** | Connections to `169.254.169.254` are always blocked, even with `AllowPrivateRanges: true`. This is intentional -- cloud metadata endpoints MUST NOT be reachable from secret providers. |
+
+---
+
 ## 📚 Further Reading
 
 - [Error Reference](error-reference.md) — all sentinel errors with recovery guidance
 - [Async Delivery](async-delivery.md) — buffering, drain, shutdown
 - [Metrics & Monitoring](metrics-monitoring.md) — tracking drops and errors
 - [Output Configuration](output-configuration.md) — YAML reference
+- [Secret Provider Integration](secrets.md) — ref+ URI syntax, provider setup, security model

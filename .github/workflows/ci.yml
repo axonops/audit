@@ -362,7 +362,7 @@ jobs:
           # Each scenario becomes a "--- PASS: Test*Features/..." or "--- FAIL: Test*Features/..." line.
           # Match both TestFeatures (main suite) and TestOutputConfigFeatures (outputconfig suite).
           if [ -f /tmp/bdd-output.txt ]; then
-            count=$(grep -cE '^\s*--- (PASS|FAIL): Test(OutputConfig)?Features/' /tmp/bdd-output.txt || echo 0)
+            count=$(grep -cE '^\s*--- (PASS|FAIL): Test(OutputConfig)?(Docker)?Features/' /tmp/bdd-output.txt || echo 0)
           else
             count=0
           fi

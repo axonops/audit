@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	audit "github.com/axonops/go-audit"
@@ -110,6 +111,9 @@ func New(cfg *Config) (*Provider, error) {
 		return nil, fmt.Errorf("vault: address must not contain embedded credentials")
 	}
 
+	// Normalise: strip trailing slash to prevent double-slash in URLs.
+	addr := strings.TrimRight(cfg.Address, "/")
+
 	// Validate token.
 	if cfg.Token == "" {
 		return nil, fmt.Errorf("vault: token is required")
@@ -148,7 +152,7 @@ func New(cfg *Config) (*Provider, error) {
 
 	return &Provider{
 		client: client,
-		addr:   cfg.Address,
+		addr:   addr,
 		host:   u.Host,
 		token:  []byte(cfg.Token),
 		ns:     cfg.Namespace,
@@ -181,7 +185,7 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	}
 	return &Provider{
 		client: client,
-		addr:   cfg.Address,
+		addr:   strings.TrimRight(cfg.Address, "/"),
 		host:   u.Host,
 		token:  []byte(cfg.Token),
 		ns:     cfg.Namespace,
@@ -209,9 +213,14 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 		req.Header.Set("X-Vault-Namespace", p.ns)
 	}
 
-	// Execute request.
+	// Execute request. Strip *url.Error wrapper to prevent vault
+	// path leakage — url.Error.Error() embeds the full request URL.
 	resp, err := p.client.Do(req)
 	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			return "", fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, urlErr.Err)
+		}
 		return "", fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, err)
 	}
 	defer func() {

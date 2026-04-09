@@ -15,6 +15,7 @@
 package outputconfig
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -34,7 +35,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics) (*NamedOutput, error) {
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -44,6 +45,15 @@ func buildOutput(name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw an
 	}
 	if expandErr := expandOutputEnvVars(name, fields); expandErr != nil {
 		return nil, expandErr
+	}
+	// Resolve secret references in per-output config (excluding HMAC,
+	// which is handled by buildHMACConfig with its disabled bypass).
+	if secretErr := expandOutputSecrets(ctx, name, fields, r); secretErr != nil {
+		return nil, secretErr
+	}
+	// Safety net: check for unresolved refs in expanded fields.
+	if unresErr := validateOutputNoUnresolvedRefs(name, fields); unresErr != nil {
+		return nil, unresErr
 	}
 
 	if fmtErr := validateLokiFormatter(name, fields); fmtErr != nil {
@@ -65,7 +75,7 @@ func buildOutput(name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw an
 		return nil, err
 	}
 
-	hmacCfg, err := buildHMACConfig(name, fields.hmacRaw)
+	hmacCfg, err := buildHMACConfig(ctx, name, fields.hmacRaw, r)
 	if err != nil {
 		_ = output.Close()
 		return nil, err

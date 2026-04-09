@@ -14,7 +14,11 @@
 
 package outputconfig
 
-import "time"
+import (
+	"time"
+
+	"github.com/axonops/go-audit/secrets"
+)
 
 // DefaultSecretTimeout is the default timeout for secret resolution
 // when no explicit timeout is configured via [WithSecretTimeout].
@@ -25,7 +29,18 @@ type LoadOption func(*loadOptions)
 
 // loadOptions holds the resolved options for a Load call.
 type loadOptions struct {
+	providers     []secrets.Provider
 	secretTimeout time.Duration
+}
+
+// WithSecretProvider registers a secret provider for resolving ref+
+// URIs during config loading. Multiple providers can be registered
+// for different schemes. Duplicate schemes cause [Load] to return an
+// error.
+func WithSecretProvider(p secrets.Provider) LoadOption {
+	return func(o *loadOptions) {
+		o.providers = append(o.providers, p)
+	}
 }
 
 // WithSecretTimeout sets the overall timeout for secret resolution.
@@ -34,7 +49,9 @@ type loadOptions struct {
 // The caller's context deadline takes precedence when earlier.
 func WithSecretTimeout(d time.Duration) LoadOption {
 	return func(o *loadOptions) {
-		o.secretTimeout = d
+		if d > 0 {
+			o.secretTimeout = d
+		}
 	}
 }
 

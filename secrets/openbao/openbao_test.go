@@ -16,11 +16,21 @@ package openbao_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -678,4 +688,186 @@ func TestResolve_OversizedResponse_WrapsResolveFailed(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
 	assert.Contains(t, err.Error(), "exceeds")
+}
+
+// ---------------------------------------------------------------------------
+// buildTLSConfig tests (via New with TLS options)
+// ---------------------------------------------------------------------------
+
+func TestNew_CustomCA_ValidPEM(t *testing.T) {
+	t.Parallel()
+	// Generate a self-signed CA cert for testing.
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	generateTestCA(t, caPath)
+
+	p, err := openbao.New(&openbao.Config{
+		Address:            "https://vault.example.com",
+		Token:              "token",
+		TLSCA:              caPath,
+		AllowPrivateRanges: true,
+	})
+	require.NoError(t, err)
+	_ = p.Close()
+}
+
+func TestNew_CustomCA_FileNotFound(t *testing.T) {
+	t.Parallel()
+	_, err := openbao.New(&openbao.Config{
+		Address: "https://vault.example.com",
+		Token:   "token",
+		TLSCA:   "/nonexistent/ca.pem",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ca certificate")
+}
+
+func TestNew_CustomCA_InvalidPEM(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "bad.pem")
+	require.NoError(t, os.WriteFile(caPath, []byte("not a PEM"), 0o600))
+
+	_, err := openbao.New(&openbao.Config{
+		Address: "https://vault.example.com",
+		Token:   "token",
+		TLSCA:   caPath,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse ca")
+}
+
+func TestNew_mTLS_ValidCertAndKey(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "client.pem")
+	keyPath := filepath.Join(dir, "client-key.pem")
+	generateTestCertAndKey(t, certPath, keyPath)
+
+	p, err := openbao.New(&openbao.Config{
+		Address:            "https://vault.example.com",
+		Token:              "token",
+		TLSCert:            certPath,
+		TLSKey:             keyPath,
+		AllowPrivateRanges: true,
+	})
+	require.NoError(t, err)
+	_ = p.Close()
+}
+
+func TestNew_mTLS_InvalidCertPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "client-key.pem")
+	generateTestCertAndKey(t, filepath.Join(dir, "unused.pem"), keyPath)
+
+	_, err := openbao.New(&openbao.Config{
+		Address: "https://vault.example.com",
+		Token:   "token",
+		TLSCert: "/nonexistent/client.pem",
+		TLSKey:  keyPath,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "client certificate")
+}
+
+func TestNewWithHTTPClient_NilConfig(t *testing.T) {
+	t.Parallel()
+	_, err := openbao.NewWithHTTPClient(nil, http.DefaultClient)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
+func TestNewWithHTTPClient_NilClient(t *testing.T) {
+	t.Parallel()
+	_, err := openbao.NewWithHTTPClient(&openbao.Config{
+		Address: "https://vault.example.com",
+		Token:   "token",
+	}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil")
+}
+
+func TestNewWithHTTPClient_RequiresHTTPS(t *testing.T) {
+	t.Parallel()
+	_, err := openbao.NewWithHTTPClient(&openbao.Config{
+		Address: "http://vault.example.com",
+		Token:   "token",
+	}, http.DefaultClient)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "https")
+}
+
+func TestResolve_RedirectBlocked(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Redirect(w, nil, "https://evil.example.com", http.StatusMovedPermanently)
+	}))
+	p := testProvider(t, srv)
+	_, err := p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "openbao", Path: "secret/data/test", Key: "key",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+}
+
+func TestResolvePath_TraversalRejected(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{"key": "val"}, "test-token"))
+	p := testProvider(t, srv)
+	_, err := p.ResolvePath(context.Background(), "secret/../etc/passwd")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrMalformedRef)
+}
+
+// ---------------------------------------------------------------------------
+// TLS test helpers
+// ---------------------------------------------------------------------------
+
+func generateTestCA(t *testing.T, path string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Test CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+	require.NoError(t, pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+func generateTestCertAndKey(t *testing.T, certPath, keyPath string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test Client"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	cf, err := os.Create(certPath)
+	require.NoError(t, err)
+	defer func() { _ = cf.Close() }()
+	require.NoError(t, pem.Encode(cf, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	kf, err := os.Create(keyPath)
+	require.NoError(t, err)
+	defer func() { _ = kf.Close() }()
+	require.NoError(t, pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 }

@@ -109,6 +109,11 @@ func buildHMACConfig(ctx context.Context, name string, raw any, r *resolver) (*a
 // extractAndResolveEnabled extracts the "enabled" field from the raw
 // HMAC map, resolves it if it is a ref+, and converts to bool.
 // Returns the bool value and the raw map with "enabled" removed.
+// extractAndResolveEnabled extracts the "enabled" field from the raw
+// HMAC map, resolves it if it is a ref+, and converts to bool.
+// Returns the bool value and the raw map with "enabled" removed.
+// NOTE: this function MUTATES the input map by deleting the "enabled"
+// key. The caller must not reuse the map after this call.
 func extractAndResolveEnabled(ctx context.Context, raw any, fieldBase string, r *resolver) (enabled bool, remaining any, err error) { //nolint:gocognit,gocyclo,cyclop // linear extraction with ref resolution
 	m, ok := raw.(map[string]any)
 	if !ok {
@@ -141,6 +146,20 @@ func extractAndResolveEnabled(ctx context.Context, raw any, fieldBase string, r 
 				}
 				enabledRaw = resolved
 			}
+		}
+	}
+
+	// Guard: if enabledRaw came from a ref resolution, a non-boolean
+	// value would leak the resolved secret through toBool's error
+	// message. Validate before passing to toBool.
+	if s, isStr := enabledRaw.(string); isStr {
+		switch s {
+		case "true", "false", "1", "0", "t", "f", "TRUE", "FALSE", "True", "False":
+			// valid boolean string — fall through to toBool
+		default:
+			return false, nil, fmt.Errorf(
+				"%s.enabled: resolved value is not a valid boolean",
+				fieldBase)
 		}
 	}
 

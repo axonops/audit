@@ -264,8 +264,15 @@ func ContainsRef(s string) bool {
 	}
 }
 
-// validatePath checks that a secret path has no traversal, empty
-// segments, or percent-encoded characters.
+// ValidatePath checks that a secret path has no traversal, empty
+// segments, or percent-encoded characters. Intended for
+// [BatchProvider] implementations to validate paths received
+// from external callers.
+func ValidatePath(path string) error {
+	return validatePath(path)
+}
+
+// validatePath is the internal implementation of [ValidatePath].
 func validatePath(path string) error {
 	if strings.HasPrefix(path, "/") {
 		return fmt.Errorf("%w: path must not start with \"/\"", ErrMalformedRef)
@@ -315,12 +322,8 @@ func isLowerAlpha(c byte) bool { return c >= 'a' && c <= 'z' }
 func isDigit(c byte) bool      { return c >= '0' && c <= '9' }
 
 // redactRef returns a redacted version of a ref string for use in
-// error messages — shows scheme only, not the path.
-func redactRef(s string) string {
-	rest := s[len(refPrefix):]
-	sepIdx := strings.Index(rest, schemeSep)
-	if sepIdx < 0 {
-		return "ref+[malformed]"
-	}
-	return "ref+" + rest[:sepIdx] + "://..."
+// error messages. Only called when the "://" separator is missing,
+// so it always returns the malformed form.
+func redactRef(_ string) string {
+	return "ref+[malformed]"
 }

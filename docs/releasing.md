@@ -369,6 +369,21 @@ This confirms that the module source in your local cache has not been tampered
 with. It checks against the hashes recorded in your `go.sum`, which were
 verified against `sum.golang.org` when the module was first downloaded.
 
+### Verifying Release Artifacts
+
+Every release binary and SBOM has a GitHub
+[build attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations)
+that cryptographically proves it was built by the go-audit CI pipeline.
+Verify any downloaded artifact with:
+
+```bash
+gh attestation verify audit-gen_linux_amd64.tar.gz --repo axonops/go-audit
+```
+
+This confirms the artifact was built by GitHub Actions from the axonops/go-audit
+repository at the tagged commit. No keys or additional tools are needed — the
+`gh` CLI handles everything via GitHub's Sigstore-based transparency log.
+
 ### SBOM
 
 Every GitHub Release includes SBOMs in both CycloneDX and SPDX formats,

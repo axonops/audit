@@ -1,4 +1,5 @@
-# Builds binaries, generates SBOMs, and creates the GitHub Release.
+# Builds binaries, generates SBOMs, creates the GitHub Release, and
+# attests all artifacts for supply chain verification.
 # Triggered automatically when release.yml pushes a v* tag.
 # Can also be triggered manually for re-runs.
 name: GoReleaser
@@ -19,10 +20,12 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     needs: [ci]
     permissions:
       contents: write
+      id-token: write      # required for attestation OIDC
+      attestations: write   # required for attestation upload
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -50,9 +53,19 @@ jobs:
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
 
       - name: Run GoReleaser
+        id: goreleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           version: 'v2.15.0'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/*_sbom.*

@@ -4,8 +4,11 @@ github.com/axonops/go-audit/file v0.1.0 h1:FqceBwyGrJenuQiuW0VWtSpfdvwr4kytjrXbF
 github.com/axonops/go-audit/file v0.1.0/go.mod h1:GPb3ckRf1EBjmWm6/f/qCXpmTmddFavU3RG4GU0PpOg=
 github.com/axonops/go-audit/secrets v0.1.0 h1:zrwxwNGGxn9tqo+Pw0UfsvWUpWamklhl37uME4Y0ODQ=
 github.com/axonops/go-audit/secrets v0.1.0/go.mod h1:9+c9MPpTocX+NjNw+bFRw/XoKelBdndGlsPuovhXG9o=
+github.com/axonops/go-audit/secrets/openbao v0.0.0-20260409140547-645b24af5019 h1:2uCxNifhCPxrK0BzGrWT+27OTq2F8OjNRJTrhyLQgY0=
+github.com/axonops/go-audit/secrets/openbao v0.0.0-20260409140547-645b24af5019/go.mod h1:4pVn5WN/SCxITdTq7MVLKzVx6mUw2Z5us+1eN7rVoX8=
+github.com/axonops/go-audit/secrets/vault v0.0.0-20260409140547-645b24af5019 h1:qNoe8qZ/d9vStmqP5cTrsuw2vODHbPLxP1MWsY2tpU0=
+github.com/axonops/go-audit/secrets/vault v0.0.0-20260409140547-645b24af5019/go.mod h1:QbFDIcuZ/NaZIAC742MLBgDlRZSpT73tjkTU+YZa6Xo=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cucumber/gherkin/go/v26 v26.2.0 h1:EgIjePLWiPeslwIWmNQ3XHcypPsWAHoMCz/YEBKP4GI=
 github.com/cucumber/gherkin/go/v26 v26.2.0/go.mod h1:t2GAPnB8maCT4lkHL99BDCVNzCh1d7dBhCLt150Nr/0=
 github.com/cucumber/godog v0.15.1 h1:rb/6oHDdvVZKS66hrhpjFQFHjthFSrQBCOI1LwshNTI=

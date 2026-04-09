@@ -59,6 +59,14 @@ type TestContext struct { //nolint:govet // fieldalignment: readability preferre
 	LoadOptions   []outputconfig.LoadOption // accumulated options for Load (providers, timeout)
 	SecretTimeout time.Duration             // secret resolution timeout for WithSecretTimeout
 	envVarsSet    []string                  // env vars set by steps, cleaned up in After
+
+	// Real container provider state (for @docker scenarios).
+	realProviderAddr         string
+	realProviderToken        string
+	realProviderCAPath       string
+	realSecretsTempDir       string
+	realProviderPendingSeeds map[string]map[string]string
+	realProviderCleanup      []func()
 }
 
 // Reset prepares the context for a new scenario.
@@ -72,6 +80,12 @@ func (tc *TestContext) Reset() {
 	tc.LoadOptions = nil
 	tc.SecretTimeout = 0
 	tc.envVarsSet = nil
+	tc.realProviderAddr = ""
+	tc.realProviderToken = ""
+	tc.realProviderCAPath = ""
+	tc.realSecretsTempDir = ""
+	tc.realProviderPendingSeeds = nil
+	tc.realProviderCleanup = nil
 }
 
 // InitializeScenario wires all step definitions.
@@ -101,12 +115,20 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		for _, name := range tc.envVarsSet {
 			_ = os.Unsetenv(name)
 		}
+		// Clean up real container provider resources.
+		for _, cleanup := range tc.realProviderCleanup {
+			cleanup()
+		}
+		if tc.realSecretsTempDir != "" {
+			_ = os.RemoveAll(tc.realSecretsTempDir)
+		}
 		return goctx, nil
 	})
 
 	registerGivenSteps(ctx, tc)
 	registerWhenSteps(ctx, tc)
 	registerThenSteps(ctx, tc)
+	registerRealSecretSteps(ctx, tc)
 	registerSecretSteps(ctx, tc)
 }
 

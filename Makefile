@@ -16,6 +16,7 @@
        test-infra-loki-up test-infra-loki-down \
        test-infra-openbao-up test-infra-openbao-down \
        test-infra-vault-up test-infra-vault-down \
+       test-bdd-secrets \
        sbom sbom-validate
 
 # --- Configuration ---
@@ -128,6 +129,9 @@ test-bdd-loki:
 
 test-bdd-fanout:
 	BDD_TAGS=@fanout go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-secrets:
+	cd outputconfig && go test -race -v -count=1 -tags=integration -run TestOutputConfigDockerFeatures ./tests/bdd/...
 
 # BDD coverage verification — ensure every scenario is covered by at least one runner.
 # This is a static check that evaluates tag expressions against feature files.

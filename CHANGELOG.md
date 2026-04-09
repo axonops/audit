@@ -31,6 +31,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Secret provider integration** (`go-audit/secrets`, `go-audit/secrets/openbao`, `go-audit/secrets/vault`) — resolve sensitive config values from external secret stores using `ref+SCHEME://PATH#KEY` syntax in YAML (#353)
+  - `Provider` interface with optional `BatchProvider` for path-level caching
+  - OpenBao and Vault KV v2 providers: thin HTTP clients, HTTPS-only, SSRF protection, redirect blocking, token zeroing
+  - Resolution pipeline: env vars → ref resolution → safety-net scan for unresolved refs
+  - HMAC disabled bypass: `enabled` resolved first, remaining refs skipped when false
+  - `WithSecretProvider` and `WithSecretTimeout` LoadOptions on `outputconfig.Load()`
+  - **Breaking**: `outputconfig.Load()` signature adds `context.Context` and `...LoadOption`
+  - 22 BDD scenarios + 6 real-container integration scenarios (OpenBao + Vault with dev-tLS)
+  - Docker Compose for OpenBao and Vault dev-tls containers
+  - Comprehensive documentation: authentication guide, troubleshooting, error reference
 - **Grafana Loki output** (`go-audit/loki`) — stream labels, gzip compression, multi-tenancy, batched delivery with retry (#251)
   - Config: URL, BasicAuth/BearerToken, TenantID, static + dynamic labels, batching, compression
   - Stream labels: app_name, host, pid, event_type, event_category, severity (individually toggleable)

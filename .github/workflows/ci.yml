@@ -329,6 +329,12 @@ jobs:
             infra-up: test-infra-up
             infra-down: test-infra-down
             timeout: 10
+          # Secrets: needs OpenBao + Vault containers with dev-tls
+          - suite: secrets
+            target: test-bdd-secrets
+            infra-up: test-infra-openbao-up test-infra-vault-up
+            infra-down: test-infra-openbao-down test-infra-vault-down
+            timeout: 8
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

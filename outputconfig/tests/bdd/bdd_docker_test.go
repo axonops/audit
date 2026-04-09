@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build integration
+
 package bdd_test
 
 import (
@@ -24,24 +26,32 @@ import (
 	"github.com/axonops/go-audit/outputconfig/tests/bdd/steps"
 )
 
-func TestOutputConfigFeatures(t *testing.T) {
+// TestOutputConfigDockerFeatures runs BDD scenarios tagged @docker
+// that require real OpenBao/Vault containers.
+//
+// Prerequisites:
+//
+//	make test-infra-openbao-up
+//	make test-infra-vault-up
+func TestOutputConfigDockerFeatures(t *testing.T) {
 	opts := godog.Options{
 		Output:      colors.Colored(os.Stdout),
 		Format:      "pretty",
 		Paths:       []string{"features"},
-		Tags:        "~@docker",
+		Tags:        "@docker",
 		Randomize:   0,
+		Strict:      true,
 		Concurrency: 1,
 		TestingT:    t,
 	}
 
 	suite := godog.TestSuite{
-		Name:                "outputconfig",
+		Name:                "outputconfig-docker",
 		ScenarioInitializer: steps.InitializeScenario,
 		Options:             &opts,
 	}
 
 	if suite.Run() != 0 {
-		t.Fatal("outputconfig BDD tests failed")
+		t.Fatal("outputconfig Docker BDD tests failed")
 	}
 }

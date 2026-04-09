@@ -414,6 +414,68 @@ syslog:
 Expansion happens after YAML parsing for injection safety — the raw
 YAML structure is validated first, then string values are expanded.
 
+## 🔑 Secret Reference Resolution
+
+Any string value in the YAML can be a `ref+SCHEME://PATH#KEY` URI
+that resolves to a plaintext secret from OpenBao or HashiCorp Vault
+at startup. Secret resolution runs after environment variable
+expansion and before output construction.
+
+```yaml
+outputs:
+  secure_log:
+    type: file
+    hmac:
+      enabled: true
+      salt:
+        version: "2026-Q1"
+        value: "ref+openbao://secret/data/audit/hmac#salt"
+      hash: HMAC-SHA-256
+    file:
+      path: "/var/log/audit/secure.log"
+  alerts:
+    type: webhook
+    webhook:
+      url: "https://siem.example.com/audit"
+      headers:
+        Authorization: "ref+vault://secret/data/siem/creds#authorization_header"
+```
+
+To enable resolution, register one or more providers via
+`outputconfig.WithSecretProvider`:
+
+```go
+import "github.com/axonops/go-audit/secrets/openbao"
+
+provider, err := openbao.New(&openbao.Config{
+    Address: os.Getenv("BAO_ADDR"),
+    Token:   os.Getenv("BAO_TOKEN"),
+})
+if err != nil {
+    return fmt.Errorf("openbao provider: %w", err)
+}
+defer provider.Close()
+
+result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+    outputconfig.WithSecretProvider(provider),
+)
+```
+
+A ref URI MUST be the entire string value of a YAML field — substring
+replacement is not supported. After all resolution passes, a
+safety-net scan rejects any remaining `ref+` URIs in the
+configuration.
+
+Environment variables and refs compose: `${VAR}` expands first, so a
+ref path can be driven by an environment variable:
+
+```yaml
+value: "ref+openbao://${BAO_SECRET_PATH:-secret/data/audit/hmac}#salt"
+```
+
+See [Secret Provider Integration](secrets.md) for URI syntax, provider
+setup, caching, security model, and error reference.
+
 ## 🏭 Factory Registry
 
 Output types must be registered before `Load` can create them.
@@ -459,4 +521,5 @@ logger, err := audit.NewLogger(result.Config, opts...)
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
+- [Secret Provider Integration](secrets.md) — ref+ URI syntax, OpenBao/Vault setup, security model
 - [API Reference: outputconfig.Load](https://pkg.go.dev/github.com/axonops/go-audit/outputconfig#Load)

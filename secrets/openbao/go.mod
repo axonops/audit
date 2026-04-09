@@ -6,6 +6,7 @@ require (
 	github.com/axonops/go-audit v0.2.0
 	github.com/axonops/go-audit/secrets v0.1.0
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/goleak v1.3.0
 )
 
 require (

@@ -438,7 +438,7 @@ available (built into core).
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-result, err := outputconfig.Load(outputsYAML, &taxonomy, metrics)
+result, err := outputconfig.Load(ctx, outputsYAML, &taxonomy, metrics)
 if err != nil {
     return fmt.Errorf("audit config: %w", err)
 }

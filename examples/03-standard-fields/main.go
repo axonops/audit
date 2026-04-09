@@ -21,6 +21,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -46,7 +47,7 @@ func main() {
 
 	// Load output config — app_name, host, timezone, and
 	// standard_fields defaults are set here.
-	result, err := outputconfig.Load(outputsYAML, &tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/axonops/go-audit v0.2.0
 	github.com/axonops/go-audit/file v0.1.0
+	github.com/axonops/go-audit/secrets v0.1.0
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1

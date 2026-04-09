@@ -31,6 +31,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -55,7 +56,7 @@ func main() {
 	}
 
 	// Load output configuration — creates the Loki output from YAML.
-	result, err := outputconfig.Load(outputsYAML, &taxonomy, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &taxonomy, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

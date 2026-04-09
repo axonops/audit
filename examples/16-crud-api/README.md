@@ -155,7 +155,7 @@ audit.RegisterOutputFactory("file", file.NewFactory(m))
 audit.RegisterOutputFactory("syslog", syslog.NewFactory(m))
 audit.RegisterOutputFactory("webhook", webhook.NewFactory(m))
 
-result, err := outputconfig.Load(outputsYAML, &tax, m)
+result, err := outputconfig.Load(ctx, outputsYAML, &tax, m)
 ```
 
 Note the **named imports** here — not blank imports. In earlier examples,

@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -43,7 +44,7 @@ func main() {
 	}
 
 	// 2. Load output configuration — stdout needs no blank import.
-	result, err := outputconfig.Load(outputsYAML, &tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

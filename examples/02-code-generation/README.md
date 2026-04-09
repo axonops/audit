@@ -240,7 +240,7 @@ This is loaded at startup with `outputconfig.Load`:
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-result, err := outputconfig.Load(outputsYAML, &tax, nil)
+result, err := outputconfig.Load(ctx, outputsYAML, &tax, nil)
 ```
 
 `Load` returns options you pass straight to `NewLogger`:

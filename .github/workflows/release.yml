@@ -40,6 +40,7 @@ env:
     github.com/axonops/go-audit/outputconfig
     github.com/axonops/go-audit/cmd/audit-gen
     github.com/axonops/go-audit/secrets
+    github.com/axonops/go-audit/secrets/openbao
 
 jobs:
   # =====================================================================
@@ -94,6 +95,7 @@ jobs:
             "outputconfig/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
             "secrets/$PUBLISH_VERSION"
+            "secrets/openbao/$PUBLISH_VERSION"
           )
           for tag in "${TAGS[@]}"; do
             if git tag -l "$tag" | grep -q .; then
@@ -118,6 +120,7 @@ jobs:
             "outputconfig/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
             "secrets/$PUBLISH_VERSION"
+            "secrets/openbao/$PUBLISH_VERSION"
           )
 
           for tag in "${TAGS[@]}"; do
@@ -143,7 +146,7 @@ jobs:
             echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
             exit 1
           fi
-          echo "✓ All 8 tags pushed. goreleaser.yml will trigger automatically."
+          echo "✓ All 9 tags pushed. goreleaser.yml will trigger automatically."
 
   # =====================================================================
   # Job 3: Verify modules are published and usable (after tags are pushed).
@@ -216,6 +219,7 @@ jobs:
             _ "github.com/axonops/go-audit/loki"
             _ "github.com/axonops/go-audit/outputconfig"
             _ "github.com/axonops/go-audit/secrets"
+            _ "github.com/axonops/go-audit/secrets/openbao"
           )
           func main() {}
           GOEOF

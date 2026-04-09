@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package openbao
+package vault
 
 import (
 	"context"
@@ -33,28 +33,28 @@ import (
 )
 
 // maxResponseSize is the maximum response body size accepted from the
-// OpenBao server. Prevents memory exhaustion from a compromised server.
+// Vault server. Prevents memory exhaustion from a compromised server.
 const maxResponseSize = 1 << 20 // 1 MiB
 
 // errRedirectBlocked is returned by the redirect policy.
-var errRedirectBlocked = errors.New("openbao: redirects are blocked")
+var errRedirectBlocked = errors.New("vault: redirects are blocked")
 
-// Config holds connection parameters for an OpenBao provider.
+// Config holds connection parameters for a HashiCorp Vault provider.
 type Config struct { //nolint:govet // readability over alignment
-	// Address is the OpenBao server URL. Required. Must use HTTPS.
-	// Typically sourced from the BAO_ADDR environment variable.
+	// Address is the Vault server URL. Required. Must use HTTPS.
+	// Typically sourced from the VAULT_ADDR environment variable.
 	Address string
 
 	// Token is the authentication token. Required.
-	// Typically sourced from the BAO_TOKEN environment variable.
+	// Typically sourced from the VAULT_TOKEN environment variable.
 	Token string
 
-	// Namespace is the OpenBao namespace prefix. Optional.
+	// Namespace is the Vault namespace prefix. Optional.
 	// Set via X-Vault-Namespace header on every request.
 	Namespace string
 
 	// TLSCA is the path to a custom CA certificate PEM file for
-	// verifying the OpenBao server's TLS certificate.
+	// verifying the Vault server's TLS certificate.
 	TLSCA string
 
 	// TLSCert is the path to a client certificate for mTLS
@@ -71,14 +71,14 @@ type Config struct { //nolint:govet // readability over alignment
 
 	// AllowPrivateRanges permits connections to RFC 1918 private
 	// addresses and loopback. Required for local development where
-	// OpenBao runs on 127.0.0.1. Cloud metadata endpoints remain
+	// Vault runs on 127.0.0.1. Cloud metadata endpoints remain
 	// blocked. Default: false.
 	AllowPrivateRanges bool
 }
 
-// Provider resolves secret references from an OpenBao KV v2 engine.
-// Construction validates the address and builds an SSRF-safe HTTP
-// client but performs no network I/O. The first [Resolve] call
+// Provider resolves secret references from a HashiCorp Vault KV v2
+// engine. Construction validates the address and builds an SSRF-safe
+// HTTP client but performs no network I/O. The first [Resolve] call
 // initiates the connection.
 type Provider struct { //nolint:govet // readability over alignment
 	client *http.Client
@@ -88,31 +88,31 @@ type Provider struct { //nolint:govet // readability over alignment
 	ns     string // X-Vault-Namespace header; empty = no namespace
 }
 
-// New creates an OpenBao provider from the given configuration.
+// New creates a HashiCorp Vault provider from the given configuration.
 // Validates the address (HTTPS required), builds the TLS config and
 // HTTP client, but performs no network I/O.
 func New(cfg *Config) (*Provider, error) {
 	// Validate address.
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("openbao: address is required")
+		return nil, fmt.Errorf("vault: address is required")
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("openbao: invalid address: %w", err)
+		return nil, fmt.Errorf("vault: invalid address: %w", err)
 	}
 	if u.Scheme != "https" {
-		return nil, fmt.Errorf("openbao: address must use https (got %q)", u.Scheme)
+		return nil, fmt.Errorf("vault: address must use https (got %q)", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("openbao: address has empty host")
+		return nil, fmt.Errorf("vault: address has empty host")
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("openbao: address must not contain embedded credentials")
+		return nil, fmt.Errorf("vault: address must not contain embedded credentials")
 	}
 
 	// Validate token.
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("openbao: token is required")
+		return nil, fmt.Errorf("vault: token is required")
 	}
 
 	// Build TLS config.
@@ -155,29 +155,29 @@ func New(cfg *Config) (*Provider, error) {
 	}, nil
 }
 
-// NewWithHTTPClient creates an OpenBao provider using the provided
-// HTTP client instead of building one from the Config's TLS settings.
+// NewWithHTTPClient creates a Vault provider using the provided HTTP
+// client instead of building one from the Config's TLS settings.
 // This is primarily for testing with [net/http/httptest] servers.
 // The Config.Address and Config.Token are still validated.
 func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("openbao: address is required")
+		return nil, fmt.Errorf("vault: address is required")
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("openbao: invalid address: %w", err)
+		return nil, fmt.Errorf("vault: invalid address: %w", err)
 	}
 	if u.Scheme != "https" {
-		return nil, fmt.Errorf("openbao: address must use https (got %q)", u.Scheme)
+		return nil, fmt.Errorf("vault: address must use https (got %q)", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("openbao: address has empty host")
+		return nil, fmt.Errorf("vault: address has empty host")
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("openbao: address must not contain embedded credentials")
+		return nil, fmt.Errorf("vault: address must not contain embedded credentials")
 	}
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("openbao: token is required")
+		return nil, fmt.Errorf("vault: token is required")
 	}
 	return &Provider{
 		client: client,
@@ -188,14 +188,14 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	}, nil
 }
 
-// Scheme returns "openbao".
-func (p *Provider) Scheme() string { return "openbao" }
+// Scheme returns "vault".
+func (p *Provider) Scheme() string { return "vault" }
 
 // Resolve fetches the secret value for the given reference from the
-// OpenBao KV v2 engine.
+// Vault KV v2 engine.
 func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error) { //nolint:gocyclo,cyclop // linear HTTP request pipeline
 	if err := ref.Valid(); err != nil {
-		return "", fmt.Errorf("openbao: %w", err)
+		return "", fmt.Errorf("vault: %w", err)
 	}
 
 	// Build request: GET /v1/{path}
@@ -268,7 +268,6 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 // authentication token from memory (best-effort; Go GC may retain
 // copies). Close is idempotent.
 func (p *Provider) Close() error {
-	// Zero token from memory.
 	for i := range p.token {
 		p.token[i] = 0
 	}
@@ -278,7 +277,7 @@ func (p *Provider) Close() error {
 
 // String returns a safe representation with the token redacted.
 func (p *Provider) String() string {
-	return fmt.Sprintf("openbao{host: %s, token: [REDACTED]}", p.host)
+	return fmt.Sprintf("vault{host: %s, token: [REDACTED]}", p.host)
 }
 
 // GoString implements [fmt.GoStringer] to prevent token leakage via %#v.
@@ -305,21 +304,21 @@ func buildTLSConfig(cfg *Config) (*tls.Config, error) {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, fmt.Errorf("openbao: load client certificate: %w", err)
+			return nil, fmt.Errorf("vault: load client certificate: %w", err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	} else if cfg.TLSCert != "" || cfg.TLSKey != "" {
-		return nil, fmt.Errorf("openbao: tls_cert and tls_key must both be set or both empty")
+		return nil, fmt.Errorf("vault: tls_cert and tls_key must both be set or both empty")
 	}
 
 	if cfg.TLSCA != "" {
 		caCert, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, fmt.Errorf("openbao: read ca certificate: %w", err)
+			return nil, fmt.Errorf("vault: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("openbao: parse ca certificate: invalid PEM")
+			return nil, fmt.Errorf("vault: parse ca certificate: invalid PEM")
 		}
 		tlsCfg.RootCAs = pool
 	}

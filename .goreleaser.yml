@@ -24,6 +24,7 @@ before:
     - bash -c "cd cmd/audit-gen && go mod tidy"
     - bash -c "cd secrets && go mod tidy"
     - bash -c "cd secrets/openbao && go mod tidy"
+    - bash -c "cd secrets/vault && go mod tidy"
     - bash -c "cd examples/16-crud-api && go mod tidy"
 
 changelog:

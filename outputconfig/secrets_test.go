@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/outputconfig"
 	"github.com/axonops/go-audit/secrets"
 )
@@ -331,7 +332,7 @@ func TestLoad_WithSecretProvider_ErrorNeverContainsSecretValue(t *testing.T) {
 	assert.NotContains(t, err.Error(), secretValue)
 }
 
-func TestLoad_WithSecretProvider_PathLevelCaching(t *testing.T) {
+func TestLoad_WithSecretProvider_DistinctKeysEachCallProvider(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	mock := newMockProvider("mock", map[string]map[string]string{
@@ -789,4 +790,205 @@ outputs:
 	// Should get a clear error about no provider, not a toBool error
 	// leaking the ref URI.
 	assert.Contains(t, err.Error(), "no provider")
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: expandOutputSecrets route and formatter branches
+// ---------------------------------------------------------------------------
+
+func TestLoad_WithSecretProvider_RouteNoRefs_ProviderNotCalled(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", nil)
+	// Route block with no refs — exercises the routeRaw branch of
+	// expandOutputSecrets (no-op path: ParseRef returns zero for
+	// plain strings). Route category values are taxonomy-validated,
+	// so refs in include_categories would fail at buildRoute even
+	// after resolution. This test confirms the no-ref path works.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    route:
+      include_categories:
+        - security
+`)
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.NotNil(t, result.Outputs[0].Route)
+	assert.Equal(t, int64(0), mock.calls.Load())
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithSecretProvider_RefInFormatterField(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/fmt": {"vendor": "SecretVendor"},
+	})
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    formatter:
+      type: cef
+      vendor: ref+mock://secret/data/fmt#vendor
+      product: MyProduct
+      version: "1.0"
+`)
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Equal(t, int64(1), mock.calls.Load())
+	// Verify the resolved value made it into the formatter.
+	cef, ok := result.Outputs[0].Formatter.(*audit.CEFFormatter)
+	require.True(t, ok, "expected *audit.CEFFormatter")
+	assert.Equal(t, "SecretVendor", cef.Vendor)
+	assert.Equal(t, "MyProduct", cef.Product)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithSecretProvider_UnresolvedRefInFormatter_NoProvider(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    formatter:
+      type: cef
+      vendor: ref+openbao://secret/data/fmt#vendor
+      product: MyProduct
+      version: "1.0"
+`)
+	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
+}
+
+func TestLoad_WithSecretProvider_UnresolvedRefInRoute_NoProvider(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Route field values go through the tree walker — a ref+ string
+	// in a route value with no provider should trigger the safety net.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    route:
+      include_event_types:
+        - ref+openbao://secret/data/routing#event_type
+`)
+	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: pre-call context cancellation in resolver
+// ---------------------------------------------------------------------------
+
+func TestLoad_WithSecretProvider_PreCallContextCancelled(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/hmac": {"salt": "salt-value", "enabled": "true"},
+	})
+	// Cancel context before Load — the resolver should check ctx.Err()
+	// before making any provider call.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+	data := yamlWithHMACRefs(
+		"ref+mock://secret/data/hmac#salt",
+		"v1",
+		"HMAC-SHA-256",
+		"ref+mock://secret/data/hmac#enabled",
+	)
+	_, err := outputconfig.Load(
+		ctx, data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+		outputconfig.WithSecretTimeout(time.Second),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: malformed ref+ in HMAC enabled field
+// ---------------------------------------------------------------------------
+
+func TestLoad_WithSecretProvider_MalformedRefInHMACEnabled(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", nil)
+	// ref+ with missing key fragment — ParseRef returns ErrMalformedRef.
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: "ref+mock://secret/data/hmac"
+      salt:
+        version: v1
+        value: my-salt-value-that-is-32-bytes!
+      hash: HMAC-SHA-256
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrMalformedRef)
+}
+
+// ---------------------------------------------------------------------------
+// Coverage: malformed ref+ in a type config string field
+// ---------------------------------------------------------------------------
+
+func TestLoad_WithSecretProvider_MalformedRefInTypeConfig(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", nil)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    stdout:
+      format: "ref+mock://no-key-fragment"
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrMalformedRef)
 }

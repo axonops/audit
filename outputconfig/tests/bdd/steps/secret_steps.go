@@ -44,8 +44,8 @@ type mockSecretProvider struct { //nolint:govet // readability over alignment
 	calls  atomic.Int64
 }
 
-// Compile-time interface check.
-var _ secrets.Provider = (*mockSecretProvider)(nil)
+// Compile-time interface check — mock implements BatchProvider.
+var _ secrets.BatchProvider = (*mockSecretProvider)(nil)
 
 func (m *mockSecretProvider) Scheme() string { return m.scheme }
 
@@ -67,6 +67,22 @@ func (m *mockSecretProvider) Resolve(ctx context.Context, ref secrets.Ref) (stri
 		return "", fmt.Errorf("%w: key %q at path %q", secrets.ErrSecretNotFound, ref.Key, ref.Path)
 	}
 	return val, nil
+}
+
+func (m *mockSecretProvider) ResolvePath(ctx context.Context, path string) (map[string]string, error) {
+	m.calls.Add(1)
+	if m.delay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("mock provider: %w", ctx.Err())
+		case <-time.After(m.delay):
+		}
+	}
+	keys, ok := m.data[path]
+	if !ok {
+		return nil, fmt.Errorf("%w: path %q", secrets.ErrSecretNotFound, path)
+	}
+	return keys, nil
 }
 
 func (m *mockSecretProvider) Close() error { return nil }

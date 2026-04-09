@@ -266,6 +266,6 @@ func TestResolve_NonStringValue(t *testing.T) {
 	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "vault", Path: "secret/data/test", Key: "count"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
-	assert.Contains(t, err.Error(), "not a string")
+	assert.Contains(t, err.Error(), "non-string")
 	assert.NotContains(t, err.Error(), "count")
 }

@@ -26,11 +26,15 @@ import (
 // secret value. Values exceeding this limit are rejected.
 const MaxSecretValueSize = 64 << 10 // 64 KiB
 
-// resolver holds registered secret providers and a ref-level cache
+// resolver holds registered secret providers and dual-level caches
 // for deduplicating API calls within a single Load invocation.
+// Providers implementing [secrets.BatchProvider] get path-level
+// caching (one call per unique path). Others get ref-level caching
+// (one call per unique scheme+path+key).
 type resolver struct {
-	providers map[string]secrets.Provider // scheme → provider
-	cache     map[string]string           // "scheme://path#key" → resolved value
+	providers map[string]secrets.Provider  // scheme → provider
+	pathCache map[string]map[string]string // "scheme://path" → {key → value} (batch providers)
+	refCache  map[string]string            // "scheme://path#key" → value (non-batch providers)
 }
 
 // newResolver builds a resolver from the providers registered via
@@ -42,7 +46,8 @@ func newResolver(providers []secrets.Provider) (*resolver, error) {
 	}
 	r := &resolver{
 		providers: make(map[string]secrets.Provider, len(providers)),
-		cache:     make(map[string]string),
+		pathCache: make(map[string]map[string]string),
+		refCache:  make(map[string]string),
 	}
 	for _, p := range providers {
 		if p == nil {
@@ -58,14 +63,33 @@ func newResolver(providers []secrets.Provider) (*resolver, error) {
 	return r, nil
 }
 
-// resolve fetches a secret value, using a per-ref cache to
-// deduplicate calls for identical refs. Each unique scheme+path+key
-// combination results in at most one provider call.
-func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath string) (string, error) {
-	cacheKey := ref.Scheme + "://" + ref.Path + "#" + ref.Key
+// resolve fetches a secret value, using path-level caching for
+// [secrets.BatchProvider] implementations and ref-level caching for
+// standard providers.
+func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath string) (string, error) { //nolint:gocyclo,cyclop,gocognit // dual-cache resolution with batch/single paths
+	pathKey := ref.Scheme + "://" + ref.Path
 
-	// Check cache first — exact match on scheme+path+key.
-	if val, ok := r.cache[cacheKey]; ok {
+	// Check path-level cache first (batch providers).
+	if cached, ok := r.pathCache[pathKey]; ok {
+		val, found := cached[ref.Key]
+		if !found {
+			return "", fmt.Errorf("%w: key %q not found at cached path (field %s)",
+				secrets.ErrSecretNotFound, ref.Key, fieldPath)
+		}
+		if val == "" {
+			return "", fmt.Errorf("%w: secret resolved to empty value (field %s)",
+				secrets.ErrSecretResolveFailed, fieldPath)
+		}
+		if len(val) > MaxSecretValueSize {
+			return "", fmt.Errorf("%w: secret value exceeds maximum size %d bytes (field %s)",
+				secrets.ErrSecretResolveFailed, MaxSecretValueSize, fieldPath)
+		}
+		return val, nil
+	}
+
+	// Check ref-level cache (non-batch providers).
+	refKey := pathKey + "#" + ref.Key
+	if val, ok := r.refCache[refKey]; ok {
 		return val, nil
 	}
 
@@ -81,7 +105,33 @@ func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath strin
 		return "", fmt.Errorf("secret resolution cancelled (field %s): %w", fieldPath, err)
 	}
 
-	// Resolve from provider.
+	// Try batch resolution first (path-level cache).
+	if bp, ok := provider.(secrets.BatchProvider); ok {
+		allKeys, err := bp.ResolvePath(ctx, ref.Path)
+		if err != nil {
+			return "", fmt.Errorf("field %s: %w", fieldPath, err)
+		}
+		// Cache the entire path response. Validation happens per-key
+		// at extraction time — peer keys may have valid-but-empty
+		// values for flags, which should not block the requested key.
+		r.pathCache[pathKey] = allKeys
+		val, found := allKeys[ref.Key]
+		if !found {
+			return "", fmt.Errorf("%w: key %q not found at path (field %s)",
+				secrets.ErrSecretNotFound, ref.Key, fieldPath)
+		}
+		if val == "" {
+			return "", fmt.Errorf("%w: secret resolved to empty value (field %s)",
+				secrets.ErrSecretResolveFailed, fieldPath)
+		}
+		if len(val) > MaxSecretValueSize {
+			return "", fmt.Errorf("%w: secret value exceeds maximum size %d bytes (field %s)",
+				secrets.ErrSecretResolveFailed, MaxSecretValueSize, fieldPath)
+		}
+		return val, nil
+	}
+
+	// Fallback: single-key resolve with ref-level cache.
 	val, err := provider.Resolve(ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("field %s: %w", fieldPath, err)
@@ -97,7 +147,7 @@ func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath strin
 			secrets.ErrSecretResolveFailed, MaxSecretValueSize, fieldPath)
 	}
 
-	r.cache[cacheKey] = val
+	r.refCache[refKey] = val
 	return val, nil
 }
 

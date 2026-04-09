@@ -195,18 +195,39 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 // Scheme returns "vault".
 func (p *Provider) Scheme() string { return "vault" }
 
-// Resolve fetches the secret value for the given reference from the
-// Vault KV v2 engine.
-func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error) { //nolint:gocyclo,cyclop // linear HTTP request pipeline
+// Compile-time check that Provider implements BatchProvider.
+var _ secrets.BatchProvider = (*Provider)(nil)
+
+// Resolve fetches a single secret value for the given reference.
+func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error) {
 	if err := ref.Valid(); err != nil {
 		return "", fmt.Errorf("vault: %w", err)
 	}
+	allKeys, err := p.fetchPath(ctx, ref.Path)
+	if err != nil {
+		return "", err
+	}
+	val, ok := allKeys[ref.Key]
+	if !ok {
+		return "", fmt.Errorf("%w: requested key not found in secret", secrets.ErrSecretNotFound)
+	}
+	return val, nil
+}
 
-	// Build request: GET /v1/{path}
-	reqURL := p.addr + "/v1/" + ref.Path
+// ResolvePath fetches all key-value pairs at the given path from the
+// Vault KV v2 engine. Implements [secrets.BatchProvider] for
+// path-level caching.
+func (p *Provider) ResolvePath(ctx context.Context, path string) (map[string]string, error) {
+	return p.fetchPath(ctx, path)
+}
+
+// fetchPath does the HTTP GET to /v1/{path} and returns all string
+// key-value pairs from the KV v2 response.
+func (p *Provider) fetchPath(ctx context.Context, path string) (map[string]string, error) { //nolint:gocyclo,cyclop // linear HTTP pipeline
+	reqURL := p.addr + "/v1/" + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
-		return "", fmt.Errorf("%w: build request: %w", secrets.ErrSecretResolveFailed, err)
+		return nil, fmt.Errorf("%w: build request: %w", secrets.ErrSecretResolveFailed, err)
 	}
 	req.Header.Set("X-Vault-Token", string(p.token))
 	if p.ns != "" {
@@ -219,9 +240,9 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 	if err != nil {
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) {
-			return "", fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, urlErr.Err)
+			return nil, fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, urlErr.Err)
 		}
-		return "", fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, err)
+		return nil, fmt.Errorf("%w: %w", secrets.ErrSecretResolveFailed, err)
 	}
 	defer func() {
 		// Drain and close body. Small limit sufficient since
@@ -230,47 +251,44 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 		_ = resp.Body.Close()
 	}()
 
-	// Check status code.
 	switch resp.StatusCode {
 	case http.StatusOK:
 		// success — parse below
 	case http.StatusNotFound:
-		return "", fmt.Errorf("%w: path returned 404", secrets.ErrSecretNotFound)
+		return nil, fmt.Errorf("%w: path returned 404", secrets.ErrSecretNotFound)
 	case http.StatusForbidden:
-		return "", fmt.Errorf("%w: authentication failed (403)", secrets.ErrSecretResolveFailed)
+		return nil, fmt.Errorf("%w: authentication failed (403)", secrets.ErrSecretResolveFailed)
 	default:
-		return "", fmt.Errorf("%w: unexpected status %d", secrets.ErrSecretResolveFailed, resp.StatusCode)
+		return nil, fmt.Errorf("%w: unexpected status %d", secrets.ErrSecretResolveFailed, resp.StatusCode)
 	}
 
-	// Parse response body (KV v2 format: {"data": {"data": {...}}}).
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
 	if err != nil {
-		return "", fmt.Errorf("%w: read response: %w", secrets.ErrSecretResolveFailed, err)
+		return nil, fmt.Errorf("%w: read response: %w", secrets.ErrSecretResolveFailed, err)
 	}
 	if len(body) > maxResponseSize {
-		return "", fmt.Errorf("%w: response exceeds %d bytes", secrets.ErrSecretResolveFailed, maxResponseSize)
+		return nil, fmt.Errorf("%w: response exceeds %d bytes", secrets.ErrSecretResolveFailed, maxResponseSize)
 	}
 
 	var kvResp kvResponse
 	if err := json.Unmarshal(body, &kvResp); err != nil {
-		return "", fmt.Errorf("%w: parse response: %w", secrets.ErrSecretResolveFailed, err)
+		return nil, fmt.Errorf("%w: parse response: %w", secrets.ErrSecretResolveFailed, err)
 	}
 
 	if kvResp.Data == nil || kvResp.Data.Data == nil {
-		return "", fmt.Errorf("%w: response has no data", secrets.ErrSecretNotFound)
+		return nil, fmt.Errorf("%w: response has no data", secrets.ErrSecretNotFound)
 	}
 
-	val, ok := kvResp.Data.Data[ref.Key]
-	if !ok {
-		return "", fmt.Errorf("%w: requested key not found in secret", secrets.ErrSecretNotFound)
+	// Convert map[string]any to map[string]string, rejecting non-string values.
+	result := make(map[string]string, len(kvResp.Data.Data))
+	for k, v := range kvResp.Data.Data {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: secret contains a non-string value", secrets.ErrSecretResolveFailed)
+		}
+		result[k] = s
 	}
-
-	strVal, isStr := val.(string)
-	if !isStr {
-		return "", fmt.Errorf("%w: secret value is not a string", secrets.ErrSecretResolveFailed)
-	}
-
-	return strVal, nil
+	return result, nil
 }
 
 // Close releases resources held by the provider and zeroes the

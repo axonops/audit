@@ -68,6 +68,25 @@ func (m *mockSecretProvider) Resolve(ctx context.Context, ref secrets.Ref) (stri
 	return val, nil
 }
 
+func (m *mockSecretProvider) ResolvePath(ctx context.Context, path string) (map[string]string, error) {
+	m.calls.Add(1)
+	if m.delay > 0 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(m.delay):
+		}
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	keys, ok := m.data[path]
+	if !ok {
+		return nil, fmt.Errorf("%w: path %q", secrets.ErrSecretNotFound, path)
+	}
+	return keys, nil
+}
+
 func (m *mockSecretProvider) Close() error {
 	m.closeCalls.Add(1)
 	return nil
@@ -82,8 +101,8 @@ func newMockProvider(scheme string, data map[string]map[string]string) *mockSecr
 	return &mockSecretProvider{scheme: scheme, data: data}
 }
 
-// Compile-time check.
-var _ secrets.Provider = (*mockSecretProvider)(nil)
+// Compile-time check — mock implements BatchProvider.
+var _ secrets.BatchProvider = (*mockSecretProvider)(nil)
 
 // ---------------------------------------------------------------------------
 // Helper: minimal YAML with a ref+ in a type-config field
@@ -332,7 +351,7 @@ func TestLoad_WithSecretProvider_ErrorNeverContainsSecretValue(t *testing.T) {
 	assert.NotContains(t, err.Error(), secretValue)
 }
 
-func TestLoad_WithSecretProvider_DistinctKeysEachCallProvider(t *testing.T) {
+func TestLoad_WithSecretProvider_PathLevelCache_OneCallForMultipleKeys(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	mock := newMockProvider("mock", map[string]map[string]string{
@@ -343,8 +362,10 @@ func TestLoad_WithSecretProvider_DistinctKeysEachCallProvider(t *testing.T) {
 			"enabled":   "true",
 		},
 	})
-	// All 4 HMAC fields from the same path — should be 4 provider calls
-	// (one per unique ref, since each has a different key).
+	// All 4 HMAC fields from the same path — with BatchProvider
+	// (ResolvePath), only 1 API call should be made. The first ref
+	// triggers ResolvePath which returns all keys; subsequent refs
+	// to the same path hit the path-level cache.
 	data := yamlWithHMACRefs(
 		"ref+mock://secret/data/hmac#salt",
 		"ref+mock://secret/data/hmac#version",
@@ -356,13 +377,18 @@ func TestLoad_WithSecretProvider_DistinctKeysEachCallProvider(t *testing.T) {
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	// Each unique key requires a separate provider call since each
-	// ref has a different fragment. But same-key refs are cached.
-	assert.Equal(t, int64(4), mock.calls.Load())
+	// Path-level cache: one ResolvePath call for all 4 keys.
+	assert.Equal(t, int64(1), mock.calls.Load())
+	// Also verify the values were correctly extracted from the batch.
+	require.Len(t, result.Outputs, 1)
+	hmac := result.Outputs[0].HMACConfig
+	require.NotNil(t, hmac)
+	assert.Equal(t, "v1", hmac.SaltVersion)
+	assert.Equal(t, []byte("cached-salt-value-32-bytes!!!!!!"), hmac.SaltValue)
+	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
 	for _, o := range result.Outputs {
 		_ = o.Output.Close()
 	}
-	_ = result
 }
 
 func TestLoad_WithSecretProvider_MixedLiteralEnvRef(t *testing.T) {

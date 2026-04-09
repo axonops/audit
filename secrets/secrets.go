@@ -84,6 +84,27 @@ type Provider interface {
 	Close() error
 }
 
+// BatchProvider is an optional extension of [Provider] for backends
+// that can fetch all keys at a path in a single API call (e.g. Vault
+// KV v2, OpenBao KV v2). The outputconfig resolver uses this to
+// enable path-level caching — same path with different #key fragments
+// results in one API call.
+//
+// Providers that do not implement BatchProvider fall back to per-key
+// [Provider.Resolve] calls with ref-level caching.
+type BatchProvider interface {
+	Provider
+
+	// ResolvePath fetches all key-value pairs at the given path.
+	// Returns the full map; the caller extracts individual keys.
+	// The caller guarantees that path has passed [Ref.Valid]
+	// validation (no traversal, no empty segments).
+	//
+	// Returns [ErrSecretNotFound] when the path does not exist.
+	// Returns [ErrSecretResolveFailed] for transient/auth failures.
+	ResolvePath(ctx context.Context, path string) (map[string]string, error)
+}
+
 // Ref is a parsed secret reference. The zero value indicates that
 // [ParseRef] determined the input was not a secret reference.
 //

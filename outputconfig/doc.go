@@ -79,7 +79,7 @@
 //
 // # Usage
 //
-//	result, err := outputconfig.Load(yamlData, &taxonomy, metrics)
+//	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics)
 //	if err != nil {
 //	    return fmt.Errorf("audit config: %w", err)
 //	}

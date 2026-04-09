@@ -1,0 +1,389 @@
+@core @secrets
+Feature: Secret reference resolution in output configuration
+  As a library consumer
+  I want to store sensitive config values (HMAC salts, credentials) in a secret
+  store and reference them from the output YAML
+  So that plaintext secrets never appear in config files or version control
+
+  # The secret reference syntax is: ref+SCHEME://PATH#KEY
+  # where SCHEME identifies the provider, PATH is the secret path
+  # within the store, and KEY is the field name within the secret.
+  # The "ref+" prefix is mandatory and distinguishes references from
+  # literal values.
+
+  Background:
+    Given a test taxonomy
+
+  # ---------------------------------------------------------------------------
+  # Scenario 1: Literal HMAC values require no secret providers
+  # ---------------------------------------------------------------------------
+  Scenario: Literal HMAC values work without any secret provider registered
+    Given the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: my-literal-salt-32-bytes!!!!!!!
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 2: Environment variable HMAC values work without secret providers
+  # ---------------------------------------------------------------------------
+  Scenario: Environment variable HMAC values work without any secret provider registered
+    Given the environment variable "BDD_HMAC_SALT_LITERAL" is set to "literal-salt-value-32-bytes!!!!!"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ${BDD_HMAC_SALT_LITERAL}
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 3: Secret reference resolved from a registered provider
+  # ---------------------------------------------------------------------------
+  Scenario: Secret reference is resolved when a matching provider is registered
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "resolved-salt-value-32-bytes!!!!"
+    And the mock provider has secret at path "secret/data/hmac" key "version" value "v2"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: ref+mock://secret/data/hmac#version
+              value: ref+mock://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 4: Environment variable that expands to a ref is then resolved
+  # ---------------------------------------------------------------------------
+  Scenario: Environment variable that expands to a secret reference is resolved
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "env-indirected-salt-32-bytes!!!!"
+    And the environment variable "BDD_HMAC_SALT_REF" is set to "ref+mock://secret/data/hmac#salt"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ${BDD_HMAC_SALT_REF}
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 5: Inline literal, env-var, and ref can be mixed in the same config
+  # ---------------------------------------------------------------------------
+  Scenario: Inline literal, environment variable, and secret reference can be mixed in the same HMAC config
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "mixed-source-salt-32-bytes!!!!!!"
+    And the environment variable "BDD_HMAC_VERSION" is set to "v3"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: ${BDD_HMAC_VERSION}
+              value: ref+mock://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 6: Unresolved reference fails when no provider is registered
+  #
+  # A ref+ URI in a top-level field (app_name) is caught by the safety-net
+  # scanner that runs after env-var expansion regardless of whether a provider
+  # is registered.
+  # ---------------------------------------------------------------------------
+  Scenario: Unresolved secret reference fails with a clear error when no provider is registered
+    Given the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: ref+openbao://secret/data/config#app
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+      """
+    Then the config load should fail with an error containing "unresolved secret reference"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 7: Unregistered scheme is rejected
+  # ---------------------------------------------------------------------------
+  Scenario: A ref with a scheme for which no provider is registered is rejected
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "registered-salt-32-bytes!!!!!!!!"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+vault://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "no provider registered for scheme"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 8: Malformed ref with missing key fragment is rejected
+  # ---------------------------------------------------------------------------
+  Scenario: A secret reference with a missing key fragment is rejected as malformed
+    Given a mock secret provider with scheme "mock"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+mock://secret/data/hmac
+            hash: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "malformed secret reference"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 9: Path with traversal segments is rejected
+  # ---------------------------------------------------------------------------
+  Scenario: A secret reference containing path traversal segments is rejected
+    Given a mock secret provider with scheme "mock"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+mock://secret/../data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "malformed secret reference"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 10: Error message does not contain the resolved secret value
+  # ---------------------------------------------------------------------------
+  Scenario: Error messages never contain resolved secret values
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "SUPER-SECRET-MUST-NOT-APPEAR-IN-ERRORS"
+    And the mock provider has secret at path "secret/data/hmac" key "enabled" value "true"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: ref+mock://secret/data/hmac#enabled
+            salt:
+              version: v1
+              value: ref+mock://secret/data/hmac#salt
+            hash: ref+mock://nonexistent/path#algorithm
+      """
+    Then the config load should fail
+    And the error message should not contain "SUPER-SECRET-MUST-NOT-APPEAR-IN-ERRORS"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 11: HMAC disabled via secret store skips remaining refs
+  # ---------------------------------------------------------------------------
+  Scenario: When HMAC enabled is resolved to false via a secret ref the remaining refs are not fetched
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "enabled" value "false"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: ref+mock://secret/data/hmac#enabled
+            salt:
+              version: ref+mock://nonexistent/path#version
+              value: ref+mock://nonexistent/path#salt
+            hash: ref+mock://nonexistent/path#algorithm
+      """
+    Then the config load should succeed
+    And the mock provider call count should be 1
+
+  # ---------------------------------------------------------------------------
+  # Scenario 12: HMAC enabled via secret store requires all fields to resolve
+  # ---------------------------------------------------------------------------
+  Scenario: When HMAC enabled is resolved to true via a secret ref all other HMAC fields must also resolve
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "enabled" value "true"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: ref+mock://secret/data/hmac#enabled
+            salt:
+              version: v1
+              value: ref+mock://nonexistent/path#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "secret not found"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 13: HMAC disabled with non-existent vault paths does not error
+  # ---------------------------------------------------------------------------
+  Scenario: HMAC with enabled as literal false and non-existent ref paths does not error and needs no provider
+    Given the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: false
+            salt:
+              version: ref+nonexistent://path/does/not/matter#version
+              value: ref+nonexistent://path/does/not/matter#salt
+            hash: ref+nonexistent://path/does/not/matter#hash
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 14: Same ref used in multiple outputs is resolved once
+  # ---------------------------------------------------------------------------
+  Scenario: The same secret reference used in multiple outputs is resolved exactly once per Load call
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/config" key "name" value "shared-app-name"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: ref+mock://secret/data/config#name
+      host: ref+mock://secret/data/config#name
+      outputs:
+        console:
+          type: stdout
+      """
+    Then the config load should succeed
+    And the mock provider call count should be 1
+
+  # ---------------------------------------------------------------------------
+  # Scenario 15: Provider timeout produces a clear error
+  # ---------------------------------------------------------------------------
+  Scenario: A secret provider that does not respond within the timeout produces a clear error
+    Given a mock secret provider with scheme "slow" that delays 500ms
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "any-value"
+    And the secret resolution timeout is 50ms
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+slow://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "context"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 16: Mixed literal, env-var, and ref in the same config
+  # ---------------------------------------------------------------------------
+  Scenario: Literal values, environment variables, and secret references coexist in the same config
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/svc" key "app" value "svc-from-vault"
+    And the environment variable "BDD_HOST_VALUE" is set to "host-from-env"
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: ref+mock://secret/data/svc#app
+      host: ${BDD_HOST_VALUE}
+      outputs:
+        console:
+          type: stdout
+      """
+    Then the config load should succeed
+
+  # ---------------------------------------------------------------------------
+  # Scenario 17: Disabled output with unresolvable refs does not cause an error
+  # ---------------------------------------------------------------------------
+  Scenario: An output with enabled false and secret references in its type config does not error on load
+    Given the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        active:
+          type: stdout
+        disabled_with_refs:
+          enabled: false
+          type: stdout
+          stdout:
+            format: ref+nonexistent://path/does/not/matter#format
+      """
+    Then the config load should succeed

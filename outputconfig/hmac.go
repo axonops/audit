@@ -15,9 +15,11 @@
 package outputconfig
 
 import (
+	"context"
 	"fmt"
 
 	audit "github.com/axonops/go-audit"
+	"github.com/axonops/go-audit/secrets"
 	"github.com/goccy/go-yaml"
 )
 
@@ -34,29 +36,60 @@ type yamlHMACSalt struct {
 }
 
 // buildHMACConfig parses and validates the hmac: value for an output.
-func buildHMACConfig(name string, raw any) (*audit.HMACConfig, error) {
+// When r is non-nil and the HMAC is enabled, ref+ URIs in the HMAC
+// fields are resolved. When enabled is false (whether literal, from
+// env var, or from a secret ref), remaining fields are NOT resolved.
+func buildHMACConfig(ctx context.Context, name string, raw any, r *resolver) (*audit.HMACConfig, error) { //nolint:gocyclo,cyclop // linear HMAC pipeline with disabled bypass
 	if raw == nil {
 		return nil, nil //nolint:nilnil // nil = no HMAC
 	}
 
 	// Expand env vars in the hmac block.
-	expanded, err := expandEnvInValue(raw, fmt.Sprintf("outputs.%s.hmac", name))
+	fieldBase := fmt.Sprintf("outputs.%s.hmac", name)
+	expanded, err := expandEnvInValue(raw, fieldBase)
 	if err != nil {
 		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
 	}
 
+	// Extract and resolve the "enabled" field before unmarshalling
+	// the full struct. This is necessary because if enabled is a ref+
+	// URI, YAML unmarshal into a bool would fail.
+	enabled, expandedWithoutEnabled, err := extractAndResolveEnabled(ctx, expanded, fieldBase, r)
+	if err != nil {
+		return nil, fmt.Errorf("output %q: hmac: %w", name, err)
+	}
+
+	if !enabled {
+		return nil, nil //nolint:nilnil // explicitly disabled — skip remaining refs
+	}
+
+	// Enabled is true — resolve secrets in remaining HMAC fields.
+	if r != nil {
+		resolved, rErr := expandSecretsInValue(ctx, expandedWithoutEnabled, fieldBase, r)
+		if rErr != nil {
+			return nil, fmt.Errorf("output %q: hmac: %w", name, rErr)
+		}
+		expandedWithoutEnabled = resolved
+
+		// Safety net on resolved HMAC fields.
+		if unresErr := validateNoUnresolvedRefs(expandedWithoutEnabled, fieldBase); unresErr != nil {
+			return nil, fmt.Errorf("output %q: hmac: %w", name, unresErr)
+		}
+	}
+
+	// Re-inject enabled=true for unmarshalling.
+	if m, ok := expandedWithoutEnabled.(map[string]any); ok {
+		m["enabled"] = true
+	}
+
 	// Parse with strict field checking.
-	hmacBytes, mErr := yaml.Marshal(expanded)
+	hmacBytes, mErr := yaml.Marshal(expandedWithoutEnabled)
 	if mErr != nil {
 		return nil, fmt.Errorf("output %q: hmac: %w", name, mErr)
 	}
 	var yc yamlHMACConfig
 	if uErr := yaml.UnmarshalWithOptions(hmacBytes, &yc, yaml.DisallowUnknownField()); uErr != nil {
 		return nil, fmt.Errorf("output %q: hmac: %w", name, uErr)
-	}
-
-	if !yc.Enabled {
-		return nil, nil //nolint:nilnil // explicitly disabled
 	}
 
 	cfg := &audit.HMACConfig{
@@ -66,14 +99,57 @@ func buildHMACConfig(name string, raw any) (*audit.HMACConfig, error) {
 		Algorithm:   yc.Hash,
 	}
 
-	if err := audit.ValidateHMACConfig(cfg); err != nil {
-		return nil, fmt.Errorf("output %q: %w", name, err)
+	if vErr := audit.ValidateHMACConfig(cfg); vErr != nil {
+		return nil, fmt.Errorf("output %q: %w", name, vErr)
 	}
 
 	return cfg, nil
 }
 
-// outputsOrderHelper is used to extract outputs with preserved key
-// ordering. goccy/go-yaml decodes nested mappings as map[string]any
-// which loses order. This struct uses yaml.MapSlice for the outputs
-// field specifically.
+// extractAndResolveEnabled extracts the "enabled" field from the raw
+// HMAC map, resolves it if it is a ref+, and converts to bool.
+// Returns the bool value and the raw map with "enabled" removed.
+func extractAndResolveEnabled(ctx context.Context, raw any, fieldBase string, r *resolver) (enabled bool, remaining any, err error) { //nolint:gocognit,gocyclo,cyclop // linear extraction with ref resolution
+	m, ok := raw.(map[string]any)
+	if !ok {
+		// Not a map — will fail at unmarshal but let it through.
+		return false, raw, nil
+	}
+
+	enabledRaw, exists := m["enabled"]
+	if !exists {
+		// No enabled field — defaults to false.
+		return false, raw, nil
+	}
+
+	// If enabled is a string, it might be a ref+ URI.
+	if s, isStr := enabledRaw.(string); isStr {
+		if secrets.ContainsRef(s) && r == nil {
+			return false, nil, fmt.Errorf(
+				"%s.enabled: contains a secret reference but no provider is registered",
+				fieldBase)
+		}
+		if r != nil {
+			ref, pErr := secrets.ParseRef(s)
+			if pErr != nil {
+				return false, nil, fmt.Errorf("%s.enabled: %w", fieldBase, pErr)
+			}
+			if !ref.IsZero() {
+				resolved, rErr := r.resolve(ctx, ref, fieldBase+".enabled")
+				if rErr != nil {
+					return false, nil, rErr
+				}
+				enabledRaw = resolved
+			}
+		}
+	}
+
+	enabled, bErr := toBool(enabledRaw)
+	if bErr != nil {
+		return false, nil, fmt.Errorf("%s.enabled: %w", fieldBase, bErr)
+	}
+
+	// Remove "enabled" from map — it will be re-injected if true.
+	delete(m, "enabled")
+	return enabled, m, nil
+}

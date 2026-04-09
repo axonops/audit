@@ -16,6 +16,7 @@ package outputconfig
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -143,7 +144,28 @@ func (o *NamedOutput) String() string {
 // Environment variable substitution (${VAR} and ${VAR:-default}) runs
 // on string values in the parsed YAML tree, NOT on raw bytes. This
 // prevents YAML injection via env var values.
-func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8 phases
+//
+// Secret reference resolution (ref+SCHEME://PATH#KEY) runs after env
+// var expansion when providers are registered via [WithSecretProvider].
+// The ctx parameter controls timeout for network I/O during secret
+// resolution. Use [WithSecretTimeout] to configure the resolution
+// timeout.
+func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
+	lo := resolveOptions(opts)
+
+	// Build the secret resolver from registered providers.
+	secretResolver, rErr := newResolver(lo.providers)
+	if rErr != nil {
+		return nil, rErr
+	}
+
+	// Derive a context with the secret timeout applied.
+	secretCtx := ctx
+	if secretResolver != nil {
+		var cancel context.CancelFunc
+		secretCtx, cancel = contextWithSecretTimeout(ctx, lo.secretTimeout)
+		defer cancel()
+	}
 	// Phase 1: Size check.
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrOutputConfigInvalid)
@@ -172,7 +194,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 	// Extract ordered outputs separately (goccy/go-yaml decodes nested
 	// maps as map[string]any which loses key order).
 	orderedOutputs, orderedErr := extractOutputsOrdered(data)
-	top, err := parseTopLevel(doc, orderedOutputs, orderedErr)
+	top, err := parseTopLevel(secretCtx, doc, orderedOutputs, orderedErr, secretResolver)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +239,7 @@ func Load(data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics) (*Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, coreMetrics)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, coreMetrics, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -273,7 +295,9 @@ type topLevel struct {
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
-func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
+// When r is non-nil, ref+ URIs in string values are resolved after
+// env var expansion.
+func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, orderedErr error, r *resolver) (*topLevel, error) { //nolint:gocyclo,cyclop,gocognit // YAML field dispatch
 	if len(doc) == 0 {
 		return nil, fmt.Errorf("%w: empty document", ErrOutputConfigInvalid)
 	}
@@ -316,7 +340,14 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 			if err != nil {
 				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, err)
 			}
-			s, sErr := toString(expanded)
+			resolved, rErr := expandSecretsInValue(ctx, expanded, "app_name", r)
+			if rErr != nil {
+				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, rErr)
+			}
+			if vnErr := validateNoUnresolvedRefs(resolved, "app_name"); vnErr != nil {
+				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, vnErr)
+			}
+			s, sErr := toString(resolved)
 			if sErr != nil {
 				return nil, fmt.Errorf("%w: app_name: %w", ErrOutputConfigInvalid, sErr)
 			}
@@ -326,7 +357,14 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 			if err != nil {
 				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, err)
 			}
-			s, sErr := toString(expanded)
+			resolved, rErr := expandSecretsInValue(ctx, expanded, "host", r)
+			if rErr != nil {
+				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, rErr)
+			}
+			if vnErr := validateNoUnresolvedRefs(resolved, "host"); vnErr != nil {
+				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, vnErr)
+			}
+			s, sErr := toString(resolved)
 			if sErr != nil {
 				return nil, fmt.Errorf("%w: host: %w", ErrOutputConfigInvalid, sErr)
 			}
@@ -336,7 +374,14 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 			if err != nil {
 				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, err)
 			}
-			s, sErr := toString(expanded)
+			resolved, rErr := expandSecretsInValue(ctx, expanded, "timezone", r)
+			if rErr != nil {
+				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, rErr)
+			}
+			if vnErr := validateNoUnresolvedRefs(resolved, "timezone"); vnErr != nil {
+				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, vnErr)
+			}
+			s, sErr := toString(resolved)
 			if sErr != nil {
 				return nil, fmt.Errorf("%w: timezone: %w", ErrOutputConfigInvalid, sErr)
 			}
@@ -349,7 +394,14 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 			if err != nil {
 				return nil, fmt.Errorf("%w: standard_fields: %w", ErrOutputConfigInvalid, err)
 			}
-			sf, sfErr := parseStandardFields(expanded)
+			resolved, rErr := expandSecretsInValue(ctx, expanded, "standard_fields", r)
+			if rErr != nil {
+				return nil, fmt.Errorf("%w: standard_fields: %w", ErrOutputConfigInvalid, rErr)
+			}
+			if vnErr := validateNoUnresolvedRefs(resolved, "standard_fields"); vnErr != nil {
+				return nil, fmt.Errorf("%w: standard_fields: %w", ErrOutputConfigInvalid, vnErr)
+			}
+			sf, sfErr := parseStandardFields(resolved)
 			if sfErr != nil {
 				return nil, sfErr
 			}
@@ -369,7 +421,14 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 		if err != nil {
 			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
 		}
-		cfg, cfgErr := parseLoggerConfig(expanded)
+		resolved, rErr := expandSecretsInValue(ctx, expanded, "logger", r)
+		if rErr != nil {
+			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, rErr)
+		}
+		if vnErr := validateNoUnresolvedRefs(resolved, "logger"); vnErr != nil {
+			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, vnErr)
+		}
+		cfg, cfgErr := parseLoggerConfig(resolved)
 		if cfgErr != nil {
 			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, cfgErr)
 		}
@@ -386,9 +445,16 @@ func parseTopLevel(doc, orderedOutputs yaml.MapSlice, orderedErr error) (*topLev
 		if err != nil {
 			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
 		}
-		result.tlsPolicyRaw = expanded
+		resolved, rErr := expandSecretsInValue(ctx, expanded, "tls_policy", r)
+		if rErr != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, rErr)
+		}
+		if vnErr := validateNoUnresolvedRefs(resolved, "tls_policy"); vnErr != nil {
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, vnErr)
+		}
+		result.tlsPolicyRaw = resolved
 		// Validate structure — reject unknown fields like typos.
-		tlsBytes, mErr := yaml.Marshal(expanded)
+		tlsBytes, mErr := yaml.Marshal(resolved)
 		if mErr != nil {
 			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, mErr)
 		}

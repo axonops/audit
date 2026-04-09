@@ -19,6 +19,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -55,7 +56,7 @@ func main() {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	result, err := outputconfig.Load(outputsYAML, &tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

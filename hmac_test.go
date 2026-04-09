@@ -132,6 +132,7 @@ func TestValidateHMACConfig_SaltTooShort(t *testing.T) {
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "at least")
 }
 
@@ -144,6 +145,7 @@ func TestValidateHMACConfig_MissingSalt(t *testing.T) {
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "salt value")
 }
 
@@ -156,6 +158,7 @@ func TestValidateHMACConfig_MissingVersion(t *testing.T) {
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "version")
 }
 
@@ -168,6 +171,7 @@ func TestValidateHMACConfig_MissingAlgorithm(t *testing.T) {
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "algorithm")
 }
 
@@ -181,6 +185,7 @@ func TestValidateHMACConfig_UnknownAlgorithm(t *testing.T) {
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown")
 }
 

@@ -99,26 +99,27 @@ func SupportedHMACAlgorithms() []string {
 }
 
 // ValidateHMACConfig checks that an HMACConfig is valid. Returns an
-// error if the config is enabled but has missing or invalid fields.
-// Salt values are never included in error messages.
+// error wrapping [ErrConfigInvalid] if the config is enabled but has
+// missing or invalid fields. Salt values are never included in error
+// messages.
 func ValidateHMACConfig(cfg *HMACConfig) error {
 	if cfg == nil || !cfg.Enabled {
 		return nil
 	}
 	if cfg.SaltVersion == "" {
-		return errors.New("audit: hmac salt version is required when hmac is enabled")
+		return fmt.Errorf("%w: hmac salt version is required when hmac is enabled", ErrConfigInvalid)
 	}
 	if len(cfg.SaltValue) == 0 {
-		return errors.New("audit: hmac salt value is required when hmac is enabled")
+		return fmt.Errorf("%w: hmac salt value is required when hmac is enabled", ErrConfigInvalid)
 	}
 	if len(cfg.SaltValue) < MinSaltLength {
-		return fmt.Errorf("audit: hmac salt must be at least %d bytes", MinSaltLength)
+		return fmt.Errorf("%w: hmac salt must be at least %d bytes", ErrConfigInvalid, MinSaltLength)
 	}
 	if cfg.Algorithm == "" {
-		return errors.New("audit: hmac hash algorithm is required when hmac is enabled")
+		return fmt.Errorf("%w: hmac hash algorithm is required when hmac is enabled", ErrConfigInvalid)
 	}
 	if hmacHashFunc(cfg.Algorithm) == nil {
-		return fmt.Errorf("audit: unknown hmac algorithm %q (supported: %v)", cfg.Algorithm, SupportedHMACAlgorithms())
+		return fmt.Errorf("%w: unknown hmac algorithm %q (supported: %v)", ErrConfigInvalid, cfg.Algorithm, SupportedHMACAlgorithms())
 	}
 	return nil
 }

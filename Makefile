@@ -1,8 +1,10 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
+       test-secrets \
        test-integration test-bdd test-bdd-core test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api \
+       lint-secrets \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
        tidy tidy-check verify check-replace check-todos \
@@ -16,7 +18,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen
+MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen secrets
 WORKSPACE_MODULES := $(MODULES) examples/16-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
@@ -77,7 +79,10 @@ test-outputconfig:
 test-audit-gen:
 	cd cmd/audit-gen && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen
+test-secrets:
+	cd secrets && go test -race -v -count=1 -coverprofile=coverage.out ./...
+
+test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-secrets
 test: test-all
 
 # Integration tests (requires Docker: make test-infra-up first)
@@ -158,10 +163,13 @@ lint-outputconfig:
 lint-audit-gen:
 	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-secrets:
+	cd secrets && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 lint-crud-api:
 	cd examples/16-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-secrets lint-crud-api
 lint: lint-all
 
 # --- Vet ---
@@ -381,7 +389,8 @@ PUBLISH_MODULES := \
   webhook|github.com/axonops/go-audit/webhook|webhook/ \
   loki|github.com/axonops/go-audit/loki|loki/ \
   outputconfig|github.com/axonops/go-audit/outputconfig|outputconfig/ \
-  cmd/audit-gen|github.com/axonops/go-audit/cmd/audit-gen|cmd/audit-gen/
+  cmd/audit-gen|github.com/axonops/go-audit/cmd/audit-gen|cmd/audit-gen/ \
+  secrets|github.com/axonops/go-audit/secrets|secrets/
 
 .PHONY: publish-trigger publish-verify publish-smoke
 
@@ -427,7 +436,8 @@ endif
 	go get "github.com/axonops/go-audit/loki@$(VERSION)" && \
 	go get "github.com/axonops/go-audit/outputconfig@$(VERSION)" && \
 	go get "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
-	printf 'package main\n\nimport (\n\t_ "github.com/axonops/go-audit"\n\t_ "github.com/axonops/go-audit/file"\n\t_ "github.com/axonops/go-audit/syslog"\n\t_ "github.com/axonops/go-audit/webhook"\n\t_ "github.com/axonops/go-audit/loki"\n\t_ "github.com/axonops/go-audit/outputconfig"\n)\n\nfunc main() {}\n' > main.go && \
+	go get "github.com/axonops/go-audit/secrets@$(VERSION)" && \
+	printf 'package main\n\nimport (\n\t_ "github.com/axonops/go-audit"\n\t_ "github.com/axonops/go-audit/file"\n\t_ "github.com/axonops/go-audit/syslog"\n\t_ "github.com/axonops/go-audit/webhook"\n\t_ "github.com/axonops/go-audit/loki"\n\t_ "github.com/axonops/go-audit/outputconfig"\n\t_ "github.com/axonops/go-audit/secrets"\n)\n\nfunc main() {}\n' > main.go && \
 	go build -o /dev/null . && \
 	go install "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
 	echo "✓ All modules compile successfully"

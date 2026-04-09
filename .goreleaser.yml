@@ -22,6 +22,7 @@ before:
     - bash -c "cd loki && go mod tidy"
     - bash -c "cd outputconfig && go mod tidy"
     - bash -c "cd cmd/audit-gen && go mod tidy"
+    - bash -c "cd secrets && go mod tidy"
     - bash -c "cd examples/16-crud-api && go mod tidy"
 
 changelog:

@@ -48,13 +48,13 @@ jobs:
 
       - name: Save pre-update go.mod files
         run: |
-          for mod in . file syslog webhook loki outputconfig cmd/audit-gen; do
+          for mod in . file syslog webhook loki outputconfig cmd/audit-gen secrets; do
             cp "$mod/go.mod" "$mod/go.mod.before"
           done
 
       - name: Update dependencies per module
         run: |
-          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen"
+          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets"
           CORE_MODULE="github.com/axonops/go-audit"
           FAILED=""
 
@@ -77,7 +77,8 @@ jobs:
               "$CORE_MODULE/webhook" \
               "$CORE_MODULE/loki" \
               "$CORE_MODULE/outputconfig" \
-              "$CORE_MODULE/cmd/audit-gen"; do
+              "$CORE_MODULE/cmd/audit-gen" \
+              "$CORE_MODULE/secrets"; do
               ver=$(grep "^	$dep " go.mod 2>/dev/null | awk '{print $2}')
               if [ -n "$ver" ]; then
                 PINNED_VERSIONS="$PINNED_VERSIONS $dep@$ver"
@@ -124,7 +125,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen"
+          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets"
           HAS_CHANGES="false"
 
           for mod in $MODULES; do
@@ -183,7 +184,7 @@ jobs:
         id: summary
         if: steps.changes.outputs.has_changes == 'true'
         run: |
-          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen"
+          MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets"
           BODY=""
 
           for mod in $MODULES; do

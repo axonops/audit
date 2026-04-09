@@ -39,6 +39,7 @@ env:
     github.com/axonops/go-audit/loki
     github.com/axonops/go-audit/outputconfig
     github.com/axonops/go-audit/cmd/audit-gen
+    github.com/axonops/go-audit/secrets
 
 jobs:
   # =====================================================================
@@ -92,6 +93,7 @@ jobs:
             "loki/$PUBLISH_VERSION"
             "outputconfig/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
+            "secrets/$PUBLISH_VERSION"
           )
           for tag in "${TAGS[@]}"; do
             if git tag -l "$tag" | grep -q .; then
@@ -115,6 +117,7 @@ jobs:
             "loki/$PUBLISH_VERSION"
             "outputconfig/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
+            "secrets/$PUBLISH_VERSION"
           )
 
           for tag in "${TAGS[@]}"; do
@@ -140,7 +143,7 @@ jobs:
             echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
             exit 1
           fi
-          echo "✓ All 7 tags pushed. goreleaser.yml will trigger automatically."
+          echo "✓ All 8 tags pushed. goreleaser.yml will trigger automatically."
 
   # =====================================================================
   # Job 3: Verify modules are published and usable (after tags are pushed).
@@ -212,6 +215,7 @@ jobs:
             _ "github.com/axonops/go-audit/webhook"
             _ "github.com/axonops/go-audit/loki"
             _ "github.com/axonops/go-audit/outputconfig"
+            _ "github.com/axonops/go-audit/secrets"
           )
           func main() {}
           GOEOF

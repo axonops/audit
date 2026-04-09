@@ -145,18 +145,12 @@ func (o *NamedOutput) String() string {
 // on string values in the parsed YAML tree, NOT on raw bytes. This
 // prevents YAML injection via env var values.
 //
-// Secret reference resolution (ref+SCHEME://PATH#KEY) runs after env
-// var expansion. Use [WithSecretProvider] to register providers. When
-// no providers are registered, the resolution phase is skipped but
-// unresolved ref+ strings are still detected and cause an error.
-//
 // The ctx parameter controls timeout for network I/O during secret
-// resolution. Use [WithSecretTimeout] to set a timeout shorter than
-// the context deadline.
+// resolution (see issue #353). Use [WithSecretTimeout] to configure
+// the resolution timeout.
 func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8 phases
-	// Resolve options (unused until secret resolution is wired in PR 3).
-	_ = resolveOptions(opts)
-	_ = ctx
+	_ = resolveOptions(opts) // wired in secret resolution phase (#353)
+	_ = ctx                  // used for secret resolution timeout (#353)
 	// Phase 1: Size check.
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrOutputConfigInvalid)

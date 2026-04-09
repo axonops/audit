@@ -2468,3 +2468,44 @@ func TestToInt_Float64_NegativeFractional_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fractional")
 }
+
+// ---------------------------------------------------------------------------
+// LoadOption tests
+// ---------------------------------------------------------------------------
+
+func TestLoad_DefaultSecretTimeout(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 10*time.Second, outputconfig.DefaultSecretTimeout)
+}
+
+func TestLoad_WithSecretTimeout_Accepted(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretTimeout(5*time.Second),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_MultipleLoadOptions_Compose(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	// Multiple options applied — last write wins for timeout.
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretTimeout(5*time.Second),
+		outputconfig.WithSecretTimeout(20*time.Second),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}

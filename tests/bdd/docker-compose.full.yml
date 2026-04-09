@@ -9,3 +9,5 @@ include:
   - docker-compose.syslog.yml
   - docker-compose.webhook.yml
   - docker-compose.loki.yml
+  - docker-compose.openbao.yml
+  - docker-compose.vault.yml

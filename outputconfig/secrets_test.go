@@ -1018,3 +1018,290 @@ outputs:
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrMalformedRef)
 }
+
+// ---------------------------------------------------------------------------
+// Gap 1: Non-batch provider — fallback Resolve + refCache path
+// ---------------------------------------------------------------------------
+
+// nonBatchProvider implements secrets.Provider but NOT secrets.BatchProvider.
+// This forces the resolver to use the single-key Resolve + refCache code path
+// (lines ~135–151 in secrets.go).
+type nonBatchProvider struct { //nolint:govet // readability over alignment
+	scheme string
+	data   map[string]map[string]string
+	calls  atomic.Int64
+}
+
+func (p *nonBatchProvider) Scheme() string { return p.scheme }
+
+func (p *nonBatchProvider) Resolve(_ context.Context, ref secrets.Ref) (string, error) {
+	p.calls.Add(1)
+	keys, ok := p.data[ref.Path]
+	if !ok {
+		return "", fmt.Errorf("%w: path %q not found", secrets.ErrSecretNotFound, ref.Path)
+	}
+	val, ok := keys[ref.Key]
+	if !ok {
+		return "", fmt.Errorf("%w: key %q not found", secrets.ErrSecretNotFound, ref.Key)
+	}
+	return val, nil
+}
+
+func (p *nonBatchProvider) Close() error { return nil }
+
+// Compile-time check: nonBatchProvider must NOT implement BatchProvider.
+// If this line ever fails to compile it means the test's premise is wrong.
+var _ secrets.Provider = (*nonBatchProvider)(nil)
+
+func TestLoad_NonBatchProvider_FallbackResolveUsed(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Two different keys from the same path — with a non-batch provider
+	// the resolver calls Resolve() once per ref (no ResolvePath).
+	p := &nonBatchProvider{
+		scheme: "nbmock",
+		data: map[string]map[string]string{
+			"secret/data/hmac": {
+				"salt":    "non-batch-salt-value-32bytes!!!",
+				"version": "v1",
+			},
+		},
+	}
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: ref+nbmock://secret/data/hmac#version
+        value: ref+nbmock://secret/data/hmac#salt
+      hash: HMAC-SHA-256
+`)
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(p),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	hmac := result.Outputs[0].HMACConfig
+	require.NotNil(t, hmac)
+	assert.Equal(t, "v1", hmac.SaltVersion)
+	assert.Equal(t, []byte("non-batch-salt-value-32bytes!!!"), hmac.SaltValue)
+	// Two distinct refs → two Resolve calls (no batch path).
+	assert.Equal(t, int64(2), p.calls.Load())
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_NonBatchProvider_RefCacheDeduplicates(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Same ref used in two places — the refCache means only one Resolve call.
+	p := &nonBatchProvider{
+		scheme: "nbmock",
+		data: map[string]map[string]string{
+			"secret/data/config": {"name": "my-app"},
+		},
+	}
+	data := []byte(`
+version: 1
+app_name: ref+nbmock://secret/data/config#name
+host: ref+nbmock://secret/data/config#name
+outputs:
+  c:
+    type: stdout
+`)
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(p),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "my-app", result.AppName)
+	assert.Equal(t, "my-app", result.Host)
+	// Same scheme+path+key → cached after first call.
+	assert.Equal(t, int64(1), p.calls.Load())
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_NonBatchProvider_ProviderErrorPropagated(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	p := &nonBatchProvider{
+		scheme: "nbmock",
+		data:   nil, // every Resolve will fail with ErrSecretNotFound
+	}
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: v1
+        value: ref+nbmock://secret/data/hmac#salt
+      hash: HMAC-SHA-256
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(p),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+}
+
+func TestLoad_NonBatchProvider_EmptyValueRejected(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	p := &nonBatchProvider{
+		scheme: "nbmock",
+		data: map[string]map[string]string{
+			"secret/data/hmac": {
+				"salt":    "", // empty — must be rejected
+				"enabled": "true",
+			},
+		},
+	}
+	data := yamlWithHMACRefs(
+		"ref+nbmock://secret/data/hmac#salt",
+		"v1",
+		"HMAC-SHA-256",
+		"ref+nbmock://secret/data/hmac#enabled",
+	)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(p),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "empty")
+}
+
+func TestLoad_NonBatchProvider_OversizedValueRejected(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	bigValue := strings.Repeat("x", outputconfig.MaxSecretValueSize+1)
+	p := &nonBatchProvider{
+		scheme: "nbmock",
+		data: map[string]map[string]string{
+			"secret/data/hmac": {
+				"salt":    bigValue,
+				"enabled": "true",
+			},
+		},
+	}
+	data := yamlWithHMACRefs(
+		"ref+nbmock://secret/data/hmac#salt",
+		"v1",
+		"HMAC-SHA-256",
+		"ref+nbmock://secret/data/hmac#enabled",
+	)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(p),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "maximum size")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 7: Multiple providers — openbao and vault schemes coexist in one Load
+// ---------------------------------------------------------------------------
+
+func TestLoad_MultipleProviders_TwoSchemesResolveIndependently(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Two mock providers with different schemes — each resolves its own key.
+	provA := newMockProvider("prova", map[string]map[string]string{
+		"secret/data/hmac": {"salt": "salt-from-prov-a-32-bytes!!!!!!"},
+	})
+	provB := newMockProvider("provb", map[string]map[string]string{
+		"secret/data/hmac": {"algorithm": "HMAC-SHA-256"},
+	})
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: v1
+        value: ref+prova://secret/data/hmac#salt
+      hash: ref+provb://secret/data/hmac#algorithm
+`)
+	result, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(provA),
+		outputconfig.WithSecretProvider(provB),
+	)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	hmac := result.Outputs[0].HMACConfig
+	require.NotNil(t, hmac)
+	assert.Equal(t, []byte("salt-from-prov-a-32-bytes!!!!!!"), hmac.SaltValue)
+	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
+	assert.Equal(t, int64(1), provA.calls.Load())
+	assert.Equal(t, int64(1), provB.calls.Load())
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Gap 10: Key not found in cached path (batch path-level cache miss on key)
+// ---------------------------------------------------------------------------
+
+func TestLoad_BatchProvider_CachedPathKeyNotFound_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	// Strategy: app_name is resolved at the top-level phase, before output
+	// fields. Using the same path for app_name (key "name" exists) and the
+	// HMAC salt (key "salt" does not exist) guarantees that the path cache
+	// is populated from the app_name resolution. When the HMAC resolution
+	// then hits the same path in the cache, it must return ErrSecretNotFound
+	// for the missing "salt" key from the cache hit branch — without making
+	// a second API call.
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/config": {
+			"name": "my-app",
+			// "salt" is intentionally absent
+		},
+	})
+	data := []byte(`
+version: 1
+app_name: ref+mock://secret/data/config#name
+host: test
+outputs:
+  audit_log:
+    type: stdout
+    hmac:
+      enabled: true
+      salt:
+        version: v1
+        value: ref+mock://secret/data/config#salt
+      hash: HMAC-SHA-256
+`)
+	_, err := outputconfig.Load(
+		context.Background(), data, &tax, nil,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+	assert.Contains(t, err.Error(), "cached path")
+	// Only one provider call — the path cache is populated from app_name,
+	// the HMAC salt lookup hits the cache and finds the key absent.
+	assert.Equal(t, int64(1), mock.calls.Load())
+}

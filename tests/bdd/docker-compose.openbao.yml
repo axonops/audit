@@ -1,0 +1,30 @@
+# OpenBao dev server with TLS for secret provider BDD and integration tests.
+# Uses -dev-tls mode: auto-unsealed, in-memory storage, self-signed TLS certs.
+# Certs are generated at /opt/openbao/tls/ inside the container.
+#
+# Extract the CA cert for test clients:
+#   docker cp bdd-openbao-1:/opt/openbao/tls/tls-ca.pem /tmp/openbao-ca.pem
+
+services:
+  openbao:
+    image: quay.io/openbao/openbao:2.1.0
+    command: server -dev-tls
+    ports:
+      - "8200:8200"
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: test-root-token
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "sh", "-c", "BAO_ADDR=https://127.0.0.1:8200 VAULT_SKIP_VERIFY=true bao status"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    networks:
+      - audit-test
+
+networks:
+  audit-test:
+    external: true

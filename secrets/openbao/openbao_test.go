@@ -364,3 +364,318 @@ func TestResolve_NamespaceHeader(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "team-a", receivedNS)
 }
+
+// ---------------------------------------------------------------------------
+// ResolvePath — gap 6: direct unit tests for the BatchProvider method
+// ---------------------------------------------------------------------------
+
+func TestResolvePath_Success(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{
+		"salt":    "my-secret-salt",
+		"version": "v1",
+	}, "test-token"))
+	p := testProvider(t, srv)
+
+	got, err := p.ResolvePath(context.Background(), "secret/data/hmac")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"salt": "my-secret-salt", "version": "v1"}, got)
+}
+
+func TestResolvePath_NotFound(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.ResolvePath(context.Background(), "secret/data/missing")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+}
+
+func TestResolvePath_AuthFailure(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, kvV2Handler(map[string]any{"key": "value"}, "correct-token"))
+	cfg := testConfig(srv)
+	cfg.Token = "wrong-token"
+	p, err := openbao.NewWithHTTPClient(cfg, srv.Client())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.ResolvePath(context.Background(), "secret/data/test")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestResolvePath_ReturnsAllKeys(t *testing.T) {
+	t.Parallel()
+	// Verify that ResolvePath returns the complete key set, not just one key.
+	srv := newTestServer(t, kvV2Handler(map[string]any{
+		"alpha": "a",
+		"beta":  "b",
+		"gamma": "c",
+	}, "test-token"))
+	p := testProvider(t, srv)
+
+	got, err := p.ResolvePath(context.Background(), "secret/data/multi")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"alpha": "a", "beta": "b", "gamma": "c"}, got)
+}
+
+// ---------------------------------------------------------------------------
+// Gap 2: url.Error unwrapping — secret path must not appear in error message
+// ---------------------------------------------------------------------------
+
+func TestFetchPath_URLErrorUnwrapped_PathNotLeaked(t *testing.T) {
+	t.Parallel()
+	// Use a server that immediately closes the connection so the HTTP
+	// client returns a *url.Error wrapping a net.OpError. The unwrapping
+	// code in fetchPath must strip the *url.Error so the vault path
+	// embedded in the request URL does not appear in the final error.
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hijack the connection and close it immediately to force a
+		// transport-level error that the net/http client wraps in url.Error.
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		conn, _, _ := hj.Hijack()
+		_ = conn.Close()
+	}))
+	p := testProvider(t, srv)
+
+	const secretPath = "very/secret/path/that/must/not/leak"
+	_, err := p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "openbao",
+		Path:   secretPath,
+		Key:    "key",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	// The secret path must not appear in the error message.
+	assert.NotContains(t, err.Error(), secretPath,
+		"vault path must not leak through url.Error into error message")
+	// The full URL (with path) must not appear either.
+	assert.NotContains(t, err.Error(), srv.URL+"/v1/"+secretPath,
+		"full request URL must not leak into error message")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 3: SSRF protection — metadata endpoint blocked without AllowPrivateRanges
+// ---------------------------------------------------------------------------
+
+func TestNew_SSRFDialControl_BlocksMetadataEndpoint(t *testing.T) {
+	t.Parallel()
+	// Build a provider pointing at the cloud metadata IP. AllowPrivateRanges
+	// is NOT set, so the dial control must block the connection attempt.
+	// New() itself succeeds (lazy connection), but the first Resolve call
+	// must fail with an SSRF error — not a vault auth error.
+	p, err := openbao.New(&openbao.Config{
+		Address: "https://169.254.169.254",
+		Token:   "test-token",
+		// AllowPrivateRanges: false (default)
+	})
+	require.NoError(t, err, "New() must succeed — lazy connection")
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "openbao",
+		Path:   "latest/meta-data/iam/security-credentials/role",
+		Key:    "SecretAccessKey",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	// The underlying error must mention the blocked address, not a TLS or
+	// auth failure — confirming the SSRF control fired, not a server error.
+	assert.Contains(t, err.Error(), "blocked",
+		"error must indicate SSRF dial control blocked the connection")
+}
+
+func TestNew_SSRFDialControl_BlocksLoopbackWithoutFlag(t *testing.T) {
+	t.Parallel()
+	// Loopback is blocked unless AllowPrivateRanges is set.
+	// Build a real TLS server on loopback, then create a provider WITHOUT
+	// AllowPrivateRanges — Resolve must fail at dial time, not at TLS.
+	srv := httptest.NewTLSServer(kvV2Handler(map[string]any{"key": "value"}, "test-token"))
+	t.Cleanup(srv.Close)
+
+	// srv.URL is https://127.0.0.1:PORT — loopback, should be blocked.
+	p, err := openbao.New(&openbao.Config{
+		Address: srv.URL,
+		Token:   "test-token",
+		// AllowPrivateRanges: false — loopback must be blocked
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(), secrets.Ref{
+		Scheme: "openbao",
+		Path:   "secret/data/test",
+		Key:    "key",
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "blocked")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 4: Unexpected HTTP status codes (500, 429)
+// ---------------------------------------------------------------------------
+
+func TestResolve_InternalServerError_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestResolve_TooManyRequests_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "429")
+}
+
+func TestResolve_ServiceUnavailable_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "503")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 5: Nil/empty data field — soft-deleted KV v2 secrets
+// ---------------------------------------------------------------------------
+
+func TestResolve_NullDataField_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	// KV v2 soft-delete returns {"data": {"data": null}} — the outer
+	// data wrapper exists but the inner data map is null. This is the
+	// canonical "soft-deleted secret" response.
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		resp := `{"data": {"data": null}}`
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, resp)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/deleted", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+	assert.Contains(t, err.Error(), "no data")
+}
+
+func TestResolve_NullOuterData_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	// The entire outer "data" wrapper is null: {"data": null}.
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		resp := `{"data": null}`
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, resp)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/deleted", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound)
+	assert.Contains(t, err.Error(), "no data")
+}
+
+// ---------------------------------------------------------------------------
+// Gap 8: Malformed JSON response
+// ---------------------------------------------------------------------------
+
+func TestResolve_MalformedJSON_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"data": {"data": {not valid json`)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "parse response")
+}
+
+func TestResolve_EmptyBody_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		// Empty body — json.Unmarshal will fail.
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+}
+
+// ---------------------------------------------------------------------------
+// Gap 9: Oversized response body
+// ---------------------------------------------------------------------------
+
+func TestResolve_OversizedResponse_WrapsResolveFailed(t *testing.T) {
+	t.Parallel()
+	// maxResponseSize is 1 MiB. Sending 1 MiB + 1 byte must trigger the
+	// size check and return ErrSecretResolveFailed.
+	const maxResponseSize = 1 << 20 // mirrors the package constant
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Token") != "test-token" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		// Write a response that exceeds the limit. Content does not need
+		// to be valid JSON — the size check runs before parsing.
+		payload := make([]byte, maxResponseSize+2)
+		for i := range payload {
+			payload[i] = 'x'
+		}
+		_, _ = w.Write(payload)
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(), secrets.Ref{Scheme: "openbao", Path: "secret/data/test", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretResolveFailed)
+	assert.Contains(t, err.Error(), "exceeds")
+}

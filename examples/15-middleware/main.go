@@ -52,6 +52,8 @@ func buildEvent(hints *audit.Hints, transport *audit.TransportMetadata) (eventTy
 	if hints.TargetID != "" {
 		fields["target_id"] = hints.TargetID
 	}
+	// In production, use a generated constant from audit-gen instead of
+	// the raw string (see example 02-code-generation for the full pattern).
 	return "http_request", fields, false
 }
 

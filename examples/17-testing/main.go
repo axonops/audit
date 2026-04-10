@@ -32,6 +32,9 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
+//go:embed outputs.yaml
+var outputsYAML []byte
+
 // UserService is a simple service that emits audit events.
 // It takes a *audit.Logger as a dependency — making it testable.
 type UserService struct {
@@ -71,7 +74,7 @@ func main() {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	result, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: testing-demo\nhost: localhost\noutputs:\n  console:\n    type: stdout\n"), &tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, nil)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

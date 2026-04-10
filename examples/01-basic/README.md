@@ -185,7 +185,7 @@ INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=st
 --- Invalid event (missing required field) ---
 Validation error: audit: event "user_create" missing required fields: [actor_id]
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"pid":...,"actor_id":"alice","outcome":"success"}
+{"timestamp":"...","event_type":"user_create","severity":5,"timezone":"Local","pid":...,"actor_id":"alice","outcome":"success"}
 INFO audit: shutdown complete duration=...
 ```
 

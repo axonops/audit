@@ -31,7 +31,7 @@ in `outputs.yaml`.
 
 | File | Purpose |
 |------|---------|
-| `taxonomy.yaml` | 22 event types, 4 categories, sensitivity labels (embedded) |
+| `taxonomy.yaml` | 21 event types, 4 categories, sensitivity labels (embedded) |
 | `outputs.yaml` | Four outputs with HMAC, CEF, routing, PII stripping |
 | `audit_generated.go` | Generated constants (committed) |
 | `main.go` | Entry point, signal handling, graceful shutdown |
@@ -218,7 +218,9 @@ curl -s -X DELETE -H "X-API-Key: key-alice" \
 # Auth failure:
 curl -s -H "X-API-Key: bad-key" http://localhost:8080/items
 
-# View Grafana dashboard:
+# View Grafana dashboard (anonymous access enabled, no login needed):
+# Navigate to Dashboards > "go-audit: CRUD API Audit Dashboard"
+# Data appears after making API requests above.
 open http://localhost:3000
 
 # Prometheus metrics:
@@ -230,12 +232,14 @@ docker compose down -v
 
 ## Expected Output
 
-On stdout you'll see JSON audit events for every request:
+On stdout you'll see JSON audit events for every request (abbreviated —
+actual events also include `app_name`, `host`, `timezone`, and `pid`
+framework fields):
 
 ```json
-{"timestamp":"...","event_type":"item_list","severity":3,"actor_id":"alice","outcome":"success","event_category":"read"}
-{"timestamp":"...","event_type":"item_create","severity":5,"actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key","event_category":"security"}
+{"timestamp":"...","event_type":"item_list","severity":3,"app_name":"crud-api","host":"...","outcome":"success","event_category":"read"}
+{"timestamp":"...","event_type":"item_create","severity":5,"app_name":"crud-api","host":"...","actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":9,"app_name":"crud-api","host":"...","actor_id":"key-...","outcome":"failure","reason":"invalid API key","event_category":"security"}
 ```
 
 The same events are routed to different outputs:

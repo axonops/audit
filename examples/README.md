@@ -24,7 +24,7 @@ Each example introduces one new concept and builds on the previous.
 | 13 | [hmac-integrity](13-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
 | 14 | [formatters](14-formatters/) | JSON vs CEF with category severity levels |
 | 15 | [middleware](15-middleware/) | Automatic HTTP audit logging with Hints |
-| 16 | [crud-api](16-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
+| 16 | [crud-api](16-crud-api/) | Complete REST API with Postgres, four outputs, HMAC, Loki, Grafana |
 | 17 | [testing](17-testing/) | Testing audit events with audittest.NewLogger |
 | 18 | [buffering](18-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
 

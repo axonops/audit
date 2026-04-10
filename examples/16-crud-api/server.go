@@ -24,8 +24,10 @@ import (
 )
 
 // routeTable maps "METHOD resource" or "METHOD resource/{id}" to audit
-// event types. Read-only after initialization. IMPORTANT: when adding
-// routes below, also add the event mapping here.
+// event types. This map is never written after program start — treat it
+// as a constant. If runtime mutation were needed, use a sync.Map or a
+// mutex-guarded copy. IMPORTANT: when adding routes below, also add
+// the event mapping here.
 var routeTable = map[string]string{
 	// Items
 	"GET items":         EventItemList,
@@ -76,6 +78,9 @@ func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rat
 	outerMux.Handle("POST /login",
 		rateLimitMiddleware(logger, rl)(http.HandlerFunc(authH.login)))
 	outerMux.HandleFunc("POST /logout", authH.logout)
+
+	// Web UI — served directly, not audited (page loads are not audit events).
+	outerMux.Handle("GET /{$}", serveUI())
 
 	// Everything else goes through the middleware chain.
 	outerMux.Handle("/", audited)

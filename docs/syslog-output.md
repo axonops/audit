@@ -279,6 +279,25 @@ enforced by default (configurable via `tls_policy`). Supports:
 
 See [TLS and mTLS Configuration](#tls-and-mtls-configuration) below.
 
+## Delivery Model
+
+The syslog output writes **synchronously** from the core drain
+goroutine via `WriteWithMetadata()`, which carries per-event metadata
+(event type, severity, category, timestamp) used for severity mapping
+into the RFC 5424 PRIORITY field. It has no internal buffer or
+batching — each event is sent directly to the syslog server as soon
+as the drain goroutine processes it.
+
+This means syslog write latency directly affects the drain loop
+throughput and delivery to all other outputs. If the syslog server is
+slow or unreachable, the reconnection backoff (100ms to 30s) will
+delay delivery to every configured output. For unreliable syslog
+servers, you SHOULD pair with an async output (webhook or Loki) to
+ensure other destinations are not blocked.
+
+See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
+the complete pipeline architecture.
+
 ## Complete Configuration Reference
 
 | Field | Type | Default | Description |

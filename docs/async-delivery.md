@@ -5,6 +5,7 @@
 - [How Events Flow](#how-events-flow)
 - [Why Async?](#why-async)
 - [Buffering and Backpressure](#buffering-and-backpressure)
+- [Two-Level Buffering](#two-level-buffering)
 - [Delivery Guarantee](#delivery-guarantee)
 - [Graceful Shutdown](#graceful-shutdown)
 - [Thread Safety](#thread-safety)
@@ -118,6 +119,154 @@ events continuously with no timeout.
 
 Monitor `RecordBufferDrop()` — if it fires, your buffer is too small
 or your outputs are too slow.
+
+## 🏗️ Two-Level Buffering
+
+go-audit has a two-level buffering architecture. Understanding it is
+essential for tuning performance and diagnosing event drops.
+
+### Level 1: Core Logger Buffer
+
+Every `AuditEvent()` call validates the event and enqueues it into a
+buffered Go channel. A single drain goroutine reads from this channel,
+serialises each event, and delivers it to every configured output in
+sequence.
+
+```
+AuditEvent()
+  → validate against taxonomy
+  → enqueue to channel (capacity: Config.BufferSize, default 10,000)
+  → return immediately (sub-microsecond)
+
+Drain goroutine (single, runs continuously)
+  → dequeue entry
+  → set timestamp
+  → serialise (JSON or CEF, cached per format)
+  → deliver to output 1, then output 2, then output 3, ...
+  → return entry to sync.Pool for reuse
+```
+
+If the channel is full, `AuditEvent()` returns `ErrBufferFull` and the
+event is lost. The `RecordBufferDrop()` metric fires on every drop.
+
+### Level 2: Per-Output Buffer (Loki and Webhook Only)
+
+Loki and webhook outputs have their own internal buffered channel and
+a background goroutine that accumulates events into batches before
+sending them as HTTP requests. File, syslog, and stdout outputs do
+**not** have this second level — they write synchronously from the
+drain goroutine.
+
+```
+Drain goroutine                        Output goroutine
+───────────────                        ────────────────
+  delivers to Loki/Webhook output        reads from output channel
+    → WriteWithMetadata() /                → accumulates into batch
+      Write()                              → flushes when:
+    → copies event bytes                       batch_size reached
+    → enqueues to output channel               max_batch_bytes reached (Loki)
+      (capacity: output buffer_size,           flush_interval elapsed
+       default 10,000)                         shutdown
+    → returns immediately                  → HTTP POST to destination
+                                           → retry on 429/5xx
+```
+
+If the output's channel is full (e.g., the destination is down and
+retries are consuming time), new events are dropped. The output-specific
+metric (`RecordLokiDrop()` or `RecordWebhookDrop()`) fires on every
+drop, and `audit.Metrics.RecordEvent(outputName, "error")` is also
+called on the core metrics interface. A rate-limited `slog.Warn`
+diagnostic fires at most once per 10 seconds. Consumers monitoring
+core metrics may see error counts for a webhook or Loki output name
+that represent buffer drops, not HTTP delivery failures.
+
+### The Complete Pipeline
+
+```
+                    Level 1                              Level 2
+                    ───────                              ───────
+AuditEvent() ──► core channel ──► drain goroutine ─┬──► File.Write()                  [synchronous]
+                 (10,000)          (single)        ├──► Syslog.WriteWithMetadata()     [synchronous]
+                                                   ├──► Stdout.Write()                 [synchronous]
+                                                   ├──► Webhook.Write() ──────────────► batchLoop ──► HTTP POST
+                                                   │    (10,000)
+                                                   └──► Loki.WriteWithMetadata() ─────► batchLoop ──► HTTP POST
+                                                        (10,000)
+```
+
+Outputs that implement `MetadataWriter` (Loki, Syslog) receive
+per-event metadata (event type, severity, category, timestamp)
+alongside the serialised bytes. Loki uses this for stream labels;
+Syslog uses it for RFC 5424 severity mapping.
+
+### Key Implications
+
+**A slow synchronous output blocks all outputs.** The drain goroutine
+delivers to outputs sequentially. If a syslog TCP write blocks for 30
+seconds (server unreachable), no events reach file, webhook, or Loki
+during that time. Monitor output errors. You SHOULD use async outputs
+(webhook, Loki) for unreliable destinations to avoid blocking the
+drain goroutine.
+
+**Async output drops are isolated.** If Loki's buffer fills because
+Loki is down, Loki drops events but the core buffer and all other
+outputs are unaffected.
+
+**Two different `buffer_size` configs exist.** `logger.buffer_size`
+(or `Config.BufferSize`) is the Level 1 core channel.
+`buffer_size` on a Loki or webhook output is that output's Level 2
+channel. They are independent. Both default to 10,000 but they are
+not the same thing.
+
+**`batch_size` is not `buffer_size`.** `batch_size` controls how many
+events are grouped into a single HTTP request. `buffer_size` controls
+how many events can queue up waiting to be batched. With the defaults
+(`buffer_size: 10000`, `batch_size: 100`), up to 100 batches of
+events can be queued before drops begin.
+
+### Memory Sizing
+
+The core library uses a package-level `sync.Pool` shared across all
+`Logger` instances to reuse `auditEntry` structs, reducing GC pressure
+on the hot path. Pool entries are returned after the drain goroutine
+finishes processing each event. The channel holds pointers to
+pool-allocated structs, not copies.
+
+For Level 2 buffers (Loki, webhook), each entry is a byte slice copy
+of the serialised event. Typical sizes:
+
+| Event Complexity | Approximate Serialised Size |
+|------------------|-----------------------------|
+| Minimal (3 fields + framework) | ~200 bytes |
+| Typical (8–10 fields + framework) | ~500 bytes |
+| Large (20+ fields + framework) | ~1,200 bytes |
+
+Memory per Level 2 buffer at default 10,000 capacity:
+
+| Event Size | Buffer Memory |
+|------------|---------------|
+| 200 bytes | ~2 MB |
+| 500 bytes | ~5 MB |
+| 1,200 bytes | ~12 MB |
+
+The Loki Level 2 buffer holds `lokiEntry` structs, not raw byte
+slices. Each entry carries the serialised bytes plus an
+`EventMetadata` value (event type, severity, category, timestamp) —
+add approximately 80–120 bytes per entry for the metadata overhead.
+
+With the core buffer + one Loki buffer + one webhook buffer, worst
+case with large events: ~36 MB of buffered events. This is usually
+negligible, but relevant when tuning buffer sizes for
+memory-constrained environments.
+
+### Tuning Guidance
+
+| Symptom | Diagnosis | Fix |
+|---------|-----------|-----|
+| `ErrBufferFull` from `AuditEvent()` | Core buffer (Level 1) full — drain goroutine can't keep up | Increase `logger.buffer_size`, or check if a synchronous output is blocking the drain |
+| `RecordLokiDrop` / `RecordWebhookDrop` firing | Output buffer (Level 2) full — destination too slow or down | Increase output `buffer_size`, decrease `flush_interval`, check destination health |
+| High event latency | Events queued too long before flushing | Decrease `flush_interval` or `batch_size` for faster delivery |
+| Excessive memory | Large buffers with large events | Decrease `buffer_size` on outputs you can afford to drop from |
 
 ## 📤 Delivery Guarantee
 

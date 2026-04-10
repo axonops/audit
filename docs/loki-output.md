@@ -10,6 +10,7 @@ retry.
 - [Why Loki for Audit Logging?](#why-loki-for-audit-logging)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
+- [Buffering Architecture](#buffering-architecture)
 - [Stream Labels](#stream-labels)
 - [Complete Configuration Reference](#complete-configuration-reference)
 - [Authentication](#authentication)
@@ -95,6 +96,64 @@ The Loki output runs its own goroutine (`batchLoop`) that:
 4. Builds the Loki push API JSON payload
 5. Gzip-compresses it
 6. POSTs it to Loki with retry on failure
+
+---
+
+## Buffering Architecture
+
+The Loki output has its own internal buffer separate from the core
+logger buffer. This is [Level 2](async-delivery.md#two-level-buffering)
+in the pipeline:
+
+```
+Core drain goroutine ──► WriteWithMetadata()
+                            → copies event bytes
+                            → enqueues to Loki channel (capacity: buffer_size, default 10,000)
+                            → returns immediately (non-blocking)
+
+Loki batchLoop goroutine
+  → reads from channel
+  → accumulates into batch
+  → flushes on: batch_size (100) | max_batch_bytes (1 MiB) | flush_interval (5s) | shutdown
+  → groups events by stream labels
+  → gzip compresses
+  → HTTP POST to Loki
+  → retries on 429/5xx
+```
+
+### `buffer_size` vs `batch_size`
+
+These are different things:
+
+| Config | Default | What It Controls |
+|--------|---------|------------------|
+| `buffer_size` | 10,000 | How many events can **queue up** waiting to be sent. This is the channel capacity. |
+| `batch_size` | 100 | How many events are grouped into a **single HTTP POST**. This is the flush threshold. |
+
+With the defaults, up to 100 batches of events (10,000 ÷ 100) can be
+queued before drops begin. Increasing `buffer_size` absorbs longer
+outages; decreasing `batch_size` or `flush_interval` drains the buffer
+faster.
+
+### Drop Behaviour
+
+If the internal buffer fills (e.g., Loki is down and retries are
+consuming time), new events are **dropped silently** — the
+`WriteWithMetadata()` call returns `nil` to avoid blocking the core
+drain goroutine. This isolation ensures that a Loki outage does not
+affect delivery to other outputs.
+
+A rate-limited `slog.Warn` fires at most once per 10 seconds during
+sustained drops. The `RecordLokiDrop()` metric fires on **every**
+drop — use metrics, not log lines, for precise monitoring.
+
+### Relationship to Core Buffer
+
+The Loki `buffer_size` is independent of the core `logger.buffer_size`
+(`Config.BufferSize`). Both default to 10,000 but they serve different
+pipeline stages. See
+[Two-Level Buffering](async-delivery.md#two-level-buffering) for the
+full architecture diagram and memory sizing guidance.
 
 ---
 

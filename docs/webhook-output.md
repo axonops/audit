@@ -11,6 +11,7 @@ by default (SSRF protection).
 - [Why Webhook for Audit Logging?](#why-webhook-for-audit-logging)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
+- [Buffering Architecture](#buffering-architecture)
 - [NDJSON Format](#ndjson-format)
 - [Complete Configuration Reference](#complete-configuration-reference)
 - [Authentication](#authentication)
@@ -84,6 +85,61 @@ flowchart LR
 5. On transient failure (5xx, 429), the batch is retried with
    exponential backoff
 6. On permanent failure (4xx), the batch is dropped
+
+## Buffering Architecture
+
+The webhook output has its own internal buffer separate from the core
+logger buffer. This is [Level 2](async-delivery.md#two-level-buffering)
+in the pipeline:
+
+```
+Core drain goroutine ──► Write()
+                            → copies event bytes
+                            → enqueues to webhook channel (capacity: buffer_size, default 10,000)
+                            → returns immediately (non-blocking)
+
+Webhook batchLoop goroutine
+  → reads from channel
+  → accumulates into batch
+  → flushes on: batch_size (100) | flush_interval (5s) | shutdown
+  → joins events as NDJSON
+  → HTTP POST to endpoint
+  → retries on 429/5xx
+```
+
+### `buffer_size` vs `batch_size`
+
+These are different things:
+
+| Config | Default | What It Controls |
+|--------|---------|------------------|
+| `buffer_size` | 10,000 | How many events can **queue up** waiting to be sent. This is the channel capacity. |
+| `batch_size` | 100 | How many events are grouped into a **single HTTP POST**. This is the flush threshold. |
+
+With the defaults, up to 100 batches of events (10,000 / 100) can be
+queued before drops begin. Increasing `buffer_size` absorbs longer
+outages; decreasing `batch_size` or `flush_interval` drains the buffer
+faster.
+
+### Drop Behaviour
+
+If the internal buffer fills (e.g., the endpoint is down and retries
+are consuming time), new events are **dropped silently** — the
+`Write()` call returns `nil` to avoid blocking the core drain
+goroutine. This isolation ensures that a webhook outage does not
+affect delivery to other outputs.
+
+A rate-limited `slog.Warn` fires at most once per 10 seconds during
+sustained drops. The `RecordWebhookDrop()` metric fires on **every**
+drop — use metrics, not log lines, for precise monitoring.
+
+### Relationship to Core Buffer
+
+The webhook `buffer_size` is independent of the core
+`logger.buffer_size` (`Config.BufferSize`). Both default to 10,000
+but they serve different pipeline stages. See
+[Two-Level Buffering](async-delivery.md#two-level-buffering) for the
+full architecture diagram and memory sizing guidance.
 
 ## NDJSON Format
 

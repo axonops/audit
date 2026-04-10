@@ -53,13 +53,15 @@ var routeTable = map[string]string{
 //
 // Login/logout emit audit events directly because they ARE the
 // security action. CRUD routes emit events via the audit middleware.
-func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter) http.Handler {
-	// --- Inner mux: CRUD routes (auth + audit middleware) ---
+func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter, settings *settingsStore) http.Handler {
+	// --- Inner mux: CRUD + admin routes (auth + audit middleware) ---
 	innerMux := http.NewServeMux()
 
 	h := &handlers{db: db}
+	adminH := &adminHandlers{db: db, settings: settings}
 	registerInfraRoutes(innerMux)
 	registerCRUDRoutes(innerMux, h)
+	registerAdminRoutes(innerMux, adminH)
 
 	// Apply middleware: auth first, then audit.
 	authed := authMiddleware(sessions)(innerMux)
@@ -109,6 +111,19 @@ func registerCRUDRoutes(mux *http.ServeMux, h *handlers) {
 	mux.HandleFunc("GET /orders/{id}", h.getOrder)
 	mux.HandleFunc("POST /orders", h.createOrder)
 	mux.HandleFunc("PUT /orders/{id}", h.updateOrder)
+}
+
+func registerAdminRoutes(mux *http.ServeMux, a *adminHandlers) {
+	// Admin settings — successful GET reads are not audited (low value);
+	// authorization failures are still captured via requireAdmin.
+	// PUT writes emit config_change via hints.EventType override.
+	mux.HandleFunc("GET /admin/settings", a.getSettings)
+	mux.HandleFunc("PUT /admin/settings", a.updateSettings)
+
+	// Compliance endpoints — emit data_export / bulk_delete via
+	// hints.EventType override (severity 9, compliance category).
+	mux.HandleFunc("GET /export/users", a.exportUsers)
+	mux.HandleFunc("DELETE /admin/bulk-delete/items", a.bulkDeleteItems)
 }
 
 // buildAuditEvent maps HTTP request metadata to audit events.

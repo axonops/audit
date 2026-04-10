@@ -46,47 +46,69 @@ var routeTable = map[string]string{
 	"PUT orders/{id}": EventOrderUpdate,
 }
 
-// newServer builds the HTTP mux with auth middleware, audit middleware,
-// CRUD routes, health check, and Prometheus metrics endpoint.
-func newServer(logger *audit.Logger, db *sql.DB, m *auditMetrics) http.Handler {
-	mux := http.NewServeMux()
+// newServer builds the HTTP handler with two layers:
+//
+//   - outerMux: login/logout (self-auditing, outside middleware chain)
+//   - innerMux: CRUD routes (wrapped by auth + audit middleware)
+//
+// Login/logout emit audit events directly because they ARE the
+// security action. CRUD routes emit events via the audit middleware.
+func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter) http.Handler {
+	// --- Inner mux: CRUD routes (auth + audit middleware) ---
+	innerMux := http.NewServeMux()
 
 	h := &handlers{db: db}
+	registerInfraRoutes(innerMux)
+	registerCRUDRoutes(innerMux, h)
 
-	// Health check — no auth, no audit.
+	// Apply middleware: auth first, then audit.
+	authed := authMiddleware(sessions)(innerMux)
+	audited := audit.Middleware(logger, buildAuditEvent)(authed)
+
+	// --- Outer mux: auth endpoints (self-auditing, no middleware) ---
+	outerMux := http.NewServeMux()
+
+	authH := &authHandlers{logger: logger, sessions: sessions, rl: rl}
+
+	// Login is wrapped by rate limiter. Logout is not.
+	outerMux.Handle("POST /login",
+		rateLimitMiddleware(logger, rl)(http.HandlerFunc(authH.login)))
+	outerMux.HandleFunc("POST /logout", authH.logout)
+
+	// Everything else goes through the middleware chain.
+	outerMux.Handle("/", audited)
+
+	return outerMux
+}
+
+func registerInfraRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-
-	// Prometheus metrics — no auth, no audit.
 	mux.Handle("GET /metrics", promhttp.Handler())
+}
 
-	// Item routes.
+func registerCRUDRoutes(mux *http.ServeMux, h *handlers) {
+	// Items
 	mux.HandleFunc("GET /items", h.listItems)
 	mux.HandleFunc("GET /items/{id}", h.getItem)
 	mux.HandleFunc("POST /items", h.createItem)
 	mux.HandleFunc("PUT /items/{id}", h.updateItem)
 	mux.HandleFunc("DELETE /items/{id}", h.deleteItem)
 
-	// User routes.
+	// Users
 	mux.HandleFunc("GET /users", h.listUsers)
 	mux.HandleFunc("GET /users/{id}", h.getUser)
 	mux.HandleFunc("POST /users", h.createUser)
 	mux.HandleFunc("PUT /users/{id}", h.updateUser)
 	mux.HandleFunc("DELETE /users/{id}", h.deleteUser)
 
-	// Order routes.
+	// Orders
 	mux.HandleFunc("GET /orders", h.listOrders)
 	mux.HandleFunc("GET /orders/{id}", h.getOrder)
 	mux.HandleFunc("POST /orders", h.createOrder)
 	mux.HandleFunc("PUT /orders/{id}", h.updateOrder)
-
-	// Apply middleware: auth first, then audit.
-	authed := authMiddleware()(mux)
-	audited := audit.Middleware(logger, buildAuditEvent)(authed)
-
-	return audited
 }
 
 // buildAuditEvent maps HTTP request metadata to audit events.

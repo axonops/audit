@@ -1,85 +1,178 @@
 version: 1
 
+sensitivity:
+  labels:
+    pii:
+      description: "Personally identifiable information"
+      fields: [email, phone, address]
+    financial:
+      description: "Financial and payment data"
+      fields: [credit_card, bank_account]
+
 categories:
-  write:
-    severity: 4
-    events:
-      - item_create
-      - item_update
-      - item_delete
-  read:
-    severity: 2
-    events:
-      - item_list
-      - item_read
   security:
     severity: 8
     events:
-      - auth_failure
       - auth_success
-  admin:
-    severity: 6
+      - auth_failure
+      - auth_logout
+      - token_expired
+      - rate_limit_exceeded
+      - authorization_failure
+  write:
+    severity: 5
     events:
+      - user_create
+      - user_update
+      - user_delete
+      - item_create
+      - item_update
+      - item_delete
+      - order_create
+      - order_update
       - config_change
+  read:
+    severity: 3
+    events:
+      - user_read
+      - item_list
+      - item_read
+      - order_list
+  compliance:
+    severity: 9
+    events:
+      - data_export
+      - bulk_delete
 
 events:
-  item_create:
-    description: "An item was created"
+  # --- Security events ---
+  auth_success:
+    description: "An authentication attempt succeeded"
     fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
-
-  item_update:
-    description: "An item was updated"
-    fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
-
-  item_delete:
-    description: "An item was deleted"
-    fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
-
-  item_list:
-    description: "Items were listed"
-    fields:
-      outcome:
-        required: true
-
-  item_read:
-    description: "An item was read"
-    fields:
-      outcome:
-        required: true
+      outcome: { required: true }
+      actor_id: { required: true }
 
   auth_failure:
     description: "An authentication attempt failed"
     severity: 9
     fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
+      outcome: { required: true }
+      actor_id: { required: true }
 
-  auth_success:
-    description: "An authentication attempt succeeded"
+  auth_logout:
+    description: "A user logged out"
     fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  token_expired:
+    description: "An expired session token was presented"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  rate_limit_exceeded:
+    description: "Too many failed authentication attempts"
+    severity: 9
+    fields:
+      outcome: { required: true }
+
+  authorization_failure:
+    description: "A request was denied due to insufficient permissions"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  # --- Write events ---
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+      email: { labels: [pii] }
+      phone: { labels: [pii] }
+
+  user_update:
+    description: "A user account was updated"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+      email: { labels: [pii] }
+      phone: { labels: [pii] }
+
+  user_delete:
+    description: "A user account was deleted"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  item_create:
+    description: "An inventory item was created"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  item_update:
+    description: "An inventory item was updated"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  item_delete:
+    description: "An inventory item was deleted"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  order_create:
+    description: "An order was placed"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  order_update:
+    description: "An order was updated"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
 
   config_change:
-    description: "A configuration change was made"
+    description: "An application setting was changed"
+    severity: 7
     fields:
-      outcome:
-        required: true
-      actor_id:
-        required: true
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  # --- Read events ---
+  user_read:
+    description: "A user account was viewed"
+    fields:
+      outcome: { required: true }
+
+  item_list:
+    description: "Inventory items were listed"
+    fields:
+      outcome: { required: true }
+
+  item_read:
+    description: "An inventory item was viewed"
+    fields:
+      outcome: { required: true }
+
+  order_list:
+    description: "Orders were listed"
+    fields:
+      outcome: { required: true }
+
+  # --- Compliance events ---
+  data_export:
+    description: "User data was exported for compliance"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }
+
+  bulk_delete:
+    description: "A bulk deletion was performed"
+    fields:
+      outcome: { required: true }
+      actor_id: { required: true }

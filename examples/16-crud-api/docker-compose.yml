@@ -1,3 +1,15 @@
+# CRUD API Capstone — Infrastructure
+#
+# Services:
+#   postgres  — application database
+#   loki      — audit event storage for Grafana queries
+#   grafana   — pre-provisioned dashboard at http://localhost:3000
+#
+# Usage:
+#   docker compose up -d          # start infrastructure
+#   go run .                      # start the application
+#   open http://localhost:3000    # view Grafana dashboard
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,31 +19,47 @@ services:
       POSTGRES_PASSWORD: demo
     ports:
       - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U demo -d audit_demo"]
       interval: 2s
       timeout: 5s
       retries: 10
 
-  syslog-ng:
-    image: balabit/syslog-ng:4.2.0
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "127.0.0.1:3100:3100"
     volumes:
-      - ../../tests/bdd/docker/syslog-ng/syslog-ng.conf:/etc/syslog-ng/syslog-ng.conf:ro
-    ports:
-      - "127.0.0.1:5514:5514"
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
     healthcheck:
-      test: ["CMD-SHELL", "syslog-ng-ctl stats || exit 1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
       interval: 3s
-      timeout: 5s
-      retries: 5
+      timeout: 2s
+      retries: 10
+      start_period: 10s
 
-  webhook-receiver:
-    build:
-      context: ../../tests/bdd/docker/webhook-receiver
+  grafana:
+    image: grafana/grafana:11.0.0
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      loki:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/"]
-      interval: 2s
-      timeout: 3s
-      retries: 5
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  pgdata:

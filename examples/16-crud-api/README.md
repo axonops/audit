@@ -5,155 +5,103 @@
 
 # Example 16: CRUD API
 
-A complete REST API with Postgres, five audit outputs, Prometheus
-metrics, HTTP middleware, lifecycle events, and graceful shutdown.
+A complete REST API with Postgres, four audit outputs, HMAC integrity,
+CEF formatting, PII stripping, Loki dashboards, Prometheus metrics,
+HTTP middleware, and graceful shutdown.
 
 This is the capstone example: it demonstrates every major go-audit
-feature in a realistic application, with all five outputs configured
+feature in a realistic application, with all four outputs configured
 in `outputs.yaml`.
 
 ## What You'll Learn
 
-- Configuring outputs with routing, formatting, and env vars in YAML
+- Configuring a 4-output fan-out with HMAC, CEF, routing, and PII stripping
 - Wiring Prometheus metrics into the audit pipeline
 - Using HTTP middleware with authentication and domain hints
+- Grafana dashboards via Loki stream labels
 - Graceful shutdown ordering
 
 ## Prerequisites
 
 - Go 1.26+
-- Docker and Docker Compose (for Postgres, syslog-ng, webhook receiver)
+- Docker and Docker Compose (for Postgres, Loki, Grafana)
 - Completed: all previous examples
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `taxonomy.yaml` | Audit event definitions (embedded in binary) |
-| `outputs.yaml` | Five outputs with routing, formatting, env vars |
+| `taxonomy.yaml` | 21 event types, 4 categories, sensitivity labels (embedded) |
+| `outputs.yaml` | Four outputs with HMAC, CEF, routing, PII stripping |
 | `audit_generated.go` | Generated constants (committed) |
 | `main.go` | Entry point, signal handling, graceful shutdown |
-| `audit_setup.go` | Loads output config, wires metrics factories |
+| `audit_setup.go` | Loads output config, wires file + Loki metrics factories |
 | `server.go` | HTTP mux, middleware wiring, EventBuilder |
 | `handlers.go` | CRUD handlers for `/items` |
 | `auth.go` | API key middleware, auth failure events |
 | `db.go` | Postgres connection and queries |
-| `metrics.go` | Prometheus metrics for all four interfaces |
-| `docker-compose.yml` | Postgres, syslog-ng, webhook receiver |
+| `metrics.go` | Prometheus metrics for audit, file, and Loki interfaces |
+| `docker-compose.yml` | Postgres, Loki, Grafana |
+| `loki-config.yaml` | Loki server configuration |
+| `grafana/` | Pre-provisioned datasource and audit dashboard |
 
 ## Key Concepts
 
-### Output Configuration
+### Output Topology
 
-All five outputs are configured in `outputs.yaml`:
+Four outputs demonstrate different go-audit feature combinations:
 
-```yaml
-version: 1
-outputs:
-  console:
-    type: stdout
+| Output | Format | Route | HMAC | PII | Purpose |
+|--------|--------|-------|------|-----|---------|
+| **console** (stdout) | JSON | all events | none | full | Developer debugging via `docker compose logs` |
+| **compliance_archive** (file) | CEF | all events | v1 SHA-256 | full | Compliance archive, SIEM-ready |
+| **security_feed** (file) | JSON | security + compliance, severity >= 7 | v2 SHA-512 | full | Security team feed |
+| **loki_dashboard** (Loki) | JSON | all events | none | stripped | Grafana dashboards, PII removed |
 
-  audit_log:
-    type: file
-    file:
-      path: "${AUDIT_LOG_PATH:-./audit.log}"
-      max_size_mb: 100
-      max_backups: 5
-      permissions: "0600"
-    route:
-      exclude_categories:
-        - read
-
-  admin_log:
-    type: file
-    file:
-      path: "${ADMIN_LOG_PATH:-./admin-audit.log}"
-      max_size_mb: 50
-      permissions: "0600"
-    route:
-      include_categories:
-        - admin
-    formatter:
-      type: cef
-      vendor: "AxonOps"
-      product: "CRUDExample"
-      version: "0.1.0"
-
-  syslog_security:
-    type: syslog
-    syslog:
-      network: tcp
-      address: "${SYSLOG_ADDR:-localhost:5514}"
-      app_name: crud-api
-    route:
-      include_categories:
-        - security
-
-  webhook_siem:
-    type: webhook
-    webhook:
-      url: "${WEBHOOK_URL:-http://localhost:8081/events}"
-      batch_size: 50
-      flush_interval: "5s"
-      timeout: "10s"
-      max_retries: 3
-      allow_insecure_http: true   # dev only — use HTTPS in production
-      allow_private_ranges: true  # dev only — localhost webhook receiver
-    route:
-      min_severity: 7
-```
-
-| Output | Route | Format | Purpose |
-|--------|-------|--------|---------|
-| console | all events | JSON | Development visibility |
-| audit_log | exclude read | JSON | Persistent audit trail |
-| admin_log | admin only | CEF | SIEM-compatible admin log |
-| syslog_security | security only | JSON | Central security logging |
-| webhook_siem | severity >= 7 | JSON | High-severity alerts to SIEM |
+A single `user_create` event with an email field appears differently
+in each output: full JSON on stdout, CEF with HMAC on audit.log,
+absent from security.log (wrong category), JSON without email on Loki.
 
 ### Environment Variables
 
 Output configs support `${VAR:-default}` syntax:
 
 ```yaml
-path: "${AUDIT_LOG_PATH:-./audit.log}"
-address: "${SYSLOG_ADDR:-localhost:5514}"
+path: "${AUDIT_LOG_PATH:-/data/audit.log}"
+url: "${LOKI_URL:-http://loki:3100/loki/api/v1/push}"
 ```
 
 The defaults work for local development with Docker Compose. In
-production, set `SYSLOG_ADDR` and `WEBHOOK_URL` to your real
-infrastructure.
+production, set `HMAC_SALT_V1`, `HMAC_SALT_V2`, and `LOKI_URL` to
+your real infrastructure.
 
 ### Wiring Prometheus Metrics
 
-go-audit defines four metrics interfaces. The library does not import
-Prometheus — your application brings its own implementation. A single
-struct can implement all four:
+go-audit defines three metrics interfaces for the outputs used here.
+The library does not import Prometheus — your application brings its
+own implementation. A single struct can implement all three:
 
 ```go
 type auditMetrics struct {
-    events           *prometheus.CounterVec   // audit.Metrics (7 methods)
-    fileRotations    *prometheus.CounterVec   // file.Metrics
-    syslogReconnects *prometheus.CounterVec   // syslog.Metrics
-    webhookDrops     prometheus.Counter       // webhook.Metrics
+    events        *prometheus.CounterVec   // audit.Metrics (7 methods)
+    fileRotations *prometheus.CounterVec   // file.Metrics
+    lokiDrops     prometheus.Counter       // loki.Metrics
     // ...
 }
 ```
 
-To track per-output-type metrics (file rotation, syslog reconnection,
-webhook flush timing), register custom factories before loading the
-output config:
+To track per-output-type metrics (file rotation, Loki flush timing,
+Loki drops), register custom factories before loading the output
+config:
 
 ```go
 import (
-    "github.com/axonops/go-audit/file"       // named import — calling file.NewFactory
-    "github.com/axonops/go-audit/syslog"
-    "github.com/axonops/go-audit/webhook"
+    "github.com/axonops/go-audit/file"
+    "github.com/axonops/go-audit/loki"
 )
 
 audit.RegisterOutputFactory("file", file.NewFactory(m))
-audit.RegisterOutputFactory("syslog", syslog.NewFactory(m))
-audit.RegisterOutputFactory("webhook", webhook.NewFactory(m))
+audit.RegisterOutputFactory("loki", loki.NewFactory(m))
 
 result, err := outputconfig.Load(ctx, outputsYAML, &tax, m)
 ```
@@ -170,8 +118,7 @@ Your metrics struct needs to implement these interfaces:
 |-----------|---------|----------------|
 | `audit.Metrics` | 7 methods | Events emitted, validation errors, buffer drops |
 | `file.Metrics` | `RecordFileRotation(path)` | Log file rotation |
-| `syslog.Metrics` | `RecordSyslogReconnect(addr, success)` | Syslog reconnections |
-| `webhook.Metrics` | `RecordWebhookDrop()`, `RecordWebhookFlush(batchSize, dur)` | Webhook delivery |
+| `loki.Metrics` | `RecordLokiDrop()`, `RecordLokiFlush(batchSize, dur)`, `RecordLokiRetry(statusCode, attempt)`, `RecordLokiError(statusCode)` | Loki delivery |
 
 The `/metrics` endpoint exposes standard Prometheus counters.
 
@@ -239,7 +186,7 @@ dropped and a warning is logged.
 # Start infrastructure:
 docker compose up -d
 
-# Wait for Postgres:
+# Wait for services:
 docker compose exec postgres pg_isready -U demo -d audit_demo
 
 # Run the API:
@@ -271,6 +218,11 @@ curl -s -X DELETE -H "X-API-Key: key-alice" \
 # Auth failure:
 curl -s -H "X-API-Key: bad-key" http://localhost:8080/items
 
+# View Grafana dashboard (anonymous access enabled, no login needed):
+# Navigate to Dashboards > "go-audit: CRUD API Audit Dashboard"
+# Data appears after making API requests above.
+open http://localhost:3000
+
 # Prometheus metrics:
 curl -s http://localhost:8080/metrics | grep audit_
 
@@ -280,21 +232,22 @@ docker compose down -v
 
 ## Expected Output
 
-On stdout you'll see JSON audit events for every request:
+On stdout you'll see JSON audit events for every request (abbreviated —
+actual events also include `app_name`, `host`, `timezone`, and `pid`
+framework fields):
 
 ```json
-{"timestamp":"...","event_type":"item_list","severity":2,"actor_id":"alice","outcome":"success","event_category":"read"}
-{"timestamp":"...","event_type":"item_create","severity":4,"actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":9,"actor_id":"bad-key","outcome":"failure","reason":"invalid API key","event_category":"security"}
+{"timestamp":"...","event_type":"item_list","severity":3,"app_name":"crud-api","host":"...","outcome":"success","event_category":"read"}
+{"timestamp":"...","event_type":"item_create","severity":5,"app_name":"crud-api","host":"...","actor_id":"alice","outcome":"success","target_id":"...","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":9,"app_name":"crud-api","host":"...","actor_id":"key-...","outcome":"failure","reason":"invalid API key","event_category":"security"}
 ```
 
-The same events are routed to different outputs based on their category
-and severity:
+The same events are routed to different outputs:
 
-- **`audit.log`** — all events except reads (JSON)
-- **`admin-audit.log`** — admin events only (CEF format)
-- **Syslog** on TCP 5514 — security events only
-- **Webhook** receiver — high-severity events (severity >= 7)
+- **`audit.log`** — all events in CEF format with HMAC v1 (SHA-256)
+- **`security.log`** — security and compliance events (severity >= 7) with HMAC v2 (SHA-512)
+- **Loki** — all events with PII fields stripped, queryable in Grafana
+- **stdout** — all events in JSON with full PII
 
 ## Further Reading
 
@@ -302,4 +255,6 @@ and severity:
 - [HTTP Middleware](../../docs/http-middleware.md) — middleware placement and EventBuilder
 - [Async Delivery](../../docs/async-delivery.md) — graceful shutdown and drain timeout
 - [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference
-
+- [HMAC Integrity](../../docs/hmac-integrity.md) — per-output tamper detection
+- [Sensitivity Labels](../../docs/sensitivity-labels.md) — PII stripping per-output
+- [Loki Output](../../docs/loki-output.md) — stream labels and Grafana integration

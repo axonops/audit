@@ -55,6 +55,8 @@ func (h *handlers) createItem(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
+	// Production apps should wrap r.Body with http.MaxBytesReader
+	// to bound request size: r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid JSON body")
 		return
@@ -87,6 +89,7 @@ func (h *handlers) updateItem(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
+	// Production: use http.MaxBytesReader to bound request size.
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid JSON body")
 		return

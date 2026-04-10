@@ -49,9 +49,11 @@ func authMiddleware() func(http.Handler) http.Handler {
 				if hints != nil {
 					hints.EventType = EventAuthFailure
 					hints.Outcome = "failure"
-					actorID := apiKey
-					if actorID == "" {
-						actorID = "anonymous"
+					// Log only a prefix — never record the full credential
+					// in audit output. Production apps should hash the key.
+					actorID := "anonymous"
+					if apiKey != "" {
+						actorID = apiKey[:min(4, len(apiKey))] + "..."
 					}
 					hints.ActorID = actorID
 					hints.Reason = "invalid API key"

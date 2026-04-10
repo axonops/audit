@@ -194,14 +194,6 @@ so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
 the [Sensitivity Labels](../12-sensitivity-labels/) example.
 
-**Performance note:** Typed builders add one small heap allocation per
-event (the `Event` interface wrapper) compared to passing raw strings
-and maps. This is typically ~48 bytes per event — negligible compared
-to the cost of serialization and I/O. The trade-off is compile-time
-field safety in exchange for a minor allocation overhead. For
-extremely high-throughput paths where every allocation matters, the
-`audit.NewEvent()` escape hatch bypasses builders entirely.
-
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,
 generated constants are worth the small overhead of running

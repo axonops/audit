@@ -21,7 +21,10 @@ HTTPS, loki HTTPS).
 ## Prerequisites
 
 None — this example uses stdout output to demonstrate the TLS policy
-configuration without requiring actual TLS connections.
+configuration without requiring actual TLS connections. This example is
+most useful after reading [06 — Syslog Output](../06-syslog-output/) or
+[07 — Webhook Output](../07-webhook-output/), which show the outputs
+that TLS policy applies to.
 
 ## Files
 

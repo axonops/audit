@@ -62,10 +62,9 @@ func main() {
 	}
 
 	// Create the logger with the Loki output.
-	logger, err := audit.NewLogger(
-		result.Config,
-		append(result.Options, audit.WithTaxonomy(taxonomy))...,
-	)
+	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
+	opts = append(opts, result.Options...)
+	logger, err := audit.NewLogger(result.Config, opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

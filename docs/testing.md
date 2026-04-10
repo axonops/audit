@@ -5,6 +5,7 @@
 - [What Is audittest?](#what-is-audittest)
 - [Why a Test Package?](#why-a-test-package)
 - [Quick Start](#quick-start)
+- [Dependency Injection](#dependency-injection)
 - [Two Constructor Patterns](#two-constructor-patterns)
 - [Recorded Event API](#recorded-event-api)
 - [Metrics Assertions](#metrics-assertions)
@@ -56,6 +57,41 @@ not have processed all events yet, and assertions on `events.Count()`
 or `events.Events()` without draining first produce racy results.
 `NewLogger` registers `t.Cleanup(logger.Close)` as a safety net
 against goroutine leaks, but your explicit Close MUST come first.
+
+## 💉 Dependency Injection
+
+The Quick Start above uses `NewUserService(logger)` — this is the
+correct pattern. Your service takes a `*audit.Logger` as a constructor
+parameter, not from a package-level global:
+
+```go
+// ✅ Correct: inject the logger
+type UserService struct {
+    audit *audit.Logger
+}
+
+func NewUserService(logger *audit.Logger) *UserService {
+    return &UserService{audit: logger}
+}
+```
+
+```go
+// ❌ Wrong: package-level global logger
+var logger *audit.Logger // data races in parallel tests
+
+type UserService struct{}
+```
+
+Why this matters for testing:
+
+- **Injected logger**: each test creates its own `audittest.NewLogger`,
+  passes it to the service, and asserts on its own events. Tests run in
+  parallel safely.
+- **Global logger**: all tests share the same logger. Events from one
+  test appear in another's assertions. `t.Parallel()` causes data races.
+
+Structure your code with constructor injection from the start — it is
+the only pattern that makes audit testing reliable.
 
 ## 🔧 Two Constructor Patterns
 

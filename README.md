@@ -206,9 +206,12 @@ CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... ac
 ```
 
 > `app_name`, `host`, and `pid` are **framework fields** — set once in your
-> outputs.yaml and automatically included in every event. SIEMs use the CEF
-> extension keys (`deviceProcessName`, `dvchost`, `dvcpid`) for automatic
-> host-level correlation.
+> outputs.yaml and automatically included in every event. The `host`,
+> `timezone`, and `pid` values reflect your system — they will differ
+> from the example above. `app_name` is set in `outputs.yaml` and stays
+> constant across deployments. SIEMs use the CEF extension keys
+> (`deviceProcessName`, `dvchost`, `dvcpid`) for automatic host-level
+> correlation.
 
 ---
 

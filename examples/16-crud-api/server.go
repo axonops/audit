@@ -17,10 +17,34 @@ package main
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 
 	audit "github.com/axonops/go-audit"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// routeTable maps "METHOD resource" or "METHOD resource/{id}" to audit
+// event types. IMPORTANT: when adding routes below, also add the event
+// mapping here.
+var routeTable = map[string]string{
+	// Items
+	"GET items":         EventItemList,
+	"GET items/{id}":    EventItemRead,
+	"POST items":        EventItemCreate,
+	"PUT items/{id}":    EventItemUpdate,
+	"DELETE items/{id}": EventItemDelete,
+	// Users
+	"GET users":         EventUserList,
+	"GET users/{id}":    EventUserRead,
+	"POST users":        EventUserCreate,
+	"PUT users/{id}":    EventUserUpdate,
+	"DELETE users/{id}": EventUserDelete,
+	// Orders
+	"GET orders":      EventOrderList,
+	"GET orders/{id}": EventOrderRead,
+	"POST orders":     EventOrderCreate,
+	"PUT orders/{id}": EventOrderUpdate,
+}
 
 // newServer builds the HTTP mux with auth middleware, audit middleware,
 // CRUD routes, health check, and Prometheus metrics endpoint.
@@ -38,16 +62,27 @@ func newServer(logger *audit.Logger, db *sql.DB, m *auditMetrics) http.Handler {
 	// Prometheus metrics — no auth, no audit.
 	mux.Handle("GET /metrics", promhttp.Handler())
 
-	// CRUD routes — require auth.
+	// Item routes.
 	mux.HandleFunc("GET /items", h.listItems)
 	mux.HandleFunc("GET /items/{id}", h.getItem)
 	mux.HandleFunc("POST /items", h.createItem)
 	mux.HandleFunc("PUT /items/{id}", h.updateItem)
 	mux.HandleFunc("DELETE /items/{id}", h.deleteItem)
 
+	// User routes.
+	mux.HandleFunc("GET /users", h.listUsers)
+	mux.HandleFunc("GET /users/{id}", h.getUser)
+	mux.HandleFunc("POST /users", h.createUser)
+	mux.HandleFunc("PUT /users/{id}", h.updateUser)
+	mux.HandleFunc("DELETE /users/{id}", h.deleteUser)
+
+	// Order routes.
+	mux.HandleFunc("GET /orders", h.listOrders)
+	mux.HandleFunc("GET /orders/{id}", h.getOrder)
+	mux.HandleFunc("POST /orders", h.createOrder)
+	mux.HandleFunc("PUT /orders/{id}", h.updateOrder)
+
 	// Apply middleware: auth first, then audit.
-	// Audit middleware wraps the auth+route handler so it captures
-	// the authenticated actor from hints.
 	authed := authMiddleware()(mux)
 	audited := audit.Middleware(logger, buildAuditEvent)(authed)
 
@@ -73,7 +108,12 @@ func buildAuditEvent(hints *audit.Hints, transport *audit.TransportMetadata) (ev
 		return "", nil, true
 	}
 
-	fields = audit.Fields{
+	return eventType, collectFields(hints, transport), false
+}
+
+// collectFields builds the audit Fields map from hints and transport metadata.
+func collectFields(hints *audit.Hints, transport *audit.TransportMetadata) audit.Fields {
+	fields := audit.Fields{
 		FieldOutcome: hints.Outcome,
 	}
 
@@ -94,24 +134,37 @@ func buildAuditEvent(hints *audit.Hints, transport *audit.TransportMetadata) (ev
 		fields[FieldSourceIP] = transport.ClientIP
 	}
 
-	return eventType, fields, false
+	// Copy Extra fields (e.g., PII fields like email, phone) so they
+	// flow through sensitivity filtering in the output pipeline.
+	for k, v := range hints.Extra {
+		fields[k] = v
+	}
+
+	return fields
 }
 
-// mapHTTPToEvent maps HTTP method + path patterns to audit event types.
-// Returns empty string for unrecognised routes (skipped by buildAuditEvent).
+// mapHTTPToEvent maps HTTP method + resolved path to an audit event type
+// using the routeTable. Returns empty string for unrecognised routes.
 func mapHTTPToEvent(method, path string) string {
-	switch {
-	case method == "GET" && path == "/items":
-		return EventItemList
-	case method == "GET":
-		return EventItemRead
-	case method == "POST":
-		return EventItemCreate
-	case method == "PUT":
-		return EventItemUpdate
-	case method == "DELETE":
-		return EventItemDelete
-	default:
-		return "" // unknown route — buildAuditEvent will still emit with empty type
+	resource, hasID := parseResource(path)
+	if resource == "" {
+		return ""
 	}
+
+	key := method + " " + resource
+	if hasID {
+		key += "/{id}"
+	}
+	return routeTable[key]
+}
+
+// parseResource extracts the resource name and whether an ID segment is
+// present from a URL path. "/users" → ("users", false),
+// "/users/abc-123" → ("users", true).
+func parseResource(path string) (resource string, hasID bool) {
+	parts := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 3)
+	if len(parts) == 0 || parts[0] == "" {
+		return "", false
+	}
+	return parts[0], len(parts) >= 2 && parts[1] != ""
 }

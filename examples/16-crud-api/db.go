@@ -22,7 +22,20 @@ import (
 	_ "github.com/lib/pq" // Postgres driver
 )
 
-// Item is the CRUD resource.
+// --- Model types ---
+
+// User is a registered user account. Email and phone carry the "pii"
+// sensitivity label in the taxonomy — they are stripped from Loki output.
+type User struct { //nolint:govet // fieldalignment: readability preferred
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	Phone     string    `json:"phone,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Item is an inventory item.
 type Item struct { //nolint:govet // fieldalignment: readability preferred
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -30,6 +43,19 @@ type Item struct { //nolint:govet // fieldalignment: readability preferred
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// Order links a user to an item with a quantity and status.
+type Order struct { //nolint:govet // fieldalignment: readability preferred
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	ItemID    string    `json:"item_id"`
+	Quantity  int       `json:"quantity"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// --- Connection ---
 
 func connectDB() (*sql.DB, error) {
 	// sslmode=disable is for local Docker development only — use sslmode=require in production.
@@ -47,8 +73,24 @@ func connectDB() (*sql.DB, error) {
 	return db, nil
 }
 
+// --- Schema ---
+
 func createSchema(db *sql.DB) error {
-	_, err := db.Exec(`
+	// Users first — orders reference users.
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			id         TEXT PRIMARY KEY,
+			username   TEXT UNIQUE NOT NULL,
+			email      TEXT NOT NULL DEFAULT '',
+			phone      TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create users table: %w", err)
+	}
+
+	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS items (
 			id          TEXT PRIMARY KEY,
 			name        TEXT NOT NULL,
@@ -56,77 +98,24 @@ func createSchema(db *sql.DB) error {
 			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
-	`)
-	return err
-}
+	`); err != nil {
+		return fmt.Errorf("create items table: %w", err)
+	}
 
-func queryItems(db *sql.DB) ([]Item, error) {
-	rows, err := db.Query("SELECT id, name, description, created_at, updated_at FROM items ORDER BY created_at")
-	if err != nil {
-		return nil, err
+	// Orders reference both users and items.
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS orders (
+			id         TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL REFERENCES users(id),
+			item_id    TEXT NOT NULL REFERENCES items(id),
+			quantity   INTEGER NOT NULL DEFAULT 1,
+			status     TEXT NOT NULL DEFAULT 'pending',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		return fmt.Errorf("create orders table: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	var items []Item
-	for rows.Next() {
-		var it Item
-		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, it)
-	}
-	if items == nil {
-		items = []Item{} // return empty array, not null
-	}
-	return items, rows.Err()
-}
-
-func queryItem(db *sql.DB, id string) (*Item, error) {
-	var it Item
-	err := db.QueryRow(
-		"SELECT id, name, description, created_at, updated_at FROM items WHERE id = $1", id,
-	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &it, nil
-}
-
-func insertItem(db *sql.DB, id, name, description string) (*Item, error) {
-	var it Item
-	err := db.QueryRow(
-		"INSERT INTO items (id, name, description) VALUES ($1, $2, $3) RETURNING id, name, description, created_at, updated_at",
-		id, name, description,
-	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &it, nil
-}
-
-func updateItemDB(db *sql.DB, id, name, description string) (*Item, error) {
-	var it Item
-	err := db.QueryRow(
-		"UPDATE items SET name = $2, description = $3, updated_at = NOW() WHERE id = $1 RETURNING id, name, description, created_at, updated_at",
-		id, name, description,
-	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &it, nil
-}
-
-func deleteItemDB(db *sql.DB, id string) error {
-	result, err := db.Exec("DELETE FROM items WHERE id = $1", id)
-	if err != nil {
-		return err
-	}
-	n, rowsErr := result.RowsAffected()
-	if rowsErr != nil {
-		return fmt.Errorf("rows affected: %w", rowsErr)
-	}
-	if n == 0 {
-		return sql.ErrNoRows
-	}
 	return nil
 }

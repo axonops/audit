@@ -144,6 +144,9 @@ events:
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      setting_key: {}
+      old_value: {}
+      new_value: {}
 
   # --- Read events ---
   user_list:
@@ -182,9 +185,11 @@ events:
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      record_count: {}
 
   bulk_delete:
     description: "A bulk deletion was performed"
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      affected_count: {}

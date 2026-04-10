@@ -68,39 +68,44 @@ const (
 // Field name constants — use in audit.Fields maps for
 // compile-time typo prevention.
 const (
-	FieldAction     = "action"
-	FieldActorID    = "actor_id"
-	FieldActorUID   = "actor_uid"
-	FieldDestHost   = "dest_host"
-	FieldDestIP     = "dest_ip"
-	FieldDestPort   = "dest_port"
-	FieldEmail      = "email"
-	FieldEndTime    = "end_time"
-	FieldFileHash   = "file_hash"
-	FieldFileName   = "file_name"
-	FieldFilePath   = "file_path"
-	FieldFileSize   = "file_size"
-	FieldMessage    = "message"
-	FieldMethod     = "method"
-	FieldOutcome    = "outcome"
-	FieldPath       = "path"
-	FieldPhone      = "phone"
-	FieldProtocol   = "protocol"
-	FieldReason     = "reason"
-	FieldReferrer   = "referrer"
-	FieldRequestID  = "request_id"
-	FieldRole       = "role"
-	FieldSessionID  = "session_id"
-	FieldSourceHost = "source_host"
-	FieldSourceIP   = "source_ip"
-	FieldSourcePort = "source_port"
-	FieldStartTime  = "start_time"
-	FieldTargetID   = "target_id"
-	FieldTargetRole = "target_role"
-	FieldTargetType = "target_type"
-	FieldTargetUID  = "target_uid"
-	FieldTransport  = "transport"
-	FieldUserAgent  = "user_agent"
+	FieldAction        = "action"
+	FieldActorID       = "actor_id"
+	FieldActorUID      = "actor_uid"
+	FieldAffectedCount = "affected_count"
+	FieldDestHost      = "dest_host"
+	FieldDestIP        = "dest_ip"
+	FieldDestPort      = "dest_port"
+	FieldEmail         = "email"
+	FieldEndTime       = "end_time"
+	FieldFileHash      = "file_hash"
+	FieldFileName      = "file_name"
+	FieldFilePath      = "file_path"
+	FieldFileSize      = "file_size"
+	FieldMessage       = "message"
+	FieldMethod        = "method"
+	FieldNewValue      = "new_value"
+	FieldOldValue      = "old_value"
+	FieldOutcome       = "outcome"
+	FieldPath          = "path"
+	FieldPhone         = "phone"
+	FieldProtocol      = "protocol"
+	FieldReason        = "reason"
+	FieldRecordCount   = "record_count"
+	FieldReferrer      = "referrer"
+	FieldRequestID     = "request_id"
+	FieldRole          = "role"
+	FieldSessionID     = "session_id"
+	FieldSettingKey    = "setting_key"
+	FieldSourceHost    = "source_host"
+	FieldSourceIP      = "source_ip"
+	FieldSourcePort    = "source_port"
+	FieldStartTime     = "start_time"
+	FieldTargetID      = "target_id"
+	FieldTargetRole    = "target_role"
+	FieldTargetType    = "target_type"
+	FieldTargetUID     = "target_uid"
+	FieldTransport     = "transport"
+	FieldUserAgent     = "user_agent"
 )
 
 // Sensitivity label constants — use with exclude_labels
@@ -143,15 +148,15 @@ var EventFields = map[string]struct {
 	},
 	EventBulkDelete: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{},
+		Optional: []string{FieldAffectedCount},
 	},
 	EventConfigChange: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{},
+		Optional: []string{FieldNewValue, FieldOldValue, FieldSettingKey},
 	},
 	EventDataExport: {
 		Required: []string{FieldActorID, FieldOutcome},
-		Optional: []string{},
+		Optional: []string{FieldRecordCount},
 	},
 	EventItemCreate: {
 		Required: []string{FieldActorID, FieldOutcome},
@@ -1339,37 +1344,38 @@ func (e *AuthorizationFailureEvent) Categories() []audit.CategoryInfo {
 
 // BulkDeleteFields describes every field on [EventBulkDelete] events.
 type BulkDeleteFields struct {
-	ActorID    audit.FieldInfo // required
-	Outcome    audit.FieldInfo // required
-	Action     audit.FieldInfo // reserved standard
-	ActorUID   audit.FieldInfo // reserved standard
-	DestHost   audit.FieldInfo // reserved standard
-	DestIP     audit.FieldInfo // reserved standard
-	DestPort   audit.FieldInfo // reserved standard
-	EndTime    audit.FieldInfo // reserved standard
-	FileHash   audit.FieldInfo // reserved standard
-	FileName   audit.FieldInfo // reserved standard
-	FilePath   audit.FieldInfo // reserved standard
-	FileSize   audit.FieldInfo // reserved standard
-	Message    audit.FieldInfo // reserved standard
-	Method     audit.FieldInfo // reserved standard
-	Path       audit.FieldInfo // reserved standard
-	Protocol   audit.FieldInfo // reserved standard
-	Reason     audit.FieldInfo // reserved standard
-	Referrer   audit.FieldInfo // reserved standard
-	RequestID  audit.FieldInfo // reserved standard
-	Role       audit.FieldInfo // reserved standard
-	SessionID  audit.FieldInfo // reserved standard
-	SourceHost audit.FieldInfo // reserved standard
-	SourceIP   audit.FieldInfo // reserved standard
-	SourcePort audit.FieldInfo // reserved standard
-	StartTime  audit.FieldInfo // reserved standard
-	TargetID   audit.FieldInfo // reserved standard
-	TargetRole audit.FieldInfo // reserved standard
-	TargetType audit.FieldInfo // reserved standard
-	TargetUID  audit.FieldInfo // reserved standard
-	Transport  audit.FieldInfo // reserved standard
-	UserAgent  audit.FieldInfo // reserved standard
+	ActorID       audit.FieldInfo // required
+	Outcome       audit.FieldInfo // required
+	AffectedCount audit.FieldInfo // optional
+	Action        audit.FieldInfo // reserved standard
+	ActorUID      audit.FieldInfo // reserved standard
+	DestHost      audit.FieldInfo // reserved standard
+	DestIP        audit.FieldInfo // reserved standard
+	DestPort      audit.FieldInfo // reserved standard
+	EndTime       audit.FieldInfo // reserved standard
+	FileHash      audit.FieldInfo // reserved standard
+	FileName      audit.FieldInfo // reserved standard
+	FilePath      audit.FieldInfo // reserved standard
+	FileSize      audit.FieldInfo // reserved standard
+	Message       audit.FieldInfo // reserved standard
+	Method        audit.FieldInfo // reserved standard
+	Path          audit.FieldInfo // reserved standard
+	Protocol      audit.FieldInfo // reserved standard
+	Reason        audit.FieldInfo // reserved standard
+	Referrer      audit.FieldInfo // reserved standard
+	RequestID     audit.FieldInfo // reserved standard
+	Role          audit.FieldInfo // reserved standard
+	SessionID     audit.FieldInfo // reserved standard
+	SourceHost    audit.FieldInfo // reserved standard
+	SourceIP      audit.FieldInfo // reserved standard
+	SourcePort    audit.FieldInfo // reserved standard
+	StartTime     audit.FieldInfo // reserved standard
+	TargetID      audit.FieldInfo // reserved standard
+	TargetRole    audit.FieldInfo // reserved standard
+	TargetType    audit.FieldInfo // reserved standard
+	TargetUID     audit.FieldInfo // reserved standard
+	Transport     audit.FieldInfo // reserved standard
+	UserAgent     audit.FieldInfo // reserved standard
 }
 
 // BulkDeleteEvent builds a type-safe audit event: A bulk deletion was performed.
@@ -1385,6 +1391,12 @@ func NewBulkDeleteEvent(actorID any, outcome any) *BulkDeleteEvent {
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
 	}}
+}
+
+// SetAffectedCount sets the FieldAffectedCount field.
+func (e *BulkDeleteEvent) SetAffectedCount(v any) *BulkDeleteEvent {
+	e.fields[FieldAffectedCount] = v
+	return e
 }
 
 // SetAction sets the reserved standard field "action".
@@ -1573,37 +1585,38 @@ func (e *BulkDeleteEvent) Description() string { return "A bulk deletion was per
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *BulkDeleteEvent) FieldInfo() BulkDeleteFields {
 	return BulkDeleteFields{
-		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
-		Action:     audit.FieldInfo{Name: FieldAction},
-		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
-		DestHost:   audit.FieldInfo{Name: FieldDestHost},
-		DestIP:     audit.FieldInfo{Name: FieldDestIP},
-		DestPort:   audit.FieldInfo{Name: FieldDestPort},
-		EndTime:    audit.FieldInfo{Name: FieldEndTime},
-		FileHash:   audit.FieldInfo{Name: FieldFileHash},
-		FileName:   audit.FieldInfo{Name: FieldFileName},
-		FilePath:   audit.FieldInfo{Name: FieldFilePath},
-		FileSize:   audit.FieldInfo{Name: FieldFileSize},
-		Message:    audit.FieldInfo{Name: FieldMessage},
-		Method:     audit.FieldInfo{Name: FieldMethod},
-		Path:       audit.FieldInfo{Name: FieldPath},
-		Protocol:   audit.FieldInfo{Name: FieldProtocol},
-		Reason:     audit.FieldInfo{Name: FieldReason},
-		Referrer:   audit.FieldInfo{Name: FieldReferrer},
-		RequestID:  audit.FieldInfo{Name: FieldRequestID},
-		Role:       audit.FieldInfo{Name: FieldRole},
-		SessionID:  audit.FieldInfo{Name: FieldSessionID},
-		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
-		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
-		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
-		StartTime:  audit.FieldInfo{Name: FieldStartTime},
-		TargetID:   audit.FieldInfo{Name: FieldTargetID},
-		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
-		TargetType: audit.FieldInfo{Name: FieldTargetType},
-		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
-		Transport:  audit.FieldInfo{Name: FieldTransport},
-		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+		ActorID:       audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:       audit.FieldInfo{Name: FieldOutcome, Required: true},
+		AffectedCount: audit.FieldInfo{Name: FieldAffectedCount},
+		Action:        audit.FieldInfo{Name: FieldAction},
+		ActorUID:      audit.FieldInfo{Name: FieldActorUID},
+		DestHost:      audit.FieldInfo{Name: FieldDestHost},
+		DestIP:        audit.FieldInfo{Name: FieldDestIP},
+		DestPort:      audit.FieldInfo{Name: FieldDestPort},
+		EndTime:       audit.FieldInfo{Name: FieldEndTime},
+		FileHash:      audit.FieldInfo{Name: FieldFileHash},
+		FileName:      audit.FieldInfo{Name: FieldFileName},
+		FilePath:      audit.FieldInfo{Name: FieldFilePath},
+		FileSize:      audit.FieldInfo{Name: FieldFileSize},
+		Message:       audit.FieldInfo{Name: FieldMessage},
+		Method:        audit.FieldInfo{Name: FieldMethod},
+		Path:          audit.FieldInfo{Name: FieldPath},
+		Protocol:      audit.FieldInfo{Name: FieldProtocol},
+		Reason:        audit.FieldInfo{Name: FieldReason},
+		Referrer:      audit.FieldInfo{Name: FieldReferrer},
+		RequestID:     audit.FieldInfo{Name: FieldRequestID},
+		Role:          audit.FieldInfo{Name: FieldRole},
+		SessionID:     audit.FieldInfo{Name: FieldSessionID},
+		SourceHost:    audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:      audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort:    audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:     audit.FieldInfo{Name: FieldStartTime},
+		TargetID:      audit.FieldInfo{Name: FieldTargetID},
+		TargetRole:    audit.FieldInfo{Name: FieldTargetRole},
+		TargetType:    audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:     audit.FieldInfo{Name: FieldTargetUID},
+		Transport:     audit.FieldInfo{Name: FieldTransport},
+		UserAgent:     audit.FieldInfo{Name: FieldUserAgent},
 	}
 }
 
@@ -1618,6 +1631,9 @@ func (e *BulkDeleteEvent) Categories() []audit.CategoryInfo {
 type ConfigChangeFields struct {
 	ActorID    audit.FieldInfo // required
 	Outcome    audit.FieldInfo // required
+	NewValue   audit.FieldInfo // optional
+	OldValue   audit.FieldInfo // optional
+	SettingKey audit.FieldInfo // optional
 	Action     audit.FieldInfo // reserved standard
 	ActorUID   audit.FieldInfo // reserved standard
 	DestHost   audit.FieldInfo // reserved standard
@@ -1662,6 +1678,24 @@ func NewConfigChangeEvent(actorID any, outcome any) *ConfigChangeEvent {
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
 	}}
+}
+
+// SetNewValue sets the FieldNewValue field.
+func (e *ConfigChangeEvent) SetNewValue(v any) *ConfigChangeEvent {
+	e.fields[FieldNewValue] = v
+	return e
+}
+
+// SetOldValue sets the FieldOldValue field.
+func (e *ConfigChangeEvent) SetOldValue(v any) *ConfigChangeEvent {
+	e.fields[FieldOldValue] = v
+	return e
+}
+
+// SetSettingKey sets the FieldSettingKey field.
+func (e *ConfigChangeEvent) SetSettingKey(v any) *ConfigChangeEvent {
+	e.fields[FieldSettingKey] = v
+	return e
 }
 
 // SetAction sets the reserved standard field "action".
@@ -1852,6 +1886,9 @@ func (e *ConfigChangeEvent) FieldInfo() ConfigChangeFields {
 	return ConfigChangeFields{
 		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
 		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		NewValue:   audit.FieldInfo{Name: FieldNewValue},
+		OldValue:   audit.FieldInfo{Name: FieldOldValue},
+		SettingKey: audit.FieldInfo{Name: FieldSettingKey},
 		Action:     audit.FieldInfo{Name: FieldAction},
 		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
 		DestHost:   audit.FieldInfo{Name: FieldDestHost},
@@ -1893,37 +1930,38 @@ func (e *ConfigChangeEvent) Categories() []audit.CategoryInfo {
 
 // DataExportFields describes every field on [EventDataExport] events.
 type DataExportFields struct {
-	ActorID    audit.FieldInfo // required
-	Outcome    audit.FieldInfo // required
-	Action     audit.FieldInfo // reserved standard
-	ActorUID   audit.FieldInfo // reserved standard
-	DestHost   audit.FieldInfo // reserved standard
-	DestIP     audit.FieldInfo // reserved standard
-	DestPort   audit.FieldInfo // reserved standard
-	EndTime    audit.FieldInfo // reserved standard
-	FileHash   audit.FieldInfo // reserved standard
-	FileName   audit.FieldInfo // reserved standard
-	FilePath   audit.FieldInfo // reserved standard
-	FileSize   audit.FieldInfo // reserved standard
-	Message    audit.FieldInfo // reserved standard
-	Method     audit.FieldInfo // reserved standard
-	Path       audit.FieldInfo // reserved standard
-	Protocol   audit.FieldInfo // reserved standard
-	Reason     audit.FieldInfo // reserved standard
-	Referrer   audit.FieldInfo // reserved standard
-	RequestID  audit.FieldInfo // reserved standard
-	Role       audit.FieldInfo // reserved standard
-	SessionID  audit.FieldInfo // reserved standard
-	SourceHost audit.FieldInfo // reserved standard
-	SourceIP   audit.FieldInfo // reserved standard
-	SourcePort audit.FieldInfo // reserved standard
-	StartTime  audit.FieldInfo // reserved standard
-	TargetID   audit.FieldInfo // reserved standard
-	TargetRole audit.FieldInfo // reserved standard
-	TargetType audit.FieldInfo // reserved standard
-	TargetUID  audit.FieldInfo // reserved standard
-	Transport  audit.FieldInfo // reserved standard
-	UserAgent  audit.FieldInfo // reserved standard
+	ActorID     audit.FieldInfo // required
+	Outcome     audit.FieldInfo // required
+	RecordCount audit.FieldInfo // optional
+	Action      audit.FieldInfo // reserved standard
+	ActorUID    audit.FieldInfo // reserved standard
+	DestHost    audit.FieldInfo // reserved standard
+	DestIP      audit.FieldInfo // reserved standard
+	DestPort    audit.FieldInfo // reserved standard
+	EndTime     audit.FieldInfo // reserved standard
+	FileHash    audit.FieldInfo // reserved standard
+	FileName    audit.FieldInfo // reserved standard
+	FilePath    audit.FieldInfo // reserved standard
+	FileSize    audit.FieldInfo // reserved standard
+	Message     audit.FieldInfo // reserved standard
+	Method      audit.FieldInfo // reserved standard
+	Path        audit.FieldInfo // reserved standard
+	Protocol    audit.FieldInfo // reserved standard
+	Reason      audit.FieldInfo // reserved standard
+	Referrer    audit.FieldInfo // reserved standard
+	RequestID   audit.FieldInfo // reserved standard
+	Role        audit.FieldInfo // reserved standard
+	SessionID   audit.FieldInfo // reserved standard
+	SourceHost  audit.FieldInfo // reserved standard
+	SourceIP    audit.FieldInfo // reserved standard
+	SourcePort  audit.FieldInfo // reserved standard
+	StartTime   audit.FieldInfo // reserved standard
+	TargetID    audit.FieldInfo // reserved standard
+	TargetRole  audit.FieldInfo // reserved standard
+	TargetType  audit.FieldInfo // reserved standard
+	TargetUID   audit.FieldInfo // reserved standard
+	Transport   audit.FieldInfo // reserved standard
+	UserAgent   audit.FieldInfo // reserved standard
 }
 
 // DataExportEvent builds a type-safe audit event: User data was exported for compliance.
@@ -1939,6 +1977,12 @@ func NewDataExportEvent(actorID any, outcome any) *DataExportEvent {
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
 	}}
+}
+
+// SetRecordCount sets the FieldRecordCount field.
+func (e *DataExportEvent) SetRecordCount(v any) *DataExportEvent {
+	e.fields[FieldRecordCount] = v
+	return e
 }
 
 // SetAction sets the reserved standard field "action".
@@ -2127,37 +2171,38 @@ func (e *DataExportEvent) Description() string { return "User data was exported 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *DataExportEvent) FieldInfo() DataExportFields {
 	return DataExportFields{
-		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
-		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
-		Action:     audit.FieldInfo{Name: FieldAction},
-		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
-		DestHost:   audit.FieldInfo{Name: FieldDestHost},
-		DestIP:     audit.FieldInfo{Name: FieldDestIP},
-		DestPort:   audit.FieldInfo{Name: FieldDestPort},
-		EndTime:    audit.FieldInfo{Name: FieldEndTime},
-		FileHash:   audit.FieldInfo{Name: FieldFileHash},
-		FileName:   audit.FieldInfo{Name: FieldFileName},
-		FilePath:   audit.FieldInfo{Name: FieldFilePath},
-		FileSize:   audit.FieldInfo{Name: FieldFileSize},
-		Message:    audit.FieldInfo{Name: FieldMessage},
-		Method:     audit.FieldInfo{Name: FieldMethod},
-		Path:       audit.FieldInfo{Name: FieldPath},
-		Protocol:   audit.FieldInfo{Name: FieldProtocol},
-		Reason:     audit.FieldInfo{Name: FieldReason},
-		Referrer:   audit.FieldInfo{Name: FieldReferrer},
-		RequestID:  audit.FieldInfo{Name: FieldRequestID},
-		Role:       audit.FieldInfo{Name: FieldRole},
-		SessionID:  audit.FieldInfo{Name: FieldSessionID},
-		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
-		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
-		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
-		StartTime:  audit.FieldInfo{Name: FieldStartTime},
-		TargetID:   audit.FieldInfo{Name: FieldTargetID},
-		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
-		TargetType: audit.FieldInfo{Name: FieldTargetType},
-		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
-		Transport:  audit.FieldInfo{Name: FieldTransport},
-		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+		ActorID:     audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:     audit.FieldInfo{Name: FieldOutcome, Required: true},
+		RecordCount: audit.FieldInfo{Name: FieldRecordCount},
+		Action:      audit.FieldInfo{Name: FieldAction},
+		ActorUID:    audit.FieldInfo{Name: FieldActorUID},
+		DestHost:    audit.FieldInfo{Name: FieldDestHost},
+		DestIP:      audit.FieldInfo{Name: FieldDestIP},
+		DestPort:    audit.FieldInfo{Name: FieldDestPort},
+		EndTime:     audit.FieldInfo{Name: FieldEndTime},
+		FileHash:    audit.FieldInfo{Name: FieldFileHash},
+		FileName:    audit.FieldInfo{Name: FieldFileName},
+		FilePath:    audit.FieldInfo{Name: FieldFilePath},
+		FileSize:    audit.FieldInfo{Name: FieldFileSize},
+		Message:     audit.FieldInfo{Name: FieldMessage},
+		Method:      audit.FieldInfo{Name: FieldMethod},
+		Path:        audit.FieldInfo{Name: FieldPath},
+		Protocol:    audit.FieldInfo{Name: FieldProtocol},
+		Reason:      audit.FieldInfo{Name: FieldReason},
+		Referrer:    audit.FieldInfo{Name: FieldReferrer},
+		RequestID:   audit.FieldInfo{Name: FieldRequestID},
+		Role:        audit.FieldInfo{Name: FieldRole},
+		SessionID:   audit.FieldInfo{Name: FieldSessionID},
+		SourceHost:  audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:    audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort:  audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:   audit.FieldInfo{Name: FieldStartTime},
+		TargetID:    audit.FieldInfo{Name: FieldTargetID},
+		TargetRole:  audit.FieldInfo{Name: FieldTargetRole},
+		TargetType:  audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:   audit.FieldInfo{Name: FieldTargetUID},
+		Transport:   audit.FieldInfo{Name: FieldTransport},
+		UserAgent:   audit.FieldInfo{Name: FieldUserAgent},
 	}
 }
 

@@ -33,7 +33,12 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
-var errTokenExpired = errors.New("token expired")
+var (
+	errTokenExpired    = errors.New("token expired")
+	errMalformedTok    = errors.New("malformed token")
+	errInvalidSig      = errors.New("invalid signature")
+	errSessionNotFound = errors.New("session not found")
+)
 
 // sessionStore holds active session tokens. Tokens are removed on
 // logout or when individually validated after expiry. Production apps
@@ -93,7 +98,7 @@ func (s *sessionStore) validate(token string) (string, error) {
 	// Verify HMAC signature.
 	lastPipe := strings.LastIndex(token, "|")
 	if lastPipe < 0 {
-		return "", fmt.Errorf("malformed token")
+		return "", errMalformedTok
 	}
 	payload := token[:lastPipe]
 	sig := token[lastPipe+1:]
@@ -102,7 +107,7 @@ func (s *sessionStore) validate(token string) (string, error) {
 	_, _ = mac.Write([]byte(payload)) // hash.Hash.Write never errors
 	expected := hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(sig), []byte(expected)) {
-		return "", fmt.Errorf("invalid signature")
+		return "", errInvalidSig
 	}
 
 	// Check store — token must be active (not logged out).
@@ -110,7 +115,7 @@ func (s *sessionStore) validate(token string) (string, error) {
 	info, ok := s.tokens[token]
 	s.mu.Unlock()
 	if !ok {
-		return "", fmt.Errorf("session not found")
+		return "", errSessionNotFound
 	}
 
 	// Check expiry.
@@ -133,8 +138,8 @@ func (s *sessionStore) revoke(token string) {
 
 // --- Credential store (demo) ---
 
-// credentials maps username → password. In production, use hashed
-// passwords in a database.
+// credentials maps username → password. Read-only after package init.
+// Production: use bcrypt-hashed passwords in a database.
 var credentials = map[string]string{
 	"alice": "password",
 	"bob":   "password",

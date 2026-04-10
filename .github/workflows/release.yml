@@ -2,12 +2,25 @@
 #
 # Trigger manually with a version string. The workflow:
 #   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)
-#   2. Creates annotated tags for all 7 modules and pushes them
-#   3. Verifies all modules are indexed on proxy.golang.org
-#   4. Runs a smoke test (go get + compile in a fresh module)
+#   2. Tags and publishes modules in dependency order (three tiers)
+#   3. Updates inter-module go.mod dependencies between tiers
+#   4. Verifies all modules are indexed on proxy.golang.org
+#   5. Runs a smoke test (go get + compile in a fresh module)
 #
-# The v* tag push also triggers goreleaser.yml automatically, which
-# builds binaries, generates SBOMs, and creates the GitHub Release.
+# Three-tier tagging:
+#   Tier 0: core + secrets (no internal deps) — tagged at CI-tested commit
+#   Tier 1: file, syslog, webhook, loki, cmd/audit-gen, secrets/openbao,
+#           secrets/vault — depend on core and/or secrets
+#   Tier 2: outputconfig — depends on core, file, secrets, secrets/openbao,
+#           secrets/vault
+#
+# Sub-module tags point at commits AFTER go.mod updates (not the
+# CI-tested commit). This is the standard Go multi-module release
+# pattern — the core tag is on the CI-tested commit, sub-module tags
+# are on follow-up commits that update require directives.
+#
+# The v* tag push (Tier 0) also triggers goreleaser.yml automatically,
+# which builds binaries, generates SBOMs, and creates the GitHub Release.
 #
 # See: docs/releasing.md
 name: Release
@@ -52,12 +65,13 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   # =====================================================================
-  # Job 2: Create and push tags (only after CI passes).
+  # Job 2: Tag Tier 0 modules (core + secrets — no internal deps).
+  # These are tagged at the CI-tested commit.
   # =====================================================================
-  tag:
-    name: Create Tags
+  tag-tier0:
+    name: "Tag Tier 0 (core + secrets)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     needs: [ci]
     permissions:
       contents: write
@@ -84,7 +98,7 @@ jobs:
           fi
           echo "HEAD is on main: $(git rev-parse HEAD)"
 
-      - name: Check tags do not already exist
+      - name: Check ALL tags do not already exist
         run: |
           set -euo pipefail
           TAGS=(
@@ -107,21 +121,140 @@ jobs:
           done
           echo "No conflicting tags found"
 
-      - name: Create and push all module tags
+      - name: Create and push Tier 0 tags
+        run: |
+          set -euo pipefail
+          HEAD=$(git rev-parse HEAD)
+          echo "Tagging commit: $HEAD"
+
+          TAGS=("$PUBLISH_VERSION" "secrets/$PUBLISH_VERSION")
+          for tag in "${TAGS[@]}"; do
+            git tag -a "$tag" -m "Release $tag" "$HEAD"
+            echo "  Created: $tag"
+          done
+
+          for tag in "${TAGS[@]}"; do
+            if git push origin "$tag"; then
+              echo "  Pushed: $tag"
+            else
+              echo "::error::Failed to push tag: $tag"
+              exit 1
+            fi
+          done
+          echo "✓ Tier 0 tags pushed. goreleaser.yml will trigger automatically."
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Wait for proxy indexing of Tier 0 modules
+        run: |
+          set -euo pipefail
+          MODULES=(
+            "github.com/axonops/go-audit"
+            "github.com/axonops/go-audit/secrets"
+          )
+          for mod in "${MODULES[@]}"; do
+            echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
+            for i in $(seq 1 30); do
+              if GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION" 2>/dev/null; then
+                echo "  ✓ Indexed: $mod"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "::error::Timeout waiting for proxy indexing of $mod"
+                exit 1
+              fi
+              echo "  Attempt $i/30 — waiting 10s..."
+              sleep 10
+            done
+          done
+
+  # =====================================================================
+  # Job 3: Tag Tier 1 modules (depend on core and/or secrets).
+  # Updates go.mod files, commits to main, then tags at the new commit.
+  # =====================================================================
+  tag-tier1:
+    name: "Tag Tier 1 (core-dependent modules)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [tag-tier0]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Update inter-module dependencies
+        run: |
+          set -euo pipefail
+          CORE="github.com/axonops/go-audit"
+          SECRETS="github.com/axonops/go-audit/secrets"
+
+          # Modules that depend on core only
+          for dir in file syslog webhook loki cmd/audit-gen; do
+            echo "Updating $dir/go.mod → core@$PUBLISH_VERSION"
+            cd "$dir"
+            go mod edit -require "$CORE@$PUBLISH_VERSION"
+            GOWORK=off go mod tidy
+            cd "$GITHUB_WORKSPACE"
+          done
+
+          # Modules that depend on core + secrets
+          for dir in secrets/openbao secrets/vault; do
+            echo "Updating $dir/go.mod → core@$PUBLISH_VERSION + secrets@$PUBLISH_VERSION"
+            cd "$dir"
+            go mod edit -require "$CORE@$PUBLISH_VERSION"
+            go mod edit -require "$SECRETS@$PUBLISH_VERSION"
+            GOWORK=off go mod tidy
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      - name: Commit dependency updates
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add file/go.mod file/go.sum \
+                  syslog/go.mod syslog/go.sum \
+                  webhook/go.mod webhook/go.sum \
+                  loki/go.mod loki/go.sum \
+                  cmd/audit-gen/go.mod cmd/audit-gen/go.sum \
+                  secrets/openbao/go.mod secrets/openbao/go.sum \
+                  secrets/vault/go.mod secrets/vault/go.sum
+
+          if git diff --cached --quiet; then
+            echo "No changes — inter-module deps already at $PUBLISH_VERSION"
+          else
+            git commit -m "release: update tier 1 inter-module deps to $PUBLISH_VERSION"
+            git push origin main
+            echo "✓ Pushed tier 1 go.mod updates to main"
+          fi
+
+      - name: Create and push Tier 1 tags
         run: |
           set -euo pipefail
           HEAD=$(git rev-parse HEAD)
           echo "Tagging commit: $HEAD"
 
           TAGS=(
-            "$PUBLISH_VERSION"
             "file/$PUBLISH_VERSION"
             "syslog/$PUBLISH_VERSION"
             "webhook/$PUBLISH_VERSION"
             "loki/$PUBLISH_VERSION"
-            "outputconfig/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
-            "secrets/$PUBLISH_VERSION"
             "secrets/openbao/$PUBLISH_VERSION"
             "secrets/vault/$PUBLISH_VERSION"
           )
@@ -131,8 +264,6 @@ jobs:
             echo "  Created: $tag"
           done
 
-          echo ""
-          echo "Pushing tags individually..."
           FAILED=()
           for tag in "${TAGS[@]}"; do
             if git push origin "$tag"; then
@@ -149,16 +280,124 @@ jobs:
             echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
             exit 1
           fi
-          echo "✓ All 10 tags pushed. goreleaser.yml will trigger automatically."
+          echo "✓ All Tier 1 tags pushed."
+
+      - name: Wait for proxy indexing of Tier 1 modules
+        run: |
+          set -euo pipefail
+          MODULES=(
+            "github.com/axonops/go-audit/file"
+            "github.com/axonops/go-audit/syslog"
+            "github.com/axonops/go-audit/webhook"
+            "github.com/axonops/go-audit/loki"
+            "github.com/axonops/go-audit/cmd/audit-gen"
+            "github.com/axonops/go-audit/secrets/openbao"
+            "github.com/axonops/go-audit/secrets/vault"
+          )
+          for mod in "${MODULES[@]}"; do
+            echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
+            for i in $(seq 1 30); do
+              if GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION" 2>/dev/null; then
+                echo "  ✓ Indexed: $mod"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "::error::Timeout waiting for proxy indexing of $mod"
+                exit 1
+              fi
+              echo "  Attempt $i/30 — waiting 10s..."
+              sleep 10
+            done
+          done
 
   # =====================================================================
-  # Job 3: Verify modules are published and usable (after tags are pushed).
+  # Job 4: Tag Tier 2 modules (depend on Tier 0 + Tier 1).
+  # outputconfig depends on core, file, secrets, secrets/openbao, secrets/vault.
+  # =====================================================================
+  tag-tier2:
+    name: "Tag Tier 2 (outputconfig)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [tag-tier1]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Update outputconfig inter-module dependencies
+        run: |
+          set -euo pipefail
+          cd outputconfig
+          echo "Updating outputconfig/go.mod..."
+          go mod edit -require "github.com/axonops/go-audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/file@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/secrets@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/secrets/openbao@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/secrets/vault@$PUBLISH_VERSION"
+          GOWORK=off go mod tidy
+          echo "  ✓ Tidied."
+          cd "$GITHUB_WORKSPACE"
+
+          # Also update examples/16-crud-api (not published but must be consistent)
+          cd examples/16-crud-api
+          echo "Updating examples/16-crud-api/go.mod..."
+          go mod edit -require "github.com/axonops/go-audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/file@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/outputconfig@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/syslog@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/go-audit/webhook@$PUBLISH_VERSION"
+          GOWORK=off go mod tidy
+          echo "  ✓ Tidied."
+          cd "$GITHUB_WORKSPACE"
+
+      - name: Commit dependency updates
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add outputconfig/go.mod outputconfig/go.sum
+          git add examples/16-crud-api/go.mod examples/16-crud-api/go.sum
+
+          if git diff --cached --quiet; then
+            echo "No changes — deps already at $PUBLISH_VERSION"
+          else
+            git commit -m "release: update tier 2 inter-module deps to $PUBLISH_VERSION"
+            git push origin main
+            echo "✓ Pushed tier 2 go.mod updates to main"
+          fi
+
+      - name: Create and push outputconfig tag
+        run: |
+          set -euo pipefail
+          HEAD=$(git rev-parse HEAD)
+          echo "Tagging commit: $HEAD"
+          git tag -a "outputconfig/$PUBLISH_VERSION" -m "Release outputconfig/$PUBLISH_VERSION" "$HEAD"
+          if git push origin "outputconfig/$PUBLISH_VERSION"; then
+            echo "  ✓ Pushed: outputconfig/$PUBLISH_VERSION"
+          else
+            echo "::error::Failed to push outputconfig tag"
+            exit 1
+          fi
+
+  # =====================================================================
+  # Job 5: Verify modules are published and usable (after all tags pushed).
   # =====================================================================
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [tag]
+    needs: [tag-tier2]
     steps:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -239,7 +478,7 @@ jobs:
     name: Summary
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    needs: [ci, tag, verify]
+    needs: [ci, tag-tier0, tag-tier1, tag-tier2, verify]
     if: always()
     steps:
       - name: Generate summary
@@ -251,7 +490,9 @@ jobs:
           | Step | Status |
           |------|--------|
           | CI Gate | ${{ needs.ci.result }} |
-          | Create Tags | ${{ needs.tag.result }} |
+          | Tag Tier 0 (core + secrets) | ${{ needs.tag-tier0.result }} |
+          | Tag Tier 1 (core-dependent) | ${{ needs.tag-tier1.result }} |
+          | Tag Tier 2 (outputconfig) | ${{ needs.tag-tier2.result }} |
           | Verify Release | ${{ needs.verify.result }} |
 
           **Modules:**

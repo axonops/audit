@@ -180,7 +180,7 @@ fields are optional — omitted fields use sensible defaults.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `true` | Set `false` to disable audit logging entirely (no-op logger). |
-| `buffer_size` | `10000` | Async channel capacity. Events dropped when full. Maximum: 1,000,000. |
+| `buffer_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
 | `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
 | `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
@@ -358,8 +358,8 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `url` | (required) | HTTPS endpoint. Must be `https://` unless `allow_insecure_http` is set. |
-| `batch_size` | `100` | Events per batch. Maximum: 10,000. |
-| `buffer_size` | `10000` | Internal async buffer capacity. Events dropped when full. Maximum: 1,000,000. |
+| `batch_size` | `100` | Events per HTTP POST (Level 2 flush threshold). Maximum: 10,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
+| `buffer_size` | `10000` | Internal async buffer capacity (Level 2). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `flush_interval` | `"5s"` | Flush after this duration even if batch is not full. |
 | `timeout` | `"10s"` | HTTP request timeout. |
 | `max_retries` | `3` | Retry attempts with exponential backoff. Maximum: 20. |
@@ -386,12 +386,12 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `labels.static` | — | Constant labels on every stream. Keys MUST match `[a-zA-Z_][a-zA-Z0-9_]*`. Values MUST NOT be empty or contain control characters. |
 | `labels.dynamic` | all included | Per-event label toggles. Set to `false` to exclude. Valid keys: `app_name`, `host`, `timezone`, `pid`, `event_type`, `event_category`, `severity`. |
 | `gzip` | `true` | Gzip compress push request bodies. Note: YAML key is `gzip`, not `compress`. |
-| `batch_size` | `100` | Events per push. Maximum: 10,000. |
+| `batch_size` | `100` | Events per push (Level 2 flush threshold). Maximum: 10,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `max_batch_bytes` | `1048576` | Max uncompressed payload bytes (1 MiB). Min: 1,024. Max: 10,485,760 (10 MiB). |
 | `flush_interval` | `"5s"` | Time-based flush trigger. Min: `"100ms"`. Max: `"5m"`. |
 | `timeout` | `"10s"` | HTTP request timeout. Min: `"1s"`. Max: `"5m"`. |
 | `max_retries` | `3` | Retry attempts on 429/5xx with exponential backoff. Max: 20. |
-| `buffer_size` | `10000` | Internal async buffer capacity. Events dropped when full. Min: 100. Max: 1,000,000. |
+| `buffer_size` | `10000` | Internal async buffer capacity (Level 2). Events dropped when full. Min: 100. Max: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. MUST be set together with `tls_key`. |
 | `tls_key` | — | Client key path for mTLS. MUST be set together with `tls_cert`. |

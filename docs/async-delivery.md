@@ -368,6 +368,7 @@ complete working example with signal handling.
 
 ## 📚 Further Reading
 
+- [Progressive Example: Buffering](../examples/18-buffering/) — runnable demo of both levels of backpressure
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Architecture](../ARCHITECTURE.md) — pipeline implementation details

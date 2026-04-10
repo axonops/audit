@@ -26,6 +26,7 @@ Each example introduces one new concept and builds on the previous.
 | 15 | [middleware](15-middleware/) | Automatic HTTP audit logging with Hints |
 | 16 | [crud-api](16-crud-api/) | Complete REST API with Postgres, five outputs, Docker |
 | 17 | [testing](17-testing/) | Testing audit events with audittest.NewLogger |
+| 18 | [buffering](18-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

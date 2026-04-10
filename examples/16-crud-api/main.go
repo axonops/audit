@@ -63,11 +63,15 @@ func main() {
 		log.Fatalf("create schema: %v", schemaErr) //nolint:gocritic // db.Close deferred above; Fatalf is acceptable for startup failures
 	}
 
+	// Set up session store and rate limiter for auth.
+	sessions := newSessionStore(30 * time.Minute)
+	rl := newRateLimiter(1*time.Minute, 5) // 5 failures per minute per IP
+
 	// Build HTTP server.
 	addr := envOr("LISTEN_ADDR", ":8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newServer(logger, db, metrics),
+		Handler:           newServer(logger, db, sessions, rl),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

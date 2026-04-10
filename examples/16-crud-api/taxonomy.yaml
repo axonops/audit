@@ -34,10 +34,12 @@ categories:
   read:
     severity: 3
     events:
+      - user_list
       - user_read
       - item_list
       - item_read
       - order_list
+      - order_read
   compliance:
     severity: 9
     events:
@@ -144,6 +146,11 @@ events:
       actor_id: { required: true }
 
   # --- Read events ---
+  user_list:
+    description: "User accounts were listed"
+    fields:
+      outcome: { required: true }
+
   user_read:
     description: "A user account was viewed"
     fields:
@@ -161,6 +168,11 @@ events:
 
   order_list:
     description: "Orders were listed"
+    fields:
+      outcome: { required: true }
+
+  order_read:
+    description: "An order was viewed"
     fields:
       outcome: { required: true }
 

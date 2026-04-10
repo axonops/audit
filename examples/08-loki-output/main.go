@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Example 13: Loki Output
+// Example 08: Loki Output
 //
 // Demonstrates sending audit events to Grafana Loki with stream labels,
 // gzip compression, and multi-tenant support.
@@ -76,6 +76,8 @@ func main() {
 	}()
 
 	// Audit some events — these will appear in Loki with stream labels.
+	// In production, use generated typed builders from audit-gen instead
+	// of raw event types and Fields maps (see example 02-code-generation).
 	type auditEvent struct {
 		fields    audit.Fields
 		eventType string

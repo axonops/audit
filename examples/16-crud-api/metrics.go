@@ -15,21 +15,20 @@
 package main
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// auditMetrics implements all four go-audit metrics interfaces using
+// auditMetrics implements all three go-audit metrics interfaces using
 // Prometheus client_golang. A single struct satisfies everything via
 // Go's structural duck-typing:
 //
 //   - audit.Metrics (7 methods)
 //   - file.Metrics  (RecordFileRotation)
-//   - syslog.Metrics (RecordSyslogReconnect)
-//   - webhook.Metrics (RecordWebhookDrop, RecordWebhookFlush)
+//   - loki.Metrics  (RecordLokiDrop, RecordLokiFlush, RecordLokiRetry, RecordLokiError)
 type auditMetrics struct {
 	events              *prometheus.CounterVec
 	outputErrors        *prometheus.CounterVec
@@ -39,9 +38,10 @@ type auditMetrics struct {
 	serializationErrors *prometheus.CounterVec
 	bufferDrops         prometheus.Counter
 	fileRotations       *prometheus.CounterVec
-	syslogReconnects    *prometheus.CounterVec
-	webhookDrops        prometheus.Counter
-	webhookFlushDur     prometheus.Histogram
+	lokiDrops           prometheus.Counter
+	lokiFlushDur        prometheus.Histogram
+	lokiRetries         *prometheus.CounterVec
+	lokiErrors          *prometheus.CounterVec
 }
 
 func newMetrics() *auditMetrics {
@@ -86,21 +86,26 @@ func newMetrics() *auditMetrics {
 			Help: "File rotations by path.",
 		}, []string{"path"}),
 
-		syslogReconnects: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "audit_syslog_reconnects_total",
-			Help: "Syslog reconnection attempts by address and success.",
-		}, []string{"address", "success"}),
-
-		webhookDrops: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "audit_webhook_drops_total",
-			Help: "Webhook events dropped due to full buffer.",
+		lokiDrops: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "audit_loki_drops_total",
+			Help: "Loki events dropped due to full buffer or retries exhausted.",
 		}),
 
-		webhookFlushDur: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "audit_webhook_flush_duration_seconds",
-			Help:    "Webhook batch flush duration.",
+		lokiFlushDur: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "audit_loki_flush_duration_seconds",
+			Help:    "Loki batch flush duration.",
 			Buckets: prometheus.DefBuckets,
 		}),
+
+		lokiRetries: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "audit_loki_retries_total",
+			Help: "Loki push retries by status code.",
+		}, []string{"status_code", "attempt"}),
+
+		lokiErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "audit_loki_errors_total",
+			Help: "Loki non-retryable errors by status code.",
+		}, []string{"status_code"}),
 	}
 }
 
@@ -140,19 +145,24 @@ func (m *auditMetrics) RecordFileRotation(path string) {
 	m.fileRotations.WithLabelValues(path).Inc()
 }
 
-// --- syslog.Metrics ---
+// --- loki.Metrics ---
 
-func (m *auditMetrics) RecordSyslogReconnect(address string, success bool) {
-	m.syslogReconnects.WithLabelValues(address, fmt.Sprintf("%t", success)).Inc()
+func (m *auditMetrics) RecordLokiDrop() {
+	m.lokiDrops.Inc()
 }
 
-// --- webhook.Metrics ---
-
-func (m *auditMetrics) RecordWebhookDrop() {
-	m.webhookDrops.Inc()
+func (m *auditMetrics) RecordLokiFlush(batchSize int, dur time.Duration) {
+	_ = batchSize // not tracked — could be a separate histogram
+	m.lokiFlushDur.Observe(dur.Seconds())
 }
 
-func (m *auditMetrics) RecordWebhookFlush(batchSize int, dur time.Duration) {
-	_ = batchSize // could record as a separate metric
-	m.webhookFlushDur.Observe(dur.Seconds())
+func (m *auditMetrics) RecordLokiRetry(statusCode, attempt int) {
+	m.lokiRetries.WithLabelValues(
+		strconv.Itoa(statusCode),
+		strconv.Itoa(attempt),
+	).Inc()
+}
+
+func (m *auditMetrics) RecordLokiError(statusCode int) {
+	m.lokiErrors.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 }

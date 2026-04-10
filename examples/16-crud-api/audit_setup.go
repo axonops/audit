@@ -21,41 +21,37 @@ import (
 
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/file"
+	"github.com/axonops/go-audit/loki"
 	"github.com/axonops/go-audit/outputconfig"
-	"github.com/axonops/go-audit/syslog"
-	"github.com/axonops/go-audit/webhook"
 )
 
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-// setupAuditLogger creates the logger with five named outputs, all
+// setupAuditLogger creates the logger with four named outputs, all
 // loaded from outputs.yaml:
 //
-//  1. console (stdout) — all events, JSON
-//  2. audit_log (file) — exclude read events, JSON
-//  3. admin_log (file) — admin events only, CEF
-//  4. syslog_security (syslog TCP) — security events only, JSON
-//  5. webhook_siem (webhook HTTP) — all events, JSON
+//  1. console (stdout) — all events, JSON, no HMAC
+//  2. compliance_archive (file) — all events, CEF, HMAC v1 (SHA-256)
+//  3. security_feed (file) — security + compliance, severity ≥ 7, HMAC v2 (SHA-512)
+//  4. loki_dashboard (loki) — all events, JSON, PII stripped
 //
-// Per-output-type metrics (file rotation, syslog reconnection,
-// webhook flush) are wired by registering custom factories before
-// loading the YAML config.
+// Per-output-type metrics (file rotation, Loki flush/drop) are wired
+// by registering custom factories before loading the YAML config.
 func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
 	// Override init()-registered default factories with metrics-aware
-	// factories so file rotations, syslog reconnects, and webhook
-	// flushes are tracked in Prometheus.
+	// factories so file rotations and Loki flushes/drops are tracked
+	// in Prometheus.
 	audit.RegisterOutputFactory("file", file.NewFactory(m))
-	audit.RegisterOutputFactory("syslog", syslog.NewFactory(m))
-	audit.RegisterOutputFactory("webhook", webhook.NewFactory(m))
+	audit.RegisterOutputFactory("loki", loki.NewFactory(m))
 
-	// Load all five outputs from YAML. Environment variables in the
-	// YAML (like ${SYSLOG_ADDR:-localhost:5514}) are resolved at
+	// Load all four outputs from YAML. Environment variables in the
+	// YAML (like ${LOKI_URL:-http://loki:3100/...}) are resolved at
 	// load time.
 	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
 	if err != nil {
 		log.Printf("load outputs: %v", err)
-		log.Printf("hint: run 'docker compose up -d' to start the infrastructure")
+		log.Printf("hint: run 'docker compose up -d' to start Loki and Postgres")
 		return nil, err
 	}
 

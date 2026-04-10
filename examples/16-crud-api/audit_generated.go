@@ -10,29 +10,55 @@ import audit "github.com/axonops/go-audit"
 const (
 	// EventAuthFailure — An authentication attempt failed
 	EventAuthFailure = "auth_failure"
+	// EventAuthLogout — A user logged out
+	EventAuthLogout = "auth_logout"
 	// EventAuthSuccess — An authentication attempt succeeded
 	EventAuthSuccess = "auth_success"
-	// EventConfigChange — A configuration change was made
+	// EventAuthorizationFailure — A request was denied due to insufficient permissions
+	EventAuthorizationFailure = "authorization_failure"
+	// EventBulkDelete — A bulk deletion was performed
+	EventBulkDelete = "bulk_delete"
+	// EventConfigChange — An application setting was changed
 	EventConfigChange = "config_change"
-	// EventItemCreate — An item was created
+	// EventDataExport — User data was exported for compliance
+	EventDataExport = "data_export"
+	// EventItemCreate — An inventory item was created
 	EventItemCreate = "item_create"
-	// EventItemDelete — An item was deleted
+	// EventItemDelete — An inventory item was deleted
 	EventItemDelete = "item_delete"
-	// EventItemList — Items were listed
+	// EventItemList — Inventory items were listed
 	EventItemList = "item_list"
-	// EventItemRead — An item was read
+	// EventItemRead — An inventory item was viewed
 	EventItemRead = "item_read"
-	// EventItemUpdate — An item was updated
+	// EventItemUpdate — An inventory item was updated
 	EventItemUpdate = "item_update"
+	// EventOrderCreate — An order was placed
+	EventOrderCreate = "order_create"
+	// EventOrderList — Orders were listed
+	EventOrderList = "order_list"
+	// EventOrderUpdate — An order was updated
+	EventOrderUpdate = "order_update"
+	// EventRateLimitExceeded — Too many failed authentication attempts
+	EventRateLimitExceeded = "rate_limit_exceeded"
+	// EventTokenExpired — An expired session token was presented
+	EventTokenExpired = "token_expired"
+	// EventUserCreate — A new user account was created
+	EventUserCreate = "user_create"
+	// EventUserDelete — A user account was deleted
+	EventUserDelete = "user_delete"
+	// EventUserRead — A user account was viewed
+	EventUserRead = "user_read"
+	// EventUserUpdate — A user account was updated
+	EventUserUpdate = "user_update"
 )
 
 // Category constants — use with Logger.EnableCategory and
 // Logger.DisableCategory.
 const (
-	CategoryAdmin    = "admin"
-	CategoryRead     = "read"
-	CategorySecurity = "security"
-	CategoryWrite    = "write"
+	CategoryCompliance = "compliance"
+	CategoryRead       = "read"
+	CategorySecurity   = "security"
+	CategoryWrite      = "write"
 )
 
 // Field name constants — use in audit.Fields maps for
@@ -44,6 +70,7 @@ const (
 	FieldDestHost   = "dest_host"
 	FieldDestIP     = "dest_ip"
 	FieldDestPort   = "dest_port"
+	FieldEmail      = "email"
 	FieldEndTime    = "end_time"
 	FieldFileHash   = "file_hash"
 	FieldFileName   = "file_name"
@@ -53,6 +80,7 @@ const (
 	FieldMethod     = "method"
 	FieldOutcome    = "outcome"
 	FieldPath       = "path"
+	FieldPhone      = "phone"
 	FieldProtocol   = "protocol"
 	FieldReason     = "reason"
 	FieldReferrer   = "referrer"
@@ -71,6 +99,23 @@ const (
 	FieldUserAgent  = "user_agent"
 )
 
+// Sensitivity label constants — use with exclude_labels
+// in output configuration.
+const (
+	// LabelFinancial — Financial and payment data
+	LabelFinancial = "financial"
+	// LabelPii — Personally identifiable information
+	LabelPii = "pii"
+)
+
+// FieldLabels maps field names to the sensitivity labels they carry.
+// Resolved from all three mechanisms: explicit annotation, global
+// field mapping, and regex patterns.
+var FieldLabels = map[string][]string{
+	FieldEmail: {LabelPii},
+	FieldPhone: {LabelPii},
+}
+
 // EventFields maps event types to their required and optional fields.
 var EventFields = map[string]struct {
 	Required []string
@@ -80,11 +125,27 @@ var EventFields = map[string]struct {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
 	},
+	EventAuthLogout: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
 	EventAuthSuccess: {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
 	},
+	EventAuthorizationFailure: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventBulkDelete: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
 	EventConfigChange: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventDataExport: {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
 	},
@@ -108,14 +169,50 @@ var EventFields = map[string]struct {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
 	},
+	EventOrderCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventOrderList: {
+		Required: []string{FieldOutcome},
+		Optional: []string{},
+	},
+	EventOrderUpdate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventRateLimitExceeded: {
+		Required: []string{FieldOutcome},
+		Optional: []string{},
+	},
+	EventTokenExpired: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventUserCreate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldEmail, FieldPhone},
+	},
+	EventUserDelete: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{},
+	},
+	EventUserRead: {
+		Required: []string{FieldOutcome},
+		Optional: []string{},
+	},
+	EventUserUpdate: {
+		Required: []string{FieldActorID, FieldOutcome},
+		Optional: []string{FieldEmail, FieldPhone},
+	},
 }
 
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
-	CategoryAdmin:    {EventConfigChange},
-	CategoryRead:     {EventItemList, EventItemRead},
-	CategorySecurity: {EventAuthFailure, EventAuthSuccess},
-	CategoryWrite:    {EventItemCreate, EventItemDelete, EventItemUpdate},
+	CategoryCompliance: {EventBulkDelete, EventDataExport},
+	CategoryRead:       {EventItemList, EventItemRead, EventOrderList, EventUserRead},
+	CategorySecurity:   {EventAuthFailure, EventAuthLogout, EventAuthSuccess, EventAuthorizationFailure, EventRateLimitExceeded, EventTokenExpired},
+	CategoryWrite:      {EventConfigChange, EventItemCreate, EventItemDelete, EventItemUpdate, EventOrderCreate, EventOrderUpdate, EventUserCreate, EventUserDelete, EventUserUpdate},
 }
 
 // AuthFailureFields describes every field on [EventAuthFailure] events.
@@ -390,6 +487,283 @@ func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 
 // Categories returns the categories this event belongs to.
 func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategorySecurity, Severity: intPtr(8)},
+	}
+}
+
+// AuthLogoutFields describes every field on [EventAuthLogout] events.
+type AuthLogoutFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// AuthLogoutEvent builds a type-safe audit event: A user logged out.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type AuthLogoutEvent struct {
+	fields audit.Fields
+}
+
+// NewAuthLogoutEvent creates a EventAuthLogout event with required fields.
+func NewAuthLogoutEvent(actorID any, outcome any) *AuthLogoutEvent {
+	return &AuthLogoutEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *AuthLogoutEvent) SetAction(v any) *AuthLogoutEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *AuthLogoutEvent) SetActorUID(v any) *AuthLogoutEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *AuthLogoutEvent) SetDestHost(v any) *AuthLogoutEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *AuthLogoutEvent) SetDestIP(v any) *AuthLogoutEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *AuthLogoutEvent) SetDestPort(v any) *AuthLogoutEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *AuthLogoutEvent) SetEndTime(v any) *AuthLogoutEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *AuthLogoutEvent) SetFileHash(v any) *AuthLogoutEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *AuthLogoutEvent) SetFileName(v any) *AuthLogoutEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *AuthLogoutEvent) SetFilePath(v any) *AuthLogoutEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *AuthLogoutEvent) SetFileSize(v any) *AuthLogoutEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *AuthLogoutEvent) SetMessage(v any) *AuthLogoutEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *AuthLogoutEvent) SetMethod(v any) *AuthLogoutEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *AuthLogoutEvent) SetPath(v any) *AuthLogoutEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *AuthLogoutEvent) SetProtocol(v any) *AuthLogoutEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *AuthLogoutEvent) SetReason(v any) *AuthLogoutEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *AuthLogoutEvent) SetReferrer(v any) *AuthLogoutEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *AuthLogoutEvent) SetRequestID(v any) *AuthLogoutEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *AuthLogoutEvent) SetRole(v any) *AuthLogoutEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *AuthLogoutEvent) SetSessionID(v any) *AuthLogoutEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *AuthLogoutEvent) SetSourceHost(v any) *AuthLogoutEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *AuthLogoutEvent) SetSourceIP(v any) *AuthLogoutEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *AuthLogoutEvent) SetSourcePort(v any) *AuthLogoutEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *AuthLogoutEvent) SetStartTime(v any) *AuthLogoutEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *AuthLogoutEvent) SetTargetID(v any) *AuthLogoutEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *AuthLogoutEvent) SetTargetRole(v any) *AuthLogoutEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *AuthLogoutEvent) SetTargetType(v any) *AuthLogoutEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *AuthLogoutEvent) SetTargetUID(v any) *AuthLogoutEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *AuthLogoutEvent) SetTransport(v any) *AuthLogoutEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *AuthLogoutEvent) SetUserAgent(v any) *AuthLogoutEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *AuthLogoutEvent) EventType() string { return EventAuthLogout }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *AuthLogoutEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *AuthLogoutEvent) Description() string { return "A user logged out" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *AuthLogoutEvent) FieldInfo() AuthLogoutFields {
+	return AuthLogoutFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *AuthLogoutEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
 		{Name: CategorySecurity, Severity: intPtr(8)},
 	}
@@ -672,6 +1046,562 @@ func (e *AuthSuccessEvent) Categories() []audit.CategoryInfo {
 	}
 }
 
+// AuthorizationFailureFields describes every field on [EventAuthorizationFailure] events.
+type AuthorizationFailureFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// AuthorizationFailureEvent builds a type-safe audit event: A request was denied due to insufficient permissions.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type AuthorizationFailureEvent struct {
+	fields audit.Fields
+}
+
+// NewAuthorizationFailureEvent creates a EventAuthorizationFailure event with required fields.
+func NewAuthorizationFailureEvent(actorID any, outcome any) *AuthorizationFailureEvent {
+	return &AuthorizationFailureEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *AuthorizationFailureEvent) SetAction(v any) *AuthorizationFailureEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *AuthorizationFailureEvent) SetActorUID(v any) *AuthorizationFailureEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *AuthorizationFailureEvent) SetDestHost(v any) *AuthorizationFailureEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *AuthorizationFailureEvent) SetDestIP(v any) *AuthorizationFailureEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *AuthorizationFailureEvent) SetDestPort(v any) *AuthorizationFailureEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *AuthorizationFailureEvent) SetEndTime(v any) *AuthorizationFailureEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *AuthorizationFailureEvent) SetFileHash(v any) *AuthorizationFailureEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *AuthorizationFailureEvent) SetFileName(v any) *AuthorizationFailureEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *AuthorizationFailureEvent) SetFilePath(v any) *AuthorizationFailureEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *AuthorizationFailureEvent) SetFileSize(v any) *AuthorizationFailureEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *AuthorizationFailureEvent) SetMessage(v any) *AuthorizationFailureEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *AuthorizationFailureEvent) SetMethod(v any) *AuthorizationFailureEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *AuthorizationFailureEvent) SetPath(v any) *AuthorizationFailureEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *AuthorizationFailureEvent) SetProtocol(v any) *AuthorizationFailureEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *AuthorizationFailureEvent) SetReason(v any) *AuthorizationFailureEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *AuthorizationFailureEvent) SetReferrer(v any) *AuthorizationFailureEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *AuthorizationFailureEvent) SetRequestID(v any) *AuthorizationFailureEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *AuthorizationFailureEvent) SetRole(v any) *AuthorizationFailureEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *AuthorizationFailureEvent) SetSessionID(v any) *AuthorizationFailureEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *AuthorizationFailureEvent) SetSourceHost(v any) *AuthorizationFailureEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *AuthorizationFailureEvent) SetSourceIP(v any) *AuthorizationFailureEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *AuthorizationFailureEvent) SetSourcePort(v any) *AuthorizationFailureEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *AuthorizationFailureEvent) SetStartTime(v any) *AuthorizationFailureEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *AuthorizationFailureEvent) SetTargetID(v any) *AuthorizationFailureEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *AuthorizationFailureEvent) SetTargetRole(v any) *AuthorizationFailureEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *AuthorizationFailureEvent) SetTargetType(v any) *AuthorizationFailureEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *AuthorizationFailureEvent) SetTargetUID(v any) *AuthorizationFailureEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *AuthorizationFailureEvent) SetTransport(v any) *AuthorizationFailureEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *AuthorizationFailureEvent) SetUserAgent(v any) *AuthorizationFailureEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *AuthorizationFailureEvent) EventType() string { return EventAuthorizationFailure }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *AuthorizationFailureEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *AuthorizationFailureEvent) Description() string {
+	return "A request was denied due to insufficient permissions"
+}
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *AuthorizationFailureEvent) FieldInfo() AuthorizationFailureFields {
+	return AuthorizationFailureFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *AuthorizationFailureEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategorySecurity, Severity: intPtr(8)},
+	}
+}
+
+// BulkDeleteFields describes every field on [EventBulkDelete] events.
+type BulkDeleteFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// BulkDeleteEvent builds a type-safe audit event: A bulk deletion was performed.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type BulkDeleteEvent struct {
+	fields audit.Fields
+}
+
+// NewBulkDeleteEvent creates a EventBulkDelete event with required fields.
+func NewBulkDeleteEvent(actorID any, outcome any) *BulkDeleteEvent {
+	return &BulkDeleteEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *BulkDeleteEvent) SetAction(v any) *BulkDeleteEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *BulkDeleteEvent) SetActorUID(v any) *BulkDeleteEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *BulkDeleteEvent) SetDestHost(v any) *BulkDeleteEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *BulkDeleteEvent) SetDestIP(v any) *BulkDeleteEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *BulkDeleteEvent) SetDestPort(v any) *BulkDeleteEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *BulkDeleteEvent) SetEndTime(v any) *BulkDeleteEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *BulkDeleteEvent) SetFileHash(v any) *BulkDeleteEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *BulkDeleteEvent) SetFileName(v any) *BulkDeleteEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *BulkDeleteEvent) SetFilePath(v any) *BulkDeleteEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *BulkDeleteEvent) SetFileSize(v any) *BulkDeleteEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *BulkDeleteEvent) SetMessage(v any) *BulkDeleteEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *BulkDeleteEvent) SetMethod(v any) *BulkDeleteEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *BulkDeleteEvent) SetPath(v any) *BulkDeleteEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *BulkDeleteEvent) SetProtocol(v any) *BulkDeleteEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *BulkDeleteEvent) SetReason(v any) *BulkDeleteEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *BulkDeleteEvent) SetReferrer(v any) *BulkDeleteEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *BulkDeleteEvent) SetRequestID(v any) *BulkDeleteEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *BulkDeleteEvent) SetRole(v any) *BulkDeleteEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *BulkDeleteEvent) SetSessionID(v any) *BulkDeleteEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *BulkDeleteEvent) SetSourceHost(v any) *BulkDeleteEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *BulkDeleteEvent) SetSourceIP(v any) *BulkDeleteEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *BulkDeleteEvent) SetSourcePort(v any) *BulkDeleteEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *BulkDeleteEvent) SetStartTime(v any) *BulkDeleteEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *BulkDeleteEvent) SetTargetID(v any) *BulkDeleteEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *BulkDeleteEvent) SetTargetRole(v any) *BulkDeleteEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *BulkDeleteEvent) SetTargetType(v any) *BulkDeleteEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *BulkDeleteEvent) SetTargetUID(v any) *BulkDeleteEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *BulkDeleteEvent) SetTransport(v any) *BulkDeleteEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *BulkDeleteEvent) SetUserAgent(v any) *BulkDeleteEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *BulkDeleteEvent) EventType() string { return EventBulkDelete }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *BulkDeleteEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *BulkDeleteEvent) Description() string { return "A bulk deletion was performed" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *BulkDeleteEvent) FieldInfo() BulkDeleteFields {
+	return BulkDeleteFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *BulkDeleteEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryCompliance, Severity: intPtr(9)},
+	}
+}
+
 // ConfigChangeFields describes every field on [EventConfigChange] events.
 type ConfigChangeFields struct {
 	ActorID    audit.FieldInfo // required
@@ -707,7 +1637,7 @@ type ConfigChangeFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ConfigChangeEvent builds a type-safe audit event: A configuration change was made.
+// ConfigChangeEvent builds a type-safe audit event: An application setting was changed.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ConfigChangeEvent struct {
@@ -903,7 +1833,7 @@ func (e *ConfigChangeEvent) EventType() string { return EventConfigChange }
 func (e *ConfigChangeEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ConfigChangeEvent) Description() string { return "A configuration change was made" }
+func (e *ConfigChangeEvent) Description() string { return "An application setting was changed" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ConfigChangeEvent) FieldInfo() ConfigChangeFields {
@@ -945,7 +1875,284 @@ func (e *ConfigChangeEvent) FieldInfo() ConfigChangeFields {
 // Categories returns the categories this event belongs to.
 func (e *ConfigChangeEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryAdmin, Severity: intPtr(6)},
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// DataExportFields describes every field on [EventDataExport] events.
+type DataExportFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// DataExportEvent builds a type-safe audit event: User data was exported for compliance.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type DataExportEvent struct {
+	fields audit.Fields
+}
+
+// NewDataExportEvent creates a EventDataExport event with required fields.
+func NewDataExportEvent(actorID any, outcome any) *DataExportEvent {
+	return &DataExportEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *DataExportEvent) SetAction(v any) *DataExportEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *DataExportEvent) SetActorUID(v any) *DataExportEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *DataExportEvent) SetDestHost(v any) *DataExportEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *DataExportEvent) SetDestIP(v any) *DataExportEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *DataExportEvent) SetDestPort(v any) *DataExportEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *DataExportEvent) SetEndTime(v any) *DataExportEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *DataExportEvent) SetFileHash(v any) *DataExportEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *DataExportEvent) SetFileName(v any) *DataExportEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *DataExportEvent) SetFilePath(v any) *DataExportEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *DataExportEvent) SetFileSize(v any) *DataExportEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *DataExportEvent) SetMessage(v any) *DataExportEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *DataExportEvent) SetMethod(v any) *DataExportEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *DataExportEvent) SetPath(v any) *DataExportEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *DataExportEvent) SetProtocol(v any) *DataExportEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *DataExportEvent) SetReason(v any) *DataExportEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *DataExportEvent) SetReferrer(v any) *DataExportEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *DataExportEvent) SetRequestID(v any) *DataExportEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *DataExportEvent) SetRole(v any) *DataExportEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *DataExportEvent) SetSessionID(v any) *DataExportEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *DataExportEvent) SetSourceHost(v any) *DataExportEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *DataExportEvent) SetSourceIP(v any) *DataExportEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *DataExportEvent) SetSourcePort(v any) *DataExportEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *DataExportEvent) SetStartTime(v any) *DataExportEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *DataExportEvent) SetTargetID(v any) *DataExportEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *DataExportEvent) SetTargetRole(v any) *DataExportEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *DataExportEvent) SetTargetType(v any) *DataExportEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *DataExportEvent) SetTargetUID(v any) *DataExportEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *DataExportEvent) SetTransport(v any) *DataExportEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *DataExportEvent) SetUserAgent(v any) *DataExportEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *DataExportEvent) EventType() string { return EventDataExport }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *DataExportEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *DataExportEvent) Description() string { return "User data was exported for compliance" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *DataExportEvent) FieldInfo() DataExportFields {
+	return DataExportFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *DataExportEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryCompliance, Severity: intPtr(9)},
 	}
 }
 
@@ -984,7 +2191,7 @@ type ItemCreateFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ItemCreateEvent builds a type-safe audit event: An item was created.
+// ItemCreateEvent builds a type-safe audit event: An inventory item was created.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ItemCreateEvent struct {
@@ -1180,7 +2387,7 @@ func (e *ItemCreateEvent) EventType() string { return EventItemCreate }
 func (e *ItemCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ItemCreateEvent) Description() string { return "An item was created" }
+func (e *ItemCreateEvent) Description() string { return "An inventory item was created" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemCreateEvent) FieldInfo() ItemCreateFields {
@@ -1222,7 +2429,7 @@ func (e *ItemCreateEvent) FieldInfo() ItemCreateFields {
 // Categories returns the categories this event belongs to.
 func (e *ItemCreateEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite, Severity: intPtr(4)},
+		{Name: CategoryWrite, Severity: intPtr(5)},
 	}
 }
 
@@ -1261,7 +2468,7 @@ type ItemDeleteFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ItemDeleteEvent builds a type-safe audit event: An item was deleted.
+// ItemDeleteEvent builds a type-safe audit event: An inventory item was deleted.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ItemDeleteEvent struct {
@@ -1457,7 +2664,7 @@ func (e *ItemDeleteEvent) EventType() string { return EventItemDelete }
 func (e *ItemDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ItemDeleteEvent) Description() string { return "An item was deleted" }
+func (e *ItemDeleteEvent) Description() string { return "An inventory item was deleted" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemDeleteEvent) FieldInfo() ItemDeleteFields {
@@ -1499,7 +2706,7 @@ func (e *ItemDeleteEvent) FieldInfo() ItemDeleteFields {
 // Categories returns the categories this event belongs to.
 func (e *ItemDeleteEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite, Severity: intPtr(4)},
+		{Name: CategoryWrite, Severity: intPtr(5)},
 	}
 }
 
@@ -1538,7 +2745,7 @@ type ItemListFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ItemListEvent builds a type-safe audit event: Items were listed.
+// ItemListEvent builds a type-safe audit event: Inventory items were listed.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ItemListEvent struct {
@@ -1739,7 +2946,7 @@ func (e *ItemListEvent) EventType() string { return EventItemList }
 func (e *ItemListEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ItemListEvent) Description() string { return "Items were listed" }
+func (e *ItemListEvent) Description() string { return "Inventory items were listed" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemListEvent) FieldInfo() ItemListFields {
@@ -1781,7 +2988,7 @@ func (e *ItemListEvent) FieldInfo() ItemListFields {
 // Categories returns the categories this event belongs to.
 func (e *ItemListEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryRead, Severity: intPtr(2)},
+		{Name: CategoryRead, Severity: intPtr(3)},
 	}
 }
 
@@ -1820,7 +3027,7 @@ type ItemReadFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ItemReadEvent builds a type-safe audit event: An item was read.
+// ItemReadEvent builds a type-safe audit event: An inventory item was viewed.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ItemReadEvent struct {
@@ -2021,7 +3228,7 @@ func (e *ItemReadEvent) EventType() string { return EventItemRead }
 func (e *ItemReadEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ItemReadEvent) Description() string { return "An item was read" }
+func (e *ItemReadEvent) Description() string { return "An inventory item was viewed" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemReadEvent) FieldInfo() ItemReadFields {
@@ -2063,7 +3270,7 @@ func (e *ItemReadEvent) FieldInfo() ItemReadFields {
 // Categories returns the categories this event belongs to.
 func (e *ItemReadEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryRead, Severity: intPtr(2)},
+		{Name: CategoryRead, Severity: intPtr(3)},
 	}
 }
 
@@ -2102,7 +3309,7 @@ type ItemUpdateFields struct {
 	UserAgent  audit.FieldInfo // reserved standard
 }
 
-// ItemUpdateEvent builds a type-safe audit event: An item was updated.
+// ItemUpdateEvent builds a type-safe audit event: An inventory item was updated.
 // A builder is not safe for concurrent use. Calling a setter
 // multiple times overwrites the previous value.
 type ItemUpdateEvent struct {
@@ -2298,7 +3505,7 @@ func (e *ItemUpdateEvent) EventType() string { return EventItemUpdate }
 func (e *ItemUpdateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
-func (e *ItemUpdateEvent) Description() string { return "An item was updated" }
+func (e *ItemUpdateEvent) Description() string { return "An inventory item was updated" }
 
 // FieldInfo returns typed descriptors for every field on this event.
 func (e *ItemUpdateEvent) FieldInfo() ItemUpdateFields {
@@ -2340,7 +3547,2553 @@ func (e *ItemUpdateEvent) FieldInfo() ItemUpdateFields {
 // Categories returns the categories this event belongs to.
 func (e *ItemUpdateEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite, Severity: intPtr(4)},
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// OrderCreateFields describes every field on [EventOrderCreate] events.
+type OrderCreateFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// OrderCreateEvent builds a type-safe audit event: An order was placed.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type OrderCreateEvent struct {
+	fields audit.Fields
+}
+
+// NewOrderCreateEvent creates a EventOrderCreate event with required fields.
+func NewOrderCreateEvent(actorID any, outcome any) *OrderCreateEvent {
+	return &OrderCreateEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *OrderCreateEvent) SetAction(v any) *OrderCreateEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *OrderCreateEvent) SetActorUID(v any) *OrderCreateEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *OrderCreateEvent) SetDestHost(v any) *OrderCreateEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *OrderCreateEvent) SetDestIP(v any) *OrderCreateEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *OrderCreateEvent) SetDestPort(v any) *OrderCreateEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *OrderCreateEvent) SetEndTime(v any) *OrderCreateEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *OrderCreateEvent) SetFileHash(v any) *OrderCreateEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *OrderCreateEvent) SetFileName(v any) *OrderCreateEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *OrderCreateEvent) SetFilePath(v any) *OrderCreateEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *OrderCreateEvent) SetFileSize(v any) *OrderCreateEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *OrderCreateEvent) SetMessage(v any) *OrderCreateEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *OrderCreateEvent) SetMethod(v any) *OrderCreateEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *OrderCreateEvent) SetPath(v any) *OrderCreateEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *OrderCreateEvent) SetProtocol(v any) *OrderCreateEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *OrderCreateEvent) SetReason(v any) *OrderCreateEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *OrderCreateEvent) SetReferrer(v any) *OrderCreateEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *OrderCreateEvent) SetRequestID(v any) *OrderCreateEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *OrderCreateEvent) SetRole(v any) *OrderCreateEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *OrderCreateEvent) SetSessionID(v any) *OrderCreateEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *OrderCreateEvent) SetSourceHost(v any) *OrderCreateEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *OrderCreateEvent) SetSourceIP(v any) *OrderCreateEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *OrderCreateEvent) SetSourcePort(v any) *OrderCreateEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *OrderCreateEvent) SetStartTime(v any) *OrderCreateEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *OrderCreateEvent) SetTargetID(v any) *OrderCreateEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *OrderCreateEvent) SetTargetRole(v any) *OrderCreateEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *OrderCreateEvent) SetTargetType(v any) *OrderCreateEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *OrderCreateEvent) SetTargetUID(v any) *OrderCreateEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *OrderCreateEvent) SetTransport(v any) *OrderCreateEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *OrderCreateEvent) SetUserAgent(v any) *OrderCreateEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *OrderCreateEvent) EventType() string { return EventOrderCreate }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *OrderCreateEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *OrderCreateEvent) Description() string { return "An order was placed" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *OrderCreateEvent) FieldInfo() OrderCreateFields {
+	return OrderCreateFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *OrderCreateEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// OrderListFields describes every field on [EventOrderList] events.
+type OrderListFields struct {
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorID    audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// OrderListEvent builds a type-safe audit event: Orders were listed.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type OrderListEvent struct {
+	fields audit.Fields
+}
+
+// NewOrderListEvent creates a EventOrderList event with required fields.
+func NewOrderListEvent(outcome any) *OrderListEvent {
+	return &OrderListEvent{fields: audit.Fields{
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *OrderListEvent) SetAction(v any) *OrderListEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorID sets the reserved standard field "actor_id".
+func (e *OrderListEvent) SetActorID(v any) *OrderListEvent {
+	e.fields[FieldActorID] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *OrderListEvent) SetActorUID(v any) *OrderListEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *OrderListEvent) SetDestHost(v any) *OrderListEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *OrderListEvent) SetDestIP(v any) *OrderListEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *OrderListEvent) SetDestPort(v any) *OrderListEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *OrderListEvent) SetEndTime(v any) *OrderListEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *OrderListEvent) SetFileHash(v any) *OrderListEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *OrderListEvent) SetFileName(v any) *OrderListEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *OrderListEvent) SetFilePath(v any) *OrderListEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *OrderListEvent) SetFileSize(v any) *OrderListEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *OrderListEvent) SetMessage(v any) *OrderListEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *OrderListEvent) SetMethod(v any) *OrderListEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *OrderListEvent) SetPath(v any) *OrderListEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *OrderListEvent) SetProtocol(v any) *OrderListEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *OrderListEvent) SetReason(v any) *OrderListEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *OrderListEvent) SetReferrer(v any) *OrderListEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *OrderListEvent) SetRequestID(v any) *OrderListEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *OrderListEvent) SetRole(v any) *OrderListEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *OrderListEvent) SetSessionID(v any) *OrderListEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *OrderListEvent) SetSourceHost(v any) *OrderListEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *OrderListEvent) SetSourceIP(v any) *OrderListEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *OrderListEvent) SetSourcePort(v any) *OrderListEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *OrderListEvent) SetStartTime(v any) *OrderListEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *OrderListEvent) SetTargetID(v any) *OrderListEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *OrderListEvent) SetTargetRole(v any) *OrderListEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *OrderListEvent) SetTargetType(v any) *OrderListEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *OrderListEvent) SetTargetUID(v any) *OrderListEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *OrderListEvent) SetTransport(v any) *OrderListEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *OrderListEvent) SetUserAgent(v any) *OrderListEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *OrderListEvent) EventType() string { return EventOrderList }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *OrderListEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *OrderListEvent) Description() string { return "Orders were listed" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *OrderListEvent) FieldInfo() OrderListFields {
+	return OrderListFields{
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorID:    audit.FieldInfo{Name: FieldActorID},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *OrderListEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryRead, Severity: intPtr(3)},
+	}
+}
+
+// OrderUpdateFields describes every field on [EventOrderUpdate] events.
+type OrderUpdateFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// OrderUpdateEvent builds a type-safe audit event: An order was updated.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type OrderUpdateEvent struct {
+	fields audit.Fields
+}
+
+// NewOrderUpdateEvent creates a EventOrderUpdate event with required fields.
+func NewOrderUpdateEvent(actorID any, outcome any) *OrderUpdateEvent {
+	return &OrderUpdateEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *OrderUpdateEvent) SetAction(v any) *OrderUpdateEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *OrderUpdateEvent) SetActorUID(v any) *OrderUpdateEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *OrderUpdateEvent) SetDestHost(v any) *OrderUpdateEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *OrderUpdateEvent) SetDestIP(v any) *OrderUpdateEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *OrderUpdateEvent) SetDestPort(v any) *OrderUpdateEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *OrderUpdateEvent) SetEndTime(v any) *OrderUpdateEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *OrderUpdateEvent) SetFileHash(v any) *OrderUpdateEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *OrderUpdateEvent) SetFileName(v any) *OrderUpdateEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *OrderUpdateEvent) SetFilePath(v any) *OrderUpdateEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *OrderUpdateEvent) SetFileSize(v any) *OrderUpdateEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *OrderUpdateEvent) SetMessage(v any) *OrderUpdateEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *OrderUpdateEvent) SetMethod(v any) *OrderUpdateEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *OrderUpdateEvent) SetPath(v any) *OrderUpdateEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *OrderUpdateEvent) SetProtocol(v any) *OrderUpdateEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *OrderUpdateEvent) SetReason(v any) *OrderUpdateEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *OrderUpdateEvent) SetReferrer(v any) *OrderUpdateEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *OrderUpdateEvent) SetRequestID(v any) *OrderUpdateEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *OrderUpdateEvent) SetRole(v any) *OrderUpdateEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *OrderUpdateEvent) SetSessionID(v any) *OrderUpdateEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *OrderUpdateEvent) SetSourceHost(v any) *OrderUpdateEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *OrderUpdateEvent) SetSourceIP(v any) *OrderUpdateEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *OrderUpdateEvent) SetSourcePort(v any) *OrderUpdateEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *OrderUpdateEvent) SetStartTime(v any) *OrderUpdateEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *OrderUpdateEvent) SetTargetID(v any) *OrderUpdateEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *OrderUpdateEvent) SetTargetRole(v any) *OrderUpdateEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *OrderUpdateEvent) SetTargetType(v any) *OrderUpdateEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *OrderUpdateEvent) SetTargetUID(v any) *OrderUpdateEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *OrderUpdateEvent) SetTransport(v any) *OrderUpdateEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *OrderUpdateEvent) SetUserAgent(v any) *OrderUpdateEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *OrderUpdateEvent) EventType() string { return EventOrderUpdate }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *OrderUpdateEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *OrderUpdateEvent) Description() string { return "An order was updated" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *OrderUpdateEvent) FieldInfo() OrderUpdateFields {
+	return OrderUpdateFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *OrderUpdateEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// RateLimitExceededFields describes every field on [EventRateLimitExceeded] events.
+type RateLimitExceededFields struct {
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorID    audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// RateLimitExceededEvent builds a type-safe audit event: Too many failed authentication attempts.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type RateLimitExceededEvent struct {
+	fields audit.Fields
+}
+
+// NewRateLimitExceededEvent creates a EventRateLimitExceeded event with required fields.
+func NewRateLimitExceededEvent(outcome any) *RateLimitExceededEvent {
+	return &RateLimitExceededEvent{fields: audit.Fields{
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *RateLimitExceededEvent) SetAction(v any) *RateLimitExceededEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorID sets the reserved standard field "actor_id".
+func (e *RateLimitExceededEvent) SetActorID(v any) *RateLimitExceededEvent {
+	e.fields[FieldActorID] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *RateLimitExceededEvent) SetActorUID(v any) *RateLimitExceededEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *RateLimitExceededEvent) SetDestHost(v any) *RateLimitExceededEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *RateLimitExceededEvent) SetDestIP(v any) *RateLimitExceededEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *RateLimitExceededEvent) SetDestPort(v any) *RateLimitExceededEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *RateLimitExceededEvent) SetEndTime(v any) *RateLimitExceededEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *RateLimitExceededEvent) SetFileHash(v any) *RateLimitExceededEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *RateLimitExceededEvent) SetFileName(v any) *RateLimitExceededEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *RateLimitExceededEvent) SetFilePath(v any) *RateLimitExceededEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *RateLimitExceededEvent) SetFileSize(v any) *RateLimitExceededEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *RateLimitExceededEvent) SetMessage(v any) *RateLimitExceededEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *RateLimitExceededEvent) SetMethod(v any) *RateLimitExceededEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *RateLimitExceededEvent) SetPath(v any) *RateLimitExceededEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *RateLimitExceededEvent) SetProtocol(v any) *RateLimitExceededEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *RateLimitExceededEvent) SetReason(v any) *RateLimitExceededEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *RateLimitExceededEvent) SetReferrer(v any) *RateLimitExceededEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *RateLimitExceededEvent) SetRequestID(v any) *RateLimitExceededEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *RateLimitExceededEvent) SetRole(v any) *RateLimitExceededEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *RateLimitExceededEvent) SetSessionID(v any) *RateLimitExceededEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *RateLimitExceededEvent) SetSourceHost(v any) *RateLimitExceededEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *RateLimitExceededEvent) SetSourceIP(v any) *RateLimitExceededEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *RateLimitExceededEvent) SetSourcePort(v any) *RateLimitExceededEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *RateLimitExceededEvent) SetStartTime(v any) *RateLimitExceededEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *RateLimitExceededEvent) SetTargetID(v any) *RateLimitExceededEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *RateLimitExceededEvent) SetTargetRole(v any) *RateLimitExceededEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *RateLimitExceededEvent) SetTargetType(v any) *RateLimitExceededEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *RateLimitExceededEvent) SetTargetUID(v any) *RateLimitExceededEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *RateLimitExceededEvent) SetTransport(v any) *RateLimitExceededEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *RateLimitExceededEvent) SetUserAgent(v any) *RateLimitExceededEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *RateLimitExceededEvent) EventType() string { return EventRateLimitExceeded }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *RateLimitExceededEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *RateLimitExceededEvent) Description() string {
+	return "Too many failed authentication attempts"
+}
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *RateLimitExceededEvent) FieldInfo() RateLimitExceededFields {
+	return RateLimitExceededFields{
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorID:    audit.FieldInfo{Name: FieldActorID},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *RateLimitExceededEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategorySecurity, Severity: intPtr(8)},
+	}
+}
+
+// TokenExpiredFields describes every field on [EventTokenExpired] events.
+type TokenExpiredFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// TokenExpiredEvent builds a type-safe audit event: An expired session token was presented.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type TokenExpiredEvent struct {
+	fields audit.Fields
+}
+
+// NewTokenExpiredEvent creates a EventTokenExpired event with required fields.
+func NewTokenExpiredEvent(actorID any, outcome any) *TokenExpiredEvent {
+	return &TokenExpiredEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *TokenExpiredEvent) SetAction(v any) *TokenExpiredEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *TokenExpiredEvent) SetActorUID(v any) *TokenExpiredEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *TokenExpiredEvent) SetDestHost(v any) *TokenExpiredEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *TokenExpiredEvent) SetDestIP(v any) *TokenExpiredEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *TokenExpiredEvent) SetDestPort(v any) *TokenExpiredEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *TokenExpiredEvent) SetEndTime(v any) *TokenExpiredEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *TokenExpiredEvent) SetFileHash(v any) *TokenExpiredEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *TokenExpiredEvent) SetFileName(v any) *TokenExpiredEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *TokenExpiredEvent) SetFilePath(v any) *TokenExpiredEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *TokenExpiredEvent) SetFileSize(v any) *TokenExpiredEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *TokenExpiredEvent) SetMessage(v any) *TokenExpiredEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *TokenExpiredEvent) SetMethod(v any) *TokenExpiredEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *TokenExpiredEvent) SetPath(v any) *TokenExpiredEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *TokenExpiredEvent) SetProtocol(v any) *TokenExpiredEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *TokenExpiredEvent) SetReason(v any) *TokenExpiredEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *TokenExpiredEvent) SetReferrer(v any) *TokenExpiredEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *TokenExpiredEvent) SetRequestID(v any) *TokenExpiredEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *TokenExpiredEvent) SetRole(v any) *TokenExpiredEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *TokenExpiredEvent) SetSessionID(v any) *TokenExpiredEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *TokenExpiredEvent) SetSourceHost(v any) *TokenExpiredEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *TokenExpiredEvent) SetSourceIP(v any) *TokenExpiredEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *TokenExpiredEvent) SetSourcePort(v any) *TokenExpiredEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *TokenExpiredEvent) SetStartTime(v any) *TokenExpiredEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *TokenExpiredEvent) SetTargetID(v any) *TokenExpiredEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *TokenExpiredEvent) SetTargetRole(v any) *TokenExpiredEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *TokenExpiredEvent) SetTargetType(v any) *TokenExpiredEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *TokenExpiredEvent) SetTargetUID(v any) *TokenExpiredEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *TokenExpiredEvent) SetTransport(v any) *TokenExpiredEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *TokenExpiredEvent) SetUserAgent(v any) *TokenExpiredEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *TokenExpiredEvent) EventType() string { return EventTokenExpired }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *TokenExpiredEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *TokenExpiredEvent) Description() string { return "An expired session token was presented" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *TokenExpiredEvent) FieldInfo() TokenExpiredFields {
+	return TokenExpiredFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *TokenExpiredEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategorySecurity, Severity: intPtr(8)},
+	}
+}
+
+// UserCreateFields describes every field on [EventUserCreate] events.
+type UserCreateFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Email      audit.FieldInfo // optional
+	Phone      audit.FieldInfo // optional
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// UserCreateEvent builds a type-safe audit event: A new user account was created.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type UserCreateEvent struct {
+	fields audit.Fields
+}
+
+// NewUserCreateEvent creates a EventUserCreate event with required fields.
+func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
+	return &UserCreateEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetEmail sets the FieldEmail field.
+// Sensitivity label: LabelPii — Personally identifiable information
+func (e *UserCreateEvent) SetEmail(v any) *UserCreateEvent {
+	e.fields[FieldEmail] = v
+	return e
+}
+
+// SetPhone sets the FieldPhone field.
+// Sensitivity label: LabelPii — Personally identifiable information
+func (e *UserCreateEvent) SetPhone(v any) *UserCreateEvent {
+	e.fields[FieldPhone] = v
+	return e
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *UserCreateEvent) SetAction(v any) *UserCreateEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *UserCreateEvent) SetActorUID(v any) *UserCreateEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *UserCreateEvent) SetDestHost(v any) *UserCreateEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *UserCreateEvent) SetDestIP(v any) *UserCreateEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *UserCreateEvent) SetDestPort(v any) *UserCreateEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *UserCreateEvent) SetEndTime(v any) *UserCreateEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *UserCreateEvent) SetFileHash(v any) *UserCreateEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *UserCreateEvent) SetFileName(v any) *UserCreateEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *UserCreateEvent) SetFilePath(v any) *UserCreateEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *UserCreateEvent) SetFileSize(v any) *UserCreateEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *UserCreateEvent) SetMessage(v any) *UserCreateEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *UserCreateEvent) SetMethod(v any) *UserCreateEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *UserCreateEvent) SetPath(v any) *UserCreateEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *UserCreateEvent) SetProtocol(v any) *UserCreateEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *UserCreateEvent) SetReason(v any) *UserCreateEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *UserCreateEvent) SetReferrer(v any) *UserCreateEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *UserCreateEvent) SetRequestID(v any) *UserCreateEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *UserCreateEvent) SetRole(v any) *UserCreateEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *UserCreateEvent) SetSessionID(v any) *UserCreateEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *UserCreateEvent) SetSourceHost(v any) *UserCreateEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *UserCreateEvent) SetSourceIP(v any) *UserCreateEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *UserCreateEvent) SetSourcePort(v any) *UserCreateEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *UserCreateEvent) SetStartTime(v any) *UserCreateEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *UserCreateEvent) SetTargetRole(v any) *UserCreateEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *UserCreateEvent) SetTargetType(v any) *UserCreateEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *UserCreateEvent) SetTargetUID(v any) *UserCreateEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *UserCreateEvent) SetTransport(v any) *UserCreateEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *UserCreateEvent) SetUserAgent(v any) *UserCreateEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *UserCreateEvent) EventType() string { return EventUserCreate }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *UserCreateEvent) Description() string { return "A new user account was created" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *UserCreateEvent) FieldInfo() UserCreateFields {
+	return UserCreateFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Email:      audit.FieldInfo{Name: FieldEmail, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		Phone:      audit.FieldInfo{Name: FieldPhone, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// UserDeleteFields describes every field on [EventUserDelete] events.
+type UserDeleteFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// UserDeleteEvent builds a type-safe audit event: A user account was deleted.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type UserDeleteEvent struct {
+	fields audit.Fields
+}
+
+// NewUserDeleteEvent creates a EventUserDelete event with required fields.
+func NewUserDeleteEvent(actorID any, outcome any) *UserDeleteEvent {
+	return &UserDeleteEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *UserDeleteEvent) SetAction(v any) *UserDeleteEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *UserDeleteEvent) SetActorUID(v any) *UserDeleteEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *UserDeleteEvent) SetDestHost(v any) *UserDeleteEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *UserDeleteEvent) SetDestIP(v any) *UserDeleteEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *UserDeleteEvent) SetDestPort(v any) *UserDeleteEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *UserDeleteEvent) SetEndTime(v any) *UserDeleteEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *UserDeleteEvent) SetFileHash(v any) *UserDeleteEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *UserDeleteEvent) SetFileName(v any) *UserDeleteEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *UserDeleteEvent) SetFilePath(v any) *UserDeleteEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *UserDeleteEvent) SetFileSize(v any) *UserDeleteEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *UserDeleteEvent) SetMessage(v any) *UserDeleteEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *UserDeleteEvent) SetMethod(v any) *UserDeleteEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *UserDeleteEvent) SetPath(v any) *UserDeleteEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *UserDeleteEvent) SetProtocol(v any) *UserDeleteEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *UserDeleteEvent) SetReason(v any) *UserDeleteEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *UserDeleteEvent) SetReferrer(v any) *UserDeleteEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *UserDeleteEvent) SetRequestID(v any) *UserDeleteEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *UserDeleteEvent) SetRole(v any) *UserDeleteEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *UserDeleteEvent) SetSessionID(v any) *UserDeleteEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *UserDeleteEvent) SetSourceHost(v any) *UserDeleteEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *UserDeleteEvent) SetSourceIP(v any) *UserDeleteEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *UserDeleteEvent) SetSourcePort(v any) *UserDeleteEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *UserDeleteEvent) SetStartTime(v any) *UserDeleteEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *UserDeleteEvent) SetTargetID(v any) *UserDeleteEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *UserDeleteEvent) SetTargetRole(v any) *UserDeleteEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *UserDeleteEvent) SetTargetType(v any) *UserDeleteEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *UserDeleteEvent) SetTargetUID(v any) *UserDeleteEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *UserDeleteEvent) SetTransport(v any) *UserDeleteEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *UserDeleteEvent) SetUserAgent(v any) *UserDeleteEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *UserDeleteEvent) EventType() string { return EventUserDelete }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *UserDeleteEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *UserDeleteEvent) Description() string { return "A user account was deleted" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *UserDeleteEvent) FieldInfo() UserDeleteFields {
+	return UserDeleteFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *UserDeleteEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite, Severity: intPtr(5)},
+	}
+}
+
+// UserReadFields describes every field on [EventUserRead] events.
+type UserReadFields struct {
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorID    audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// UserReadEvent builds a type-safe audit event: A user account was viewed.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type UserReadEvent struct {
+	fields audit.Fields
+}
+
+// NewUserReadEvent creates a EventUserRead event with required fields.
+func NewUserReadEvent(outcome any) *UserReadEvent {
+	return &UserReadEvent{fields: audit.Fields{
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *UserReadEvent) SetAction(v any) *UserReadEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorID sets the reserved standard field "actor_id".
+func (e *UserReadEvent) SetActorID(v any) *UserReadEvent {
+	e.fields[FieldActorID] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *UserReadEvent) SetActorUID(v any) *UserReadEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *UserReadEvent) SetDestHost(v any) *UserReadEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *UserReadEvent) SetDestIP(v any) *UserReadEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *UserReadEvent) SetDestPort(v any) *UserReadEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *UserReadEvent) SetEndTime(v any) *UserReadEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *UserReadEvent) SetFileHash(v any) *UserReadEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *UserReadEvent) SetFileName(v any) *UserReadEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *UserReadEvent) SetFilePath(v any) *UserReadEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *UserReadEvent) SetFileSize(v any) *UserReadEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *UserReadEvent) SetMessage(v any) *UserReadEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *UserReadEvent) SetMethod(v any) *UserReadEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *UserReadEvent) SetPath(v any) *UserReadEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *UserReadEvent) SetProtocol(v any) *UserReadEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *UserReadEvent) SetReason(v any) *UserReadEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *UserReadEvent) SetReferrer(v any) *UserReadEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *UserReadEvent) SetRequestID(v any) *UserReadEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *UserReadEvent) SetRole(v any) *UserReadEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *UserReadEvent) SetSessionID(v any) *UserReadEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *UserReadEvent) SetSourceHost(v any) *UserReadEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *UserReadEvent) SetSourceIP(v any) *UserReadEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *UserReadEvent) SetSourcePort(v any) *UserReadEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *UserReadEvent) SetStartTime(v any) *UserReadEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *UserReadEvent) SetTargetID(v any) *UserReadEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *UserReadEvent) SetTargetRole(v any) *UserReadEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *UserReadEvent) SetTargetType(v any) *UserReadEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *UserReadEvent) SetTargetUID(v any) *UserReadEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *UserReadEvent) SetTransport(v any) *UserReadEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *UserReadEvent) SetUserAgent(v any) *UserReadEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *UserReadEvent) EventType() string { return EventUserRead }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *UserReadEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *UserReadEvent) Description() string { return "A user account was viewed" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *UserReadEvent) FieldInfo() UserReadFields {
+	return UserReadFields{
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorID:    audit.FieldInfo{Name: FieldActorID},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *UserReadEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryRead, Severity: intPtr(3)},
+	}
+}
+
+// UserUpdateFields describes every field on [EventUserUpdate] events.
+type UserUpdateFields struct {
+	ActorID    audit.FieldInfo // required
+	Outcome    audit.FieldInfo // required
+	Email      audit.FieldInfo // optional
+	Phone      audit.FieldInfo // optional
+	Action     audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// UserUpdateEvent builds a type-safe audit event: A user account was updated.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type UserUpdateEvent struct {
+	fields audit.Fields
+}
+
+// NewUserUpdateEvent creates a EventUserUpdate event with required fields.
+func NewUserUpdateEvent(actorID any, outcome any) *UserUpdateEvent {
+	return &UserUpdateEvent{fields: audit.Fields{
+		FieldActorID: actorID,
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetEmail sets the FieldEmail field.
+// Sensitivity label: LabelPii — Personally identifiable information
+func (e *UserUpdateEvent) SetEmail(v any) *UserUpdateEvent {
+	e.fields[FieldEmail] = v
+	return e
+}
+
+// SetPhone sets the FieldPhone field.
+// Sensitivity label: LabelPii — Personally identifiable information
+func (e *UserUpdateEvent) SetPhone(v any) *UserUpdateEvent {
+	e.fields[FieldPhone] = v
+	return e
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *UserUpdateEvent) SetAction(v any) *UserUpdateEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *UserUpdateEvent) SetActorUID(v any) *UserUpdateEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *UserUpdateEvent) SetDestHost(v any) *UserUpdateEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *UserUpdateEvent) SetDestIP(v any) *UserUpdateEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *UserUpdateEvent) SetDestPort(v any) *UserUpdateEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *UserUpdateEvent) SetEndTime(v any) *UserUpdateEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *UserUpdateEvent) SetFileHash(v any) *UserUpdateEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *UserUpdateEvent) SetFileName(v any) *UserUpdateEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *UserUpdateEvent) SetFilePath(v any) *UserUpdateEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *UserUpdateEvent) SetFileSize(v any) *UserUpdateEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *UserUpdateEvent) SetMessage(v any) *UserUpdateEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *UserUpdateEvent) SetMethod(v any) *UserUpdateEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *UserUpdateEvent) SetPath(v any) *UserUpdateEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *UserUpdateEvent) SetProtocol(v any) *UserUpdateEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *UserUpdateEvent) SetReason(v any) *UserUpdateEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *UserUpdateEvent) SetReferrer(v any) *UserUpdateEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *UserUpdateEvent) SetRequestID(v any) *UserUpdateEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *UserUpdateEvent) SetRole(v any) *UserUpdateEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *UserUpdateEvent) SetSessionID(v any) *UserUpdateEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *UserUpdateEvent) SetSourceHost(v any) *UserUpdateEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *UserUpdateEvent) SetSourceIP(v any) *UserUpdateEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *UserUpdateEvent) SetSourcePort(v any) *UserUpdateEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *UserUpdateEvent) SetStartTime(v any) *UserUpdateEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *UserUpdateEvent) SetTargetID(v any) *UserUpdateEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *UserUpdateEvent) SetTargetRole(v any) *UserUpdateEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *UserUpdateEvent) SetTargetType(v any) *UserUpdateEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *UserUpdateEvent) SetTargetUID(v any) *UserUpdateEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *UserUpdateEvent) SetTransport(v any) *UserUpdateEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *UserUpdateEvent) SetUserAgent(v any) *UserUpdateEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *UserUpdateEvent) EventType() string { return EventUserUpdate }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *UserUpdateEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *UserUpdateEvent) Description() string { return "A user account was updated" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *UserUpdateEvent) FieldInfo() UserUpdateFields {
+	return UserUpdateFields{
+		ActorID:    audit.FieldInfo{Name: FieldActorID, Required: true},
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Email:      audit.FieldInfo{Name: FieldEmail, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		Phone:      audit.FieldInfo{Name: FieldPhone, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *UserUpdateEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryWrite, Severity: intPtr(5)},
 	}
 }
 

@@ -43,7 +43,7 @@ audit: buffer full
 | **When** | `AuditEvent()` is called but the async buffer channel is at capacity |
 | **Meaning** | The event was **dropped** — it will not be delivered to any output |
 | **Transient?** | Yes — resolves when the drain goroutine catches up |
-| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the buffer is full and retrying worsens the backlog. If this happens frequently, increase `Config.BufferSize` or investigate slow outputs. |
+| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the buffer is full and retrying worsens the backlog. If this happens frequently, increase `Config.BufferSize` or investigate slow outputs. See [Two-Level Buffering](async-delivery.md#two-level-buffering) for the pipeline architecture. |
 
 ### `ErrClosed`
 

@@ -207,6 +207,37 @@ Every output supports these optional features:
 | **Sensitivity labels** | `exclude_labels:` on each output | [Sensitivity Labels](sensitivity-labels.md) |
 | **Enable/disable** | `enabled: false` on each output | Toggle without removing config |
 
+## 🏗️ Buffering and Delivery Model
+
+Outputs fall into two categories based on how they receive events from
+the core drain goroutine:
+
+| Output | Internal Buffer | Batching | Delivery Model |
+|--------|----------------|----------|----------------|
+| **Stdout** | No | No | Synchronous — blocks drain goroutine until write to `os.Stdout` completes |
+| **File** | No | No | Synchronous — blocks drain goroutine until file write completes (with OS-level file buffering) |
+| **Syslog** | No | No | Synchronous — blocks drain goroutine until TCP/UDP write completes |
+| **Webhook** | Yes (`buffer_size`, default 10,000) | Yes (`batch_size`, `flush_interval`) | Async — own goroutine, batched HTTP POST |
+| **Loki** | Yes (`buffer_size`, default 10,000) | Yes (`batch_size`, `max_batch_bytes`, `flush_interval`) | Async — own goroutine, batched HTTP POST with gzip |
+
+**Synchronous outputs** (file, syslog, stdout) write directly from the
+core drain goroutine. If a synchronous output blocks (e.g., syslog
+server unreachable, disk full), it delays delivery to **all** outputs
+because the drain goroutine delivers sequentially. Monitor output
+errors and consider using async outputs (webhook, Loki) for unreliable
+destinations.
+
+**Async outputs** (webhook, Loki) copy the event bytes into their own
+internal buffer and return immediately. A background goroutine reads
+from this buffer, accumulates events into batches, and delivers them
+via HTTP. If the internal buffer fills, events are dropped.
+`RecordLokiDrop()` or `RecordWebhookDrop()` fires on every drop, and
+a rate-limited `slog.Warn` fires at most once per 10 seconds. Drops
+in one async output's buffer do not affect other outputs.
+
+See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
+the complete pipeline architecture, memory sizing, and tuning guidance.
+
 ## 📡 Fan-Out Architecture
 
 ```mermaid
@@ -221,8 +252,11 @@ flowchart TD
 ```
 
 The drain goroutine serialises each event once per unique format and
-delivers to all outputs in sequence. Each output is independent —
-a failure in one output does not block or affect delivery to others.
+delivers to all outputs in sequence. An error returned by one output
+does not prevent delivery to others — the drain loop continues.
+However, a synchronous output that blocks (e.g., during syslog
+reconnection) delays all subsequent outputs for that event. See
+[Buffering and Delivery Model](#-buffering-and-delivery-model) above.
 
 ## 📚 Further Reading
 

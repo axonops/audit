@@ -89,6 +89,23 @@ guards against concurrent `Close()` calls.
 exits. Close drains the internal buffer and flushes all pending events.
 Without it, events still in the buffer are lost silently.
 
+## Delivery Model
+
+The stdout output writes **synchronously** from the core drain
+goroutine. It has no internal buffer or batching — each event is
+written directly to `os.Stdout` as soon as the drain goroutine
+processes it.
+
+In practice, stdout writes are very fast and rarely a bottleneck.
+`StdoutOutput.Write()` acquires a mutex internally to guard against
+concurrent `Close()` calls, but since the drain goroutine is the sole
+writer, this mutex never contends during normal operation. If stdout
+is piped to a slow consumer or a full pipe buffer, it will delay
+delivery to all other outputs.
+
+See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
+the complete pipeline architecture.
+
 ## Configuration
 
 The stdout output accepts **no type-specific configuration**:

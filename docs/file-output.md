@@ -88,6 +88,22 @@ flowchart LR
    - Backups exceeding `max_backups` count or `max_age_days` are deleted
    - A new active file is opened
 
+## Delivery Model
+
+The file output writes **synchronously** from the core drain
+goroutine. It has no internal buffer or batching — each event is
+written directly to the underlying file as soon as the drain goroutine
+processes it.
+
+This means file write latency directly affects the drain loop
+throughput and delivery to all other outputs. In practice, local file
+writes are fast (microseconds with OS-level buffering), so this is
+rarely a bottleneck. However, if the filesystem is slow (network
+mount, full disk), it will delay delivery to every output.
+
+See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
+the complete pipeline architecture.
+
 ## Complete Configuration Reference
 
 | Field | Type | Default | Range | Description |

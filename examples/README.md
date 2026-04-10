@@ -31,6 +31,17 @@ The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
 that's how you'd use go-audit in a real application.
 
+### Buffering and Performance
+
+Examples 7 (webhook) and 8 (Loki) use outputs with internal buffers
+and batching. Examples 5 (file), 6 (syslog), and 4 (stdout) use
+synchronous outputs that write directly from the drain goroutine.
+Example 9 (multi-output) demonstrates both synchronous and async
+outputs in a single configuration — the most direct illustration of
+the two-level buffering model. See
+[Two-Level Buffering](../docs/async-delivery.md#two-level-buffering)
+for the architecture explanation, memory sizing, and tuning guidance.
+
 ## Getting Started
 
 From a fresh clone:

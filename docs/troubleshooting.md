@@ -51,7 +51,9 @@ than the drain goroutine can write them to outputs.
 | **Output error loop** | If an output is failing on every write, the drain goroutine spends time on error handling instead of processing events. Check `RecordOutputError` metrics. |
 
 Monitor `RecordBufferDrop()` in your metrics to catch this before
-users notice. See [Metrics & Monitoring](metrics-monitoring.md).
+users notice. See [Metrics & Monitoring](metrics-monitoring.md) and
+[Two-Level Buffering](async-delivery.md#two-level-buffering) for the
+complete pipeline architecture and tuning guidance.
 
 ---
 

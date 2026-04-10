@@ -42,6 +42,8 @@ outputs:
       enabled: true
       salt:
         version: "v1"
+        # WARNING: Demo salt only — DO NOT use in production.
+        # Generate a real salt: openssl rand -base64 32
         value: "${HMAC_SALT_V1:-capstone-demo-salt-v1-min16bytes}"
       hash: HMAC-SHA-256
 
@@ -67,6 +69,8 @@ outputs:
       enabled: true
       salt:
         version: "v2"
+        # WARNING: Demo salt only — DO NOT use in production.
+        # Generate a real salt: openssl rand -base64 32
         value: "${HMAC_SALT_V2:-capstone-demo-salt-v2-different!}"
       hash: HMAC-SHA-512
 
@@ -78,8 +82,8 @@ outputs:
     loki:
       url: "${LOKI_URL:-http://loki:3100/loki/api/v1/push}"
       tenant_id: "crud-api"
-      allow_insecure_http: true
-      allow_private_ranges: true
+      allow_insecure_http: true    # Dev-only — NEVER in production; use HTTPS
+      allow_private_ranges: true  # Dev-only — NEVER in production; enables SSRF
       batch_size: 50
       flush_interval: "1s"
       timeout: "5s"

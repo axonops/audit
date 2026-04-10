@@ -22,7 +22,7 @@ import (
 func queryUsers(db *sql.DB) ([]User, error) {
 	rows, err := db.Query("SELECT id, username, email, phone, created_at, updated_at FROM users ORDER BY created_at")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query users: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -30,7 +30,7 @@ func queryUsers(db *sql.DB) ([]User, error) {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Phone, &u.CreatedAt, &u.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, u)
 	}
@@ -46,7 +46,7 @@ func queryUser(db *sql.DB, id string) (*User, error) {
 		"SELECT id, username, email, phone, created_at, updated_at FROM users WHERE id = $1", id,
 	).Scan(&u.ID, &u.Username, &u.Email, &u.Phone, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query user %s: %w", id, err)
 	}
 	return &u, nil
 }
@@ -58,7 +58,7 @@ func insertUser(db *sql.DB, id, username, email, phone string) (*User, error) {
 		id, username, email, phone,
 	).Scan(&u.ID, &u.Username, &u.Email, &u.Phone, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert user: %w", err)
 	}
 	return &u, nil
 }
@@ -70,7 +70,7 @@ func updateUserDB(db *sql.DB, id, username, email, phone string) (*User, error) 
 		id, username, email, phone,
 	).Scan(&u.ID, &u.Username, &u.Email, &u.Phone, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update user %s: %w", id, err)
 	}
 	return &u, nil
 }

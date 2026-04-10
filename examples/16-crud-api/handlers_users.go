@@ -74,18 +74,9 @@ func (h *handlers) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pass PII fields via hints.Extra so they flow through sensitivity
-	// filtering. On Loki (exclude_labels: [pii]), email and phone are
-	// stripped. On stdout and audit.log, they appear in full.
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
 		hints.TargetID = id
-		if hints.Extra == nil {
-			hints.Extra = make(map[string]any)
-		}
-		hints.Extra[FieldEmail] = req.Email
-		if req.Phone != "" {
-			hints.Extra[FieldPhone] = req.Phone
-		}
+		populatePIIHints(hints, req.Email, req.Phone)
 	}
 	writeJSON(w, http.StatusCreated, user)
 }
@@ -122,15 +113,8 @@ func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pass PII fields via hints.Extra for sensitivity filtering.
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
-		if hints.Extra == nil {
-			hints.Extra = make(map[string]any)
-		}
-		hints.Extra[FieldEmail] = req.Email
-		if req.Phone != "" {
-			hints.Extra[FieldPhone] = req.Phone
-		}
+		populatePIIHints(hints, req.Email, req.Phone)
 	}
 	writeJSON(w, http.StatusOK, user)
 }

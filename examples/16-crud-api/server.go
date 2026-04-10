@@ -24,8 +24,8 @@ import (
 )
 
 // routeTable maps "METHOD resource" or "METHOD resource/{id}" to audit
-// event types. IMPORTANT: when adding routes below, also add the event
-// mapping here.
+// event types. Read-only after initialization. IMPORTANT: when adding
+// routes below, also add the event mapping here.
 var routeTable = map[string]string{
 	// Items
 	"GET items":         EventItemList,
@@ -39,7 +39,7 @@ var routeTable = map[string]string{
 	"POST users":        EventUserCreate,
 	"PUT users/{id}":    EventUserUpdate,
 	"DELETE users/{id}": EventUserDelete,
-	// Orders
+	// Orders — no DELETE: orders are immutable once placed; use status updates.
 	"GET orders":      EventOrderList,
 	"GET orders/{id}": EventOrderRead,
 	"POST orders":     EventOrderCreate,
@@ -136,8 +136,12 @@ func collectFields(hints *audit.Hints, transport *audit.TransportMetadata) audit
 
 	// Copy Extra fields (e.g., PII fields like email, phone) so they
 	// flow through sensitivity filtering in the output pipeline.
+	// Guard: framework fields take precedence over Extra to prevent
+	// audit log spoofing via hints.Extra["outcome"] = "success".
 	for k, v := range hints.Extra {
-		fields[k] = v
+		if _, isFramework := fields[k]; !isFramework {
+			fields[k] = v
+		}
 	}
 
 	return fields

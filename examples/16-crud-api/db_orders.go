@@ -14,12 +14,15 @@
 
 package main
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 func queryOrders(db *sql.DB) ([]Order, error) {
 	rows, err := db.Query("SELECT id, user_id, item_id, quantity, status, created_at, updated_at FROM orders ORDER BY created_at")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query orders: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -27,7 +30,7 @@ func queryOrders(db *sql.DB) ([]Order, error) {
 	for rows.Next() {
 		var o Order
 		if err := rows.Scan(&o.ID, &o.UserID, &o.ItemID, &o.Quantity, &o.Status, &o.CreatedAt, &o.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan order: %w", err)
 		}
 		orders = append(orders, o)
 	}
@@ -43,7 +46,7 @@ func queryOrder(db *sql.DB, id string) (*Order, error) {
 		"SELECT id, user_id, item_id, quantity, status, created_at, updated_at FROM orders WHERE id = $1", id,
 	).Scan(&o.ID, &o.UserID, &o.ItemID, &o.Quantity, &o.Status, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query order %s: %w", id, err)
 	}
 	return &o, nil
 }
@@ -55,7 +58,7 @@ func insertOrder(db *sql.DB, id, userID, itemID string, quantity int) (*Order, e
 		id, userID, itemID, quantity,
 	).Scan(&o.ID, &o.UserID, &o.ItemID, &o.Quantity, &o.Status, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert order: %w", err)
 	}
 	return &o, nil
 }
@@ -67,7 +70,7 @@ func updateOrderDB(db *sql.DB, id, status string) (*Order, error) {
 		id, status,
 	).Scan(&o.ID, &o.UserID, &o.ItemID, &o.Quantity, &o.Status, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update order %s: %w", id, err)
 	}
 	return &o, nil
 }

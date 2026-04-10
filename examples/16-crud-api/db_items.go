@@ -22,7 +22,7 @@ import (
 func queryItems(db *sql.DB) ([]Item, error) {
 	rows, err := db.Query("SELECT id, name, description, created_at, updated_at FROM items ORDER BY created_at")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query items: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -30,7 +30,7 @@ func queryItems(db *sql.DB) ([]Item, error) {
 	for rows.Next() {
 		var it Item
 		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan item: %w", err)
 		}
 		items = append(items, it)
 	}
@@ -46,7 +46,7 @@ func queryItem(db *sql.DB, id string) (*Item, error) {
 		"SELECT id, name, description, created_at, updated_at FROM items WHERE id = $1", id,
 	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query item %s: %w", id, err)
 	}
 	return &it, nil
 }
@@ -58,7 +58,7 @@ func insertItem(db *sql.DB, id, name, description string) (*Item, error) {
 		id, name, description,
 	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert item: %w", err)
 	}
 	return &it, nil
 }
@@ -70,7 +70,7 @@ func updateItemDB(db *sql.DB, id, name, description string) (*Item, error) {
 		id, name, description,
 	).Scan(&it.ID, &it.Name, &it.Description, &it.CreatedAt, &it.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("update item %s: %w", id, err)
 	}
 	return &it, nil
 }

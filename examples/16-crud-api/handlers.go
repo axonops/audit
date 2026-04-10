@@ -34,6 +34,22 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// populatePIIHints adds PII fields (email, phone) to hints.Extra so they
+// flow through sensitivity filtering. On Loki (exclude_labels: [pii]),
+// these fields are stripped. On stdout and audit.log, they appear in full.
+func populatePIIHints(hints *audit.Hints, email, phone string) {
+	if hints == nil {
+		return
+	}
+	if hints.Extra == nil {
+		hints.Extra = make(map[string]any)
+	}
+	hints.Extra[FieldEmail] = email
+	if phone != "" {
+		hints.Extra[FieldPhone] = phone
+	}
+}
+
 // writeError records a failure in audit hints and writes an error response.
 func writeError(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {

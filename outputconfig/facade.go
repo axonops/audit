@@ -78,13 +78,13 @@ func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath strin
 		// User options applied last — highest precedence.
 		loggerOpts = append(loggerOpts, opts...)
 
-		logger, err := audit.NewLogger(loggerOpts...)
-		if err != nil {
+		logger, loggerErr := audit.NewLogger(loggerOpts...)
+		if loggerErr != nil {
 			// Clean up outputs that Load constructed.
 			for _, o := range result.Outputs {
 				_ = o.Output.Close()
 			}
-			return nil, fmt.Errorf("outputconfig: create logger: %w", err)
+			return nil, fmt.Errorf("outputconfig: create logger: %w", loggerErr)
 		}
 		return logger, nil
 	}
@@ -92,9 +92,9 @@ func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath strin
 	// Dev mode: user options applied after dev defaults.
 	loggerOpts = append(loggerOpts, opts...)
 
-	logger, err := audit.NewLogger(loggerOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("outputconfig: create logger: %w", err)
+	logger, loggerErr := audit.NewLogger(loggerOpts...)
+	if loggerErr != nil {
+		return nil, fmt.Errorf("outputconfig: create logger: %w", loggerErr)
 	}
 	return logger, nil
 }

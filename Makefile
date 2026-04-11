@@ -21,7 +21,7 @@
 
 # --- Configuration ---
 
-MODULES           := . file syslog webhook loki outputconfig cmd/audit-gen secrets secrets/openbao secrets/vault
+MODULES           := . file syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/16-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2

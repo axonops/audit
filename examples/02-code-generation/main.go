@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Code-generation demonstrates the recommended go-audit workflow:
-// define events in a YAML taxonomy, generate type-safe Go constants
-// with audit-gen, and configure outputs in a separate YAML file.
+// Code Generation demonstrates audit-gen typed builders: compile-time
+// safety for event types, required fields, and sensitivity labels.
+//
+// Run:
+//
+//	go generate ./...
+//	go run .
 package main
 
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"log"
 
-	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/outputconfig"
 )
 
@@ -32,53 +34,20 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
 func main() {
-	// 1. Parse the embedded taxonomy.
-	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
-	}
-
-	// 2. Load output configuration from YAML.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
-	if err != nil {
-		log.Fatalf("load outputs: %v", err)
-	}
-
-	// 3. Create the logger with taxonomy + outputs.
-	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
-
-	logger, err := audit.NewLogger(opts...)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
-	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("close logger: %v", closeErr)
-		}
-	}()
+	defer func() { _ = logger.Close() }()
 
 	// All event types, field names, and categories are generated constants.
 	// A typo like "NewUserCrateEvent" would fail at compile time.
-	fmt.Println("--- Using typed event builders ---")
-
-	if err := logger.AuditEvent(NewUserCreateEvent("alice", "success").
-		SetTargetID("user-42")); err != nil {
-		log.Printf("audit error: %v", err)
-	}
-
-	if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure").
-		SetReason("invalid credentials").
-		SetSourceIP("192.168.1.100")); err != nil {
-		log.Printf("audit error: %v", err)
-	}
-
-	if err := logger.AuditEvent(NewUserReadEvent("success").
-		SetActorID("bob")); err != nil {
-		log.Printf("audit error: %v", err)
+	if auditErr := logger.AuditEvent(
+		NewUserCreateEvent("alice", "success").
+			SetTargetID("user-42"),
+	); auditErr != nil {
+		log.Printf("audit: %v", auditErr)
 	}
 }

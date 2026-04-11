@@ -34,24 +34,9 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
 func main() {
-	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
-	}
-
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
-	if err != nil {
-		log.Fatalf("load outputs: %v", err)
-	}
-
-	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
-
-	logger, err := audit.NewLogger(opts...)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

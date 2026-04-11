@@ -130,8 +130,8 @@ func waitForWebhookEvents(t *testing.T, n int, timeout time.Duration) bool {
 }
 
 // testTaxonomy returns a taxonomy for fan-out tests.
-func testTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
+func testTaxonomy() *audit.Taxonomy {
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write":    {Events: []string{"user_create"}},

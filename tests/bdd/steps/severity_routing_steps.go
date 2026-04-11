@@ -158,7 +158,7 @@ func createSeverityRoutedLogger(tc *AuditTestContext, minSev, maxSev *int, inclu
 	}
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, route, nil),
+		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
 	)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
@@ -203,7 +203,7 @@ func trySeverityLoggerCreation(tc *AuditTestContext, minSev, maxSev *int) error 
 	}
 	logger, lErr := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, route, nil),
+		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
 	)
 	tc.LastErr = lErr
 	if logger != nil {

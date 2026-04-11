@@ -72,7 +72,7 @@ func createSensitivityLogger(tc *AuditTestContext, excludeLabels []string) error
 	}
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, nil, nil, excludeLabels...),
+		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)

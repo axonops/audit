@@ -41,13 +41,12 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 			logger, err := audit.NewLogger(
 				audit.WithTaxonomy(tc.Taxonomy),
-				audit.WithNamedOutput(out, nil, nil),
-				audit.WithOutputHMAC("stdout", &audit.HMACConfig{
+				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 					Enabled:     true,
 					SaltVersion: version,
 					SaltValue:   []byte(salt),
 					Algorithm:   hash,
-				}),
+				})),
 			)
 			if err != nil {
 				return fmt.Errorf("create logger with HMAC: %w", err)
@@ -64,13 +63,12 @@ func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 			_, err := audit.NewLogger(
 				audit.WithTaxonomy(tc.Taxonomy),
-				audit.WithNamedOutput(out, nil, nil),
-				audit.WithOutputHMAC("stdout", &audit.HMACConfig{
+				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 					Enabled:     true,
 					SaltVersion: version,
 					SaltValue:   []byte(salt),
 					Algorithm:   hash,
-				}),
+				})),
 			)
 			tc.LastErr = err
 			return nil
@@ -351,10 +349,8 @@ func createDualHMACLogger(tc *AuditTestContext, strippedName, label, fullSalt, s
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fullOut, nil, nil),
-		audit.WithOutputHMAC("full", fullHMACCfg),
-		audit.WithNamedOutput(strippedOut, nil, nil, label),
-		audit.WithOutputHMAC(strippedName, strippedHMACCfg),
+		audit.WithNamedOutput(fullOut, audit.OutputHMAC(fullHMACCfg)),
+		audit.WithNamedOutput(strippedOut, audit.OutputExcludeLabels(label), audit.OutputHMAC(strippedHMACCfg)),
 	)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)

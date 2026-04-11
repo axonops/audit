@@ -283,7 +283,7 @@ func ExampleLogger_SetOutputRoute() {
 				"auth_failure": {Required: []string{"outcome"}},
 			},
 		}),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	if err != nil {
 		log.Fatal(err)

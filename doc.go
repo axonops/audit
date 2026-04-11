@@ -135,6 +135,28 @@
 //
 //   - [Metrics] — optional instrumentation interface; track deliveries, drops, and errors
 //
+// # Error Discrimination
+//
+// Validation errors returned by [Logger.AuditEvent] wrap [ErrValidation]
+// as a parent sentinel. Specific sub-sentinels identify the failure:
+//
+//   - [ErrUnknownEventType] — event type not in taxonomy
+//   - [ErrMissingRequiredField] — required fields absent
+//   - [ErrUnknownField] — unrecognised fields (strict mode only)
+//
+// Use [errors.Is] to match broadly or narrowly:
+//
+//	if errors.Is(err, audit.ErrValidation) { /* any validation failure */ }
+//	if errors.Is(err, audit.ErrUnknownEventType) { /* specific case */ }
+//
+// Use [errors.As] to access the [ValidationError] struct:
+//
+//	var ve *audit.ValidationError
+//	if errors.As(err, &ve) { log.Println(ve.Error()) }
+//
+// [ErrBufferFull] and [ErrClosed] are NOT validation errors and will
+// never match [ErrValidation].
+//
 // # Code Generation Support
 //
 //   - [LabelInfo] — sensitivity label descriptor; embedded in [FieldInfo]

@@ -90,6 +90,8 @@ func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 		// missing actor_id and subject
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), "missing required fields")
 	assert.Contains(t, err.Error(), "actor_id")
 	assert.Contains(t, err.Error(), "subject")
@@ -116,6 +118,8 @@ func TestLogger_Audit_UnknownEventType(t *testing.T) {
 
 	err := logger.AuditEvent(audit.NewEvent("schema_registr", audit.Fields{}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.Contains(t, err.Error(), "unknown event type")
 	assert.Contains(t, err.Error(), "schema_registr")
 }
@@ -132,6 +136,8 @@ func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 		"bogus_field": "value",
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownField)
 	assert.Contains(t, err.Error(), "unknown fields")
 	assert.Contains(t, err.Error(), "bogus_field")
 }

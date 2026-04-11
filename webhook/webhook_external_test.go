@@ -273,8 +273,8 @@ var _ webhook.Metrics = (*mockMetrics)(nil)
 // ---------------------------------------------------------------------------
 
 // testTaxonomy returns a taxonomy with common event types for testing.
-func testTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
+func testTaxonomy() *audit.Taxonomy {
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write":    {Events: []string{"user_create", "user_delete"}},

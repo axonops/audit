@@ -35,7 +35,7 @@ import (
 // outputs is a config change, not a code change. Per-output metrics
 // (file rotation, Loki flush) will be auto-detected from the core
 // metrics interface once issue #386 is resolved.
-func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
+func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
 	// Load output configuration from the filesystem. In production,
 	// this path comes from a flag or environment variable so each
 	// environment (dev/staging/prod) can use different output configs
@@ -50,7 +50,7 @@ func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error
 	// for event counting, buffer drops, and validation errors.
 	// Output-specific metrics (file.Metrics, loki.Metrics) will be
 	// auto-detected via type assertion once #386 lands.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, m)
 	if err != nil {
 		return nil, fmt.Errorf("load output config: %w", err)
 	}

@@ -78,17 +78,17 @@ func NewLoggerQuick(tb testing.TB, eventTypes ...string) (*audit.Logger, *Record
 	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive))
 }
 
-// QuickTaxonomy builds a minimal [audit.Taxonomy] where every listed
+// QuickTaxonomy builds a minimal [*audit.Taxonomy] where every listed
 // event type accepts any fields. All events are in a single enabled
 // category ("test"). The returned taxonomy does not enforce required
 // fields; pair it with [audit.ValidationPermissive] (as [NewLoggerQuick]
 // does) for fully unconstrained testing.
-func QuickTaxonomy(eventTypes ...string) audit.Taxonomy {
+func QuickTaxonomy(eventTypes ...string) *audit.Taxonomy {
 	events := make(map[string]*audit.EventDef, len(eventTypes))
 	for _, et := range eventTypes {
 		events[et] = &audit.EventDef{}
 	}
-	return audit.Taxonomy{
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"test": {Events: eventTypes},
@@ -97,7 +97,7 @@ func QuickTaxonomy(eventTypes ...string) audit.Taxonomy {
 	}
 }
 
-func newTestLogger(tb testing.TB, tax audit.Taxonomy, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
+func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 
 	c := &config{}

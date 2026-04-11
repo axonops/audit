@@ -638,7 +638,7 @@ func tableToStringMap(table *godog.Table) map[string]string {
 
 // defaultRequiredFields returns fields satisfying all required fields
 // for the given event type, with sensible defaults.
-func defaultRequiredFields(tax audit.Taxonomy, eventType string) audit.Fields {
+func defaultRequiredFields(tax *audit.Taxonomy, eventType string) audit.Fields {
 	fields := make(audit.Fields)
 	def, ok := tax.Events[eventType]
 	if !ok {

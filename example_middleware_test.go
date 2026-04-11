@@ -23,7 +23,7 @@ import (
 )
 
 func ExampleMiddleware() {
-	taxonomy := audit.Taxonomy{
+	taxonomy := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"access": {Events: []string{"http_request"}},
@@ -81,7 +81,7 @@ func ExampleHintsFromContext() {
 }
 
 func ExampleMiddleware_skip() {
-	taxonomy := audit.Taxonomy{
+	taxonomy := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"access": {Events: []string{"http_request"}},

@@ -34,14 +34,14 @@ func TestNewLogger_ValidTaxonomy(t *testing.T) {
 }
 
 func TestNewLogger_TaxonomyValidation(t *testing.T) {
-	tests := []struct {
+	tests := []struct { //nolint:govet // fieldalignment: test struct readability
 		name      string
 		wantError string
-		taxonomy  audit.Taxonomy
+		taxonomy  *audit.Taxonomy
 	}{
 		{
 			name: "version zero",
-			taxonomy: audit.Taxonomy{
+			taxonomy: &audit.Taxonomy{
 				Version:    0,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
@@ -50,7 +50,7 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 		},
 		{
 			name: "version too high",
-			taxonomy: audit.Taxonomy{
+			taxonomy: &audit.Taxonomy{
 				Version:    999,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
@@ -59,7 +59,7 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 		},
 		{
 			name: "category member not in Events map",
-			taxonomy: audit.Taxonomy{
+			taxonomy: &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1", "ev_missing"}}},
 				Events: map[string]*audit.EventDef{
@@ -90,7 +90,7 @@ func TestNewLogger_TaxonomyRequired(t *testing.T) {
 
 func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.WithTaxonomy(audit.Taxonomy{Version: 0}),
+		audit.WithTaxonomy(&audit.Taxonomy{Version: 0}),
 	)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid))
@@ -99,20 +99,20 @@ func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 func TestValidateTaxonomy(t *testing.T) {
 	t.Run("valid taxonomy passes", func(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()
-		err := audit.ValidateTaxonomy(tax)
+		err := audit.ValidateTaxonomy(*tax)
 		assert.NoError(t, err)
 	})
 
 	t.Run("invalid taxonomy returns ErrTaxonomyInvalid", func(t *testing.T) {
-		tax := audit.Taxonomy{Version: 0}
-		err := audit.ValidateTaxonomy(tax)
+		tax := &audit.Taxonomy{Version: 0}
+		err := audit.ValidateTaxonomy(*tax)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	})
 
 	t.Run("empty categories returns error", func(t *testing.T) {
-		tax := audit.Taxonomy{Version: 1, Events: map[string]*audit.EventDef{}}
-		err := audit.ValidateTaxonomy(tax)
+		tax := &audit.Taxonomy{Version: 1, Events: map[string]*audit.EventDef{}}
+		err := audit.ValidateTaxonomy(*tax)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		assert.Contains(t, err.Error(), "at least one category")
@@ -124,14 +124,14 @@ func TestValidateTaxonomy_AllReservedFields_RejectedAsRequired(t *testing.T) {
 	for _, field := range []string{"timestamp", "event_type", "severity", "event_category", "app_name", "host", "timezone", "pid"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events: map[string]*audit.EventDef{
 					"ev1": {Required: []string{field}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 			assert.Contains(t, err.Error(), "reserved framework field")
@@ -145,14 +145,14 @@ func TestValidateTaxonomy_AllReservedFields_RejectedAsOptional(t *testing.T) {
 	for _, field := range []string{"timestamp", "event_type", "severity", "event_category", "app_name", "host", "timezone", "pid"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events: map[string]*audit.EventDef{
 					"ev1": {Required: []string{"outcome"}, Optional: []string{field}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 			assert.Contains(t, err.Error(), "reserved framework field")
@@ -165,14 +165,14 @@ func TestValidateTaxonomy_DurationMs_AllowedAsOptional(t *testing.T) {
 	t.Parallel()
 	// duration_ms is a framework field for sensitivity protection but
 	// is NOT reserved — it can be used as an optional user field.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
 			"ev1": {Required: []string{"outcome"}, Optional: []string{"duration_ms"}},
 		},
 	}
-	err := audit.ValidateTaxonomy(tax)
+	err := audit.ValidateTaxonomy(*tax)
 	assert.NoError(t, err)
 }
 
@@ -217,14 +217,14 @@ func TestValidateTaxonomy_ReservedStandardField_BareDeclaration_Rejected(t *test
 	for _, field := range []string{"source_ip", "actor_id", "reason", "method", "outcome"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events: map[string]*audit.EventDef{
 					"ev1": {Required: []string{"marker"}, Optional: []string{field}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 			assert.Contains(t, err.Error(), "reserved standard field")
@@ -238,14 +238,14 @@ func TestValidateTaxonomy_ReservedStandardField_Required_Allowed(t *testing.T) {
 	for _, field := range []string{"source_ip", "actor_id", "reason", "method"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events: map[string]*audit.EventDef{
 					"ev1": {Required: []string{field}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 			assert.NoError(t, err)
 		})
 	}
@@ -317,20 +317,20 @@ events:
 func TestMigrateTaxonomy(t *testing.T) {
 	t.Run("valid version passes", func(t *testing.T) {
 		tax := testhelper.ValidTaxonomy()
-		err := audit.MigrateTaxonomy(&tax)
+		err := audit.MigrateTaxonomy(tax)
 		assert.NoError(t, err)
 	})
 
 	t.Run("version zero returns error", func(t *testing.T) {
-		tax := audit.Taxonomy{Version: 0}
-		err := audit.MigrateTaxonomy(&tax)
+		tax := &audit.Taxonomy{Version: 0}
+		err := audit.MigrateTaxonomy(tax)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	})
 
 	t.Run("version too high returns error", func(t *testing.T) {
-		tax := audit.Taxonomy{Version: 999}
-		err := audit.MigrateTaxonomy(&tax)
+		tax := &audit.Taxonomy{Version: 999}
+		err := audit.MigrateTaxonomy(tax)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 	})
@@ -338,7 +338,7 @@ func TestMigrateTaxonomy(t *testing.T) {
 
 func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.WithTaxonomy(audit.Taxonomy{
+		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    -1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 			Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},

@@ -40,7 +40,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	Logger      *audit.Logger
 	EventHandle *audit.EventType
 	LastErr     error
-	Taxonomy    audit.Taxonomy
+	Taxonomy    *audit.Taxonomy
 	Options     []audit.Option
 
 	// Output capture.
@@ -109,7 +109,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.Logger = nil
 	tc.EventHandle = nil
 	tc.LastErr = nil
-	tc.Taxonomy = audit.Taxonomy{}
+	tc.Taxonomy = nil
 	tc.Options = nil
 	tc.StdoutBuf = nil
 	tc.FilePaths = make(map[string]string)

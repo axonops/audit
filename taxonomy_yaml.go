@@ -206,58 +206,57 @@ type yamlFieldDef struct {
 	Required bool     `yaml:"required"`
 }
 
-// ParseTaxonomyYAML parses a YAML document into a [Taxonomy].
+// ParseTaxonomyYAML parses a YAML document into a [*Taxonomy].
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
 //
 // The returned Taxonomy is fully migrated, validated, and
-// lifecycle-injected. Passing it to [WithTaxonomy] is safe;
-// migration, injection, and validation run again inside WithTaxonomy
-// but produce no additional errors for a well-formed taxonomy.
+// precomputed. Passing it to [WithTaxonomy] skips redundant
+// re-validation.
 //
 // Input errors (empty, oversized, multi-document, invalid syntax) wrap
 // [ErrInvalidInput]. Taxonomy validation errors wrap
-// [ErrTaxonomyInvalid].
+// [ErrTaxonomyInvalid]. On error, nil is returned.
 //
 // ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
 // Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
-func ParseTaxonomyYAML(data []byte) (Taxonomy, error) {
+func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 	if len(data) == 0 {
-		return Taxonomy{}, fmt.Errorf("%w: input is empty", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: input is empty", ErrInvalidInput)
 	}
 	if len(data) > MaxTaxonomyInputSize {
-		return Taxonomy{}, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxTaxonomyInputSize)
+		return nil, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxTaxonomyInputSize)
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField())
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return Taxonomy{}, fmt.Errorf("%w: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
 	}
 
 	// Reject multi-document YAML and trailing content.
 	var discard any
 	if err := dec.Decode(&discard); err == nil {
-		return Taxonomy{}, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	} else if !errors.Is(err, io.EOF) {
-		return Taxonomy{}, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error
+		return nil, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error
 	}
 
 	tax := convertYAMLTaxonomy(yt)
 
 	if err := MigrateTaxonomy(&tax); err != nil {
-		return Taxonomy{}, err
+		return nil, err
 	}
 
 	if err := ValidateTaxonomy(tax); err != nil {
-		return Taxonomy{}, err
+		return nil, err
 	}
 
 	if err := precomputeTaxonomy(&tax); err != nil {
-		return Taxonomy{}, err
+		return nil, err
 	}
-	return tax, nil
+	return &tax, nil
 }
 
 // convertYAMLTaxonomy transforms the intermediate yamlTaxonomy into a

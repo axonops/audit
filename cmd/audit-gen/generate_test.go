@@ -36,7 +36,7 @@ type failWriter struct{ err error }
 
 func (f *failWriter) Write([]byte) (int, error) { return 0, f.err }
 
-func loadTestTaxonomy(t *testing.T, path string) audit.Taxonomy {
+func loadTestTaxonomy(t *testing.T, path string) *audit.Taxonomy {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -45,10 +45,10 @@ func loadTestTaxonomy(t *testing.T, path string) audit.Taxonomy {
 	return tax
 }
 
-func generateToString(t *testing.T, tax audit.Taxonomy, opts generateOptions) string {
+func generateToString(t *testing.T, tax *audit.Taxonomy, opts generateOptions) string {
 	t.Helper()
 	var buf bytes.Buffer
-	err := generate(&buf, tax, opts)
+	err := generate(&buf, *tax, opts)
 	require.NoError(t, err)
 	return buf.String()
 }
@@ -460,7 +460,7 @@ func TestGenerate_WriteError(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, "testdata/valid_taxonomy.yaml")
 	w := &failWriter{err: errors.New("disk full")}
-	err := generate(w, tax, defaultOpts())
+	err := generate(w, *tax, defaultOpts())
 	assert.ErrorContains(t, err, "write output")
 }
 
@@ -542,7 +542,7 @@ func TestGenerate_NoCommentWhenEmpty(t *testing.T) {
 
 func TestGenerate_MultiLineDescription(t *testing.T) {
 	t.Parallel()
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"test": {Events: []string{"multi_line"}}},
 		Events: map[string]*audit.EventDef{
@@ -562,7 +562,7 @@ func TestGenerate_MultiLineDescription(t *testing.T) {
 
 func TestGenerate_WhitespaceOnlyDescription(t *testing.T) {
 	t.Parallel()
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"test": {Events: []string{"blank_desc"}}},
 		Events: map[string]*audit.EventDef{
@@ -609,7 +609,7 @@ func TestGenerate_LabelConstants(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "taxonomy_with_labels.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package: "myapp",
 		Header:  "// test",
 		Types:   true,
@@ -640,7 +640,7 @@ func TestGenerate_LabelConstants_Disabled(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "taxonomy_with_labels.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package: "myapp",
 		Header:  "// test",
 		Types:   true,
@@ -655,7 +655,7 @@ func TestGenerate_NoLabels_NoSection(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package: "myapp",
 		Header:  "// test",
 		Labels:  true,
@@ -678,7 +678,7 @@ func TestGenerate_Builders(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "taxonomy_with_labels.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Types:    true,
@@ -720,7 +720,7 @@ func TestGenerate_Builders_StandardSetters(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Types:    true,
@@ -768,7 +768,7 @@ func TestGenerate_Builders_Disabled(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Builders: false,
@@ -781,7 +781,7 @@ func TestGenerate_Builders_NoLabels(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Types:    true,
@@ -840,7 +840,7 @@ events:
 	require.NoError(t, err)
 
 	var buf bytes.Buffer
-	err = generate(&buf, tax, generateOptions{
+	err = generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Types:    true,
@@ -863,7 +863,7 @@ func TestGenerate_Builders_NoSeverity_NoIntPtr(t *testing.T) {
 	t.Parallel()
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:  "myapp",
 		Header:   "// test",
 		Types:    true,
@@ -880,7 +880,7 @@ func TestGenerate_Builders_RuntimeEquivalent(t *testing.T) {
 	// produce correct Go that a consumer would use.
 	tax := loadTestTaxonomy(t, filepath.Join("testdata", "taxonomy_with_labels.yaml"))
 	var buf bytes.Buffer
-	err := generate(&buf, tax, generateOptions{
+	err := generate(&buf, *tax, generateOptions{
 		Package:    "myapp",
 		Header:     "// test",
 		Types:      true,

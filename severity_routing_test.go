@@ -266,7 +266,7 @@ func TestValidateEventRoute_MinSeverityOutOfRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			route := audit.EventRoute{MinSeverity: intPtr(tt.minSev)}
-			err := audit.ValidateEventRoute(&route, &tax)
+			err := audit.ValidateEventRoute(&route, tax)
 			require.Error(t, err,
 				"min_severity %d must be rejected", tt.minSev)
 			assert.Contains(t, err.Error(), tt.wantErr,
@@ -302,7 +302,7 @@ func TestValidateEventRoute_MaxSeverityOutOfRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			route := audit.EventRoute{MaxSeverity: intPtr(tt.maxSev)}
-			err := audit.ValidateEventRoute(&route, &tax)
+			err := audit.ValidateEventRoute(&route, tax)
 			require.Error(t, err,
 				"max_severity %d must be rejected", tt.maxSev)
 			assert.Contains(t, err.Error(), tt.wantErr,
@@ -322,7 +322,7 @@ func TestValidateEventRoute_MinGreaterThanMax(t *testing.T) {
 		MinSeverity: intPtr(8),
 		MaxSeverity: intPtr(3),
 	}
-	err := audit.ValidateEventRoute(&route, &tax)
+	err := audit.ValidateEventRoute(&route, tax)
 	require.Error(t, err, "min_severity 8 > max_severity 3 must be rejected")
 	assert.Contains(t, err.Error(), "min_severity 8 exceeds max_severity 3",
 		"error message must name both values")
@@ -338,7 +338,7 @@ func TestValidateEventRoute_ValidSeverityRange(t *testing.T) {
 		MinSeverity: intPtr(3),
 		MaxSeverity: intPtr(7),
 	}
-	err := audit.ValidateEventRoute(&route, &tax)
+	err := audit.ValidateEventRoute(&route, tax)
 	require.NoError(t, err, "valid severity range [3, 7] must be accepted")
 }
 
@@ -350,7 +350,7 @@ func TestValidateEventRoute_SeverityZero_Valid(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	route := audit.EventRoute{MinSeverity: intPtr(0)}
-	err := audit.ValidateEventRoute(&route, &tax)
+	err := audit.ValidateEventRoute(&route, tax)
 	require.NoError(t, err, "min_severity 0 is a valid CEF severity and must be accepted")
 }
 
@@ -779,7 +779,7 @@ func TestValidateEventRoute_SeverityWithMixedIncludeExclude(t *testing.T) {
 		MinSeverity:       intPtr(3),
 		MaxSeverity:       intPtr(8),
 	}
-	err := audit.ValidateEventRoute(&route, &tax)
+	err := audit.ValidateEventRoute(&route, tax)
 	require.Error(t, err,
 		"mixed include+exclude route with valid severity must still be rejected")
 	assert.Contains(t, err.Error(), "either include or exclude, not both",

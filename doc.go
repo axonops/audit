@@ -43,7 +43,7 @@
 // Define a taxonomy describing your event types, create a logger with
 // a stdout output, and emit an event:
 //
-//	taxonomy := audit.Taxonomy{
+//	taxonomy := &audit.Taxonomy{
 //	    Version: 1,
 //	    Categories: map[string]*audit.CategoryDef{
 //	        "write": {Events: []string{"user_create"}},

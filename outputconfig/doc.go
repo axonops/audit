@@ -83,7 +83,7 @@
 // URIs that are resolved from external secret backends (OpenBao, Vault)
 // at load time. Register providers with [WithSecretProvider]:
 //
-//	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+//	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics,
 //	    outputconfig.WithSecretProvider(provider),
 //	    outputconfig.WithSecretTimeout(30*time.Second),
 //	)
@@ -94,7 +94,7 @@
 //
 // # Usage
 //
-//	result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics)
+//	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics)
 //	if err != nil {
 //	    return fmt.Errorf("audit config: %w", err)
 //	}

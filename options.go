@@ -28,20 +28,28 @@ type Option func(*Logger) error
 // Calling it more than once replaces the taxonomy and resets all
 // runtime category and event overrides established by the previous call.
 //
-// The taxonomy is validated and pre-computed at construction time.
-func WithTaxonomy(t Taxonomy) Option {
+// WithTaxonomy makes a deep copy of t; mutations to t after this call
+// have no effect on the logger. When t was returned by
+// [ParseTaxonomyYAML], redundant re-validation is skipped.
+func WithTaxonomy(t *Taxonomy) Option {
 	return func(l *Logger) error {
-		if err := MigrateTaxonomy(&t); err != nil {
-			return err
+		if t == nil {
+			return fmt.Errorf("%w: taxonomy must not be nil", ErrTaxonomyInvalid)
 		}
-		if err := ValidateTaxonomy(t); err != nil {
-			return err
+		cp := deepCopyTaxonomy(t)
+		if !cp.validated {
+			if err := MigrateTaxonomy(cp); err != nil {
+				return err
+			}
+			if err := ValidateTaxonomy(*cp); err != nil {
+				return err
+			}
+			if err := precomputeTaxonomy(cp); err != nil {
+				return err
+			}
 		}
-		if err := precomputeTaxonomy(&t); err != nil {
-			return err
-		}
-		l.taxonomy = &t
-		l.filter = newFilterState(&t)
+		l.taxonomy = cp
+		l.filter = newFilterState(cp)
 		return nil
 	}
 }

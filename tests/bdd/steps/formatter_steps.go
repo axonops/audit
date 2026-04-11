@@ -107,7 +107,7 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(fileOut, nil, cefFmt),
+			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 		opts = append(opts, tc.Options...)
 
@@ -147,8 +147,8 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(jsonOut, nil, nil),   // default JSON
-			audit.WithNamedOutput(cefOut, nil, cefFmt), // CEF
+			audit.WithNamedOutput(jsonOut),                               // default JSON
+			audit.WithNamedOutput(cefOut, audit.OutputFormatter(cefFmt)), // CEF
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -187,7 +187,7 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(fileOut, nil, cefFmt),
+			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -223,7 +223,7 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(fileOut, nil, cefFmt),
+			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -257,7 +257,7 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(fileOut, nil, cefFmt),
+			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -295,7 +295,7 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(fileOut, nil, cefFmt),
+			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
 		logger, err := audit.NewLogger(opts...)

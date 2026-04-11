@@ -94,8 +94,8 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
-			audit.WithNamedOutput(stdoutOut, nil, nil),
-			audit.WithNamedOutput(fileOut, nil, nil),
+			audit.WithNamedOutput(stdoutOut),
+			audit.WithNamedOutput(fileOut),
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -193,7 +193,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
-			audit.WithNamedOutput(&errorOutput{}, nil, nil),
+			audit.WithNamedOutput(&errorOutput{}),
 		}
 
 		logger, err := audit.NewLogger(opts...)
@@ -232,8 +232,8 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
-			audit.WithNamedOutput(fileOut, nil, nil),
-			audit.WithNamedOutput(whOut, &audit.EventRoute{ExcludeCategories: []string{excludeCat}}, nil),
+			audit.WithNamedOutput(fileOut),
+			audit.WithNamedOutput(whOut, audit.OutputRoute(&audit.EventRoute{ExcludeCategories: []string{excludeCat}})),
 		}
 
 		logger, err := audit.NewLogger(opts...)

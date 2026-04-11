@@ -295,12 +295,20 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	}
 
 	for i := range outputs {
-		result.Options = append(result.Options,
-			audit.WithNamedOutput(outputs[i].Output, outputs[i].Route, outputs[i].Formatter, outputs[i].ExcludeLabels...))
-		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
-			result.Options = append(result.Options,
-				audit.WithOutputHMAC(outputs[i].Name, outputs[i].HMACConfig))
+		var outOpts []audit.OutputOption
+		if outputs[i].Route != nil {
+			outOpts = append(outOpts, audit.OutputRoute(outputs[i].Route))
 		}
+		if outputs[i].Formatter != nil {
+			outOpts = append(outOpts, audit.OutputFormatter(outputs[i].Formatter))
+		}
+		if len(outputs[i].ExcludeLabels) > 0 {
+			outOpts = append(outOpts, audit.OutputExcludeLabels(outputs[i].ExcludeLabels...))
+		}
+		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
+			outOpts = append(outOpts, audit.OutputHMAC(outputs[i].HMACConfig))
+		}
+		result.Options = append(result.Options, audit.WithNamedOutput(outputs[i].Output, outOpts...))
 	}
 
 	return result, nil

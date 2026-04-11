@@ -103,9 +103,8 @@ var (
 //	var ve *audit.ValidationError
 //	if errors.As(err, &ve) { log.Println(ve.Error()) }
 type ValidationError struct {
-	wrapped  [2]error // pre-allocated to avoid per-Unwrap heap allocation
-	sentinel error
-	msg      string
+	wrapped [2]error // pre-allocated to avoid per-Unwrap heap allocation
+	msg     string
 }
 
 // Error returns the human-readable error message. The text is
@@ -123,8 +122,7 @@ func (e *ValidationError) Unwrap() []error {
 // specific sentinel and formatted message.
 func newValidationError(sentinel error, format string, args ...any) *ValidationError {
 	ve := &ValidationError{
-		sentinel: sentinel,
-		msg:      fmt.Sprintf(format, args...),
+		msg: fmt.Sprintf(format, args...),
 	}
 	ve.wrapped[0] = ErrValidation
 	ve.wrapped[1] = sentinel

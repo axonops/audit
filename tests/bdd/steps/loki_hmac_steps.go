@@ -260,25 +260,20 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 		audit.WithHost("bdd-host"),
 	}
 
+	lokiOpts := []audit.OutputOption{audit.OutputHMAC(hmacCfg)}
 	if excludeLabels != nil {
-		opts = append(opts, audit.WithNamedOutput(out, nil, nil, excludeLabels...))
+		lokiOpts = append(lokiOpts, audit.OutputExcludeLabels(excludeLabels...))
 		// Also add a capture output with no exclusions for comparison.
 		capture := newCaptureOutput("capture-full")
 		tc.CaptureOutput = capture
-		opts = append(opts,
-			audit.WithNamedOutput(capture, nil, nil),
-			audit.WithOutputHMAC(capture.Name(), &audit.HMACConfig{
-				Enabled:     true,
-				SaltVersion: "v-capture",
-				SaltValue:   []byte("capture-comparison16"),
-				Algorithm:   "HMAC-SHA-256",
-			}),
-		)
-	} else {
-		opts = append(opts, audit.WithNamedOutput(out, nil, nil))
+		opts = append(opts, audit.WithNamedOutput(capture, audit.OutputHMAC(&audit.HMACConfig{
+			Enabled:     true,
+			SaltVersion: "v-capture",
+			SaltValue:   []byte("capture-comparison16"),
+			Algorithm:   "HMAC-SHA-256",
+		})))
 	}
-
-	opts = append(opts, audit.WithOutputHMAC(tc.LokiOutputName, hmacCfg))
+	opts = append(opts, audit.WithNamedOutput(out, lokiOpts...))
 
 	logger, err := audit.NewLogger(opts...)
 	if err != nil {
@@ -308,20 +303,18 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC(tc.LokiOutputName, &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: lokiVersion,
 			SaltValue:   []byte(lokiSalt),
 			Algorithm:   "HMAC-SHA-256",
-		}),
-		audit.WithNamedOutput(capture, nil, nil),
-		audit.WithOutputHMAC(capture.Name(), &audit.HMACConfig{
+		})),
+		audit.WithNamedOutput(capture, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v-capture",
 			SaltValue:   []byte("capture-salt-beta16!"),
 			Algorithm:   "HMAC-SHA-256",
-		}),
+		})),
 	)
 	if err != nil {
 		_ = out.Close()

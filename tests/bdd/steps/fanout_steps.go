@@ -202,8 +202,8 @@ func createSharedFormatterLogger(tc *AuditTestContext) error {
 	// Both outputs share the default JSON formatter (nil = logger default).
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fA, nil, nil),
-		audit.WithNamedOutput(fB, nil, nil),
+		audit.WithNamedOutput(fA),
+		audit.WithNamedOutput(fB),
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -384,10 +384,10 @@ func tryMixedRoute(tc *AuditTestContext) error {
 	}
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, &audit.EventRoute{
+		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
 			ExcludeCategories: []string{"read"},
-		}, nil),
+		})),
 	)
 	tc.LastErr = err
 	return nil
@@ -404,9 +404,9 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	}
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, &audit.EventRoute{
+		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
-		}, nil),
+		})),
 	)
 	tc.LastErr = err
 	return nil
@@ -463,9 +463,9 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 	}
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, &audit.EventRoute{
+		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeEventTypes: []string{"nonexistent_event"},
-		}, nil),
+		})),
 	)
 	tc.LastErr = err
 	return nil
@@ -499,7 +499,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
-		opts = append(opts, audit.WithNamedOutput(f, nil, nil))
+		opts = append(opts, audit.WithNamedOutput(f))
 	}
 
 	if useSyslog {
@@ -510,7 +510,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		if err != nil {
 			return fmt.Errorf("create syslog output: %w", err)
 		}
-		opts = append(opts, audit.WithNamedOutput(s, nil, nil))
+		opts = append(opts, audit.WithNamedOutput(s))
 	}
 
 	if useWebhook {
@@ -526,7 +526,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
-		opts = append(opts, audit.WithNamedOutput(w, nil, webhookFmt))
+		opts = append(opts, audit.WithNamedOutput(w, audit.OutputFormatter(webhookFmt)))
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -561,8 +561,8 @@ func createErrorOutputLogger(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(&errorOutput{}, nil, nil),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(&errorOutput{}),
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -596,8 +596,8 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(&panicOutput{}, nil, nil),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(&panicOutput{}),
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -645,8 +645,8 @@ func createPanicFormatterLogger(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fileOut, nil, nil),                        // normal file
-		audit.WithNamedOutput(&devNullOutput{}, nil, &panicFormatter{}), // panicking formatter
+		audit.WithNamedOutput(fileOut), // normal file
+		audit.WithNamedOutput(&devNullOutput{}, audit.OutputFormatter(&panicFormatter{})), // panicking formatter
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -679,8 +679,8 @@ func createDualFileRoutedLogger(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(secOut, &audit.EventRoute{IncludeCategories: []string{"security"}}, nil),
-		audit.WithNamedOutput(writeOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),
+		audit.WithNamedOutput(secOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})),
+		audit.WithNamedOutput(writeOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -722,9 +722,9 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fileOut, nil, nil), // all events
-		audit.WithNamedOutput(syslogOut, &audit.EventRoute{IncludeCategories: []string{"security"}}, nil), // security only
-		audit.WithNamedOutput(webhookOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),   // write only
+		audit.WithNamedOutput(fileOut), // all events
+		audit.WithNamedOutput(syslogOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})), // security only
+		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -759,8 +759,8 @@ func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) er
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, nil, nil),
-		audit.WithNamedOutput(w, webhookRoute, nil),
+		audit.WithNamedOutput(f),
+		audit.WithNamedOutput(w, audit.OutputRoute(webhookRoute)),
 	}
 
 	logger, err := audit.NewLogger(opts...)

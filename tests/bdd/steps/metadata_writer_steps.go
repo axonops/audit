@@ -85,7 +85,7 @@ func registerMetadataWriterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(mock, nil, nil),
+			audit.WithNamedOutput(mock),
 		}
 		opts = append(opts, tc.Options...)
 

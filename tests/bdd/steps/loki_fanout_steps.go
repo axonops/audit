@@ -230,16 +230,18 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(lokiOut, lokiRoute, nil),
 	}
 
+	var fileOpts, lokiOpts []audit.OutputOption
+	lokiOpts = append(lokiOpts, audit.OutputRoute(lokiRoute))
 	if hmacCfg != nil {
-		opts = append(opts,
-			audit.WithOutputHMAC(fileOut.Name(), hmacCfg),
-			audit.WithOutputHMAC(tc.LokiOutputName, hmacCfg),
-		)
+		fileOpts = append(fileOpts, audit.OutputHMAC(hmacCfg))
+		lokiOpts = append(lokiOpts, audit.OutputHMAC(hmacCfg))
 	}
+	opts = append(opts,
+		audit.WithNamedOutput(fileOut, fileOpts...),
+		audit.WithNamedOutput(lokiOut, lokiOpts...),
+	)
 
 	logger, err := audit.NewLogger(opts...)
 	if err != nil {
@@ -281,8 +283,8 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut, nil, nil),               // no exclusions
-		audit.WithNamedOutput(lokiOut, nil, nil, excludeLabel), // strip PII
+		audit.WithNamedOutput(fileOut),                                          // no exclusions
+		audit.WithNamedOutput(lokiOut, audit.OutputExcludeLabels(excludeLabel)), // strip PII
 	)
 	if err != nil {
 		_ = fileOut.Close()
@@ -333,8 +335,8 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(lokiOut, nil, nil),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(lokiOut),
 	)
 	if err != nil {
 		_ = fileOut.Close()

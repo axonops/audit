@@ -344,7 +344,7 @@ func createSyslogLoggerWithFormatter(tc *AuditTestContext, cfg *syslog.Config, f
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, nil, formatter),
+		audit.WithNamedOutput(out, audit.OutputFormatter(formatter)),
 	}
 	opts = append(opts, tc.Options...)
 
@@ -369,16 +369,14 @@ func createSyslogLoggerWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, 
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
 
-	outputName := out.Name()
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC(outputName, &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: version,
 			SaltValue:   []byte(salt),
 			Algorithm:   hash,
-		}),
+		})),
 	}
 	opts = append(opts, tc.Options...)
 
@@ -405,7 +403,7 @@ func createSyslogLoggerWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Confi
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, nil, nil, excludeLabels...),
+		audit.WithNamedOutput(out, audit.OutputExcludeLabels(excludeLabels...)),
 	}
 	opts = append(opts, tc.Options...)
 
@@ -447,7 +445,7 @@ func createSyslogLoggerWithRoute(tc *AuditTestContext, cfg *syslog.Config, route
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, route, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(route)),
 	}
 	opts = append(opts, tc.Options...)
 

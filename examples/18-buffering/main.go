@@ -59,7 +59,7 @@ func main() {
 	}
 
 	// Load output configuration.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

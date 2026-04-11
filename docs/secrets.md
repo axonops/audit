@@ -72,7 +72,7 @@ Complete example:
 ref+openbao://secret/data/audit/hmac#salt
 ```
 
-`ParseRef` returns `(zero, nil)` when the input does not start with
+`ParseRef` returns `(zero)` when the input does not start with
 `ref+` -- the value is treated as a literal. It returns
 `(zero, ErrMalformedRef)` when the input starts with `ref+` but
 violates any of the rules above.

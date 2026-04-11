@@ -50,7 +50,7 @@ func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, erro
 	// for event counting, buffer drops, and validation errors.
 	// Output-specific metrics (file.Metrics, loki.Metrics) will be
 	// auto-detected via type assertion once #386 lands.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, m)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, outputconfig.WithCoreMetrics(m))
 	if err != nil {
 		return nil, fmt.Errorf("load output config: %w", err)
 	}

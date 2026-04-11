@@ -72,7 +72,7 @@ func TestLoad_MinimalStdout(t *testing.T) {
 	require.NoError(t, err)
 
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -95,7 +95,7 @@ func TestLoad_FileWithRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -133,7 +133,7 @@ outputs:
       path: ` + filepath.Join(dir, "b.log") + `
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 3)
 
@@ -183,7 +183,7 @@ outputs:
     formatter:
       type: %s
 `, tt.formatter))
-			_, err := outputconfig.Load(context.Background(), data, tax, nil)
+			_, err := outputconfig.Load(context.Background(), data, tax)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "loki does not support custom formatters")
 			assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -231,7 +231,7 @@ outputs:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tax := testTaxonomy(t)
-			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax, nil)
+			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax)
 			require.NoError(t, err)
 			assert.Len(t, result.Outputs, 1)
 			require.NotNil(t, result.Outputs[0].Formatter, "explicit JSON should set per-output formatter")
@@ -258,7 +258,7 @@ outputs:
   console:
     type: stdout
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "default_formatter has been removed")
 	assert.Contains(t, err.Error(), "set formatter on each output individually")
@@ -278,7 +278,7 @@ outputs:
   console:
     type: stdout
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "default_formatter has been removed")
 }
@@ -296,7 +296,7 @@ outputs:
   loki_out:
     type: loki
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Outputs, 2)
@@ -324,7 +324,7 @@ outputs:
     formatter:
       type: cef
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "disabled Loki output with CEF formatter should not cause an error")
 	assert.Len(t, result.Outputs, 1, "only the stdout output should be active")
 	_ = result.Outputs[0].Output.Close()
@@ -342,7 +342,7 @@ outputs:
     type: loki
     formatter: cef
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "loki does not support custom formatters")
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
@@ -366,7 +366,7 @@ outputs:
       version: "1.0"
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Outputs, 1)
@@ -387,7 +387,7 @@ outputs:
     enabled: false
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Outputs, 1)
@@ -407,7 +407,7 @@ outputs:
     enabled: true
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 1)
 	_ = result.Outputs[0].Output.Close()
@@ -417,7 +417,7 @@ outputs:
 
 func TestLoad_EmptyInput(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), nil, tax, nil)
+	_, err := outputconfig.Load(context.Background(), nil, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "empty")
@@ -429,7 +429,7 @@ func TestLoad_OversizedInput(t *testing.T) {
 	for i := range big {
 		big[i] = 'x'
 	}
-	_, err := outputconfig.Load(context.Background(), big, tax, nil)
+	_, err := outputconfig.Load(context.Background(), big, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -437,7 +437,7 @@ func TestLoad_OversizedInput(t *testing.T) {
 
 func TestLoad_InvalidYAML(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("{{broken"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("{{broken"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
@@ -445,7 +445,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 func TestLoad_MultiDocument(t *testing.T) {
 	tax := testTaxonomy(t)
 	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n---\nversion: 1\n")
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "multiple YAML documents")
@@ -453,7 +453,7 @@ func TestLoad_MultiDocument(t *testing.T) {
 
 func TestLoad_Version0(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 0\noutputs:\n  c:\n    type: stdout\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 0\noutputs:\n  c:\n    type: stdout\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unsupported version")
@@ -461,7 +461,7 @@ func TestLoad_Version0(t *testing.T) {
 
 func TestLoad_Version2(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 2\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 2\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unsupported version")
@@ -469,7 +469,7 @@ func TestLoad_Version2(t *testing.T) {
 
 func TestLoad_NoOutputs(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "at least one output")
@@ -477,7 +477,7 @@ func TestLoad_NoOutputs(t *testing.T) {
 
 func TestLoad_EmptyOutputs(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs: {}\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs: {}\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "at least one output")
@@ -486,7 +486,7 @@ func TestLoad_EmptyOutputs(t *testing.T) {
 func TestLoad_MissingType(t *testing.T) {
 	tax := testTaxonomy(t)
 	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    enabled: true\n")
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "missing required field 'type'")
@@ -495,7 +495,7 @@ func TestLoad_MissingType(t *testing.T) {
 func TestLoad_UnknownType(t *testing.T) {
 	tax := testTaxonomy(t)
 	yaml := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: kafka\n")
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown output type \"kafka\"")
@@ -506,7 +506,7 @@ func TestLoad_DuplicateOutputName(t *testing.T) {
 	// goccy/go-yaml detects duplicate mapping keys at parse time.
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  dupe:\n    type: stdout\n  dupe:\n    type: stdout\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "dupe")
@@ -515,7 +515,7 @@ func TestLoad_DuplicateOutputName(t *testing.T) {
 func TestLoad_TwoDistinctNames(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  a:\n    type: stdout\n  b:\n    type: stdout\n")
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 2)
 	for _, o := range result.Outputs {
@@ -526,7 +526,7 @@ func TestLoad_TwoDistinctNames(t *testing.T) {
 func TestLoad_UnknownTopLevelKey(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\nmetrics: true\noutputs:\n  c:\n    type: stdout\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown top-level key")
@@ -536,7 +536,7 @@ func TestLoad_UnknownTopLevelKey(t *testing.T) {
 func TestLoad_AllDisabled(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  a:\n    type: stdout\n    enabled: false\n  b:\n    type: stdout\n    enabled: false\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "all outputs are disabled")
@@ -554,7 +554,7 @@ outputs:
     route:
       include_categories: [nonexistent]
 `)
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "bad")
@@ -574,7 +574,7 @@ outputs:
       include_categories: [write]
       exclude_categories: [security]
 `)
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "bad")
@@ -595,7 +595,7 @@ outputs:
       path: ${TEST_AUDIT_PATH}
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 1)
 	_ = result.Outputs[0].Output.Close()
@@ -613,7 +613,7 @@ outputs:
       path: ${TOTALLY_MISSING_VAR}
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "TOTALLY_MISSING_VAR")
@@ -630,7 +630,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 
 	// Options should contain at least one WithNamedOutput.
@@ -657,7 +657,7 @@ outputs:
       address: localhost:514
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), yaml, tax, nil)
+	_, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "does not match type")
@@ -667,21 +667,21 @@ outputs:
 
 func TestLoad_TopLevelSequence_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("- item1\n- item2\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("- item1\n- item2\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
 
 func TestLoad_OutputsIsSequence_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  - stdout\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  - stdout\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
 
 func TestLoad_OutputValueIsScalar_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad: scalar_value\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad: scalar_value\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "bad")
@@ -689,7 +689,7 @@ func TestLoad_OutputValueIsScalar_ReturnsError(t *testing.T) {
 
 func TestLoad_EnabledInvalidValue_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    enabled: not_a_bool\n"), tax, nil)
+	_, err := outputconfig.Load(context.Background(), []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    enabled: not_a_bool\n"), tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
@@ -697,7 +697,7 @@ func TestLoad_EnabledInvalidValue_ReturnsError(t *testing.T) {
 func TestLoad_TwoTypeConfigBlocks_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    file:\n      path: /tmp/a\n    syslog:\n      network: tcp\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unexpected key")
@@ -707,7 +707,7 @@ func TestLoad_TwoTypeConfigBlocks_ReturnsError(t *testing.T) {
 func TestLoad_RouteUnknownField_Rejected(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_category: [write]\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
@@ -715,7 +715,7 @@ func TestLoad_RouteUnknownField_Rejected(t *testing.T) {
 func TestLoad_PerOutputFormatterInvalid_ReturnsError(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: protobuf\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "protobuf")
@@ -724,7 +724,7 @@ func TestLoad_PerOutputFormatterInvalid_ReturnsError(t *testing.T) {
 func TestLoad_RouteWithEventTypes(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      include_event_types: [user_create]\n")
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].Route)
 	assert.Equal(t, []string{"user_create"}, result.Outputs[0].Route.IncludeEventTypes)
@@ -734,7 +734,7 @@ func TestLoad_RouteWithEventTypes(t *testing.T) {
 func TestLoad_RouteExcludeEventTypes(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      exclude_event_types: [auth_failure]\n")
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].Route)
 	assert.Equal(t, []string{"auth_failure"}, result.Outputs[0].Route.ExcludeEventTypes)
@@ -745,7 +745,7 @@ func TestLoad_EnabledFalseBeforeType(t *testing.T) {
 	// Verify enabled: false works regardless of key ordering in YAML.
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  active:\n    type: stdout\n  skipped:\n    enabled: false\n    type: stdout\n")
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	assert.Len(t, result.Outputs, 1)
 	assert.Equal(t, "active", result.Outputs[0].Name)
@@ -755,7 +755,7 @@ func TestLoad_EnabledFalseBeforeType(t *testing.T) {
 func TestLoad_MissingEnvVarInFormatter(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    formatter:\n      type: json\n      timestamp: ${MISSING_FMT_VAR}\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "MISSING_FMT_VAR")
@@ -765,7 +765,7 @@ func TestLoad_MissingEnvVarInRoute(t *testing.T) {
 	tax := testTaxonomy(t)
 	// Route values are string sequences — env var in a sequence element.
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  bad:\n    type: stdout\n    route:\n      include_categories:\n        - ${MISSING_ROUTE_VAR}\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "MISSING_ROUTE_VAR")
@@ -791,7 +791,7 @@ outputs:
       include_categories: [write]
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), yamlCfg, tax, nil)
+	result, err := outputconfig.Load(context.Background(), yamlCfg, tax)
 	require.NoError(t, err)
 
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
@@ -833,7 +833,7 @@ func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 	})
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    route:\n      include_categories: [nonexistent]\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildRoute fails")
 }
@@ -845,7 +845,7 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 	})
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  leak:\n    type: spy\n    formatter:\n      type: protobuf\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(), "output must be closed when buildOutputFormatter fails")
 }
@@ -858,7 +858,7 @@ func TestLoad_ClosesEarlierOutputsWhenLaterFails(t *testing.T) {
 	tax := testTaxonomy(t)
 	// First output (spy) succeeds. Second output (unknown type) fails.
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  good:\n    type: spy\n  bad:\n    type: nonexistent_type\n")
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.True(t, spy.closed.Load(),
 		"first output must be closed when second output construction fails")
@@ -867,7 +867,7 @@ func TestLoad_ClosesEarlierOutputsWhenLaterFails(t *testing.T) {
 func TestLoadResult_String_NoCredentials(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  console:\n    type: stdout\n")
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	s := result.String()
@@ -910,7 +910,7 @@ outputs:
     route:
       min_severity: 7
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -931,7 +931,7 @@ outputs:
     route:
       max_severity: 3
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -953,7 +953,7 @@ outputs:
       min_severity: 3
       max_severity: 7
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -975,7 +975,7 @@ outputs:
     route:
       include_categories: [write]
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	require.NotNil(t, result.Outputs[0].Route)
@@ -996,7 +996,7 @@ outputs:
     route:
       min_severity: 11
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "min_severity 11 out of range 0-10")
 }
@@ -1013,7 +1013,7 @@ outputs:
     route:
       max_severity: -1
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "max_severity -1 out of range 0-10")
 }
@@ -1031,7 +1031,7 @@ outputs:
       min_severity: 8
       max_severity: 3
 `)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "min_severity 8 exceeds max_severity 3")
 }
@@ -1048,7 +1048,7 @@ outputs:
     route:
       min_severity: 0
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "severity 0 is a valid value, not rejected as zero-value")
 	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
 	assert.Equal(t, 0, *result.Outputs[0].Route.MinSeverity,
@@ -1068,7 +1068,7 @@ outputs:
       include_categories: [security]
       min_severity: 7
 `)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].Route)
 	assert.Equal(t, []string{"security"}, result.Outputs[0].Route.IncludeCategories)
@@ -1118,7 +1118,7 @@ outputs:
       - financial
 `)
 	tax := testTaxonomyWithSensitivity(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	assert.Equal(t, []string{"pii", "financial"}, result.Outputs[0].ExcludeLabels)
@@ -1136,7 +1136,7 @@ outputs:
     exclude_labels: []
 `)
 	tax := testTaxonomyWithSensitivity(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	assert.Empty(t, result.Outputs[0].ExcludeLabels)
@@ -1155,7 +1155,7 @@ outputs:
       - pii
 `)
 	tax := testTaxonomy(t) // no sensitivity config
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	// The Load itself succeeds — validation happens at NewLogger time.
@@ -1179,7 +1179,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, result.Config.BufferSize, "zero means applyDefaults will set 10000")
@@ -1205,7 +1205,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.Equal(t, 50000, result.Config.BufferSize)
@@ -1227,7 +1227,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.Equal(t, 25000, result.Config.BufferSize)
@@ -1247,7 +1247,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 }
 
@@ -1267,7 +1267,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.Equal(t, 75000, result.Config.BufferSize)
@@ -1290,7 +1290,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	assert.True(t, result.Config.OmitEmpty)
@@ -1308,7 +1308,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "logger")
@@ -1328,7 +1328,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "logger")
@@ -1347,7 +1347,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "non-negative")
@@ -1366,7 +1366,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1385,7 +1385,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "non-negative")
@@ -1404,7 +1404,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1423,7 +1423,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "duration")
@@ -1442,7 +1442,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown mode")
@@ -1464,7 +1464,7 @@ outputs:
     type: stdout
 `, mode))
 			tax := testTaxonomy(t)
-			result, err := outputconfig.Load(context.Background(), data, tax, nil)
+			result, err := outputconfig.Load(context.Background(), data, tax)
 			require.NoError(t, err)
 			assert.Equal(t, audit.ValidationMode(mode), result.Config.ValidationMode)
 		})
@@ -1490,7 +1490,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 }
@@ -1507,7 +1507,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 }
@@ -1530,7 +1530,7 @@ outputs:
       path: "` + dir + `/audit.log"
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	for _, o := range result.Outputs {
@@ -1568,7 +1568,7 @@ outputs:
       url: "https://example.com"
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 
@@ -1606,7 +1606,7 @@ outputs:
         allow_tls12: true
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 
@@ -1637,7 +1637,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "tls_policy")
@@ -1655,7 +1655,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "tls_policy")
@@ -1682,7 +1682,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	require.NotNil(t, result.Outputs[0].HMACConfig)
@@ -1702,7 +1702,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	assert.Nil(t, result.Outputs[0].HMACConfig)
@@ -1721,7 +1721,7 @@ outputs:
       enabled: false
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	assert.Nil(t, result.Outputs[0].HMACConfig, "disabled HMAC should be nil")
@@ -1744,7 +1744,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "at least")
 }
@@ -1766,7 +1766,7 @@ outputs:
       hash: MD5
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown")
 }
@@ -1785,7 +1785,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "salt")
 }
@@ -1806,7 +1806,7 @@ outputs:
         value: "valid-salt-sixteen-b!"
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "algorithm")
 }
@@ -1829,7 +1829,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.Outputs[0].HMACConfig)
 	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.Outputs[0].HMACConfig.SaltValue)
@@ -1852,7 +1852,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	// Salt value must NOT appear in the error message.
 	assert.NotContains(t, err.Error(), "short")
@@ -1876,7 +1876,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -1902,7 +1902,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown field")
@@ -1922,7 +1922,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "non-empty")
@@ -1942,7 +1942,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -1964,7 +1964,7 @@ func TestLoad_StandardFields_EnvVarMissing(t *testing.T) {
 
 	data := []byte("version: 1\napp_name: test\nhost: test\nstandard_fields:\n  source_ip: \"${" + missingVar + "}\"\noutputs:\n  console:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), missingVar)
@@ -1982,7 +1982,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 }
@@ -2005,7 +2005,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -2036,7 +2036,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -2060,7 +2060,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -2083,7 +2083,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, o := range result.Outputs {
@@ -2104,7 +2104,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "app_name is required")
@@ -2120,7 +2120,7 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "host is required")
@@ -2132,7 +2132,7 @@ func TestLoad_AppNameTooLong_Rejected(t *testing.T) {
 	longName := strings.Repeat("a", 256)
 	data := []byte("version: 1\napp_name: " + longName + "\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "app_name exceeds maximum length")
@@ -2144,7 +2144,7 @@ func TestLoad_HostTooLong_Rejected(t *testing.T) {
 	longHost := strings.Repeat("h", 256)
 	data := []byte("version: 1\napp_name: test\nhost: " + longHost + "\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "host exceeds maximum length")
@@ -2156,7 +2156,7 @@ func TestLoad_TimezoneTooLong_Rejected(t *testing.T) {
 	longTZ := strings.Repeat("Z", 65)
 	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: " + longTZ + "\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "timezone exceeds maximum length")
@@ -2166,7 +2166,7 @@ func TestLoad_TimezoneEmptyString_Rejected(t *testing.T) {
 	t.Parallel()
 	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: \"\"\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "timezone must be non-empty")
@@ -2178,7 +2178,7 @@ func TestLoad_AppNameAtMaxLength_Accepted(t *testing.T) {
 	maxName := strings.Repeat("a", 255)
 	data := []byte("version: 1\napp_name: " + maxName + "\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "255-byte app_name is exactly at the limit and must be accepted")
 	assert.Equal(t, maxName, result.AppName)
 	for _, o := range result.Outputs {
@@ -2192,7 +2192,7 @@ func TestLoad_HostAtMaxLength_Accepted(t *testing.T) {
 	maxHost := strings.Repeat("h", 255)
 	data := []byte("version: 1\napp_name: test\nhost: " + maxHost + "\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "255-byte host is exactly at the limit and must be accepted")
 	assert.Equal(t, maxHost, result.Host)
 	for _, o := range result.Outputs {
@@ -2206,7 +2206,7 @@ func TestLoad_TimezoneAtMaxLength_Accepted(t *testing.T) {
 	maxTZ := strings.Repeat("Z", 64)
 	data := []byte("version: 1\napp_name: test\nhost: test\ntimezone: " + maxTZ + "\noutputs:\n  c:\n    type: stdout\n")
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "64-byte timezone is exactly at the limit and must be accepted")
 	assert.Equal(t, maxTZ, result.Timezone)
 	for _, o := range result.Outputs {
@@ -2244,7 +2244,7 @@ outputs:
       hostname: per-output-hostname
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	raw, ok := captured.Load().(string)
@@ -2286,7 +2286,7 @@ outputs:
       address: localhost:514
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	raw, ok := captured.Load().(string)
@@ -2329,7 +2329,7 @@ outputs:
       app_name: per-output-app
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	raw, ok := captured.Load().(string)
@@ -2368,7 +2368,7 @@ outputs:
       url: "https://example.com/hook"
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
 	raw, _ := captured.Load().(string)
@@ -2422,7 +2422,7 @@ outputs:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tax := testTaxonomy(t)
-			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax, nil)
+			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax)
 			require.NoError(t, err)
 			assert.GreaterOrEqual(t, len(result.Options), tt.wantOpts,
 				"got %d options, want at least %d", len(result.Options), tt.wantOpts)
@@ -2475,7 +2475,7 @@ func TestLoad_WithSecretTimeout_Accepted(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	result, err := outputconfig.Load(
-		context.Background(), data, tax, nil,
+		context.Background(), data, tax,
 		outputconfig.WithSecretTimeout(5*time.Second),
 	)
 	require.NoError(t, err)
@@ -2491,7 +2491,7 @@ func TestLoad_MultipleLoadOptions_Compose(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	// Multiple options applied — last write wins for timeout.
 	result, err := outputconfig.Load(
-		context.Background(), data, tax, nil,
+		context.Background(), data, tax,
 		outputconfig.WithSecretTimeout(5*time.Second),
 		outputconfig.WithSecretTimeout(20*time.Second),
 	)

@@ -177,7 +177,7 @@ events:
 			return fmt.Errorf("set AUDIT_BDD_DIR: %w", err)
 		}
 
-		result, loadErr := outputconfig.Load(context.Background(), []byte(doc.Content), tc.Taxonomy, nil)
+		result, loadErr := outputconfig.Load(context.Background(), []byte(doc.Content), tc.Taxonomy)
 		if loadErr != nil {
 			tc.LastErr = loadErr
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr

@@ -47,18 +47,15 @@ func main() {
 
 	// Load output config — app_name, host, timezone, and
 	// standard_fields defaults are set here.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}
 
-	// The standard_fields section provides deployment-wide defaults.
-	// Here, source_ip defaults to "10.0.0.1" for every event.
+	// result.Options includes WithStandardFieldDefaults automatically
+	// when standard_fields: is present in the YAML config.
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-	if result.StandardFields != nil {
-		opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
-	}
 
 	logger, err := audit.NewLogger(opts...)
 	if err != nil {

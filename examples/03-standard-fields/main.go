@@ -26,38 +26,18 @@ import (
 	"fmt"
 	"log"
 
-	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/outputconfig"
 )
 
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
 func main() {
 	// Parse taxonomy — only outcome and actor_id are declared.
 	// All 31 standard fields (source_ip, reason, target_id, etc.)
 	// are available automatically.
-	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
-	}
-
-	// Load output config — app_name, host, timezone, and
-	// standard_fields defaults are set here.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
-	if err != nil {
-		log.Fatalf("load outputs: %v", err)
-	}
-
-	// result.Options includes WithStandardFieldDefaults automatically
-	// when standard_fields: is present in the YAML config.
-	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
-
-	logger, err := audit.NewLogger(opts...)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

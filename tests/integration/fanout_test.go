@@ -239,9 +239,9 @@ func TestFanOut_EventRouting(t *testing.T) {
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut), // all events
-		audit.WithNamedOutput(webhookOut, &audit.EventRoute{
+		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
-		}, nil), // security only
+		})), // security only
 	)
 	require.NoError(t, err)
 

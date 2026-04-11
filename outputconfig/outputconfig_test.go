@@ -499,7 +499,9 @@ func TestLoad_UnknownType(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown output type \"kafka\"")
-	assert.Contains(t, err.Error(), "did you import")
+	assert.Contains(t, err.Error(), "add import")
+	assert.Contains(t, err.Error(), "go-audit/outputs")
+	assert.Contains(t, err.Error(), "for all types")
 }
 
 func TestLoad_DuplicateOutputName(t *testing.T) {

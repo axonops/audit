@@ -259,7 +259,9 @@ func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName
 	factory := audit.LookupOutputFactory(f.typeName)
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
-		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); did you import _ \"github.com/axonops/go-audit/%s\"?",
+		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); "+
+			"add import _ \"github.com/axonops/go-audit/%s\" "+
+			"or import _ \"github.com/axonops/go-audit/outputs\" for all types",
 			name, f.typeName, strings.Join(registered, ", "), f.typeName)
 	}
 	// Inject global TLS policy for output types that support it.

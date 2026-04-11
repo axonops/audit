@@ -16,6 +16,7 @@ package audit
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -107,6 +108,17 @@ func WithTimezone(tz string) Option {
 			return fmt.Errorf("audit: timezone exceeds maximum length of 64 bytes")
 		}
 		l.timezone = tz
+		return nil
+	}
+}
+
+// WithLogger sets the [log/slog.Logger] used for library diagnostics
+// (lifecycle messages, buffer drops, format errors). When not set or
+// when l is nil, [slog.Default] is used. Pass
+// slog.New(slog.DiscardHandler) to silence all library output.
+func WithLogger(l *slog.Logger) Option {
+	return func(lg *Logger) error {
+		lg.logger = l
 		return nil
 	}
 }

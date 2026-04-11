@@ -41,7 +41,9 @@ type RecordedEvent struct { //nolint:govet // readability over alignment
 	Severity int
 	// Timestamp is the event timestamp set by the drain goroutine.
 	Timestamp time.Time
-	// Fields contains all non-framework fields.
+	// Fields contains all non-framework fields. Note: numeric values
+	// are stored as float64 due to JSON round-tripping. Use
+	// [RecordedEvent.IntField] for int assertions.
 	Fields map[string]any
 	// RawJSON is the original serialised bytes for format-level assertions.
 	RawJSON []byte
@@ -55,6 +57,35 @@ type RecordedEvent struct { //nolint:govet // readability over alignment
 // Field returns the value of the named field, or nil if not present.
 func (e RecordedEvent) Field(key string) any { //nolint:gocritic // value receiver required for fmt.GoStringer on non-addressable values
 	return e.Fields[key]
+}
+
+// StringField returns the value of the named field as a string.
+// Returns the empty string if the key is missing or the value is not
+// a string.
+func (e RecordedEvent) StringField(key string) string { //nolint:gocritic // value receiver for consistency
+	v, _ := e.Fields[key].(string)
+	return v
+}
+
+// IntField returns the value of the named field as an int. JSON
+// round-tripping stores all numbers as float64, so this method
+// handles the float64→int coercion transparently.
+func (e RecordedEvent) IntField(key string) int { //nolint:gocritic // value receiver for consistency
+	switch v := e.Fields[key].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+// FloatField returns the value of the named field as a float64.
+// Returns 0 if the key is missing or the value is not numeric.
+func (e RecordedEvent) FloatField(key string) float64 { //nolint:gocritic // value receiver for consistency
+	v, _ := e.Fields[key].(float64)
+	return v
 }
 
 // HasField reports whether the event has a field with the given key

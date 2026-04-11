@@ -101,7 +101,8 @@ type Logger struct {
 	// read-only after construction. Applied in auditInternal before
 	// validation so that defaults satisfy required: true constraints.
 	standardFieldDefaults map[string]string
-	drops                 dropLimiter // rate-limits buffer-full slog.Warn
+	logger                *slog.Logger // library diagnostics logger
+	drops                 dropLimiter  // rate-limits buffer-full warnings
 }
 
 // NewLogger creates a new audit [Logger] from the given options.
@@ -137,18 +138,15 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	// Release construction-only state.
 	l.destKeys = nil
 
+	if l.logger == nil {
+		l.logger = slog.Default()
+	}
+
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
-	if l.taxonomy.dev {
-		slog.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
-		// DevTaxonomy produces empty EventDefs with no declared fields.
-		// Force permissive validation so user fields are not rejected.
-		if l.cfg.ValidationMode == ValidationStrict {
-			l.cfg.ValidationMode = ValidationPermissive
-		}
-	}
+	l.applyDevTaxonomyOverrides()
 
 	if err := l.validateOutputRoutes(); err != nil {
 		return nil, err
@@ -168,7 +166,7 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	l.drainDone = make(chan struct{})
 	go l.drainLoop(ctx)
 
-	slog.Info("audit: logger created",
+	l.logger.Info("audit: logger created",
 		"buffer_size", l.cfg.BufferSize,
 		"drain_timeout", l.cfg.DrainTimeout,
 		"validation_mode", string(l.cfg.ValidationMode),
@@ -176,6 +174,18 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	)
 
 	return l, nil
+}
+
+// applyDevTaxonomyOverrides warns about DevTaxonomy and forces permissive
+// validation mode when a dev taxonomy is used.
+func (l *Logger) applyDevTaxonomyOverrides() {
+	if l.taxonomy == nil || !l.taxonomy.dev {
+		return
+	}
+	l.logger.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+	if l.cfg.ValidationMode == ValidationStrict {
+		l.cfg.ValidationMode = ValidationPermissive
+	}
 }
 
 // applyConstructionDefaults sets formatter, PID, timezone, and propagates
@@ -263,7 +273,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		return nil
 	default:
 		l.drops.record(dropWarnInterval, func(dropped int64) {
-			slog.Warn("audit: buffer full, events dropped",
+			l.logger.Warn("audit: buffer full, events dropped",
 				"dropped", dropped,
 				"buffer_size", cap(l.ch))
 		})
@@ -297,7 +307,7 @@ func (l *Logger) Close() error {
 		}
 
 		shutdownStart := time.Now()
-		slog.Info("audit: shutdown started")
+		l.logger.Info("audit: shutdown started")
 
 		l.cancel()
 		l.waitForDrain()
@@ -305,7 +315,7 @@ func (l *Logger) Close() error {
 		var closeErrs []error
 		for _, oe := range l.entries {
 			if err := oe.output.Close(); err != nil {
-				slog.Error("audit: output close failed",
+				l.logger.Error("audit: output close failed",
 					"output", oe.output.Name(),
 					"error", err)
 				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err))
@@ -313,7 +323,7 @@ func (l *Logger) Close() error {
 		}
 		l.closeErr = errors.Join(closeErrs...)
 
-		slog.Info("audit: shutdown complete",
+		l.logger.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
 	})
 	return l.closeErr
@@ -326,7 +336,7 @@ func (l *Logger) waitForDrain() {
 	select {
 	case <-l.drainDone:
 	case <-time.After(l.cfg.DrainTimeout):
-		slog.Warn("audit: drain timed out, some events may be lost",
+		l.logger.Warn("audit: drain timed out, some events may be lost",
 			"drain_timeout", l.cfg.DrainTimeout,
 			"buffer_remaining", len(l.ch))
 	}
@@ -377,7 +387,7 @@ func (l *Logger) EnableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	l.filter.enabledCategories.Store(category, true)
-	slog.Info("audit: category enabled", "category", category)
+	l.logger.Info("audit: category enabled", "category", category)
 	return nil
 }
 
@@ -390,7 +400,7 @@ func (l *Logger) DisableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	l.filter.enabledCategories.Store(category, false)
-	slog.Info("audit: category disabled", "category", category)
+	l.logger.Info("audit: category disabled", "category", category)
 	return nil
 }
 
@@ -404,7 +414,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	}
 	l.filter.eventOverrides.Store(eventType, true)
 	l.filter.hasEventOverrides.Store(true)
-	slog.Info("audit: event enabled", "event_type", eventType)
+	l.logger.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
@@ -418,7 +428,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	}
 	l.filter.eventOverrides.Store(eventType, false)
 	l.filter.hasEventOverrides.Store(true)
-	slog.Info("audit: event disabled", "event_type", eventType)
+	l.logger.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -437,7 +447,7 @@ func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
 		return err
 	}
 	oe.setRoute(route)
-	slog.Info("audit: output route set", "output", outputName)
+	l.logger.Info("audit: output route set", "output", outputName)
 	return nil
 }
 
@@ -451,7 +461,7 @@ func (l *Logger) ClearOutputRoute(outputName string) error {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
 	oe.setRoute(&EventRoute{})
-	slog.Info("audit: output route cleared", "output", outputName)
+	l.logger.Info("audit: output route cleared", "output", outputName)
 	return nil
 }
 

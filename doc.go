@@ -89,12 +89,14 @@
 //
 //   - [Event] — interface for typed audit events; pass to [Logger.AuditEvent]
 //   - [NewEvent] — creates an event for dynamic use without code generation
+//   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
 //   - [EventType] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
 // # Outputs
 //
 //   - [Output] — interface for audit event destinations (file, syslog, webhook, stdout)
+//   - [Stdout] — convenience constructor for [StdoutOutput] writing to [os.Stdout]
 //   - [StdoutOutput] — writes events to stdout or any io.Writer; included in core
 //   - [WithOutputs] — registers unnamed outputs; [WithNamedOutput] for per-output routing
 //   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
@@ -113,6 +115,7 @@
 //   - [Taxonomy] — consumer-defined event schema; registered via [WithTaxonomy]
 //   - [EventDef] — definition of a single event type's required and optional fields
 //   - [CategoryDef] — category grouping with optional default severity
+//   - [DevTaxonomy] — creates a permissive development taxonomy (not for production)
 //   - [ParseTaxonomyYAML] — parses a YAML document into a [Taxonomy]; use with //go:embed
 //   - [ValidateTaxonomy] — validates a [Taxonomy] for internal consistency
 //   - [SensitivityConfig] — sensitivity label definitions for field classification

@@ -58,6 +58,18 @@ type StdoutOutput struct {
 	closed bool
 }
 
+// Stdout returns a [StdoutOutput] that writes to [os.Stdout]. This is
+// a convenience shorthand for NewStdoutOutput(StdoutConfig{}).
+func Stdout() *StdoutOutput {
+	out, err := NewStdoutOutput(StdoutConfig{})
+	if err != nil {
+		// StdoutConfig{} cannot fail today; panic guards against future
+		// regressions in NewStdoutOutput validation.
+		panic("audit: Stdout(): " + err.Error())
+	}
+	return out
+}
+
 // NewStdoutOutput creates a new [StdoutOutput] from the given config.
 // If [StdoutConfig.Writer] is nil, [os.Stdout] is used.
 func NewStdoutOutput(cfg StdoutConfig) (*StdoutOutput, error) {

@@ -181,10 +181,10 @@ func TestRecordedEvent_IntField_CoercesFloat64(t *testing.T) {
 	t.Parallel()
 	evt := audittest.RecordedEvent{
 		Fields: map[string]any{
-			"count":   float64(42), // JSON round-trip stores as float64
-			"exact":   5,           // int if set directly
-			"name":    "alice",
-			"rate":    3.14,
+			"count": float64(42), // JSON round-trip stores as float64
+			"exact": 5,           // int if set directly
+			"name":  "alice",
+			"rate":  3.14,
 		},
 	}
 	assert.Equal(t, 42, evt.IntField("count"), "float64 coerced to int")

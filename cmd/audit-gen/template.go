@@ -111,7 +111,7 @@ type {{ $b.StructName }} struct {
 }
 
 // New{{ $b.StructName }} creates a {{ $b.EventConst }} event with required fields.
-func New{{ $b.StructName }}({{ range $i, $f := $b.Required }}{{ if $i }}, {{ end }}{{ $f.ParamName }} any{{ end }}) *{{ $b.StructName }} {
+func New{{ $b.StructName }}({{ range $i, $f := $b.Required }}{{ if $i }}, {{ end }}{{ $f.ParamName }} {{ $f.GoType }}{{ end }}) *{{ $b.StructName }} {
 	return &{{ $b.StructName }}{fields: audit.Fields{
 {{- range $b.Required }}
 		{{ .FieldConst }}: {{ .ParamName }},
@@ -121,13 +121,13 @@ func New{{ $b.StructName }}({{ range $i, $f := $b.Required }}{{ if $i }}, {{ end
 {{ range $b.Optional }}
 // {{ .SetterName }} sets the {{ .FieldConst }} field.{{ range .Labels }}
 // Sensitivity label: {{ .ConstName }} — {{ .Description }}{{ end }}
-func (e *{{ $b.StructName }}) {{ .SetterName }}(v any) *{{ $b.StructName }} {
+func (e *{{ $b.StructName }}) {{ .SetterName }}(v {{ .GoType }}) *{{ $b.StructName }} {
 	e.fields[{{ .FieldConst }}] = v
 	return e
 }
 {{ end }}{{ range $b.StandardSetters }}
 // {{ .SetterName }} sets the reserved standard field "{{ .FieldName }}".
-func (e *{{ $b.StructName }}) {{ .SetterName }}(v any) *{{ $b.StructName }} {
+func (e *{{ $b.StructName }}) {{ .SetterName }}(v {{ .GoType }}) *{{ $b.StructName }} {
 	e.fields[{{ .FieldConst }}] = v
 	return e
 }

@@ -735,15 +735,16 @@ func TestGenerate_Builders_StandardSetters(t *testing.T) {
 	// builder even when the field is not declared in the taxonomy.
 	// auth_failure has actor_id and outcome as required — those should
 	// NOT get standard setters (they're constructor params).
-	assert.Contains(t, src, "func (e *AuthFailureEvent) SetSourceIP(v any)")
-	assert.Contains(t, src, "func (e *AuthFailureEvent) SetReason(v any)")
-	assert.Contains(t, src, "func (e *AuthFailureEvent) SetTargetID(v any)")
-	assert.Contains(t, src, "func (e *AuthFailureEvent) SetMethod(v any)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetSourceIP(v string)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetSourcePort(v int)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetReason(v string)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetTargetID(v string)")
+	assert.Contains(t, src, "func (e *AuthFailureEvent) SetMethod(v string)")
 
 	// actor_id is required for auth_failure — no standard setter for it.
-	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetActorID(v any)")
+	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetActorID(v string)")
 	// outcome is required — no standard setter.
-	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetOutcome(v any)")
+	assert.NotContains(t, src, "func (e *AuthFailureEvent) SetOutcome(v string)")
 
 	// Field constants generated for all reserved standard fields.
 	assert.Contains(t, src, `FieldSourceIP`)

@@ -16,8 +16,9 @@ package main
 
 import (
 	"context"
-	_ "embed"
+	"fmt"
 	"log"
+	"os"
 
 	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/file"
@@ -25,29 +26,34 @@ import (
 	"github.com/axonops/go-audit/outputconfig"
 )
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
-// setupAuditLogger creates the logger with four named outputs, all
-// loaded from outputs.yaml:
+// setupAuditLogger loads outputs.yaml from the filesystem and creates
+// the logger. The taxonomy is embedded (compile-time contract), but
+// output configuration is loaded at runtime so it can change per
+// environment without rebuilding the binary.
 //
+// The four outputs defined in outputs.yaml:
 //  1. console (stdout) — all events, JSON, no HMAC
 //  2. compliance_archive (file) — all events, CEF, HMAC v1 (SHA-256)
 //  3. security_feed (file) — security + compliance, severity ≥ 7, HMAC v2 (SHA-512)
 //  4. loki_dashboard (loki) — all events, JSON, PII stripped
-//
-// Per-output-type metrics (file rotation, Loki flush/drop) are wired
-// by registering custom factories before loading the YAML config.
 func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
-	// Override init()-registered default factories with metrics-aware
-	// factories so file rotations and Loki flushes/drops are tracked
-	// in Prometheus.
+	// Load output configuration from the filesystem. In production,
+	// this path comes from a flag or environment variable so each
+	// environment (dev/staging/prod) can use different output configs
+	// without rebuilding.
+	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
+	outputsYAML, err := os.ReadFile(configPath) //nolint:gosec // config path from trusted source (env var or default)
+	if err != nil {
+		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
+	}
+
+	// Register metrics-aware factories so file rotations and Loki
+	// flushes/drops are tracked in Prometheus. Without this, the
+	// blank imports (via outputconfig) register default factories
+	// that work but don't report metrics.
 	audit.RegisterOutputFactory("file", file.NewFactory(m))
 	audit.RegisterOutputFactory("loki", loki.NewFactory(m))
 
-	// Load all four outputs from YAML. Environment variables in the
-	// YAML (like ${LOKI_URL:-http://loki:3100/...}) are resolved at
-	// load time.
 	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
 	if err != nil {
 		log.Printf("load outputs: %v", err)

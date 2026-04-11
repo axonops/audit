@@ -113,9 +113,10 @@ func TestDevTaxonomy_WarnsAtConstruction(t *testing.T) {
 func TestFileFreePath_EndToEnd(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
+	// DevTaxonomy auto-forces permissive validation — no explicit
+	// WithValidationMode needed.
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
-		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

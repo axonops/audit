@@ -143,6 +143,11 @@ func NewLogger(opts ...Option) (*Logger, error) {
 
 	if l.taxonomy.dev {
 		slog.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+		// DevTaxonomy produces empty EventDefs with no declared fields.
+		// Force permissive validation so user fields are not rejected.
+		if l.cfg.ValidationMode == ValidationStrict {
+			l.cfg.ValidationMode = ValidationPermissive
+		}
 	}
 
 	if err := l.validateOutputRoutes(); err != nil {

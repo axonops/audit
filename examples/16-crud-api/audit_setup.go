@@ -16,43 +16,43 @@ package main
 
 import (
 	"context"
-	_ "embed"
-	"log"
+	"fmt"
+	"os"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
-	"github.com/axonops/go-audit/loki"
+	_ "github.com/axonops/go-audit/file" // register "file" output type
+	_ "github.com/axonops/go-audit/loki" // register "loki" output type
 	"github.com/axonops/go-audit/outputconfig"
 )
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
-// setupAuditLogger creates the logger with four named outputs, all
-// loaded from outputs.yaml:
+// setupAuditLogger loads outputs.yaml from the filesystem and creates
+// the logger. The taxonomy is embedded (compile-time contract), but
+// output configuration is loaded at runtime so it can change per
+// environment without rebuilding the binary.
 //
-//  1. console (stdout) — all events, JSON, no HMAC
-//  2. compliance_archive (file) — all events, CEF, HMAC v1 (SHA-256)
-//  3. security_feed (file) — security + compliance, severity ≥ 7, HMAC v2 (SHA-512)
-//  4. loki_dashboard (loki) — all events, JSON, PII stripped
-//
-// Per-output-type metrics (file rotation, Loki flush/drop) are wired
-// by registering custom factories before loading the YAML config.
+// Blank imports register each output type's factory via init().
+// The YAML file defines which outputs are active — adding or removing
+// outputs is a config change, not a code change. Per-output metrics
+// (file rotation, Loki flush) will be auto-detected from the core
+// metrics interface once issue #386 is resolved.
 func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
-	// Override init()-registered default factories with metrics-aware
-	// factories so file rotations and Loki flushes/drops are tracked
-	// in Prometheus.
-	audit.RegisterOutputFactory("file", file.NewFactory(m))
-	audit.RegisterOutputFactory("loki", loki.NewFactory(m))
+	// Load output configuration from the filesystem. In production,
+	// this path comes from a flag or environment variable so each
+	// environment (dev/staging/prod) can use different output configs
+	// without rebuilding.
+	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
+	outputsYAML, err := os.ReadFile(configPath) //nolint:gosec // config path from trusted source (env var or default)
+	if err != nil {
+		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
+	}
 
-	// Load all four outputs from YAML. Environment variables in the
-	// YAML (like ${LOKI_URL:-http://loki:3100/...}) are resolved at
-	// load time.
+	// Load all outputs from YAML. The core metrics (m) are passed
+	// for event counting, buffer drops, and validation errors.
+	// Output-specific metrics (file.Metrics, loki.Metrics) will be
+	// auto-detected via type assertion once #386 lands.
 	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
 	if err != nil {
-		log.Printf("load outputs: %v", err)
-		log.Printf("hint: run 'docker compose up -d' to start Loki and Postgres")
-		return nil, err
+		return nil, fmt.Errorf("load output config: %w", err)
 	}
 
 	opts := []audit.Option{

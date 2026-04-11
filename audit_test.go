@@ -465,15 +465,25 @@ func TestWithStandardFieldDefaults_EmptyStringOverride(t *testing.T) {
 	assert.Equal(t, "", record["source_ip"], "empty string counts as set -- no default applied")
 }
 
-func TestWithStandardFieldDefaults_SetOnce(t *testing.T) {
+func TestWithStandardFieldDefaults_LastWins(t *testing.T) {
 	t.Parallel()
-	_, err := audit.NewLogger(
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "a"}),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "b"}),
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithOutputs(out),
 	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "standard field defaults already set")
+	require.NoError(t, err, "multiple WithStandardFieldDefaults calls should not error (last wins)")
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "ok"}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+	require.Equal(t, 1, out.EventCount())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "b", ev["source_ip"], "second call should win (last wins)")
 }
 
 func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {

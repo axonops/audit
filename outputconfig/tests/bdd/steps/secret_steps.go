@@ -235,7 +235,6 @@ func (tc *TestContext) stepLoadYAMLWithProviders(doc *godog.DocString) error {
 		context.Background(),
 		[]byte(doc.Content),
 		tc.Taxonomy,
-		nil,
 		opts...,
 	)
 	if loadErr != nil {

@@ -50,7 +50,7 @@ func main() {
 		log.Fatalf("parse taxonomy: %v", err)
 	}
 
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, nil)
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax)
 	if err != nil {
 		log.Fatalf("load outputs: %v", err)
 	}

@@ -150,7 +150,7 @@ func (o *NamedOutput) String() string {
 // The ctx parameter controls timeout for network I/O during secret
 // resolution. Use [WithSecretTimeout] to configure the resolution
 // timeout.
-func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
+func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
 	lo := resolveOptions(opts)
 
 	// Build the secret resolver from registered providers.
@@ -239,7 +239,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetric
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, coreMetrics, secretResolver)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, lo.coreMetrics, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)

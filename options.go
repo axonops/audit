@@ -115,13 +115,9 @@ func WithTimezone(tz string) Option {
 // reserved standard fields. Defaults are applied in [Logger.AuditEvent]
 // before validation — a default satisfies required: true constraints.
 // Per-event values always override defaults (key existence check, not
-// zero value). This option may be called at most once; a second call
-// returns an error.
+// zero value). When called multiple times, the last call wins.
 func WithStandardFieldDefaults(defaults map[string]string) Option {
 	return func(l *Logger) error {
-		if l.standardFieldDefaults != nil {
-			return fmt.Errorf("audit: standard field defaults already set -- cannot be overridden")
-		}
 		for k := range defaults {
 			if !IsReservedStandardField(k) {
 				return fmt.Errorf("audit: standard field default key %q is not a reserved standard field", k)

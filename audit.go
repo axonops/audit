@@ -212,7 +212,7 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		if l.metrics != nil {
 			l.metrics.RecordValidationError(eventType)
 		}
-		return fmt.Errorf("audit: unknown event type %q", eventType)
+		return newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
 	}
 
 	// Copy fields and merge defaults in one pass to avoid double

@@ -16,15 +16,9 @@ package audit
 
 import "fmt"
 
-const (
-	// currentConfigVersion is the latest config schema version
-	// supported by this library.
-	currentConfigVersion = 1
-
-	// minSupportedConfigVersion is the oldest config schema version
-	// the library can migrate from.
-	minSupportedConfigVersion = 1
-)
+// currentConfigVersion is the latest config schema version
+// supported by this library.
+const currentConfigVersion = 1
 
 // migrateConfig applies backwards-compatible migrations to older config
 // versions. Called after [validateConfig] (which calls [Config.applyDefaults]),

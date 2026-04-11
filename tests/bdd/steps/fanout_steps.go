@@ -562,7 +562,7 @@ func createErrorOutputLogger(tc *AuditTestContext) error {
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fileOut),
-		audit.WithNamedOutput(&errorOutput{}, nil, nil),
+		audit.WithNamedOutput(&errorOutput{}),
 	}
 
 	logger, err := audit.NewLogger(opts...)
@@ -597,7 +597,7 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fileOut),
-		audit.WithNamedOutput(&panicOutput{}, nil, nil),
+		audit.WithNamedOutput(&panicOutput{}),
 	}
 
 	logger, err := audit.NewLogger(opts...)

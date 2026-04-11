@@ -131,7 +131,7 @@ func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		}
 		logger, err := audit.NewLogger(
 			audit.WithTaxonomy(tc.Taxonomy),
-			audit.WithNamedOutput(audit.WrapOutput(stdout, name), nil, nil),
+			audit.WithNamedOutput(audit.WrapOutput(stdout, name)),
 		)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)

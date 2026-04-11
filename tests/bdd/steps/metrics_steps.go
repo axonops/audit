@@ -193,7 +193,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
-			audit.WithNamedOutput(&errorOutput{}, nil, nil),
+			audit.WithNamedOutput(&errorOutput{}),
 		}
 
 		logger, err := audit.NewLogger(opts...)

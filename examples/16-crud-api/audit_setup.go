@@ -17,12 +17,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
-	"github.com/axonops/go-audit/loki"
+	_ "github.com/axonops/go-audit/file" // register "file" output type
+	_ "github.com/axonops/go-audit/loki" // register "loki" output type
 	"github.com/axonops/go-audit/outputconfig"
 )
 
@@ -31,11 +30,11 @@ import (
 // output configuration is loaded at runtime so it can change per
 // environment without rebuilding the binary.
 //
-// The four outputs defined in outputs.yaml:
-//  1. console (stdout) — all events, JSON, no HMAC
-//  2. compliance_archive (file) — all events, CEF, HMAC v1 (SHA-256)
-//  3. security_feed (file) — security + compliance, severity ≥ 7, HMAC v2 (SHA-512)
-//  4. loki_dashboard (loki) — all events, JSON, PII stripped
+// Blank imports register each output type's factory via init().
+// The YAML file defines which outputs are active — adding or removing
+// outputs is a config change, not a code change. Per-output metrics
+// (file rotation, Loki flush) will be auto-detected from the core
+// metrics interface once issue #386 is resolved.
 func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
 	// Load output configuration from the filesystem. In production,
 	// this path comes from a flag or environment variable so each
@@ -47,18 +46,13 @@ func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error
 		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
 	}
 
-	// Register metrics-aware factories so file rotations and Loki
-	// flushes/drops are tracked in Prometheus. Without this, the
-	// blank imports (via outputconfig) register default factories
-	// that work but don't report metrics.
-	audit.RegisterOutputFactory("file", file.NewFactory(m))
-	audit.RegisterOutputFactory("loki", loki.NewFactory(m))
-
+	// Load all outputs from YAML. The core metrics (m) are passed
+	// for event counting, buffer drops, and validation errors.
+	// Output-specific metrics (file.Metrics, loki.Metrics) will be
+	// auto-detected via type assertion once #386 lands.
 	result, err := outputconfig.Load(context.Background(), outputsYAML, &tax, m)
 	if err != nil {
-		log.Printf("load outputs: %v", err)
-		log.Printf("hint: run 'docker compose up -d' to start Loki and Postgres")
-		return nil, err
+		return nil, fmt.Errorf("load output config: %w", err)
 	}
 
 	opts := []audit.Option{

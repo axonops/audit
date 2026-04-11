@@ -24,40 +24,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewLogger_ConfigVersionZero(t *testing.T) {
-	_, err := audit.NewLogger(
-		audit.Config{Version: 0, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
-	assert.Contains(t, err.Error(), "version is required")
-}
-
-func TestNewLogger_ConfigVersionTooHigh(t *testing.T) {
-	_, err := audit.NewLogger(
-		audit.Config{Version: 999, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
-	assert.Contains(t, err.Error(), "not supported")
-}
-
-func TestNewLogger_ConfigVersionNegative(t *testing.T) {
-	// Negative version is treated as below minimum supported.
-	_, err := audit.NewLogger(
-		audit.Config{Version: -1, Enabled: true},
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
-	assert.Contains(t, err.Error(), "no longer supported")
-}
-
 func TestNewLogger_InvalidValidationMode(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "bogus"},
+		audit.WithValidationMode("bogus"),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
@@ -68,7 +37,7 @@ func TestNewLogger_InvalidValidationMode(t *testing.T) {
 func TestNewLogger_BufferSizeDefault(t *testing.T) {
 	// BufferSize 0 should not cause an error; it defaults to 10,000.
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: 0},
+		audit.WithBufferSize(0),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -78,7 +47,6 @@ func TestNewLogger_BufferSizeDefault(t *testing.T) {
 func TestNewLogger_DrainTimeoutDefault(t *testing.T) {
 	// DrainTimeout 0 should not cause an error; it defaults to 5s.
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, DrainTimeout: 0},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -87,7 +55,7 @@ func TestNewLogger_DrainTimeoutDefault(t *testing.T) {
 
 func TestNewLogger_CustomDrainTimeout(t *testing.T) {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, DrainTimeout: 10 * time.Second},
+		audit.WithDrainTimeout(10*time.Second),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -97,7 +65,7 @@ func TestNewLogger_CustomDrainTimeout(t *testing.T) {
 func TestNewLogger_DisabledNoOp(t *testing.T) {
 	out := testhelper.NewMockOutput("disabled-check")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: false},
+		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -119,7 +87,7 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 func TestNewLogger_NegativeBufferSize_DefaultsCorrectly(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: -1},
+		audit.WithBufferSize(-1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -138,7 +106,7 @@ func TestNewLogger_NegativeBufferSize_DefaultsCorrectly(t *testing.T) {
 func TestNewLogger_NegativeDrainTimeout_DefaultsCorrectly(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, DrainTimeout: -1},
+		audit.WithDrainTimeout(-1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)

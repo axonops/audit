@@ -70,7 +70,6 @@ events:
 
 	out := testhelper.NewMockOutput("pipeline")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
@@ -131,7 +130,6 @@ events:
 
 	out := testhelper.NewMockOutput("consistent")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
@@ -178,7 +176,6 @@ events:
 
 	out := testhelper.NewMockOutput("three-cats")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
@@ -219,7 +216,6 @@ events:
 
 	out := testhelper.NewMockOutput("concurrent-filter")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
@@ -502,7 +498,6 @@ events:
 
 			out := testhelper.NewMockOutput("sev-pipeline")
 			logger, err := audit.NewLogger(
-				audit.Config{Version: 1, Enabled: true},
 				audit.WithTaxonomy(tax),
 				audit.WithOutputs(out),
 			)
@@ -572,7 +567,6 @@ events:
 	// Drive the full pipeline and check the JSON output.
 	out := testhelper.NewMockOutput("mixed-fmt")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)

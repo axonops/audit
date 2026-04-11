@@ -49,22 +49,22 @@ func registerMetricsGivenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 	ctx.Step(`^a logger with stdout output and metrics$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true})
+		return createStdoutLogger(tc)
 	})
 
 	ctx.Step(`^a logger with stdout output and metrics in strict mode$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationStrict})
+		return createStdoutLogger(tc)
 	})
 
 	ctx.Step(`^a logger with stdout output and metrics in warn mode$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, ValidationMode: audit.ValidationWarn})
+		return createStdoutLoggerWithOpts(tc, audit.WithValidationMode(audit.ValidationWarn))
 	})
 
 	ctx.Step(`^a logger with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc, audit.Config{Version: 1, Enabled: true, BufferSize: bufSize})
+		return createStdoutLoggerWithOpts(tc, audit.WithBufferSize(bufSize))
 	})
 
 }
@@ -98,7 +98,7 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			audit.WithNamedOutput(fileOut, nil, nil),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -130,7 +130,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(w),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -155,7 +155,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(stdoutOut),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -180,7 +180,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(stdoutOut),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -196,7 +196,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithNamedOutput(&errorOutput{}, nil, nil),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -236,7 +236,7 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			audit.WithNamedOutput(whOut, &audit.EventRoute{ExcludeCategories: []string{excludeCat}}, nil),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}

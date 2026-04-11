@@ -133,7 +133,6 @@ func createMultiCatLogger(tc *AuditTestContext, route *audit.EventRoute, formatt
 		return fmt.Errorf("create stdout: %w", err)
 	}
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, route, formatter),
 	)

@@ -59,7 +59,6 @@
 //	}
 //
 //	logger, err := audit.NewLogger(
-//	    audit.Config{Version: 1, Enabled: true},
 //	    audit.WithTaxonomy(taxonomy),
 //	    audit.WithOutputs(stdout),
 //	)
@@ -91,7 +90,7 @@
 //   - [Event] — interface for typed audit events; pass to [Logger.AuditEvent]
 //   - [NewEvent] — creates an event for dynamic use without code generation
 //   - [EventType] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
-//   - [Fields] — type alias for map[string]any
+//   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
 // # Outputs
 //

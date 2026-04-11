@@ -263,7 +263,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
 		}
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -328,7 +328,7 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
 		}
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -481,7 +481,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
 		}
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -624,7 +624,7 @@ func createWebhookLoggerWithWebhookMetrics(tc *AuditTestContext, batchSize int) 
 		audit.WithOutputs(out),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -653,7 +653,7 @@ func createWebhookLoggerFromConfig(tc *AuditTestContext, cfg *webhook.Config) er
 		audit.WithOutputs(out),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -904,7 +904,7 @@ func createWebhookLoggerSSRF(tc *AuditTestContext, url string, allowPrivate bool
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(out),
 	}
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}

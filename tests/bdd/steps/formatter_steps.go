@@ -45,7 +45,7 @@ func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 
 func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output using JSON formatter$`, func() error {
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
+		return createFileLogger(tc, file.Config{})
 	})
 
 	ctx.Step(`^a logger with file output using JSON formatter with unix millis timestamps$`, func() error {
@@ -67,7 +67,7 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			audit.WithOutputs(fileOut),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -77,8 +77,10 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 	})
 
 	ctx.Step(`^a logger with file output using JSON formatter and OmitEmpty (true|false)$`, func(val string) error {
-		cfg := audit.Config{Version: 1, Enabled: true, OmitEmpty: val == "true"}
-		return createFileLogger(tc, cfg, file.Config{})
+		if val == "true" {
+			tc.Options = append(tc.Options, audit.WithOmitEmpty())
+		}
+		return createFileLogger(tc, file.Config{})
 	})
 
 }
@@ -109,7 +111,7 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -149,7 +151,7 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithNamedOutput(cefOut, nil, cefFmt), // CEF
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -188,7 +190,7 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 			audit.WithNamedOutput(fileOut, nil, cefFmt),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -224,7 +226,7 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 			audit.WithNamedOutput(fileOut, nil, cefFmt),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -258,7 +260,7 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 			audit.WithNamedOutput(fileOut, nil, cefFmt),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -296,7 +298,7 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithNamedOutput(fileOut, nil, cefFmt),
 		}
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}

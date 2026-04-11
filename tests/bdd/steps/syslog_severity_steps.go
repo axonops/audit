@@ -348,7 +348,7 @@ func createSyslogLoggerWithFormatter(tc *AuditTestContext, cfg *syslog.Config, f
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -382,7 +382,7 @@ func createSyslogLoggerWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, 
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -409,7 +409,7 @@ func createSyslogLoggerWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Confi
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -451,7 +451,7 @@ func createSyslogLoggerWithRoute(tc *AuditTestContext, cfg *syslog.Config, route
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}

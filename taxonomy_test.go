@@ -26,7 +26,6 @@ import (
 
 func TestNewLogger_ValidTaxonomy(t *testing.T) {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -74,7 +73,6 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := audit.NewLogger(
-				audit.Config{Version: 1, Enabled: true},
 				audit.WithTaxonomy(tt.taxonomy),
 			)
 			require.Error(t, err)
@@ -85,14 +83,13 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 }
 
 func TestNewLogger_TaxonomyRequired(t *testing.T) {
-	_, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true})
+	_, err := audit.NewLogger()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy is required")
 }
 
 func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{Version: 0}),
 	)
 	require.Error(t, err)
@@ -341,7 +338,6 @@ func TestMigrateTaxonomy(t *testing.T) {
 
 func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    -1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},

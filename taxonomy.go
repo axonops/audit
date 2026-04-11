@@ -19,9 +19,43 @@ import (
 	"slices"
 )
 
-// Fields is a typed alias for audit event field maps. Consumers pass
-// field values as Fields to [Logger.AuditEvent].
-type Fields = map[string]any
+// Fields is the map type for audit event fields. Consumers pass
+// field values as Fields to [Logger.AuditEvent] and generated event
+// builders.
+//
+// Fields is a defined type (not an alias) so it can carry convenience
+// methods. Callers constructing fields from a plain map must convert
+// explicitly: audit.Fields(m).
+//
+// Comparable pattern: [net/url.Values], [net/http.Header].
+type Fields map[string]any
+
+// Has reports whether the field map contains a value for key.
+func (f Fields) Has(key string) bool {
+	_, ok := f[key]
+	return ok
+}
+
+// String returns the value for key as a string. If the key is missing
+// or the value is not a string, it returns the empty string.
+func (f Fields) String(key string) string {
+	v, _ := f[key].(string)
+	return v
+}
+
+// Int returns the value for key as an int. If the key is missing or
+// the value is not an int, it returns 0. Float64 values (common from
+// JSON unmarshalling) are truncated toward zero (e.g. 99.9 → 99).
+func (f Fields) Int(key string) int {
+	switch v := f[key].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
+}
 
 // SensitivityConfig holds all sensitivity label definitions for a
 // taxonomy. It is optional; a nil SensitivityConfig means no
@@ -161,13 +195,11 @@ type Taxonomy struct {
 	// disabled with zero overhead.
 	Sensitivity *SensitivityConfig
 
-	// EmitEventCategory controls whether the delivery-specific category
-	// name is appended as an `event_category` field in serialised output.
-	// When set via [ParseTaxonomyYAML], defaults to true when absent
-	// from YAML. The Go zero value is false — programmatic consumers
-	// must set this explicitly. When false, the append is skipped
-	// entirely with zero overhead.
-	EmitEventCategory bool
+	// SuppressEventCategory controls whether the `event_category` field
+	// is omitted from serialised output. The zero value (false) means
+	// the category IS emitted — matching the YAML default when
+	// `emit_event_category` is absent. Set to true to suppress.
+	SuppressEventCategory bool
 
 	// Version is the taxonomy schema version. MUST be > 0. Currently
 	// only version 1 is supported; higher values cause [WithTaxonomy]

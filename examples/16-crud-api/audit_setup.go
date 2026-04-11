@@ -61,5 +61,5 @@ func setupAuditLogger(tax audit.Taxonomy, m *auditMetrics) (*audit.Logger, error
 	}
 	opts = append(opts, result.Options...)
 
-	return audit.NewLogger(result.Config, opts...)
+	return audit.NewLogger(opts...)
 }

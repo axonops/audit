@@ -31,7 +31,7 @@ func TestFanout_DeliverToAll(t *testing.T) {
 	out2 := testhelper.NewMockOutput("out2")
 	out3 := testhelper.NewMockOutput("out3")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(out1, out2, out3),
 	)
@@ -51,7 +51,7 @@ func TestFanout_OutputFailureIsolation(t *testing.T) {
 	failing.SetWriteErr(assert.AnError)
 	healthy := testhelper.NewMockOutput("healthy")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(failing, healthy),
 	)
@@ -131,7 +131,7 @@ func TestFanout_RouteFiltering(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			out := testhelper.NewMockOutput("routed")
 			logger, err := audit.NewLogger(
-				audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+				audit.WithValidationMode(audit.ValidationPermissive),
 				audit.WithTaxonomy(testhelper.TestTaxonomy()),
 				audit.WithNamedOutput(out, &tt.route, nil),
 			)
@@ -151,7 +151,6 @@ func TestFanout_DuplicateOutputName_Error(t *testing.T) {
 	out1 := testhelper.NewMockOutput("same-name")
 	out2 := testhelper.NewMockOutput("same-name")
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(out1, out2),
 	)
@@ -163,7 +162,6 @@ func TestFanout_WithOutputs_AfterWithNamedOutput_Error(t *testing.T) {
 	out1 := testhelper.NewMockOutput("named")
 	out2 := testhelper.NewMockOutput("plain")
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out1, &audit.EventRoute{}, nil),
 		audit.WithOutputs(out2), // should error
@@ -176,7 +174,6 @@ func TestFanout_WithNamedOutput_AfterWithOutputs_Error(t *testing.T) {
 	out1 := testhelper.NewMockOutput("plain")
 	out2 := testhelper.NewMockOutput("named")
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(out1),
 		audit.WithNamedOutput(out2, &audit.EventRoute{}, nil), // should error
@@ -188,7 +185,6 @@ func TestFanout_WithNamedOutput_AfterWithOutputs_Error(t *testing.T) {
 func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
@@ -201,7 +197,6 @@ func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 func TestFanout_BootstrapValidation_MixedMode(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{
 			IncludeCategories: []string{"write"},
@@ -215,7 +210,7 @@ func TestFanout_BootstrapValidation_MixedMode(t *testing.T) {
 func TestFanout_SetOutputRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("routed")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -242,7 +237,7 @@ func TestFanout_SetOutputRoute_DoesNotAffectOtherOutputs(t *testing.T) {
 	outA := testhelper.NewMockOutput("a")
 	outB := testhelper.NewMockOutput("b")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(outA, &audit.EventRoute{}, nil),
 		audit.WithNamedOutput(outB, &audit.EventRoute{}, nil),
@@ -264,7 +259,6 @@ func TestFanout_SetOutputRoute_DoesNotAffectOtherOutputs(t *testing.T) {
 
 func TestFanout_SetOutputRoute_UnknownOutput(t *testing.T) {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -278,7 +272,6 @@ func TestFanout_SetOutputRoute_UnknownOutput(t *testing.T) {
 func TestFanout_SetOutputRoute_InvalidRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -295,7 +288,7 @@ func TestFanout_SetOutputRoute_InvalidRoute(t *testing.T) {
 func TestFanout_ClearOutputRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("routed")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{
 			IncludeCategories: []string{"security"},
@@ -314,7 +307,6 @@ func TestFanout_ClearOutputRoute(t *testing.T) {
 
 func TestFanout_ClearOutputRoute_UnknownOutput(t *testing.T) {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -329,7 +321,6 @@ func TestFanout_OutputRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	route := audit.EventRoute{IncludeCategories: []string{"security"}}
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &route, nil),
 	)
@@ -349,7 +340,6 @@ func TestFanout_OutputRoute(t *testing.T) {
 
 func TestFanout_OutputRoute_UnknownOutput(t *testing.T) {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -363,7 +353,6 @@ func TestFanout_OutputRoute_UnknownOutput(t *testing.T) {
 func TestFanout_OutputRoute_ReflectsSetAndClear(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -387,7 +376,7 @@ func TestFanout_OutputRoute_ReflectsSetAndClear(t *testing.T) {
 func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 	out := testhelper.NewMockOutput("concurrent")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -425,7 +414,7 @@ func TestFanout_ConcurrentSetRouteAndAudit(t *testing.T) {
 func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 	out := testhelper.NewMockOutput("all")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -463,7 +452,7 @@ func TestFanout_PerOutputFormatter(t *testing.T) {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(jsonOut, &audit.EventRoute{}, nil),
 		audit.WithNamedOutput(cefOut, &audit.EventRoute{}, cefFmt),
@@ -486,7 +475,7 @@ func TestFanout_PerOutputFormatter(t *testing.T) {
 func TestFanout_PanicInFormatter_DrainLoopSurvives(t *testing.T) {
 	out := testhelper.NewMockOutput("survivor")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, &panicFormatter{}),
 	)
@@ -514,7 +503,6 @@ func TestFanout_PanicInOutputWrite_OtherOutputsStillReceive(t *testing.T) {
 	survivor := testhelper.NewMockOutput("survivor")
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(panicOut, survivor),
 	)
@@ -546,7 +534,7 @@ func TestFanout_SharedFormatter_DeliversSameBytes(t *testing.T) {
 	out2 := testhelper.NewMockOutput("b")
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(out1, out2), // same default formatter
 	)
@@ -568,7 +556,7 @@ func TestFanout_PerOutputRouteFilter_MetricsRecordFiltered(t *testing.T) {
 	metrics := testhelper.NewMockMetrics()
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithMetrics(metrics),
 		audit.WithNamedOutput(out, &audit.EventRoute{
@@ -589,7 +577,7 @@ func TestFanout_PerOutputRouteFilter_MetricsRecordFiltered(t *testing.T) {
 func TestFanout_ExcludeEventType_EndToEnd(t *testing.T) {
 	out := testhelper.NewMockOutput("no-config-get")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(out, &audit.EventRoute{
 			ExcludeEventTypes: []string{"config_get"},
@@ -617,7 +605,7 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 	badOut := testhelper.NewMockOutput("bad")
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithNamedOutput(goodOut, &audit.EventRoute{}, nil),
 		audit.WithNamedOutput(badOut, &audit.EventRoute{}, &errorFormatter{}),
@@ -640,7 +628,7 @@ func TestFanout_ErrorFormatter_DoesNotBlockDefaultFormatter(t *testing.T) {
 func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithOutputs(out),
 	)

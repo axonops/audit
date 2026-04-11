@@ -59,7 +59,7 @@ func main() {
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
 
-	logger, err := audit.NewLogger(result.Config, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

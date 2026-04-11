@@ -14,7 +14,10 @@
 
 package audit
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Option configures a [Logger] during construction via [NewLogger].
 type Option func(*Logger) error
@@ -252,6 +255,88 @@ func WithOutputHMAC(name string, cfg *HMACConfig) Option {
 			return err
 		}
 		return l.setOutputHMAC(name, cfg)
+	}
+}
+
+// WithBufferSize sets the async channel capacity for the logger.
+// Zero or negative values are ignored (the default of
+// [DefaultBufferSize] applies). Values above [MaxBufferSize] cause
+// [NewLogger] to return an error wrapping [ErrConfigInvalid].
+func WithBufferSize(n int) Option {
+	return func(l *Logger) error {
+		l.cfg.BufferSize = n
+		return nil
+	}
+}
+
+// WithDrainTimeout sets the maximum time [Logger.Close] waits for
+// pending events to flush. Zero or negative values are ignored (the
+// default of [DefaultDrainTimeout] applies). Values above
+// [MaxDrainTimeout] cause [NewLogger] to return an error wrapping
+// [ErrConfigInvalid].
+func WithDrainTimeout(d time.Duration) Option {
+	return func(l *Logger) error {
+		l.cfg.DrainTimeout = d
+		return nil
+	}
+}
+
+// WithValidationMode sets how [Logger.AuditEvent] handles unknown
+// fields. Must be one of [ValidationStrict], [ValidationWarn], or
+// [ValidationPermissive]. An invalid mode causes [NewLogger] to
+// return an error wrapping [ErrConfigInvalid].
+func WithValidationMode(m ValidationMode) Option {
+	return func(l *Logger) error {
+		l.cfg.ValidationMode = m
+		return nil
+	}
+}
+
+// WithOmitEmpty enables omission of empty, nil, and zero-value fields
+// from serialised output. When enabled, only non-zero fields are
+// serialised. Consumers operating under compliance regimes that
+// require all registered fields SHOULD NOT use this option.
+func WithOmitEmpty() Option {
+	return func(l *Logger) error {
+		l.cfg.OmitEmpty = true
+		return nil
+	}
+}
+
+// WithDisabled creates a no-op logger that discards all events without
+// validation or delivery. [Logger.AuditEvent] returns nil immediately.
+// This is the explicit opt-out for audit logging — the default is
+// enabled, because silent audit disablement is worse than noisy audit
+// failure.
+func WithDisabled() Option {
+	return func(l *Logger) error {
+		l.disabled = true
+		return nil
+	}
+}
+
+// WithConfig applies configuration from a [Config] struct. Non-zero
+// fields override the corresponding defaults. When combined with
+// individual With* options, the last option applied wins.
+//
+// Boolean fields at their zero value (false) are indistinguishable
+// from unset — use [WithOmitEmpty] or [WithDisabled] for explicit
+// opt-in to boolean behaviours.
+func WithConfig(cfg Config) Option {
+	return func(l *Logger) error {
+		if cfg.BufferSize > 0 {
+			l.cfg.BufferSize = cfg.BufferSize
+		}
+		if cfg.DrainTimeout > 0 {
+			l.cfg.DrainTimeout = cfg.DrainTimeout
+		}
+		if cfg.ValidationMode != "" {
+			l.cfg.ValidationMode = cfg.ValidationMode
+		}
+		if cfg.OmitEmpty {
+			l.cfg.OmitEmpty = true
+		}
+		return nil
 	}
 }
 

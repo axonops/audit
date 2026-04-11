@@ -241,7 +241,7 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 		)
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		_ = fileOut.Close()
 		_ = lokiOut.Close()
@@ -278,7 +278,6 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 	tc.LokiOutputName = lokiOut.Name()
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
@@ -331,7 +330,6 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),

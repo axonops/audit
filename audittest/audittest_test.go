@@ -99,13 +99,10 @@ func TestNewLogger_ValidationError(t *testing.T) {
 	assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }
 
-func TestNewLogger_WithConfig(t *testing.T) {
+func TestNewLogger_WithDisabled(t *testing.T) {
 	t.Parallel()
 	logger, events, _ := audittest.NewLogger(t, testTaxonomyYAML,
-		audittest.WithConfig(audit.Config{
-			Version: 1,
-			Enabled: false, // disabled logger
-		}),
+		audittest.WithDisabled(),
 	)
 
 	// Disabled logger accepts events without error but does not deliver.

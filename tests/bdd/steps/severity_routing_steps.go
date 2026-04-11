@@ -130,7 +130,6 @@ func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 			return fmt.Errorf("create stdout: %w", err)
 		}
 		logger, err := audit.NewLogger(
-			audit.Config{Version: 1, Enabled: true},
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithNamedOutput(audit.WrapOutput(stdout, name), nil, nil),
 		)
@@ -158,7 +157,6 @@ func createSeverityRoutedLogger(tc *AuditTestContext, minSev, maxSev *int, inclu
 		ExcludeCategories: excludeCats,
 	}
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, route, nil),
 	)
@@ -204,7 +202,6 @@ func trySeverityLoggerCreation(tc *AuditTestContext, minSev, maxSev *int) error 
 		MaxSeverity: maxSev,
 	}
 	logger, lErr := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, route, nil),
 	)

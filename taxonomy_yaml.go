@@ -291,17 +291,19 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 		slices.Sort(def.Categories)
 	}
 
-	// Default emit_event_category to true when absent.
-	emitEventCategory := true
+	// Default emit_event_category to true when absent from YAML.
+	// The Go struct uses SuppressEventCategory (inverted): zero value
+	// (false) means "emit category", matching the YAML default.
+	suppressEventCategory := false
 	if yt.Categories.emitEventCategory != nil {
-		emitEventCategory = *yt.Categories.emitEventCategory
+		suppressEventCategory = !*yt.Categories.emitEventCategory
 	}
 
 	tax := Taxonomy{
-		Version:           yt.Version,
-		Categories:        categories,
-		Events:            events,
-		EmitEventCategory: emitEventCategory,
+		Version:               yt.Version,
+		Categories:            categories,
+		Events:                events,
+		SuppressEventCategory: suppressEventCategory,
 	}
 
 	if yt.Sensitivity != nil {

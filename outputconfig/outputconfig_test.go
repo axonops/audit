@@ -639,7 +639,7 @@ outputs:
 	// Verify options can be applied to NewLogger without error.
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 }
@@ -796,7 +796,7 @@ outputs:
 
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	require.NoError(t, err)
 
 	// Emit a write event and a read event.
@@ -1182,8 +1182,6 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, &tax, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, result.Config.Version)
-	assert.True(t, result.Config.Enabled)
 	assert.Equal(t, 0, result.Config.BufferSize, "zero means applyDefaults will set 10000")
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "zero means applyDefaults will set 5s")
 	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
@@ -1210,8 +1208,6 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, &tax, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, result.Config.Version)
-	assert.True(t, result.Config.Enabled)
 	assert.Equal(t, 50000, result.Config.BufferSize)
 	assert.Equal(t, 30*time.Second, result.Config.DrainTimeout)
 	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
@@ -1235,7 +1231,6 @@ outputs:
 	require.NoError(t, err)
 
 	assert.Equal(t, 25000, result.Config.BufferSize)
-	assert.True(t, result.Config.Enabled, "default enabled")
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "default drain timeout")
 }
 
@@ -1252,10 +1247,8 @@ outputs:
     type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
 	require.NoError(t, err)
-
-	assert.False(t, result.Config.Enabled)
 }
 
 func TestLoad_LoggerConfig_EnvVars(t *testing.T) {
@@ -1300,7 +1293,6 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, &tax, nil)
 	require.NoError(t, err)
 
-	assert.False(t, result.Config.Enabled)
 	assert.True(t, result.Config.OmitEmpty)
 }
 

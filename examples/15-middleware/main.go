@@ -79,7 +79,6 @@ func main() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(stdout),
 	)

@@ -368,7 +368,6 @@ func TestSetRoute_CopiesMinSeverityPointer(t *testing.T) {
 
 	out := testhelper.NewMockOutput("copy-min")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -401,7 +400,6 @@ func TestSetRoute_CopiesMaxSeverityPointer(t *testing.T) {
 
 	out := testhelper.NewMockOutput("copy-max")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -433,7 +431,6 @@ func TestGetRoute_ReturnsIndependentSeverityPointers(t *testing.T) {
 
 	out := testhelper.NewMockOutput("get-copy")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(4)}, nil),
 	)
@@ -465,7 +462,6 @@ func TestSetRoute_NilSeverityPointersPreserved(t *testing.T) {
 
 	out := testhelper.NewMockOutput("nil-sev")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)
@@ -682,7 +678,6 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 
 	out := testhelper.NewMockOutput("sev-filter")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(7)}, nil),
 	)
@@ -738,7 +733,6 @@ events:
 
 	out := testhelper.NewMockOutput("force-enabled")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		// Output route: MinSeverity 5 — only events with severity >= 5 delivered.
 		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(5)}, nil),
@@ -882,7 +876,7 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 	out := testhelper.NewMockOutput("concurrent_sev")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
 	)

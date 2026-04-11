@@ -32,32 +32,32 @@ func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerConfigWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^I try to create a logger with config version (\-?\d+)$`, func(version int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true})
+	ctx.Step(`^I try to create a logger$`, func() error {
+		return tryCreateLogger(tc)
 	})
 
-	ctx.Step(`^I create a logger with config version (\d+)$`, func(version int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true})
+	ctx.Step(`^I create a logger$`, func() error {
+		return tryCreateLogger(tc)
 	})
 
-	ctx.Step(`^I create a logger with config version (\d+) and buffer size (\d+)$`, func(version, bufSize int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, BufferSize: bufSize})
+	ctx.Step(`^I create a logger with buffer size (\d+)$`, func(bufSize int) error {
+		return tryCreateLogger(tc, audit.WithBufferSize(bufSize))
 	})
 
-	ctx.Step(`^I try to create a logger with config version (\d+) and buffer size (\d+)$`, func(version, bufSize int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, BufferSize: bufSize})
+	ctx.Step(`^I try to create a logger with buffer size (\d+)$`, func(bufSize int) error {
+		return tryCreateLogger(tc, audit.WithBufferSize(bufSize))
 	})
 
-	ctx.Step(`^I create a logger with config version (\d+) and drain timeout (\d+)$`, func(version int, timeout int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, DrainTimeout: time.Duration(timeout)})
+	ctx.Step(`^I create a logger with drain timeout (\d+)$`, func(timeout int) error {
+		return tryCreateLogger(tc, audit.WithDrainTimeout(time.Duration(timeout)))
 	})
 
-	ctx.Step(`^I try to create a logger with config version (\d+) and drain timeout (\d+)s$`, func(version int, secs int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: true, DrainTimeout: time.Duration(secs) * time.Second})
+	ctx.Step(`^I try to create a logger with drain timeout (\d+)s$`, func(secs int) error {
+		return tryCreateLogger(tc, audit.WithDrainTimeout(time.Duration(secs)*time.Second))
 	})
 
-	ctx.Step(`^I create a disabled logger with config version (\d+)$`, func(version int) error {
-		return tryCreateLogger(tc, audit.Config{Version: version, Enabled: false})
+	ctx.Step(`^I create a disabled logger$`, func() error {
+		return tryCreateLogger(tc, audit.WithDisabled())
 	})
 
 }
@@ -103,10 +103,10 @@ func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 }
 
-// tryCreateLogger creates a logger with the given config and stores it
+// tryCreateLogger creates a logger with the given options and stores it
 // in the test context. If creation fails, the error is stored in tc.LastErr
 // without failing the step (the scenario may assert on the error).
-func tryCreateLogger(tc *AuditTestContext, cfg audit.Config) error {
+func tryCreateLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	buf := &bytes.Buffer{}
 	tc.StdoutBuf = buf
 
@@ -119,8 +119,9 @@ func tryCreateLogger(tc *AuditTestContext, cfg audit.Config) error {
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(stdoutOut),
 	}
+	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(cfg, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

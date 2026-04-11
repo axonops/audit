@@ -76,7 +76,6 @@ func newMiddlewareTestLogger(t *testing.T) (*audit.Logger, *testhelper.MockOutpu
 	t.Helper()
 	out := testhelper.NewMockOutput("mw-test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(middlewareTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -608,7 +607,7 @@ func BenchmarkMiddleware(b *testing.B) {
 	taxonomy := middlewareTaxonomy()
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, BufferSize: 1_000_000},
+		audit.WithBufferSize(1_000_000),
 		audit.WithTaxonomy(taxonomy),
 		audit.WithOutputs(out),
 	)

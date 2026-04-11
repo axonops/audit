@@ -195,7 +195,7 @@ func registerWhenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		}
 		opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
 		opts = append(opts, tc.Options...)
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}
@@ -209,7 +209,7 @@ func registerWhenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		}
 		opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
 		opts = append(opts, tc.Options...)
-		logger, logErr := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, logErr := audit.NewLogger(opts...)
 		if logErr != nil {
 			tc.LastErr = logErr
 			return nil //nolint:nilerr // scenario asserts on tc.LastErr

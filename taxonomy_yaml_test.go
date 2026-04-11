@@ -654,7 +654,6 @@ events:
 	// be treated as a field name. An event with only outcome + actor_id
 	// should pass strict validation (no unknown fields).
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "strict"},
 		audit.WithTaxonomy(tax),
 	)
 	require.NoError(t, err)
@@ -671,7 +670,7 @@ events:
 // emit_event_category (#227)
 // ---------------------------------------------------------------------------
 
-func TestEmitEventCategory_DefaultTrue(t *testing.T) {
+func TestSuppressEventCategory_DefaultFalse(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -685,10 +684,10 @@ events:
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
-	assert.True(t, tax.EmitEventCategory, "default should be true when absent")
+	assert.False(t, tax.SuppressEventCategory, "default should be false (emit category) when absent")
 }
 
-func TestEmitEventCategory_ExplicitTrue(t *testing.T) {
+func TestSuppressEventCategory_ExplicitEmit(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -703,10 +702,10 @@ events:
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
-	assert.True(t, tax.EmitEventCategory)
+	assert.False(t, tax.SuppressEventCategory, "emit_event_category: true → SuppressEventCategory: false")
 }
 
-func TestEmitEventCategory_ExplicitFalse(t *testing.T) {
+func TestSuppressEventCategory_ExplicitSuppress(t *testing.T) {
 	t.Parallel()
 	yml := `
 version: 1
@@ -721,7 +720,7 @@ events:
 `
 	tax, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.NoError(t, err)
-	assert.False(t, tax.EmitEventCategory)
+	assert.True(t, tax.SuppressEventCategory, "emit_event_category: false → SuppressEventCategory: true")
 }
 
 func BenchmarkParseTaxonomyYAML(b *testing.B) {

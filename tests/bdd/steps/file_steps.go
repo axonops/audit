@@ -37,24 +37,24 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with file output at a temporary path$`, func() error {
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{})
+		return createFileLogger(tc, file.Config{})
 	})
 	ctx.Step(`^a logger with file output with permissions "([^"]*)"$`, func(perms string) error {
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{Permissions: perms})
+		return createFileLogger(tc, file.Config{Permissions: perms})
 	})
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size$`, func(mb int) error {
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb})
+		return createFileLogger(tc, file.Config{MaxSizeMB: mb})
 	})
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size with compression$`, func(mb int) error {
 		compress := true
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb, Compress: &compress})
+		return createFileLogger(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
 	})
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size without compression$`, func(mb int) error {
 		compress := false
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb, Compress: &compress})
+		return createFileLogger(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
 	})
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size and max backups (\d+)$`, func(mb, backups int) error {
-		return createFileLogger(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb, MaxBackups: backups})
+		return createFileLogger(tc, file.Config{MaxSizeMB: mb, MaxBackups: backups})
 	})
 	ctx.Step(`^at most (\d+) files should exist in the output directory$`, func(maxFiles int) error {
 		if tc.Logger != nil {
@@ -79,18 +79,14 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^a logger with file output configured for (\d+) MB max size with file metrics$`, func(mb int) error {
 		tc.FileMetrics = &MockFileMetrics{}
-		return createFileLoggerWithMetrics(tc, audit.Config{Version: 1, Enabled: true}, file.Config{MaxSizeMB: mb}, tc.FileMetrics)
+		return createFileLoggerWithMetrics(tc, file.Config{MaxSizeMB: mb}, tc.FileMetrics)
 	})
 	ctx.Step(`^mock file metrics are configured$`, func() error {
 		tc.FileMetrics = &MockFileMetrics{}
 		return nil
 	})
 	ctx.Step(`^a logger with file output at a temporary path and short drain timeout$`, func() error {
-		return createFileLogger(tc, audit.Config{
-			Version:      1,
-			Enabled:      true,
-			DrainTimeout: 100 * time.Millisecond,
-		}, file.Config{})
+		return createFileLoggerWithExtraOpts(tc, file.Config{}, audit.WithDrainTimeout(100*time.Millisecond))
 	})
 	ctx.Step(`^closing the logger should complete within (\d+) seconds$`, func(maxSecs int) error {
 		if tc.Logger == nil {
@@ -221,7 +217,7 @@ func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 
 func createNoOutputLogger(tc *AuditTestContext) error {
 	opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -463,11 +459,19 @@ func assertFileRotationCount(tc *AuditTestContext, minCount int) error {
 
 // --- Logger construction helpers ---
 
-func createFileLogger(tc *AuditTestContext, cfg audit.Config, fileCfg file.Config) error {
-	return createFileLoggerWithMetrics(tc, cfg, fileCfg, nil)
+func createFileLogger(tc *AuditTestContext, fileCfg file.Config) error {
+	return createFileLoggerImpl(tc, fileCfg, nil)
 }
 
-func createFileLoggerWithMetrics(tc *AuditTestContext, cfg audit.Config, fileCfg file.Config, fileMetrics file.Metrics) error {
+func createFileLoggerWithMetrics(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics) error {
+	return createFileLoggerImpl(tc, fileCfg, fileMetrics)
+}
+
+func createFileLoggerWithExtraOpts(tc *AuditTestContext, fileCfg file.Config, extraOpts ...audit.Option) error {
+	return createFileLoggerImpl(tc, fileCfg, nil, extraOpts...)
+}
+
+func createFileLoggerImpl(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics, extraOpts ...audit.Option) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -491,8 +495,9 @@ func createFileLoggerWithMetrics(tc *AuditTestContext, cfg audit.Config, fileCfg
 		opts = append(opts, audit.WithMetrics(tc.MockMetrics))
 	}
 	opts = append(opts, tc.Options...)
+	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(cfg, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

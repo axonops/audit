@@ -89,7 +89,23 @@ type builderField struct {
 	SetterName string         // Go method name, e.g., "SetActorID"
 	FieldConst string         // e.g., "FieldActorID"
 	FieldName  string         // raw field name, e.g., "actor_id"
+	GoType     string         // Go type for setter parameter, e.g., "string" or "int"
 	Labels     []builderLabel // labels on this field
+}
+
+// standardFieldGoTypes maps reserved standard field names to their Go
+// types. Fields not in this map default to "string".
+var standardFieldGoTypes = map[string]string{
+	"source_port": "int",
+	"dest_port":   "int",
+	"file_size":   "int",
+}
+
+func standardFieldGoType(name string) string {
+	if t, ok := standardFieldGoTypes[name]; ok {
+		return t
+	}
+	return "string"
 }
 
 // builderLabel is a label reference for generated godoc.
@@ -534,30 +550,43 @@ func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) build
 
 func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy) builderField {
 	pascal := toPascalCase(fieldName)
+	goType := "any"
+	if audit.IsReservedStandardField(fieldName) {
+		goType = standardFieldGoType(fieldName)
+	}
 	bf := builderField{
 		GoName:     pascal,
 		ParamName:  toParamName(fieldName),
 		SetterName: "Set" + pascal,
 		FieldConst: "Field" + pascal,
 		FieldName:  fieldName,
+		GoType:     goType,
 	}
+	bf.Labels = resolveFieldLabels(fieldName, def, tax)
+	return bf
+}
 
-	// Resolve labels for this field.
-	if def.FieldLabels != nil {
-		if labels, ok := def.FieldLabels[fieldName]; ok {
-			for _, labelName := range sortedKeys(labels) {
-				bl := builderLabel{ConstName: "Label" + toPascalCase(labelName)}
-				if tax.Sensitivity != nil {
-					if sl, ok := tax.Sensitivity.Labels[labelName]; ok {
-						bl.Description = sanitiseComment(sl.Description)
-					}
-				}
-				bf.Labels = append(bf.Labels, bl)
+// resolveFieldLabels extracts sensitivity label metadata for a field.
+func resolveFieldLabels(fieldName string, def *audit.EventDef, tax audit.Taxonomy) []builderLabel {
+	if def.FieldLabels == nil {
+		return nil
+	}
+	labels, ok := def.FieldLabels[fieldName]
+	if !ok {
+		return nil
+	}
+	sorted := sortedKeys(labels)
+	result := make([]builderLabel, 0, len(sorted))
+	for _, labelName := range sorted {
+		bl := builderLabel{ConstName: "Label" + toPascalCase(labelName)}
+		if tax.Sensitivity != nil {
+			if sl, ok := tax.Sensitivity.Labels[labelName]; ok {
+				bl.Description = sanitiseComment(sl.Description)
 			}
 		}
+		result = append(result, bl)
 	}
-
-	return bf
+	return result
 }
 
 // toParamName converts a snake_case field name to a Go parameter name

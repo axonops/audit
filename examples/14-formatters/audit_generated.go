@@ -127,7 +127,7 @@ type AuthFailureEvent struct {
 }
 
 // NewAuthFailureEvent creates a EventAuthFailure event with required fields.
-func NewAuthFailureEvent(actorID any, outcome any) *AuthFailureEvent {
+func NewAuthFailureEvent(actorID string, outcome string) *AuthFailureEvent {
 	return &AuthFailureEvent{fields: audit.Fields{
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
@@ -135,175 +135,175 @@ func NewAuthFailureEvent(actorID any, outcome any) *AuthFailureEvent {
 }
 
 // SetAction sets the reserved standard field "action".
-func (e *AuthFailureEvent) SetAction(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetAction(v string) *AuthFailureEvent {
 	e.fields[FieldAction] = v
 	return e
 }
 
 // SetActorUID sets the reserved standard field "actor_uid".
-func (e *AuthFailureEvent) SetActorUID(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetActorUID(v string) *AuthFailureEvent {
 	e.fields[FieldActorUID] = v
 	return e
 }
 
 // SetDestHost sets the reserved standard field "dest_host".
-func (e *AuthFailureEvent) SetDestHost(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetDestHost(v string) *AuthFailureEvent {
 	e.fields[FieldDestHost] = v
 	return e
 }
 
 // SetDestIP sets the reserved standard field "dest_ip".
-func (e *AuthFailureEvent) SetDestIP(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetDestIP(v string) *AuthFailureEvent {
 	e.fields[FieldDestIP] = v
 	return e
 }
 
 // SetDestPort sets the reserved standard field "dest_port".
-func (e *AuthFailureEvent) SetDestPort(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetDestPort(v int) *AuthFailureEvent {
 	e.fields[FieldDestPort] = v
 	return e
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *AuthFailureEvent) SetEndTime(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetEndTime(v string) *AuthFailureEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
 
 // SetFileHash sets the reserved standard field "file_hash".
-func (e *AuthFailureEvent) SetFileHash(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetFileHash(v string) *AuthFailureEvent {
 	e.fields[FieldFileHash] = v
 	return e
 }
 
 // SetFileName sets the reserved standard field "file_name".
-func (e *AuthFailureEvent) SetFileName(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetFileName(v string) *AuthFailureEvent {
 	e.fields[FieldFileName] = v
 	return e
 }
 
 // SetFilePath sets the reserved standard field "file_path".
-func (e *AuthFailureEvent) SetFilePath(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetFilePath(v string) *AuthFailureEvent {
 	e.fields[FieldFilePath] = v
 	return e
 }
 
 // SetFileSize sets the reserved standard field "file_size".
-func (e *AuthFailureEvent) SetFileSize(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetFileSize(v int) *AuthFailureEvent {
 	e.fields[FieldFileSize] = v
 	return e
 }
 
 // SetMessage sets the reserved standard field "message".
-func (e *AuthFailureEvent) SetMessage(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetMessage(v string) *AuthFailureEvent {
 	e.fields[FieldMessage] = v
 	return e
 }
 
 // SetMethod sets the reserved standard field "method".
-func (e *AuthFailureEvent) SetMethod(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetMethod(v string) *AuthFailureEvent {
 	e.fields[FieldMethod] = v
 	return e
 }
 
 // SetPath sets the reserved standard field "path".
-func (e *AuthFailureEvent) SetPath(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetPath(v string) *AuthFailureEvent {
 	e.fields[FieldPath] = v
 	return e
 }
 
 // SetProtocol sets the reserved standard field "protocol".
-func (e *AuthFailureEvent) SetProtocol(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetProtocol(v string) *AuthFailureEvent {
 	e.fields[FieldProtocol] = v
 	return e
 }
 
 // SetReason sets the reserved standard field "reason".
-func (e *AuthFailureEvent) SetReason(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetReason(v string) *AuthFailureEvent {
 	e.fields[FieldReason] = v
 	return e
 }
 
 // SetReferrer sets the reserved standard field "referrer".
-func (e *AuthFailureEvent) SetReferrer(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetReferrer(v string) *AuthFailureEvent {
 	e.fields[FieldReferrer] = v
 	return e
 }
 
 // SetRequestID sets the reserved standard field "request_id".
-func (e *AuthFailureEvent) SetRequestID(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetRequestID(v string) *AuthFailureEvent {
 	e.fields[FieldRequestID] = v
 	return e
 }
 
 // SetRole sets the reserved standard field "role".
-func (e *AuthFailureEvent) SetRole(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetRole(v string) *AuthFailureEvent {
 	e.fields[FieldRole] = v
 	return e
 }
 
 // SetSessionID sets the reserved standard field "session_id".
-func (e *AuthFailureEvent) SetSessionID(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetSessionID(v string) *AuthFailureEvent {
 	e.fields[FieldSessionID] = v
 	return e
 }
 
 // SetSourceHost sets the reserved standard field "source_host".
-func (e *AuthFailureEvent) SetSourceHost(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetSourceHost(v string) *AuthFailureEvent {
 	e.fields[FieldSourceHost] = v
 	return e
 }
 
 // SetSourceIP sets the reserved standard field "source_ip".
-func (e *AuthFailureEvent) SetSourceIP(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetSourceIP(v string) *AuthFailureEvent {
 	e.fields[FieldSourceIP] = v
 	return e
 }
 
 // SetSourcePort sets the reserved standard field "source_port".
-func (e *AuthFailureEvent) SetSourcePort(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetSourcePort(v int) *AuthFailureEvent {
 	e.fields[FieldSourcePort] = v
 	return e
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *AuthFailureEvent) SetStartTime(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetStartTime(v string) *AuthFailureEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
 
 // SetTargetID sets the reserved standard field "target_id".
-func (e *AuthFailureEvent) SetTargetID(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetTargetID(v string) *AuthFailureEvent {
 	e.fields[FieldTargetID] = v
 	return e
 }
 
 // SetTargetRole sets the reserved standard field "target_role".
-func (e *AuthFailureEvent) SetTargetRole(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetTargetRole(v string) *AuthFailureEvent {
 	e.fields[FieldTargetRole] = v
 	return e
 }
 
 // SetTargetType sets the reserved standard field "target_type".
-func (e *AuthFailureEvent) SetTargetType(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetTargetType(v string) *AuthFailureEvent {
 	e.fields[FieldTargetType] = v
 	return e
 }
 
 // SetTargetUID sets the reserved standard field "target_uid".
-func (e *AuthFailureEvent) SetTargetUID(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetTargetUID(v string) *AuthFailureEvent {
 	e.fields[FieldTargetUID] = v
 	return e
 }
 
 // SetTransport sets the reserved standard field "transport".
-func (e *AuthFailureEvent) SetTransport(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetTransport(v string) *AuthFailureEvent {
 	e.fields[FieldTransport] = v
 	return e
 }
 
 // SetUserAgent sets the reserved standard field "user_agent".
-func (e *AuthFailureEvent) SetUserAgent(v any) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 	e.fields[FieldUserAgent] = v
 	return e
 }
@@ -404,7 +404,7 @@ type AuthSuccessEvent struct {
 }
 
 // NewAuthSuccessEvent creates a EventAuthSuccess event with required fields.
-func NewAuthSuccessEvent(actorID any, outcome any) *AuthSuccessEvent {
+func NewAuthSuccessEvent(actorID string, outcome string) *AuthSuccessEvent {
 	return &AuthSuccessEvent{fields: audit.Fields{
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
@@ -412,175 +412,175 @@ func NewAuthSuccessEvent(actorID any, outcome any) *AuthSuccessEvent {
 }
 
 // SetAction sets the reserved standard field "action".
-func (e *AuthSuccessEvent) SetAction(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetAction(v string) *AuthSuccessEvent {
 	e.fields[FieldAction] = v
 	return e
 }
 
 // SetActorUID sets the reserved standard field "actor_uid".
-func (e *AuthSuccessEvent) SetActorUID(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetActorUID(v string) *AuthSuccessEvent {
 	e.fields[FieldActorUID] = v
 	return e
 }
 
 // SetDestHost sets the reserved standard field "dest_host".
-func (e *AuthSuccessEvent) SetDestHost(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetDestHost(v string) *AuthSuccessEvent {
 	e.fields[FieldDestHost] = v
 	return e
 }
 
 // SetDestIP sets the reserved standard field "dest_ip".
-func (e *AuthSuccessEvent) SetDestIP(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetDestIP(v string) *AuthSuccessEvent {
 	e.fields[FieldDestIP] = v
 	return e
 }
 
 // SetDestPort sets the reserved standard field "dest_port".
-func (e *AuthSuccessEvent) SetDestPort(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetDestPort(v int) *AuthSuccessEvent {
 	e.fields[FieldDestPort] = v
 	return e
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *AuthSuccessEvent) SetEndTime(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetEndTime(v string) *AuthSuccessEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
 
 // SetFileHash sets the reserved standard field "file_hash".
-func (e *AuthSuccessEvent) SetFileHash(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetFileHash(v string) *AuthSuccessEvent {
 	e.fields[FieldFileHash] = v
 	return e
 }
 
 // SetFileName sets the reserved standard field "file_name".
-func (e *AuthSuccessEvent) SetFileName(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetFileName(v string) *AuthSuccessEvent {
 	e.fields[FieldFileName] = v
 	return e
 }
 
 // SetFilePath sets the reserved standard field "file_path".
-func (e *AuthSuccessEvent) SetFilePath(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetFilePath(v string) *AuthSuccessEvent {
 	e.fields[FieldFilePath] = v
 	return e
 }
 
 // SetFileSize sets the reserved standard field "file_size".
-func (e *AuthSuccessEvent) SetFileSize(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetFileSize(v int) *AuthSuccessEvent {
 	e.fields[FieldFileSize] = v
 	return e
 }
 
 // SetMessage sets the reserved standard field "message".
-func (e *AuthSuccessEvent) SetMessage(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetMessage(v string) *AuthSuccessEvent {
 	e.fields[FieldMessage] = v
 	return e
 }
 
 // SetMethod sets the reserved standard field "method".
-func (e *AuthSuccessEvent) SetMethod(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetMethod(v string) *AuthSuccessEvent {
 	e.fields[FieldMethod] = v
 	return e
 }
 
 // SetPath sets the reserved standard field "path".
-func (e *AuthSuccessEvent) SetPath(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetPath(v string) *AuthSuccessEvent {
 	e.fields[FieldPath] = v
 	return e
 }
 
 // SetProtocol sets the reserved standard field "protocol".
-func (e *AuthSuccessEvent) SetProtocol(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetProtocol(v string) *AuthSuccessEvent {
 	e.fields[FieldProtocol] = v
 	return e
 }
 
 // SetReason sets the reserved standard field "reason".
-func (e *AuthSuccessEvent) SetReason(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetReason(v string) *AuthSuccessEvent {
 	e.fields[FieldReason] = v
 	return e
 }
 
 // SetReferrer sets the reserved standard field "referrer".
-func (e *AuthSuccessEvent) SetReferrer(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetReferrer(v string) *AuthSuccessEvent {
 	e.fields[FieldReferrer] = v
 	return e
 }
 
 // SetRequestID sets the reserved standard field "request_id".
-func (e *AuthSuccessEvent) SetRequestID(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetRequestID(v string) *AuthSuccessEvent {
 	e.fields[FieldRequestID] = v
 	return e
 }
 
 // SetRole sets the reserved standard field "role".
-func (e *AuthSuccessEvent) SetRole(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetRole(v string) *AuthSuccessEvent {
 	e.fields[FieldRole] = v
 	return e
 }
 
 // SetSessionID sets the reserved standard field "session_id".
-func (e *AuthSuccessEvent) SetSessionID(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetSessionID(v string) *AuthSuccessEvent {
 	e.fields[FieldSessionID] = v
 	return e
 }
 
 // SetSourceHost sets the reserved standard field "source_host".
-func (e *AuthSuccessEvent) SetSourceHost(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetSourceHost(v string) *AuthSuccessEvent {
 	e.fields[FieldSourceHost] = v
 	return e
 }
 
 // SetSourceIP sets the reserved standard field "source_ip".
-func (e *AuthSuccessEvent) SetSourceIP(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetSourceIP(v string) *AuthSuccessEvent {
 	e.fields[FieldSourceIP] = v
 	return e
 }
 
 // SetSourcePort sets the reserved standard field "source_port".
-func (e *AuthSuccessEvent) SetSourcePort(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetSourcePort(v int) *AuthSuccessEvent {
 	e.fields[FieldSourcePort] = v
 	return e
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *AuthSuccessEvent) SetStartTime(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetStartTime(v string) *AuthSuccessEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
 
 // SetTargetID sets the reserved standard field "target_id".
-func (e *AuthSuccessEvent) SetTargetID(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetTargetID(v string) *AuthSuccessEvent {
 	e.fields[FieldTargetID] = v
 	return e
 }
 
 // SetTargetRole sets the reserved standard field "target_role".
-func (e *AuthSuccessEvent) SetTargetRole(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetTargetRole(v string) *AuthSuccessEvent {
 	e.fields[FieldTargetRole] = v
 	return e
 }
 
 // SetTargetType sets the reserved standard field "target_type".
-func (e *AuthSuccessEvent) SetTargetType(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetTargetType(v string) *AuthSuccessEvent {
 	e.fields[FieldTargetType] = v
 	return e
 }
 
 // SetTargetUID sets the reserved standard field "target_uid".
-func (e *AuthSuccessEvent) SetTargetUID(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetTargetUID(v string) *AuthSuccessEvent {
 	e.fields[FieldTargetUID] = v
 	return e
 }
 
 // SetTransport sets the reserved standard field "transport".
-func (e *AuthSuccessEvent) SetTransport(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetTransport(v string) *AuthSuccessEvent {
 	e.fields[FieldTransport] = v
 	return e
 }
 
 // SetUserAgent sets the reserved standard field "user_agent".
-func (e *AuthSuccessEvent) SetUserAgent(v any) *AuthSuccessEvent {
+func (e *AuthSuccessEvent) SetUserAgent(v string) *AuthSuccessEvent {
 	e.fields[FieldUserAgent] = v
 	return e
 }
@@ -681,7 +681,7 @@ type UserCreateEvent struct {
 }
 
 // NewUserCreateEvent creates a EventUserCreate event with required fields.
-func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
+func NewUserCreateEvent(actorID string, outcome string) *UserCreateEvent {
 	return &UserCreateEvent{fields: audit.Fields{
 		FieldActorID: actorID,
 		FieldOutcome: outcome,
@@ -689,175 +689,175 @@ func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
 }
 
 // SetAction sets the reserved standard field "action".
-func (e *UserCreateEvent) SetAction(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetAction(v string) *UserCreateEvent {
 	e.fields[FieldAction] = v
 	return e
 }
 
 // SetActorUID sets the reserved standard field "actor_uid".
-func (e *UserCreateEvent) SetActorUID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetActorUID(v string) *UserCreateEvent {
 	e.fields[FieldActorUID] = v
 	return e
 }
 
 // SetDestHost sets the reserved standard field "dest_host".
-func (e *UserCreateEvent) SetDestHost(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetDestHost(v string) *UserCreateEvent {
 	e.fields[FieldDestHost] = v
 	return e
 }
 
 // SetDestIP sets the reserved standard field "dest_ip".
-func (e *UserCreateEvent) SetDestIP(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetDestIP(v string) *UserCreateEvent {
 	e.fields[FieldDestIP] = v
 	return e
 }
 
 // SetDestPort sets the reserved standard field "dest_port".
-func (e *UserCreateEvent) SetDestPort(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetDestPort(v int) *UserCreateEvent {
 	e.fields[FieldDestPort] = v
 	return e
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *UserCreateEvent) SetEndTime(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetEndTime(v string) *UserCreateEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
 
 // SetFileHash sets the reserved standard field "file_hash".
-func (e *UserCreateEvent) SetFileHash(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetFileHash(v string) *UserCreateEvent {
 	e.fields[FieldFileHash] = v
 	return e
 }
 
 // SetFileName sets the reserved standard field "file_name".
-func (e *UserCreateEvent) SetFileName(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetFileName(v string) *UserCreateEvent {
 	e.fields[FieldFileName] = v
 	return e
 }
 
 // SetFilePath sets the reserved standard field "file_path".
-func (e *UserCreateEvent) SetFilePath(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetFilePath(v string) *UserCreateEvent {
 	e.fields[FieldFilePath] = v
 	return e
 }
 
 // SetFileSize sets the reserved standard field "file_size".
-func (e *UserCreateEvent) SetFileSize(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetFileSize(v int) *UserCreateEvent {
 	e.fields[FieldFileSize] = v
 	return e
 }
 
 // SetMessage sets the reserved standard field "message".
-func (e *UserCreateEvent) SetMessage(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetMessage(v string) *UserCreateEvent {
 	e.fields[FieldMessage] = v
 	return e
 }
 
 // SetMethod sets the reserved standard field "method".
-func (e *UserCreateEvent) SetMethod(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetMethod(v string) *UserCreateEvent {
 	e.fields[FieldMethod] = v
 	return e
 }
 
 // SetPath sets the reserved standard field "path".
-func (e *UserCreateEvent) SetPath(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetPath(v string) *UserCreateEvent {
 	e.fields[FieldPath] = v
 	return e
 }
 
 // SetProtocol sets the reserved standard field "protocol".
-func (e *UserCreateEvent) SetProtocol(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetProtocol(v string) *UserCreateEvent {
 	e.fields[FieldProtocol] = v
 	return e
 }
 
 // SetReason sets the reserved standard field "reason".
-func (e *UserCreateEvent) SetReason(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetReason(v string) *UserCreateEvent {
 	e.fields[FieldReason] = v
 	return e
 }
 
 // SetReferrer sets the reserved standard field "referrer".
-func (e *UserCreateEvent) SetReferrer(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetReferrer(v string) *UserCreateEvent {
 	e.fields[FieldReferrer] = v
 	return e
 }
 
 // SetRequestID sets the reserved standard field "request_id".
-func (e *UserCreateEvent) SetRequestID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetRequestID(v string) *UserCreateEvent {
 	e.fields[FieldRequestID] = v
 	return e
 }
 
 // SetRole sets the reserved standard field "role".
-func (e *UserCreateEvent) SetRole(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetRole(v string) *UserCreateEvent {
 	e.fields[FieldRole] = v
 	return e
 }
 
 // SetSessionID sets the reserved standard field "session_id".
-func (e *UserCreateEvent) SetSessionID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetSessionID(v string) *UserCreateEvent {
 	e.fields[FieldSessionID] = v
 	return e
 }
 
 // SetSourceHost sets the reserved standard field "source_host".
-func (e *UserCreateEvent) SetSourceHost(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetSourceHost(v string) *UserCreateEvent {
 	e.fields[FieldSourceHost] = v
 	return e
 }
 
 // SetSourceIP sets the reserved standard field "source_ip".
-func (e *UserCreateEvent) SetSourceIP(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetSourceIP(v string) *UserCreateEvent {
 	e.fields[FieldSourceIP] = v
 	return e
 }
 
 // SetSourcePort sets the reserved standard field "source_port".
-func (e *UserCreateEvent) SetSourcePort(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetSourcePort(v int) *UserCreateEvent {
 	e.fields[FieldSourcePort] = v
 	return e
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *UserCreateEvent) SetStartTime(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetStartTime(v string) *UserCreateEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
 
 // SetTargetID sets the reserved standard field "target_id".
-func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetTargetID(v string) *UserCreateEvent {
 	e.fields[FieldTargetID] = v
 	return e
 }
 
 // SetTargetRole sets the reserved standard field "target_role".
-func (e *UserCreateEvent) SetTargetRole(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetTargetRole(v string) *UserCreateEvent {
 	e.fields[FieldTargetRole] = v
 	return e
 }
 
 // SetTargetType sets the reserved standard field "target_type".
-func (e *UserCreateEvent) SetTargetType(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetTargetType(v string) *UserCreateEvent {
 	e.fields[FieldTargetType] = v
 	return e
 }
 
 // SetTargetUID sets the reserved standard field "target_uid".
-func (e *UserCreateEvent) SetTargetUID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetTargetUID(v string) *UserCreateEvent {
 	e.fields[FieldTargetUID] = v
 	return e
 }
 
 // SetTransport sets the reserved standard field "transport".
-func (e *UserCreateEvent) SetTransport(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetTransport(v string) *UserCreateEvent {
 	e.fields[FieldTransport] = v
 	return e
 }
 
 // SetUserAgent sets the reserved standard field "user_agent".
-func (e *UserCreateEvent) SetUserAgent(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 	e.fields[FieldUserAgent] = v
 	return e
 }

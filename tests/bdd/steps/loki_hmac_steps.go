@@ -280,7 +280,7 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 
 	opts = append(opts, audit.WithOutputHMAC(tc.LokiOutputName, hmacCfg))
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		_ = out.Close()
 		return fmt.Errorf("create logger: %w", err)
@@ -305,7 +305,6 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 	tc.CaptureOutput = capture
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),

@@ -810,7 +810,6 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(custom),
@@ -838,7 +837,6 @@ func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fiel
 func TestLogger_DefaultJSONFormatter(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -867,7 +865,6 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(cef),
@@ -888,7 +885,6 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 
 func TestLogger_WithFormatter_Nil(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithFormatter(nil),
 	)

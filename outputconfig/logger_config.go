@@ -21,86 +21,90 @@ import (
 	audit "github.com/axonops/go-audit"
 )
 
-func parseLoggerConfig(raw any) (audit.Config, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
+// loggerConfigResult holds both the Config and the disabled flag parsed
+// from the YAML logger: section. Disabled is tracked separately because
+// Config no longer has an Enabled field.
+type loggerConfigResult struct {
+	config   audit.Config
+	disabled bool
+}
+
+func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return audit.Config{}, fmt.Errorf("expected mapping, got %T", raw)
+		return loggerConfigResult{}, fmt.Errorf("expected mapping, got %T", raw)
 	}
-	cfg := audit.Config{
-		Version: 1,
-		Enabled: true,
-	}
+	var result loggerConfigResult
 	for key, val := range m {
 		switch key {
 		case "enabled":
 			v, err := toBool(val)
 			if err != nil {
-				return cfg, fmt.Errorf("enabled: %w", err)
+				return result, fmt.Errorf("enabled: %w", err)
 			}
-			cfg.Enabled = v
+			if !v {
+				result.disabled = true
+			}
 		case "buffer_size":
 			v, err := toInt(val)
 			if err != nil {
-				return cfg, fmt.Errorf("buffer_size: %w", err)
+				return result, fmt.Errorf("buffer_size: %w", err)
 			}
 			if v < 0 {
-				return cfg, fmt.Errorf("buffer_size: must be non-negative, got %d", v)
+				return result, fmt.Errorf("buffer_size: must be non-negative, got %d", v)
 			}
 			if v > audit.MaxBufferSize {
-				return cfg, fmt.Errorf("buffer_size: %d exceeds maximum %d", v, audit.MaxBufferSize)
+				return result, fmt.Errorf("buffer_size: %d exceeds maximum %d", v, audit.MaxBufferSize)
 			}
-			cfg.BufferSize = v
+			result.config.BufferSize = v
 		case "drain_timeout":
 			s, err := toString(val)
 			if err != nil {
-				return cfg, fmt.Errorf("drain_timeout: %w", err)
+				return result, fmt.Errorf("drain_timeout: %w", err)
 			}
 			if s != "" {
 				d, err := time.ParseDuration(s)
 				if err != nil {
-					return cfg, fmt.Errorf("drain_timeout: invalid duration %q: %w", s, err)
+					return result, fmt.Errorf("drain_timeout: invalid duration %q: %w", s, err)
 				}
 				if d < 0 {
-					return cfg, fmt.Errorf("drain_timeout: must be non-negative, got %s", s)
+					return result, fmt.Errorf("drain_timeout: must be non-negative, got %s", s)
 				}
 				if d > audit.MaxDrainTimeout {
-					return cfg, fmt.Errorf("drain_timeout: %s exceeds maximum %s", d, audit.MaxDrainTimeout)
+					return result, fmt.Errorf("drain_timeout: %s exceeds maximum %s", d, audit.MaxDrainTimeout)
 				}
-				cfg.DrainTimeout = d
+				result.config.DrainTimeout = d
 			}
 		case "validation_mode":
 			s, err := toString(val)
 			if err != nil {
-				return cfg, fmt.Errorf("validation_mode: %w", err)
+				return result, fmt.Errorf("validation_mode: %w", err)
 			}
 			if s != "" {
 				switch audit.ValidationMode(s) {
 				case audit.ValidationStrict, audit.ValidationWarn, audit.ValidationPermissive:
-					cfg.ValidationMode = audit.ValidationMode(s)
+					result.config.ValidationMode = audit.ValidationMode(s)
 				default:
-					return cfg, fmt.Errorf("validation_mode: unknown mode %q (valid: strict, warn, permissive)", s)
+					return result, fmt.Errorf("validation_mode: unknown mode %q (valid: strict, warn, permissive)", s)
 				}
 			}
 		case "omit_empty":
 			v, err := toBool(val)
 			if err != nil {
-				return cfg, fmt.Errorf("omit_empty: %w", err)
+				return result, fmt.Errorf("omit_empty: %w", err)
 			}
-			cfg.OmitEmpty = v
+			result.config.OmitEmpty = v
 		default:
-			return cfg, fmt.Errorf("unknown field %q", key)
+			return result, fmt.Errorf("unknown field %q", key)
 		}
 	}
-	return cfg, nil
+	return result, nil
 }
 
-// defaultLoggerConfig returns an audit.Config with sensible defaults
+// defaultLoggerConfigResult returns a default logger config result
 // for when the logger: section is omitted from YAML.
-func defaultLoggerConfig() audit.Config {
-	return audit.Config{
-		Version: 1,
-		Enabled: true,
-	}
+func defaultLoggerConfigResult() loggerConfigResult {
+	return loggerConfigResult{}
 }
 
 func parseStandardFields(raw any) (map[string]string, error) {

@@ -463,7 +463,6 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),

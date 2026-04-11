@@ -24,23 +24,25 @@ import (
 type Option func(*config)
 
 type config struct {
-	validationMode audit.ValidationMode
-	cfg            audit.Config
+	extraOpts []audit.Option
 }
 
-// WithConfig overrides the entire default [audit.Config]. Only
-// Version is normalised: if the caller passes Version=0, it is
-// set to 1. All other fields — including Enabled and BufferSize —
-// take the caller's values directly. The test defaults
-// (Enabled=true, BufferSize=1000) are NOT preserved.
+// WithConfig applies a [audit.Config] struct to the test logger.
+// Non-zero fields override the test defaults (BufferSize=100).
 func WithConfig(cfg audit.Config) Option {
-	return func(c *config) { c.cfg = cfg }
+	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithConfig(cfg)) }
 }
 
 // WithValidationMode sets the taxonomy validation mode.
 // Default is [audit.ValidationStrict].
 func WithValidationMode(mode audit.ValidationMode) Option {
-	return func(c *config) { c.validationMode = mode }
+	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithValidationMode(mode)) }
+}
+
+// WithDisabled creates a disabled (no-op) test logger. Events are
+// accepted without error but not delivered.
+func WithDisabled() Option {
+	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithDisabled()) }
 }
 
 // NewLogger creates a test audit logger with an in-memory [Recorder]
@@ -98,33 +100,23 @@ func QuickTaxonomy(eventTypes ...string) audit.Taxonomy {
 func newTestLogger(tb testing.TB, tax audit.Taxonomy, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 
-	c := &config{
-		cfg: audit.Config{
-			Version:    1,
-			Enabled:    true,
-			BufferSize: 100,
-		},
-	}
+	c := &config{}
 	for _, o := range opts {
 		o(c)
-	}
-	if c.cfg.Version == 0 {
-		c.cfg.Version = 1
-	}
-	if c.validationMode != "" {
-		c.cfg.ValidationMode = c.validationMode
 	}
 
 	rec := NewRecorder()
 	met := NewMetricsRecorder()
 
 	auditOpts := []audit.Option{
+		audit.WithBufferSize(100), // small buffer — recorder has no I/O cost
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(rec),
 		audit.WithMetrics(met),
 	}
+	auditOpts = append(auditOpts, c.extraOpts...)
 
-	logger, err := audit.NewLogger(c.cfg, auditOpts...)
+	logger, err := audit.NewLogger(auditOpts...)
 	if err != nil {
 		tb.Fatalf("audittest: create logger: %v", err)
 	}

@@ -27,18 +27,13 @@ const (
 )
 
 // migrateConfig applies backwards-compatible migrations to older config
-// versions. For v0.1.0 only version 1 exists, so this is scaffolding.
+// versions. Called after [validateConfig] (which calls [Config.applyDefaults]),
+// so version is always >= 1. The range check is scaffolding for when
+// version 2 is introduced. For v0.x only version 1 exists.
 func migrateConfig(c *Config) error {
-	if c.Version == 0 {
-		return fmt.Errorf("%w: config version is required: set version to 1", ErrConfigInvalid)
-	}
-	if c.Version > currentConfigVersion {
+	if c.version > currentConfigVersion {
 		return fmt.Errorf("%w: config version %d is not supported by this library version (max: %d), upgrade the library",
-			ErrConfigInvalid, c.Version, currentConfigVersion)
-	}
-	if c.Version < minSupportedConfigVersion {
-		return fmt.Errorf("%w: config version %d is no longer supported, minimum supported is %d",
-			ErrConfigInvalid, c.Version, minSupportedConfigVersion)
+			ErrConfigInvalid, c.version, currentConfigVersion)
 	}
 	// Version 1 → current: no migration needed.
 	return nil

@@ -178,7 +178,6 @@ func TestFanOut_AllOutputs(t *testing.T) {
 
 	// Create logger with all three outputs.
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut, nil, nil),
 		audit.WithNamedOutput(syslogOut, nil, nil),
@@ -238,7 +237,6 @@ func TestFanOut_EventRouting(t *testing.T) {
 	require.NoError(t, err)
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut, nil, nil), // all events
 		audit.WithNamedOutput(webhookOut, &audit.EventRoute{
@@ -326,7 +324,6 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut, nil, nil),
 		audit.WithNamedOutput(syslogOut, nil, nil),
@@ -380,7 +377,6 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut, nil, nil),       // JSON (default)
 		audit.WithNamedOutput(webhookOut, nil, cefFmt), // CEF

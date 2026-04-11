@@ -37,7 +37,6 @@ func ExampleMiddleware() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(taxonomy),
 	)
 	if err != nil {
@@ -96,7 +95,6 @@ func ExampleMiddleware_skip() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(taxonomy),
 	)
 	if err != nil {

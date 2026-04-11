@@ -101,10 +101,7 @@
 //
 //	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 //	opts = append(opts, result.Options...)
-//	if result.StandardFields != nil {
-//	    opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
-//	}
-//	logger, err := audit.NewLogger(result.Config, opts...)
+//	logger, err := audit.NewLogger(opts...)
 //
 // [Load] fails hard on any configuration error — partial configurations
 // are never returned. This ensures that a misconfigured output does not

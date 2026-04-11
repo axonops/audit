@@ -92,33 +92,22 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 
 	ctx.Step(`^a logger with stdout output$`, func() error {
-		return createStdoutLogger(tc, audit.Config{
-			Version: 1,
-			Enabled: true,
-		})
+		return createStdoutLogger(tc)
 	})
 
 	ctx.Step(`^a logger with stdout output and validation mode "([^"]*)"$`, func(mode string) error {
-		return createStdoutLogger(tc, audit.Config{
-			Version:        1,
-			Enabled:        true,
-			ValidationMode: audit.ValidationMode(mode),
-		})
+		return createStdoutLogger(tc, audit.WithValidationMode(audit.ValidationMode(mode)))
 	})
 
 	ctx.Step(`^a logger with stdout output and OmitEmpty "([^"]*)"$`, func(val string) error {
-		cfg := audit.Config{Version: 1, Enabled: true}
 		if val == "true" {
-			cfg.OmitEmpty = true
+			return createStdoutLogger(tc, audit.WithOmitEmpty())
 		}
-		return createStdoutLogger(tc, cfg)
+		return createStdoutLogger(tc)
 	})
 
 	ctx.Step(`^a disabled logger$`, func() error {
-		return createStdoutLogger(tc, audit.Config{
-			Version: 1,
-			Enabled: false,
-		})
+		return createStdoutLogger(tc, audit.WithDisabled())
 	})
 
 	ctx.Step(`^framework fields app_name "([^"]*)" host "([^"]*)" timezone "([^"]*)"$`, func(appName, host, tz string) error {
@@ -256,11 +245,7 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	})
 
 	ctx.Step(`^a logger with stdout output and buffer size (\d+)$`, func(bufSize int) error {
-		return createStdoutLogger(tc, audit.Config{
-			Version:    1,
-			Enabled:    true,
-			BufferSize: bufSize,
-		})
+		return createStdoutLogger(tc, audit.WithBufferSize(bufSize))
 	})
 
 	ctx.Step(`^I audit via handle with fields:$`, func(table *godog.Table) error {
@@ -580,7 +565,7 @@ func assertSentinelError(tc *AuditTestContext, sentinel string) error {
 // --- Internal helpers ---
 
 // createStdoutLogger creates a logger with an in-memory stdout output.
-func createStdoutLogger(tc *AuditTestContext, cfg audit.Config) error {
+func createStdoutLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	buf := &bytes.Buffer{}
 	tc.StdoutBuf = buf
 
@@ -597,8 +582,9 @@ func createStdoutLogger(tc *AuditTestContext, cfg audit.Config) error {
 		opts = append(opts, audit.WithMetrics(tc.MockMetrics))
 	}
 	opts = append(opts, tc.Options...)
+	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(cfg, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		// Store the error for scenarios that expect construction failure.
 		tc.LastErr = err
@@ -607,6 +593,12 @@ func createStdoutLogger(tc *AuditTestContext, cfg audit.Config) error {
 	tc.Logger = logger
 	tc.AddCleanup(func() { _ = logger.Close() })
 	return nil
+}
+
+// createStdoutLoggerWithOpts is an alias for createStdoutLogger for
+// callers that pass additional options.
+func createStdoutLoggerWithOpts(tc *AuditTestContext, opts ...audit.Option) error {
+	return createStdoutLogger(tc, opts...)
 }
 
 // getStdoutEvents closes the logger (to flush the drain) and parses

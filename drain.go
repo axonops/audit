@@ -167,7 +167,7 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 	}
 
 	// Append event_category if enabled and the event has a category.
-	if category != "" && l.taxonomy.EmitEventCategory {
+	if category != "" && !l.taxonomy.SuppressEventCategory {
 		data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
 	}
 

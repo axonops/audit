@@ -53,7 +53,11 @@ const (
 	MaxDrainTimeout = 60 * time.Second
 )
 
-// Config holds configuration for the audit [Logger].
+// Config holds tuning parameters for the audit [Logger]. The zero
+// value is a valid configuration: buffer=10,000, drain=5s,
+// validation=strict, omit_empty=false. Pass individual fields via
+// [WithBufferSize], [WithDrainTimeout], [WithValidationMode], or
+// [WithOmitEmpty], or pass the whole struct via [WithConfig].
 type Config struct {
 	// ValidationMode controls how unknown fields are handled.
 	// One of [ValidationStrict], [ValidationWarn], or
@@ -67,22 +71,15 @@ type Config struct {
 	// system will cause events to be lost at shutdown.
 	DrainTimeout time.Duration
 
-	// Version is the config schema version. MUST be > 0; the zero
-	// value causes [NewLogger] to return an error wrapping
-	// [ErrConfigInvalid]. Set to 1 for all current consumers; this
-	// field enables forward-compatible migrations when the config
-	// schema changes in future library versions.
-	Version int
+	// version is the config schema version. Defaults to 1 via
+	// [Config.applyDefaults]. Unexported because consumers should
+	// never need to set it — there is only one version.
+	version int
 
 	// BufferSize is the async channel capacity. Zero means
 	// [DefaultBufferSize] (10,000). Values above [MaxBufferSize]
 	// (1,000,000) cause [NewLogger] to return an error.
 	BufferSize int
-
-	// Enabled controls whether audit logging is active. When false
-	// (the zero value), [NewLogger] returns a no-op logger that
-	// discards all events.
-	Enabled bool
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are
 	// included in serialised output. When true, only non-zero fields
@@ -94,6 +91,9 @@ type Config struct {
 
 // applyDefaults fills zero-valued fields with their documented defaults.
 func (c *Config) applyDefaults() {
+	if c.version == 0 {
+		c.version = 1
+	}
 	if c.BufferSize <= 0 {
 		c.BufferSize = DefaultBufferSize
 	}

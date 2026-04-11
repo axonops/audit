@@ -206,7 +206,7 @@ func createSharedFormatterLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(fB, nil, nil),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -344,7 +344,6 @@ func tryDuplicateOutputNames(tc *AuditTestContext) error {
 		return fmt.Errorf("create file a: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f1), // same output = duplicate name
 	)
@@ -367,7 +366,6 @@ func tryDuplicateFilePath(tc *AuditTestContext) error {
 		return fmt.Errorf("create file 2: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f2),
 	)
@@ -385,7 +383,6 @@ func tryMixedRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, &audit.EventRoute{
 			IncludeCategories: []string{"write"},
@@ -406,7 +403,6 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, &audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
@@ -449,7 +445,6 @@ func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
 		return fmt.Errorf("create syslog 2: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(s1, s2),
 	)
@@ -467,7 +462,6 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	_, err = audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, &audit.EventRoute{
 			IncludeEventTypes: []string{"nonexistent_event"},
@@ -535,7 +529,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		opts = append(opts, audit.WithNamedOutput(w, nil, webhookFmt))
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -571,7 +565,7 @@ func createErrorOutputLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&errorOutput{}, nil, nil),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -606,7 +600,7 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&panicOutput{}, nil, nil),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -655,7 +649,7 @@ func createPanicFormatterLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&devNullOutput{}, nil, &panicFormatter{}), // panicking formatter
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -689,7 +683,7 @@ func createDualFileRoutedLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(writeOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -733,7 +727,7 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(webhookOut, &audit.EventRoute{IncludeCategories: []string{"write"}}, nil),   // write only
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -769,7 +763,7 @@ func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) er
 		audit.WithNamedOutput(w, webhookRoute, nil),
 	}
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

@@ -40,7 +40,6 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			tc.CaptureOutput = out
 
 			logger, err := audit.NewLogger(
-				audit.Config{Version: 1, Enabled: true},
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, nil, nil),
 				audit.WithOutputHMAC("stdout", &audit.HMACConfig{
@@ -64,7 +63,6 @@ func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			out := newCaptureOutput("stdout")
 
 			_, err := audit.NewLogger(
-				audit.Config{Version: 1, Enabled: true},
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, nil, nil),
 				audit.WithOutputHMAC("stdout", &audit.HMACConfig{
@@ -352,7 +350,6 @@ func createDualHMACLogger(tc *AuditTestContext, strippedName, label, fullSalt, s
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fullOut, nil, nil),
 		audit.WithOutputHMAC("full", fullHMACCfg),

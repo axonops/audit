@@ -31,7 +31,6 @@ func ExampleNewLogger() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -76,7 +75,6 @@ func ExampleLogger_AuditEvent() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -109,7 +107,6 @@ func ExampleLogger_AuditEvent() {
 
 func ExampleLogger_MustHandle() {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -141,7 +138,6 @@ func ExampleLogger_MustHandle() {
 
 func ExampleLogger_EnableCategory() {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -175,7 +171,6 @@ func ExampleLogger_EnableCategory() {
 
 func ExampleLogger_Close() {
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -213,7 +208,6 @@ func ExampleWithFormatter() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -278,7 +272,6 @@ func ExampleLogger_SetOutputRoute() {
 	}
 
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{

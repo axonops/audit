@@ -54,7 +54,6 @@ func main() {
 
 	// 3. Create the logger with the taxonomy and output.
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true},
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(stdout),
 	)

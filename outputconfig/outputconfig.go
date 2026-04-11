@@ -40,17 +40,17 @@ const MaxOutputCount = 100
 // produced by [Load], ready to be passed to [audit.NewLogger].
 type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 	// Config is the logger configuration parsed from the optional
-	// top-level `logger:` section. If the section is omitted, Config
-	// contains Version: 1 and Enabled: true; other fields are zero-valued
-	// and will be filled with sensible defaults by [audit.NewLogger]
-	// (BufferSize: 10,000, DrainTimeout: 5s, ValidationMode: strict).
-	// Pass this directly to [audit.NewLogger] as the first argument.
+	// top-level `logger:` section. Exposed for inspection; pass
+	// Options to [audit.NewLogger] instead — Options includes
+	// config-equivalent options ([audit.WithBufferSize], etc.).
 	Config audit.Config
 
-	// Options contains framework field options ([audit.WithAppName],
-	// [audit.WithHost], optionally [audit.WithTimezone]) and one
-	// [audit.WithNamedOutput] per configured output. Pass these
-	// directly to [audit.NewLogger].
+	// Options contains all options needed to create the logger:
+	// framework fields ([audit.WithAppName], [audit.WithHost]),
+	// config-equivalent options ([audit.WithBufferSize], etc.),
+	// and one [audit.WithNamedOutput] per configured output.
+	// Pass directly to [audit.NewLogger] along with
+	// [audit.WithTaxonomy].
 	Options []audit.Option
 
 	// Outputs is the ordered list of constructed outputs for
@@ -257,7 +257,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetric
 
 	// Phase 8: Build Options slice.
 	result := &LoadResult{
-		Config:         top.config,
+		Config:         top.loggerResult.config,
 		Outputs:        outputs,
 		AppName:        top.appName,
 		Host:           top.host,
@@ -265,10 +265,33 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetric
 		StandardFields: top.standardFields,
 	}
 
+	// Config-equivalent options so callers can use NewLogger(result.Options...).
+	cfg := top.loggerResult.config
+	if cfg.BufferSize > 0 {
+		result.Options = append(result.Options, audit.WithBufferSize(cfg.BufferSize))
+	}
+	if cfg.DrainTimeout > 0 {
+		result.Options = append(result.Options, audit.WithDrainTimeout(cfg.DrainTimeout))
+	}
+	if cfg.ValidationMode != "" {
+		result.Options = append(result.Options, audit.WithValidationMode(cfg.ValidationMode))
+	}
+	if cfg.OmitEmpty {
+		result.Options = append(result.Options, audit.WithOmitEmpty())
+	}
+	if top.loggerResult.disabled {
+		result.Options = append(result.Options, audit.WithDisabled())
+	}
+
 	// Framework field options.
 	result.Options = append(result.Options, audit.WithAppName(top.appName), audit.WithHost(top.host))
 	if top.timezone != "" {
 		result.Options = append(result.Options, audit.WithTimezone(top.timezone))
+	}
+
+	// Standard field defaults.
+	if len(top.standardFields) > 0 {
+		result.Options = append(result.Options, audit.WithStandardFieldDefaults(top.standardFields))
 	}
 
 	for i := range outputs {
@@ -291,7 +314,7 @@ type topLevel struct {
 	appName        string
 	host           string
 	timezone       string
-	config         audit.Config
+	loggerResult   loggerConfigResult
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
@@ -428,13 +451,13 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 		if vnErr := validateNoUnresolvedRefs(resolved, "logger"); vnErr != nil {
 			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, vnErr)
 		}
-		cfg, cfgErr := parseLoggerConfig(resolved)
+		lr, cfgErr := parseLoggerConfig(resolved)
 		if cfgErr != nil {
 			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, cfgErr)
 		}
-		result.config = cfg
+		result.loggerResult = lr
 	} else {
-		result.config = defaultLoggerConfig()
+		result.loggerResult = defaultLoggerConfigResult()
 	}
 
 	// Expand env vars and validate global TLS policy eagerly so that

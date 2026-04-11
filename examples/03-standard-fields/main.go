@@ -60,7 +60,7 @@ func main() {
 		opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
 	}
 
-	logger, err := audit.NewLogger(result.Config, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

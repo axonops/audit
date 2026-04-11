@@ -1292,7 +1292,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 
 	// Create a logger with the webhook output and metrics.
 	logger, err := audit.NewLogger(
-		audit.Config{Version: 1, Enabled: true, ValidationMode: "permissive"},
+		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(webhookOut, &audit.EventRoute{}, nil),
 		audit.WithMetrics(metrics),

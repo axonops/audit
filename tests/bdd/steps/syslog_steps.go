@@ -354,7 +354,7 @@ func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
@@ -384,7 +384,7 @@ func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) err
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+	logger, err := audit.NewLogger(opts...)
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}

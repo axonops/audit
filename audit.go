@@ -85,6 +85,11 @@ type Logger struct {
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool
+	// disabled is set by WithDisabled to create a no-op logger that
+	// discards all events without validation or delivery. Replaces
+	// the former Config.Enabled field (inverted: disabled=true means
+	// the logger does nothing).
+	disabled bool
 	// Framework fields set via WithAppName, WithHost, WithTimezone.
 	// PID is captured once at construction via os.Getpid().
 	appName  string
@@ -99,31 +104,34 @@ type Logger struct {
 	drops                 dropLimiter // rate-limits buffer-full slog.Warn
 }
 
-// NewLogger creates a new audit [Logger] with the given configuration
-// and options. A taxonomy MUST be provided via [WithTaxonomy];
-// NewLogger returns an error if none is supplied.
+// NewLogger creates a new audit [Logger] from the given options.
+// A taxonomy MUST be provided via [WithTaxonomy]; NewLogger returns
+// an error if none is supplied.
 //
-// When [Config.Enabled] is false, NewLogger returns a valid no-op
+// The zero-value [Config] is valid: buffer=10,000, drain=5s,
+// validation=strict. Pass tuning options like [WithBufferSize] or
+// [WithDrainTimeout] to override defaults, or [WithConfig] to apply
+// a struct.
+//
+// When [WithDisabled] is applied, NewLogger returns a valid no-op
 // logger. All [Logger.AuditEvent] calls return nil immediately without
 // validation or delivery.
-//
-// NewLogger MUST NOT return a non-nil *Logger when cfg or the taxonomy
-// is invalid. Config version migration runs before validation; a zero
-// [Config.Version] returns an error wrapping [ErrConfigInvalid].
-func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
-	if err := migrateConfig(&cfg); err != nil {
-		return nil, err
-	}
-	if err := validateConfig(&cfg); err != nil {
-		return nil, err
-	}
-
-	l := &Logger{cfg: cfg}
+func NewLogger(opts ...Option) (*Logger, error) {
+	l := &Logger{}
 
 	for _, opt := range opts {
 		if err := opt(l); err != nil {
 			return nil, err
 		}
+	}
+
+	// validateConfig calls applyDefaults internally, then validates.
+	// migrateConfig runs after defaults so version is always set.
+	if err := validateConfig(&l.cfg); err != nil {
+		return nil, err
+	}
+	if err := migrateConfig(&l.cfg); err != nil {
+		return nil, err
 	}
 
 	// Release construction-only state.
@@ -141,7 +149,7 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 
 	// Default formatter if WithFormatter was not called.
 	if l.formatter == nil {
-		l.formatter = &JSONFormatter{OmitEmpty: cfg.OmitEmpty}
+		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
 	}
 
 	// Capture PID and timezone once at construction.
@@ -153,20 +161,20 @@ func NewLogger(cfg Config, opts ...Option) (*Logger, error) {
 	// Propagate framework fields to all formatters that support them.
 	l.propagateFrameworkFields()
 
-	if !cfg.Enabled {
+	if l.disabled {
 		return l, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancel = cancel
-	l.ch = make(chan *auditEntry, cfg.BufferSize)
+	l.ch = make(chan *auditEntry, l.cfg.BufferSize)
 	l.drainDone = make(chan struct{})
 	go l.drainLoop(ctx)
 
 	slog.Info("audit: logger created",
-		"buffer_size", cfg.BufferSize,
-		"drain_timeout", cfg.DrainTimeout,
-		"validation_mode", string(cfg.ValidationMode),
+		"buffer_size", l.cfg.BufferSize,
+		"drain_timeout", l.cfg.DrainTimeout,
+		"validation_mode", string(l.cfg.ValidationMode),
 		"outputs", len(l.entries),
 	)
 
@@ -192,7 +200,7 @@ func (l *Logger) AuditEvent(evt Event) error {
 // auditInternal is the shared validation-and-enqueue path used by
 // both [Logger.AuditEvent] and internal callers.
 func (l *Logger) auditInternal(eventType string, fields Fields) error {
-	if !l.cfg.Enabled {
+	if l.disabled {
 		return nil
 	}
 	if l.closed.Load() {
@@ -274,7 +282,7 @@ func (l *Logger) Close() error {
 	l.closeOnce.Do(func() {
 		l.closed.Store(true)
 
-		if !l.cfg.Enabled {
+		if l.disabled {
 			return
 		}
 

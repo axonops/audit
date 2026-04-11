@@ -89,7 +89,7 @@ func registerMetadataWriterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+		logger, err := audit.NewLogger(opts...)
 		if err != nil {
 			return fmt.Errorf("create logger: %w", err)
 		}

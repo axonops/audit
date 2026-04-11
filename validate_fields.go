@@ -15,7 +15,6 @@
 package audit
 
 import (
-	"log/slog"
 	"slices"
 	"strings"
 )
@@ -67,7 +66,7 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 		return newValidationError(ErrUnknownField, "audit: event %q has unknown fields: [%s]",
 			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		slog.Warn("audit: event has unknown fields",
+		l.logger.Warn("audit: event has unknown fields",
 			"event_type", eventType,
 			"unknown_fields", unknown)
 	case ValidationPermissive:

@@ -159,3 +159,50 @@ func TestRecorder_FullPipeline(t *testing.T) {
 
 	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 }
+
+// ---------------------------------------------------------------------------
+// RecordedEvent field accessors (#397)
+// ---------------------------------------------------------------------------
+
+func TestRecordedEvent_StringField(t *testing.T) {
+	t.Parallel()
+	evt := audittest.RecordedEvent{
+		Fields: map[string]any{
+			"name":  "alice",
+			"count": float64(42),
+		},
+	}
+	assert.Equal(t, "alice", evt.StringField("name"))
+	assert.Equal(t, "", evt.StringField("count"), "non-string returns empty")
+	assert.Equal(t, "", evt.StringField("missing"), "missing returns empty")
+}
+
+func TestRecordedEvent_IntField_CoercesFloat64(t *testing.T) {
+	t.Parallel()
+	evt := audittest.RecordedEvent{
+		Fields: map[string]any{
+			"count":   float64(42), // JSON round-trip stores as float64
+			"exact":   5,           // int if set directly
+			"name":    "alice",
+			"rate":    3.14,
+		},
+	}
+	assert.Equal(t, 42, evt.IntField("count"), "float64 coerced to int")
+	assert.Equal(t, 5, evt.IntField("exact"), "int stays int")
+	assert.Equal(t, 0, evt.IntField("name"), "non-numeric returns 0")
+	assert.Equal(t, 3, evt.IntField("rate"), "float64 truncates")
+	assert.Equal(t, 0, evt.IntField("missing"), "missing returns 0")
+}
+
+func TestRecordedEvent_FloatField(t *testing.T) {
+	t.Parallel()
+	evt := audittest.RecordedEvent{
+		Fields: map[string]any{
+			"rate": float64(3.14),
+			"name": "alice",
+		},
+	}
+	assert.InDelta(t, 3.14, evt.FloatField("rate"), 0.001)
+	assert.Equal(t, float64(0), evt.FloatField("name"), "non-float returns 0")
+	assert.Equal(t, float64(0), evt.FloatField("missing"), "missing returns 0")
+}

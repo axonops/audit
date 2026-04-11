@@ -120,7 +120,7 @@ func TestValidateEventRoute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := audit.ValidateEventRoute(&tt.route, &tax)
+			err := audit.ValidateEventRoute(&tt.route, tax)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 			} else {

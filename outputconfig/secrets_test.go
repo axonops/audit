@@ -147,7 +147,7 @@ func TestLoad_WithSecretProvider_AllHMACFieldsResolved(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -214,7 +214,7 @@ func TestLoad_WithSecretProvider_HMACDisabledSkipsRefs(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func TestLoad_WithSecretProvider_HMACDisabledLiteral_SkipsRefs(t *testing.T) {
 		"false",
 	)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
@@ -253,7 +253,7 @@ func TestLoad_WithSecretProvider_NoProviderNoRefsUnchanged(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
-	result, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	result, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 1)
 	for _, o := range result.Outputs {
@@ -274,7 +274,7 @@ outputs:
     stdout:
       format: ref+openbao://secret/data/config#format
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	// No provider registered → resolver is nil → refs pass through
 	// env+secret expansion unchanged → safety net catches them.
@@ -288,7 +288,7 @@ func TestLoad_WithSecretProvider_DuplicateSchemeErrors(t *testing.T) {
 	mock2 := newMockProvider("mock", nil)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock1),
 		outputconfig.WithSecretProvider(mock2),
 	)
@@ -321,7 +321,7 @@ outputs:
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	_, err := outputconfig.Load(
-		ctx, data, &tax, nil,
+		ctx, data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 		outputconfig.WithSecretTimeout(50*time.Millisecond),
 	)
@@ -344,7 +344,7 @@ func TestLoad_WithSecretProvider_ErrorNeverContainsSecretValue(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -373,7 +373,7 @@ func TestLoad_WithSecretProvider_PathLevelCache_OneCallForMultipleKeys(t *testin
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -412,7 +412,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -445,7 +445,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock), // mock scheme, not vault
 	)
 	require.Error(t, err)
@@ -468,7 +468,7 @@ func TestLoad_WithSecretProvider_EmptyResolvedValueRejected(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -493,7 +493,7 @@ func TestLoad_WithSecretProvider_OversizedValueRejected(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -515,7 +515,7 @@ func TestLoad_WithSecretProvider_HMACEnabledTrue_RequiresAllFields(t *testing.T)
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -544,7 +544,7 @@ outputs:
     type: stdout
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -577,7 +577,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -620,7 +620,7 @@ outputs:
 	// The resolved value contains "ref+mock://..." which the safety
 	// net should flag as an unresolved reference.
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -655,7 +655,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -693,7 +693,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -725,7 +725,7 @@ outputs:
     type: stdout
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -747,7 +747,7 @@ func TestLoad_WithSecretProvider_NilProviderErrors(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(nil),
 	)
 	require.Error(t, err)
@@ -769,7 +769,7 @@ outputs:
   c:
     type: stdout
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
 }
@@ -785,7 +785,7 @@ outputs:
   c:
     type: stdout
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
 }
@@ -811,7 +811,7 @@ outputs:
         value: my-salt-value-32-bytes!!!!!!!!
       hash: HMAC-SHA-256
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	// Should get a clear error about no provider, not a toBool error
 	// leaking the ref URI.
@@ -843,7 +843,7 @@ outputs:
         - security
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -875,7 +875,7 @@ outputs:
       version: "1.0"
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
@@ -907,7 +907,7 @@ outputs:
       product: MyProduct
       version: "1.0"
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
 }
@@ -928,7 +928,7 @@ outputs:
       include_event_types:
         - ref+openbao://secret/data/routing#event_type
 `)
-	_, err := outputconfig.Load(context.Background(), data, &tax, nil)
+	_, err := outputconfig.Load(context.Background(), data, tax, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, secrets.ErrUnresolvedRef)
 }
@@ -954,7 +954,7 @@ func TestLoad_WithSecretProvider_PreCallContextCancelled(t *testing.T) {
 		"ref+mock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		ctx, data, &tax, nil,
+		ctx, data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 		outputconfig.WithSecretTimeout(time.Second),
 	)
@@ -986,7 +986,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -1012,7 +1012,7 @@ outputs:
       format: "ref+mock://no-key-fragment"
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -1082,7 +1082,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(p),
 	)
 	require.NoError(t, err)
@@ -1117,7 +1117,7 @@ outputs:
     type: stdout
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(p),
 	)
 	require.NoError(t, err)
@@ -1152,7 +1152,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(p),
 	)
 	require.Error(t, err)
@@ -1178,7 +1178,7 @@ func TestLoad_NonBatchProvider_EmptyValueRejected(t *testing.T) {
 		"ref+nbmock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(p),
 	)
 	require.Error(t, err)
@@ -1206,7 +1206,7 @@ func TestLoad_NonBatchProvider_OversizedValueRejected(t *testing.T) {
 		"ref+nbmock://secret/data/hmac#enabled",
 	)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(p),
 	)
 	require.Error(t, err)
@@ -1243,7 +1243,7 @@ outputs:
       hash: ref+provb://secret/data/hmac#algorithm
 `)
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(provA),
 		outputconfig.WithSecretProvider(provB),
 	)
@@ -1295,7 +1295,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -1327,7 +1327,7 @@ outputs:
     type: stdout
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -1351,7 +1351,7 @@ outputs:
     type: stdout
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)
@@ -1364,7 +1364,7 @@ func TestLoad_WithSecretProvider_SameInstanceTwice_Error(t *testing.T) {
 	mock := newMockProvider("mock", nil)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 		outputconfig.WithSecretProvider(mock), // same instance
 	)
@@ -1378,7 +1378,7 @@ func TestLoad_WithSecretTimeout_ZeroIgnored(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	// Zero timeout should be silently ignored (keeps 10s default).
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretTimeout(0),
 	)
 	require.NoError(t, err)
@@ -1392,7 +1392,7 @@ func TestLoad_WithSecretTimeout_NegativeIgnored(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	result, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretTimeout(-5*time.Second),
 	)
 	require.NoError(t, err)
@@ -1431,7 +1431,7 @@ outputs:
       hash: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
-		context.Background(), data, &tax, nil,
+		context.Background(), data, tax, nil,
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.Error(t, err)

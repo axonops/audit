@@ -27,7 +27,7 @@ import (
 func main() {
 	// 1. Define a taxonomy inline. In production you would load this
 	//    from a YAML file — see the code-generation example.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write":    {Events: []string{"user_create", "user_delete"}},

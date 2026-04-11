@@ -18,8 +18,8 @@ import "github.com/axonops/go-audit"
 
 // ValidTaxonomy returns a taxonomy suitable for general testing with
 // read, write, and security categories.
-func ValidTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
+func ValidTaxonomy() *audit.Taxonomy {
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"read":     {Events: []string{"schema_read", "config_read"}},
@@ -38,8 +38,8 @@ func ValidTaxonomy() audit.Taxonomy {
 
 // TestTaxonomy returns a taxonomy with user_create, user_delete, and
 // other common event types for routing and filter tests.
-func TestTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
+func TestTaxonomy() *audit.Taxonomy {
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write":    {Events: []string{"user_create", "user_delete"}},

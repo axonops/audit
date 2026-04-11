@@ -49,7 +49,7 @@ func (l *lokiStub) Name() string       { return "loki-stub" }
 
 // TestContext holds mutable state for a single BDD scenario.
 type TestContext struct { //nolint:govet // fieldalignment: readability preferred
-	Taxonomy      audit.Taxonomy
+	Taxonomy      *audit.Taxonomy
 	Logger        *audit.Logger
 	Options       []audit.Option
 	LoadResult    *outputconfig.LoadResult
@@ -177,7 +177,7 @@ events:
 			return fmt.Errorf("set AUDIT_BDD_DIR: %w", err)
 		}
 
-		result, loadErr := outputconfig.Load(context.Background(), []byte(doc.Content), &tc.Taxonomy, nil)
+		result, loadErr := outputconfig.Load(context.Background(), []byte(doc.Content), tc.Taxonomy, nil)
 		if loadErr != nil {
 			tc.LastErr = loadErr
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr

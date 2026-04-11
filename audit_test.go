@@ -173,7 +173,7 @@ func TestLogger_Audit_UnknownFieldPermissive(t *testing.T) {
 
 func TestLogger_Audit_ReservedStandardField_AcceptedInStrictMode(t *testing.T) {
 	t.Parallel()
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
@@ -199,7 +199,7 @@ func TestLogger_Audit_ReservedStandardField_AcceptedInStrictMode(t *testing.T) {
 
 func TestLogger_Audit_ReservedStandardField_StillRejectsUnknown(t *testing.T) {
 	t.Parallel()
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
@@ -473,7 +473,7 @@ func TestWithStandardFieldDefaults_SetOnce(t *testing.T) {
 func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
 	t.Parallel()
 	// Taxonomy with source_ip as required.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
@@ -1041,7 +1041,7 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
 	// Create a taxonomy where auth_failure is in both security and access.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_failure"}},
@@ -1070,7 +1070,7 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_failure"}},
@@ -1102,7 +1102,7 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_failure"}},
@@ -1139,7 +1139,7 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
 	// data_export is not in any category.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write": {Events: []string{"user_create"}},
@@ -1167,7 +1167,7 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security":   {Events: []string{"auth_failure"}},
@@ -1202,7 +1202,7 @@ func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security":   {Events: []string{"auth_failure"}},
@@ -1234,7 +1234,7 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security":   {Events: []string{"auth_failure"}},
@@ -1522,7 +1522,7 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 
 	// Create a taxonomy with an event that has no required fields.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"misc": {Events: []string{"no_req"}}},
 		Events: map[string]*audit.EventDef{
@@ -1775,7 +1775,7 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 
 func TestLogger_Audit_AllCategoriesEnabledByDefault(t *testing.T) {
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events: map[string]*audit.EventDef{
@@ -2346,7 +2346,7 @@ func TestFormatCache_NilData(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_check"}},
@@ -2400,7 +2400,7 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 }
 
 func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T) {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_check"}},
@@ -2531,7 +2531,7 @@ func BenchmarkAuditDisabledLogger(b *testing.B) {
 
 func BenchmarkAudit_RealisticFields(b *testing.B) {
 	silenceSlog(b)
-	taxonomy := audit.Taxonomy{
+	taxonomy := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write": {Events: []string{"api_request"}},
@@ -2800,7 +2800,7 @@ func TestDropLimiter_SubsequentDropsSuppressed(t *testing.T) {
 }
 
 func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write": {Events: []string{"user_create"}},
@@ -3247,7 +3247,7 @@ func TestEventCategory_SingleCategory_JSON(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -3275,7 +3275,7 @@ func TestEventCategory_MultiCategory_SeparateDeliveries(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{
@@ -3311,7 +3311,7 @@ func TestEventCategory_Uncategorised_NoField(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
@@ -3341,7 +3341,7 @@ func TestEventCategory_EmitFalse_NoField(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:               1,
 		SuppressEventCategory: true,
 		Categories:            map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -3370,7 +3370,7 @@ func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -3442,7 +3442,7 @@ func BenchmarkAppendPostFields_Disabled(b *testing.B) {
 func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -3476,7 +3476,7 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 func TestHMAC_Disabled_NoFields(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
@@ -3501,7 +3501,7 @@ func TestHMAC_Disabled_NoFields(t *testing.T) {
 func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
@@ -3533,14 +3533,14 @@ func TestHMAC_ReservedFieldNames(t *testing.T) {
 	for _, field := range []string{"_hmac", "_hmac_v"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version:    1,
 				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 				Events: map[string]*audit.EventDef{
 					"ev1": {Required: []string{field}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "reserved framework field")
 		})
@@ -3658,7 +3658,7 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 
 	salt := []byte("e2e-verification-salt-value!!")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -3963,7 +3963,7 @@ func TestMetadataWriter_EventMetadata_FieldsCorrect(t *testing.T) {
 
 	// Build a taxonomy with an explicit severity so the resolved value is deterministic.
 	sev := 8
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_failure"}, Severity: &sev},
@@ -4015,7 +4015,7 @@ func TestMetadataWriter_EventMetadata_FieldsCorrect(t *testing.T) {
 func TestMetadataWriter_MultiCategory_CategoryVaries(t *testing.T) {
 	t.Parallel()
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"security": {Events: []string{"auth_failure"}},
@@ -4063,7 +4063,7 @@ func TestMetadataWriter_UncategorisedEvent_EmptyCategory(t *testing.T) {
 	t.Parallel()
 
 	// data_export is not placed in any category.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"write": {Events: []string{"user_create"}},
@@ -4211,7 +4211,7 @@ func TestMetadataWriter_WithHMAC_ReceivesHMACData(t *testing.T) {
 
 	out := newMockMetadataOutput("mw-hmac")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:    1,
 		Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 		Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"outcome"}}},
@@ -4319,7 +4319,7 @@ func TestMetadataWriter_WithEventCategory_DataAndMetaConsistent(t *testing.T) {
 
 	out := newMockMetadataOutput("mw-cat")
 
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 
 		Categories: map[string]*audit.CategoryDef{
@@ -4436,7 +4436,7 @@ func TestMetadataWriter_CachedAssertion_Correct(t *testing.T) {
 
 func TestTimezoneAlwaysPopulated(t *testing.T) {
 	// Create a logger with NO timezone config — it should auto-detect.
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Events:  map[string]*audit.EventDef{"test_event": {}},
 		Categories: map[string]*audit.CategoryDef{
@@ -4464,7 +4464,7 @@ func TestTimezoneAlwaysPopulated(t *testing.T) {
 }
 
 func TestTimezoneAutoDetect(t *testing.T) {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Events:  map[string]*audit.EventDef{"test_event": {}},
 		Categories: map[string]*audit.CategoryDef{
@@ -4494,7 +4494,7 @@ func TestTimezoneAutoDetect(t *testing.T) {
 }
 
 func TestTimezoneOverride(t *testing.T) {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Events:  map[string]*audit.EventDef{"test_event": {}},
 		Categories: map[string]*audit.CategoryDef{

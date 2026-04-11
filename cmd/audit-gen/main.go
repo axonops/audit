@@ -159,7 +159,7 @@ func execute(cfg cliConfig, stdout, stderr io.Writer) int {
 	}
 
 	var buf bytes.Buffer
-	if err := generate(&buf, tax, opts); err != nil {
+	if err := generate(&buf, *tax, opts); err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: generate: %v\n", err)
 		return exitWriteError
 	}

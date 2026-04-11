@@ -33,8 +33,8 @@ import (
 // --- Middleware test helpers ---
 
 // middlewareTaxonomy returns a taxonomy suitable for middleware tests.
-func middlewareTaxonomy() audit.Taxonomy {
-	return audit.Taxonomy{
+func middlewareTaxonomy() *audit.Taxonomy {
+	return &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"access": {Events: []string{"http_request"}},

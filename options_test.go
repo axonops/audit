@@ -267,7 +267,7 @@ func TestSuppressEventCategory_ZeroValue_EmitsCategory(t *testing.T) {
 func TestSuppressEventCategory_True_SuppressesCategory(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	out := testhelper.NewMockOutput("suppress-cat")
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version:               1,
 		SuppressEventCategory: true,
 		Categories:            map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},

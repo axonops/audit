@@ -195,16 +195,21 @@ type Taxonomy struct {
 	// disabled with zero overhead.
 	Sensitivity *SensitivityConfig
 
+	// Version is the taxonomy schema version. MUST be > 0. Currently
+	// only version 1 is supported; higher values cause [WithTaxonomy]
+	// to return an error wrapping [ErrTaxonomyInvalid].
+	Version int
+
 	// SuppressEventCategory controls whether the `event_category` field
 	// is omitted from serialised output. The zero value (false) means
 	// the category IS emitted — matching the YAML default when
 	// `emit_event_category` is absent. Set to true to suppress.
 	SuppressEventCategory bool
 
-	// Version is the taxonomy schema version. MUST be > 0. Currently
-	// only version 1 is supported; higher values cause [WithTaxonomy]
-	// to return an error wrapping [ErrTaxonomyInvalid].
-	Version int
+	// validated is set by [ParseTaxonomyYAML] after migration,
+	// validation, and precomputation succeed. [WithTaxonomy] skips
+	// redundant re-validation when this flag is true.
+	validated bool
 }
 
 const (
@@ -223,9 +228,26 @@ const (
 // are not set on EventDef directly) and building the field lookup
 // structures. Must be called after validation succeeds.
 func precomputeTaxonomy(t *Taxonomy) error {
-	// Derive EventDef.Categories from the categories map. This
-	// ensures Categories is populated for both YAML-parsed and
-	// Go-constructed taxonomies.
+	deriveEventCategories(t)
+
+	for _, def := range t.Events {
+		def.resolvedSeverity = resolveEventSeverity(def, t)
+		def.severityResolved = true
+	}
+	for _, def := range t.Events {
+		precomputeEventDef(def)
+	}
+	if err := precomputeSensitivity(t); err != nil {
+		return err
+	}
+	t.validated = true
+	return nil
+}
+
+// deriveEventCategories populates EventDef.Categories from the
+// taxonomy's category map. This ensures Categories is populated for
+// both YAML-parsed and Go-constructed taxonomies.
+func deriveEventCategories(t *Taxonomy) {
 	for catName, catDef := range t.Categories {
 		if catDef == nil {
 			continue
@@ -241,19 +263,6 @@ func precomputeTaxonomy(t *Taxonomy) error {
 	for _, def := range t.Events {
 		slices.Sort(def.Categories)
 	}
-
-	// Resolve severity for each event. Resolution chain:
-	// event Severity (if non-nil) → first category Severity (if non-nil) → 5.
-	for _, def := range t.Events {
-		def.resolvedSeverity = resolveEventSeverity(def, t)
-		def.severityResolved = true
-	}
-
-	for _, def := range t.Events {
-		precomputeEventDef(def)
-	}
-
-	return precomputeSensitivity(t)
 }
 
 // resolveEventSeverity computes the effective severity for an event.
@@ -314,6 +323,108 @@ func sortedCopy(s []string) []string {
 	cp := make([]string, len(s))
 	copy(cp, s)
 	slices.Sort(cp)
+	return cp
+}
+
+// deepCopyTaxonomy returns a deep copy of t. All mutable maps, slices,
+// and pointer fields are copied so that mutations to the original after
+// the copy do not affect the copy. Called by [WithTaxonomy] to prevent
+// post-construction mutation by the consumer.
+func deepCopyTaxonomy(t *Taxonomy) *Taxonomy {
+	cp := &Taxonomy{
+		Version:               t.Version,
+		SuppressEventCategory: t.SuppressEventCategory,
+		validated:             t.validated,
+	}
+	cp.Categories = deepCopyCategories(t.Categories)
+	cp.Events = deepCopyEvents(t.Events)
+	cp.Sensitivity = deepCopySensitivity(t.Sensitivity)
+	return cp
+}
+
+func deepCopyCategories(cats map[string]*CategoryDef) map[string]*CategoryDef {
+	if cats == nil {
+		return nil
+	}
+	cp := make(map[string]*CategoryDef, len(cats))
+	for name, cat := range cats {
+		cp[name] = &CategoryDef{
+			Severity: copyIntPtr(cat.Severity),
+			Events:   copyStrings(cat.Events),
+		}
+	}
+	return cp
+}
+
+func deepCopyEvents(events map[string]*EventDef) map[string]*EventDef {
+	if events == nil {
+		return nil
+	}
+	cp := make(map[string]*EventDef, len(events))
+	for name, ev := range events {
+		cp[name] = deepCopyEventDef(ev)
+	}
+	return cp
+}
+
+func deepCopyEventDef(ev *EventDef) *EventDef {
+	cpEv := &EventDef{
+		Categories:       copyStrings(ev.Categories),
+		Description:      ev.Description,
+		Severity:         copyIntPtr(ev.Severity),
+		Required:         copyStrings(ev.Required),
+		Optional:         copyStrings(ev.Optional),
+		resolvedSeverity: ev.resolvedSeverity,
+		severityResolved: ev.severityResolved,
+		sortedRequired:   copyStrings(ev.sortedRequired),
+		sortedOptional:   copyStrings(ev.sortedOptional),
+		sortedAllKeys:    copyStrings(ev.sortedAllKeys),
+	}
+	if ev.knownFields != nil {
+		cpEv.knownFields = make(map[string]struct{}, len(ev.knownFields))
+		for k := range ev.knownFields {
+			cpEv.knownFields[k] = struct{}{}
+		}
+	}
+	if ev.FieldLabels != nil {
+		cpEv.FieldLabels = make(map[string]map[string]struct{}, len(ev.FieldLabels))
+		for field, labels := range ev.FieldLabels {
+			cpLabels := make(map[string]struct{}, len(labels))
+			for l := range labels {
+				cpLabels[l] = struct{}{}
+			}
+			cpEv.FieldLabels[field] = cpLabels
+		}
+	}
+	if ev.fieldAnnotations != nil {
+		cpEv.fieldAnnotations = make(map[string][]string, len(ev.fieldAnnotations))
+		for field, labels := range ev.fieldAnnotations {
+			cpEv.fieldAnnotations[field] = copyStrings(labels)
+		}
+	}
+	return cpEv
+}
+
+func deepCopySensitivity(sc *SensitivityConfig) *SensitivityConfig {
+	if sc == nil {
+		return nil
+	}
+	cp := &SensitivityConfig{
+		Labels: make(map[string]*SensitivityLabel, len(sc.Labels)),
+	}
+	for name, label := range sc.Labels {
+		cpLabel := &SensitivityLabel{
+			Description: label.Description,
+			Fields:      copyStrings(label.Fields),
+			Patterns:    copyStrings(label.Patterns),
+		}
+		if label.compiled != nil {
+			// regexp.Regexp is safe for concurrent use; shallow copy is intentional.
+			cpLabel.compiled = make([]*regexp.Regexp, len(label.compiled))
+			copy(cpLabel.compiled, label.compiled)
+		}
+		cp.Labels[name] = cpLabel
+	}
 	return cp
 }
 

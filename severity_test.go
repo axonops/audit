@@ -358,7 +358,7 @@ func TestValidateTaxonomy_CategorySeverityOutOfRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version: 1,
 				Categories: map[string]*audit.CategoryDef{
 					"ops": {
@@ -370,7 +370,7 @@ func TestValidateTaxonomy_CategorySeverityOutOfRange(t *testing.T) {
 					"deploy": {Required: []string{"outcome"}},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 
 			if tt.wantMsg != "" {
 				require.Error(t, err)
@@ -406,7 +406,7 @@ func TestValidateTaxonomy_EventSeverityOutOfRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
+			tax := &audit.Taxonomy{
 				Version: 1,
 				Categories: map[string]*audit.CategoryDef{
 					"ops": {Events: []string{"deploy"}},
@@ -418,7 +418,7 @@ func TestValidateTaxonomy_EventSeverityOutOfRange(t *testing.T) {
 					},
 				},
 			}
-			err := audit.ValidateTaxonomy(tax)
+			err := audit.ValidateTaxonomy(*tax)
 
 			if tt.wantErr {
 				require.Error(t, err,

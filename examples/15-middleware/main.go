@@ -58,7 +58,7 @@ func buildEvent(hints *audit.Hints, transport *audit.TransportMetadata) (eventTy
 }
 
 func main() {
-	tax := audit.Taxonomy{
+	tax := &audit.Taxonomy{
 		Version: 1,
 		Categories: map[string]*audit.CategoryDef{
 			"access": {Events: []string{"http_request"}},

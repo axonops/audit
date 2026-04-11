@@ -415,7 +415,7 @@ func TestFanout_GlobalFilterTakesPrecedence(t *testing.T) {
 	out := testhelper.NewMockOutput("all")
 	logger, err := audit.NewLogger(
 		audit.WithValidationMode(audit.ValidationPermissive),
-		audit.WithTaxonomy(audit.Taxonomy{
+		audit.WithTaxonomy(&audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
 				"write":    {Events: []string{"user_create"}},

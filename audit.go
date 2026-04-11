@@ -141,25 +141,22 @@ func NewLogger(opts ...Option) (*Logger, error) {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
+	if l.taxonomy.dev {
+		slog.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+		// DevTaxonomy produces empty EventDefs with no declared fields.
+		// Force permissive validation so user fields are not rejected.
+		if l.cfg.ValidationMode == ValidationStrict {
+			l.cfg.ValidationMode = ValidationPermissive
+		}
+	}
+
 	if err := l.validateOutputRoutes(); err != nil {
 		return nil, err
 	}
 
 	l.prepareOutputEntries()
 
-	// Default formatter if WithFormatter was not called.
-	if l.formatter == nil {
-		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
-	}
-
-	// Capture PID and timezone once at construction.
-	l.pid = os.Getpid()
-	if l.timezone == "" {
-		l.timezone = time.Now().Location().String()
-	}
-
-	// Propagate framework fields to all formatters that support them.
-	l.propagateFrameworkFields()
+	l.applyConstructionDefaults()
 
 	if l.disabled {
 		return l, nil
@@ -179,6 +176,19 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	)
 
 	return l, nil
+}
+
+// applyConstructionDefaults sets formatter, PID, timezone, and propagates
+// framework fields. Called once during NewLogger after all options are applied.
+func (l *Logger) applyConstructionDefaults() {
+	if l.formatter == nil {
+		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
+	}
+	l.pid = os.Getpid()
+	if l.timezone == "" {
+		l.timezone = time.Now().Location().String()
+	}
+	l.propagateFrameworkFields()
 }
 
 // AuditEvent validates and enqueues a typed audit event. Use

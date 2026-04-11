@@ -14,6 +14,8 @@
 
 package audit
 
+import "fmt"
+
 // LabelInfo describes a sensitivity label defined in the taxonomy.
 type LabelInfo struct {
 	Name        string // label name, e.g., "pii"
@@ -67,6 +69,29 @@ func NewEvent(eventType string, fields Fields) Event {
 
 func (e *basicEvent) EventType() string { return e.eventType }
 func (e *basicEvent) Fields() Fields    { return e.fields }
+
+// NewEventKV creates an audit event from alternating key-value pairs,
+// following the [log/slog] convention:
+//
+//	audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+//
+// NewEventKV panics if keysAndValues has an odd number of elements or
+// if any key is not a string. These are always programming errors, not
+// runtime conditions — the same convention as [slog.Info].
+func NewEventKV(eventType string, keysAndValues ...any) Event {
+	if len(keysAndValues)%2 != 0 {
+		panic(fmt.Sprintf("audit: NewEventKV requires even number of arguments, got %d", len(keysAndValues)))
+	}
+	fields := make(Fields, len(keysAndValues)/2)
+	for i := 0; i < len(keysAndValues); i += 2 {
+		key, ok := keysAndValues[i].(string)
+		if !ok {
+			panic(fmt.Sprintf("audit: NewEventKV key at index %d must be string, got %T", i, keysAndValues[i]))
+		}
+		fields[key] = keysAndValues[i+1]
+	}
+	return NewEvent(eventType, fields)
+}
 
 // EventType is a handle for a registered audit event type. It carries
 // the event type name and a reference to the owning [Logger], enabling

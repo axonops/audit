@@ -112,6 +112,22 @@ func WithTimezone(tz string) Option {
 	}
 }
 
+// WithSynchronousDelivery configures the logger to deliver events
+// inline within [Logger.AuditEvent] instead of via the async channel
+// and drain goroutine. Events are immediately available in outputs
+// after AuditEvent returns.
+//
+// This mode is useful for testing (no Close-before-assert ceremony)
+// and for simple deployments (CLI tools, Lambda functions) where
+// async complexity is unwanted. [Logger.Close] is still safe to call
+// but is not required before reading output.
+func WithSynchronousDelivery() Option {
+	return func(l *Logger) error {
+		l.synchronous = true
+		return nil
+	}
+}
+
 // WithLogger sets the [log/slog.Logger] used for library diagnostics
 // (lifecycle messages, buffer drops, format errors). When not set or
 // when l is nil, [slog.Default] is used. Pass

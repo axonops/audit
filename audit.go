@@ -90,6 +90,14 @@ type Logger struct {
 	// the former Config.Enabled field (inverted: disabled=true means
 	// the logger does nothing).
 	disabled bool
+	// synchronous is set by WithSynchronousDelivery to deliver events
+	// inline within AuditEvent instead of via the async channel. No
+	// drain goroutine is started. Useful for testing and CLIs.
+	synchronous bool
+	// syncMu guards processEntry calls in synchronous delivery mode.
+	// processEntry reuses per-output state (formatOpts, HMAC) that is
+	// only safe under single-goroutine access.
+	syncMu sync.Mutex
 	// Framework fields set via WithAppName, WithHost, WithTimezone.
 	// PID is captured once at construction via os.Getpid().
 	appName  string
@@ -160,17 +168,20 @@ func NewLogger(opts ...Option) (*Logger, error) {
 		return l, nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	l.cancel = cancel
-	l.ch = make(chan *auditEntry, l.cfg.BufferSize)
-	l.drainDone = make(chan struct{})
-	go l.drainLoop(ctx)
+	if !l.synchronous {
+		ctx, cancel := context.WithCancel(context.Background())
+		l.cancel = cancel
+		l.ch = make(chan *auditEntry, l.cfg.BufferSize)
+		l.drainDone = make(chan struct{})
+		go l.drainLoop(ctx)
+	}
 
 	l.logger.Info("audit: logger created",
 		"buffer_size", l.cfg.BufferSize,
 		"drain_timeout", l.cfg.DrainTimeout,
 		"validation_mode", string(l.cfg.ValidationMode),
 		"outputs", len(l.entries),
+		"synchronous", l.synchronous,
 	)
 
 	return l, nil
@@ -227,24 +238,8 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		return ErrClosed
 	}
 
-	def, ok := l.taxonomy.Events[eventType]
-	if !ok {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
-		}
-		return newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
-	}
-
-	// Copy fields and merge defaults in one pass to avoid double
-	// allocation. The copy isolates the caller's map from the drain
-	// goroutine; defaults are applied into the copy so that they
-	// satisfy required: true validation without mutating the original.
-	copied := l.copyFieldsWithDefaults(fields)
-
-	if err := l.validateFields(eventType, def, copied); err != nil {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
-		}
+	_, copied, err := l.validateEvent(eventType, fields)
+	if err != nil {
 		return err
 	}
 
@@ -261,7 +256,47 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 	}
 	entry.eventType = eventType
 	entry.fields = copied
+
+	if l.synchronous {
+		l.deliverSync(entry)
+		return nil
+	}
 	return l.enqueue(entry)
+}
+
+// validateEvent checks the event type exists, copies fields with defaults,
+// and validates field constraints. Returns the definition and copied fields.
+func (l *Logger) validateEvent(eventType string, fields Fields) (*EventDef, Fields, error) {
+	def, ok := l.taxonomy.Events[eventType]
+	if !ok {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
+		return nil, nil, newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
+	}
+
+	copied := l.copyFieldsWithDefaults(fields)
+
+	if err := l.validateFields(eventType, def, copied); err != nil {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
+		return nil, nil, err
+	}
+
+	return def, copied, nil
+}
+
+// deliverSync processes an event inline within AuditEvent for
+// synchronous delivery mode. It reuses the same processEntry logic
+// as the drain goroutine, including panic recovery and pool return.
+// A mutex serialises calls because processEntry reuses per-output
+// state (formatOpts, HMAC) that is only safe under single-goroutine
+// access.
+func (l *Logger) deliverSync(entry *auditEntry) {
+	l.syncMu.Lock()
+	defer l.syncMu.Unlock()
+	l.processEntry(entry)
 }
 
 // enqueue attempts a non-blocking send to the async channel. On
@@ -309,8 +344,10 @@ func (l *Logger) Close() error {
 		shutdownStart := time.Now()
 		l.logger.Info("audit: shutdown started")
 
-		l.cancel()
-		l.waitForDrain()
+		if !l.synchronous {
+			l.cancel()
+			l.waitForDrain()
+		}
 
 		var closeErrs []error
 		for _, oe := range l.entries {

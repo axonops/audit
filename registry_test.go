@@ -15,6 +15,8 @@
 package audit_test
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -229,6 +231,31 @@ func TestWrapOutput_NonFrameworkFieldReceiver_NoOp(t *testing.T) {
 	fr.SetFrameworkFields("app", "host", "UTC", 1)
 }
 
+func TestWrapOutput_PreservesLoggerReceiver(t *testing.T) {
+	inner := &mockLoggerReceiver{
+		MockOutput: *testhelper.NewMockOutput("syslog:localhost:514"),
+	}
+	wrapped := audit.WrapOutput(inner, "my_syslog")
+
+	lr, ok := wrapped.(audit.LoggerReceiver)
+	require.True(t, ok, "wrapped output should implement LoggerReceiver")
+
+	customLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	lr.SetLogger(customLogger)
+	assert.Same(t, customLogger, inner.logger, "logger should be forwarded to inner")
+}
+
+func TestWrapOutput_NonLoggerReceiver_NoOp(t *testing.T) {
+	inner := testhelper.NewMockOutput("file:/tmp/test.log")
+	wrapped := audit.WrapOutput(inner, "my_file")
+
+	lr, ok := wrapped.(audit.LoggerReceiver)
+	require.True(t, ok, "namedOutput always implements LoggerReceiver")
+
+	// Should not panic.
+	lr.SetLogger(slog.Default())
+}
+
 // --- Test helper types ---
 
 // mockDestKeyer wraps MockOutput with DestinationKeyer.
@@ -273,4 +300,14 @@ func (m *mockFrameworkFieldReceiver) SetFrameworkFields(appName, host, timezone 
 	m.host = host
 	m.timezone = timezone
 	m.pid = pid
+}
+
+// mockLoggerReceiver wraps MockOutput with LoggerReceiver.
+type mockLoggerReceiver struct { //nolint:govet // fieldalignment: test struct, readability preferred
+	testhelper.MockOutput
+	logger *slog.Logger
+}
+
+func (m *mockLoggerReceiver) SetLogger(l *slog.Logger) {
+	m.logger = l
 }

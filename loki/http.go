@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -81,7 +80,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		if !retryable {
-			slog.Error("audit: loki non-retryable error",
+			o.logger.Error("audit: loki non-retryable error",
 				"error", err,
 				"batch_size", batchSize)
 			o.recordError(status)
@@ -90,14 +89,14 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		o.recordRetry(status, attempt+1)
-		slog.Warn("audit: loki retryable error",
+		o.logger.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
 			"error", err)
 	}
 
 	// All retries exhausted.
-	slog.Error("audit: loki retries exhausted, dropping batch",
+	o.logger.Error("audit: loki retries exhausted, dropping batch",
 		"batch_size", batchSize,
 		"max_retries", o.cfg.MaxRetries)
 	o.recordDrop(batchSize)

@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"log/slog"
 	"slices"
 	"sync"
 )
@@ -95,13 +96,14 @@ func RegisteredOutputTypes() []string {
 var (
 	_ MetadataWriter         = (*namedOutput)(nil)
 	_ FrameworkFieldReceiver = (*namedOutput)(nil)
+	_ LoggerReceiver         = (*namedOutput)(nil)
 )
 
 // namedOutput wraps an [Output] to override its [Output.Name] method
 // with a consumer-chosen name from the YAML config. All other methods
 // delegate to the inner output, including optional interfaces
-// ([MetadataWriter], [FrameworkFieldReceiver], [DestinationKeyer],
-// [DeliveryReporter]).
+// ([MetadataWriter], [FrameworkFieldReceiver], [LoggerReceiver],
+// [DestinationKeyer], [DeliveryReporter]).
 type namedOutput struct {
 	Output
 	outputName string
@@ -153,6 +155,16 @@ func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int
 	}
 }
 
+// SetLogger forwards to the inner output if it implements
+// [LoggerReceiver]. This ensures the library's diagnostic logger
+// propagates through the name wrapper to outputs created via YAML
+// config.
+func (n *namedOutput) SetLogger(l *slog.Logger) {
+	if lr, ok := n.Output.(LoggerReceiver); ok {
+		lr.SetLogger(l)
+	}
+}
+
 // WrapOutput wraps an [Output] with a consumer-chosen name. The
 // returned output delegates all methods to the inner output except
 // [Output.Name], which returns the provided name. This function is
@@ -160,12 +172,12 @@ func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int
 // [WithOutputs] or [WithNamedOutput] directly.
 //
 // The returned output always satisfies [DestinationKeyer],
-// [DeliveryReporter], [MetadataWriter], and [FrameworkFieldReceiver]
-// regardless of the inner output. When the inner output does not
-// implement these interfaces, the wrapper returns zero-value behaviour:
-// empty string for DestinationKey, false for ReportsDelivery,
-// delegation to Write for WriteWithMetadata, and no-op for
-// SetFrameworkFields.
+// [DeliveryReporter], [MetadataWriter], [FrameworkFieldReceiver],
+// and [LoggerReceiver] regardless of the inner output. When the inner
+// output does not implement these interfaces, the wrapper returns
+// zero-value behaviour: empty string for DestinationKey, false for
+// ReportsDelivery, delegation to Write for WriteWithMetadata, and
+// no-op for SetFrameworkFields and SetLogger.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

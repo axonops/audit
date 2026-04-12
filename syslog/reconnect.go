@@ -17,7 +17,6 @@ package syslog
 import (
 	"crypto/rand"
 	"fmt"
-	"log/slog"
 	"math"
 	"time"
 
@@ -29,7 +28,7 @@ func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, write
 	s.failures++
 
 	if s.failures > s.maxRetry {
-		slog.Error("audit: syslog max retries exceeded",
+		s.logger.Error("audit: syslog max retries exceeded",
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
@@ -44,7 +43,7 @@ func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, write
 	}
 
 	backoff := backoffDuration(s.failures)
-	slog.Warn("audit: syslog reconnecting",
+	s.logger.Warn("audit: syslog reconnecting",
 		"address", s.address,
 		"attempt", s.failures,
 		"backoff", backoff)
@@ -65,7 +64,7 @@ func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, write
 	}
 
 	if err := s.connect(); err != nil {
-		slog.Error("audit: syslog reconnect failed",
+		s.logger.Error("audit: syslog reconnect failed",
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
@@ -73,7 +72,7 @@ func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, write
 		return &reconnected, fmt.Errorf("audit: syslog reconnect: %w", err)
 	}
 
-	slog.Info("audit: syslog reconnected", "address", s.address)
+	s.logger.Info("audit: syslog reconnected", "address", s.address)
 	reconnected := true
 
 	// Retry the write on the new connection with the original priority.

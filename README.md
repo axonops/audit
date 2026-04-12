@@ -245,6 +245,9 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 | `github.com/axonops/audit/outputconfig` | YAML-based output configuration with env var substitution |
 | `github.com/axonops/audit/outputs` | Convenience: single blank import registers all output factories |
 | `github.com/axonops/audit/secrets` | Secret provider interface for `ref+` URI resolution in YAML config |
+| `github.com/axonops/audit/secrets/openbao` | OpenBao KV v2 secret provider |
+| `github.com/axonops/audit/secrets/vault` | HashiCorp Vault KV v2 secret provider |
+| `github.com/axonops/audit/cmd/audit-gen` | Code generator: YAML taxonomy to typed Go builders |
 
 Outputs are isolated in separate modules so the core library carries
 minimal third-party dependencies. Import only the outputs you use —

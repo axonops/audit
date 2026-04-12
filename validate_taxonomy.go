@@ -17,7 +17,7 @@ package audit
 import (
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -38,7 +38,7 @@ func ValidateTaxonomy(t Taxonomy) error {
 	errs = append(errs, checkSensitivity(t)...)
 
 	if len(errs) > 0 {
-		sort.Strings(errs)
+		slices.Sort(errs)
 		return fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
 	}
 	return nil

@@ -112,9 +112,11 @@ func (e *EventHandle) Audit(fields Fields) error {
 }
 
 // AuditEvent emits an [Event] (typically a generated builder) using
-// the logger bound to this handle. Unlike [Audit], this method accepts
-// any Event implementation, making it composable with code-generated
-// typed builders.
+// the logger bound to this handle. Unlike [EventHandle.Audit], the
+// event type is taken from evt.EventType(), not from the handle's
+// bound type — the handle provides the logger binding only. This
+// method accepts any [Event] implementation, making it composable
+// with code-generated typed builders.
 func (e *EventHandle) AuditEvent(evt Event) error {
 	return e.logger.AuditEvent(evt)
 }

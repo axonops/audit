@@ -190,9 +190,9 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 	l.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
 }
 
-// PostField represents a field appended to serialised bytes after
-// format caching. Used for delivery-specific context (category) and
-// future features (e.g., HMAC checksum).
+// prepareOutputEntries caches interface assertions and pre-constructs
+// per-output state (MetadataWriter, DeliveryReporter, FormatOptions,
+// HMAC). Called once at construction time after all options are applied.
 func (l *Logger) prepareOutputEntries() {
 	for _, oe := range l.entries {
 		if mw, ok := oe.output.(MetadataWriter); ok {
@@ -339,6 +339,3 @@ func (l *Logger) recordWrite(outputName, eventType string, selfReports bool, wri
 		l.metrics.RecordEvent(outputName, "success")
 	}
 }
-
-// copyFieldsWithDefaults creates a shallow copy of fields and merges
-// standard field defaults in a single pass. Per-event values take

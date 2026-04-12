@@ -333,6 +333,3 @@ func (s *Output) connect() error {
 // [Metrics.RecordSyslogReconnect] outside the mutex. The priority
 // parameter ensures the retry uses the same facility+severity as the
 // original write attempt.
-// defaults where needed.
-// to TLS 1.3 only when nil). InsecureSkipVerify is never set.
-// This is an immutable lookup table populated at init time.

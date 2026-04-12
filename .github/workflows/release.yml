@@ -45,16 +45,16 @@ env:
   PUBLISH_VERSION: ${{ inputs.version }}
   # Single source of truth for publishable modules (space-separated).
   PUBLISH_MODULES: >-
-    github.com/axonops/go-audit
-    github.com/axonops/go-audit/file
-    github.com/axonops/go-audit/syslog
-    github.com/axonops/go-audit/webhook
-    github.com/axonops/go-audit/loki
-    github.com/axonops/go-audit/outputconfig
-    github.com/axonops/go-audit/cmd/audit-gen
-    github.com/axonops/go-audit/secrets
-    github.com/axonops/go-audit/secrets/openbao
-    github.com/axonops/go-audit/secrets/vault
+    github.com/axonops/audit
+    github.com/axonops/audit/file
+    github.com/axonops/audit/syslog
+    github.com/axonops/audit/webhook
+    github.com/axonops/audit/loki
+    github.com/axonops/audit/outputconfig
+    github.com/axonops/audit/cmd/audit-gen
+    github.com/axonops/audit/secrets
+    github.com/axonops/audit/secrets/openbao
+    github.com/axonops/audit/secrets/vault
 
 jobs:
   # =====================================================================
@@ -153,8 +153,8 @@ jobs:
         run: |
           set -euo pipefail
           MODULES=(
-            "github.com/axonops/go-audit"
-            "github.com/axonops/go-audit/secrets"
+            "github.com/axonops/audit"
+            "github.com/axonops/audit/secrets"
           )
           for mod in "${MODULES[@]}"; do
             echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
@@ -199,8 +199,8 @@ jobs:
       - name: Update inter-module dependencies
         run: |
           set -euo pipefail
-          CORE="github.com/axonops/go-audit"
-          SECRETS="github.com/axonops/go-audit/secrets"
+          CORE="github.com/axonops/audit"
+          SECRETS="github.com/axonops/audit/secrets"
 
           # Modules that depend on core only
           for dir in file syslog webhook loki cmd/audit-gen; do
@@ -286,13 +286,13 @@ jobs:
         run: |
           set -euo pipefail
           MODULES=(
-            "github.com/axonops/go-audit/file"
-            "github.com/axonops/go-audit/syslog"
-            "github.com/axonops/go-audit/webhook"
-            "github.com/axonops/go-audit/loki"
-            "github.com/axonops/go-audit/cmd/audit-gen"
-            "github.com/axonops/go-audit/secrets/openbao"
-            "github.com/axonops/go-audit/secrets/vault"
+            "github.com/axonops/audit/file"
+            "github.com/axonops/audit/syslog"
+            "github.com/axonops/audit/webhook"
+            "github.com/axonops/audit/loki"
+            "github.com/axonops/audit/cmd/audit-gen"
+            "github.com/axonops/audit/secrets/openbao"
+            "github.com/axonops/audit/secrets/vault"
           )
           for mod in "${MODULES[@]}"; do
             echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
@@ -339,11 +339,11 @@ jobs:
           set -euo pipefail
           cd outputconfig
           echo "Updating outputconfig/go.mod..."
-          go mod edit -require "github.com/axonops/go-audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/secrets@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/secrets/openbao@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/secrets/vault@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets/vault@$PUBLISH_VERSION"
           GOWORK=off go mod tidy
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
@@ -351,11 +351,11 @@ jobs:
           # Also update examples/16-crud-api (not published but must be consistent)
           cd examples/16-crud-api
           echo "Updating examples/16-crud-api/go.mod..."
-          go mod edit -require "github.com/axonops/go-audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/outputconfig@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/syslog@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/go-audit/webhook@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
           GOWORK=off go mod tidy
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
@@ -454,21 +454,21 @@ jobs:
           cat > main.go << 'GOEOF'
           package main
           import (
-            _ "github.com/axonops/go-audit"
-            _ "github.com/axonops/go-audit/file"
-            _ "github.com/axonops/go-audit/syslog"
-            _ "github.com/axonops/go-audit/webhook"
-            _ "github.com/axonops/go-audit/loki"
-            _ "github.com/axonops/go-audit/outputconfig"
-            _ "github.com/axonops/go-audit/secrets"
-            _ "github.com/axonops/go-audit/secrets/openbao"
-            _ "github.com/axonops/go-audit/secrets/vault"
+            _ "github.com/axonops/audit"
+            _ "github.com/axonops/audit/file"
+            _ "github.com/axonops/audit/syslog"
+            _ "github.com/axonops/audit/webhook"
+            _ "github.com/axonops/audit/loki"
+            _ "github.com/axonops/audit/outputconfig"
+            _ "github.com/axonops/audit/secrets"
+            _ "github.com/axonops/audit/secrets/openbao"
+            _ "github.com/axonops/audit/secrets/vault"
           )
           func main() {}
           GOEOF
           go build -o /dev/null .
 
-          go install "github.com/axonops/go-audit/cmd/audit-gen@$PUBLISH_VERSION"
+          go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
           echo "✓ All modules compile and install successfully"
 
   # =====================================================================

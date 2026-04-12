@@ -82,7 +82,7 @@ checksum:
 release:
   github:
     owner: axonops
-    name: go-audit
+    name: audit
   draft: false
   prerelease: auto
   name_template: '{{ .Tag }}'

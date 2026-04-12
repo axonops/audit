@@ -55,7 +55,7 @@ jobs:
       - name: Update dependencies per module
         run: |
           MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets secrets/openbao secrets/vault"
-          CORE_MODULE="github.com/axonops/go-audit"
+          CORE_MODULE="github.com/axonops/audit"
           FAILED=""
 
           for mod in $MODULES; do
@@ -234,7 +234,7 @@ jobs:
             echo "**Review checklist:**"
             echo "- [ ] Review the dependency diffs above for unexpected major version bumps"
             echo "- [ ] Close and reopen the PR to trigger full CI (integration + BDD tests)"
-            echo "- [ ] Verify inter-module \`github.com/axonops/go-audit\` versions are unchanged"
+            echo "- [ ] Verify inter-module \`github.com/axonops/audit\` versions are unchanged"
             echo ""
             echo "*This PR was created automatically by the [nightly dependency update workflow](https://github.com/${{ github.repository }}/actions/workflows/dependency-update.yml).*"
           } > /tmp/pr-body.md

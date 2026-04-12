@@ -92,7 +92,7 @@ jobs:
           fi
 
   # Requires Dependency Graph enabled in repo settings:
-  # https://github.com/axonops/go-audit/settings/security_analysis
+  # https://github.com/axonops/audit/settings/security_analysis
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest

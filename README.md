@@ -249,6 +249,29 @@ minimal third-party dependencies. Import only the outputs you use.
 
 ---
 
+## 🧪 Testing
+
+The `audittest` package provides an in-memory recorder for testing audit events:
+
+```go
+func TestUserCreation(t *testing.T) {
+    logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
+
+    // Exercise the code under test...
+    err := logger.AuditEvent(audit.NewEventKV("user_create",
+        "outcome", "success", "actor_id", "alice"))
+    require.NoError(t, err)
+
+    // Assert immediately — NewLoggerQuick uses synchronous delivery.
+    assert.Equal(t, 1, events.Count())
+    assert.Equal(t, "alice", events.Events()[0].StringField("actor_id"))
+}
+```
+
+See [Example 17](examples/17-testing/) and [Testing docs](docs/testing.md) for more.
+
+---
+
 ## 📚 Documentation
 
 | Resource | Description |

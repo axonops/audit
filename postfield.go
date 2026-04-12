@@ -17,8 +17,10 @@ package audit
 import "bytes"
 
 // PostField represents a field appended to serialised bytes after
-// format caching. Used for delivery-specific context (category) and
-// future features (e.g., HMAC checksum).
+// format caching. This is an advanced/internal API used by the drain
+// goroutine for delivery-specific context (event_category, HMAC).
+// Custom formatter implementors may use [AppendPostFields]; regular
+// consumers do not need this type.
 type PostField struct {
 	// JSONKey is the JSON object key used when appending to JSON output.
 	JSONKey string

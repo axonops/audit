@@ -1,0 +1,38 @@
+version: 1
+
+categories:
+  emit_event_category: true
+  security:
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
+  write:
+    severity: 4
+    events:
+      - user_create
+
+events:
+  auth_failure:
+    description: "An authentication attempt failed"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  auth_success:
+    description: "An authentication attempt succeeded"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true

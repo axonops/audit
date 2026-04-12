@@ -1,0 +1,11 @@
+version: 1
+app_name: example
+host: localhost
+outputs:
+  audit_log:
+    type: file
+    file:
+      path: "./audit.log"
+      max_size_mb: 10
+      max_backups: 3
+      permissions: "0600"

@@ -80,7 +80,7 @@ Key features:
 configuration, rotation mechanics, permissions, production examples,
 and troubleshooting.
 
-**[→ Progressive example](../examples/05-file-output/)**
+**[→ Progressive example](../examples/03-file-output/)**
 
 Install: `go get github.com/axonops/audit/file`
 
@@ -108,7 +108,7 @@ Key features:
 configuration, TLS, reconnection, facility values, production examples,
 and troubleshooting.
 
-**[→ Progressive example with embedded TCP receiver](../examples/06-syslog-output/)**
+**[→ Progressive example with embedded TCP receiver](../examples/07-syslog-output/)**
 
 Install: `go get github.com/axonops/audit/syslog`
 
@@ -138,7 +138,7 @@ Key features:
 configuration, authentication, TLS, NDJSON format, retry logic, SSRF
 protection, production examples, and troubleshooting.
 
-**[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
+**[→ Progressive example with embedded HTTP receiver](../examples/08-webhook-output/)**
 
 Install: `go get github.com/axonops/audit/webhook`
 
@@ -167,7 +167,7 @@ production examples, performance tuning, and troubleshooting.
 - **SSRF protection** blocks private/loopback ranges by default
 - **Exponential backoff retry** on 429/5xx with `Retry-After` support
 
-**[→ Progressive example with real query output](../examples/08-loki-output/)**
+**[→ Progressive example with real query output](../examples/14-loki-output/)**
 
 Install: `go get github.com/axonops/audit/loki`
 
@@ -192,7 +192,7 @@ No additional configuration fields are needed.
 **[→ Full Stdout Output Reference](stdout-output.md)** — container
 deployment, piping patterns, limitations.
 
-**[→ Progressive example](../examples/04-stdout-output/)**
+**[→ Progressive example](../examples/02-code-generation/)**
 
 ---
 
@@ -260,7 +260,7 @@ reconnection) delays all subsequent outputs for that event. See
 
 ## 📚 Further Reading
 
-- [Progressive Example: File Output](../examples/05-file-output/)
+- [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/09-multi-output/)
-- [Progressive Example: CRUD API](../examples/16-crud-api/) — four outputs with HMAC, CEF, Loki, and PII stripping
+- [Progressive Example: CRUD API](../examples/17-crud-api/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Output Configuration YAML](output-configuration.md) — full YAML reference

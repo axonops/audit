@@ -119,6 +119,6 @@ pre-allocated per output at construction time.
 
 ## 📚 Further Reading
 
-- [Progressive Example: Sensitivity Labels](../examples/12-sensitivity-labels/) — complete working example with PII and financial labels
+- [Progressive Example: Sensitivity Labels](../examples/11-sensitivity-labels/) — complete working example with PII and financial labels
 - [Event Routing](event-routing.md) — per-output routing (complementary feature)
 - [API Reference: SensitivityConfig](https://pkg.go.dev/github.com/axonops/audit#SensitivityConfig)

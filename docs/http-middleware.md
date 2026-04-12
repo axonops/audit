@@ -173,7 +173,7 @@ http.ListenAndServe(":8080", auditedRouter)
 
 For a complete working example with multiple routes, authentication
 middleware, and the full EventBuilder implementation, see
-[Progressive Example: Middleware](../examples/15-middleware/).
+[Progressive Example: Middleware](../examples/06-middleware/).
 
 ## 📋 Available Hint Fields
 
@@ -205,13 +205,13 @@ Middleware audit events include all configured framework fields
 These are set once at logger construction and appear automatically
 in every serialised event — no middleware configuration needed.
 
-The 31 [reserved standard fields](../examples/03-standard-fields/)
+The 31 [reserved standard fields](../examples/13-standard-fields/)
 (including `source_ip`, `method`, `path`, `user_agent`, `request_id`)
 are populated by the middleware via `AuditHints` and always accepted
 without taxonomy declaration.
 
 ## 📚 Further Reading
 
-- [Progressive Example: Middleware](../examples/15-middleware/) — complete HTTP middleware example
-- [Progressive Example: CRUD API](../examples/16-crud-api/) — middleware in a full REST application
+- [Progressive Example: Middleware](../examples/06-middleware/) — complete HTTP middleware example
+- [Progressive Example: CRUD API](../examples/17-crud-api/) — middleware in a full REST application
 - [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/audit#Middleware)

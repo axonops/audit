@@ -58,7 +58,7 @@ import _ "github.com/axonops/audit/file"  // registers "file" factory
 The parent directory MUST exist — the library creates the file but not
 the directory.
 
-**[→ Progressive example](../examples/05-file-output/)**
+**[→ Progressive example](../examples/03-file-output/)**
 
 ## How It Works
 
@@ -309,6 +309,6 @@ signature to each event, providing evidence of modification.
 
 - [Output Types Overview](outputs.md) — summary of all five outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/05-file-output/) — working code with rotation
+- [Progressive Example](../examples/03-file-output/) — working code with rotation
 - [HMAC Integrity](hmac-integrity.md) — tamper detection for file output
 - [Async Delivery](async-delivery.md) — buffer sizing and graceful shutdown

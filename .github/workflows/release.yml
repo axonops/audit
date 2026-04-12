@@ -348,9 +348,9 @@ jobs:
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
 
-          # Also update examples/16-crud-api (not published but must be consistent)
-          cd examples/16-crud-api
-          echo "Updating examples/16-crud-api/go.mod..."
+          # Also update examples/17-crud-api (not published but must be consistent)
+          cd examples/17-crud-api
+          echo "Updating examples/17-crud-api/go.mod..."
           go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
@@ -367,7 +367,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add outputconfig/go.mod outputconfig/go.sum
-          git add examples/16-crud-api/go.mod examples/16-crud-api/go.sum
+          git add examples/17-crud-api/go.mod examples/17-crud-api/go.sum
 
           if git diff --cached --quiet; then
             echo "No changes — deps already at $PUBLISH_VERSION"

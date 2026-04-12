@@ -1,0 +1,45 @@
+# Loki output configuration for the go-audit example.
+#
+# This pushes audit events to a local Grafana Loki instance.
+# Events are batched, gzip-compressed, and grouped by stream labels.
+#
+# To run Loki locally:
+#   docker run -d --name loki -p 3100:3100 grafana/loki:3.0.0
+#
+# Then run this example:
+#   go run .
+
+version: 1
+
+# Framework fields — appear in every event and as Loki stream labels.
+app_name: "audit-example"
+host: "dev-machine"
+
+# NOTE: Loki outputs do not support a "formatter:" block. Loki is
+# locked to JSON format because LogQL queries use "| json" to parse
+# events. Specifying formatter: cef (or any non-JSON) returns an error.
+
+outputs:
+  loki_audit:
+    type: loki
+    loki:
+      url: "http://localhost:3100/loki/api/v1/push"
+      tenant_id: "example"          # X-Scope-OrgID header for multi-tenant Loki
+      allow_insecure_http: true     # local dev only — use https in production
+      allow_private_ranges: true    # local dev only — blocks private IPs by default
+      batch_size: 10                # small batch for demo visibility
+      flush_interval: "1s"          # flush quickly for demo
+      timeout: "5s"
+      max_retries: 2
+      gzip: true
+      labels:
+        static:
+          job: "audit-example"
+          environment: "development"
+        dynamic:
+          app_name: true
+          host: true
+          event_type: true
+          event_category: true
+          severity: true
+          pid: false               # exclude PID from labels (high cardinality in dev)

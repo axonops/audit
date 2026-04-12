@@ -1,7 +1,0 @@
-version: 1
-app_name: middleware-example
-host: localhost
-
-outputs:
-  console:
-    type: stdout

@@ -1,0 +1,103 @@
+# CRUD API Capstone — 4-output fan-out topology
+#
+# Every audit event flows through all four outputs simultaneously.
+# Each output demonstrates a different go-audit feature combination:
+#
+#   stdout        → JSON, all events, full PII      (developer debugging)
+#   audit.log     → CEF, all events, HMAC v1        (compliance archive)
+#   security.log  → JSON, security only, HMAC v2    (security team feed)
+#   Loki          → JSON, all events, PII stripped   (Grafana dashboards)
+
+version: 1
+app_name: "crud-api"
+host: "${HOSTNAME:-localhost}"
+
+logger:
+  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
+
+outputs:
+  # 1. Developer debugging — all events, full PII, no HMAC.
+  #    Visible via `docker compose logs app` or `go run .`
+  console:
+    type: stdout
+
+  # 2. Compliance archive — CEF format for SIEM ingestion.
+  #    HMAC v1 (SHA-256) for tamper detection.
+  #    All events, full PII retained for regulatory retention.
+  compliance_archive:
+    type: file
+    file:
+      path: "${AUDIT_LOG_PATH:-./audit.log}"
+      max_size_mb: 100
+      max_backups: 5
+      max_age_days: 90
+      permissions: "0600"
+    formatter:
+      type: cef
+      vendor: "AxonOps"
+      product: "InventoryAPI"
+      version: "1.0"
+    hmac:
+      enabled: true
+      salt:
+        version: "v1"
+        # WARNING: Demo salt only — DO NOT use in production.
+        # Generate a real salt: openssl rand -base64 32
+        value: "${HMAC_SALT_V1:-capstone-demo-salt-v1-min16bytes}"
+      hash: HMAC-SHA-256
+
+  # 3. Security team feed — JSON, security category only, severity >= 7.
+  #    HMAC v2 (SHA-512) with a DIFFERENT salt to prove per-output
+  #    HMAC isolation. Only security and compliance category events:
+  #    auth_failure, auth_success, auth_logout, token_expired,
+  #    rate_limit_exceeded, authorization_failure, data_export,
+  #    bulk_delete.
+  security_feed:
+    type: file
+    file:
+      path: "${SECURITY_LOG_PATH:-./security.log}"
+      max_size_mb: 50
+      max_backups: 5
+      max_age_days: 90
+      permissions: "0600"
+    route:
+      include_categories:
+        - security
+        - compliance
+      min_severity: 7
+    hmac:
+      enabled: true
+      salt:
+        version: "v2"
+        # WARNING: Demo salt only — DO NOT use in production.
+        # Generate a real salt: openssl rand -base64 32
+        value: "${HMAC_SALT_V2:-capstone-demo-salt-v2-different!}"
+      hash: HMAC-SHA-512
+
+  # 4. Operational monitoring — Loki with Grafana dashboards.
+  #    PII fields (email, phone, address) are STRIPPED before delivery.
+  #    All events included for full operational visibility.
+  loki_dashboard:
+    type: loki
+    loki:
+      # Use http://localhost:3100/... when running outside Docker (go run .)
+      # Use http://loki:3100/... when running inside Docker Compose
+      url: "${LOKI_URL:-http://localhost:3100/loki/api/v1/push}"
+      tenant_id: "crud-api"
+      allow_insecure_http: true    # Dev-only — NEVER in production; use HTTPS
+      allow_private_ranges: true  # Dev-only — NEVER in production; enables SSRF
+      batch_size: 50
+      flush_interval: "1s"
+      timeout: "5s"
+      gzip: true
+      labels:
+        static:
+          job: "crud-api-audit"
+        dynamic:
+          event_type: true
+          event_category: true
+          severity: true
+    exclude_labels:
+      - pii
+      - financial

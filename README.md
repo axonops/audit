@@ -268,7 +268,7 @@ func TestUserCreation(t *testing.T) {
 }
 ```
 
-See [Example 17](examples/17-testing/) and [Testing docs](docs/testing.md) for more.
+See [Example 17](examples/04-testing/) and [Testing docs](docs/testing.md) for more.
 
 ---
 
@@ -276,7 +276,7 @@ See [Example 17](examples/17-testing/) and [Testing docs](docs/testing.md) for m
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 18 examples from "hello world" to a [complete CRUD API](examples/16-crud-api/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 17 examples from "hello world" to a [complete CRUD API](examples/17-crud-api/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

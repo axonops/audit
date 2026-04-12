@@ -167,7 +167,7 @@ outputs:
 | `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
-| `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/03-standard-fields/#the-solution-reserved-standard-fields). |
+| `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/13-standard-fields/#the-solution-reserved-standard-fields). |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
 | `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
@@ -515,9 +515,9 @@ logger, err := audit.NewLogger(result.Config, opts...)
 
 ## 📚 Further Reading
 
-- [Progressive Example: File Output](../examples/05-file-output/) — file-specific configuration
+- [Progressive Example: File Output](../examples/03-file-output/) — file-specific configuration
 - [Progressive Example: Multi-Output](../examples/09-multi-output/) — multiple outputs in one YAML
-- [Progressive Example: CRUD API](../examples/16-crud-api/) — four outputs with HMAC, CEF, Loki, and PII stripping
+- [Progressive Example: CRUD API](../examples/17-crud-api/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping

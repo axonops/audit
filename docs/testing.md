@@ -155,5 +155,5 @@ for _, tc := range tests {
 
 ## 📚 Further Reading
 
-- [Progressive Example: Testing](../examples/17-testing/) — three testing patterns
+- [Progressive Example: Testing](../examples/04-testing/) — three testing patterns
 - [API Reference: audittest](https://pkg.go.dev/github.com/axonops/audit/audittest)

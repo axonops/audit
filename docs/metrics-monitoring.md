@@ -161,7 +161,7 @@ Increase `buffer_size` or check Loki connectivity.
 See [Loki Output Reference](loki-output.md#metrics-and-monitoring)
 for the complete Loki metrics documentation.
 
-See [Progressive Example: CRUD API](../examples/16-crud-api/) for a
+See [Progressive Example: CRUD API](../examples/17-crud-api/) for a
 complete Prometheus implementation of all five metrics interfaces.
 
 ## 🧪 Testing Metrics
@@ -179,7 +179,7 @@ assert.Equal(t, 0, metrics.BufferDrops())
 
 ## 📚 Further Reading
 
-- [Progressive Example: CRUD API](../examples/16-crud-api/) — Prometheus metrics integration
+- [Progressive Example: CRUD API](../examples/17-crud-api/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure
 - [Testing](testing.md) — asserting on metrics in tests
 - [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/audit#Metrics)

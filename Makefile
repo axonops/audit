@@ -22,7 +22,7 @@
 # --- Configuration ---
 
 MODULES           := . file syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
-WORKSPACE_MODULES := $(MODULES) examples/16-crud-api
+WORKSPACE_MODULES := $(MODULES) examples/17-crud-api
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
 
@@ -141,15 +141,15 @@ test-bdd-verify:
 
 # Example compilation tests (no runtime — examples are documentation)
 test-examples:
-	@for dir in examples/01-basic examples/02-code-generation examples/03-standard-fields \
-	            examples/04-stdout-output examples/05-file-output \
-	            examples/06-syslog-output examples/07-webhook-output \
-	            examples/08-loki-output \
-	            examples/09-multi-output examples/10-tls-policy \
-	            examples/11-event-routing \
-	            examples/12-sensitivity-labels examples/13-hmac-integrity \
-	            examples/14-formatters examples/15-middleware \
-	            examples/16-crud-api examples/17-testing; do \
+	@for dir in examples/01-basic examples/02-code-generation examples/13-standard-fields \
+	            examples/02-code-generation examples/03-file-output \
+	            examples/07-syslog-output examples/08-webhook-output \
+	            examples/14-loki-output \
+	            examples/09-multi-output examples/15-tls-policy \
+	            examples/10-event-routing \
+	            examples/11-sensitivity-labels examples/12-hmac-integrity \
+	            examples/05-formatters examples/06-middleware \
+	            examples/17-crud-api examples/04-testing; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
@@ -187,7 +187,7 @@ lint-secrets-vault:
 	cd secrets/vault && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-crud-api:
-	cd examples/16-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+	cd examples/17-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
 lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-secrets lint-secrets-openbao lint-secrets-vault lint-crud-api
 lint: lint-all

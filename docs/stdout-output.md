@@ -64,7 +64,7 @@ import (
 )
 ```
 
-**[→ Progressive example with code and output](../examples/04-stdout-output/)**
+**[→ Progressive example with code and output](../examples/02-code-generation/)**
 
 ## How It Works
 
@@ -238,6 +238,6 @@ go run . 2>/dev/null | grep '"event_type":"auth_login"'
 
 - [Output Types Overview](outputs.md) — summary of all five outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
-- [Progressive Example](../examples/04-stdout-output/) — working code with piping examples
+- [Progressive Example](../examples/02-code-generation/) — working code with piping examples
 - [File Output](outputs.md#file-output) — persistent alternative with rotation
 - [Async Delivery](async-delivery.md) — buffer sizing and graceful shutdown

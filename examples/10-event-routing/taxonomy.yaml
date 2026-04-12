@@ -1,0 +1,34 @@
+version: 1
+
+categories:
+  write:
+    - user_create
+  read:
+    - user_read
+  security:
+    severity: 8
+    events:
+      - auth_failure
+
+events:
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  user_read:
+    description: "A user profile was viewed"
+    fields:
+      outcome:
+        required: true
+
+  auth_failure:
+    description: "An authentication attempt failed"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true

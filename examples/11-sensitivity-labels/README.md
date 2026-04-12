@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [11 — Event Routing](../11-event-routing/) |
-> **Next:** [13 — HMAC Integrity](../13-hmac-integrity/)
+> **Previous:** [10 — Event Routing](../10-event-routing/) |
+> **Next:** [12 — HMAC Integrity](../12-hmac-integrity/)
 
-# Example 12: Sensitivity Labels
+# Example 11: Sensitivity Labels
 
 Strip sensitive fields from specific outputs: an internal log receives
 all fields, a public analytics log has PII and financial data removed,

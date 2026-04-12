@@ -268,7 +268,7 @@ func TestUserCreation(t *testing.T) {
 }
 ```
 
-See [Example 17](examples/04-testing/) and [Testing docs](docs/testing.md) for more.
+See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for more.
 
 ---
 

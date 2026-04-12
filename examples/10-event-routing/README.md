@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [10 — TLS Policy](../10-tls-policy/) |
-> **Next:** [12 — Sensitivity Labels](../12-sensitivity-labels/)
+> **Previous:** [09 — Multi-Output](../09-multi-output/) |
+> **Next:** [11 — Sensitivity Labels](../11-sensitivity-labels/)
 
-# Example 11: Event Routing
+# Example 10: Event Routing
 
 Route different event categories to different outputs: security events
 to one file, write events to another, and everything to the console.

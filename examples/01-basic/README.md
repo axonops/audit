@@ -2,7 +2,7 @@
 
 > **Next:** [02 — Code Generation](../02-code-generation/)
 
-# Example 01: Basic Audit Logging
+# Example 01: Basic Audit Logging (Programmatic)
 
 The minimum viable audit event: create a logger, emit an event, and see
 what happens when validation catches a missing field.

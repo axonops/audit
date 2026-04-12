@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [05 — File Output](../05-file-output/) |
-> **Next:** [07 — Webhook Output](../07-webhook-output/)
+> **Previous:** [06 — Middleware](../06-middleware/) |
+> **Next:** [08 — Webhook Output](../08-webhook-output/)
 
-# Example 06: Syslog Output
+# Example 07: Syslog Output
 
 Sends audit events to a syslog server as
 [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424) structured

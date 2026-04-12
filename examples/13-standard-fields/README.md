@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [02 — Code Generation](../02-code-generation/) |
-> **Next:** [04 — Stdout Output](../04-stdout-output/)
+> **Previous:** [12 — HMAC Integrity](../12-hmac-integrity/) |
+> **Next:** [14 — Loki Output](../14-loki-output/)
 
-# Example 03: Standard Fields & Framework Configuration
+# Example 13: Standard Fields & Framework Configuration
 
 ## What You'll Learn
 

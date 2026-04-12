@@ -1,8 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [16 — CRUD API](../16-crud-api/)
+> **Previous:** [03 — File Output](../03-file-output/) |
+> **Next:** [05 — Formatters](../05-formatters/)
 
-# Example 17: Testing
+# Example 04: Testing
 
 How to test code that uses go-audit. The `audittest` package provides
 an in-memory test logger that captures events and metrics for assertion.

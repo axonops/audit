@@ -11,22 +11,21 @@ Each example introduces one new concept and builds on the previous.
 |---|---------|-----------------|
 | 1 | [basic](01-basic/) | Taxonomy, Logger, AuditEvent(), Fields, validation — programmatic setup |
 | 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, typed builders, go:embed, outputconfig.Load |
-| 3 | [standard-fields](13-standard-fields/) | Reserved standard fields, framework fields, standard_fields YAML defaults |
-| 4 | [stdout-output](04-stdout-output/) | Stdout output for development, debugging, and piping to jq |
-| 5 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
-| 6 | [syslog-output](07-syslog-output/) | Syslog output with RFC 5424, TCP/UDP/TLS, facility values |
-| 7 | [webhook-output](08-webhook-output/) | Webhook output with NDJSON batching, retry, SSRF protection |
-| 8 | [loki-output](14-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
+| 3 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
+| 4 | [testing](04-testing/) | Testing audit events with audittest.NewLogger |
+| 5 | [formatters](05-formatters/) | JSON vs CEF with category severity levels |
+| 6 | [middleware](06-middleware/) | Automatic HTTP audit logging with Hints |
+| 7 | [syslog-output](07-syslog-output/) | Syslog output with RFC 5424, TCP/UDP/TLS, facility values |
+| 8 | [webhook-output](08-webhook-output/) | Webhook output with NDJSON batching, retry, SSRF protection |
 | 9 | [multi-output](09-multi-output/) | Fan-out to multiple outputs from one YAML config |
-| 10 | [tls-policy](15-tls-policy/) | Global and per-output TLS policy configuration |
-| 11 | [event-routing](10-event-routing/) | Category and severity-based routing in YAML |
-| 12 | [sensitivity-labels](11-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
-| 13 | [hmac-integrity](12-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
-| 14 | [formatters](05-formatters/) | JSON vs CEF with category severity levels |
-| 15 | [middleware](06-middleware/) | Automatic HTTP audit logging with Hints |
-| 16 | [crud-api](17-crud-api/) | Complete REST API with Postgres, four outputs, HMAC, Loki, Grafana |
-| 17 | [testing](04-testing/) | Testing audit events with audittest.NewLogger |
-| 18 | [buffering](16-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
+| 10 | [event-routing](10-event-routing/) | Category and severity-based routing in YAML |
+| 11 | [sensitivity-labels](11-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
+| 12 | [hmac-integrity](12-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
+| 13 | [standard-fields](13-standard-fields/) | Reserved standard fields, framework fields, standard_fields YAML defaults |
+| 14 | [loki-output](14-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
+| 15 | [tls-policy](15-tls-policy/) | Global and per-output TLS policy configuration |
+| 16 | [buffering](16-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
+| 17 | [crud-api](17-crud-api/) | Complete REST API with Postgres, four outputs, HMAC, Loki, Grafana |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
@@ -34,13 +33,12 @@ that's how you'd use go-audit in a real application.
 
 ### Buffering and Performance
 
-Examples 7 (webhook) and 8 (Loki) use outputs with internal buffers
-and batching. Examples 5 (file), 6 (syslog), and 4 (stdout) use
-synchronous outputs that write directly from the drain goroutine.
-Example 9 (multi-output) demonstrates both synchronous and async
-outputs in a single configuration — the most direct illustration of
-the two-level buffering model. See
-[Two-Level Buffering](../docs/async-delivery.md#two-level-buffering)
+Examples 8 (webhook) and 14 (Loki) use outputs with internal buffers
+and batching. Examples 3 (file) and 7 (syslog) use synchronous outputs
+that write directly from the drain goroutine. Example 9 (multi-output)
+demonstrates both synchronous and async outputs in a single
+configuration — the most direct illustration of the two-level buffering
+model. See [Two-Level Buffering](../docs/async-delivery.md#two-level-buffering)
 for the architecture explanation, memory sizing, and tuning guidance.
 
 ## Getting Started

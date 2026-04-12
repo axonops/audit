@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [07 — Webhook Output](../07-webhook-output/) |
-> **Next:** [09 — Multi-Output](../09-multi-output/)
+> **Previous:** [13 — Standard Fields](../13-standard-fields/) |
+> **Next:** [15 — TLS Policy](../15-tls-policy/)
 
-# Example 08: Loki Output
+# Example 14: Loki Output
 
 Sends audit events to [Grafana Loki](https://grafana.com/oss/loki/)
 with stream labels for structured querying, gzip compression, and

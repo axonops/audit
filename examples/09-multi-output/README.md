@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [08 — Loki Output](../08-loki-output/) |
-> **Next:** [10 — TLS Policy](../10-tls-policy/)
+> **Previous:** [08 — Webhook Output](../08-webhook-output/) |
+> **Next:** [10 — Event Routing](../10-event-routing/)
 
 # Example 09: Multi-Output Fan-Out
 

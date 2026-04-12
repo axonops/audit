@@ -1,9 +1,8 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [15 — Middleware](../15-middleware/) |
-> **Next:** [17 — Testing](../17-testing/)
+> **Previous:** [16 — Buffering](../16-buffering/)
 
-# Example 16: CRUD API
+# Example 17: CRUD API
 
 A complete REST API with Postgres, four audit outputs, HMAC integrity,
 CEF formatting, PII stripping, Loki dashboards, Prometheus metrics,

@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [04 — Stdout Output](../04-stdout-output/) |
-> **Next:** [06 — Syslog Output](../06-syslog-output/)
+> **Previous:** [02 — Code Generation](../02-code-generation/) |
+> **Next:** [04 — Testing](../04-testing/)
 
-# Example 05: File Output
+# Example 03: File Output
 
 Write audit events to a log file with automatic rotation, size limits,
 and restricted file permissions.

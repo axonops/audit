@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [14 — Formatters](../14-formatters/) |
-> **Next:** [16 — CRUD API](../16-crud-api/)
+> **Previous:** [05 — Formatters](../05-formatters/) |
+> **Next:** [07 — Syslog Output](../07-syslog-output/)
 
-# Example 15: HTTP Middleware
+# Example 06: HTTP Middleware
 
 Automatic HTTP audit logging: the middleware captures request metadata,
 handlers set domain hints (who did it, what happened), and health

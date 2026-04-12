@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [13 — HMAC Integrity](../13-hmac-integrity/) |
-> **Next:** [15 — Middleware](../15-middleware/)
+> **Previous:** [04 — Testing](../04-testing/) |
+> **Next:** [06 — Middleware](../06-middleware/)
 
-# Example 14: Formatters
+# Example 05: Formatters
 
 Output the same events in two formats side by side: JSON for log
 aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.

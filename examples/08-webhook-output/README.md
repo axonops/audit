@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [06 — Syslog Output](../06-syslog-output/) |
-> **Next:** [08 — Loki Output](../08-loki-output/)
+> **Previous:** [07 — Syslog Output](../07-syslog-output/) |
+> **Next:** [09 — Multi-Output](../09-multi-output/)
 
-# Example 07: Webhook Output
+# Example 08: Webhook Output
 
 Sends audit events as
 [NDJSON](https://github.com/ndjson/ndjson-spec) (newline-delimited

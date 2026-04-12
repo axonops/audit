@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [12 — Sensitivity Labels](../12-sensitivity-labels/) |
-> **Next:** [14 — Formatters](../14-formatters/)
+> **Previous:** [11 — Sensitivity Labels](../11-sensitivity-labels/) |
+> **Next:** [13 — Standard Fields](../13-standard-fields/)
 
-# Example 13: HMAC Integrity
+# Example 12: HMAC Integrity
 
 Per-output tamper detection using HMAC. This example shows two HMAC
 patterns side by side: **selective** (only security events) and

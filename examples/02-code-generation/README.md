@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [01 — Basic](../01-basic/) |
-> **Next:** [03 — Standard Fields](../03-standard-fields/)
+> **Next:** [03 — File Output](../03-file-output/)
 
 # Example 02: Code Generation
 

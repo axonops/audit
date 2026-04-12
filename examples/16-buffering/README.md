@@ -1,8 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [17 — Testing](../17-testing/)
+> **Previous:** [15 — TLS Policy](../15-tls-policy/) |
+> **Next:** [17 — CRUD API](../17-crud-api/)
 
-# Example 18: Buffering and Backpressure
+# Example 16: Buffering and Backpressure
 
 Demonstrates the two-level buffering architecture that sits between
 your `AuditEvent()` call and the final output destinations. Understanding

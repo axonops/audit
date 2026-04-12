@@ -1,9 +1,9 @@
 [← Back to examples](../README.md)
 
-> **Previous:** [09 — Multi-Output](../09-multi-output/) |
-> **Next:** [11 — Event Routing](../11-event-routing/)
+> **Previous:** [14 — Loki Output](../14-loki-output/) |
+> **Next:** [16 — Buffering](../16-buffering/)
 
-# Example 10: TLS Policy
+# Example 15: TLS Policy
 
 Demonstrates how to configure global and per-output TLS policy in
 go-audit. TLS policy controls the minimum TLS version and allowed

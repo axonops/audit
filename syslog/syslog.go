@@ -129,8 +129,9 @@ type Metrics interface {
 // Output is safe for concurrent use.
 type Output struct {
 	writer        *srslog.Writer
-	tlsCfg        *tls.Config // cached for reconnection; nil for non-TLS
-	syslogMetrics Metrics     // optional; nil disables syslog-specific metrics
+	tlsCfg        *tls.Config  // cached for reconnection; nil for non-TLS
+	syslogMetrics Metrics      // optional; nil disables syslog-specific metrics
+	logger        *slog.Logger // diagnostic logger; set via SetLogger
 	closeCh       chan struct{}
 	address       string
 	network       string
@@ -140,7 +141,6 @@ type Output struct {
 	facility      srslog.Priority // facility bits only (no severity)
 	failures      int             // consecutive failure count
 	maxRetry      int
-	logger        *slog.Logger
 	closed        bool
 }
 

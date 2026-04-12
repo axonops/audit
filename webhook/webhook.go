@@ -99,27 +99,27 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 type Output struct {
 	metrics        audit.Metrics
 	webhookMetrics Metrics
+	client         *http.Client
+	logger         *slog.Logger
+	cancel         context.CancelFunc
 	done           chan struct{}
 	closeCh        chan struct{} // signals batchLoop to drain and exit
 	headers        map[string]string
 	ch             chan []byte
-	cancel         context.CancelFunc
-	client         *http.Client
 	url            string
-	name           string // cached from url.Parse at construction
-	batchSize      int
-	maxRetries     int
+	name           string      // cached from url.Parse at construction
+	drops          dropLimiter // rate-limits buffer-full warnings
 	flushIvl       time.Duration
 	timeout        time.Duration
 	mu             sync.Mutex
+	batchSize      int
+	maxRetries     int
 	closed         atomic.Bool
-	logger         *slog.Logger
-	drops          dropLimiter // rate-limits buffer-full warnings
 }
 
 // SetLogger receives the library's diagnostic logger.
-func (o *Output) SetLogger(l *slog.Logger) {
-	o.logger = l
+func (w *Output) SetLogger(l *slog.Logger) {
+	w.logger = l
 }
 
 // New creates a new [Output] from the given config.

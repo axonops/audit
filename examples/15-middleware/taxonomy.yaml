@@ -1,0 +1,16 @@
+version: 1
+
+categories:
+  access:
+    events:
+      - http_request
+
+events:
+  http_request:
+    description: "An HTTP request was processed"
+    fields:
+      outcome: {required: true}
+      method: {required: true}
+      path: {required: true}
+      status_code: {}
+      duration_ms: {}

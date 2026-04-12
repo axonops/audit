@@ -16,18 +16,29 @@
 // middleware captures transport metadata (method, path, status, duration),
 // handlers populate domain hints (actor, outcome), and health checks are
 // skipped.
+//
+// Run:
+//
+//	go generate ./...
+//	go run .
 package main
 
 import (
-	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/outputconfig"
 )
+
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
 
 // buildEvent is the EventBuilder callback. The middleware calls it after
 // every request with the handler's hints and the captured transport
@@ -39,49 +50,24 @@ func buildEvent(hints *audit.Hints, transport *audit.TransportMetadata) (eventTy
 	}
 
 	fields = audit.Fields{
-		"outcome":     hints.Outcome,
-		"method":      transport.Method,
-		"path":        transport.Path,
-		"status_code": transport.StatusCode,
-		"source_ip":   transport.ClientIP,
-		"duration_ms": transport.Duration.Milliseconds(),
+		FieldOutcome:    hints.Outcome,
+		FieldMethod:     transport.Method,
+		FieldPath:       transport.Path,
+		FieldStatusCode: transport.StatusCode,
+		FieldDurationMS: transport.Duration.Milliseconds(),
 	}
 	if hints.ActorID != "" {
-		fields["actor_id"] = hints.ActorID
+		fields[FieldActorID] = hints.ActorID
 	}
 	if hints.TargetID != "" {
-		fields["target_id"] = hints.TargetID
+		fields[FieldTargetID] = hints.TargetID
 	}
-	// In production, use a generated constant from audit-gen instead of
-	// the raw string (see example 02-code-generation for the full pattern).
-	return "http_request", fields, false
+	return EventHTTPRequest, fields, false
 }
 
 func main() {
-	tax := &audit.Taxonomy{
-		Version: 1,
-		Categories: map[string]*audit.CategoryDef{
-			"access": {Events: []string{"http_request"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"http_request": {
-				Required: []string{"outcome", "method", "path"},
-				Optional: []string{"status_code", "duration_ms"},
-			},
-		},
-	}
-
-	// Capture audit output in a buffer so we can print it at the end.
-	var buf bytes.Buffer
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
-	if err != nil {
-		log.Fatalf("create stdout: %v", err)
-	}
-
-	logger, err := audit.NewLogger(
-		audit.WithTaxonomy(tax),
-		audit.WithOutputs(stdout),
-	)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
@@ -95,7 +81,6 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /items", func(w http.ResponseWriter, r *http.Request) {
-		// Populate domain hints — the middleware reads these back.
 		if hints := audit.HintsFromContext(r.Context()); hints != nil {
 			hints.ActorID = "alice"
 			hints.Outcome = "success"
@@ -131,9 +116,6 @@ func main() {
 		log.Printf("close logger: %v", err)
 	}
 
-	// Print the captured audit events.
-	fmt.Println("--- Audit events ---")
-	fmt.Print(buf.String())
 	fmt.Println("\nNote: /healthz produced no audit event (skipped by EventBuilder).")
 }
 

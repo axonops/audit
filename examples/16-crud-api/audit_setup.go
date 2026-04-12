@@ -46,10 +46,9 @@ func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, erro
 		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
 	}
 
-	// Load all outputs from YAML. The core metrics (m) are passed
-	// for event counting, buffer drops, and validation errors.
-	// Output-specific metrics (file.Metrics, loki.Metrics) will be
-	// auto-detected via type assertion once #386 lands.
+	// We use the manual Load path (instead of outputconfig.NewLogger facade)
+	// because we need to pass core metrics via WithCoreMetrics and wire
+	// additional options (WithMetrics, WithStandardFieldDefaults).
 	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, outputconfig.WithCoreMetrics(m))
 	if err != nil {
 		return nil, fmt.Errorf("load output config: %w", err)

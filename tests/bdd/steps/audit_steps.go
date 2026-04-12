@@ -341,8 +341,8 @@ func registerAuditThenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		if tc.EventHandle == nil {
 			return fmt.Errorf("handle is nil")
 		}
-		if tc.EventHandle.Name() != name {
-			return fmt.Errorf("handle name: want %q, got %q", name, tc.EventHandle.Name())
+		if tc.EventHandle.EventType() != name {
+			return fmt.Errorf("handle name: want %q, got %q", name, tc.EventHandle.EventType())
 		}
 		return nil
 	})

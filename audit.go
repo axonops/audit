@@ -475,21 +475,21 @@ func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 	return oe.getRoute(), nil
 }
 
-// Handle returns an [EventType] handle for the named event type. The
+// Handle returns an [EventHandle] for the named event type. The
 // handle enables zero-allocation audit calls. Returns
 // [ErrHandleNotFound] if the event type is not registered.
-func (l *Logger) Handle(eventType string) (*EventType, error) {
+func (l *Logger) Handle(eventType string) (*EventHandle, error) {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return nil, fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
-	return &EventType{name: eventType, logger: l}, nil
+	return &EventHandle{name: eventType, logger: l}, nil
 }
 
-// MustHandle returns an [EventType] handle for the named event type.
+// MustHandle returns an [EventHandle] for the named event type.
 // It panics with an error wrapping [ErrHandleNotFound] if the event
 // type is not registered. Use [Logger.Handle] to receive the error
 // instead of panicking.
-func (l *Logger) MustHandle(eventType string) *EventType {
+func (l *Logger) MustHandle(eventType string) *EventHandle {
 	h, err := l.Handle(eventType)
 	if err != nil {
 		panic(err)

@@ -673,7 +673,7 @@ func TestLogger_Handle_Valid(t *testing.T) {
 	h, err := logger.Handle("schema_register")
 	require.NoError(t, err)
 	require.NotNil(t, h)
-	assert.Equal(t, "schema_register", h.Name())
+	assert.Equal(t, "schema_register", h.EventType())
 }
 
 func TestLogger_Handle_Error(t *testing.T) {
@@ -694,7 +694,7 @@ func TestLogger_MustHandle_Valid(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		h := logger.MustHandle("schema_register")
-		assert.Equal(t, "schema_register", h.Name())
+		assert.Equal(t, "schema_register", h.EventType())
 	})
 }
 

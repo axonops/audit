@@ -141,15 +141,15 @@ test-bdd-verify:
 
 # Example compilation tests (no runtime — examples are documentation)
 test-examples:
-	@for dir in examples/01-basic examples/02-code-generation examples/13-standard-fields \
-	            examples/02-code-generation examples/03-file-output \
-	            examples/07-syslog-output examples/08-webhook-output \
-	            examples/14-loki-output \
-	            examples/09-multi-output examples/15-tls-policy \
-	            examples/10-event-routing \
-	            examples/11-sensitivity-labels examples/12-hmac-integrity \
+	@for dir in examples/01-basic examples/02-code-generation \
+	            examples/03-file-output examples/04-testing \
 	            examples/05-formatters examples/06-middleware \
-	            examples/17-crud-api examples/04-testing; do \
+	            examples/07-syslog-output examples/08-webhook-output \
+	            examples/09-multi-output examples/10-event-routing \
+	            examples/11-sensitivity-labels examples/12-hmac-integrity \
+	            examples/13-standard-fields examples/14-loki-output \
+	            examples/15-tls-policy examples/16-buffering \
+	            examples/17-crud-api; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

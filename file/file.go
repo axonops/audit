@@ -115,8 +115,8 @@ type Output struct {
 }
 
 // SetLogger receives the library's diagnostic logger.
-func (o *Output) SetLogger(l *slog.Logger) {
-	o.logger = l
+func (f *Output) SetLogger(l *slog.Logger) {
+	f.logger = l
 }
 
 // resolvePath normalises the path to an absolute form, resolving

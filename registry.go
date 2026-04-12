@@ -155,7 +155,9 @@ func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int
 
 // WrapOutput wraps an [Output] with a consumer-chosen name. The
 // returned output delegates all methods to the inner output except
-// [Output.Name], which returns the provided name.
+// [Output.Name], which returns the provided name. This function is
+// for [OutputFactory] implementors — regular consumers use
+// [WithOutputs] or [WithNamedOutput] directly.
 //
 // The returned output always satisfies [DestinationKeyer],
 // [DeliveryReporter], [MetadataWriter], and [FrameworkFieldReceiver]

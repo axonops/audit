@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -84,6 +85,7 @@ func newRequestID() string {
 	if _, err := rand.Read(uuid[:]); err != nil {
 		// Fallback: return a zero UUID rather than panicking in a
 		// library. This should never happen on any supported OS.
+		slog.Warn("audit: crypto/rand failed, using zero UUID", "error", err)
 		return "00000000-0000-4000-8000-000000000000"
 	}
 	// Set version (4) and variant (RFC 4122).

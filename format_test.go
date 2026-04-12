@@ -1824,3 +1824,50 @@ func TestCEFFormatter_Format_WithExclusion(t *testing.T) {
 	assert.NotContains(t, s, "alice@example.com")
 	assert.Contains(t, s, "outcome=success")
 }
+
+func TestCEFFormatter_RejectsLongVendor(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  strings.Repeat("x", 256),
+		Product: "P",
+		Version: "1",
+	}
+	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "vendor")
+}
+
+func TestCEFFormatter_RejectsLongProduct(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: strings.Repeat("x", 256),
+		Version: "1",
+	}
+	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "product")
+}
+
+func TestCEFFormatter_RejectsLongVersion(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: strings.Repeat("x", 256),
+	}
+	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "version")
+}
+
+func TestCEFFormatter_AcceptsBoundaryVendor(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  strings.Repeat("x", 255),
+		Product: "P",
+		Version: "1",
+	}
+	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
+	assert.NoError(t, err)
+}

@@ -174,9 +174,22 @@ type noCopy struct{}
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
 
+// maxCEFHeaderField is the maximum length for Vendor, Product, and
+// Version header fields. Prevents unbounded header growth.
+const maxCEFHeaderField = 255
+
 // Format serialises a single audit event as a CEF line using a single
 // buffer for both header and extensions.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
+	if len(cf.Vendor) > maxCEFHeaderField {
+		return nil, fmt.Errorf("audit: cef vendor exceeds %d bytes (%d)", maxCEFHeaderField, len(cf.Vendor))
+	}
+	if len(cf.Product) > maxCEFHeaderField {
+		return nil, fmt.Errorf("audit: cef product exceeds %d bytes (%d)", maxCEFHeaderField, len(cf.Product))
+	}
+	if len(cf.Version) > maxCEFHeaderField {
+		return nil, fmt.Errorf("audit: cef version exceeds %d bytes (%d)", maxCEFHeaderField, len(cf.Version))
+	}
 	severity := cf.severity(eventType, def)
 	description := cf.description(eventType, def)
 	mapping := cf.fieldMapping()

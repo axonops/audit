@@ -8,6 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- `NewLogger` signature changed from `NewLogger(Config, ...Option)` to `NewLogger(...Option)` — Config fields expressed as Options (#388)
+- `Config.Version` unexported, `Config.Enabled` removed — use `WithDisabled()` (#388)
+- `Fields` changed from type alias to defined type `type Fields map[string]any` with `Has()`, `String()`, `Int()` methods (#388)
+- `EmitEventCategory` renamed to `SuppressEventCategory` (inverted semantics) (#388)
+- `ParseTaxonomyYAML` returns `*Taxonomy` instead of `Taxonomy` (#389)
+- `WithTaxonomy` accepts `*Taxonomy` with deep copy and mutation protection (#389)
+- `outputconfig.Load` signature changed — `coreMetrics` moved to `WithCoreMetrics` LoadOption (#390)
+- `WithStandardFieldDefaults` guard relaxed from error-on-second-call to last-wins (#390)
+- `WithNamedOutput` replaced positional params with `...OutputOption` (#391)
+- `WithOutputHMAC` removed — use `OutputHMAC` within `WithNamedOutput` (#391)
+- `EventType` renamed to `EventHandle`, `Name()` renamed to `EventType()` (#402)
+- Module renamed from `github.com/axonops/go-audit` to `github.com/axonops/audit` (#398)
+- `audit-gen` generates typed parameters (string/int) instead of `any` for standard field setters and constructors (#394)
+
+### Added
+
+- `ErrValidation`, `ErrUnknownEventType`, `ErrMissingRequiredField`, `ErrUnknownField` sentinels with `ValidationError` struct (#400)
+- `outputconfig.NewLogger()` facade for single-call logger creation (#392)
+- `github.com/axonops/audit/outputs` convenience package — single blank import registers all output factories (#393)
+- `Stdout()` convenience constructor, `NewEventKV()` slog-style event creation, `DevTaxonomy()` permissive development taxonomy (#395)
+- `WithSynchronousDelivery()` for inline event processing — no drain goroutine, no Close-before-assert in tests (#403)
+- `WithLogger(*slog.Logger)` for configurable library diagnostics (#397)
+- `LoggerReceiver` interface — sub-module outputs receive the library's diagnostic logger (#397)
+- `RecordedEvent.StringField()`, `IntField()`, `FloatField()` accessors with JSON float64 coercion (#397)
+- `NoOpMetrics` base struct for composable Metrics implementations (#401)
+- `WithFactory` LoadOption for per-call factory overrides (#399)
+- Runtime introspection methods: `BufferLen()`, `BufferCap()`, `OutputNames()`, `IsCategoryEnabled()`, `IsEventEnabled()`, `IsDisabled()`, `IsSynchronous()` (#404)
+- `docs/writing-custom-outputs.md` — interface hierarchy and decision tree (#397)
+- `docs/migrating-from-application-logging.md` — side-by-side coexistence guide (#397)
+
+### Changed
+
+- All 18 examples rewritten to use simplified API — net deletion of 285 lines (#396)
+- Unknown output type error message now suggests both specific import and convenience package (#393)
+- `audittest.NewLoggerQuick` defaults to synchronous delivery (#403)
+
 - `default_formatter` YAML key removed — set `formatter:` on each output individually. Outputs without a `formatter:` block default to JSON. If you previously used `default_formatter: { type: json, timestamp: unix_ms }` or `default_formatter: { omit_empty: true }`, move those settings to each output's `formatter:` block or use `logger: { omit_empty: true }` for the `omit_empty` case (#305)
 - Progressive examples renumbered: outputs grouped together, 04-12 → 05-17 with gaps for new examples (#278)
 - Progressive examples renumbered: new 03-standard-fields inserted, 03-11 → 04-12 (#237)

@@ -35,7 +35,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		return nil, fmtErr
 	}
 
-	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics)
+	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics, factories)
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +255,12 @@ type yamlTLSPolicy struct {
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics) (audit.Output, error) {
-	factory := audit.LookupOutputFactory(f.typeName)
+func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory) (audit.Output, error) {
+	// Per-call factory overrides take precedence over global registry.
+	factory := factories[f.typeName]
+	if factory == nil {
+		factory = audit.LookupOutputFactory(f.typeName)
+	}
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
 		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); "+

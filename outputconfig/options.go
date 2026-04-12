@@ -31,6 +31,7 @@ type LoadOption func(*loadOptions)
 // loadOptions holds the resolved options for a Load call.
 type loadOptions struct {
 	coreMetrics   audit.Metrics
+	factories     map[string]audit.OutputFactory
 	providers     []secrets.Provider
 	secretTimeout time.Duration
 }
@@ -65,6 +66,18 @@ func WithSecretTimeout(d time.Duration) LoadOption {
 func WithCoreMetrics(m audit.Metrics) LoadOption {
 	return func(o *loadOptions) {
 		o.coreMetrics = m
+	}
+}
+
+// WithFactory registers a per-call output factory override for the
+// given type name. Per-call factories take precedence over globally
+// registered factories. Multiple calls for the same type: last wins.
+func WithFactory(typeName string, factory audit.OutputFactory) LoadOption {
+	return func(o *loadOptions) {
+		if o.factories == nil {
+			o.factories = make(map[string]audit.OutputFactory)
+		}
+		o.factories[typeName] = factory
 	}
 }
 

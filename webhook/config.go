@@ -133,6 +133,14 @@ func (c Config) String() string {
 		c.URL, hdrs, c.BatchSize, c.Timeout)
 }
 
+// GoString returns the same redacted representation as [Config.String].
+// This prevents credential leakage when configs are formatted via %#v.
+func (c Config) GoString() string { return c.String() } //nolint:gocritic // hugeParam: value receiver required by fmt.GoStringer
+
+// Format writes the redacted representation to the formatter.
+// This prevents credential leakage via %+v and all other format verbs.
+func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) } //nolint:gocritic // hugeParam: value receiver required by fmt.Formatter
+
 // validateWebhookConfig checks the config for correctness, applying
 // defaults where needed.
 func validateWebhookConfig(cfg *Config) error {

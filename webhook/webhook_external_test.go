@@ -23,6 +23,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -1472,4 +1473,23 @@ func TestWebhookConfig_String_NoHeaders(t *testing.T) {
 	cfg := webhook.Config{URL: "https://example.com/hook"}
 	s := cfg.String()
 	assert.Contains(t, s, "headers=0")
+}
+
+func TestWebhookConfig_GoString_RedactsHeaders(t *testing.T) {
+	cfg := webhook.Config{
+		URL:     "https://example.com/hook",
+		Headers: map[string]string{"Authorization": "Bearer secret-token-12345"},
+	}
+	out := fmt.Sprintf("%#v", cfg)
+	assert.NotContains(t, out, "secret-token-12345", "GoString must not leak header values")
+	assert.Contains(t, out, "WebhookConfig{")
+}
+
+func TestWebhookConfig_Format_RedactsHeaders(t *testing.T) {
+	cfg := webhook.Config{
+		URL:     "https://example.com/hook",
+		Headers: map[string]string{"Authorization": "Splunk my-hec-token"},
+	}
+	out := fmt.Sprintf("%+v", cfg)
+	assert.NotContains(t, out, "my-hec-token", "Format must not leak header values via %%+v")
 }

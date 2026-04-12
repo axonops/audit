@@ -113,6 +113,14 @@ func (c Config) String() string {
 		c.Network, c.Address, tlsMode, c.Facility)
 }
 
+// GoString returns the same redacted representation as [Config.String].
+// This prevents TLS key path leakage when configs are formatted via %#v.
+func (c Config) GoString() string { return c.String() } //nolint:gocritic // hugeParam: value receiver required by fmt.GoStringer
+
+// Format writes the redacted representation to the formatter.
+// This prevents TLS key path leakage via %+v and all other format verbs.
+func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) } //nolint:gocritic // hugeParam: value receiver required by fmt.Formatter
+
 // Output writes serialised audit events to a syslog server over
 // TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
 // RFC 5424 structured syslog messages with the pre-serialised audit

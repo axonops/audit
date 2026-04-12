@@ -2159,3 +2159,29 @@ func TestSyslogConfig_String_TLSModes(t *testing.T) {
 		})
 	}
 }
+
+func TestSyslogConfig_GoString_RedactsTLSPaths(t *testing.T) {
+	t.Parallel()
+	cfg := syslog.Config{
+		Network: "tcp",
+		Address: "localhost:514",
+		TLSCert: "/etc/audit/tls/client.crt",
+		TLSKey:  "/etc/audit/tls/client.key",
+		TLSCA:   "/etc/audit/tls/ca.crt",
+	}
+	out := fmt.Sprintf("%#v", cfg)
+	assert.NotContains(t, out, "/etc/audit/tls/client.key", "GoString must not leak TLS key path")
+	assert.NotContains(t, out, "/etc/audit/tls/client.crt", "GoString must not leak TLS cert path")
+	assert.Contains(t, out, "SyslogConfig{")
+}
+
+func TestSyslogConfig_Format_RedactsTLSPaths(t *testing.T) {
+	t.Parallel()
+	cfg := syslog.Config{
+		Network: "tcp",
+		Address: "localhost:514",
+		TLSKey:  "/secret/path/server.key",
+	}
+	out := fmt.Sprintf("%+v", cfg)
+	assert.NotContains(t, out, "/secret/path/server.key", "Format must not leak TLS key path via %%+v")
+}

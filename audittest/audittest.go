@@ -25,6 +25,7 @@ type Option func(*config)
 
 type config struct {
 	extraOpts []audit.Option
+	async     bool // opt out of default synchronous delivery
 }
 
 // WithConfig applies a [audit.Config] struct to the test logger.
@@ -48,25 +49,33 @@ func WithDisabled() Option {
 // WithSync creates a synchronous test logger where events are
 // available in the [Recorder] immediately after [audit.Logger.AuditEvent]
 // returns. No Close-before-assert ceremony is needed.
+//
+// Both [NewLogger] and [NewLoggerQuick] default to synchronous delivery,
+// so this option is only needed to re-enable sync after [WithAsync].
 func WithSync() Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithSynchronousDelivery()) }
+}
+
+// WithAsync creates an asynchronous test logger. Events are delivered
+// by a background goroutine, so callers MUST call logger.Close()
+// before making assertions. Use this only when testing async-specific
+// behaviour such as drain timeout or buffer backpressure.
+func WithAsync() Option {
+	return func(c *config) { c.async = true }
 }
 
 // NewLogger creates a test audit logger with an in-memory [Recorder]
 // and [MetricsRecorder]. The taxonomy is parsed from YAML bytes.
 //
-// The logger is created with sensible test defaults: Enabled=true,
-// Version=1, BufferSize=100. The buffer size is intentionally small
-// since the in-memory recorder has no I/O cost — large buffers only
-// increase the window where events may not yet be flushed before
-// assertions run. Override with [WithConfig] if needed.
-// tb.Cleanup is registered to call
-// logger.Close() as a safety net against goroutine leaks.
+// The logger defaults to synchronous delivery — events are available
+// in the Recorder immediately after [audit.Logger.AuditEvent] returns,
+// with no Close-before-assert ceremony needed. Use [WithAsync] to opt
+// into asynchronous delivery for tests that exercise drain timeout or
+// buffer backpressure.
 //
-// Callers MUST call logger.Close() before making assertions — events
-// are delivered asynchronously and are only available in the recorder
-// after the drain goroutine has processed them. Close is idempotent;
-// the cleanup call is harmless.
+// BufferSize defaults to 100 (intentionally small — the in-memory
+// recorder has no I/O cost). tb.Cleanup is registered to call
+// logger.Close() as a safety net against goroutine leaks.
 func NewLogger(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
@@ -120,6 +129,9 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.L
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(rec),
 		audit.WithMetrics(met),
+	}
+	if !c.async {
+		auditOpts = append(auditOpts, audit.WithSynchronousDelivery())
 	}
 	auditOpts = append(auditOpts, c.extraOpts...)
 

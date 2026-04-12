@@ -39,8 +39,7 @@ func TestCreateUser(t *testing.T) {
     svc := NewUserService(logger)
     svc.CreateUser("alice", "alice@example.com")
 
-    logger.Close() // drain async buffer before asserting
-
+    // Assert immediately — NewLogger uses synchronous delivery by default.
     require.Equal(t, 1, events.Count())
     evt := events.Events()[0]
     assert.Equal(t, "user_create", evt.EventType)
@@ -49,14 +48,14 @@ func TestCreateUser(t *testing.T) {
 }
 ```
 
-### ⚠️ Close Before Assert — Critical
+### Synchronous Delivery (Default)
 
-The audit logger delivers events asynchronously. Callers MUST call
-`logger.Close()` before making assertions — the drain goroutine may
-not have processed all events yet, and assertions on `events.Count()`
-or `events.Events()` without draining first produce racy results.
-`NewLogger` registers `t.Cleanup(logger.Close)` as a safety net
-against goroutine leaks, but your explicit Close MUST come first.
+Both `NewLogger` and `NewLoggerQuick` default to synchronous delivery:
+events are available in the `Recorder` immediately after `AuditEvent()`
+returns. No `Close()` call is needed before assertions.
+`NewLogger` registers `t.Cleanup(logger.Close)` to clean up resources
+after the test completes. Use `WithAsync()` to opt into asynchronous
+delivery for tests that exercise drain timeout or buffer backpressure.
 
 ## 💉 Dependency Injection
 

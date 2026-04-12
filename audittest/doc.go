@@ -18,30 +18,26 @@
 // calls, and convenience constructors that eliminate test boilerplate.
 //
 // The test logger is a fully functional [audit.Logger] — same
-// validation, same taxonomy enforcement, same async drain — but events
-// land in memory instead of being written to a file, syslog, or
-// webhook.
+// validation, same taxonomy enforcement — but events land in memory
+// instead of being written to a file, syslog, or webhook.
+//
+// Both [NewLogger] and [NewLoggerQuick] default to synchronous
+// delivery: events are available in the [Recorder] immediately after
+// [audit.Logger.AuditEvent] returns. No Close-before-assert ceremony
+// is needed. Use [WithAsync] to opt into asynchronous delivery for
+// tests that exercise drain timeout or buffer backpressure.
 //
 // # Quick Start
 //
 //	func TestMyHandler(t *testing.T) {
 //	    logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
 //	    myHandler(logger) // code under test
-//	    require.NoError(t, logger.Close()) // drain async buffer
 //
+//	    // Assert immediately — synchronous delivery means events are already available.
 //	    require.Equal(t, 1, events.Count())
 //	    assert.Equal(t, "user_create", events.Events()[0].EventType)
 //	    assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 //	}
-//
-// # Close Before Assert
-//
-// The audit logger delivers events asynchronously via a drain
-// goroutine. Call logger.Close() before making assertions to ensure
-// all events have been processed and are available in the recorder.
-// [NewLogger] registers t.Cleanup(logger.Close) as a safety net
-// against goroutine leaks, but assertions must happen after an
-// explicit Close call.
 //
 // # Table-Driven Tests
 //

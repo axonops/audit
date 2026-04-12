@@ -88,6 +88,21 @@ func (e RecordedEvent) FloatField(key string) float64 { //nolint:gocritic // val
 	return v
 }
 
+// UserFields returns a copy of the event's fields with framework
+// fields removed (event_category, app_name, host, timezone, pid,
+// duration_ms, _hmac, _hmac_v). This is useful for count assertions
+// where framework fields would inflate the total.
+func (e RecordedEvent) UserFields() map[string]any { //nolint:gocritic // value receiver for consistency
+	out := make(map[string]any, len(e.Fields))
+	for k, v := range e.Fields {
+		if isFrameworkField(k) {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
 // HasField reports whether the event has a field with the given key
 // and value. Comparison uses [reflect.DeepEqual].
 func (e RecordedEvent) HasField(key string, want any) bool { //nolint:gocritic // value receiver required for consistency with Field/GoString
@@ -192,6 +207,23 @@ func (r *Recorder) GoString() string {
 	}
 	b.WriteString("]}")
 	return b.String()
+}
+
+// frameworkFields are fields added by the audit framework (not by the
+// consumer). These are filtered out by [RecordedEvent.UserFields].
+var frameworkFields = map[string]bool{
+	"event_category": true,
+	"app_name":       true,
+	"host":           true,
+	"timezone":       true,
+	"pid":            true,
+	"duration_ms":    true,
+	"_hmac":          true,
+	"_hmac_v":        true,
+}
+
+func isFrameworkField(key string) bool {
+	return frameworkFields[key]
 }
 
 // parseEvent deserialises a JSON event into a RecordedEvent.

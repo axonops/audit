@@ -114,8 +114,8 @@ type Logger struct {
 }
 
 // NewLogger creates a new audit [Logger] from the given options.
-// A taxonomy MUST be provided via [WithTaxonomy]; NewLogger returns
-// an error if none is supplied.
+// A taxonomy MUST be provided via [WithTaxonomy] unless [WithDisabled]
+// is applied; NewLogger returns an error if none is supplied.
 //
 // The zero-value [Config] is valid: buffer=10,000, drain=5s,
 // validation=strict. Pass tuning options like [WithBufferSize] or
@@ -123,8 +123,10 @@ type Logger struct {
 // a struct.
 //
 // When [WithDisabled] is applied, NewLogger returns a valid no-op
-// logger. All [Logger.AuditEvent] calls return nil immediately without
-// validation or delivery.
+// logger without requiring a taxonomy. All [Logger.AuditEvent] calls
+// return nil immediately without validation or delivery. Methods
+// that require a taxonomy ([Logger.EnableCategory], etc.) return
+// [ErrDisabled].
 func NewLogger(opts ...Option) (*Logger, error) {
 	l := &Logger{}
 
@@ -150,6 +152,11 @@ func NewLogger(opts ...Option) (*Logger, error) {
 		l.logger = slog.Default()
 	}
 
+	if l.disabled {
+		l.applyConstructionDefaults()
+		return l, nil
+	}
+
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
@@ -163,10 +170,6 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	l.prepareOutputEntries()
 
 	l.applyConstructionDefaults()
-
-	if l.disabled {
-		return l, nil
-	}
 
 	if !l.synchronous {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -430,6 +433,9 @@ func (l *Logger) validateExcludeLabels(oe *outputEntry) error {
 // category MUST exist in the registered taxonomy. Per-event overrides
 // via [Logger.DisableEvent] take precedence over category state.
 func (l *Logger) EnableCategory(category string) error {
+	if l.disabled {
+		return fmt.Errorf("audit: cannot enable category on disabled logger: %w", ErrDisabled)
+	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
@@ -443,6 +449,9 @@ func (l *Logger) EnableCategory(category string) error {
 // category MUST exist in the registered taxonomy. Per-event overrides
 // via [Logger.EnableEvent] take precedence over category state.
 func (l *Logger) DisableCategory(category string) error {
+	if l.disabled {
+		return fmt.Errorf("audit: cannot disable category on disabled logger: %w", ErrDisabled)
+	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
@@ -456,6 +465,9 @@ func (l *Logger) DisableCategory(category string) error {
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) EnableEvent(eventType string) error {
+	if l.disabled {
+		return fmt.Errorf("audit: cannot enable event on disabled logger: %w", ErrDisabled)
+	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
@@ -470,6 +482,9 @@ func (l *Logger) EnableEvent(eventType string) error {
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
 func (l *Logger) DisableEvent(eventType string) error {
+	if l.disabled {
+		return fmt.Errorf("audit: cannot disable event on disabled logger: %w", ErrDisabled)
+	}
 	// taxonomy is immutable after construction; safe to read without lock.
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
@@ -487,6 +502,9 @@ func (l *Logger) DisableEvent(eventType string) error {
 //
 // SetOutputRoute is safe for concurrent use with event delivery.
 func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
+	if l.disabled {
+		return fmt.Errorf("audit: cannot set output route on disabled logger: %w", ErrDisabled)
+	}
 	oe, ok := l.outputsByName[outputName]
 	if !ok {
 		return fmt.Errorf("audit: unknown output %q", outputName)
@@ -527,6 +545,9 @@ func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 // handle enables zero-allocation audit calls. Returns
 // [ErrHandleNotFound] if the event type is not registered.
 func (l *Logger) Handle(eventType string) (*EventHandle, error) {
+	if l.disabled {
+		return &EventHandle{name: eventType, logger: l}, nil
+	}
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return nil, fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}

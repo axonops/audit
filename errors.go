@@ -55,6 +55,13 @@ var (
 	// already been closed.
 	ErrOutputClosed = errors.New("audit: output is closed")
 
+	// ErrDisabled is returned by methods that require a taxonomy
+	// ([Logger.EnableCategory], [Logger.DisableCategory],
+	// [Logger.EnableEvent], [Logger.DisableEvent],
+	// [Logger.SetOutputRoute]) when called on a disabled logger.
+	// [Logger.Handle] returns a valid no-op handle instead.
+	ErrDisabled = errors.New("audit: logger is disabled")
+
 	// ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
 	// validation failures. Use [errors.Is] to test for it:
 	//

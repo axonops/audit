@@ -21,6 +21,9 @@ import "time"
 // the logger's current filter state. Lock-free, matching the
 // production Audit() hot path.
 func IsEnabledForTest(l *Logger, eventType string) bool {
+	if l.disabled || l.filter == nil || l.taxonomy == nil {
+		return false
+	}
 	return l.filter.isEnabled(eventType, l.taxonomy)
 }
 

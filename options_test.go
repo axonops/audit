@@ -84,6 +84,58 @@ func TestNewLogger_WithDisabled_CreatesNoOpLogger(t *testing.T) {
 	assert.Equal(t, 0, out.EventCount(), "disabled logger must not deliver events")
 }
 
+func TestNewLogger_WithDisabled_NoTaxonomy(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	logger, err := audit.NewLogger(audit.WithDisabled())
+	require.NoError(t, err, "disabled logger must not require a taxonomy")
+	require.NotNil(t, logger)
+	assert.True(t, logger.IsDisabled())
+
+	// AuditEvent silently discards.
+	err = logger.AuditEvent(audit.NewEvent("anything", audit.Fields{"k": "v"}))
+	assert.NoError(t, err)
+
+	// Close is safe.
+	assert.NoError(t, logger.Close())
+}
+
+func TestDisabledLogger_EnableCategory_ReturnsErrDisabled(t *testing.T) {
+	logger, err := audit.NewLogger(audit.WithDisabled())
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	assert.ErrorIs(t, logger.EnableCategory("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, logger.DisableCategory("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, logger.EnableEvent("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, logger.DisableEvent("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, logger.SetOutputRoute("foo", nil), audit.ErrDisabled)
+}
+
+func TestDisabledLogger_Handle_ReturnsValidHandle(t *testing.T) {
+	logger, err := audit.NewLogger(audit.WithDisabled())
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	handle, handleErr := logger.Handle("anything")
+	require.NoError(t, handleErr)
+	require.NotNil(t, handle)
+	assert.Equal(t, "anything", handle.EventType())
+
+	// Audit on the handle silently discards.
+	assert.NoError(t, handle.Audit(audit.Fields{"k": "v"}))
+}
+
+func TestDisabledLogger_MustHandle_DoesNotPanic(t *testing.T) {
+	logger, err := audit.NewLogger(audit.WithDisabled())
+	require.NoError(t, err)
+	defer func() { _ = logger.Close() }()
+
+	assert.NotPanics(t, func() {
+		h := logger.MustHandle("anything")
+		assert.NotNil(t, h)
+	})
+}
+
 // ---------------------------------------------------------------------------
 // WithBufferSize (#388 AC-4)
 // ---------------------------------------------------------------------------

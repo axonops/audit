@@ -293,12 +293,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Core scenarios: no Docker required (14 feature files + outputconfig BDD)
+          # Core scenarios: no Docker required
           - suite: core
             target: test-bdd-core
             infra-up: ""
             infra-down: ""
             timeout: 8
+          # Output config BDD: no Docker required
+          - suite: outputconfig
+            target: test-bdd-outputconfig
+            infra-up: ""
+            infra-down: ""
+            timeout: 5
           # File output: no Docker required
           - suite: file
             target: test-bdd-file

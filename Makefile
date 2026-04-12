@@ -1,6 +1,6 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
        test-secrets test-secrets-openbao test-secrets-vault \
-       test-integration test-bdd test-bdd-core test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
+       test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api \
@@ -113,6 +113,8 @@ test-bdd:
 # Core and file need no Docker. Others require specific infrastructure.
 test-bdd-core:
 	BDD_TAGS="@core && ~@docker" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+test-bdd-outputconfig:
 	cd outputconfig && go test -race -v -count=1 ./tests/bdd/...
 
 test-bdd-file:

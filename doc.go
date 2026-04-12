@@ -90,7 +90,7 @@
 //   - [Event] — interface for typed audit events; pass to [Logger.AuditEvent]
 //   - [NewEvent] — creates an event for dynamic use without code generation
 //   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
-//   - [EventType] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [EventHandle] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
 // # Outputs

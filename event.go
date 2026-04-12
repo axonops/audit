@@ -93,23 +93,25 @@ func NewEventKV(eventType string, keysAndValues ...any) Event {
 	return NewEvent(eventType, fields)
 }
 
-// EventType is a handle for a registered audit event type. It carries
-// the event type name and a reference to the owning [Logger], enabling
-// audit calls without repeated string lookup. Obtain a handle via
-// [Logger.Handle] or [Logger.MustHandle].
-type EventType struct {
+// EventHandle is a pre-validated reference to a registered event type.
+// It carries the event type name and a reference to the owning [Logger],
+// enabling audit calls without repeated string lookup. Use generated
+// builders for static event types; use [Logger.Handle] or
+// [Logger.MustHandle] for dynamically-determined event types (e.g.
+// event type names from configuration or a database).
+type EventHandle struct {
 	logger *Logger
 	name   string
 }
 
 // Audit emits an audit event using this handle's bound event type.
 // Fields are wrapped in [NewEvent] internally.
-func (e *EventType) Audit(fields Fields) error {
+func (e *EventHandle) Audit(fields Fields) error {
 	return e.logger.AuditEvent(NewEvent(e.name, fields))
 }
 
-// Name returns the event type name this handle represents.
-func (e *EventType) Name() string {
+// EventType returns the event type name this handle represents.
+func (e *EventHandle) EventType() string {
 	return e.name
 }
 

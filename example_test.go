@@ -132,8 +132,8 @@ func ExampleLogger_MustHandle() {
 		return
 	}
 
-	fmt.Println("handle name:", docCreate.Name())
-	// Output: handle name: doc_create
+	fmt.Println("handle event type:", docCreate.EventType())
+	// Output: handle event type: doc_create
 }
 
 func ExampleLogger_EnableCategory() {

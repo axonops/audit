@@ -20,6 +20,14 @@ import (
 	"syscall"
 )
 
+// cgnatBlock is the RFC 6598 Shared Address Space (100.64.0.0/10),
+// used by CGNAT and some cloud providers for internal routing.
+// Always blocked regardless of AllowPrivateRanges.
+var cgnatBlock = func() *net.IPNet {
+	_, n, _ := net.ParseCIDR("100.64.0.0/10")
+	return n
+}()
+
 // SSRFOption configures SSRF protection behaviour for
 // [NewSSRFDialControl].
 type SSRFOption func(*ssrfConfig)
@@ -35,8 +43,9 @@ type ssrfConfig struct {
 // infrastructure, and for testing with [net/http/httptest] which binds
 // to 127.0.0.1.
 //
-// Cloud metadata addresses (169.254.169.254) remain blocked even when
-// private ranges are allowed.
+// Cloud metadata (169.254.169.254) and RFC 6598 Shared Address Space
+// (100.64.0.0/10, CGNAT) remain blocked even when private ranges are
+// allowed.
 func AllowPrivateRanges() SSRFOption {
 	return func(c *ssrfConfig) {
 		c.allowPrivate = true
@@ -59,6 +68,7 @@ func AllowPrivateRanges() SSRFOption {
 //   - Cloud metadata endpoints (169.254.169.254)
 //   - RFC 1918 private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
 //   - IPv6 unique local addresses (fc00::/7)
+//   - RFC 6598 Shared Address Space (100.64.0.0/10, CGNAT)
 //   - Multicast addresses (224.0.0.0/4, ff00::/8)
 //   - Unspecified addresses (0.0.0.0, ::)
 //
@@ -96,6 +106,12 @@ func CheckSSRFIP(ip net.IP, allowPrivate bool) error {
 	// AWS, GCP, and Azure all use 169.254.169.254.
 	if ip.Equal(net.IPv4(169, 254, 169, 254)) {
 		return fmt.Errorf("audit: ssrf: cloud metadata address %s blocked", ip)
+	}
+
+	// RFC 6598 Shared Address Space (100.64.0.0/10) — ALWAYS blocked.
+	// Used by CGNAT and some cloud providers for internal routing.
+	if cgnatBlock.Contains(ip) {
+		return fmt.Errorf("audit: ssrf: shared address space (RFC 6598) %s blocked", ip)
 	}
 
 	// Link-local — always blocked (includes metadata range).

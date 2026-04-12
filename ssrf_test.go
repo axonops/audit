@@ -41,6 +41,9 @@ func TestCheckSSRFIP_Blocked(t *testing.T) {
 		{"private 172.31.x", "172.31.255.255"},
 		{"private 192.168.x", "192.168.1.1"},
 		{"private IPv6 ULA", "fc00::1"},
+		{"cgnat bottom", "100.64.0.0"},
+		{"cgnat mid", "100.64.0.1"},
+		{"cgnat top", "100.127.255.254"},
 		{"multicast IPv4", "224.0.0.1"},
 		{"multicast IPv6", "ff02::1"},
 		{"unspecified IPv4", "0.0.0.0"},
@@ -68,6 +71,8 @@ func TestCheckSSRFIP_Allowed(t *testing.T) {
 		{"public IPv4 other", "1.1.1.1"},
 		{"public IPv4 high", "203.0.113.1"},
 		{"public IPv6", "2001:db8::1"},
+		{"just below cgnat", "100.63.255.255"},
+		{"just above cgnat", "100.128.0.0"},
 	}
 
 	for _, tt := range tests {
@@ -93,6 +98,7 @@ func TestCheckSSRFIP_AllowPrivateRanges(t *testing.T) {
 		{"private 172.16 allowed", "172.16.0.1", false},
 		{"private 192.168 allowed", "192.168.1.1", false},
 		{"cloud metadata still blocked", "169.254.169.254", true},
+		{"cgnat still blocked", "100.64.0.1", true},
 		{"link-local still blocked", "169.254.1.1", true},
 		{"multicast still blocked", "224.0.0.1", true},
 		{"unspecified still blocked", "0.0.0.0", true},

@@ -106,9 +106,10 @@ type EventHandle struct {
 }
 
 // Audit emits an audit event using this handle's bound event type.
-// Fields are wrapped in [NewEvent] internally.
+// This method bypasses [NewEvent] to avoid a per-event heap allocation
+// from interface escape, calling the internal audit path directly.
 func (e *EventHandle) Audit(fields Fields) error {
-	return e.logger.AuditEvent(NewEvent(e.name, fields))
+	return e.logger.auditInternal(e.name, fields)
 }
 
 // AuditEvent emits an [Event] (typically a generated builder) using

@@ -59,6 +59,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	// Defers execute LIFO. The pool return must happen after the
 	// panic recovery, so it is declared first (executes last).
 	defer func() {
+		returnFieldsToPool(entry.fields)
 		entry.eventType = ""
 		entry.fields = nil
 		auditEntryPool.Put(entry)

@@ -51,6 +51,15 @@ var auditEntryPool = sync.Pool{
 	New: func() any { return new(auditEntry) },
 }
 
+// fieldsPool caches Fields maps to avoid per-event heap allocation in
+// copyFieldsWithDefaults. Maps are retrieved in auditInternal (caller
+// goroutine), populated with copied fields, sent through the channel,
+// and returned to the pool after processEntry completes (drain goroutine).
+// Maps are cleared before return to prevent stale references.
+var fieldsPool = sync.Pool{
+	New: func() any { return make(Fields, 8) },
+}
+
 // Logger is the core audit logger. It validates events against a
 // registered [Taxonomy], filters by category and per-event overrides,
 // and delivers events asynchronously to configured [Output]
@@ -329,7 +338,8 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
 		}
-		// Return dropped entry to pool.
+		// Return dropped entry and fields map to pools.
+		returnFieldsToPool(entry.fields)
 		entry.eventType = ""
 		entry.fields = nil
 		auditEntryPool.Put(entry)
@@ -566,6 +576,15 @@ func (l *Logger) MustHandle(eventType string) *EventHandle {
 	return h
 }
 
+// returnFieldsToPool clears a Fields map and returns it to the pool.
+// Safe to call with nil (no-op).
+func returnFieldsToPool(fields Fields) {
+	if fields != nil {
+		clear(fields)
+		fieldsPool.Put(fields)
+	}
+}
+
 // copyFieldsWithDefaults creates a merged copy of fields + standard field
 // defaults. Standard field defaults have lower precedence (key existence,
 // not zero value). This avoids the double allocation that would result
@@ -575,7 +594,8 @@ func (l *Logger) copyFieldsWithDefaults(fields Fields) Fields {
 	if size == 0 {
 		return nil
 	}
-	cp := make(Fields, size)
+	cp := fieldsPool.Get().(Fields) //nolint:forcetypeassert // pool New always returns Fields
+	clear(cp)
 	for k, v := range fields {
 		cp[k] = v
 	}

@@ -500,7 +500,7 @@ func TestLoad_UnknownType(t *testing.T) {
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown output type \"kafka\"")
 	assert.Contains(t, err.Error(), "add import")
-	assert.Contains(t, err.Error(), "go-audit/outputs")
+	assert.Contains(t, err.Error(), "audit/outputs")
 	assert.Contains(t, err.Error(), "for all types")
 }
 

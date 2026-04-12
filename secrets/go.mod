@@ -1,4 +1,4 @@
-module github.com/axonops/go-audit/secrets
+module github.com/axonops/audit/secrets
 
 go 1.26.2
 

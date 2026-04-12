@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // Compile-time assertion: MockMetrics satisfies audit.Metrics.

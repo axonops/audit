@@ -25,12 +25,12 @@ import (
 	"os"
 	"strings"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/file"
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/file"
+	"github.com/axonops/audit/outputconfig"
 )
 
-//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte

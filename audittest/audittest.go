@@ -17,7 +17,7 @@ package audittest
 import (
 	"testing"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // Option configures the test logger created by [NewLogger].

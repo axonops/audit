@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file/internal/rotate"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/file/internal/rotate"
 )
 
 // Compile-time assertions.

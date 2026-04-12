@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/axonops/go-audit/webhook"
+	"github.com/axonops/audit/webhook"
 )
 
 func ExampleConfig_basic() {

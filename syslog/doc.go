@@ -38,5 +38,5 @@
 //
 // Recommended import alias:
 //
-//	import auditsyslog "github.com/axonops/go-audit/syslog"
+//	import auditsyslog "github.com/axonops/audit/syslog"
 package syslog

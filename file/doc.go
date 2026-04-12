@@ -40,5 +40,5 @@
 //
 // Recommended import alias:
 //
-//	import auditfile "github.com/axonops/go-audit/file"
+//	import auditfile "github.com/axonops/audit/file"
 package file

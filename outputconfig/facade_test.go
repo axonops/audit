@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/outputconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

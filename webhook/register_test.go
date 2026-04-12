@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/webhook"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/webhook"
 )
 
 func TestWebhookFactory_RegisteredByInit(t *testing.T) {

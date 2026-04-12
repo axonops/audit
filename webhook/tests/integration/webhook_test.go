@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axonops/go-audit/webhook"
+	"github.com/axonops/audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"

@@ -25,9 +25,9 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/file" // register file factory
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/file" // register file factory
+	"github.com/axonops/audit/outputconfig"
 )
 
 func init() {

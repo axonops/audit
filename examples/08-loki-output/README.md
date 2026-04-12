@@ -379,7 +379,7 @@ host: "dev-machine"          # → stream label host="dev-machine"
 
 outputs:
   loki_audit:
-    type: loki               # Registers via: import _ "github.com/axonops/go-audit/loki"
+    type: loki               # Registers via: import _ "github.com/axonops/audit/loki"
     loki:
       url: "http://localhost:3100/loki/api/v1/push"  # Full path required
       tenant_id: "example"   # Sets X-Scope-OrgID header for multi-tenant Loki

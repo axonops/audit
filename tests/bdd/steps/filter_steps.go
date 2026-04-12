@@ -20,7 +20,7 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // filteringTaxonomyYAML is a taxonomy with write and security categories,

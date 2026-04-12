@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"testing"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/audittest"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
 )
 
 var exampleTaxonomyYAML = []byte(`

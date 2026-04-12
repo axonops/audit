@@ -13,7 +13,7 @@ is pre-release; the API and security posture are actively evolving.
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Use [GitHub Security Advisories](https://github.com/axonops/go-audit/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/axonops/audit/security/advisories/new)
 to report vulnerabilities. This provides a private channel for coordinated disclosure.
 
 ### What to include
@@ -80,7 +80,7 @@ should be reported as regular GitHub issues, not security reports:
 ## Software Bill of Materials (SBOM)
 
 Every release includes SBOMs in two formats, published as assets in
-the [GitHub Release](https://github.com/axonops/go-audit/releases):
+the [GitHub Release](https://github.com/axonops/audit/releases):
 
 | Format | Filename | Use Case |
 |--------|----------|----------|

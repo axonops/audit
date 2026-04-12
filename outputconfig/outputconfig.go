@@ -22,7 +22,7 @@ import (
 	"io"
 	"strings"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 	"github.com/goccy/go-yaml"
 )
 

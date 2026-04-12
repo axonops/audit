@@ -44,5 +44,5 @@
 // Import this package for its side effect of registering the "loki"
 // output type with the audit output registry:
 //
-//	import _ "github.com/axonops/go-audit/loki"
+//	import _ "github.com/axonops/audit/loki"
 package loki

@@ -202,5 +202,5 @@ events are delivered before it returns.
 
 - [Taxonomy Validation](../../docs/taxonomy-validation.md) — how the library validates events
 - [Async Delivery](../../docs/async-delivery.md) — buffering, backpressure, and shutdown
-- [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) — full godoc
+- [API Reference](https://pkg.go.dev/github.com/axonops/audit) — full godoc
 

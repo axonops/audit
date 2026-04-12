@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"os"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/file" // register "file" output type
-	_ "github.com/axonops/go-audit/loki" // register "loki" output type
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/file" // register "file" output type
+	_ "github.com/axonops/audit/loki" // register "loki" output type
+	"github.com/axonops/audit/outputconfig"
 )
 
 // setupAuditLogger loads outputs.yaml from the filesystem and creates

@@ -17,7 +17,7 @@ package audittest
 import (
 	"sync"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 var _ audit.Metrics = (*MetricsRecorder)(nil)

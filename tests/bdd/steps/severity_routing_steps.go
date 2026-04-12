@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 	"github.com/cucumber/godog"
 )
 

@@ -350,4 +350,4 @@ tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — YAML taxonomy with audit-gen
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
 - [CEF Format](cef-format.md) — severity levels and SIEM integration
-- [API Reference: ParseTaxonomyYAML](https://pkg.go.dev/github.com/axonops/go-audit#ParseTaxonomyYAML)
+- [API Reference: ParseTaxonomyYAML](https://pkg.go.dev/github.com/axonops/audit#ParseTaxonomyYAML)

@@ -37,13 +37,13 @@ import (
 	"log"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/file" // register "file" output type
-	"github.com/axonops/go-audit/outputconfig"
-	_ "github.com/axonops/go-audit/webhook" // register "webhook" output type
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/file" // register "file" output type
+	"github.com/axonops/audit/outputconfig"
+	_ "github.com/axonops/audit/webhook" // register "webhook" output type
 )
 
-//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte

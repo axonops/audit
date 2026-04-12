@@ -214,4 +214,4 @@ without taxonomy declaration.
 
 - [Progressive Example: Middleware](../examples/15-middleware/) — complete HTTP middleware example
 - [Progressive Example: CRUD API](../examples/16-crud-api/) — middleware in a full REST application
-- [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/go-audit#Middleware)
+- [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/audit#Middleware)

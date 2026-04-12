@@ -37,7 +37,7 @@ import (
 	"os"
 	"path/filepath"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // Exit codes per specification.

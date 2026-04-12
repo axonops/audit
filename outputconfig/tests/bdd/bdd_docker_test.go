@@ -23,7 +23,7 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/cucumber/godog/colors"
 
-	"github.com/axonops/go-audit/outputconfig/tests/bdd/steps"
+	"github.com/axonops/audit/outputconfig/tests/bdd/steps"
 )
 
 // TestOutputConfigDockerFeatures runs BDD scenarios tagged @docker

@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 func TestComputeHMAC_AllAlgorithms(t *testing.T) {

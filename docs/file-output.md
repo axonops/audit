@@ -36,7 +36,7 @@ audit logging:
 ## Quick Start
 
 ```bash
-go get github.com/axonops/go-audit/file
+go get github.com/axonops/audit/file
 ```
 
 ```yaml
@@ -52,7 +52,7 @@ outputs:
 ```
 
 ```go
-import _ "github.com/axonops/go-audit/file"  // registers "file" factory
+import _ "github.com/axonops/audit/file"  // registers "file" factory
 ```
 
 The parent directory MUST exist — the library creates the file but not
@@ -223,7 +223,7 @@ rotated.
 Register your implementation before calling `outputconfig.Load`. This
 replaces the default factory registered by the blank import. If you
 don't need file-specific metrics, the blank import
-`_ "github.com/axonops/go-audit/file"` is sufficient.
+`_ "github.com/axonops/audit/file"` is sufficient.
 
 ```go
 audit.RegisterOutputFactory("file", file.NewFactory(myFileMetrics))

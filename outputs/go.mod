@@ -1,13 +1,13 @@
-module github.com/axonops/go-audit/outputs
+module github.com/axonops/audit/outputs
 
 go 1.26.2
 
 require (
-	github.com/axonops/go-audit v0.2.0
-	github.com/axonops/go-audit/file v0.3.0
-	github.com/axonops/go-audit/loki v0.3.0
-	github.com/axonops/go-audit/syslog v0.3.0
-	github.com/axonops/go-audit/webhook v0.3.0
+	github.com/axonops/audit v0.1.0
+	github.com/axonops/audit/file v0.1.0
+	github.com/axonops/audit/loki v0.1.0
+	github.com/axonops/audit/syslog v0.1.0
+	github.com/axonops/audit/webhook v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 

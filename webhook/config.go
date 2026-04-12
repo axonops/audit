@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // Default values for [Config] fields.

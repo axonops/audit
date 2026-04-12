@@ -30,7 +30,7 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // AuditTestContext holds all mutable state for a single BDD scenario.

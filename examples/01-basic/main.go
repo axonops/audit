@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"log"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 func main() {

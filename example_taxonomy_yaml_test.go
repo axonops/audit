@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 func ExampleParseTaxonomyYAML() {

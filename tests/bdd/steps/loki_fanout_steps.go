@@ -21,9 +21,9 @@ import (
 	"strings"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
-	"github.com/axonops/go-audit/loki"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/file"
+	"github.com/axonops/audit/loki"
 	"github.com/cucumber/godog"
 )
 

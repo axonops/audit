@@ -19,7 +19,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 func ExampleMiddleware() {

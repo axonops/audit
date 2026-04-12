@@ -5,13 +5,13 @@
 
   **Structured, Schema-Enforced Audit Logging for Go Services**
 
-  [![CI](https://github.com/axonops/go-audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/axonops/go-audit/actions/workflows/ci.yml)
-  [![Go Reference](https://pkg.go.dev/badge/github.com/axonops/go-audit.svg)](https://pkg.go.dev/github.com/axonops/go-audit)
-  [![Go Report Card](https://goreportcard.com/badge/github.com/axonops/go-audit)](https://goreportcard.com/report/github.com/axonops/go-audit)
+  [![CI](https://github.com/axonops/audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/axonops/audit/actions/workflows/ci.yml)
+  [![Go Reference](https://pkg.go.dev/badge/github.com/axonops/audit.svg)](https://pkg.go.dev/github.com/axonops/audit)
+  [![Go Report Card](https://goreportcard.com/badge/github.com/axonops/audit)](https://goreportcard.com/report/github.com/axonops/audit)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   ![Status](https://img.shields.io/badge/status-pre--release-orange)
 
-  [🚀 Quick Start](#-quick-start) | [✨ Features](#-key-features) | [📚 Examples](examples/) | [📖 API Reference](https://pkg.go.dev/github.com/axonops/go-audit)
+  [🚀 Quick Start](#-quick-start) | [✨ Features](#-key-features) | [📚 Examples](examples/) | [📖 API Reference](https://pkg.go.dev/github.com/axonops/audit)
 </div>
 
 ---
@@ -171,7 +171,7 @@ outputs:
 ### 3️⃣ Generate type-safe code 
 
 ```bash
-go run github.com/axonops/go-audit/cmd/audit-gen \
+go run github.com/axonops/audit/cmd/audit-gen \
   -input taxonomy.yaml \
   -output audit_generated.go \
   -package main
@@ -220,12 +220,12 @@ CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... ac
 Requires **Go 1.26+**.
 
 ```bash
-go get github.com/axonops/go-audit             # core: logger, taxonomy, validation, formatters, stdout output
-go get github.com/axonops/go-audit/file         # file output with rotation
-go get github.com/axonops/go-audit/syslog       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
-go get github.com/axonops/go-audit/webhook      # batched HTTP webhook with SSRF protection
-go get github.com/axonops/go-audit/loki         # Grafana Loki with stream labels and gzip
-go get github.com/axonops/go-audit/outputconfig # YAML-based output configuration
+go get github.com/axonops/audit             # core: logger, taxonomy, validation, formatters, stdout output
+go get github.com/axonops/audit/file         # file output with rotation
+go get github.com/axonops/audit/syslog       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
+go get github.com/axonops/audit/webhook      # batched HTTP webhook with SSRF protection
+go get github.com/axonops/audit/loki         # Grafana Loki with stream labels and gzip
+go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 ```
 
 > 💡 The core module includes `StdoutOutput` (no additional dependency)
@@ -237,12 +237,12 @@ go get github.com/axonops/go-audit/outputconfig # YAML-based output configuratio
 
 | Module | Description |
 |--------|-------------|
-| `github.com/axonops/go-audit` | Core: Logger, taxonomy validation, JSON + CEF formatters, HTTP middleware, stdout output, fan-out, routing, `audittest` |
-| `github.com/axonops/go-audit/file` | File output with size-based rotation and gzip compression |
-| `github.com/axonops/go-audit/syslog` | RFC 5424 syslog output (TCP/UDP/TLS/mTLS) |
-| `github.com/axonops/go-audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
-| `github.com/axonops/go-audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
-| `github.com/axonops/go-audit/outputconfig` | YAML-based output configuration with env var substitution |
+| `github.com/axonops/audit` | Core: Logger, taxonomy validation, JSON + CEF formatters, HTTP middleware, stdout output, fan-out, routing, `audittest` |
+| `github.com/axonops/audit/file` | File output with size-based rotation and gzip compression |
+| `github.com/axonops/audit/syslog` | RFC 5424 syslog output (TCP/UDP/TLS/mTLS) |
+| `github.com/axonops/audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
+| `github.com/axonops/audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
+| `github.com/axonops/audit/outputconfig` | YAML-based output configuration with env var substitution |
 
 Outputs are isolated in separate modules so the core library carries
 minimal third-party dependencies. Import only the outputs you use.
@@ -254,7 +254,7 @@ minimal third-party dependencies. Import only the outputs you use.
 | Resource | Description |
 |----------|-------------|
 | 📖 [Progressive Examples](examples/) | 18 examples from "hello world" to a [complete CRUD API](examples/16-crud-api/) — every output type, TLS policy, routing, formatters, testing, and buffering |
-| 📘 [API Reference](https://pkg.go.dev/github.com/axonops/go-audit) | pkg.go.dev documentation |
+| 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
 | 📝 [Changelog](CHANGELOG.md) | Release history and breaking changes |

@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/file"
 )
 
 func TestFileFactory_RegisteredByInit(t *testing.T) {

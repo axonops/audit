@@ -35,8 +35,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/axonops/go-audit/secrets"
-	"github.com/axonops/go-audit/secrets/vault"
+	"github.com/axonops/audit/secrets"
+	"github.com/axonops/audit/secrets/vault"
 )
 
 // Compile-time check.

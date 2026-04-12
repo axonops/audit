@@ -1,9 +1,9 @@
-module github.com/axonops/go-audit/webhook
+module github.com/axonops/audit/webhook
 
 go 1.26.2
 
 require (
-	github.com/axonops/go-audit v0.2.0
+	github.com/axonops/audit v0.1.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0

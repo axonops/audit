@@ -17,7 +17,7 @@ package syslog_test
 import (
 	"fmt"
 
-	"github.com/axonops/go-audit/syslog"
+	"github.com/axonops/audit/syslog"
 )
 
 func ExampleConfig_tcp() {

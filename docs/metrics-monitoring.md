@@ -182,4 +182,4 @@ assert.Equal(t, 0, metrics.BufferDrops())
 - [Progressive Example: CRUD API](../examples/16-crud-api/) — Prometheus metrics integration
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure
 - [Testing](testing.md) — asserting on metrics in tests
-- [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/go-audit#Metrics)
+- [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/audit#Metrics)

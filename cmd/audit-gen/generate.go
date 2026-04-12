@@ -25,7 +25,7 @@ import (
 	"strings"
 	"unicode"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // validKey matches safe taxonomy identifiers for code generation.

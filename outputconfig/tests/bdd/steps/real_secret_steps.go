@@ -28,9 +28,9 @@ import (
 
 	"github.com/cucumber/godog"
 
-	"github.com/axonops/go-audit/outputconfig"
-	"github.com/axonops/go-audit/secrets/openbao"
-	"github.com/axonops/go-audit/secrets/vault"
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/openbao"
+	"github.com/axonops/audit/secrets/vault"
 )
 
 // registerRealSecretSteps registers steps for scenarios that use real

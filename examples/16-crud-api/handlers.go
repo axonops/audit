@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // handlers holds dependencies shared across all HTTP handlers.

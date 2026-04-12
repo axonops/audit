@@ -16,15 +16,14 @@ package audit
 
 import (
 	"context"
-	"log/slog"
 	"runtime"
 	"time"
 )
 
 func (l *Logger) drainLoop(ctx context.Context) {
 	defer close(l.drainDone)
-	defer slog.Debug("audit: drain loop exiting")
-	slog.Debug("audit: drain loop started")
+	defer l.logger.Debug("audit: drain loop exiting")
+	l.logger.Debug("audit: drain loop started")
 	for {
 		select {
 		case entry := <-l.ch:
@@ -66,7 +65,7 @@ func (l *Logger) processEntry(entry *auditEntry) {
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("audit: panic in processEntry",
+			l.logger.Error("audit: panic in processEntry",
 				"event_type", entry.eventType,
 				"panic", r)
 			if l.metrics != nil {
@@ -135,7 +134,7 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			slog.Error("audit: panic in output write",
+			l.logger.Error("audit: panic in output write",
 				"output", oe.output.Name(),
 				"event_type", entry.eventType,
 				"panic", r,
@@ -244,7 +243,7 @@ func (l *Logger) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts time
 	f := oe.effectiveFormatter(l.formatter)
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, oe.formatOpts)
 	if err != nil {
-		slog.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
+		l.logger.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
 		if l.metrics != nil {
 			l.metrics.RecordSerializationError(entry.eventType)
 		}
@@ -307,7 +306,7 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 	}
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, nil)
 	if err != nil {
-		slog.Error("audit: serialisation failed",
+		l.logger.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
 			"error", err)
 		if l.metrics != nil {
@@ -326,7 +325,7 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 // dispatch — all parameters are concrete values.
 func (l *Logger) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
 	if writeErr != nil {
-		slog.Error("audit: output write failed",
+		l.logger.Error("audit: output write failed",
 			"output", outputName,
 			"event_type", eventType,
 			"error", writeErr)

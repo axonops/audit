@@ -15,8 +15,6 @@
 package audit
 
 import (
-	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 )
@@ -40,7 +38,7 @@ func checkRequiredFields(eventType string, def *EventDef, fields Fields) error {
 		return nil
 	}
 	slices.Sort(missing)
-	return fmt.Errorf("audit: event %q missing required fields: [%s]",
+	return newValidationError(ErrMissingRequiredField, "audit: event %q missing required fields: [%s]",
 		eventType, strings.Join(missing, ", "))
 }
 
@@ -65,10 +63,10 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 
 	switch l.cfg.ValidationMode {
 	case ValidationStrict:
-		return fmt.Errorf("audit: event %q has unknown fields: [%s]",
+		return newValidationError(ErrUnknownField, "audit: event %q has unknown fields: [%s]",
 			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		slog.Warn("audit: event has unknown fields",
+		l.logger.Warn("audit: event has unknown fields",
 			"event_type", eventType,
 			"unknown_fields", unknown)
 	case ValidationPermissive:

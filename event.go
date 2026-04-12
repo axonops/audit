@@ -14,6 +14,8 @@
 
 package audit
 
+import "fmt"
+
 // LabelInfo describes a sensitivity label defined in the taxonomy.
 type LabelInfo struct {
 	Name        string // label name, e.g., "pii"
@@ -68,23 +70,48 @@ func NewEvent(eventType string, fields Fields) Event {
 func (e *basicEvent) EventType() string { return e.eventType }
 func (e *basicEvent) Fields() Fields    { return e.fields }
 
-// EventType is a handle for a registered audit event type. It carries
-// the event type name and a reference to the owning [Logger], enabling
-// audit calls without repeated string lookup. Obtain a handle via
-// [Logger.Handle] or [Logger.MustHandle].
-type EventType struct {
+// NewEventKV creates an audit event from alternating key-value pairs,
+// following the [log/slog] convention:
+//
+//	audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+//
+// NewEventKV panics if keysAndValues has an odd number of elements or
+// if any key is not a string. These are always programming errors, not
+// runtime conditions — the same convention as [slog.Info].
+func NewEventKV(eventType string, keysAndValues ...any) Event {
+	if len(keysAndValues)%2 != 0 {
+		panic(fmt.Sprintf("audit: NewEventKV requires even number of arguments, got %d", len(keysAndValues)))
+	}
+	fields := make(Fields, len(keysAndValues)/2)
+	for i := 0; i < len(keysAndValues); i += 2 {
+		key, ok := keysAndValues[i].(string)
+		if !ok {
+			panic(fmt.Sprintf("audit: NewEventKV key at index %d must be string, got %T", i, keysAndValues[i]))
+		}
+		fields[key] = keysAndValues[i+1]
+	}
+	return NewEvent(eventType, fields)
+}
+
+// EventHandle is a pre-validated reference to a registered event type.
+// It carries the event type name and a reference to the owning [Logger],
+// enabling audit calls without repeated string lookup. Use generated
+// builders for static event types; use [Logger.Handle] or
+// [Logger.MustHandle] for dynamically-determined event types (e.g.
+// event type names from configuration or a database).
+type EventHandle struct {
 	logger *Logger
 	name   string
 }
 
 // Audit emits an audit event using this handle's bound event type.
 // Fields are wrapped in [NewEvent] internally.
-func (e *EventType) Audit(fields Fields) error {
+func (e *EventHandle) Audit(fields Fields) error {
 	return e.logger.AuditEvent(NewEvent(e.name, fields))
 }
 
-// Name returns the event type name this handle represents.
-func (e *EventType) Name() string {
+// EventType returns the event type name this handle represents.
+func (e *EventHandle) EventType() string {
 	return e.name
 }
 

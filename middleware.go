@@ -17,7 +17,6 @@ package audit
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 )
@@ -235,7 +234,7 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 		defer func() {
 			if v := recover(); v != nil {
 				panicStr := truncateString(fmt.Sprintf("%v", v), 512)
-				slog.Error("audit: EventBuilder panicked",
+				logger.logger.Error("audit: EventBuilder panicked",
 					"panic", panicStr,
 					"request_id", transport.RequestID)
 				skip = true
@@ -249,7 +248,7 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 	}
 
 	if err := logger.AuditEvent(NewEvent(eventType, fields)); err != nil {
-		slog.Warn("audit: middleware event failed",
+		logger.logger.Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,
 			"error", err)

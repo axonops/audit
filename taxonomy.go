@@ -210,6 +210,33 @@ type Taxonomy struct {
 	// validation, and precomputation succeed. [WithTaxonomy] skips
 	// redundant re-validation when this flag is true.
 	validated bool
+
+	// dev is set by [DevTaxonomy] to signal that this is a permissive
+	// development taxonomy. [NewLogger] emits a slog.Warn when this
+	// flag is true.
+	dev bool
+}
+
+// DevTaxonomy creates a permissive development taxonomy where every
+// listed event type accepts any fields with no required fields. All
+// events are placed in a single "dev" category.
+//
+// DevTaxonomy is for prototyping and testing only. It accepts any
+// event type with any fields and MUST NOT be used in production.
+// [NewLogger] emits a [log/slog] warning when a DevTaxonomy is used.
+func DevTaxonomy(eventTypes ...string) *Taxonomy {
+	events := make(map[string]*EventDef, len(eventTypes))
+	for _, et := range eventTypes {
+		events[et] = &EventDef{}
+	}
+	return &Taxonomy{
+		Version: 1,
+		Categories: map[string]*CategoryDef{
+			"dev": {Events: eventTypes},
+		},
+		Events: events,
+		dev:    true,
+	}
 }
 
 const (
@@ -335,6 +362,7 @@ func deepCopyTaxonomy(t *Taxonomy) *Taxonomy {
 		Version:               t.Version,
 		SuppressEventCategory: t.SuppressEventCategory,
 		validated:             t.validated,
+		dev:                   t.dev,
 	}
 	cp.Categories = deepCopyCategories(t.Categories)
 	cp.Events = deepCopyEvents(t.Events)

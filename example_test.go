@@ -132,8 +132,8 @@ func ExampleLogger_MustHandle() {
 		return
 	}
 
-	fmt.Println("handle name:", docCreate.Name())
-	// Output: handle name: doc_create
+	fmt.Println("handle event type:", docCreate.EventType())
+	// Output: handle event type: doc_create
 }
 
 func ExampleLogger_EnableCategory() {
@@ -283,7 +283,7 @@ func ExampleLogger_SetOutputRoute() {
 				"auth_failure": {Required: []string{"outcome"}},
 			},
 		}),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	if err != nil {
 		log.Fatal(err)

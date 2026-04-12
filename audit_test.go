@@ -90,6 +90,8 @@ func TestLogger_Audit_MissingRequiredField(t *testing.T) {
 		// missing actor_id and subject
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), "missing required fields")
 	assert.Contains(t, err.Error(), "actor_id")
 	assert.Contains(t, err.Error(), "subject")
@@ -116,6 +118,8 @@ func TestLogger_Audit_UnknownEventType(t *testing.T) {
 
 	err := logger.AuditEvent(audit.NewEvent("schema_registr", audit.Fields{}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.Contains(t, err.Error(), "unknown event type")
 	assert.Contains(t, err.Error(), "schema_registr")
 }
@@ -132,6 +136,8 @@ func TestLogger_Audit_UnknownFieldStrict(t *testing.T) {
 		"bogus_field": "value",
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownField)
 	assert.Contains(t, err.Error(), "unknown fields")
 	assert.Contains(t, err.Error(), "bogus_field")
 }
@@ -459,15 +465,25 @@ func TestWithStandardFieldDefaults_EmptyStringOverride(t *testing.T) {
 	assert.Equal(t, "", record["source_ip"], "empty string counts as set -- no default applied")
 }
 
-func TestWithStandardFieldDefaults_SetOnce(t *testing.T) {
+func TestWithStandardFieldDefaults_LastWins(t *testing.T) {
 	t.Parallel()
-	_, err := audit.NewLogger(
+	out := testhelper.NewMockOutput("test")
+	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "a"}),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "b"}),
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithOutputs(out),
 	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "standard field defaults already set")
+	require.NoError(t, err, "multiple WithStandardFieldDefaults calls should not error (last wins)")
+
+	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "ok"}))
+	require.NoError(t, err)
+	require.NoError(t, logger.Close())
+	require.Equal(t, 1, out.EventCount())
+
+	ev := out.GetEvent(0)
+	assert.Equal(t, "b", ev["source_ip"], "second call should win (last wins)")
 }
 
 func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
@@ -657,7 +673,7 @@ func TestLogger_Handle_Valid(t *testing.T) {
 	h, err := logger.Handle("schema_register")
 	require.NoError(t, err)
 	require.NotNil(t, h)
-	assert.Equal(t, "schema_register", h.Name())
+	assert.Equal(t, "schema_register", h.EventType())
 }
 
 func TestLogger_Handle_Error(t *testing.T) {
@@ -678,7 +694,7 @@ func TestLogger_MustHandle_Valid(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		h := logger.MustHandle("schema_register")
-		assert.Equal(t, "schema_register", h.Name())
+		assert.Equal(t, "schema_register", h.EventType())
 	})
 }
 
@@ -1215,9 +1231,9 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
-		}, nil),
+		})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
@@ -1247,9 +1263,9 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{
 			ExcludeCategories: []string{"security"},
-		}, nil),
+		})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
@@ -1586,7 +1602,7 @@ func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
-		audit.WithNamedOutput(out, nil, nil),
+		audit.WithNamedOutput(out),
 	)
 	require.NoError(t, err)
 
@@ -2014,7 +2030,7 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -2044,7 +2060,7 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -2254,8 +2270,8 @@ func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
 	o2 := &destKeyOutput{name: "out2", key: "localhost:514"}
 	_, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(o1, nil, nil),
-		audit.WithNamedOutput(o2, nil, nil),
+		audit.WithNamedOutput(o1),
+		audit.WithNamedOutput(o2),
 	)
 	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
 	assert.Contains(t, err.Error(), "out1")
@@ -2684,9 +2700,9 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out1, nil, nil),    // default JSON
-		audit.WithNamedOutput(out2, nil, cefFmt), // CEF
-		audit.WithNamedOutput(out3, nil, nil),    // default JSON (shared)
+		audit.WithNamedOutput(out1),                                // default JSON
+		audit.WithNamedOutput(out2, audit.OutputFormatter(cefFmt)), // CEF
+		audit.WithNamedOutput(out3),                                // default JSON (shared)
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2718,13 +2734,13 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out1, nil, nil), // receives all events
-		audit.WithNamedOutput(out2, &audit.EventRoute{
+		audit.WithNamedOutput(out1), // receives all events
+		audit.WithNamedOutput(out2, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
-		}, nil), // receives only write events
-		audit.WithNamedOutput(out3, &audit.EventRoute{
+		})), // receives only write events
+		audit.WithNamedOutput(out3, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
-		}, nil), // receives only security events — filters schema_register
+		})), // receives only security events — filters schema_register
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2871,13 +2887,12 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC("bench", &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("benchmark-salt-value-32-bytes!!!"),
 			Algorithm:   "HMAC-SHA-256",
-		}),
+		})),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2905,7 +2920,7 @@ func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, nil, nil),
+		audit.WithNamedOutput(out),
 		audit.WithStandardFieldDefaults(map[string]string{
 			"source_ip":  "10.0.0.1",
 			"actor_id":   "system",
@@ -2937,7 +2952,7 @@ func BenchmarkDeliverToOutputs_WithMetadataWriter(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(mock, nil, nil),
+		audit.WithNamedOutput(mock),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2961,8 +2976,8 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	logger, err := audit.NewLogger(
 		audit.WithBufferSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(mwOut, nil, nil),
-		audit.WithNamedOutput(plainOut, nil, nil),
+		audit.WithNamedOutput(mwOut),
+		audit.WithNamedOutput(plainOut),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -3453,13 +3468,12 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC("test", &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("test-salt-sixteen-bytes!"),
 			Algorithm:   "HMAC-SHA-256",
-		}),
+		})),
 	)
 	require.NoError(t, err)
 
@@ -3509,13 +3523,12 @@ func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC("test", &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "2026-Q1",
 			SaltValue:   []byte("version-test-salt-16b!"),
 			Algorithm:   "HMAC-SHA-256",
-		}),
+		})),
 	)
 	require.NoError(t, err)
 
@@ -3599,11 +3612,9 @@ events:
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
 		// "full" output: no label exclusions — gets all fields including email.
-		audit.WithNamedOutput(fullOut, nil, nil),
-		audit.WithOutputHMAC("full", fullHMACCfg),
+		audit.WithNamedOutput(fullOut, audit.OutputHMAC(fullHMACCfg)),
 		// "stripped" output: excludes PII — email is removed before HMAC.
-		audit.WithNamedOutput(strippedOut, nil, nil, "pii"),
-		audit.WithOutputHMAC("stripped", strippedHMACCfg),
+		audit.WithNamedOutput(strippedOut, audit.OutputExcludeLabels("pii"), audit.OutputHMAC(strippedHMACCfg)),
 	)
 	require.NoError(t, err)
 
@@ -3669,14 +3680,13 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(hmacOut, nil, nil),
-		audit.WithOutputHMAC("with-hmac", &audit.HMACConfig{
+		audit.WithNamedOutput(hmacOut, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
 			Algorithm:   "HMAC-SHA-256",
-		}),
-		audit.WithNamedOutput(baseOut, nil, nil),
+		})),
+		audit.WithNamedOutput(baseOut),
 	)
 	require.NoError(t, err)
 
@@ -3747,14 +3757,13 @@ events:
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
 		// Both outputs exclude PII — same payload, one with HMAC.
-		audit.WithNamedOutput(hmacOut, nil, nil, "pii"),
-		audit.WithOutputHMAC("hmac-stripped", &audit.HMACConfig{
+		audit.WithNamedOutput(hmacOut, audit.OutputExcludeLabels("pii"), audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
 			Algorithm:   "HMAC-SHA-256",
-		}),
-		audit.WithNamedOutput(baseOut, nil, nil, "pii"),
+		})),
+		audit.WithNamedOutput(baseOut, audit.OutputExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -4176,7 +4185,7 @@ func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -4219,13 +4228,12 @@ func TestMetadataWriter_WithHMAC_ReceivesHMACData(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, nil, nil),
-		audit.WithOutputHMAC("mw-hmac", &audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("hmac-test-salt-value!"),
 			Algorithm:   "HMAC-SHA-256",
-		}),
+		})),
 	)
 	require.NoError(t, err)
 
@@ -4281,7 +4289,7 @@ events:
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
 		// Exclude PII — email must not appear in the data received by WriteWithMetadata.
-		audit.WithNamedOutput(out, nil, nil, "pii"),
+		audit.WithNamedOutput(out, audit.OutputExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -4375,8 +4383,8 @@ func TestMetadataWriter_MixedOutputs_IsolationOnError(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(failingMW, nil, nil),
-		audit.WithNamedOutput(successOut, nil, nil),
+		audit.WithNamedOutput(failingMW),
+		audit.WithNamedOutput(successOut),
 	)
 	require.NoError(t, err)
 
@@ -4410,8 +4418,8 @@ func TestMetadataWriter_CachedAssertion_Correct(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(mwOut, nil, nil),
-		audit.WithNamedOutput(plainOut, nil, nil),
+		audit.WithNamedOutput(mwOut),
+		audit.WithNamedOutput(plainOut),
 	)
 	require.NoError(t, err)
 
@@ -4571,7 +4579,7 @@ events:
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
 		// Excluding "pii" triggers formatWithExclusion (FormatOptions non-nil).
-		audit.WithNamedOutput(out, nil, &exclusionErrorFormatter{}, "pii"),
+		audit.WithNamedOutput(out, audit.OutputFormatter(&exclusionErrorFormatter{}), audit.OutputExcludeLabels("pii")),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)

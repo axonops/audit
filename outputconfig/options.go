@@ -17,6 +17,7 @@ package outputconfig
 import (
 	"time"
 
+	audit "github.com/axonops/go-audit"
 	"github.com/axonops/go-audit/secrets"
 )
 
@@ -29,6 +30,8 @@ type LoadOption func(*loadOptions)
 
 // loadOptions holds the resolved options for a Load call.
 type loadOptions struct {
+	coreMetrics   audit.Metrics
+	factories     map[string]audit.OutputFactory
 	providers     []secrets.Provider
 	secretTimeout time.Duration
 }
@@ -52,6 +55,29 @@ func WithSecretTimeout(d time.Duration) LoadOption {
 		if d > 0 {
 			o.secretTimeout = d
 		}
+	}
+}
+
+// WithCoreMetrics sets the core [audit.Metrics] implementation that is
+// forwarded to output factories during construction. If m is nil,
+// factories receive nil metrics (equivalent to not calling this option).
+// This option replaces the former positional `coreMetrics` parameter
+// on [Load].
+func WithCoreMetrics(m audit.Metrics) LoadOption {
+	return func(o *loadOptions) {
+		o.coreMetrics = m
+	}
+}
+
+// WithFactory registers a per-call output factory override for the
+// given type name. Per-call factories take precedence over globally
+// registered factories. Multiple calls for the same type: last wins.
+func WithFactory(typeName string, factory audit.OutputFactory) LoadOption {
+	return func(o *loadOptions) {
+		if o.factories == nil {
+			o.factories = make(map[string]audit.OutputFactory)
+		}
+		o.factories[typeName] = factory
 	}
 }
 

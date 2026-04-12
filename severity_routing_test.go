@@ -369,7 +369,7 @@ func TestSetRoute_CopiesMinSeverityPointer(t *testing.T) {
 	out := testhelper.NewMockOutput("copy-min")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -401,7 +401,7 @@ func TestSetRoute_CopiesMaxSeverityPointer(t *testing.T) {
 	out := testhelper.NewMockOutput("copy-max")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -432,7 +432,7 @@ func TestGetRoute_ReturnsIndependentSeverityPointers(t *testing.T) {
 	out := testhelper.NewMockOutput("get-copy")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(4)}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(4)})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -463,7 +463,7 @@ func TestSetRoute_NilSeverityPointersPreserved(t *testing.T) {
 	out := testhelper.NewMockOutput("nil-sev")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -679,7 +679,7 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 	out := testhelper.NewMockOutput("sev-filter")
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(7)}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(7)})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -735,7 +735,7 @@ events:
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tax),
 		// Output route: MinSeverity 5 — only events with severity >= 5 delivered.
-		audit.WithNamedOutput(out, &audit.EventRoute{MinSeverity: intPtr(5)}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(5)})),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, logger.Close()) })
@@ -878,7 +878,7 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	logger, err := audit.NewLogger(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, &audit.EventRoute{}, nil),
+		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
 

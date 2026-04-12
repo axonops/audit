@@ -16,6 +16,7 @@ package audit
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -111,23 +112,51 @@ func WithTimezone(tz string) Option {
 	}
 }
 
+// WithSynchronousDelivery configures the logger to deliver events
+// inline within [Logger.AuditEvent] instead of via the async channel
+// and drain goroutine. Events are immediately available in outputs
+// after AuditEvent returns.
+//
+// This mode is useful for testing (no Close-before-assert ceremony)
+// and for simple deployments (CLI tools, Lambda functions) where
+// async complexity is unwanted. [Logger.Close] is still safe to call
+// but is not required before reading output.
+func WithSynchronousDelivery() Option {
+	return func(l *Logger) error {
+		l.synchronous = true
+		return nil
+	}
+}
+
+// WithLogger sets the [log/slog.Logger] used for library diagnostics
+// (lifecycle messages, buffer drops, format errors). When not set or
+// when l is nil, [slog.Default] is used. Pass
+// slog.New(slog.DiscardHandler) to silence all library output.
+func WithLogger(l *slog.Logger) Option {
+	return func(lg *Logger) error {
+		lg.logger = l
+		return nil
+	}
+}
+
 // WithStandardFieldDefaults sets deployment-wide default values for
 // reserved standard fields. Defaults are applied in [Logger.AuditEvent]
 // before validation — a default satisfies required: true constraints.
 // Per-event values always override defaults (key existence check, not
-// zero value). This option may be called at most once; a second call
-// returns an error.
+// zero value). When called multiple times, the last call wins.
 func WithStandardFieldDefaults(defaults map[string]string) Option {
 	return func(l *Logger) error {
-		if l.standardFieldDefaults != nil {
-			return fmt.Errorf("audit: standard field defaults already set -- cannot be overridden")
-		}
 		for k := range defaults {
 			if !IsReservedStandardField(k) {
 				return fmt.Errorf("audit: standard field default key %q is not a reserved standard field", k)
 			}
 		}
-		l.standardFieldDefaults = defaults
+		// Copy to prevent caller mutation after construction.
+		cp := make(map[string]string, len(defaults))
+		for k, v := range defaults {
+			cp[k] = v
+		}
+		l.standardFieldDefaults = cp
 		return nil
 	}
 }
@@ -182,18 +211,63 @@ func WithOutputs(outputs ...Output) Option {
 	}
 }
 
-// WithNamedOutput adds a single named output with an optional
-// [EventRoute] and per-output [Formatter]. The route restricts which
-// events are delivered to this output. If formatter is nil, the
-// logger's default formatter is used.
-//
-// excludeLabels specifies sensitivity labels whose fields should be
-// stripped from events before delivery to this output. When non-empty,
-// the taxonomy MUST define a [SensitivityConfig] and every label in
-// excludeLabels MUST be defined within it; [NewLogger] returns an
-// error if either condition is violated. An empty slice means no
-// field stripping — the output receives all fields. Framework fields
-// (timestamp, event_type, severity, duration_ms) are never stripped.
+// OutputOption configures a single output registered via
+// [WithNamedOutput]. Use [OutputRoute], [OutputFormatter],
+// [OutputExcludeLabels], and [OutputHMAC] to customise per-output
+// behaviour.
+type OutputOption func(*outputEntryBuilder)
+
+// outputEntryBuilder accumulates per-output configuration before
+// the output entry is registered on the logger.
+type outputEntryBuilder struct {
+	formatter     Formatter
+	route         *EventRoute
+	hmacConfig    *HMACConfig
+	excludeLabels []string
+}
+
+// OutputRoute sets the per-output event route. The route restricts
+// which events are delivered to this output. Nil means all
+// globally-enabled events are delivered.
+func OutputRoute(r *EventRoute) OutputOption {
+	return func(b *outputEntryBuilder) {
+		b.route = r
+	}
+}
+
+// OutputFormatter overrides the logger's default formatter for this
+// output. Nil means the logger's default formatter is used.
+func OutputFormatter(f Formatter) OutputOption {
+	return func(b *outputEntryBuilder) {
+		b.formatter = f
+	}
+}
+
+// OutputExcludeLabels specifies sensitivity labels whose fields should
+// be stripped from events before delivery to this output. When
+// non-empty, the taxonomy MUST define a [SensitivityConfig] and every
+// label MUST be defined within it; [NewLogger] returns an error if
+// either condition is violated. An empty call means no field stripping.
+// Framework fields are never stripped.
+func OutputExcludeLabels(labels ...string) OutputOption {
+	return func(b *outputEntryBuilder) {
+		b.excludeLabels = labels
+	}
+}
+
+// OutputHMAC configures per-output HMAC integrity. The config is
+// validated eagerly during [NewLogger] option application — invalid
+// configs (short salt, unknown algorithm) cause [NewLogger] to return
+// an error. Nil means no HMAC for this output.
+func OutputHMAC(cfg *HMACConfig) OutputOption {
+	return func(b *outputEntryBuilder) {
+		b.hmacConfig = cfg
+	}
+}
+
+// WithNamedOutput adds a single named output with optional per-output
+// configuration. Use [OutputRoute], [OutputFormatter],
+// [OutputExcludeLabels], and [OutputHMAC] to customise behaviour.
 //
 // WithNamedOutput MUST NOT be combined with [WithOutputs]; if
 // [WithOutputs] was already applied, WithNamedOutput returns an error.
@@ -202,18 +276,27 @@ func WithOutputs(outputs ...Output) Option {
 // cause [NewLogger] to return an error. Duplicate destinations are
 // also detected via [DestinationKeyer]. Routes are validated against
 // the taxonomy after all options have been applied.
-func WithNamedOutput(output Output, route *EventRoute, formatter Formatter, excludeLabels ...string) Option {
+func WithNamedOutput(output Output, opts ...OutputOption) Option {
 	return func(l *Logger) error {
 		if l.usedWithOutputs {
 			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
 		}
-		return l.addNamedOutput(output, route, formatter, excludeLabels)
+		var b outputEntryBuilder
+		for _, opt := range opts {
+			opt(&b)
+		}
+		if b.hmacConfig != nil {
+			if err := ValidateHMACConfig(b.hmacConfig); err != nil {
+				return err
+			}
+		}
+		return l.addNamedOutput(output, &b)
 	}
 }
 
 // addNamedOutput registers a named output with dedup checking and
-// optional route/formatter/exclude-label configuration.
-func (l *Logger) addNamedOutput(output Output, route *EventRoute, formatter Formatter, excludeLabels []string) error {
+// optional route/formatter/exclude-label/HMAC configuration.
+func (l *Logger) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	name := output.Name()
 	if l.outputsByName == nil {
 		l.outputsByName = make(map[string]*outputEntry)
@@ -229,41 +312,20 @@ func (l *Logger) addNamedOutput(output Output, route *EventRoute, formatter Form
 	}
 	oe := &outputEntry{
 		output:    output,
-		formatter: formatter,
+		formatter: b.formatter,
 	}
-	if route != nil {
-		oe.setRoute(route)
+	if b.route != nil {
+		oe.setRoute(b.route)
 	}
-	if len(excludeLabels) > 0 {
-		oe.excludedLabels = buildLabelSet(excludeLabels)
+	if len(b.excludeLabels) > 0 {
+		oe.excludedLabels = buildLabelSet(b.excludeLabels)
+	}
+	if b.hmacConfig != nil {
+		oe.hmacConfig = b.hmacConfig
 	}
 	l.entries = append(l.entries, oe)
 	l.outputsByName[name] = oe
 	return nil
-}
-
-// setOutputHMAC configures HMAC on a named output. Called by the
-// outputconfig loader after all outputs have been registered.
-func (l *Logger) setOutputHMAC(name string, cfg *HMACConfig) error {
-	oe, ok := l.outputsByName[name]
-	if !ok {
-		return fmt.Errorf("audit: unknown output %q for hmac configuration", name)
-	}
-	oe.hmacConfig = cfg
-	return nil
-}
-
-// WithOutputHMAC configures HMAC on a named output. Used by the
-// outputconfig loader to apply HMAC settings after output registration.
-// The config is validated — invalid configs (short salt, unknown
-// algorithm) cause [NewLogger] to return an error.
-func WithOutputHMAC(name string, cfg *HMACConfig) Option {
-	return func(l *Logger) error {
-		if err := ValidateHMACConfig(cfg); err != nil {
-			return err
-		}
-		return l.setOutputHMAC(name, cfg)
-	}
 }
 
 // WithBufferSize sets the async channel capacity for the logger.

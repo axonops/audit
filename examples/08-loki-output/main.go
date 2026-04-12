@@ -45,26 +45,10 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
 func main() {
 	// Parse taxonomy.
-	taxonomy, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
-	}
-
-	// Load output configuration — creates the Loki output from YAML.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, taxonomy, nil)
-	if err != nil {
-		log.Fatalf("load outputs: %v", err)
-	}
-
-	// Create the logger with the Loki output.
-	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
-	opts = append(opts, result.Options...)
-	logger, err := audit.NewLogger(opts...)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

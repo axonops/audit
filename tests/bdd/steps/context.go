@@ -38,7 +38,7 @@ import (
 type AuditTestContext struct { //nolint:govet // fieldalignment: readability preferred over packing
 	// Logger state.
 	Logger      *audit.Logger
-	EventHandle *audit.EventType
+	EventHandle *audit.EventHandle
 	LastErr     error
 	Taxonomy    *audit.Taxonomy
 	Options     []audit.Option

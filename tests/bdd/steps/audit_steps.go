@@ -341,8 +341,8 @@ func registerAuditThenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		if tc.EventHandle == nil {
 			return fmt.Errorf("handle is nil")
 		}
-		if tc.EventHandle.Name() != name {
-			return fmt.Errorf("handle name: want %q, got %q", name, tc.EventHandle.Name())
+		if tc.EventHandle.EventType() != name {
+			return fmt.Errorf("handle name: want %q, got %q", name, tc.EventHandle.EventType())
 		}
 		return nil
 	})
@@ -432,6 +432,7 @@ func registerAuditThenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the output should contain field "([^"]*)" as a positive integer$`, func(f string) error { return assertFieldPositiveInt(tc, f) })
 	ctx.Step(`^the output should not contain field "([^"]*)"$`, func(f string) error { return assertFieldAbsent(tc, f) })
 	ctx.Step(`^the audit call should return an error wrapping "([^"]*)"$`, func(s string) error { return assertSentinelError(tc, s) })
+	ctx.Step(`^the audit call should return an error NOT wrapping "([^"]*)"$`, func(s string) error { return assertNotSentinelError(tc, s) })
 }
 
 func assertNoEvents(tc *AuditTestContext) error {
@@ -543,21 +544,40 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 	return fmt.Errorf("no event matching expected fields in %d events", len(events))
 }
 
+// sentinelsByName maps BDD sentinel names to their Go error values.
+var sentinelsByName = map[string]error{
+	"ErrClosed":               audit.ErrClosed,
+	"ErrBufferFull":           audit.ErrBufferFull,
+	"ErrValidation":           audit.ErrValidation,
+	"ErrUnknownEventType":     audit.ErrUnknownEventType,
+	"ErrMissingRequiredField": audit.ErrMissingRequiredField,
+	"ErrUnknownField":         audit.ErrUnknownField,
+}
+
 func assertSentinelError(tc *AuditTestContext, sentinel string) error {
 	if tc.LastErr == nil {
 		return fmt.Errorf("expected error wrapping %q, got nil", sentinel)
 	}
-	switch sentinel {
-	case "ErrClosed":
-		if !errors.Is(tc.LastErr, audit.ErrClosed) {
-			return fmt.Errorf("expected ErrClosed, got: %w", tc.LastErr)
-		}
-	case "ErrBufferFull":
-		if !errors.Is(tc.LastErr, audit.ErrBufferFull) {
-			return fmt.Errorf("expected ErrBufferFull, got: %w", tc.LastErr)
-		}
-	default:
+	target, ok := sentinelsByName[sentinel]
+	if !ok {
 		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	if !errors.Is(tc.LastErr, target) {
+		return fmt.Errorf("expected %s, got: %w", sentinel, tc.LastErr)
+	}
+	return nil
+}
+
+func assertNotSentinelError(tc *AuditTestContext, sentinel string) error {
+	if tc.LastErr == nil {
+		return nil // no error means it does not wrap anything
+	}
+	target, ok := sentinelsByName[sentinel]
+	if !ok {
+		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	if errors.Is(tc.LastErr, target) {
+		return fmt.Errorf("expected error NOT wrapping %s, but it does: %w", sentinel, tc.LastErr)
 	}
 	return nil
 }

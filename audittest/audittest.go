@@ -45,6 +45,13 @@ func WithDisabled() Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithDisabled()) }
 }
 
+// WithSync creates a synchronous test logger where events are
+// available in the [Recorder] immediately after [audit.Logger.AuditEvent]
+// returns. No Close-before-assert ceremony is needed.
+func WithSync() Option {
+	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithSynchronousDelivery()) }
+}
+
 // NewLogger creates a test audit logger with an in-memory [Recorder]
 // and [MetricsRecorder]. The taxonomy is parsed from YAML bytes.
 //
@@ -71,11 +78,11 @@ func NewLogger(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Logge
 
 // NewLoggerQuick creates a test audit logger with a permissive
 // taxonomy containing the named event types. No required fields, no
-// unknown field validation. Use for tests that only care about which
-// events were emitted, not about field validation.
+// unknown field validation. Defaults to synchronous delivery — events
+// are available in the Recorder immediately without calling Close.
 func NewLoggerQuick(tb testing.TB, eventTypes ...string) (*audit.Logger, *Recorder, *MetricsRecorder) {
 	tb.Helper()
-	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive))
+	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive), WithSync())
 }
 
 // QuickTaxonomy builds a minimal [*audit.Taxonomy] where every listed

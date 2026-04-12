@@ -33,27 +33,10 @@ import (
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-//go:embed outputs.yaml
-var outputsYAML []byte
-
 func main() {
-	// 1. Parse the taxonomy.
-	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
-	}
-
-	// 2. Load output configuration — stdout needs no blank import.
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, nil)
-	if err != nil {
-		log.Fatalf("load outputs: %v", err)
-	}
-
-	// 3. Create the logger.
-	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
-
-	logger, err := audit.NewLogger(opts...)
+	// Single-call facade: parse taxonomy, load outputs, create logger.
+	// Stdout needs no blank import — it is always registered.
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

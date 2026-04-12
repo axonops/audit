@@ -179,9 +179,9 @@ func TestFanOut_AllOutputs(t *testing.T) {
 	// Create logger with all three outputs.
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(syslogOut, nil, nil),
-		audit.WithNamedOutput(webhookOut, nil, nil),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(syslogOut),
+		audit.WithNamedOutput(webhookOut),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
@@ -238,10 +238,10 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(fileOut, nil, nil), // all events
-		audit.WithNamedOutput(webhookOut, &audit.EventRoute{
+		audit.WithNamedOutput(fileOut), // all events
+		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
-		}, nil), // security only
+		})), // security only
 	)
 	require.NoError(t, err)
 
@@ -325,9 +325,9 @@ func TestFanOut_PartialFailure(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(fileOut, nil, nil),
-		audit.WithNamedOutput(syslogOut, nil, nil),
-		audit.WithNamedOutput(webhookOut, nil, nil),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(syslogOut),
+		audit.WithNamedOutput(webhookOut),
 	)
 	require.NoError(t, err)
 
@@ -378,8 +378,8 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(fileOut, nil, nil),       // JSON (default)
-		audit.WithNamedOutput(webhookOut, nil, cefFmt), // CEF
+		audit.WithNamedOutput(fileOut),                                   // JSON (default)
+		audit.WithNamedOutput(webhookOut, audit.OutputFormatter(cefFmt)), // CEF
 	)
 	require.NoError(t, err)
 

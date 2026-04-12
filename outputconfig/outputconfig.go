@@ -150,7 +150,7 @@ func (o *NamedOutput) String() string {
 // The ctx parameter controls timeout for network I/O during secret
 // resolution. Use [WithSecretTimeout] to configure the resolution
 // timeout.
-func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetrics audit.Metrics, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
+func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
 	lo := resolveOptions(opts)
 
 	// Build the secret resolver from registered providers.
@@ -239,7 +239,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetric
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, coreMetrics, secretResolver)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, lo.coreMetrics, lo.factories, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -295,12 +295,20 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, coreMetric
 	}
 
 	for i := range outputs {
-		result.Options = append(result.Options,
-			audit.WithNamedOutput(outputs[i].Output, outputs[i].Route, outputs[i].Formatter, outputs[i].ExcludeLabels...))
-		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
-			result.Options = append(result.Options,
-				audit.WithOutputHMAC(outputs[i].Name, outputs[i].HMACConfig))
+		var outOpts []audit.OutputOption
+		if outputs[i].Route != nil {
+			outOpts = append(outOpts, audit.OutputRoute(outputs[i].Route))
 		}
+		if outputs[i].Formatter != nil {
+			outOpts = append(outOpts, audit.OutputFormatter(outputs[i].Formatter))
+		}
+		if len(outputs[i].ExcludeLabels) > 0 {
+			outOpts = append(outOpts, audit.OutputExcludeLabels(outputs[i].ExcludeLabels...))
+		}
+		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
+			outOpts = append(outOpts, audit.OutputHMAC(outputs[i].HMACConfig))
+		}
+		result.Options = append(result.Options, audit.WithNamedOutput(outputs[i].Output, outOpts...))
 	}
 
 	return result, nil

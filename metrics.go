@@ -57,3 +57,38 @@ type Metrics interface {
 	// main async buffer was full.
 	RecordBufferDrop()
 }
+
+// NoOpMetrics is a [Metrics] implementation where every method is a
+// no-op. Embed it in your own struct to override only the methods you
+// care about:
+//
+//	type MyMetrics struct {
+//	    audit.NoOpMetrics
+//	    drops atomic.Int64
+//	}
+//	func (m *MyMetrics) RecordBufferDrop() { m.drops.Add(1) }
+type NoOpMetrics struct{}
+
+// Compile-time interface check.
+var _ Metrics = NoOpMetrics{}
+
+// RecordEvent is a no-op.
+func (NoOpMetrics) RecordEvent(string, string) {}
+
+// RecordOutputError is a no-op.
+func (NoOpMetrics) RecordOutputError(string) {}
+
+// RecordOutputFiltered is a no-op.
+func (NoOpMetrics) RecordOutputFiltered(string) {}
+
+// RecordValidationError is a no-op.
+func (NoOpMetrics) RecordValidationError(string) {}
+
+// RecordFiltered is a no-op.
+func (NoOpMetrics) RecordFiltered(string) {}
+
+// RecordSerializationError is a no-op.
+func (NoOpMetrics) RecordSerializationError(string) {}
+
+// RecordBufferDrop is a no-op.
+func (NoOpMetrics) RecordBufferDrop() {}

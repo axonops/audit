@@ -90,6 +90,14 @@ type Logger struct {
 	// the former Config.Enabled field (inverted: disabled=true means
 	// the logger does nothing).
 	disabled bool
+	// synchronous is set by WithSynchronousDelivery to deliver events
+	// inline within AuditEvent instead of via the async channel. No
+	// drain goroutine is started. Useful for testing and CLIs.
+	synchronous bool
+	// syncMu guards processEntry calls in synchronous delivery mode.
+	// processEntry reuses per-output state (formatOpts, HMAC) that is
+	// only safe under single-goroutine access.
+	syncMu sync.Mutex
 	// Framework fields set via WithAppName, WithHost, WithTimezone.
 	// PID is captured once at construction via os.Getpid().
 	appName  string
@@ -101,7 +109,8 @@ type Logger struct {
 	// read-only after construction. Applied in auditInternal before
 	// validation so that defaults satisfy required: true constraints.
 	standardFieldDefaults map[string]string
-	drops                 dropLimiter // rate-limits buffer-full slog.Warn
+	logger                *slog.Logger // library diagnostics logger
+	drops                 dropLimiter  // rate-limits buffer-full warnings
 }
 
 // NewLogger creates a new audit [Logger] from the given options.
@@ -137,9 +146,15 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	// Release construction-only state.
 	l.destKeys = nil
 
+	if l.logger == nil {
+		l.logger = slog.Default()
+	}
+
 	if l.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
+
+	l.applyDevTaxonomyOverrides()
 
 	if err := l.validateOutputRoutes(); err != nil {
 		return nil, err
@@ -147,38 +162,54 @@ func NewLogger(opts ...Option) (*Logger, error) {
 
 	l.prepareOutputEntries()
 
-	// Default formatter if WithFormatter was not called.
-	if l.formatter == nil {
-		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
-	}
-
-	// Capture PID and timezone once at construction.
-	l.pid = os.Getpid()
-	if l.timezone == "" {
-		l.timezone = time.Now().Location().String()
-	}
-
-	// Propagate framework fields to all formatters that support them.
-	l.propagateFrameworkFields()
+	l.applyConstructionDefaults()
 
 	if l.disabled {
 		return l, nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	l.cancel = cancel
-	l.ch = make(chan *auditEntry, l.cfg.BufferSize)
-	l.drainDone = make(chan struct{})
-	go l.drainLoop(ctx)
+	if !l.synchronous {
+		ctx, cancel := context.WithCancel(context.Background())
+		l.cancel = cancel
+		l.ch = make(chan *auditEntry, l.cfg.BufferSize)
+		l.drainDone = make(chan struct{})
+		go l.drainLoop(ctx)
+	}
 
-	slog.Info("audit: logger created",
+	l.logger.Info("audit: logger created",
 		"buffer_size", l.cfg.BufferSize,
 		"drain_timeout", l.cfg.DrainTimeout,
 		"validation_mode", string(l.cfg.ValidationMode),
 		"outputs", len(l.entries),
+		"synchronous", l.synchronous,
 	)
 
 	return l, nil
+}
+
+// applyDevTaxonomyOverrides warns about DevTaxonomy and forces permissive
+// validation mode when a dev taxonomy is used.
+func (l *Logger) applyDevTaxonomyOverrides() {
+	if l.taxonomy == nil || !l.taxonomy.dev {
+		return
+	}
+	l.logger.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+	if l.cfg.ValidationMode == ValidationStrict {
+		l.cfg.ValidationMode = ValidationPermissive
+	}
+}
+
+// applyConstructionDefaults sets formatter, PID, timezone, and propagates
+// framework fields. Called once during NewLogger after all options are applied.
+func (l *Logger) applyConstructionDefaults() {
+	if l.formatter == nil {
+		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
+	}
+	l.pid = os.Getpid()
+	if l.timezone == "" {
+		l.timezone = time.Now().Location().String()
+	}
+	l.propagateFrameworkFields()
 }
 
 // AuditEvent validates and enqueues a typed audit event. Use
@@ -207,24 +238,8 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 		return ErrClosed
 	}
 
-	def, ok := l.taxonomy.Events[eventType]
-	if !ok {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
-		}
-		return fmt.Errorf("audit: unknown event type %q", eventType)
-	}
-
-	// Copy fields and merge defaults in one pass to avoid double
-	// allocation. The copy isolates the caller's map from the drain
-	// goroutine; defaults are applied into the copy so that they
-	// satisfy required: true validation without mutating the original.
-	copied := l.copyFieldsWithDefaults(fields)
-
-	if err := l.validateFields(eventType, def, copied); err != nil {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
-		}
+	_, copied, err := l.validateEvent(eventType, fields)
+	if err != nil {
 		return err
 	}
 
@@ -241,7 +256,47 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 	}
 	entry.eventType = eventType
 	entry.fields = copied
+
+	if l.synchronous {
+		l.deliverSync(entry)
+		return nil
+	}
 	return l.enqueue(entry)
+}
+
+// validateEvent checks the event type exists, copies fields with defaults,
+// and validates field constraints. Returns the definition and copied fields.
+func (l *Logger) validateEvent(eventType string, fields Fields) (*EventDef, Fields, error) {
+	def, ok := l.taxonomy.Events[eventType]
+	if !ok {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
+		return nil, nil, newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
+	}
+
+	copied := l.copyFieldsWithDefaults(fields)
+
+	if err := l.validateFields(eventType, def, copied); err != nil {
+		if l.metrics != nil {
+			l.metrics.RecordValidationError(eventType)
+		}
+		return nil, nil, err
+	}
+
+	return def, copied, nil
+}
+
+// deliverSync processes an event inline within AuditEvent for
+// synchronous delivery mode. It reuses the same processEntry logic
+// as the drain goroutine, including panic recovery and pool return.
+// A mutex serialises calls because processEntry reuses per-output
+// state (formatOpts, HMAC) that is only safe under single-goroutine
+// access.
+func (l *Logger) deliverSync(entry *auditEntry) {
+	l.syncMu.Lock()
+	defer l.syncMu.Unlock()
+	l.processEntry(entry)
 }
 
 // enqueue attempts a non-blocking send to the async channel. On
@@ -253,7 +308,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		return nil
 	default:
 		l.drops.record(dropWarnInterval, func(dropped int64) {
-			slog.Warn("audit: buffer full, events dropped",
+			l.logger.Warn("audit: buffer full, events dropped",
 				"dropped", dropped,
 				"buffer_size", cap(l.ch))
 		})
@@ -287,15 +342,17 @@ func (l *Logger) Close() error {
 		}
 
 		shutdownStart := time.Now()
-		slog.Info("audit: shutdown started")
+		l.logger.Info("audit: shutdown started")
 
-		l.cancel()
-		l.waitForDrain()
+		if !l.synchronous {
+			l.cancel()
+			l.waitForDrain()
+		}
 
 		var closeErrs []error
 		for _, oe := range l.entries {
 			if err := oe.output.Close(); err != nil {
-				slog.Error("audit: output close failed",
+				l.logger.Error("audit: output close failed",
 					"output", oe.output.Name(),
 					"error", err)
 				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err))
@@ -303,7 +360,7 @@ func (l *Logger) Close() error {
 		}
 		l.closeErr = errors.Join(closeErrs...)
 
-		slog.Info("audit: shutdown complete",
+		l.logger.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
 	})
 	return l.closeErr
@@ -316,7 +373,7 @@ func (l *Logger) waitForDrain() {
 	select {
 	case <-l.drainDone:
 	case <-time.After(l.cfg.DrainTimeout):
-		slog.Warn("audit: drain timed out, some events may be lost",
+		l.logger.Warn("audit: drain timed out, some events may be lost",
 			"drain_timeout", l.cfg.DrainTimeout,
 			"buffer_remaining", len(l.ch))
 	}
@@ -367,7 +424,7 @@ func (l *Logger) EnableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	l.filter.enabledCategories.Store(category, true)
-	slog.Info("audit: category enabled", "category", category)
+	l.logger.Info("audit: category enabled", "category", category)
 	return nil
 }
 
@@ -380,7 +437,7 @@ func (l *Logger) DisableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	l.filter.enabledCategories.Store(category, false)
-	slog.Info("audit: category disabled", "category", category)
+	l.logger.Info("audit: category disabled", "category", category)
 	return nil
 }
 
@@ -394,7 +451,7 @@ func (l *Logger) EnableEvent(eventType string) error {
 	}
 	l.filter.eventOverrides.Store(eventType, true)
 	l.filter.hasEventOverrides.Store(true)
-	slog.Info("audit: event enabled", "event_type", eventType)
+	l.logger.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
@@ -408,7 +465,7 @@ func (l *Logger) DisableEvent(eventType string) error {
 	}
 	l.filter.eventOverrides.Store(eventType, false)
 	l.filter.hasEventOverrides.Store(true)
-	slog.Info("audit: event disabled", "event_type", eventType)
+	l.logger.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -427,7 +484,7 @@ func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
 		return err
 	}
 	oe.setRoute(route)
-	slog.Info("audit: output route set", "output", outputName)
+	l.logger.Info("audit: output route set", "output", outputName)
 	return nil
 }
 
@@ -441,7 +498,7 @@ func (l *Logger) ClearOutputRoute(outputName string) error {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
 	oe.setRoute(&EventRoute{})
-	slog.Info("audit: output route cleared", "output", outputName)
+	l.logger.Info("audit: output route cleared", "output", outputName)
 	return nil
 }
 
@@ -455,21 +512,21 @@ func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 	return oe.getRoute(), nil
 }
 
-// Handle returns an [EventType] handle for the named event type. The
+// Handle returns an [EventHandle] for the named event type. The
 // handle enables zero-allocation audit calls. Returns
 // [ErrHandleNotFound] if the event type is not registered.
-func (l *Logger) Handle(eventType string) (*EventType, error) {
+func (l *Logger) Handle(eventType string) (*EventHandle, error) {
 	if _, ok := l.taxonomy.Events[eventType]; !ok {
 		return nil, fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
-	return &EventType{name: eventType, logger: l}, nil
+	return &EventHandle{name: eventType, logger: l}, nil
 }
 
-// MustHandle returns an [EventType] handle for the named event type.
+// MustHandle returns an [EventHandle] for the named event type.
 // It panics with an error wrapping [ErrHandleNotFound] if the event
 // type is not registered. Use [Logger.Handle] to receive the error
 // instead of panicking.
-func (l *Logger) MustHandle(eventType string) *EventType {
+func (l *Logger) MustHandle(eventType string) *EventHandle {
 	h, err := l.Handle(eventType)
 	if err != nil {
 		panic(err)

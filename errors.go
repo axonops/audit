@@ -14,7 +14,10 @@
 
 package audit
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors returned by the audit package.
 // Use [errors.Is] to test for these in consumer code.
@@ -63,4 +66,65 @@ var (
 	// a multi-document YAML stream, or syntactically invalid. Taxonomy
 	// content validation errors wrap [ErrTaxonomyInvalid] instead.
 	ErrInvalidInput = errors.New("audit: invalid input")
+
+	// ErrValidation is the parent sentinel for all [Logger.AuditEvent]
+	// validation failures (unknown event type, missing required fields,
+	// unknown fields in strict mode). Use [errors.Is] to catch any
+	// validation failure:
+	//
+	//	if errors.Is(err, audit.ErrValidation) { ... }
+	//
+	// [ErrBufferFull] and [ErrClosed] are NOT validation errors.
+	ErrValidation = errors.New("audit: validation error")
+
+	// ErrUnknownEventType is returned by [Logger.AuditEvent] when the
+	// event type is not registered in the taxonomy. Always wrapped
+	// alongside [ErrValidation] via [ValidationError].
+	ErrUnknownEventType = errors.New("audit: unknown event type")
+
+	// ErrMissingRequiredField is returned by [Logger.AuditEvent] when
+	// one or more required fields are absent. Always wrapped alongside
+	// [ErrValidation] via [ValidationError].
+	ErrMissingRequiredField = errors.New("audit: missing required field")
+
+	// ErrUnknownField is returned by [Logger.AuditEvent] in strict
+	// validation mode when one or more fields are not declared in the
+	// taxonomy. Always wrapped alongside [ErrValidation] via
+	// [ValidationError].
+	ErrUnknownField = errors.New("audit: unknown field")
 )
+
+// ValidationError is returned by [Logger.AuditEvent] for event
+// validation failures. It wraps both [ErrValidation] and a specific
+// sentinel ([ErrUnknownEventType], [ErrMissingRequiredField], or
+// [ErrUnknownField]). Use [errors.Is] to match broadly or narrowly,
+// and [errors.As] to access the structured error:
+//
+//	var ve *audit.ValidationError
+//	if errors.As(err, &ve) { log.Println(ve.Error()) }
+type ValidationError struct {
+	wrapped [2]error // pre-allocated to avoid per-Unwrap heap allocation
+	msg     string
+}
+
+// Error returns the human-readable error message. The text is
+// identical to the pre-sentinel format for backwards compatibility.
+func (e *ValidationError) Error() string { return e.msg }
+
+// Unwrap returns the sentinel errors that this validation error wraps.
+// Always includes [ErrValidation]; also includes the specific sentinel
+// when set.
+func (e *ValidationError) Unwrap() []error {
+	return e.wrapped[:]
+}
+
+// newValidationError creates a [ValidationError] with the given
+// specific sentinel and formatted message.
+func newValidationError(sentinel error, format string, args ...any) *ValidationError {
+	ve := &ValidationError{
+		msg: fmt.Sprintf(format, args...),
+	}
+	ve.wrapped[0] = ErrValidation
+	ve.wrapped[1] = sentinel
+	return ve
+}

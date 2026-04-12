@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Basic demonstrates the minimum viable audit event: create a logger
-// with an inline taxonomy, emit one valid event, and show what happens
-// when a required field is missing.
+// Basic demonstrates the absolute minimum: a file-free logger that
+// requires no YAML, no go:embed, and no output configuration. This is
+// the fastest way to evaluate go-audit in a playground or single-file
+// program. For production use, see examples 02+ which use YAML
+// taxonomy and output configuration.
 package main
 
 import (
@@ -25,63 +27,32 @@ import (
 )
 
 func main() {
-	// 1. Define a taxonomy inline. In production you would load this
-	//    from a YAML file — see the code-generation example.
-	tax := &audit.Taxonomy{
-		Version: 1,
-		Categories: map[string]*audit.CategoryDef{
-			"write":    {Events: []string{"user_create", "user_delete"}},
-			"security": {Events: []string{"auth_failure"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create": {
-				Required: []string{"outcome", "actor_id"},
-			},
-			"user_delete": {
-				Required: []string{"outcome", "actor_id"},
-			},
-			"auth_failure": {
-				Required: []string{"outcome", "actor_id"},
-			},
-		},
-	}
-
-	// 2. Create a stdout output — events are printed as JSON lines.
-	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
-	if err != nil {
-		log.Fatalf("create stdout output: %v", err)
-	}
-
-	// 3. Create the logger with the taxonomy and output.
+	// Create a logger with a development taxonomy and stdout output.
+	// DevTaxonomy accepts any event type with any fields — not for production.
 	logger, err := audit.NewLogger(
-		audit.WithTaxonomy(tax),
-		audit.WithOutputs(stdout),
+		audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
+		audit.WithOutputs(audit.Stdout()),
 	)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}
-	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("close logger: %v", closeErr)
-		}
-	}()
+	defer func() { _ = logger.Close() }()
 
-	// 4. Emit a valid event — this prints a JSON line to stdout.
+	// Emit a valid event using slog-style key-value pairs.
 	fmt.Println("--- Valid event ---")
-	if auditErr := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
-		"outcome":  "success",
-		"actor_id": "alice",
-	})); auditErr != nil {
+	if auditErr := logger.AuditEvent(audit.NewEventKV("user_create",
+		"outcome", "success",
+		"actor_id", "alice",
+	)); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
-	// 5. Emit an invalid event — actor_id is missing (required by taxonomy).
-	fmt.Println("\n--- Invalid event (missing required field) ---")
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
-		"outcome": "success",
-		// actor_id intentionally omitted
-	}))
-	if err != nil {
-		fmt.Printf("Validation error: %v\n", err)
+	// Emit another event using the Fields map style.
+	fmt.Println("\n--- Auth failure event ---")
+	if auditErr := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "unknown",
+	})); auditErr != nil {
+		log.Printf("audit error: %v", auditErr)
 	}
 }

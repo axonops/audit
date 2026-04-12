@@ -16,11 +16,12 @@ require (
 )
 
 require (
+	github.com/axonops/audit/secrets v0.1.1 // indirect
+	github.com/axonops/srslog v1.0.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
-	github.com/gravwell/srslog v0.1.1-20250709201549-e1b2fdb7e306 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.5 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect

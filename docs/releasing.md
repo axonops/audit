@@ -14,7 +14,7 @@
 
 ### The Go Module Proxy
 
-When a consumer runs `go get github.com/axonops/go-audit@v0.1.1`, the Go
+When a consumer runs `go get github.com/axonops/audit@v0.1.1`, the Go
 toolchain contacts [proxy.golang.org](https://proxy.golang.org). The proxy
 fetches and permanently caches the module source from GitHub at the exact
 commit pointed to by that tag. The checksum is recorded in
@@ -45,16 +45,16 @@ versions by tag, using a path prefix for sub-modules:
 
 | Module | Directory | Tag format | Tier |
 |--------|-----------|------------|------|
-| `github.com/axonops/go-audit` | `.` (root) | `vX.Y.Z` | 0 |
-| `github.com/axonops/go-audit/secrets` | `secrets/` | `secrets/vX.Y.Z` | 0 |
-| `github.com/axonops/go-audit/file` | `file/` | `file/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/loki` | `loki/` | `loki/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/secrets/openbao` | `secrets/openbao/` | `secrets/openbao/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/secrets/vault` | `secrets/vault/` | `secrets/vault/vX.Y.Z` | 1 |
-| `github.com/axonops/go-audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | 2 |
+| `github.com/axonops/audit` | `.` (root) | `vX.Y.Z` | 0 |
+| `github.com/axonops/audit/secrets` | `secrets/` | `secrets/vX.Y.Z` | 0 |
+| `github.com/axonops/audit/file` | `file/` | `file/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/loki` | `loki/` | `loki/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/secrets/openbao` | `secrets/openbao/` | `secrets/openbao/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/secrets/vault` | `secrets/vault/` | `secrets/vault/vX.Y.Z` | 1 |
+| `github.com/axonops/audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | 2 |
 
 ### Three-Tier Tagging
 
@@ -82,7 +82,7 @@ carry no API stability guarantee. Breaking changes MAY occur between minor
 versions (`v0.1.x` → `v0.2.x`). Consumers MUST pin to a specific version:
 
 ```bash
-go get github.com/axonops/go-audit@v0.1.1
+go get github.com/axonops/audit@v0.1.1
 ```
 
 The library will increment to v1.0.0 when the API is considered stable. At
@@ -126,11 +126,11 @@ Complete every item before creating any tags. A partial or incorrect release
 cannot be undone.
 
 - [ ] CI is green on `main` — check the
-      [CI workflow](https://github.com/axonops/go-audit/actions/workflows/ci.yml)
+      [CI workflow](https://github.com/axonops/audit/actions/workflows/ci.yml)
 - [ ] `make check` passes locally with no errors or diffs
 - [ ] No `replace` directives in any `go.mod` — `make check-replace` confirms this
 - [ ] All inter-module dependencies reference the correct version. Each
-      sub-module's `go.mod` MUST require `github.com/axonops/go-audit` at the
+      sub-module's `go.mod` MUST require `github.com/axonops/audit` at the
       version being released (or the most recent stable version if releasing
       only a subset of modules). Verify with:
 
@@ -151,7 +151,7 @@ cannot be undone.
 > pre-release checklist before triggering the workflow.
 
 Releases are created via the
-[Release workflow](https://github.com/axonops/go-audit/actions/workflows/release.yml).
+[Release workflow](https://github.com/axonops/audit/actions/workflows/release.yml).
 **Do not create tags manually** — the workflow runs the full CI pipeline
 (unit tests, BDD, integration, lint, security) and only creates tags
 after everything passes.
@@ -178,7 +178,7 @@ smoke test. Monitor the workflow run for the final status.
 
 `goreleaser.yml` runs in parallel (triggered by the `v*` tag push) and
 creates the GitHub Release with binaries, checksums, and SBOMs. Monitor at:
-[Actions → GoReleaser](https://github.com/axonops/go-audit/actions/workflows/goreleaser.yml)
+[Actions → GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
 
 Optionally verify locally:
 
@@ -216,7 +216,7 @@ Example — retracting `v0.1.1` from the core module after publishing `v0.1.2`:
 
 ```go
 // go.mod
-module github.com/axonops/go-audit
+module github.com/axonops/audit
 
 go 1.26.2
 
@@ -291,7 +291,7 @@ accidentally interfere with the release process.
 
 ### How a Consumer Gets Your Code
 
-When a consumer runs `go get github.com/axonops/go-audit@v0.1.1`:
+When a consumer runs `go get github.com/axonops/audit@v0.1.1`:
 
 1. The Go toolchain asks `proxy.golang.org` for the module at that version.
 2. The proxy fetches the source from GitHub at the commit pointed to by the
@@ -320,7 +320,7 @@ GitHub), but the proxy cache would still serve the old bytes for existing
 
 ### Inter-Module Dependencies
 
-Each sub-module depends on `github.com/axonops/go-audit` (the core module).
+Each sub-module depends on `github.com/axonops/audit` (the core module).
 During development, `go.work` resolves these to your local checkout. In
 published modules, the `go.mod` MUST reference a released version of the
 core module — there is no `replace` directive in the committed `go.mod`.
@@ -344,17 +344,17 @@ dependency footprint minimal.
 
 ```bash
 # Core (always required)
-go get github.com/axonops/go-audit@v0.1.1
+go get github.com/axonops/audit@v0.1.1
 
 # Output modules — install only what you use
-go get github.com/axonops/go-audit/file@v0.1.1         # file output with rotation
-go get github.com/axonops/go-audit/syslog@v0.1.1       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
-go get github.com/axonops/go-audit/webhook@v0.1.1      # batched HTTP webhook
-go get github.com/axonops/go-audit/loki@v0.1.1         # Grafana Loki
-go get github.com/axonops/go-audit/outputconfig@v0.1.1 # YAML-based output configuration
+go get github.com/axonops/audit/file@v0.1.1         # file output with rotation
+go get github.com/axonops/audit/syslog@v0.1.1       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
+go get github.com/axonops/audit/webhook@v0.1.1      # batched HTTP webhook
+go get github.com/axonops/audit/loki@v0.1.1         # Grafana Loki
+go get github.com/axonops/audit/outputconfig@v0.1.1 # YAML-based output configuration
 
 # Code generator (dev/build tooling, not a runtime dependency)
-go get github.com/axonops/go-audit/cmd/audit-gen@v0.1.1
+go get github.com/axonops/audit/cmd/audit-gen@v0.1.1
 ```
 
 Each module is versioned independently. You MUST use the same version across
@@ -368,7 +368,7 @@ This library is pre-release (v0.x). The API MAY change between minor
 versions. Pin to an exact version in your `go.mod`:
 
 ```bash
-go get github.com/axonops/go-audit@v0.1.1
+go get github.com/axonops/audit@v0.1.1
 ```
 
 Do not use `@latest` in production `go.mod` files — a new minor release may
@@ -409,7 +409,7 @@ are attached to the release as assets named `sbom.cdx.json` and
 `sbom.spdx.json`.
 
 Download them from the
-[Releases page](https://github.com/axonops/go-audit/releases) or via the
+[Releases page](https://github.com/axonops/audit/releases) or via the
 GitHub CLI:
 
 ```bash

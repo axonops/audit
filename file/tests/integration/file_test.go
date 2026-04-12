@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/axonops/go-audit/file"
+	"github.com/axonops/audit/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"

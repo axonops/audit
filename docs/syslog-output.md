@@ -46,7 +46,7 @@ ingestion natively:
 ## Quick Start
 
 ```bash
-go get github.com/axonops/go-audit/syslog
+go get github.com/axonops/audit/syslog
 ```
 
 ```yaml
@@ -62,7 +62,7 @@ outputs:
 ```
 
 ```go
-import _ "github.com/axonops/go-audit/syslog"  // registers "syslog" factory
+import _ "github.com/axonops/audit/syslog"  // registers "syslog" factory
 ```
 
 The syslog server MUST be reachable at startup — the connection is
@@ -497,7 +497,7 @@ type Metrics interface {
 Register your implementation before calling `outputconfig.Load`. This
 replaces the default factory registered by the blank import. If you
 don't need syslog-specific metrics, the blank import
-`_ "github.com/axonops/go-audit/syslog"` is sufficient.
+`_ "github.com/axonops/audit/syslog"` is sufficient.
 
 ```go
 // When using custom metrics, register explicitly and omit the blank import:

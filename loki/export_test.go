@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // FailingWriter is an io.Writer that always returns an error.

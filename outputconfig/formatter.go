@@ -19,7 +19,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // yamlFormatterConfig is the YAML representation of a formatter.

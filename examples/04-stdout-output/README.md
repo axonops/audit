@@ -99,17 +99,17 @@ go run . 2>/dev/null | jq 'select(.event_type == "user_create")'
 Every other output type requires a blank import to register its factory:
 
 ```go
-import _ "github.com/axonops/go-audit/file"    // registers "file" factory
-import _ "github.com/axonops/go-audit/syslog"  // registers "syslog" factory
-import _ "github.com/axonops/go-audit/webhook" // registers "webhook" factory
-import _ "github.com/axonops/go-audit/loki"    // registers "loki" factory
+import _ "github.com/axonops/audit/file"    // registers "file" factory
+import _ "github.com/axonops/audit/syslog"  // registers "syslog" factory
+import _ "github.com/axonops/audit/webhook" // registers "webhook" factory
+import _ "github.com/axonops/audit/loki"    // registers "loki" factory
 ```
 
 Stdout is different — its factory is registered in the core
-`github.com/axonops/go-audit` package's `init()` function. Since you
+`github.com/axonops/audit` package's `init()` function. Since you
 already import the core package, stdout is always available.
 
-Note: You still need `github.com/axonops/go-audit/outputconfig` to
+Note: You still need `github.com/axonops/audit/outputconfig` to
 load YAML configuration — that's a separate module. But you don't need
 any output-specific blank import for stdout.
 

@@ -18,8 +18,8 @@ import (
 	"context"
 	"fmt"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/secrets"
 	"github.com/goccy/go-yaml"
 )
 

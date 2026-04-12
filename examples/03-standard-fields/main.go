@@ -26,7 +26,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit/outputconfig"
 )
 
 //go:embed taxonomy.yaml

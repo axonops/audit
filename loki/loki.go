@@ -28,7 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // dropWarnInterval is the minimum interval between slog.Warn calls

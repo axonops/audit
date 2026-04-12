@@ -15,13 +15,13 @@
 // Package outputs registers all go-audit output factories with a
 // single blank import:
 //
-//	import _ "github.com/axonops/go-audit/outputs"
+//	import _ "github.com/axonops/audit/outputs"
 //
 // This is a convenience package following the [image/all] pattern.
-// It blank-imports [github.com/axonops/go-audit/file],
-// [github.com/axonops/go-audit/syslog],
-// [github.com/axonops/go-audit/webhook], and
-// [github.com/axonops/go-audit/loki], causing their init() functions
+// It blank-imports [github.com/axonops/audit/file],
+// [github.com/axonops/audit/syslog],
+// [github.com/axonops/audit/webhook], and
+// [github.com/axonops/audit/loki], causing their init() functions
 // to register output factories with the core registry.
 //
 // Production deployments SHOULD import only the output packages they

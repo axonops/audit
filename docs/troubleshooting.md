@@ -27,7 +27,7 @@ This is the most common problem. Work through this checklist:
 | **Per-output route filtering** | An output with `route: include_categories: [security]` only receives security events — write events are silently filtered. | Check your output YAML `route:` block. Remove the route to receive all events. See [Event Routing](event-routing.md). |
 | **Output disabled in YAML** | `enabled: false` on an output silently disables it. | Check your output YAML for `enabled: false`. |
 | **Sensitivity label stripping** | `exclude_labels: [pii]` removes PII-labeled fields — the event is delivered but with fewer fields than expected. | Check your output YAML `exclude_labels`. The event itself is delivered; only labeled fields are stripped. See [Sensitivity Labels](sensitivity-labels.md). |
-| **Wrong output type blank import** | If you use `type: file` in YAML but forgot `_ "github.com/axonops/go-audit/file"`, `outputconfig.Load` returns an error. | Add the blank import for every output type you use. See [Output Configuration](output-configuration.md#-factory-registry). |
+| **Wrong output type blank import** | If you use `type: file` in YAML but forgot `_ "github.com/axonops/audit/file"`, `outputconfig.Load` returns an error. | Add the blank import for every output type you use. See [Output Configuration](output-configuration.md#-factory-registry). |
 
 > 💡 **Quick diagnostic:** Add a `stdout` output with no route. If
 > events appear on stdout but not in your file/syslog/webhook, the
@@ -144,7 +144,7 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 
 | Cause | Fix |
 |-------|-----|
-| **Missing blank import** | Add `_ "github.com/axonops/go-audit/loki"` to register the Loki output type. |
+| **Missing blank import** | Add `_ "github.com/axonops/audit/loki"` to register the Loki output type. |
 | **`allow_private_ranges` not set** | For local development with `localhost:3100`, set `allow_private_ranges: true`. Private IPs are blocked by default (SSRF protection). |
 | **`allow_insecure_http` not set** | For `http://` URLs, set `allow_insecure_http: true`. HTTPS is required by default. |
 | **Loki ingestion delay** | Loki has a short delay between push and query availability. Wait 2-5 seconds, or query with a wider time range. |

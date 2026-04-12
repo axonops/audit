@@ -1,13 +1,13 @@
-module github.com/axonops/go-audit
+module github.com/axonops/audit
 
 go 1.26.2
 
 require (
-	github.com/axonops/go-audit/file v0.1.0
-	github.com/axonops/go-audit/loki v0.1.0
-	github.com/axonops/go-audit/outputconfig v0.1.0
-	github.com/axonops/go-audit/syslog v0.1.0
-	github.com/axonops/go-audit/webhook v0.1.0
+	github.com/axonops/audit/file v0.1.0
+	github.com/axonops/audit/loki v0.1.0
+	github.com/axonops/audit/outputconfig v0.1.0
+	github.com/axonops/audit/syslog v0.1.0
+	github.com/axonops/audit/webhook v0.1.0
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/rgooding/go-syncmap v1.0.1
@@ -20,7 +20,7 @@ require (
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
-	github.com/gravwell/srslog v0.0.0-20250709201549-e1b2fdb7e306 // indirect
+	github.com/gravwell/srslog v0.1.0-20250709201549-e1b2fdb7e306 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.5 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect

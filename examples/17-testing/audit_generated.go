@@ -3,7 +3,7 @@
 //nolint:all // generated code — do not lint
 package main
 
-import audit "github.com/axonops/go-audit"
+import "github.com/axonops/audit"
 
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.

@@ -21,7 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // NewLogger is a convenience facade that creates a ready-to-use
@@ -41,10 +41,10 @@ import (
 // Non-stdout output types require blank imports to register their
 // factories:
 //
-//	import _ "github.com/axonops/go-audit/file"    // file output
-//	import _ "github.com/axonops/go-audit/syslog"  // syslog output
-//	import _ "github.com/axonops/go-audit/webhook" // webhook output
-//	import _ "github.com/axonops/go-audit/loki"    // loki output
+//	import _ "github.com/axonops/audit/file"    // file output
+//	import _ "github.com/axonops/audit/syslog"  // syslog output
+//	import _ "github.com/axonops/audit/webhook" // webhook output
+//	import _ "github.com/axonops/audit/loki"    // loki output
 //
 // For advanced scenarios requiring secret providers, custom
 // LoadOptions, or fine-grained control, use the manual

@@ -173,7 +173,7 @@ webhook:
 ```yaml
 outputs:
   alerts:
-    type: webhook              # Register with: import _ "github.com/axonops/go-audit/webhook"
+    type: webhook              # Register with: import _ "github.com/axonops/audit/webhook"
     webhook:
       url: "http://localhost:9090/audit"  # Required. Must be https:// in production
       batch_size: 10           # Events per batch (default: 100, max: 10,000)
@@ -192,7 +192,7 @@ outputs:
 Like syslog and loki, the webhook output requires a blank import:
 
 ```go
-import _ "github.com/axonops/go-audit/webhook"
+import _ "github.com/axonops/audit/webhook"
 ```
 
 This registers the `"webhook"` output factory. Without it,

@@ -30,7 +30,7 @@ import (
 	"github.com/cucumber/godog/colors"
 	"go.uber.org/goleak"
 
-	"github.com/axonops/go-audit/tests/bdd/steps"
+	"github.com/axonops/audit/tests/bdd/steps"
 )
 
 func TestFeatures(t *testing.T) {

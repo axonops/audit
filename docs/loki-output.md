@@ -40,7 +40,7 @@ make it ideal for audit trails:
 - **Multi-tenancy** via `X-Scope-OrgID` isolates different
   applications or environments in a shared Loki cluster
 - **Grafana integration** provides dashboards, alerting, and LogQL
-  exploration — see [Grafana Dashboard for go-audit](https://github.com/axonops/go-audit/issues/273)
+  exploration — see [Grafana Dashboard for go-audit](https://github.com/axonops/audit/issues/273)
 - **Cost-effective** — Loki indexes only labels (not full-text),
   making it significantly cheaper than traditional SIEM at scale
 
@@ -50,10 +50,10 @@ make it ideal for audit trails:
 
 ```bash
 # 1. Install the module
-go get github.com/axonops/go-audit/loki
+go get github.com/axonops/audit/loki
 
 # 2. Import for side-effect registration
-import _ "github.com/axonops/go-audit/loki"
+import _ "github.com/axonops/audit/loki"
 
 # 3. Add to your outputs.yaml
 # See Complete Configuration Reference below
@@ -801,7 +801,7 @@ type Metrics interface {
 Register your implementation before calling `outputconfig.Load`. This
 replaces the default factory registered by the blank import. If you
 don't need Loki-specific metrics, the blank import
-`_ "github.com/axonops/go-audit/loki"` is sufficient.
+`_ "github.com/axonops/audit/loki"` is sufficient.
 
 ```go
 audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
@@ -961,10 +961,10 @@ delivered to all others.
 - [Output Types Overview](outputs.md) — summary of all outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
 - [Progressive Example](../examples/08-loki-output/) — working code with real query output
-- [Grafana Dashboard Issue](https://github.com/axonops/go-audit/issues/273) — pre-built dashboard for go-audit
+- [Grafana Dashboard Issue](https://github.com/axonops/audit/issues/273) — pre-built dashboard for go-audit
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
 - [HMAC Integrity](hmac-integrity.md) — tamper detection on Loki events
 - [Async Delivery](async-delivery.md) — buffer architecture and delivery guarantees
 
-Install: `go get github.com/axonops/go-audit/loki`
+Install: `go get github.com/axonops/audit/loki`

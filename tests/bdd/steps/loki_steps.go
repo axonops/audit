@@ -26,8 +26,8 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/loki"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/loki"
 )
 
 // lokiQueryClient is a dedicated HTTP client for querying Loki in BDD tests.

@@ -110,7 +110,7 @@ events exist, what fields are required. It's part of your source code:
 typed event builders:
 
 ```go
-//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
 This produces `audit_generated.go` with five sections — event type

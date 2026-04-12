@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/audittest"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
 )
 
 func TestRecorder_Write(t *testing.T) {

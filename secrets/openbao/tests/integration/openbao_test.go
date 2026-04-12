@@ -38,8 +38,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
-	"github.com/axonops/go-audit/secrets"
-	"github.com/axonops/go-audit/secrets/openbao"
+	"github.com/axonops/audit/secrets"
+	"github.com/axonops/audit/secrets/openbao"
 )
 
 const (

@@ -19,7 +19,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/axonops/go-audit/audittest"
+	"github.com/axonops/audit/audittest"
 )
 
 func TestMetricsRecorder_AllMethods(t *testing.T) {

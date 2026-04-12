@@ -18,8 +18,8 @@ import (
 	"slices"
 	"testing"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/outputs" // registers all output types
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/outputs" // registers all output types
 	"github.com/stretchr/testify/assert"
 )
 

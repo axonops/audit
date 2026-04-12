@@ -96,8 +96,8 @@ config:
 
 ```go
 import (
-    "github.com/axonops/go-audit/file"
-    "github.com/axonops/go-audit/loki"
+    "github.com/axonops/audit/file"
+    "github.com/axonops/audit/loki"
 )
 
 audit.RegisterOutputFactory("file", file.NewFactory(m))
@@ -107,7 +107,7 @@ result, err := outputconfig.Load(ctx, outputsYAML, &tax, m)
 ```
 
 Note the **named imports** here — not blank imports. In earlier examples,
-you used `_ "github.com/axonops/go-audit/file"` (blank import) which
+you used `_ "github.com/axonops/audit/file"` (blank import) which
 registers a default factory without metrics. Here, the named import lets
 you call `file.NewFactory(m)` to register a factory that captures your
 metrics implementation.

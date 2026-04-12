@@ -24,10 +24,10 @@
 // consumer controls which output types are available via blank imports:
 //
 //	import (
-//	    "github.com/axonops/go-audit/outputconfig"
-//	    _ "github.com/axonops/go-audit/file"
-//	    _ "github.com/axonops/go-audit/syslog"
-//	    _ "github.com/axonops/go-audit/webhook"
+//	    "github.com/axonops/audit/outputconfig"
+//	    _ "github.com/axonops/audit/file"
+//	    _ "github.com/axonops/audit/syslog"
+//	    _ "github.com/axonops/audit/webhook"
 //	)
 //
 // If an output type's module is not blank-imported, [Load] returns an

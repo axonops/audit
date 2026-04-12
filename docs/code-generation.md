@@ -51,7 +51,7 @@ Add this comment to any `.go` file in your package (typically
 `main.go` or a dedicated `generate.go`):
 
 ```go
-//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 ```
 
 ### Step 2: Run Code Generation

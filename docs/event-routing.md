@@ -203,4 +203,4 @@ uncategorised events (they are not in the "security" category).
 - [Progressive Example: Event Routing](../examples/11-event-routing/) — complete routing configuration
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
-- [API Reference: EventRoute](https://pkg.go.dev/github.com/axonops/go-audit#EventRoute)
+- [API Reference: EventRoute](https://pkg.go.dev/github.com/axonops/audit#EventRoute)

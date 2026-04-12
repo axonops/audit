@@ -20,7 +20,7 @@ import (
 	"errors"
 	"net/http"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 	"github.com/google/uuid"
 )
 

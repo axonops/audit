@@ -14,7 +14,7 @@
 
 package testhelper
 
-import "github.com/axonops/go-audit"
+import "github.com/axonops/audit"
 
 // ValidTaxonomy returns a taxonomy suitable for general testing with
 // read, write, and security categories.

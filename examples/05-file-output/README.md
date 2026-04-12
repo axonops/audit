@@ -80,14 +80,14 @@ with the output factory:
 
 ```go
 import (
-    _ "github.com/axonops/go-audit/file"
-    "github.com/axonops/go-audit/outputconfig"
+    _ "github.com/axonops/audit/file"
+    "github.com/axonops/audit/outputconfig"
 )
 ```
 
 If you reference `type: file` in YAML without this import,
 `outputconfig.Load` returns an error like:
-`output "audit_log": unknown output type "file" (registered: [stdout]); did you import _ "github.com/axonops/go-audit/file"?`
+`output "audit_log": unknown output type "file" (registered: [stdout]); did you import _ "github.com/axonops/audit/file"?`
 
 ### Close Flushes to Disk
 

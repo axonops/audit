@@ -96,7 +96,7 @@ audit: output config validation failed
 
 | | |
 |---|---|
-| **Package** | `github.com/axonops/go-audit/outputconfig` |
+| **Package** | `github.com/axonops/audit/outputconfig` |
 | **When** | `outputconfig.Load()` is called with invalid YAML output configuration |
 | **Meaning** | Output configuration parsing or validation failed |
 | **Transient?** | No — permanent configuration error |
@@ -201,7 +201,7 @@ All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconf
 ## Secret Resolution Errors
 
 Secret resolution errors occur during `outputconfig.Load` when ref+
-URIs cannot be resolved. All errors are in `github.com/axonops/go-audit/secrets`.
+URIs cannot be resolved. All errors are in `github.com/axonops/audit/secrets`.
 
 ### `ErrMalformedRef`
 

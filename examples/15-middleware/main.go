@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // buildEvent is the EventBuilder callback. The middleware calls it after

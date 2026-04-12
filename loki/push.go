@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strconv"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // lokiStream holds events grouped by a common set of stream labels.

@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // rateLimiter tracks failed auth attempts per source IP using a

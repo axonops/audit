@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"strings"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 

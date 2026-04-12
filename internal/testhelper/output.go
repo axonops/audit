@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // Compile-time assertion: MockOutput satisfies audit.Output.

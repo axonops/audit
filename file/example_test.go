@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/axonops/go-audit/file"
+	"github.com/axonops/audit/file"
 )
 
 func ExampleNew() {

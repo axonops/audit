@@ -123,7 +123,7 @@ Framework extensions are always present (not configurable via `FieldMapping`):
 | event_category | `cat` | Event category (when categorised) |
 
 Custom field mappings can override the defaults via `CEFFormatter.FieldMapping`.
-See [`DefaultCEFFieldMapping`](https://pkg.go.dev/github.com/axonops/go-audit#DefaultCEFFieldMapping)
+See [`DefaultCEFFieldMapping`](https://pkg.go.dev/github.com/axonops/audit#DefaultCEFFieldMapping)
 for the complete default mapping.
 
 ## 📊 Severity Levels
@@ -216,4 +216,4 @@ or structured identifiers at the application level.
 
 - [Progressive Example: Formatters](../examples/14-formatters/) — JSON and CEF side-by-side
 - [Event Routing](event-routing.md) — route security events to a CEF-formatted SIEM output
-- [API Reference: CEFFormatter](https://pkg.go.dev/github.com/axonops/go-audit#CEFFormatter)
+- [API Reference: CEFFormatter](https://pkg.go.dev/github.com/axonops/audit#CEFFormatter)

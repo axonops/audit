@@ -37,9 +37,9 @@ import (
 	"log"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	_ "github.com/axonops/go-audit/loki" // register "loki" output type
-	"github.com/axonops/go-audit/outputconfig"
+	"github.com/axonops/audit"
+	_ "github.com/axonops/audit/loki" // register "loki" output type
+	"github.com/axonops/audit/outputconfig"
 )
 
 //go:embed taxonomy.yaml

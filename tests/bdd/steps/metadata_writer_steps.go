@@ -20,7 +20,7 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // MetadataWriterMock implements both audit.Output and audit.MetadataWriter

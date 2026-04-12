@@ -41,5 +41,5 @@
 //
 // Recommended import alias:
 //
-//	import auditwebhook "github.com/axonops/go-audit/webhook"
+//	import auditwebhook "github.com/axonops/audit/webhook"
 package webhook

@@ -37,13 +37,13 @@ For **production retention**, use [file output](outputs.md#file-output). For
 
 ## Quick Start
 
-Stdout is part of the core `github.com/axonops/go-audit` module — no
+Stdout is part of the core `github.com/axonops/audit` module — no
 additional `go get` is needed for the output itself. To load YAML
 configuration, you also need the `outputconfig` module:
 
 ```bash
-go get github.com/axonops/go-audit
-go get github.com/axonops/go-audit/outputconfig
+go get github.com/axonops/audit
+go get github.com/axonops/audit/outputconfig
 ```
 
 ```yaml
@@ -58,8 +58,8 @@ outputs:
 
 ```go
 import (
-    audit "github.com/axonops/go-audit"
-    "github.com/axonops/go-audit/outputconfig"
+    audit "github.com/axonops/audit"
+    "github.com/axonops/audit/outputconfig"
     // No blank import needed — stdout is registered by the core package.
 )
 ```

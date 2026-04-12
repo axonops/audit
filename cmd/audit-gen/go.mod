@@ -1,9 +1,9 @@
-module github.com/axonops/go-audit/cmd/audit-gen
+module github.com/axonops/audit/cmd/audit-gen
 
 go 1.26.2
 
 require (
-	github.com/axonops/go-audit v0.2.0
+	github.com/axonops/audit v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 

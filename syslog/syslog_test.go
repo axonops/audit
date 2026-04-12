@@ -34,8 +34,8 @@ import (
 	"testing"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/syslog"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/syslog"
 	"github.com/axonops/srslog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

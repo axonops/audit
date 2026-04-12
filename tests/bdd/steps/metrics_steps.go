@@ -23,9 +23,9 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/file"
-	"github.com/axonops/go-audit/webhook"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/file"
+	"github.com/axonops/audit/webhook"
 )
 
 func registerMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

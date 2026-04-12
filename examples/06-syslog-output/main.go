@@ -29,12 +29,12 @@ import (
 	"sync"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/outputconfig"
-	_ "github.com/axonops/go-audit/syslog"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/outputconfig"
+	_ "github.com/axonops/audit/syslog"
 )
 
-//go:generate go run github.com/axonops/go-audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
+//go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
 
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte

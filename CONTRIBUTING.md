@@ -6,7 +6,7 @@ covers the development setup, coding standards, and pull request process.
 ## Development Setup
 
 ```bash
-git clone https://github.com/axonops/go-audit.git
+git clone https://github.com/axonops/audit.git
 cd go-audit
 make install-tools   # golangci-lint v2.1.6, govulncheck v1.1.4, goimports, goreleaser
 make workspace       # creates go.work for IDE tooling (gitignored)
@@ -139,5 +139,5 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
 ## Questions?
 
-Open a [GitHub issue](https://github.com/axonops/go-audit/issues) —
+Open a [GitHub issue](https://github.com/axonops/audit/issues) —
 there are no mailing lists or chat channels.

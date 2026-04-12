@@ -17,9 +17,9 @@ package audit_test
 import (
 	"testing"
 
-	"github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/audittest"
-	"github.com/axonops/go-audit/internal/testhelper"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/audittest"
+	"github.com/axonops/audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

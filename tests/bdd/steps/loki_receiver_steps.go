@@ -25,8 +25,8 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/loki"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/loki"
 )
 
 // MockLokiMetrics captures Loki-specific metric calls for BDD assertions.

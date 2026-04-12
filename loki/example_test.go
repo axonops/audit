@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/loki"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/loki"
 )
 
 // ExampleNew demonstrates creating a Loki output with stream labels

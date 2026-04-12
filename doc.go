@@ -24,11 +24,11 @@
 // Output backends live in separate Go modules so consumers import only
 // what they need:
 //
-//   - github.com/axonops/go-audit — core (this package; depends on github.com/goccy/go-yaml for [ParseTaxonomyYAML])
-//   - github.com/axonops/go-audit/file — file output with rotation
-//   - github.com/axonops/go-audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
-//   - github.com/axonops/go-audit/webhook — batched HTTP webhook
-//   - github.com/axonops/go-audit/outputconfig — YAML-based output configuration
+//   - github.com/axonops/audit — core (this package; depends on github.com/goccy/go-yaml for [ParseTaxonomyYAML])
+//   - github.com/axonops/audit/file — file output with rotation
+//   - github.com/axonops/audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
+//   - github.com/axonops/audit/webhook — batched HTTP webhook
+//   - github.com/axonops/audit/outputconfig — YAML-based output configuration
 //
 // [StdoutOutput] and the audittest package ship with core and require
 // no additional import.

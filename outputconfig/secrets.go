@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/audit/secrets"
 )
 
 // MaxSecretValueSize is the maximum size in bytes for a resolved

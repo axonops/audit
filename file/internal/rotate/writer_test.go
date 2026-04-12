@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axonops/go-audit/file/internal/rotate"
+	"github.com/axonops/audit/file/internal/rotate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"

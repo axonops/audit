@@ -21,8 +21,8 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/syslog"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/syslog"
 )
 
 // severityTaxonomyYAML defines events with explicit severity levels

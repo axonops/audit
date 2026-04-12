@@ -39,13 +39,13 @@ Install the core secrets package and the provider for your backend:
 
 ```bash
 # OpenBao provider
-go get github.com/axonops/go-audit/secrets/openbao
+go get github.com/axonops/audit/secrets/openbao
 
 # HashiCorp Vault provider
-go get github.com/axonops/go-audit/secrets/vault
+go get github.com/axonops/audit/secrets/vault
 
 # The outputconfig package (required for Load)
-go get github.com/axonops/go-audit/outputconfig
+go get github.com/axonops/audit/outputconfig
 ```
 
 Both providers are separate Go modules. Import them alongside
@@ -147,8 +147,8 @@ resolves.
 
 | Scheme | Module | Backend | KV Version |
 |--------|--------|---------|------------|
-| `openbao` | `github.com/axonops/go-audit/secrets/openbao` | [OpenBao](https://openbao.org/) | KV v2 |
-| `vault` | `github.com/axonops/go-audit/secrets/vault` | [HashiCorp Vault](https://www.vaultproject.io/) | KV v2 |
+| `openbao` | `github.com/axonops/audit/secrets/openbao` | [OpenBao](https://openbao.org/) | KV v2 |
+| `vault` | `github.com/axonops/audit/secrets/vault` | [HashiCorp Vault](https://www.vaultproject.io/) | KV v2 |
 
 Both providers implement `secrets.BatchProvider`, enabling path-level
 caching (see [Caching Behaviour](#caching-behaviour)).
@@ -163,8 +163,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/axonops/go-audit/outputconfig"
-	"github.com/axonops/go-audit/secrets/openbao"
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/openbao"
 )
 
 // ctx, yamlData, taxonomy, metrics defined by caller
@@ -190,8 +190,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/axonops/go-audit/outputconfig"
-	"github.com/axonops/go-audit/secrets/vault"
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/vault"
 )
 
 // ctx, yamlData, taxonomy, metrics defined by caller
@@ -521,9 +521,9 @@ import (
 	"fmt"
 	"os"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/outputconfig"
-	"github.com/axonops/go-audit/secrets/openbao"
+	audit "github.com/axonops/audit"
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/openbao"
 )
 
 // reload rebuilds the logger with fresh secrets.
@@ -662,8 +662,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/axonops/go-audit/secrets"
-	"github.com/axonops/go-audit/secrets/openbao"
+	"github.com/axonops/audit/secrets"
+	"github.com/axonops/audit/secrets/openbao"
 	"github.com/stretchr/testify/require"
 )
 
@@ -716,14 +716,14 @@ func TestSecretResolution(t *testing.T) {
 
 ## Error Reference
 
-All errors wrap one of the sentinel values in `github.com/axonops/go-audit/secrets`.
+All errors wrap one of the sentinel values in `github.com/axonops/audit/secrets`.
 Use `errors.Is` to check:
 
 ```go
 import (
 	"errors"
 
-	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/audit/secrets"
 )
 
 if errors.Is(err, secrets.ErrMalformedRef) {
@@ -831,8 +831,8 @@ headers:
 - [HMAC Integrity](hmac-integrity.md) -- per-output HMAC with salt management
 - [Error Reference](error-reference.md) -- all go-audit error sentinels
 - [Troubleshooting](troubleshooting.md#secret-provider-failures) -- diagnosing secret resolution problems
-- [API Reference: secrets](https://pkg.go.dev/github.com/axonops/go-audit/secrets) -- `Provider`, `Ref`, `ParseRef`
-- [API Reference: secrets/openbao](https://pkg.go.dev/github.com/axonops/go-audit/secrets/openbao) -- OpenBao provider
-- [API Reference: secrets/vault](https://pkg.go.dev/github.com/axonops/go-audit/secrets/vault) -- Vault provider
-- [API Reference: outputconfig](https://pkg.go.dev/github.com/axonops/go-audit/outputconfig) -- `WithSecretProvider`, `WithSecretTimeout`
+- [API Reference: secrets](https://pkg.go.dev/github.com/axonops/audit/secrets) -- `Provider`, `Ref`, `ParseRef`
+- [API Reference: secrets/openbao](https://pkg.go.dev/github.com/axonops/audit/secrets/openbao) -- OpenBao provider
+- [API Reference: secrets/vault](https://pkg.go.dev/github.com/axonops/audit/secrets/vault) -- Vault provider
+- [API Reference: outputconfig](https://pkg.go.dev/github.com/axonops/audit/outputconfig) -- `WithSecretProvider`, `WithSecretTimeout`
 - [vals](https://github.com/helmfile/vals) -- the `ref+` URI convention

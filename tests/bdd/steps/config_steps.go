@@ -23,7 +23,7 @@ import (
 
 	"github.com/cucumber/godog"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

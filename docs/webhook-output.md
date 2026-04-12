@@ -41,7 +41,7 @@ protocol-specific infrastructure required:
 ## Quick Start
 
 ```bash
-go get github.com/axonops/go-audit/webhook
+go get github.com/axonops/audit/webhook
 ```
 
 ```yaml
@@ -57,7 +57,7 @@ outputs:
 ```
 
 ```go
-import _ "github.com/axonops/go-audit/webhook"  // registers "webhook" factory
+import _ "github.com/axonops/audit/webhook"  // registers "webhook" factory
 ```
 
 **[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
@@ -374,7 +374,7 @@ type Metrics interface {
 Register your implementation before calling `outputconfig.Load`. This
 replaces the default factory registered by the blank import. If you
 don't need webhook-specific metrics, the blank import
-`_ "github.com/axonops/go-audit/webhook"` is sufficient.
+`_ "github.com/axonops/audit/webhook"` is sufficient.
 
 ```go
 audit.RegisterOutputFactory("webhook", webhook.NewFactory(myWebhookMetrics))

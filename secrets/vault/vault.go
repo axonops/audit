@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/secrets"
 )
 
 // maxResponseSize is the maximum response body size accepted from the

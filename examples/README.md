@@ -67,14 +67,14 @@ a Go module and fetch the dependencies:
 go mod init myapp
 
 # Core library + output config loader:
-go get github.com/axonops/go-audit
-go get github.com/axonops/go-audit/outputconfig
+go get github.com/axonops/audit
+go get github.com/axonops/audit/outputconfig
 
 # Output types you use (blank imports register them):
-go get github.com/axonops/go-audit/file
-go get github.com/axonops/go-audit/syslog
-go get github.com/axonops/go-audit/webhook
-go get github.com/axonops/go-audit/loki
+go get github.com/axonops/audit/file
+go get github.com/axonops/audit/syslog
+go get github.com/axonops/audit/webhook
+go get github.com/axonops/audit/loki
 
 # CRUD API also needs:
 go get github.com/lib/pq

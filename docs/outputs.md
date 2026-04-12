@@ -82,7 +82,7 @@ and troubleshooting.
 
 **[→ Progressive example](../examples/05-file-output/)**
 
-Install: `go get github.com/axonops/go-audit/file`
+Install: `go get github.com/axonops/audit/file`
 
 ---
 
@@ -110,7 +110,7 @@ and troubleshooting.
 
 **[→ Progressive example with embedded TCP receiver](../examples/06-syslog-output/)**
 
-Install: `go get github.com/axonops/go-audit/syslog`
+Install: `go get github.com/axonops/audit/syslog`
 
 ---
 
@@ -140,7 +140,7 @@ protection, production examples, and troubleshooting.
 
 **[→ Progressive example with embedded HTTP receiver](../examples/07-webhook-output/)**
 
-Install: `go get github.com/axonops/go-audit/webhook`
+Install: `go get github.com/axonops/audit/webhook`
 
 ---
 
@@ -169,7 +169,7 @@ production examples, performance tuning, and troubleshooting.
 
 **[→ Progressive example with real query output](../examples/08-loki-output/)**
 
-Install: `go get github.com/axonops/go-audit/loki`
+Install: `go get github.com/axonops/audit/loki`
 
 ---
 

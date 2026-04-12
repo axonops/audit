@@ -1,10 +1,10 @@
-module github.com/axonops/go-audit/secrets/openbao
+module github.com/axonops/audit/secrets/openbao
 
 go 1.26.2
 
 require (
-	github.com/axonops/go-audit v0.2.0
-	github.com/axonops/go-audit/secrets v0.1.0
+	github.com/axonops/audit v0.1.0
+	github.com/axonops/audit/secrets v0.1.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 )

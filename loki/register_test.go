@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/loki"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/loki"
 )
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ func TestLokiFactory_RegisteredByInit(t *testing.T) {
 	t.Parallel()
 
 	factory := audit.LookupOutputFactory("loki")
-	require.NotNil(t, factory, "loki factory must be registered by init(); import _ \"github.com/axonops/go-audit/loki\" was performed")
+	require.NotNil(t, factory, "loki factory must be registered by init(); import _ \"github.com/axonops/audit/loki\" was performed")
 }
 
 // ---------------------------------------------------------------------------

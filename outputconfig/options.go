@@ -17,8 +17,8 @@ package outputconfig
 import (
 	"time"
 
-	audit "github.com/axonops/go-audit"
-	"github.com/axonops/go-audit/secrets"
+	"github.com/axonops/audit"
+	"github.com/axonops/audit/secrets"
 )
 
 // DefaultSecretTimeout is the default timeout for secret resolution

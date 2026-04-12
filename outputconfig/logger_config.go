@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // loggerConfigResult holds both the Config and the disabled flag parsed

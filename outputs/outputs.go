@@ -15,8 +15,8 @@
 package outputs
 
 import (
-	_ "github.com/axonops/go-audit/file"    // register "file" output type
-	_ "github.com/axonops/go-audit/loki"    // register "loki" output type
-	_ "github.com/axonops/go-audit/syslog"  // register "syslog" output type
-	_ "github.com/axonops/go-audit/webhook" // register "webhook" output type
+	_ "github.com/axonops/audit/file"    // register "file" output type
+	_ "github.com/axonops/audit/loki"    // register "loki" output type
+	_ "github.com/axonops/audit/syslog"  // register "syslog" output type
+	_ "github.com/axonops/audit/webhook" // register "webhook" output type
 )

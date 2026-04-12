@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"sync"
 
-	audit "github.com/axonops/go-audit"
+	"github.com/axonops/audit"
 )
 
 // settingsStore holds application settings in memory. In production,

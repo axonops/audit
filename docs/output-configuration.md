@@ -445,7 +445,7 @@ To enable resolution, register one or more providers via
 `outputconfig.WithSecretProvider`:
 
 ```go
-import "github.com/axonops/go-audit/secrets/openbao"
+import "github.com/axonops/audit/secrets/openbao"
 
 provider, err := openbao.New(&openbao.Config{
     Address: os.Getenv("BAO_ADDR"),
@@ -483,10 +483,10 @@ Registration happens via blank imports in your application:
 
 ```go
 import (
-    _ "github.com/axonops/go-audit/file"
-    _ "github.com/axonops/go-audit/syslog"
-    _ "github.com/axonops/go-audit/webhook"
-    _ "github.com/axonops/go-audit/loki"
+    _ "github.com/axonops/audit/file"
+    _ "github.com/axonops/audit/syslog"
+    _ "github.com/axonops/audit/webhook"
+    _ "github.com/axonops/audit/loki"
 )
 ```
 
@@ -522,4 +522,4 @@ logger, err := audit.NewLogger(result.Config, opts...)
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
 - [Secret Provider Integration](secrets.md) — ref+ URI syntax, OpenBao/Vault setup, security model
-- [API Reference: outputconfig.Load](https://pkg.go.dev/github.com/axonops/go-audit/outputconfig#Load)
+- [API Reference: outputconfig.Load](https://pkg.go.dev/github.com/axonops/audit/outputconfig#Load)

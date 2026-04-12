@@ -217,7 +217,7 @@ application), while storage verification proves integrity at the
 - [Output Configuration YAML](output-configuration.md) — full HMAC config reference
 - [Event Routing](event-routing.md) — selective HMAC via routing
 - [Sensitivity Labels](sensitivity-labels.md) — interaction with field stripping
-- [API Reference: VerifyHMAC](https://pkg.go.dev/github.com/axonops/go-audit#VerifyHMAC)
+- [API Reference: VerifyHMAC](https://pkg.go.dev/github.com/axonops/audit#VerifyHMAC)
 - [RFC 2104: HMAC](https://datatracker.ietf.org/doc/html/rfc2104) — the HMAC specification
 - [NIST FIPS 198-1](https://csrc.nist.gov/pubs/fips/198-1/final) — HMAC standard
 - [NIST SP 800-224](https://csrc.nist.gov/pubs/sp/800/224/final) — approved hash functions

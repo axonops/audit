@@ -35,11 +35,11 @@ when `Close()` times out are lost.
 ## Module Boundaries
 
 ```
-github.com/axonops/go-audit           ← core (Logger, Output, taxonomy, formatters)
-github.com/axonops/go-audit/file      ← file output (depends on core)
-github.com/axonops/go-audit/syslog    ← syslog output (depends on core + srslog)
-github.com/axonops/go-audit/webhook   ← webhook output (depends on core)
-github.com/axonops/go-audit/outputconfig ← YAML config loader (depends on core + go-yaml)
+github.com/axonops/audit           ← core (Logger, Output, taxonomy, formatters)
+github.com/axonops/audit/file      ← file output (depends on core)
+github.com/axonops/audit/syslog    ← syslog output (depends on core + srslog)
+github.com/axonops/audit/webhook   ← webhook output (depends on core)
+github.com/axonops/audit/outputconfig ← YAML config loader (depends on core + go-yaml)
 ```
 
 Outputs are separate Go modules so the core carries no third-party
@@ -62,9 +62,9 @@ output module. This works via a factory registry:
 
 ```go
 import (
-    _ "github.com/axonops/go-audit/file"
-    _ "github.com/axonops/go-audit/syslog"
-    _ "github.com/axonops/go-audit/webhook"
+    _ "github.com/axonops/audit/file"
+    _ "github.com/axonops/audit/syslog"
+    _ "github.com/axonops/audit/webhook"
 )
 ```
 

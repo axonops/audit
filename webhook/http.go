@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"math"
 	"net/http"
 	"time"
@@ -50,21 +49,21 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 		}
 
 		if !retryable {
-			slog.Error("audit: webhook non-retryable error",
+			w.logger.Error("audit: webhook non-retryable error",
 				"error", err,
 				"batch_size", len(batch))
 			w.recordDrop(len(batch))
 			return
 		}
 
-		slog.Warn("audit: webhook retryable error",
+		w.logger.Warn("audit: webhook retryable error",
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
 			"error", err)
 	}
 
 	// All retries exhausted.
-	slog.Error("audit: webhook retries exhausted, dropping batch",
+	w.logger.Error("audit: webhook retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
 	w.recordDrop(len(batch))

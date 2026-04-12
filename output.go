@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"log/slog"
 	"time"
 )
 
@@ -119,4 +120,12 @@ type MetadataWriter interface {
 // Outputs that do not implement it are silently skipped.
 type FrameworkFieldReceiver interface {
 	SetFrameworkFields(appName, host, timezone string, pid int)
+}
+
+// LoggerReceiver is an optional interface that [Output] implementations
+// may satisfy to receive the library's [log/slog.Logger] for diagnostic
+// output. The library calls SetLogger once after all options are applied.
+// Outputs that do not implement it use the package-level [slog.Default].
+type LoggerReceiver interface {
+	SetLogger(l *slog.Logger)
 }

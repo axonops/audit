@@ -210,6 +210,17 @@ func (l *Logger) applyConstructionDefaults() {
 		l.timezone = time.Now().Location().String()
 	}
 	l.propagateFrameworkFields()
+	l.propagateLogger()
+}
+
+// propagateLogger forwards the library's slog.Logger to outputs that
+// implement [LoggerReceiver].
+func (l *Logger) propagateLogger() {
+	for _, oe := range l.entries {
+		if recv, ok := oe.output.(LoggerReceiver); ok {
+			recv.SetLogger(l.logger)
+		}
+	}
 }
 
 // AuditEvent validates and enqueues a typed audit event. Use

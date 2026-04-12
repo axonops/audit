@@ -113,7 +113,13 @@ type Output struct {
 	timeout        time.Duration
 	mu             sync.Mutex
 	closed         atomic.Bool
-	drops          dropLimiter // rate-limits buffer-full slog.Warn
+	logger         *slog.Logger
+	drops          dropLimiter // rate-limits buffer-full warnings
+}
+
+// SetLogger receives the library's diagnostic logger.
+func (o *Output) SetLogger(l *slog.Logger) {
+	o.logger = l
 }
 
 // New creates a new [Output] from the given config.
@@ -173,6 +179,7 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Output{
+		logger:         slog.Default(),
 		client:         client,
 		url:            cfg.URL,
 		name:           webhookName(cfg.URL),
@@ -210,7 +217,7 @@ func (w *Output) Write(data []byte) error {
 		return nil
 	default:
 		w.drops.record(dropWarnInterval, func(dropped int64) {
-			slog.Warn("audit: webhook buffer full, events dropped",
+			w.logger.Warn("audit: webhook buffer full, events dropped",
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
@@ -249,7 +256,7 @@ func (w *Output) Close() error {
 	select {
 	case <-w.done:
 	case <-time.After(shutdownTimeout):
-		slog.Error("audit: webhook batch goroutine did not exit",
+		w.logger.Error("audit: webhook batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 

@@ -86,7 +86,8 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	mu          sync.Mutex
 	closed      atomic.Bool
 	fw          atomic.Pointer[frameworkFields]
-	drops       dropLimiter // rate-limits buffer-full slog.Warn
+	logger      *slog.Logger
+	drops       dropLimiter // rate-limits buffer-full warnings
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams      map[string]*lokiStream // reused across flushes
@@ -160,6 +161,7 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 		cfg:         cfg,
 		metrics:     metrics,
 		lokiMetrics: lokiMetrics,
+		logger:      slog.Default(),
 		ch:          make(chan lokiEntry, cfg.BufferSize),
 		closeCh:     make(chan struct{}),
 		cancel:      cancel,
@@ -182,6 +184,11 @@ func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
 	o.fw.Store(&frameworkFields{appName: appName, host: host, timezone: timezone, pid: pid})
 }
 
+// SetLogger receives the library's diagnostic logger.
+func (o *Output) SetLogger(l *slog.Logger) {
+	o.logger = l
+}
+
 // WriteWithMetadata enqueues a serialised audit event with per-event
 // metadata for batched delivery. The data is copied before enqueuing.
 // If the internal buffer is full, the event is dropped and
@@ -199,7 +206,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		return nil
 	default:
 		o.drops.record(dropWarnInterval, func(dropped int64) {
-			slog.Warn("audit: loki buffer full, events dropped",
+			o.logger.Warn("audit: loki buffer full, events dropped",
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
@@ -243,7 +250,7 @@ func (o *Output) Close() error {
 	select {
 	case <-o.done:
 	case <-time.After(shutdownTimeout):
-		slog.Error("audit: loki batch goroutine did not exit",
+		o.logger.Error("audit: loki batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -353,7 +360,7 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 
 	body, compressed, err := o.maybeCompress()
 	if err != nil {
-		slog.Warn("audit: loki compression failed, sending uncompressed",
+		o.logger.Warn("audit: loki compression failed, sending uncompressed",
 			"error", err, "batch_size", len(batch))
 		body = o.payloadBuf.Bytes()
 		compressed = false

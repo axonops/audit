@@ -108,9 +108,15 @@ type Config struct {
 // to [Output.Write] and [Output.Close].
 type Output struct {
 	writer *rotate.Writer
+	logger *slog.Logger
 	path   string
 	mu     sync.RWMutex
 	closed bool
+}
+
+// SetLogger receives the library's diagnostic logger.
+func (o *Output) SetLogger(l *slog.Logger) {
+	o.logger = l
 }
 
 // resolvePath normalises the path to an absolute form, resolving
@@ -158,9 +164,12 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 		return nil, fmt.Errorf("audit: file output permissions %q: %w", cfg.Permissions, err)
 	}
 
+	// Default logger — replaced by SetLogger when the core calls it.
+	logger := slog.Default()
+
 	// Warn if permissions grant group or world access to audit data.
 	if perm&0o077 != 0 {
-		slog.Warn("audit: file output permissions grant group/world access",
+		logger.Warn("audit: file output permissions grant group/world access",
 			"path", cfg.Path,
 			"permissions", fmt.Sprintf("%04o", perm))
 	}
@@ -175,6 +184,8 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 		compress = *cfg.Compress
 	}
 
+	out := &Output{path: cfg.Path, logger: logger}
+
 	logPath := cfg.Path // capture for closure
 	rotCfg := rotate.Config{
 		MaxSize:    int64(cfg.MaxSizeMB) * 1024 * 1024,
@@ -183,7 +194,7 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 		MaxBackups: cfg.MaxBackups,
 		Compress:   compress,
 		OnError: func(err error) {
-			slog.Warn("audit: file output background error",
+			out.logger.Warn("audit: file output background error",
 				"path", logPath, "error", err)
 		},
 	}
@@ -196,8 +207,9 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output: %w", err)
 	}
+	out.writer = rw
 
-	return &Output{writer: rw, path: cfg.Path}, nil
+	return out, nil
 }
 
 // Write sends a serialised audit event to the file. Write returns

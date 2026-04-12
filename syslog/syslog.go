@@ -22,6 +22,7 @@ package syslog
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -139,7 +140,13 @@ type Output struct {
 	facility      srslog.Priority // facility bits only (no severity)
 	failures      int             // consecutive failure count
 	maxRetry      int
+	logger        *slog.Logger
 	closed        bool
+}
+
+// SetLogger receives the library's diagnostic logger.
+func (s *Output) SetLogger(l *slog.Logger) {
+	s.logger = l
 }
 
 // New creates a new [Output] from the given config.
@@ -182,6 +189,7 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 	s := &Output{
 		tlsCfg:        tlsCfg,
 		syslogMetrics: syslogMetrics,
+		logger:        slog.Default(),
 		closeCh:       make(chan struct{}),
 		address:       cfg.Address,
 		network:       cfg.Network,

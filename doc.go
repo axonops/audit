@@ -28,7 +28,10 @@
 //   - github.com/axonops/audit/file — file output with rotation
 //   - github.com/axonops/audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/audit/webhook — batched HTTP webhook
+//   - github.com/axonops/audit/loki — Grafana Loki output with stream labels
 //   - github.com/axonops/audit/outputconfig — YAML-based output configuration
+//   - github.com/axonops/audit/outputs — convenience: blank-import to register all output types
+//   - github.com/axonops/audit/secrets — secret provider interface for ref+ URI resolution
 //
 // [StdoutOutput] and the audittest package ship with core and require
 // no additional import.
@@ -40,44 +43,32 @@
 //
 // # Quick Start
 //
-// Define a taxonomy describing your event types, create a logger with
-// a stdout output, and emit an event:
+// Define your events in a YAML taxonomy, configure outputs in a second YAML
+// file, and create a logger with a single call:
 //
-//	taxonomy := &audit.Taxonomy{
-//	    Version: 1,
-//	    Categories: map[string]*audit.CategoryDef{
-//	        "write": {Events: []string{"user_create"}},
-//	    },
-//	    Events: map[string]*audit.EventDef{
-//	        "user_create": {Required: []string{"outcome", "actor_id"}},
-//	    },
-//	}
+//	//go:embed taxonomy.yaml
+//	var taxonomyYAML []byte
 //
-//	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
+//	logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
+//	defer func() { _ = logger.Close() }()
+//
+//	err = logger.AuditEvent(audit.NewEventKV("user_create",
+//	    "outcome", "success",
+//	    "actor_id", "alice",
+//	))
+//
+// For exploration without YAML files, use [DevTaxonomy] and [Stdout]:
 //
 //	logger, err := audit.NewLogger(
-//	    audit.WithTaxonomy(taxonomy),
-//	    audit.WithOutputs(stdout),
+//	    audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
+//	    audit.WithOutputs(audit.Stdout()),
 //	)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	defer func() {
-//	    if err := logger.Close(); err != nil {
-//	        log.Printf("audit close: %v", err)
-//	    }
-//	}()
 //
-//	// This prints a JSON line to stdout:
-//	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
-//	    "outcome":  "success",
-//	    "actor_id": "alice",
-//	})); err != nil {
-//	    log.Printf("audit: %v", err)
-//	}
+// See the progressive examples in the examples/ directory for complete
+// working applications.
 //
 // # Core API
 //

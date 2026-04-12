@@ -456,7 +456,8 @@ if err != nil {
 }
 defer provider.Close()
 
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+    outputconfig.WithCoreMetrics(metrics),
     outputconfig.WithSecretProvider(provider),
 )
 ```
@@ -490,27 +491,49 @@ import (
 )
 ```
 
+Or register all output types with a single import:
+
+```go
+import _ "github.com/axonops/audit/outputs"
+```
+
 If an output type's module is not imported, `Load` returns an error
 — no output is silently dropped. The `stdout` type is always
 available (built into core).
 
 ## 📦 Loading Output Configuration
 
+The simplest way to create a logger from YAML is the
+`outputconfig.NewLogger` facade — one call, no manual wiring:
+
+```go
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
+if err != nil {
+    return fmt.Errorf("audit: %w", err)
+}
+defer func() { _ = logger.Close() }()
+```
+
+For advanced control (custom metrics, secret providers, per-call
+factory overrides), use `outputconfig.Load` directly:
+
 ```go
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-result, err := outputconfig.Load(ctx, outputsYAML, &taxonomy, metrics)
+result, err := outputconfig.Load(ctx, outputsYAML, taxonomy,
+    outputconfig.WithCoreMetrics(metrics),
+)
 if err != nil {
     return fmt.Errorf("audit config: %w", err)
 }
 
 opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 opts = append(opts, result.Options...)
-if result.StandardFields != nil {
-    opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
-}
-logger, err := audit.NewLogger(result.Config, opts...)
+logger, err := audit.NewLogger(opts...)
 ```
 
 ## 📚 Further Reading

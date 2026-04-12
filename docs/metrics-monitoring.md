@@ -39,7 +39,6 @@ type Metrics interface {
 
 ```go
 logger, err := audit.NewLogger(
-    audit.Config{Version: 1, Enabled: true},
     audit.WithTaxonomy(tax),
     audit.WithMetrics(myPrometheusMetrics),
     audit.WithOutputs(fileOutput),
@@ -52,7 +51,7 @@ logger, err := audit.NewLogger(
 
 | Metric | Method | Meaning |
 |--------|--------|---------|
-| **Buffer drops** | `RecordBufferDrop()` | Events lost because the async buffer is full. The application is producing events faster than the pipeline can drain. Increase `Config.BufferSize` or investigate slow outputs. |
+| **Buffer drops** | `RecordBufferDrop()` | Events lost because the async buffer is full. The application is producing events faster than the pipeline can drain. Increase `buffer_size` in your outputs YAML or use `WithBufferSize()`, and investigate slow outputs. |
 | **Output errors** | `RecordOutputError(output)` | An output failed to write. The syslog server may be down, the file system full, or the webhook endpoint unreachable. |
 
 ### Important — Monitor for Trends

@@ -243,9 +243,12 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 | `github.com/axonops/audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
 | `github.com/axonops/audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
 | `github.com/axonops/audit/outputconfig` | YAML-based output configuration with env var substitution |
+| `github.com/axonops/audit/outputs` | Convenience: single blank import registers all output factories |
+| `github.com/axonops/audit/secrets` | Secret provider interface for `ref+` URI resolution in YAML config |
 
 Outputs are isolated in separate modules so the core library carries
-minimal third-party dependencies. Import only the outputs you use.
+minimal third-party dependencies. Import only the outputs you use —
+or `import _ "github.com/axonops/audit/outputs"` to register all of them.
 
 ---
 

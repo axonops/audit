@@ -22,7 +22,7 @@ This is the most common problem. Work through this checklist:
 | Check | How to Verify | Fix |
 |-------|--------------|-----|
 | **`logger.Close()` not called** | Events are async — they sit in the buffer until the drain goroutine processes them. If your program exits without calling `Close()`, buffered events are lost. | Call `logger.Close()` before exit. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
-| **`Config.Enabled` is false** | A disabled logger silently discards all events. | Set `Config{Enabled: true}`. |
+| **Logger disabled** | A disabled logger silently discards all events. | Remove `WithDisabled()` from your `NewLogger` call, or set `logger: { enabled: true }` in your outputs YAML. |
 | **Category disabled at runtime** | If `DisableCategory()` was called, events in that category are silently discarded. | Check your code for `DisableCategory()` calls. All categories are enabled by default. |
 | **Per-output route filtering** | An output with `route: include_categories: [security]` only receives security events — write events are silently filtered. | Check your output YAML `route:` block. Remove the route to receive all events. See [Event Routing](event-routing.md). |
 | **Output disabled in YAML** | `enabled: false` on an output silently disables it. | Check your output YAML for `enabled: false`. |
@@ -46,7 +46,7 @@ than the drain goroutine can write them to outputs.
 
 | Cause | Fix |
 |-------|-----|
-| **Burst of events** | Increase `Config.BufferSize` (default: 10,000, max: 1,000,000) |
+| **Burst of events** | Increase `buffer_size` in your outputs YAML `logger:` section, or use `WithBufferSize()` (default: 10,000, max: 1,000,000) |
 | **Slow output** | A syslog server or webhook endpoint with high latency backs up the entire pipeline. Check output connectivity and latency. |
 | **Output error loop** | If an output is failing on every write, the drain goroutine spends time on error handling instead of processing events. Check `RecordOutputError` metrics. |
 

@@ -140,8 +140,8 @@ go run .
 
 --- Auth failure event ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"timezone":"Local","pid":...,"actor_id":"alice","outcome":"success"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure"}
+{"timestamp":"...","event_type":"user_create","severity":5,"timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"dev"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"dev"}
 INFO audit: shutdown complete duration=...
 ```
 

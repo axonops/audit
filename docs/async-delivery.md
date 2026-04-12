@@ -84,23 +84,20 @@ logger:
   drain_timeout: "30s"       # default: "5s", max: "60s"
 ```
 
-Or programmatically via the `Config` struct:
+Or programmatically via functional options:
 
 ```go
 logger, err := audit.NewLogger(
-    audit.Config{
-        Version:      1,
-        Enabled:      true,
-        BufferSize:   50_000,
-        DrainTimeout: 30 * time.Second,
-    },
+    audit.WithBufferSize(50_000),
+    audit.WithDrainTimeout(30 * time.Second),
     audit.WithTaxonomy(tax),
     audit.WithOutputs(out),
 )
 ```
 
-When using `outputconfig.Load`, the parsed `result.Config` contains
-these values from your YAML — pass it directly to `NewLogger`.
+When using `outputconfig.Load`, `result.Options` includes
+config-equivalent options (`WithBufferSize`, `WithDrainTimeout`, etc.)
+from your YAML — pass them directly to `NewLogger`.
 
 | Field | Default | Max | What It Does |
 |-------|---------|-----|-------------|
@@ -302,7 +299,7 @@ is called before the process exits:
 
 ```go
 func main() {
-    logger, err := audit.NewLogger(cfg, opts...)
+    logger, err := audit.NewLogger(opts...)
     if err != nil {
         log.Fatal(err)
     }
@@ -342,7 +339,7 @@ For simpler applications without an HTTP server, `defer` works:
 
 ```go
 func main() {
-    logger, err := audit.NewLogger(cfg, opts...)
+    logger, err := audit.NewLogger(opts...)
     if err != nil {
         log.Fatal(err)
     }

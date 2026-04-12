@@ -235,13 +235,10 @@ var outputsYAML []byte
 result, err := outputconfig.Load(ctx, outputsYAML, &tax, nil)
 ```
 
-`Load` returns options you pass straight to `NewLogger`:
+Or use the facade — one call instead of three steps:
 
 ```go
-opts := []audit.Option{audit.WithTaxonomy(tax)}
-opts = append(opts, result.Options...)
-
-logger, err := audit.NewLogger(audit.Config{Version: 1, Enabled: true}, opts...)
+logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
 ```
 
 ### Two Files, Two Purposes

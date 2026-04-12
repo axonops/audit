@@ -135,7 +135,7 @@ cannot be undone.
       only a subset of modules). Verify with:
 
       ```bash
-      grep "axonops/go-audit" file/go.mod syslog/go.mod webhook/go.mod \
+      grep "axonops/audit" file/go.mod syslog/go.mod webhook/go.mod \
           loki/go.mod outputconfig/go.mod cmd/audit-gen/go.mod
       ```
 
@@ -394,10 +394,10 @@ that cryptographically proves it was built by the go-audit CI pipeline.
 Verify any downloaded artifact with:
 
 ```bash
-gh attestation verify audit-gen_linux_amd64.tar.gz --repo axonops/go-audit
+gh attestation verify audit-gen_linux_amd64.tar.gz --repo axonops/audit
 ```
 
-This confirms the artifact was built by GitHub Actions from the axonops/go-audit
+This confirms the artifact was built by GitHub Actions from the axonops/audit
 repository at the tagged commit. No keys or additional tools are needed — the
 `gh` CLI handles everything via GitHub's Sigstore-based transparency log.
 
@@ -413,7 +413,7 @@ Download them from the
 GitHub CLI:
 
 ```bash
-gh release download v0.1.1 --pattern "sbom.*" --repo axonops/go-audit
+gh release download v0.1.1 --pattern "sbom.*" --repo axonops/audit
 ```
 
 The SBOMs cover the compiled binaries produced by GoReleaser (including

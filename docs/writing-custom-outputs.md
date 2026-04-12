@@ -72,7 +72,11 @@ When an output implements `MetadataWriter`, the library calls
 
 ## Thread Safety
 
-All output methods (`Write`, `WriteWithMetadata`, `Close`) may be called
-concurrently from the drain goroutine. Use a `sync.Mutex` to protect
-shared state. In synchronous delivery mode (`WithSynchronousDelivery`),
-calls are serialised by the library's internal mutex.
+`Write` and `WriteWithMetadata` are called only from the single drain
+goroutine — they are never called concurrently with each other. However,
+`Close()` may be called from a different goroutine while a `Write` is
+still in progress (if the drain timeout expires during shutdown). Use a
+`sync.Mutex` to protect against `Write`/`Close` races if your output
+holds state that both methods access. In synchronous delivery mode
+(`WithSynchronousDelivery`), all calls are serialised by the library's
+internal mutex.

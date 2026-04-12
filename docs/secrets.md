@@ -167,7 +167,7 @@ import (
 	"github.com/axonops/audit/secrets/openbao"
 )
 
-// ctx, yamlData, taxonomy, metrics defined by caller
+// ctx, yamlData, taxonomy defined by caller
 provider, err := openbao.New(&openbao.Config{
 	Address: os.Getenv("BAO_ADDR"),
 	Token:   os.Getenv("BAO_TOKEN"),
@@ -177,7 +177,7 @@ if err != nil {
 }
 defer provider.Close()
 
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 	outputconfig.WithSecretProvider(provider),
 )
 ```
@@ -194,7 +194,7 @@ import (
 	"github.com/axonops/audit/secrets/vault"
 )
 
-// ctx, yamlData, taxonomy, metrics defined by caller
+// ctx, yamlData, taxonomy defined by caller
 provider, err := vault.New(&vault.Config{
 	Address: os.Getenv("VAULT_ADDR"),
 	Token:   os.Getenv("VAULT_TOKEN"),
@@ -204,7 +204,7 @@ if err != nil {
 }
 defer provider.Close()
 
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 	outputconfig.WithSecretProvider(provider),
 )
 ```
@@ -215,8 +215,8 @@ Register one provider per scheme. `Load` returns an error wrapping
 `ErrOutputConfigInvalid` if two providers share the same scheme.
 
 ```go
-// ctx, yamlData, taxonomy, metrics defined by caller
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+// ctx, yamlData, taxonomy defined by caller
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 	outputconfig.WithSecretProvider(baoProvider),
 	outputconfig.WithSecretProvider(vaultProvider),
 )
@@ -262,8 +262,8 @@ secret resolution during a single `Load` call. The caller's context
 deadline takes precedence when it is earlier.
 
 ```go
-// ctx, yamlData, taxonomy, metrics, provider defined by caller
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+// ctx, yamlData, taxonomy, provider defined by caller
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 	outputconfig.WithSecretProvider(provider),
 	outputconfig.WithSecretTimeout(30*time.Second),
 )
@@ -493,8 +493,8 @@ calls combined, not per-call.
 To increase the timeout:
 
 ```go
-// ctx, yamlData, taxonomy, metrics, provider defined by caller
-result, err := outputconfig.Load(ctx, yamlData, &taxonomy, metrics,
+// ctx, yamlData, taxonomy, provider defined by caller
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 	outputconfig.WithSecretProvider(provider),
 	outputconfig.WithSecretTimeout(60*time.Second),
 )
@@ -527,7 +527,7 @@ import (
 )
 
 // reload rebuilds the logger with fresh secrets.
-func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy, metrics audit.Metrics) (*audit.Logger, error) {
+func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy) (*audit.Logger, error) {
 	provider, err := openbao.New(&openbao.Config{
 		Address: os.Getenv("BAO_ADDR"),
 		Token:   os.Getenv("BAO_TOKEN"),
@@ -537,7 +537,7 @@ func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy, metr
 	}
 	defer provider.Close()
 
-	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics,
+	result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 		outputconfig.WithSecretProvider(provider),
 	)
 	if err != nil {
@@ -546,7 +546,7 @@ func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy, metr
 
 	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 	opts = append(opts, result.Options...)
-	return audit.NewLogger(result.Config, opts...)
+	return audit.NewLogger(opts...)
 }
 ```
 

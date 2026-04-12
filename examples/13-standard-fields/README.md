@@ -121,24 +121,18 @@ outputs:
 - `standard_fields` maps reserved standard field names to default values.
   Environment variables are supported. Per-event values always override defaults.
 
-## Wiring Standard Field Defaults in Go
+## Wiring Standard Field Defaults
 
-The `standard_fields` YAML section produces a `map[string]string` in
-`result.StandardFields`. This is separate from `result.Options` — you
-must wire it explicitly:
+The `standard_fields` YAML section is handled automatically by
+`outputconfig.NewLogger` — no manual wiring needed:
 
 ```go
-opts := []audit.Option{audit.WithTaxonomy(tax)}
-opts = append(opts, result.Options...)
-if result.StandardFields != nil {
-    opts = append(opts, audit.WithStandardFieldDefaults(result.StandardFields))
-}
-logger, err := audit.NewLogger(result.Config, opts...)
+logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
 ```
 
-The `nil` guard is important: when `standard_fields:` is omitted from
-the YAML, `result.StandardFields` is `nil`. The guard keeps the wiring
-consistent whether or not standard fields are configured.
+The facade reads the `standard_fields` map, creates a
+`WithStandardFieldDefaults` option, and passes it to `NewLogger`
+alongside the output registrations and config options.
 
 ## Using Standard Field Setters
 

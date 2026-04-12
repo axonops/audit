@@ -321,7 +321,8 @@ for practical guidance on choosing severity values.
 | `warn` | Accepts unknown fields but logs a warning via `log/slog` |
 | `permissive` | Accepts any fields without warning |
 
-Set via `audit.Config{ValidationMode: "warn"}` or
+Set via `audit.WithValidationMode(audit.ValidationWarn)` on
+`NewLogger`, the `validation_mode` key in your outputs YAML, or
 `audittest.WithValidationMode(audit.ValidationWarn)` in tests.
 
 ## 📦 Loading a Taxonomy

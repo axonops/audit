@@ -35,15 +35,18 @@ when `Close()` times out are lost.
 ## Module Boundaries
 
 ```
-github.com/axonops/audit           ← core (Logger, Output, taxonomy, formatters)
-github.com/axonops/audit/file      ← file output (depends on core)
-github.com/axonops/audit/syslog    ← syslog output (depends on core + srslog)
-github.com/axonops/audit/webhook   ← webhook output (depends on core)
+github.com/axonops/audit              ← core (Logger, Output, taxonomy, formatters)
+github.com/axonops/audit/file         ← file output (depends on core)
+github.com/axonops/audit/syslog       ← syslog output (depends on core + srslog)
+github.com/axonops/audit/webhook      ← webhook output (depends on core)
+github.com/axonops/audit/loki         ← Loki output (depends on core)
 github.com/axonops/audit/outputconfig ← YAML config loader (depends on core + go-yaml)
+github.com/axonops/audit/outputs      ← convenience: blank-import registers all outputs
+github.com/axonops/audit/secrets      ← secret provider interface for ref+ URI resolution
 ```
 
 Outputs are separate Go modules so the core carries no third-party
-output dependencies. A consumer importing only `go-audit/file` does
+output dependencies. A consumer importing only `audit/file` does
 not pull in srslog or the webhook's SSRF filter.
 
 The core module depends on `github.com/goccy/go-yaml` for `ParseTaxonomyYAML`.

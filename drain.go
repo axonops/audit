@@ -176,9 +176,12 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 	// (after field stripping + event_category).
 	if oe.hmac != nil {
 		hmacHex := oe.hmac.computeHMACFast(data)
-		data = AppendPostFields(data, oe.effectiveFormatter(l.formatter), []PostField{
-			{JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex)},
-			{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion},
+		fmtr := oe.effectiveFormatter(l.formatter)
+		data = AppendPostField(data, fmtr, PostField{
+			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
+		})
+		data = AppendPostField(data, fmtr, PostField{
+			JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion,
 		})
 	}
 

@@ -35,9 +35,28 @@ type PostField struct {
 // bytes based on the formatter type. Returns the original data
 // unchanged for unknown formatter types.
 func appendEventCategory(data []byte, formatter Formatter, category string) []byte {
-	return AppendPostFields(data, formatter, []PostField{
-		{JSONKey: "event_category", CEFKey: "cat", Value: category},
+	return AppendPostField(data, formatter, PostField{
+		JSONKey: "event_category", CEFKey: "cat", Value: category,
 	})
+}
+
+// AppendPostField appends a single post-serialisation field to cached
+// bytes. This is the zero-allocation fast path for the common case of
+// appending one field (event_category, HMAC). For multiple fields, use
+// [AppendPostFields].
+func AppendPostField(data []byte, formatter Formatter, field PostField) []byte {
+	if len(data) < 2 {
+		return data
+	}
+
+	switch formatter.(type) {
+	case *JSONFormatter:
+		return appendPostFieldJSON(data, field)
+	case *CEFFormatter:
+		return appendPostFieldCEF(data, field)
+	default:
+		return data
+	}
 }
 
 // AppendPostFields appends one or more post-serialisation fields to
@@ -57,6 +76,43 @@ func AppendPostFields(data []byte, formatter Formatter, fields []PostField) []by
 	default:
 		return data // unknown formatter — skip silently
 	}
+}
+
+func appendPostFieldJSON(data []byte, f PostField) []byte {
+	braceIdx := len(data) - 2
+	if braceIdx < 0 || data[braceIdx] != '}' {
+		return data
+	}
+	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
+	if !ok {
+		buf = new(bytes.Buffer)
+	}
+	buf.Reset()
+	buf.Write(data[:braceIdx])
+	buf.WriteByte(',')
+	WriteJSONString(buf, f.JSONKey)
+	buf.WriteByte(':')
+	WriteJSONString(buf, f.Value)
+	buf.Write(data[braceIdx:])
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	jsonBufPool.Put(buf)
+	return result
+}
+
+func appendPostFieldCEF(data []byte, f PostField) []byte {
+	nlIdx := len(data) - 1
+	if nlIdx < 0 || data[nlIdx] != '\n' {
+		return data
+	}
+	result := make([]byte, 0, len(data)+2+len(f.CEFKey)+len(f.Value))
+	result = append(result, data[:nlIdx]...)
+	result = append(result, ' ')
+	result = append(result, f.CEFKey...)
+	result = append(result, '=')
+	result = append(result, cefEscapeExtValue(f.Value)...)
+	result = append(result, '\n')
+	return result
 }
 
 func appendPostFieldsJSON(data []byte, fields []PostField) []byte {

@@ -155,6 +155,7 @@ type CEFFormatter struct {
 	appName  string
 	host     string
 	timezone string
+	pidStr   string // pre-formatted PID; empty when pid == 0
 	pid      int
 
 	// noCopy prevents go vet from missing struct copies after first use.
@@ -177,6 +178,9 @@ func (*noCopy) Unlock() {}
 // maxCEFHeaderField is the maximum length for Vendor, Product, and
 // Version header fields. Prevents unbounded header growth.
 const maxCEFHeaderField = 255
+
+// cefSeverityStrings avoids per-event strconv.Itoa for severity (0-10).
+var cefSeverityStrings = [11]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
 // Format serialises a single audit event as a CEF line using a single
 // buffer for both header and extensions.
@@ -212,14 +216,19 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	buf.WriteByte('|')
 	buf.WriteString(cefEscapeHeader(description))
 	buf.WriteByte('|')
-	buf.WriteString(strconv.Itoa(severity))
+	buf.WriteString(cefSeverityStrings[severity])
 	buf.WriteByte('|')
 
 	// Write extensions directly into the same buffer.
 	extStart := buf.Len()
 
-	// Timestamp as receipt time (epoch ms).
-	writeExtField(buf, extStart, "rt", strconv.FormatInt(ts.UnixMilli(), 10))
+	// Timestamp as receipt time (epoch ms) — write directly to buffer
+	// to avoid strconv.FormatInt string allocation.
+	if extStart < buf.Len() {
+		buf.WriteByte(' ')
+	}
+	buf.WriteString("rt=")
+	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), ts.UnixMilli(), 10))
 
 	// Event type as device action.
 	writeExtField(buf, extStart, "act", eventType)
@@ -341,6 +350,9 @@ func (cf *CEFFormatter) SetFrameworkFields(appName, host, timezone string, pid i
 	cf.host = host
 	cf.timezone = timezone
 	cf.pid = pid
+	if pid > 0 {
+		cf.pidStr = strconv.Itoa(pid)
+	}
 }
 
 // writeFrameworkExtensions writes app_name, host, timezone, and pid as
@@ -358,8 +370,8 @@ func (cf *CEFFormatter) writeFrameworkExtensions(buf *bytes.Buffer, extStart int
 		writeExtField(buf, extStart, "dtz", cf.timezone)
 		reserved["dtz"] = struct{}{}
 	}
-	if cf.pid > 0 {
-		writeExtField(buf, extStart, "dvcpid", strconv.Itoa(cf.pid))
+	if cf.pidStr != "" {
+		writeExtField(buf, extStart, "dvcpid", cf.pidStr)
 		reserved["dvcpid"] = struct{}{}
 	}
 }

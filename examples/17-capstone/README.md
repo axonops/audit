@@ -21,7 +21,7 @@ docker compose up -d
 Then open:
 
 - **http://localhost:8080** — Web UI (inventory management)
-- **http://localhost:3000/d/crud-api-audit/** — Grafana audit dashboard (no login needed)
+- **http://localhost:3000/d/inventory-demo-audit/** — Grafana audit dashboard (no login needed)
 
 That's it. Docker Compose builds the app from source, starts Postgres,
 Loki, and Grafana, and wires them together. No Go toolchain required.
@@ -48,7 +48,7 @@ Every action generates audit events: `user_create`, `item_create`,
 
 ### 3. See audit events in Grafana
 
-Open http://localhost:3000/d/crud-api-audit/ (or navigate to
+Open http://localhost:3000/d/inventory-demo-audit/ (or navigate to
 **Dashboards** in the left sidebar). You'll see:
 
 - **Events over time** — line chart showing audit activity

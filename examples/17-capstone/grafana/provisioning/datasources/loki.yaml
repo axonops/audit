@@ -9,4 +9,4 @@ datasources:
     jsonData:
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
-      httpHeaderValue1: crud-api
+      httpHeaderValue1: inventory-demo

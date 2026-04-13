@@ -9,7 +9,7 @@
 #   Loki          → JSON, all events, PII stripped   (Grafana dashboards)
 
 version: 1
-app_name: "crud-api"
+app_name: "inventory-demo"
 host: "${HOSTNAME:-localhost}"
 
 logger:
@@ -84,7 +84,7 @@ outputs:
       # Use http://localhost:3100/... when running outside Docker (go run .)
       # Use http://loki:3100/... when running inside Docker Compose
       url: "${LOKI_URL:-http://localhost:3100/loki/api/v1/push}"
-      tenant_id: "crud-api"
+      tenant_id: "inventory-demo"
       allow_insecure_http: true    # Dev-only — NEVER in production; use HTTPS
       allow_private_ranges: true  # Dev-only — NEVER in production; enables SSRF
       batch_size: 50
@@ -93,7 +93,7 @@ outputs:
       gzip: true
       labels:
         static:
-          job: "crud-api-audit"
+          job: "inventory-demo-audit"
         dynamic:
           event_type: true
           event_category: true

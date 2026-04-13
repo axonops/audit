@@ -13,7 +13,7 @@
       "datasource": "Loki",
       "targets": [
         {
-          "expr": "sum by (event_category) (count_over_time({job=\"crud-api-audit\"} [1m]))",
+          "expr": "sum by (event_category) (count_over_time({job=\"inventory-demo-audit\"} [1m]))",
           "legendFormat": "{{event_category}}",
           "refId": "A"
         }
@@ -38,7 +38,7 @@
       "datasource": "Loki",
       "targets": [
         {
-          "expr": "sum by (event_category) (count_over_time({job=\"crud-api-audit\"} [24h]))",
+          "expr": "sum by (event_category) (count_over_time({job=\"inventory-demo-audit\"} [24h]))",
           "legendFormat": "{{event_category}}",
           "refId": "A"
         }
@@ -51,7 +51,7 @@
       "datasource": "Loki",
       "targets": [
         {
-          "expr": "sum by (severity) (count_over_time({job=\"crud-api-audit\"} [24h]))",
+          "expr": "sum by (severity) (count_over_time({job=\"inventory-demo-audit\"} [24h]))",
           "legendFormat": "severity {{severity}}",
           "refId": "A"
         }
@@ -125,7 +125,7 @@
       "datasource": "Loki",
       "targets": [
         {
-          "expr": "topk(10, sum by (event_type) (count_over_time({job=\"crud-api-audit\"} [24h])))",
+          "expr": "topk(10, sum by (event_type) (count_over_time({job=\"inventory-demo-audit\"} [24h])))",
           "legendFormat": "{{event_type}}",
           "refId": "A"
         }
@@ -138,7 +138,7 @@
       "datasource": "Loki",
       "targets": [
         {
-          "expr": "{job=\"crud-api-audit\"}",
+          "expr": "{job=\"inventory-demo-audit\"}",
           "refId": "A"
         }
       ],
@@ -161,6 +161,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "audit: Inventory Demo Dashboard",
-  "uid": "crud-api-audit",
+  "uid": "inventory-demo-audit",
   "version": 1
 }

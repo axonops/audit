@@ -54,9 +54,9 @@
   <div class="login-card">
     <h2>Audit Inventory Demo</h2>
     <p>Log in to start generating audit events. Every action you take is logged to four outputs simultaneously.</p>
-    <div class="hint">Demo credentials: <strong>alice / password</strong> or <strong>admin / admin123</strong></div>
-    <input id="overlay-user" placeholder="Username" value="alice">
-    <input id="overlay-pass" type="password" placeholder="Password" value="password">
+    <div class="hint">Demo credentials: <strong>admin / admin123</strong> (full access) or <strong>alice / password</strong></div>
+    <input id="overlay-user" placeholder="Username" value="admin">
+    <input id="overlay-pass" type="password" placeholder="Password" value="admin123">
     <button onclick="doOverlayLogin()">Log In</button>
     <div id="overlay-error" style="color:#c62828; margin-top:0.5rem; font-size:0.85rem;"></div>
   </div>
@@ -65,8 +65,8 @@
 <header>
   <h1>Audit Inventory Demo</h1>
   <div class="auth-section" id="auth-section">
-    <input id="login-user" placeholder="username" value="alice">
-    <input id="login-pass" type="password" placeholder="password" value="password">
+    <input id="login-user" placeholder="username" value="admin">
+    <input id="login-pass" type="password" placeholder="password" value="admin123">
     <button class="btn-login" onclick="doLogin()">Login</button>
   </div>
 </header>
@@ -224,8 +224,8 @@ function updateAuthUI() {
     section.innerHTML = `<span class="user-info">${esc(currentUser)}</span>
       <button class="btn-logout" onclick="doLogout()">Logout</button>`;
   } else {
-    section.innerHTML = `<input id="login-user" placeholder="username" value="alice">
-      <input id="login-pass" type="password" placeholder="password" value="password">
+    section.innerHTML = `<input id="login-user" placeholder="username" value="admin">
+      <input id="login-pass" type="password" placeholder="password" value="admin123">
       <button class="btn-login" onclick="doLogin()">Login</button>`;
   }
 }

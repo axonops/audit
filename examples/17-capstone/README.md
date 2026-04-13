@@ -21,7 +21,7 @@ docker compose up -d
 Then open:
 
 - **http://localhost:8080** — Web UI (inventory management)
-- **http://localhost:3000** — Grafana (audit dashboard, no login needed)
+- **http://localhost:3000/d/crud-api-audit/** — Grafana audit dashboard (no login needed)
 
 That's it. Docker Compose builds the app from source, starts Postgres,
 Loki, and Grafana, and wires them together. No Go toolchain required.
@@ -48,8 +48,8 @@ Every action generates audit events: `user_create`, `item_create`,
 
 ### 3. See audit events in Grafana
 
-Open http://localhost:3000 and navigate to **Dashboards →
-"audit: Inventory Demo Dashboard"**. You'll see:
+Open http://localhost:3000/d/crud-api-audit/ (or navigate to
+**Dashboards** in the left sidebar). You'll see:
 
 - **Events over time** — line chart showing audit activity
 - **Events by category** — pie chart (read, write, security, compliance)
@@ -159,6 +159,7 @@ docker compose down -v
 | `admin.go` | Settings, export, bulk operations |
 | `db*.go` | Postgres connection and queries |
 | `metrics.go` | Prometheus metrics (core + per-output via structural typing) |
+| `main_test.go` | 9 unit tests showing how to test audit events with `audittest` |
 | `static/index.html` | Single-page web UI |
 | `grafana/` | Pre-provisioned Loki datasource and audit dashboard |
 | `loki-config.yaml` | Loki server configuration |
@@ -209,6 +210,75 @@ The shutdown sequence matters:
 
 Without `logger.Close()`, buffered events are lost and the drain
 goroutine leaks. See `main.go` for the signal handling pattern.
+
+## Testing Audit Events
+
+The `main_test.go` file demonstrates how to test audit events in a
+real application using `audittest.NewLogger`. This is the pattern you
+should follow in your own tests.
+
+### Test setup
+
+```go
+func newTestServer(t *testing.T, dbSetup func(mock sqlmock.Sqlmock)) *testEnv {
+    logger, rec, _ := audittest.NewLogger(t, taxonomyYAML)
+    handler := newServer(logger, db, sessions, rl, settings)
+    srv := httptest.NewServer(handler)
+    return &testEnv{srv: srv, rec: rec, logger: logger}
+}
+```
+
+The test logger uses the **same taxonomy** as production (embedded via
+`go:embed`). Events flow through the same middleware, same handlers,
+same `buildAuditEvent` function — the only difference is the output
+goes to an in-memory recorder instead of files and Loki.
+
+### Asserting on events
+
+```go
+func TestAuthFailure_InvalidAPIKey(t *testing.T) {
+    env := newTestServer(t, nil)
+    doRequest(t, env.srv.URL, "GET", "/items", "bad-key", nil)
+
+    // NewLogger defaults to synchronous delivery — events are
+    // available immediately without calling Close.
+    require.Equal(t, 1, env.rec.Count())
+    evt := env.rec.Events()[0]
+    assert.Equal(t, "auth_failure", evt.EventType)
+    assert.Equal(t, "failure", evt.StringField("outcome"))
+}
+```
+
+Key points:
+- **No `Close()` needed before assertions** — `audittest.NewLogger`
+  defaults to synchronous delivery since #425
+- **Same validation as production** — missing required fields are
+  rejected, unknown event types fail
+- **Full middleware stack** — HTTP fields (method, path, status code,
+  client IP) are captured automatically
+
+### What the tests cover
+
+| Test | What it verifies |
+|------|-----------------|
+| `TestAuthFailure_InvalidAPIKey` | Auth middleware emits `auth_failure` with correct fields |
+| `TestAuthFailure_NoCredentials` | Missing credentials produce `auth_failure` |
+| `TestLogin_Success_EmitsAuthSuccess` | Successful login emits `auth_success` with actor_id |
+| `TestLogin_BadPassword_EmitsAuthFailure` | Wrong password emits `auth_failure` |
+| `TestCreateItem_EmitsItemCreateEvent` | CRUD handler emits correct event type and target_id |
+| `TestCreateUser_EmitsPIIFields` | PII fields (email, phone) are present in events |
+| `TestAdminSettings_NonAdmin_Forbidden` | Non-admin gets 403, authorization_failure event |
+| `TestAdminSettings_AdminAllowed` | Admin access succeeds, settings_read event |
+| `TestConfigChange_EmitsEventWithOldNewValues` | Config change captures old and new values |
+
+Run the tests:
+
+```bash
+go test -v -race ./examples/17-capstone/...
+```
+
+See [Example 04 — Testing](../04-testing/) for the fundamentals of
+`audittest.NewLogger` and `audittest.NewLoggerQuick`.
 
 ## Running Without Docker
 

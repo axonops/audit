@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>audit CRUD API — Inventory Management</title>
+<title>Audit Inventory Demo</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #333; }
@@ -19,8 +19,10 @@
   .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
   .user-info { color: #4CAF50; font-weight: bold; }
   nav { background: #16213e; padding: 0; display: flex; }
-  nav button { background: none; border: none; color: #aaa; padding: 0.8rem 1.5rem; cursor: pointer; font-size: 0.9rem; }
+  nav button, nav a { background: none; border: none; color: #aaa; padding: 0.8rem 1.5rem; cursor: pointer; font-size: 0.9rem; text-decoration: none; }
   nav button.active { color: #fff; border-bottom: 2px solid #4CAF50; }
+  nav a:hover { color: #fff; }
+  nav .external-links { margin-left: auto; display: flex; gap: 0; }
   main { max-width: 900px; margin: 1.5rem auto; padding: 0 1rem; }
   .panel { display: none; }
   .panel.active { display: block; }
@@ -35,12 +37,33 @@
   .status.ok { background: #e8f5e9; color: #2e7d32; }
   .status.err { background: #ffebee; color: #c62828; }
   .actions { display: flex; gap: 0.3rem; }
+  .login-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .login-card { background: #fff; border-radius: 12px; padding: 2rem; width: 380px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+  .login-card h2 { margin-bottom: 0.5rem; }
+  .login-card p { color: #666; margin-bottom: 1rem; font-size: 0.9rem; }
+  .login-card .hint { background: #e3f2fd; padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; color: #1565c0; margin-bottom: 1rem; }
+  .login-card input { width: 100%; padding: 0.6rem; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.9rem; box-sizing: border-box; }
+  .login-card button { width: 100%; padding: 0.7rem; background: #4CAF50; color: #fff; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+  .login-card button:hover { background: #388E3C; }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <h2>Audit Inventory Demo</h2>
+    <p>Log in to start generating audit events. Every action you take is logged to four outputs simultaneously.</p>
+    <div class="hint">Demo credentials: <strong>alice / password</strong> or <strong>admin / admin123</strong></div>
+    <input id="overlay-user" placeholder="Username" value="alice">
+    <input id="overlay-pass" type="password" placeholder="Password" value="password">
+    <button onclick="doOverlayLogin()">Log In</button>
+    <div id="overlay-error" style="color:#c62828; margin-top:0.5rem; font-size:0.85rem;"></div>
+  </div>
+</div>
+
 <header>
-  <h1>audit Inventory Management</h1>
+  <h1>Audit Inventory Demo</h1>
   <div class="auth-section" id="auth-section">
     <input id="login-user" placeholder="username" value="alice">
     <input id="login-pass" type="password" placeholder="password" value="password">
@@ -53,6 +76,11 @@
   <button data-tab="items">Items</button>
   <button data-tab="orders">Orders</button>
   <button data-tab="admin">Admin</button>
+  <div class="external-links">
+    <a href="http://localhost:3000/d/crud-api-audit/" target="_blank" title="Grafana Audit Dashboard">Grafana</a>
+    <a href="http://localhost:3000/explore" target="_blank" title="Loki Log Explorer">Loki Explorer</a>
+    <a href="/metrics" target="_blank" title="Prometheus Metrics">Metrics</a>
+  </div>
 </nav>
 
 <main>
@@ -186,7 +214,7 @@ async function doLogout() {
   sessionStorage.removeItem('token');
   sessionStorage.removeItem('currentUser');
   updateAuthUI();
-  showStatus('Logged out', true);
+  showLoginState();
 }
 
 function updateAuthUI() {
@@ -304,9 +332,44 @@ async function bulkDelete() {
   loadItems();
 }
 
+// --- Overlay login ---
+async function doOverlayLogin() {
+  const username = document.getElementById('overlay-user').value;
+  const password = document.getElementById('overlay-pass').value;
+  const errEl = document.getElementById('overlay-error');
+  errEl.textContent = '';
+  const res = await fetch(BASE + '/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  const data = await res.json().catch(() => null);
+  if (res.ok && data?.token) {
+    token = data.token;
+    currentUser = username;
+    sessionStorage.setItem('token', token);
+    sessionStorage.setItem('currentUser', currentUser);
+    updateAuthUI();
+    showLoginState();
+    refreshAll();
+  } else {
+    errEl.textContent = data?.error || 'Login failed';
+  }
+}
+
+function showLoginState() {
+  const overlay = document.getElementById('login-overlay');
+  if (token) {
+    overlay.classList.add('hidden');
+  } else {
+    overlay.classList.remove('hidden');
+  }
+}
+
 // --- Init ---
 function refreshAll() { loadUsers(); loadItems(); loadOrders(); loadSettings(); }
 updateAuthUI();
+showLoginState();
 if (token) refreshAll();
 </script>
 </body>

@@ -10,3 +10,13 @@ outputs:
     file:
       path: "./audit.log"
       permissions: "0600"
+
+  # Disabled outputs are skipped at load time — the output is not
+  # created and receives no events. Use this to temporarily turn off
+  # an output without removing its config block. Flip to true (or
+  # remove the line) to re-enable.
+  debug_file:
+    enabled: false
+    type: file
+    file:
+      path: "./debug.log"

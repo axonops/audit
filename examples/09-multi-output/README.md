@@ -12,6 +12,7 @@ and a log file, both defined in `outputs.yaml`.
 
 - Defining multiple outputs in one YAML config
 - How fan-out delivery works
+- Temporarily disabling an output with `enabled: false`
 - What happens when one output fails
 
 ## Prerequisites
@@ -24,7 +25,7 @@ and a log file, both defined in `outputs.yaml`.
 | File | Purpose |
 |------|---------|
 | `taxonomy.yaml` | Event definitions (embedded) |
-| `outputs.yaml` | Two outputs: stdout + file |
+| `outputs.yaml` | Three outputs: stdout + file + disabled file |
 | `audit_generated.go` | Generated constants (committed) |
 | `main.go` | Loads config, emits events, shows both outputs received them |
 
@@ -43,11 +44,32 @@ outputs:
     file:
       path: "./audit.log"
       permissions: "0600"
+
+  debug_file:
+    enabled: false
+    type: file
+    file:
+      path: "./debug.log"
 ```
 
 Every output listed under `outputs:` receives every event. One
 `AuditEvent()` call fans out to all of them. The output names (`console`,
 `audit_log`) appear in metrics and error messages.
+
+### Disabling an Output
+
+Set `enabled: false` on any output to skip it at load time. The output
+is not created, receives no events, and consumes no resources. This is
+useful for:
+
+- **Temporarily silencing a noisy output** during debugging
+- **Environment-specific config** — leave a Loki output in the YAML but
+  disable it in environments where Loki isn't available
+- **Staged rollouts** — add a new output disabled, deploy, then flip
+  `enabled: true` in the next deployment
+
+Remove the `enabled: false` line (or set it to `true`) to re-enable.
+The output's full config is preserved so you don't need to rewrite it.
 
 ### How Fan-Out Works
 

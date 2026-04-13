@@ -339,16 +339,16 @@ SBOM_DIR := sbom
 sbom:
 	@mkdir -p $(SBOM_DIR)
 	@echo "=== Generating CycloneDX SBOM (all modules) ==="
-	@syft dir:. --output cyclonedx-json --file $(SBOM_DIR)/go-audit_sbom.cdx.json
+	@syft dir:. --output cyclonedx-json --file $(SBOM_DIR)/audit_sbom.cdx.json
 	@echo "=== Generating SPDX SBOM (all modules) ==="
-	@syft dir:. --output spdx-json --file $(SBOM_DIR)/go-audit_sbom.spdx.json
+	@syft dir:. --output spdx-json --file $(SBOM_DIR)/audit_sbom.spdx.json
 	@echo "SBOMs generated in $(SBOM_DIR)/"
 
 sbom-validate:
 	@echo "=== Validating CycloneDX SBOM ==="
-	@python3 -c "import json; json.load(open('$(SBOM_DIR)/go-audit_sbom.cdx.json')); print('CycloneDX: valid JSON')"
+	@python3 -c "import json; json.load(open('$(SBOM_DIR)/audit_sbom.cdx.json')); print('CycloneDX: valid JSON')"
 	@echo "=== Validating SPDX SBOM ==="
-	@python3 -c "import json; json.load(open('$(SBOM_DIR)/go-audit_sbom.spdx.json')); print('SPDX: valid JSON')"
+	@python3 -c "import json; json.load(open('$(SBOM_DIR)/audit_sbom.spdx.json')); print('SPDX: valid JSON')"
 
 # --- Certificate generation ---
 
@@ -423,16 +423,17 @@ test-infra-vault-down:
 
 # Module definitions for publish targets: directory|module_path|tag_prefix
 PUBLISH_MODULES := \
-  .|github.com/axonops/go-audit| \
-  file|github.com/axonops/go-audit/file|file/ \
-  syslog|github.com/axonops/go-audit/syslog|syslog/ \
-  webhook|github.com/axonops/go-audit/webhook|webhook/ \
-  loki|github.com/axonops/go-audit/loki|loki/ \
-  outputconfig|github.com/axonops/go-audit/outputconfig|outputconfig/ \
-  cmd/audit-gen|github.com/axonops/go-audit/cmd/audit-gen|cmd/audit-gen/ \
-  secrets|github.com/axonops/go-audit/secrets|secrets/ \
-  secrets/openbao|github.com/axonops/go-audit/secrets/openbao|secrets/openbao/ \
-  secrets/vault|github.com/axonops/go-audit/secrets/vault|secrets/vault/
+  .|github.com/axonops/audit| \
+  file|github.com/axonops/audit/file|file/ \
+  syslog|github.com/axonops/audit/syslog|syslog/ \
+  webhook|github.com/axonops/audit/webhook|webhook/ \
+  loki|github.com/axonops/audit/loki|loki/ \
+  outputconfig|github.com/axonops/audit/outputconfig|outputconfig/ \
+  outputs|github.com/axonops/audit/outputs|outputs/ \
+  cmd/audit-gen|github.com/axonops/audit/cmd/audit-gen|cmd/audit-gen/ \
+  secrets|github.com/axonops/audit/secrets|secrets/ \
+  secrets/openbao|github.com/axonops/audit/secrets/openbao|secrets/openbao/ \
+  secrets/vault|github.com/axonops/audit/secrets/vault|secrets/vault/
 
 .PHONY: publish-trigger publish-verify publish-smoke
 
@@ -471,17 +472,18 @@ endif
 	cd "$$dir" && \
 	go mod init smoketest && \
 	echo "Installing modules ..." && \
-	go get "github.com/axonops/go-audit@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/file@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/syslog@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/webhook@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/loki@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/outputconfig@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/secrets@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/secrets/openbao@$(VERSION)" && \
-	go get "github.com/axonops/go-audit/secrets/vault@$(VERSION)" && \
-	printf 'package main\n\nimport (\n\t_ "github.com/axonops/go-audit"\n\t_ "github.com/axonops/go-audit/file"\n\t_ "github.com/axonops/go-audit/syslog"\n\t_ "github.com/axonops/go-audit/webhook"\n\t_ "github.com/axonops/go-audit/loki"\n\t_ "github.com/axonops/go-audit/outputconfig"\n\t_ "github.com/axonops/go-audit/secrets"\n\t_ "github.com/axonops/go-audit/secrets/openbao"\n\t_ "github.com/axonops/go-audit/secrets/vault"\n)\n\nfunc main() {}\n' > main.go && \
+	go get "github.com/axonops/audit@$(VERSION)" && \
+	go get "github.com/axonops/audit/file@$(VERSION)" && \
+	go get "github.com/axonops/audit/syslog@$(VERSION)" && \
+	go get "github.com/axonops/audit/webhook@$(VERSION)" && \
+	go get "github.com/axonops/audit/loki@$(VERSION)" && \
+	go get "github.com/axonops/audit/outputconfig@$(VERSION)" && \
+	go get "github.com/axonops/audit/outputs@$(VERSION)" && \
+	go get "github.com/axonops/audit/cmd/audit-gen@$(VERSION)" && \
+	go get "github.com/axonops/audit/secrets@$(VERSION)" && \
+	go get "github.com/axonops/audit/secrets/openbao@$(VERSION)" && \
+	go get "github.com/axonops/audit/secrets/vault@$(VERSION)" && \
+	printf 'package main\n\nimport (\n\t_ "github.com/axonops/audit"\n\t_ "github.com/axonops/audit/file"\n\t_ "github.com/axonops/audit/syslog"\n\t_ "github.com/axonops/audit/webhook"\n\t_ "github.com/axonops/audit/loki"\n\t_ "github.com/axonops/audit/outputconfig"\n\t_ "github.com/axonops/audit/outputs"\n\t_ "github.com/axonops/audit/secrets"\n\t_ "github.com/axonops/audit/secrets/openbao"\n\t_ "github.com/axonops/audit/secrets/vault"\n)\n\nfunc main() {}\n' > main.go && \
 	go build -o /dev/null . && \
-	go install "github.com/axonops/go-audit/cmd/audit-gen@$(VERSION)" && \
+	go install "github.com/axonops/audit/cmd/audit-gen@$(VERSION)" && \
 	echo "✓ All modules compile successfully"

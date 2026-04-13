@@ -1,16 +1,18 @@
 # audit Inventory Demo (Capstone)
 #
 # Services:
-#   app       — inventory management API with audit logging
-#   postgres  — application database
-#   loki      — audit event storage for Grafana queries
-#   grafana   — pre-provisioned audit dashboard at http://localhost:3000
+#   app        — inventory management API with audit logging
+#   postgres   — application database
+#   loki       — audit event storage for Grafana queries
+#   prometheus — scrapes /metrics for pipeline health dashboards
+#   grafana    — pre-provisioned dashboards at http://localhost:3000
 #
 # Usage:
-#   docker compose up -d          # start everything
-#   open http://localhost:8080    # web UI
-#   open http://localhost:3000    # Grafana audit dashboard
-#   docker compose down -v        # clean up
+#   docker compose up -d                              # start everything
+#   open http://localhost:8080                        # web UI
+#   open http://localhost:3000/d/audit-events/        # audit events (Loki)
+#   open http://localhost:3000/d/audit-metrics/       # pipeline metrics (Prometheus)
+#   docker compose down -v                            # clean up
 
 services:
   app:
@@ -66,6 +68,19 @@ services:
       retries: 10
       start_period: 10s
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
   grafana:
     image: grafana/grafana:11.0.0
     ports:
@@ -75,11 +90,14 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/audit-events.json
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       loki:
+        condition: service_healthy
+      prometheus:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]

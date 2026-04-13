@@ -40,6 +40,7 @@ type auditMetrics struct {
 	fileRotations       *prometheus.CounterVec
 	lokiDrops           prometheus.Counter
 	lokiFlushDur        prometheus.Histogram
+	lokiFlushBatch      prometheus.Histogram
 	lokiRetries         *prometheus.CounterVec
 	lokiErrors          *prometheus.CounterVec
 }
@@ -97,6 +98,12 @@ func newMetrics() *auditMetrics {
 			Buckets: prometheus.DefBuckets,
 		}),
 
+		lokiFlushBatch: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "audit_loki_flush_batch_size",
+			Help:    "Number of events per Loki batch flush.",
+			Buckets: []float64{1, 5, 10, 25, 50, 100, 250},
+		}),
+
 		lokiRetries: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "audit_loki_retries_total",
 			Help: "Loki push retries by status code.",
@@ -152,7 +159,7 @@ func (m *auditMetrics) RecordLokiDrop() {
 }
 
 func (m *auditMetrics) RecordLokiFlush(batchSize int, dur time.Duration) {
-	_ = batchSize // not tracked — could be a separate histogram
+	m.lokiFlushBatch.Observe(float64(batchSize))
 	m.lokiFlushDur.Observe(dur.Seconds())
 }
 

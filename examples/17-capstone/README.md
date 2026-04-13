@@ -21,10 +21,29 @@ docker compose up -d
 Then open:
 
 - **http://localhost:8080** — Web UI (inventory management)
-- **http://localhost:3000/d/inventory-demo-audit/** — Grafana audit dashboard (no login needed)
+- **http://localhost:3000/d/audit-events/** — Audit events dashboard (Loki)
+- **http://localhost:3000/d/audit-metrics/** — Pipeline health dashboard (Prometheus)
 
 That's it. Docker Compose builds the app from source, starts Postgres,
-Loki, and Grafana, and wires them together. No Go toolchain required.
+Loki, Prometheus, and Grafana, and wires them together. No Go
+toolchain required.
+
+## Three Types of Observability
+
+This demo produces three distinct outputs. They serve different
+audiences and answer different questions:
+
+| | Application Logs | Audit Events | Audit Metrics |
+|---|---|---|---|
+| **Question** | What did the server do? | What did the user do? | Is the audit pipeline healthy? |
+| **Audience** | On-call engineer | Compliance officer, security analyst | Platform engineer, SRE |
+| **Format** | Unstructured slog output | Schema-validated JSON/CEF | Prometheus counters |
+| **Destination** | `docker compose logs app` | Loki → Grafana, audit.log, security.log | Prometheus → Grafana |
+| **Example** | "listening on :8080" | "alice created user bob@example.com" | "328 events delivered, 0 drops" |
+
+The audit library provides **Audit Events** (type 2). **Audit Metrics**
+(type 3) tell you whether the event pipeline is working. If buffer
+drops > 0, you're losing audit events and your compliance is at risk.
 
 ## Walkthrough
 
@@ -46,10 +65,10 @@ it in Grafana moments later.
 Every action generates audit events: `user_create`, `item_create`,
 `order_create`, etc. These flow to all four outputs simultaneously.
 
-### 3. See audit events in Grafana
+### 3. See audit events and metrics in Grafana
 
-Open http://localhost:3000/d/inventory-demo-audit/ (or navigate to
-**Dashboards** in the left sidebar). You'll see:
+Open http://localhost:3000/d/audit-events/ — the **Audit Events**
+dashboard shows WHAT happened (event stream from Loki). You'll see:
 
 - **Events over time** — line chart showing audit activity
 - **Events by category** — pie chart (read, write, security, compliance)
@@ -58,7 +77,19 @@ Open http://localhost:3000/d/inventory-demo-audit/ (or navigate to
 - **Top event types** — which events fire most often
 - **Recent events** — live log stream of audit events
 
-The dashboard updates in near-real-time as you interact with the app.
+Use the **event_category**, **event_type**, and **severity** dropdowns
+at the top to filter. The PII stripping panel shows `user_create`
+events with email/phone absent — compare with `docker compose logs app`
+where the same events have full PII.
+
+Now open http://localhost:3000/d/audit-metrics/ — the **Pipeline
+Metrics** dashboard shows WHETHER it's working (Prometheus counters):
+
+- **Health row** — Events Delivered (green), Errors/Drops/Validation (red if > 0)
+- **Throughput** — events/sec per output (4 lines = fan-out in action)
+- **Filtered events** — proves routing is working (security_feed filters heavily)
+- **Loki health** — flush latency, batch sizes, retries, drops
+- **File rotations** — tracks log file rotation events
 
 ### 4. Trigger security events
 
@@ -94,15 +125,19 @@ Notice how the **same event** looks different in each output:
   is **absent** from **security.log** (wrong category — severity 5 < 7),
   and appears in **Loki** with the email field stripped (PII label).
 
-### 6. Prometheus metrics
+### 6. Understand the metrics pipeline
+
+The Pipeline Metrics dashboard at http://localhost:3000/d/audit-metrics/
+shows counters from the `audit.Metrics` interface and per-output
+metrics (`file.Metrics`, `loki.Metrics`). All metrics are auto-detected
+from a single struct in `metrics.go` via structural typing — no manual
+factory registration needed (see [Metrics Auto-Detection](#metrics-auto-detection)).
+
+For raw Prometheus output:
 
 ```bash
 curl -s http://localhost:8080/metrics | grep audit_
 ```
-
-Shows event counts, validation errors, buffer drops, file rotations,
-and Loki delivery metrics — all wired automatically from a single
-metrics struct.
 
 ### 7. Load test (optional)
 
@@ -161,7 +196,8 @@ docker compose down -v
 | `metrics.go` | Prometheus metrics (core + per-output via structural typing) |
 | `main_test.go` | 9 unit tests showing how to test audit events with `audittest` |
 | `static/index.html` | Single-page web UI |
-| `grafana/` | Pre-provisioned Loki datasource and audit dashboard |
+| `grafana/` | Pre-provisioned datasources (Loki + Prometheus) and two dashboards |
+| `prometheus.yml` | Prometheus scrape configuration |
 | `loki-config.yaml` | Loki server configuration |
 | `loadtest.sh` | Generates 300+ diverse events for dashboard testing |
 

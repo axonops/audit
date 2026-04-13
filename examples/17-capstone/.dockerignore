@@ -1,5 +1,6 @@
 grafana/
 loki-config.yaml
+prometheus.yml
 loadtest.sh
 docker-compose.yml
 Dockerfile

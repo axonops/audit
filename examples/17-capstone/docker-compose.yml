@@ -1,16 +1,19 @@
 # audit Inventory Demo (Capstone)
 #
 # Services:
-#   app        — inventory management API with audit logging
-#   postgres   — application database
-#   loki       — audit event storage for Grafana queries
-#   prometheus — scrapes /metrics for pipeline health dashboards
-#   grafana    — pre-provisioned dashboards at http://localhost:3000
+#   app           — inventory management API with audit logging
+#   postgres      — application database
+#   openbao       — secret store for HMAC salts (ref+ URI resolution)
+#   openbao-seed  — seeds OpenBao with HMAC salt secrets on startup
+#   loki          — audit event storage for Grafana queries
+#   prometheus    — scrapes /metrics for pipeline health dashboards
+#   grafana       — pre-provisioned dashboards at http://localhost:3000
 #
 # Endpoints:
 #   http://localhost:8080                     — web UI
 #   http://localhost:3000/d/audit-events/     — audit events dashboard (Loki)
 #   http://localhost:3000/d/audit-metrics/    — pipeline metrics dashboard (Prometheus)
+#   https://localhost:8200                    — OpenBao UI (token: demo-root-token)
 #   http://localhost:9090                     — Prometheus UI
 #
 # Usage:
@@ -20,8 +23,8 @@
 services:
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: examples/17-capstone/Dockerfile
     ports:
       - "127.0.0.1:8080:8080"
     environment:
@@ -29,12 +32,18 @@ services:
       LOKI_URL: http://loki:3100/loki/api/v1/push
       AUDIT_LOG_PATH: /data/audit.log
       SECURITY_LOG_PATH: /data/security.log
+      BAO_ADDR: https://openbao:8200
+      BAO_TOKEN: demo-root-token
+      BAO_CACERT: /tls/tls-ca.pem
     volumes:
       - audit-logs:/data
+      - openbao-tls:/tls:ro
     depends_on:
       postgres:
         condition: service_healthy
       loki:
+        condition: service_healthy
+      openbao:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
@@ -70,6 +79,40 @@ services:
       timeout: 2s
       retries: 10
       start_period: 10s
+
+  openbao:
+    image: quay.io/openbao/openbao:2.1.0
+    command: server -dev-tls
+    ports:
+      - "127.0.0.1:8200:8200"
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: demo-root-token
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - openbao-tls:/opt/openbao/tls
+    healthcheck:
+      test: ["CMD", "sh", "-c", "BAO_ADDR=https://127.0.0.1:8200 VAULT_SKIP_VERIFY=true bao status"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  openbao-seed:
+    image: quay.io/openbao/openbao:2.1.0
+    entrypoint: ["/bin/sh", "/seed.sh"]
+    environment:
+      BAO_ADDR: https://openbao:8200
+      BAO_TOKEN: demo-root-token
+      BAO_CACERT: /tls/tls-ca.pem
+    volumes:
+      - ./openbao-seed.sh:/seed.sh:ro
+      - openbao-tls:/tls:ro
+    depends_on:
+      openbao:
+        condition: service_healthy
+    restart: "no"
 
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -113,3 +156,4 @@ services:
 volumes:
   pgdata:
   audit-logs:
+  openbao-tls:

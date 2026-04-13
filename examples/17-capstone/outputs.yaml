@@ -39,13 +39,11 @@ outputs:
       product: "InventoryAPI"
       version: "1.0"
     hmac:
-      enabled: true
+      enabled: "ref+openbao://secret/data/audit/hmac-v1#enabled"
       salt:
-        version: "v1"
-        # WARNING: Demo salt only — DO NOT use in production.
-        # Generate a real salt: openssl rand -base64 32
-        value: "${HMAC_SALT_V1:-capstone-demo-salt-v1-min16bytes}"
-      hash: HMAC-SHA-256
+        version: "ref+openbao://secret/data/audit/hmac-v1#version"
+        value: "ref+openbao://secret/data/audit/hmac-v1#salt"
+      hash: "ref+openbao://secret/data/audit/hmac-v1#hash"
 
   # 3. Security team feed — JSON, security category only, severity >= 7.
   #    HMAC v2 (SHA-512) with a DIFFERENT salt to prove per-output
@@ -67,13 +65,11 @@ outputs:
         - compliance
       min_severity: 7
     hmac:
-      enabled: true
+      enabled: "ref+openbao://secret/data/audit/hmac-v2#enabled"
       salt:
-        version: "v2"
-        # WARNING: Demo salt only — DO NOT use in production.
-        # Generate a real salt: openssl rand -base64 32
-        value: "${HMAC_SALT_V2:-capstone-demo-salt-v2-different!}"
-      hash: HMAC-SHA-512
+        version: "ref+openbao://secret/data/audit/hmac-v2#version"
+        value: "ref+openbao://secret/data/audit/hmac-v2#salt"
+      hash: "ref+openbao://secret/data/audit/hmac-v2#hash"
 
   # 4. Operational monitoring — Loki with Grafana dashboards.
   #    PII fields (email, phone, address) are STRIPPED before delivery.

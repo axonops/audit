@@ -23,6 +23,7 @@ import (
 	_ "github.com/axonops/audit/file" // register "file" output type
 	_ "github.com/axonops/audit/loki" // register "loki" output type
 	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/openbao"
 )
 
 // setupAuditLogger loads outputs.yaml from the filesystem and creates
@@ -35,21 +36,43 @@ import (
 // outputs is a config change, not a code change. Per-output metrics
 // (file rotation, Loki flush) are auto-detected from the core metrics
 // interface via type assertion when passed through WithCoreMetrics.
+//
+// HMAC salts, versions, algorithms, and enabled flags are resolved
+// from OpenBao at startup via ref+openbao:// URIs in outputs.yaml.
+// No secrets are stored in configuration files or environment variables.
 func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
-	// Load output configuration from the filesystem. In production,
-	// this path comes from a flag or environment variable so each
-	// environment (dev/staging/prod) can use different output configs
-	// without rebuilding.
+	// Load output configuration from the filesystem.
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
 	outputsYAML, err := os.ReadFile(configPath) //nolint:gosec // config path from trusted source (env var or default)
 	if err != nil {
 		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
 	}
 
-	// We use the manual Load path (instead of outputconfig.NewLogger facade)
-	// because we need to pass core metrics via WithCoreMetrics and wire
-	// additional options (WithMetrics, WithStandardFieldDefaults).
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, outputconfig.WithCoreMetrics(m))
+	// Build LoadOptions: core metrics + OpenBao secret provider.
+	loadOpts := []outputconfig.LoadOption{
+		outputconfig.WithCoreMetrics(m),
+	}
+
+	// Connect to OpenBao for ref+openbao:// URI resolution.
+	// HMAC salts, versions, algorithms, and enabled flags are all
+	// stored in OpenBao — no secrets in config files or env vars.
+	baoAddr := os.Getenv("BAO_ADDR")
+	baoToken := os.Getenv("BAO_TOKEN")
+	if baoAddr != "" && baoToken != "" {
+		provider, providerErr := openbao.New(&openbao.Config{
+			Address:            baoAddr,
+			Token:              baoToken,
+			TLSCA:              os.Getenv("BAO_CACERT"),
+			AllowPrivateRanges: true, // Docker internal network
+		})
+		if providerErr != nil {
+			return nil, fmt.Errorf("openbao provider: %w", providerErr)
+		}
+		defer func() { _ = provider.Close() }()
+		loadOpts = append(loadOpts, outputconfig.WithSecretProvider(provider))
+	}
+
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, loadOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("load output config: %w", err)
 	}

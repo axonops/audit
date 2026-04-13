@@ -26,9 +26,14 @@ func init() {
 	audit.RegisterOutputFactory("file", defaultFactory)
 }
 
-// defaultFactory creates a file output from YAML config with nil metrics.
-func defaultFactory(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
-	return buildOutput(name, rawConfig, nil)
+// defaultFactory creates a file output from YAML config. Per-output
+// metrics are auto-detected via type assertion on coreMetrics.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+	var fileMetrics Metrics
+	if fm, ok := coreMetrics.(Metrics); ok {
+		fileMetrics = fm
+	}
+	return buildOutput(name, rawConfig, fileMetrics)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates file outputs

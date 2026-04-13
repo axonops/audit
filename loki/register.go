@@ -28,11 +28,14 @@ func init() {
 }
 
 // defaultFactory creates a Loki output from YAML config. Core metrics
-// are forwarded (Loki needs them for delivery reporting). Loki-specific
-// metrics are nil — consumers who want them should register via
-// [NewFactory] before calling the config loader.
+// are forwarded for delivery reporting. Per-output metrics are
+// auto-detected via type assertion on coreMetrics.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, nil)
+	var lokiMetrics Metrics
+	if lm, ok := coreMetrics.(Metrics); ok {
+		lokiMetrics = lm
+	}
+	return buildOutput(name, rawConfig, coreMetrics, lokiMetrics)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates Loki outputs

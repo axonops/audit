@@ -33,8 +33,8 @@ import (
 // Blank imports register each output type's factory via init().
 // The YAML file defines which outputs are active — adding or removing
 // outputs is a config change, not a code change. Per-output metrics
-// (file rotation, Loki flush) will be auto-detected from the core
-// metrics interface once issue #386 is resolved.
+// (file rotation, Loki flush) are auto-detected from the core metrics
+// interface via type assertion when passed through WithCoreMetrics.
 func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
 	// Load output configuration from the filesystem. In production,
 	// this path comes from a flag or environment variable so each

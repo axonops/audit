@@ -26,9 +26,14 @@ func init() {
 	audit.RegisterOutputFactory("syslog", defaultFactory)
 }
 
-// defaultFactory creates a syslog output from YAML config with nil metrics.
-func defaultFactory(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
-	return buildOutput(name, rawConfig, nil)
+// defaultFactory creates a syslog output from YAML config. Per-output
+// metrics are auto-detected via type assertion on coreMetrics.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+	var syslogMetrics Metrics
+	if sm, ok := coreMetrics.(Metrics); ok {
+		syslogMetrics = sm
+	}
+	return buildOutput(name, rawConfig, syslogMetrics)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates syslog

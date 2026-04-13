@@ -33,9 +33,12 @@ import (
 //
 // coreMetrics is the logger-level [Metrics] recorder (may be nil).
 // Forwarded to outputs that need it (e.g. webhook for delivery
-// reporting). Per-output-type metrics (e.g. file rotation, syslog
-// reconnection) are NOT passed through this signature — they are
-// captured in the factory closure at registration time.
+// reporting). Per-output-type metrics are auto-detected via type
+// assertion: if coreMetrics satisfies the output's specific Metrics
+// interface (e.g. file.Metrics, syslog.Metrics), the output receives
+// per-output metrics automatically. For separate per-output metrics
+// implementations, use the output's NewFactory with
+// outputconfig.WithFactory.
 type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics) (Output, error)
 
 // registry is a global mutable map protected by registryMu. This is an

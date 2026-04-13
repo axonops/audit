@@ -28,11 +28,14 @@ func init() {
 }
 
 // defaultFactory creates a webhook output from YAML config. Core
-// metrics are forwarded (webhook needs them for delivery reporting).
-// Webhook-specific metrics are nil — consumers who want them should
-// register via NewFactory before calling the config loader.
+// metrics are forwarded for delivery reporting. Per-output metrics
+// are auto-detected via type assertion on coreMetrics.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, nil)
+	var webhookMetrics Metrics
+	if wm, ok := coreMetrics.(Metrics); ok {
+		webhookMetrics = wm
+	}
+	return buildOutput(name, rawConfig, coreMetrics, webhookMetrics)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates webhook

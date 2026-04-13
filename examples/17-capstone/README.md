@@ -23,10 +23,12 @@ Then open:
 - **http://localhost:8080** — Web UI (inventory management)
 - **http://localhost:3000/d/audit-events/** — Audit events dashboard (Loki)
 - **http://localhost:3000/d/audit-metrics/** — Pipeline health dashboard (Prometheus)
+- **http://localhost:3100** — Loki API (direct access)
+- **http://localhost:9090** — Prometheus UI (direct access)
 
 That's it. Docker Compose builds the app from source, starts Postgres,
 Loki, Prometheus, and Grafana, and wires them together. No Go
-toolchain required.
+toolchain required. All links are also available in the web UI nav bar.
 
 ## Three Types of Observability
 

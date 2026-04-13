@@ -7,12 +7,16 @@
 #   prometheus — scrapes /metrics for pipeline health dashboards
 #   grafana    — pre-provisioned dashboards at http://localhost:3000
 #
+# Endpoints:
+#   http://localhost:8080                     — web UI
+#   http://localhost:3000/d/audit-events/     — audit events dashboard (Loki)
+#   http://localhost:3000/d/audit-metrics/    — pipeline metrics dashboard (Prometheus)
+#   http://localhost:3100                     — Loki API
+#   http://localhost:9090                     — Prometheus UI
+#
 # Usage:
-#   docker compose up -d                              # start everything
-#   open http://localhost:8080                        # web UI
-#   open http://localhost:3000/d/audit-events/        # audit events (Loki)
-#   open http://localhost:3000/d/audit-metrics/       # pipeline metrics (Prometheus)
-#   docker compose down -v                            # clean up
+#   docker compose up -d       # start everything
+#   docker compose down -v     # clean up
 
 services:
   app:

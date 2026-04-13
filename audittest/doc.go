@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package audittest provides test helpers for consumers of the go-audit
+// Package audittest provides test helpers for consumers of the audit
 // library. It provides an in-memory [Recorder] that captures audit
 // events for assertion, a [MetricsRecorder] that captures all metrics
 // calls, and convenience constructors that eliminate test boilerplate.

@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// auditMetrics implements all three go-audit metrics interfaces using
+// auditMetrics implements all three audit metrics interfaces using
 // Prometheus client_golang. A single struct satisfies everything via
 // Go's structural duck-typing:
 //

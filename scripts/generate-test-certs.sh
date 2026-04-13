@@ -34,7 +34,7 @@ x509_extensions = v3_ca
 prompt = no
 
 [req_dn]
-CN = go-audit Test CA
+CN = audit Test CA
 O = AxonOps
 OU = Testing
 

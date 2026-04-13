@@ -69,7 +69,7 @@ call_json() {
     echo "$result" | jq -r ".$field // empty"
 }
 
-echo "=== go-audit Load Test ==="
+echo "=== audit Load Test ==="
 echo "Target: $BASE"
 echo ""
 

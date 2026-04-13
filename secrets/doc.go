@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Package secrets provides the core types and URI parser for secret
-// provider integration in go-audit.
+// provider integration in audit.
 //
 // Secret references use the syntax ref+SCHEME://PATH#KEY, following
 // the [vals] convention. When a YAML config value contains a ref URI,

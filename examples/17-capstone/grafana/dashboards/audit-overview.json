@@ -155,7 +155,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["audit", "audit", "inventory-demo"],
+  "tags": ["audit", "inventory-demo"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},

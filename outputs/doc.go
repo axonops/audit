@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package outputs registers all go-audit output factories with a
+// Package outputs registers all audit output factories with a
 // single blank import:
 //
 //	import _ "github.com/axonops/audit/outputs"

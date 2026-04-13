@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Testing demonstrates how to test code that uses go-audit.
+// Testing demonstrates how to test code that uses audit.
 // The main.go defines a UserService that emits audit events.
 // The main_test.go shows three testing patterns using audittest.
 package main

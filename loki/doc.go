@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package loki provides a Grafana Loki output for the go-audit library.
+// Package loki provides a Grafana Loki output for the audit library.
 //
 // The output pushes audit events to a Loki instance via the HTTP Push
 // API (POST /loki/api/v1/push). Events are batched and delivered as

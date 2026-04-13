@@ -2576,7 +2576,7 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 		"path":        "/api/v1/schemas",
 		"source_ip":   "10.0.0.1",
 		"request_id":  "550e8400-e29b-41d4-a716-446655440000",
-		"user_agent":  "go-audit-client/1.0",
+		"user_agent":  "audit-client/1.0",
 		"subject":     "my-topic",
 		"schema_type": "avro",
 		"version":     1,

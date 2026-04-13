@@ -2,7 +2,7 @@
 // for integration and BDD testing. It stores received events in memory
 // and provides endpoints to query, reset, and configure behaviour.
 //
-// This is a standalone binary, not part of the go-audit module.
+// This is a standalone binary, not part of the audit module.
 package main
 
 import (

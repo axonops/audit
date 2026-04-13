@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// CRUD API is a complete REST API example demonstrating go-audit in a
+// CRUD API is a complete REST API example demonstrating audit in a
 // realistic application: Postgres-backed CRUD, four audit outputs with
 // HMAC integrity, CEF formatting, PII stripping, Loki dashboards,
 // HTTP middleware, Prometheus metrics, and graceful shutdown.

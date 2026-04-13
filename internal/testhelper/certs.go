@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package testhelper provides shared test utilities for go-audit
+// Package testhelper provides shared test utilities for audit
 // sub-modules. It is never published as a release artifact.
 package testhelper
 

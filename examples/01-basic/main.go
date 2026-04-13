@@ -14,7 +14,7 @@
 
 // Basic demonstrates the absolute minimum: a file-free logger that
 // requires no YAML, no go:embed, and no output configuration. This is
-// the fastest way to evaluate go-audit in a playground or single-file
+// the fastest way to evaluate audit in a playground or single-file
 // program. For production use, see examples 02+ which use YAML
 // taxonomy and output configuration.
 package main

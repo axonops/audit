@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // TLS-policy demonstrates how to configure global and per-output TLS
-// policy in go-audit. TLS policy controls the minimum TLS version and
+// policy in audit. TLS policy controls the minimum TLS version and
 // allowed cipher suites for all TLS-enabled outputs (syslog TCP+TLS,
 // webhook HTTPS, loki HTTPS).
 //

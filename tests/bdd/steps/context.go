@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package steps provides Godog step definitions for go-audit BDD tests.
-// Each step translates Gherkin into go-audit public API calls. Step
+// Package steps provides Godog step definitions for audit BDD tests.
+// Each step translates Gherkin into audit public API calls. Step
 // definitions are deliberately thin — no business logic, just API calls
 // and assertions.
 package steps

@@ -93,7 +93,7 @@ func TestSyslog_TCP_SendAndReceive(t *testing.T) {
 		Network:  "tcp",
 		Address:  "localhost:5514",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -110,7 +110,7 @@ func TestSyslog_TCP_MultipleEvents(t *testing.T) {
 		Network:  "tcp",
 		Address:  "localhost:5514",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -136,7 +136,7 @@ func TestSyslog_UDP_SendAndReceive(t *testing.T) {
 		Network:  "udp",
 		Address:  "127.0.0.1:5515",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -156,7 +156,7 @@ func TestSyslog_TLS_SendAndReceive(t *testing.T) {
 		Network:  "tcp+tls",
 		Address:  "localhost:6514",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 		TLSCA:    filepath.Join(certs, "ca.crt"),
 	}, nil)
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestSyslog_MTLS_SendAndReceive(t *testing.T) {
 		Network:  "tcp+tls",
 		Address:  "localhost:6515",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 		TLSCA:    filepath.Join(certs, "ca.crt"),
 		TLSCert:  filepath.Join(certs, "client.crt"),
 		TLSKey:   filepath.Join(certs, "client.key"),
@@ -202,7 +202,7 @@ func TestSyslog_InvalidCert_Rejected(t *testing.T) {
 		Network:  "tcp+tls",
 		Address:  "localhost:6514",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 		TLSCA:    filepath.Join(certs, "invalid.crt"),
 	}, nil)
 	assert.Error(t, err, "construction with invalid CA should fail TLS handshake")
@@ -217,7 +217,7 @@ func TestSyslog_RFC5424_Format(t *testing.T) {
 		Network:  "tcp",
 		Address:  "localhost:5514",
 		Facility: "local0",
-		AppName:  "go-audit-test",
+		AppName:  "audit-test",
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -231,7 +231,7 @@ func TestSyslog_RFC5424_Format(t *testing.T) {
 	for _, line := range strings.Split(log, "\n") {
 		if strings.Contains(line, m) {
 			// Verify it contains the app name.
-			assert.Contains(t, line, "go-audit-test",
+			assert.Contains(t, line, "audit-test",
 				"syslog line should contain app name")
 			// Verify it has a timestamp (current year).
 			assert.Contains(t, line, time.Now().Format("2006"),

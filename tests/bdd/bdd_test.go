@@ -14,7 +14,7 @@
 
 //go:build integration
 
-// Package bdd_test runs Godog BDD feature files against the go-audit
+// Package bdd_test runs Godog BDD feature files against the audit
 // library. Feature files in features/ define the executable specification;
 // step definitions in steps/ translate Gherkin to API calls.
 //
@@ -67,7 +67,7 @@ func TestFeatures(t *testing.T) {
 	}
 
 	suite := godog.TestSuite{
-		Name:                "go-audit",
+		Name:                "audit",
 		ScenarioInitializer: steps.InitializeScenario,
 		Options:             &opts,
 	}

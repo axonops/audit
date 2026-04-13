@@ -25,7 +25,7 @@ Each example introduces one new concept and builds on the previous.
 | 14 | [loki-output](14-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
 | 15 | [tls-policy](15-tls-policy/) | Global and per-output TLS policy configuration |
 | 16 | [buffering](16-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
-| 17 | [crud-api](17-crud-api/) | Complete REST API with Postgres, four outputs, HMAC, Loki, Grafana |
+| 17 | [capstone](17-capstone/) | Complete inventory demo with web UI, Postgres, four outputs, Grafana |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
@@ -74,7 +74,7 @@ go get github.com/axonops/audit/syslog
 go get github.com/axonops/audit/webhook
 go get github.com/axonops/audit/loki
 
-# CRUD API also needs:
+# Capstone (inventory demo) also needs:
 go get github.com/lib/pq
 go get github.com/prometheus/client_golang
 ```

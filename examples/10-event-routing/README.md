@@ -58,7 +58,7 @@ go-audit supports two ways to define categories:
   the event defines its own.
 
 Both formats can be mixed in the same taxonomy file. The
-[CRUD API](../16-crud-api/) example shows every category using the struct
+[Capstone](../17-capstone/) example shows every category using the struct
 format with different severity levels.
 
 ### Per-Event Severity Override
@@ -74,7 +74,7 @@ events:
 ```
 
 Resolution chain: event severity (if set) -> category severity -> 5.
-The [CRUD API](../16-crud-api/) example uses this: `auth_failure` is
+The [Capstone](../17-capstone/) example uses this: `auth_failure` is
 severity 9 while other security events are severity 8.
 
 ### Routes in YAML

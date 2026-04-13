@@ -282,7 +282,7 @@ See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for mo
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 17 examples from "hello world" to a [complete CRUD API](examples/17-crud-api/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 17 examples from "hello world" to a [complete inventory demo](examples/17-capstone/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

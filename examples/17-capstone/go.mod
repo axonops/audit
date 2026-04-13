@@ -1,4 +1,4 @@
-module github.com/axonops/audit/examples/17-crud-api
+module github.com/axonops/audit/examples/17-capstone
 
 go 1.26.2
 

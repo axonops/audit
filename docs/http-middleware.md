@@ -213,5 +213,5 @@ without taxonomy declaration.
 ## 📚 Further Reading
 
 - [Progressive Example: Middleware](../examples/06-middleware/) — complete HTTP middleware example
-- [Progressive Example: CRUD API](../examples/17-crud-api/) — middleware in a full REST application
+- [Progressive Example: Capstone](../examples/17-capstone/) — middleware in a full REST application
 - [API Reference: Middleware](https://pkg.go.dev/github.com/axonops/audit#Middleware)

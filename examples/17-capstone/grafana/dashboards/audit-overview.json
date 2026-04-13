@@ -155,12 +155,12 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": ["audit", "go-audit", "crud-api"],
+  "tags": ["audit", "go-audit", "inventory-demo"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "go-audit: CRUD API Audit Dashboard",
+  "title": "go-audit: Inventory Demo Audit Dashboard",
   "uid": "crud-api-audit",
   "version": 1
 }

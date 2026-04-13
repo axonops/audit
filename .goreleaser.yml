@@ -25,7 +25,7 @@ before:
     - bash -c "cd secrets && go mod tidy"
     - bash -c "cd secrets/openbao && go mod tidy"
     - bash -c "cd secrets/vault && go mod tidy"
-    - bash -c "cd examples/17-crud-api && go mod tidy"
+    - bash -c "cd examples/17-capstone && go mod tidy"
 
 changelog:
   use: github

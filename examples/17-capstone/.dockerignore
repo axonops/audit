@@ -1,0 +1,8 @@
+grafana/
+loki-config.yaml
+loadtest.sh
+docker-compose.yml
+Dockerfile
+.dockerignore
+README.md
+*.log

@@ -262,5 +262,5 @@ reconnection) delays all subsequent outputs for that event. See
 
 - [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/09-multi-output/)
-- [Progressive Example: CRUD API](../examples/17-crud-api/) — four outputs with HMAC, CEF, Loki, and PII stripping
+- [Progressive Example: Capstone](../examples/17-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Output Configuration YAML](output-configuration.md) — full YAML reference

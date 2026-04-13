@@ -102,9 +102,9 @@ updates:
           - "minor"
           - "patch"
 
-  # CRUD API example
+  # Capstone (inventory demo) example
   - package-ecosystem: "gomod"
-    directory: "/examples/17-crud-api"
+    directory: "/examples/17-capstone"
     schedule:
       interval: "weekly"
       day: "monday"

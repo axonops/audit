@@ -3,7 +3,7 @@
        test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-crud-api \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-capstone \
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
@@ -22,7 +22,7 @@
 # --- Configuration ---
 
 MODULES           := . file syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
-WORKSPACE_MODULES := $(MODULES) examples/17-crud-api
+WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
 
@@ -151,7 +151,7 @@ test-examples:
 	            examples/11-sensitivity-labels examples/12-hmac-integrity \
 	            examples/13-standard-fields examples/14-loki-output \
 	            examples/15-tls-policy examples/16-buffering \
-	            examples/17-crud-api; do \
+	            examples/17-capstone; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done
@@ -188,10 +188,10 @@ lint-secrets-openbao:
 lint-secrets-vault:
 	cd secrets/vault && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-crud-api:
-	cd examples/17-crud-api && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+lint-capstone:
+	cd examples/17-capstone && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-secrets lint-secrets-openbao lint-secrets-vault lint-crud-api
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-secrets lint-secrets-openbao lint-secrets-vault lint-capstone
 lint: lint-all
 
 # --- Vet ---

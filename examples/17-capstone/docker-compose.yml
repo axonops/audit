@@ -1,16 +1,42 @@
-# CRUD API Capstone — Infrastructure
+# go-audit Inventory Demo (Capstone)
 #
 # Services:
+#   app       — inventory management API with audit logging
 #   postgres  — application database
 #   loki      — audit event storage for Grafana queries
-#   grafana   — pre-provisioned dashboard at http://localhost:3000
+#   grafana   — pre-provisioned audit dashboard at http://localhost:3000
 #
 # Usage:
-#   docker compose up -d          # start infrastructure
-#   go run .                      # start the application
-#   open http://localhost:3000    # view Grafana dashboard
+#   docker compose up -d          # start everything
+#   open http://localhost:8080    # web UI
+#   open http://localhost:3000    # Grafana audit dashboard
+#   docker compose down -v        # clean up
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      DATABASE_URL: postgres://demo:demo@postgres:5432/audit_demo?sslmode=disable
+      LOKI_URL: http://loki:3100/loki/api/v1/push
+      AUDIT_LOG_PATH: /data/audit.log
+      SECURITY_LOG_PATH: /data/security.log
+    volumes:
+      - audit-logs:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -63,3 +89,4 @@ services:
 
 volumes:
   pgdata:
+  audit-logs:

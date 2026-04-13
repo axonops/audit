@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [15 — TLS Policy](../15-tls-policy/) |
-> **Next:** [17 — CRUD API](../17-crud-api/)
+> **Next:** [17 — Capstone](../17-capstone/)
 
 # Example 16: Buffering and Backpressure
 

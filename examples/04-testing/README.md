@@ -19,7 +19,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [CRUD API](../16-crud-api/)
+- Completed: [Capstone](../17-capstone/)
 
 ## Files
 

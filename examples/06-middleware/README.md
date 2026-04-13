@@ -113,7 +113,7 @@ Available hints:
 | `Outcome` | `"success"` or `"failure"` |
 | `TargetID` | The resource affected |
 | `TargetType` | Type of resource (e.g., `"item"`, `"user"`) |
-| `EventType` | Override the event type (used by auth middleware — see [CRUD API](../16-crud-api/)) |
+| `EventType` | Override the event type (used by auth middleware — see [Capstone](../17-capstone/)) |
 | `ActorType` | `"user"`, `"service"`, `"api_key"`, etc. |
 | `AuthMethod` | How the actor authenticated (e.g., `"bearer"`, `"api_key"`) |
 | `Role` | Actor's role at request time |
@@ -137,7 +137,7 @@ Available hints:
 
 Place the audit middleware at the outermost layer — it needs to wrap
 everything including auth middleware so it can capture the final response
-status code. The [CRUD API](../16-crud-api/) example shows this with auth
+status code. The [Capstone](../17-capstone/) example shows this with auth
 middleware and audit middleware composed together.
 
 ## Run It

@@ -353,7 +353,7 @@ func main() {
 }
 ```
 
-See [Progressive Example: CRUD API](../examples/17-crud-api/) for a
+See [Progressive Example: Capstone](../examples/17-capstone/) for a
 complete working example with signal handling.
 
 ## 🔒 Thread Safety

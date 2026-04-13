@@ -1,4 +1,4 @@
-# CRUD API Capstone — 4-output fan-out topology
+# Inventory Demo Capstone — 4-output fan-out topology
 #
 # Every audit event flows through all four outputs simultaneously.
 # Each output demonstrates a different go-audit feature combination:

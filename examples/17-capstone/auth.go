@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -156,6 +156,7 @@ type authHandlers struct {
 	logger   *audit.Logger
 	sessions *sessionStore
 	rl       *rateLimiter
+	log      *slog.Logger
 }
 
 func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +166,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 	// Production: use http.MaxBytesReader to bound request size.
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.log.Warn("login: invalid request body", "ip", clientIP(r), "error", err)
 		a.rl.record(clientIP(r))
 		a.emitAuthEvent(EventAuthFailure, "anonymous", "failure",
 			"invalid request body", r)
@@ -178,6 +180,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	got := sha256.Sum256([]byte(req.Password))
 	want := sha256.Sum256([]byte(expected))
 	if !exists || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		a.log.Warn("login failed", "username", req.Username, "ip", clientIP(r))
 		a.rl.record(clientIP(r))
 		a.emitAuthEvent(EventAuthFailure, req.Username, "failure",
 			"invalid credentials", r)
@@ -185,6 +188,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.log.Info("login successful", "username", req.Username, "ip", clientIP(r))
 	token := a.sessions.createToken(req.Username)
 	a.emitAuthEvent(EventAuthSuccess, req.Username, "success", "", r)
 
@@ -232,7 +236,7 @@ func (a *authHandlers) emitAuthEvent(eventType, actorID, outcome, reason string,
 	}
 	if err := a.logger.AuditEvent(audit.NewEvent(eventType, fields)); err != nil {
 		// Log but don't fail — audit should not block auth.
-		log.Printf("audit error: %v", err)
+		a.log.Error("audit event failed", "event_type", eventType, "error", err)
 	}
 }
 

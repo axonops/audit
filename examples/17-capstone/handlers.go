@@ -17,6 +17,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/axonops/audit"
@@ -24,7 +25,8 @@ import (
 
 // handlers holds dependencies shared across all HTTP handlers.
 type handlers struct {
-	db *sql.DB
+	db  *sql.DB
+	log *slog.Logger
 }
 
 // writeJSON encodes v as JSON and writes it with the given status code.

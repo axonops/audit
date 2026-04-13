@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// CRUD API is a complete REST API example demonstrating audit in a
-// realistic application: Postgres-backed CRUD, four audit outputs with
-// HMAC integrity, CEF formatting, PII stripping, Loki dashboards,
-// HTTP middleware, Prometheus metrics, and graceful shutdown.
+// Inventory Demo is a complete REST API example demonstrating audit in
+// a realistic application: Postgres-backed CRUD, four audit outputs with
+// HMAC integrity via OpenBao, CEF formatting, PII stripping, Loki
+// dashboards, Prometheus metrics, HTTP middleware, and graceful shutdown.
+//
+// Application logs (slog) and audit events are separate concerns:
+//   - Application logs → /data/app.log → Promtail → Loki (job=inventory-demo-app)
+//   - Audit events → audit library → Loki output (job=inventory-demo-audit)
 package main
 
 import (
 	"context"
 	_ "embed"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -37,10 +42,18 @@ import (
 var taxonomyYAML []byte
 
 func main() {
+	// Set up structured application logging to a file.
+	// Promtail ships this to Loki as a separate stream from audit events.
+	appLog, appLogger := setupAppLogger()
+	if appLog != nil {
+		defer func() { _ = appLog.Close() }()
+	}
+
 	// Parse taxonomy.
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
-		log.Fatalf("parse taxonomy: %v", err)
+		appLogger.Error("fatal: parse taxonomy", "error", err)
+		return
 	}
 
 	// Set up Prometheus metrics.
@@ -49,18 +62,21 @@ func main() {
 	// Set up audit logger with four outputs.
 	logger, err := setupAuditLogger(tax, metrics)
 	if err != nil {
-		log.Fatalf("setup audit logger: %v", err)
+		appLogger.Error("fatal: setup audit logger", "error", err)
+		return
 	}
 
 	// Connect to Postgres.
 	db, err := connectDB()
 	if err != nil {
-		log.Fatalf("connect db: %v", err)
+		appLogger.Error("fatal: connect db", "error", err)
+		return
 	}
 	defer func() { _ = db.Close() }()
 
 	if schemaErr := createSchema(db); schemaErr != nil {
-		log.Fatalf("create schema: %v", schemaErr) //nolint:gocritic // db.Close deferred above; Fatalf is acceptable for startup failures
+		appLogger.Error("fatal: create schema", "error", schemaErr)
+		return
 	}
 
 	// Set up session store, rate limiter, and admin settings.
@@ -72,7 +88,7 @@ func main() {
 	addr := envOr("LISTEN_ADDR", ":8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newServer(logger, db, sessions, rl, settings),
+		Handler:           newServer(logger, db, sessions, rl, settings, withAppLogger(appLogger)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -81,28 +97,28 @@ func main() {
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	// Emit startup audit event — good practice for compliance.
-	emitLifecycleEvent(logger, NewAppStartupEvent("success").
+	emitLifecycleEvent(logger, appLogger, NewAppStartupEvent("success").
 		SetMessage("inventory demo started on "+addr))
 
 	go func() {
-		log.Printf("listening on %s", addr)
+		appLogger.Info("server started", "addr", addr)
 		if listenErr := srv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
-			log.Fatalf("listen: %v", listenErr)
+			appLogger.Error("listen failed", "error", listenErr)
 		}
 	}()
 
 	<-done
-	log.Println("shutting down...")
+	appLogger.Info("shutdown initiated")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("http shutdown: %v", err)
+		appLogger.Warn("http shutdown error", "error", err)
 	}
 
 	// Emit shutdown audit event — good practice for compliance.
-	emitLifecycleEvent(logger, NewAppShutdownEvent("success").
+	emitLifecycleEvent(logger, appLogger, NewAppShutdownEvent("success").
 		SetMessage("graceful shutdown initiated"))
 
 	// CRITICAL: Close the audit logger. This flushes all buffered events
@@ -110,15 +126,33 @@ func main() {
 	// drain goroutine leaks. The shutdown event above is only delivered
 	// because Close() drains the buffer before returning.
 	if err := logger.Close(); err != nil {
-		log.Printf("close logger: %v", err)
+		appLogger.Warn("close logger", "error", err)
 	}
 
-	log.Println("shutdown complete")
+	appLogger.Info("shutdown complete")
 }
 
-func emitLifecycleEvent(logger *audit.Logger, evt audit.Event) {
+// setupAppLogger creates a structured JSON logger writing to both
+// a file (for Promtail → Loki) and stderr (for docker compose logs).
+func setupAppLogger() (*os.File, *slog.Logger) {
+	logPath := envOr("APP_LOG_PATH", "/data/app.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) //nolint:gosec // log file, not secret
+	if err != nil {
+		// Fall back to stderr only — Promtail won't see these logs
+		// but the app still works.
+		logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+		logger.Warn("could not open app log file, using stderr only",
+			"path", logPath, "error", err)
+		return nil, logger
+	}
+	// Write to both the file (for Promtail) and stderr (for docker compose logs).
+	w := io.MultiWriter(f, os.Stderr)
+	return f, slog.New(slog.NewJSONHandler(w, nil))
+}
+
+func emitLifecycleEvent(logger *audit.Logger, appLogger *slog.Logger, evt audit.Event) {
 	if err := logger.AuditEvent(evt); err != nil {
-		log.Printf("audit lifecycle event: %v", err)
+		appLogger.Warn("audit lifecycle event failed", "error", err)
 	}
 }
 

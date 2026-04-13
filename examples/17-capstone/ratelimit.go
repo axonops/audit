@@ -16,7 +16,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -75,7 +75,13 @@ func (rl *rateLimiter) allow(ip string) bool {
 // rateLimitMiddleware wraps a handler (typically /login) and blocks
 // requests from IPs that have exceeded the auth failure threshold.
 // When blocked, it emits a rate_limit_exceeded audit event directly.
-func rateLimitMiddleware(logger *audit.Logger, rl *rateLimiter) func(http.Handler) http.Handler {
+func rateLimitMiddleware(logger *audit.Logger, rl *rateLimiter, appLog ...*slog.Logger) func(http.Handler) http.Handler {
+	var lg *slog.Logger
+	if len(appLog) > 0 {
+		lg = appLog[0]
+	} else {
+		lg = slog.Default()
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := clientIP(r)
@@ -89,8 +95,9 @@ func rateLimitMiddleware(logger *audit.Logger, rl *rateLimiter) func(http.Handle
 					fields[FieldSourceIP] = ip
 				}
 				if err := logger.AuditEvent(audit.NewEvent(EventRateLimitExceeded, fields)); err != nil {
-					log.Printf("audit error: %v", err)
+					lg.Error("audit event failed", "event_type", "rate_limit_exceeded", "error", err)
 				}
+				lg.Warn("rate limit exceeded", "ip", ip)
 
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "60")

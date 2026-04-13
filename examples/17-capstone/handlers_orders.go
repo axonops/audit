@@ -25,9 +25,11 @@ import (
 func (h *handlers) listOrders(w http.ResponseWriter, r *http.Request) {
 	orders, err := queryOrders(h.db)
 	if err != nil {
+		h.log.Error("db query failed", "op", "list_orders", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "list orders failed")
 		return
 	}
+	h.log.Debug("orders listed", "count", len(orders))
 	writeJSON(w, http.StatusOK, orders)
 }
 
@@ -39,6 +41,7 @@ func (h *handlers) getOrder(w http.ResponseWriter, r *http.Request) {
 
 	order, err := queryOrder(h.db, id)
 	if err != nil {
+		h.log.Warn("order not found", "id", id)
 		writeError(w, r, http.StatusNotFound, "order not found")
 		return
 	}
@@ -67,11 +70,12 @@ func (h *handlers) createOrder(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	order, err := insertOrder(h.db, id, req.UserID, req.ItemID, req.Quantity)
 	if err != nil {
-		// Foreign key violations (invalid user_id or item_id) produce
-		// a Postgres error here — the audit event captures the failure.
+		h.log.Error("db insert failed", "op", "create_order", "error", err,
+			"user_id", req.UserID, "item_id", req.ItemID)
 		writeError(w, r, http.StatusBadRequest, "create order failed: check user_id and item_id exist")
 		return
 	}
+	h.log.Info("order created", "id", id, "user_id", req.UserID, "item_id", req.ItemID)
 
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
 		hints.TargetID = id
@@ -100,8 +104,10 @@ func (h *handlers) updateOrder(w http.ResponseWriter, r *http.Request) {
 
 	order, err := updateOrderDB(h.db, id, req.Status)
 	if err != nil {
+		h.log.Warn("order not found for update", "id", id)
 		writeError(w, r, http.StatusNotFound, "order not found")
 		return
 	}
+	h.log.Info("order status updated", "id", id, "status", req.Status)
 	writeJSON(w, http.StatusOK, order)
 }

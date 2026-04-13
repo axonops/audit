@@ -27,9 +27,11 @@ import (
 func (h *handlers) listItems(w http.ResponseWriter, r *http.Request) {
 	items, err := queryItems(h.db)
 	if err != nil {
+		h.log.Error("db query failed", "op", "list_items", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "list items failed")
 		return
 	}
+	h.log.Debug("items listed", "count", len(items))
 	writeJSON(w, http.StatusOK, items)
 }
 
@@ -41,6 +43,7 @@ func (h *handlers) getItem(w http.ResponseWriter, r *http.Request) {
 
 	item, err := queryItem(h.db, id)
 	if err != nil {
+		h.log.Warn("item not found", "id", id)
 		writeError(w, r, http.StatusNotFound, "item not found")
 		return
 	}
@@ -65,9 +68,11 @@ func (h *handlers) createItem(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	item, err := insertItem(h.db, id, req.Name, req.Description)
 	if err != nil {
+		h.log.Error("db insert failed", "op", "create_item", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "create item failed")
 		return
 	}
+	h.log.Info("item created", "id", id, "name", req.Name)
 
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
 		hints.TargetID = id
@@ -93,9 +98,11 @@ func (h *handlers) updateItem(w http.ResponseWriter, r *http.Request) {
 
 	item, err := updateItemDB(h.db, id, req.Name, req.Description)
 	if err != nil {
+		h.log.Warn("item not found for update", "id", id)
 		writeError(w, r, http.StatusNotFound, "item not found")
 		return
 	}
+	h.log.Info("item updated", "id", id)
 	writeJSON(w, http.StatusOK, item)
 }
 
@@ -107,12 +114,14 @@ func (h *handlers) deleteItem(w http.ResponseWriter, r *http.Request) {
 
 	if err := deleteItemDB(h.db, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			h.log.Warn("item not found for delete", "id", id)
 			writeError(w, r, http.StatusNotFound, "item not found")
 		} else {
-			// Foreign key violation — item has dependent orders.
+			h.log.Warn("item delete blocked by foreign key", "id", id, "error", err)
 			writeError(w, r, http.StatusConflict, "item has dependent orders")
 		}
 		return
 	}
+	h.log.Info("item deleted", "id", id)
 	w.WriteHeader(http.StatusNoContent)
 }

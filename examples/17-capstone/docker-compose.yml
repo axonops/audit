@@ -3,6 +3,7 @@
 # Services:
 #   app           — inventory management API with audit logging
 #   postgres      — application database
+#   promtail      — ships application logs from /data/app.log to Loki
 #   openbao       — secret store for HMAC salts (ref+ URI resolution)
 #   openbao-seed  — seeds OpenBao with HMAC salt secrets on startup
 #   loki          — audit event storage for Grafana queries
@@ -79,6 +80,15 @@ services:
       timeout: 2s
       retries: 10
       start_period: 10s
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/config.yml:ro
+      - audit-logs:/data:ro
+    depends_on:
+      loki:
+        condition: service_healthy
 
   openbao:
     image: quay.io/openbao/openbao:2.1.0

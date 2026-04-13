@@ -16,6 +16,7 @@ package main
 
 import (
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -48,6 +49,14 @@ var routeTable = map[string]string{
 	"PUT orders/{id}": EventOrderUpdate,
 }
 
+type serverOpts struct {
+	log *slog.Logger
+}
+
+func withAppLogger(l *slog.Logger) func(*serverOpts) {
+	return func(o *serverOpts) { o.log = l }
+}
+
 // newServer builds the HTTP handler with two layers:
 //
 //   - outerMux: login/logout (self-auditing, outside middleware chain)
@@ -55,12 +64,17 @@ var routeTable = map[string]string{
 //
 // Login/logout emit audit events directly because they ARE the
 // security action. CRUD routes emit events via the audit middleware.
-func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter, settings *settingsStore) http.Handler {
+func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter, settings *settingsStore, opts ...func(*serverOpts)) http.Handler {
+	so := &serverOpts{log: slog.Default()}
+	for _, o := range opts {
+		o(so)
+	}
+
 	// --- Inner mux: CRUD + admin routes (auth + audit middleware) ---
 	innerMux := http.NewServeMux()
 
-	h := &handlers{db: db}
-	adminH := &adminHandlers{db: db, settings: settings}
+	h := &handlers{db: db, log: so.log}
+	adminH := &adminHandlers{db: db, settings: settings, log: so.log}
 	registerInfraRoutes(innerMux)
 	registerCRUDRoutes(innerMux, h)
 	registerAdminRoutes(innerMux, adminH)
@@ -72,7 +86,7 @@ func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rat
 	// --- Outer mux: auth endpoints (self-auditing, no middleware) ---
 	outerMux := http.NewServeMux()
 
-	authH := &authHandlers{logger: logger, sessions: sessions, rl: rl}
+	authH := &authHandlers{logger: logger, sessions: sessions, rl: rl, log: so.log}
 
 	// Login is wrapped by rate limiter. Logout is not.
 	outerMux.Handle("POST /login",

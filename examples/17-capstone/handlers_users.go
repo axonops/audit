@@ -27,9 +27,11 @@ import (
 func (h *handlers) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := queryUsers(h.db)
 	if err != nil {
+		h.log.Error("db query failed", "op", "list_users", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "list users failed")
 		return
 	}
+	h.log.Debug("users listed", "count", len(users))
 	writeJSON(w, http.StatusOK, users)
 }
 
@@ -41,6 +43,7 @@ func (h *handlers) getUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := queryUser(h.db, id)
 	if err != nil {
+		h.log.Warn("user not found", "id", id)
 		writeError(w, r, http.StatusNotFound, "user not found")
 		return
 	}
@@ -70,9 +73,11 @@ func (h *handlers) createUser(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	user, err := insertUser(h.db, id, req.Username, req.Email, req.Phone)
 	if err != nil {
+		h.log.Error("db insert failed", "op", "create_user", "error", err)
 		writeError(w, r, http.StatusInternalServerError, "create user failed")
 		return
 	}
+	h.log.Info("user created", "id", id, "username", req.Username)
 
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
 		hints.TargetID = id
@@ -109,9 +114,11 @@ func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := updateUserDB(h.db, id, req.Username, req.Email, req.Phone)
 	if err != nil {
+		h.log.Warn("user not found for update", "id", id)
 		writeError(w, r, http.StatusNotFound, "user not found")
 		return
 	}
+	h.log.Info("user updated", "id", id)
 
 	if hints := audit.HintsFromContext(r.Context()); hints != nil {
 		populatePIIHints(hints, req.Email, req.Phone)
@@ -127,12 +134,14 @@ func (h *handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := deleteUserDB(h.db, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			h.log.Warn("user not found for delete", "id", id)
 			writeError(w, r, http.StatusNotFound, "user not found")
 		} else {
-			// Foreign key violation — user has dependent orders.
+			h.log.Warn("user delete blocked by foreign key", "id", id, "error", err)
 			writeError(w, r, http.StatusConflict, "user has dependent orders")
 		}
 		return
 	}
+	h.log.Info("user deleted", "id", id)
 	w.WriteHeader(http.StatusNoContent)
 }

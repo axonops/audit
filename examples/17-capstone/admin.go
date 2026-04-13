@@ -17,6 +17,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -89,6 +90,7 @@ func requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 type adminHandlers struct {
 	db       *sql.DB
 	settings *settingsStore
+	log      *slog.Logger
 }
 
 func (a *adminHandlers) getSettings(w http.ResponseWriter, r *http.Request) {

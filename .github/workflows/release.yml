@@ -73,7 +73,7 @@ jobs:
   tag-tier0:
     name: "Tag Tier 0 (core + secrets)"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     needs: [ci]
     permissions:
       contents: write
@@ -163,16 +163,16 @@ jobs:
           )
           for mod in "${MODULES[@]}"; do
             echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
-            for i in $(seq 1 30); do
+            for i in $(seq 1 120); do
               if GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION" 2>/dev/null; then
                 echo "  ✓ Indexed: $mod"
                 break
               fi
-              if [ "$i" -eq 30 ]; then
-                echo "::error::Timeout waiting for proxy indexing of $mod"
+              if [ "$i" -eq 120 ]; then
+                echo "::error::Timeout waiting for proxy indexing of $mod (20 min)"
                 exit 1
               fi
-              echo "  Attempt $i/30 — waiting 10s..."
+              echo "  Attempt $i/120 — waiting 10s..."
               sleep 10
             done
           done
@@ -184,7 +184,7 @@ jobs:
   tag-tier1:
     name: "Tag Tier 1 (core-dependent modules)"
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     needs: [tag-tier0]
     permissions:
       contents: write
@@ -302,16 +302,16 @@ jobs:
           )
           for mod in "${MODULES[@]}"; do
             echo "Waiting for $mod@$PUBLISH_VERSION on proxy..."
-            for i in $(seq 1 30); do
+            for i in $(seq 1 120); do
               if GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION" 2>/dev/null; then
                 echo "  ✓ Indexed: $mod"
                 break
               fi
-              if [ "$i" -eq 30 ]; then
-                echo "::error::Timeout waiting for proxy indexing of $mod"
+              if [ "$i" -eq 120 ]; then
+                echo "::error::Timeout waiting for proxy indexing of $mod (20 min)"
                 exit 1
               fi
-              echo "  Attempt $i/30 — waiting 10s..."
+              echo "  Attempt $i/120 — waiting 10s..."
               sleep 10
             done
           done
@@ -323,7 +323,7 @@ jobs:
   tag-tier2:
     name: "Tag Tier 2 (outputconfig, outputs)"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     needs: [tag-tier1]
     permissions:
       contents: write
@@ -409,7 +409,7 @@ jobs:
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     needs: [tag-tier2]
     permissions:
       contents: write

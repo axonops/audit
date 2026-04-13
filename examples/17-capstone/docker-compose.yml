@@ -1,4 +1,4 @@
-# go-audit Inventory Demo (Capstone)
+# audit Inventory Demo (Capstone)
 #
 # Services:
 #   app       — inventory management API with audit logging

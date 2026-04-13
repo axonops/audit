@@ -6,7 +6,7 @@
 
 The JSON formatter serialises each audit event as a single line of
 JSON — one event per line, no pretty-printing. This is the default
-format used by go-audit. JSON output is designed for log aggregation
+format used by audit. JSON output is designed for log aggregation
 platforms (OpenSearch, Elasticsearch, Datadog, Loki, CloudWatch) and
 for custom analytics pipelines that parse structured data.
 

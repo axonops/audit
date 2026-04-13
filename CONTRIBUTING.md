@@ -1,13 +1,13 @@
-# Contributing to go-audit
+# Contributing to audit
 
-Thank you for your interest in contributing to go-audit. This document
+Thank you for your interest in contributing to audit. This document
 covers the development setup, coding standards, and pull request process.
 
 ## Development Setup
 
 ```bash
 git clone https://github.com/axonops/audit.git
-cd go-audit
+cd audit
 make install-tools   # golangci-lint v2.1.6, govulncheck v1.1.4, goimports, goreleaser
 make workspace       # creates go.work for IDE tooling (gitignored)
 make check           # runs the full quality gate locally

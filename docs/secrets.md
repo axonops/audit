@@ -21,7 +21,7 @@
 
 ## Overview
 
-go-audit resolves secret references in YAML configuration values at
+audit resolves secret references in YAML configuration values at
 startup. Any string value in the output configuration YAML can contain
 a `ref+SCHEME://PATH#KEY` URI instead of a literal value, with
 [specific exceptions](#fields-that-cannot-contain-refs). During
@@ -829,7 +829,7 @@ headers:
 
 - [Output Configuration YAML](output-configuration.md) -- full YAML schema reference
 - [HMAC Integrity](hmac-integrity.md) -- per-output HMAC with salt management
-- [Error Reference](error-reference.md) -- all go-audit error sentinels
+- [Error Reference](error-reference.md) -- all audit error sentinels
 - [Troubleshooting](troubleshooting.md#secret-provider-failures) -- diagnosing secret resolution problems
 - [API Reference: secrets](https://pkg.go.dev/github.com/axonops/audit/secrets) -- `Provider`, `Ref`, `ParseRef`
 - [API Reference: secrets/openbao](https://pkg.go.dev/github.com/axonops/audit/secrets/openbao) -- OpenBao provider

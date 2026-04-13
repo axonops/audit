@@ -1,4 +1,4 @@
-# syslog-ng service for go-audit integration tests.
+# syslog-ng service for audit integration tests.
 #
 # Listeners:
 #   5514 — TCP plain

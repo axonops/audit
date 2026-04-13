@@ -1,7 +1,7 @@
 <div align="center">
-  <img src=".github/images/logo-readme.png" alt="go-audit" width="128">
+  <img src=".github/images/logo-readme.png" alt="audit" width="128">
 
-  # go-audit
+  # audit
 
   **Structured, Schema-Enforced Audit Logging for Go Services**
 
@@ -18,7 +18,7 @@
 
 ## 🔍 Overview
 
-go-audit is an audit logging library for Go. Audit logging is different
+audit is an audit logging library for Go. Audit logging is different
 from application logging — application logs record technical details
 for debugging (`log/slog`, `zap`), while audit logs record **who did
 what, when, and to which resource** for compliance, forensics, and
@@ -26,7 +26,7 @@ accountability. If your application handles user data, authentication,
 or financial transactions, regulations like SOX, HIPAA, and GDPR
 require structured audit trails that application loggers don't enforce.
 
-go-audit splits audit configuration into two layers:
+The library splits audit configuration into two layers:
 
 - **Compile-time (taxonomy):** Your event schema — which event types
   exist, which fields are required, what's optional — is defined in a
@@ -94,7 +94,7 @@ delivery guarantees that compliance demands.
 
 ---
 
-## 💡 Why go-audit?
+## 💡 Why audit?
 
 No existing Go library provides schema-enforced audit logging with
 multi-output fan-out and SIEM-native format support:
@@ -110,7 +110,7 @@ multi-output fan-out and SIEM-native format support:
 
 ## 🚀 Quick Start
 
-go-audit uses a YAML-first workflow: define your events in a taxonomy
+The library uses a YAML-first workflow: define your events in a taxonomy
 file, configure outputs in another, and generate type-safe Go code.
 
 ### 1️⃣ Define your taxonomy (`taxonomy.yaml`) - This is your source code. 
@@ -303,7 +303,7 @@ minor versions until v1.0.0. Pin your dependency version.
 
 ## 🙏 Acknowledgements
 
-go-audit builds on excellent open-source projects. See
+audit builds on excellent open-source projects. See
 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for full attribution and
 license details.
 

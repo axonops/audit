@@ -3,7 +3,7 @@
 # Stdout Output — Detailed Reference
 
 The stdout output writes serialised audit events to standard output,
-one JSON line per event. It is the simplest output in go-audit — built
+one JSON line per event. It is the simplest output in audit — built
 into the core module with no configuration options and no additional
 dependencies.
 

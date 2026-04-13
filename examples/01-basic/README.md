@@ -11,7 +11,7 @@ just Go code.
 This example uses `DevTaxonomy()` and `Stdout()` so you can see how the
 library works in a playground. From the next example onwards, you'll
 define your events and outputs in YAML files instead — that's how you'd
-use go-audit in a real application.
+use audit in a real application.
 
 ## What You'll Learn
 
@@ -105,7 +105,7 @@ threshold in the [Event Routing](../10-event-routing/) example.
 
 ### Buffer Full and Delivery Guarantees
 
-go-audit uses an internal buffer (default 10,000 events) between
+audit uses an internal buffer (default 10,000 events) between
 `AuditEvent()` and the output writes. If your application emits events
 faster than outputs can drain them, the buffer fills up and `AuditEvent()`
 returns `audit.ErrBufferFull`.

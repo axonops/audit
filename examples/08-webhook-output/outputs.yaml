@@ -1,4 +1,4 @@
-# Webhook output configuration for the go-audit example.
+# Webhook output configuration for the audit example.
 #
 # This sends audit events as NDJSON batches to an HTTP endpoint.
 # The example embeds a local HTTP server that receives and prints

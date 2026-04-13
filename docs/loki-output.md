@@ -40,7 +40,7 @@ make it ideal for audit trails:
 - **Multi-tenancy** via `X-Scope-OrgID` isolates different
   applications or environments in a shared Loki cluster
 - **Grafana integration** provides dashboards, alerting, and LogQL
-  exploration — see [Grafana Dashboard for go-audit](https://github.com/axonops/audit/issues/273)
+  exploration — see [Grafana Dashboard for audit](https://github.com/axonops/audit/issues/273)
 - **Cost-effective** — Loki indexes only labels (not full-text),
   making it significantly cheaper than traditional SIEM at scale
 
@@ -69,7 +69,7 @@ For a working example with code, see the
 When you audit an event, here's what happens:
 
 ```
-Your code                    go-audit core              Loki output
+Your code                    audit core              Loki output
 ─────────                    ──────────────             ───────────
 logger.AuditEvent(event) →   validate + serialize →     WriteWithMetadata()
                                                           ↓
@@ -168,7 +168,7 @@ for searching audit events.
 
 ### Label Sources
 
-go-audit generates labels from three sources:
+audit generates labels from three sources:
 
 | Source | Labels | Set when | Example |
 |--------|--------|----------|---------|
@@ -961,7 +961,7 @@ delivered to all others.
 - [Output Types Overview](outputs.md) — summary of all outputs
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
 - [Progressive Example](../examples/14-loki-output/) — working code with real query output
-- [Grafana Dashboard Issue](https://github.com/axonops/audit/issues/273) — pre-built dashboard for go-audit
+- [Grafana Dashboard Issue](https://github.com/axonops/audit/issues/273) — pre-built dashboard for audit
 - [Event Routing](event-routing.md) — per-output event filtering
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
 - [HMAC Integrity](hmac-integrity.md) — tamper detection on Loki events

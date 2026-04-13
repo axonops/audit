@@ -1,6 +1,6 @@
 # Writing Custom Outputs
 
-This guide explains how to implement a custom audit output for go-audit.
+This guide explains how to implement a custom audit output for audit.
 
 ## Interface Hierarchy
 

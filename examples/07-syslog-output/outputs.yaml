@@ -1,4 +1,4 @@
-# Syslog output configuration for the go-audit example.
+# Syslog output configuration for the audit example.
 #
 # This sends audit events to a local TCP syslog receiver as RFC 5424
 # messages. The example embeds a TCP server that listens on port 1514.

@@ -133,7 +133,7 @@ These two values are packed into a single number using the formula:
 
 **`PRI = facility × 8 + severity`**
 
-You don't need to calculate this yourself — go-audit handles it
+You don't need to calculate this yourself — audit handles it
 automatically. But understanding it helps when reading syslog output
 or configuring your SIEM's filtering rules.
 
@@ -191,7 +191,7 @@ use a specific facility for routing purposes.
 
 ### How Severity Mapping Works
 
-go-audit automatically maps the audit event severity from your taxonomy
+audit automatically maps the audit event severity from your taxonomy
 (a number 0-10) to the syslog severity scale (0-7). The syslog scale
 is inverted — lower numbers are MORE critical:
 

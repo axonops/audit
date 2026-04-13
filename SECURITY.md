@@ -84,8 +84,8 @@ the [GitHub Release](https://github.com/axonops/audit/releases):
 
 | Format | Filename | Use Case |
 |--------|----------|----------|
-| **CycloneDX** | `go-audit_<version>_sbom.cdx.json` | Vulnerability scanners (Trivy, Grype, Dependency-Track) |
-| **SPDX** | `go-audit_<version>_sbom.spdx.json` | License compliance tools, regulatory reporting |
+| **CycloneDX** | `audit_<version>_sbom.cdx.json` | Vulnerability scanners (Trivy, Grype, Dependency-Track) |
+| **SPDX** | `audit_<version>_sbom.spdx.json` | License compliance tools, regulatory reporting |
 
 Both SBOMs list all direct and transitive dependencies across every
 module in the repository, including versions and license identifiers.
@@ -96,7 +96,7 @@ Scan for vulnerabilities:
 
 ```bash
 # Download the SBOM from the GitHub release, then:
-trivy sbom go-audit_v0.1.0_sbom.cdx.json
+trivy sbom audit_v0.1.0_sbom.cdx.json
 ```
 
 Generate a local SBOM from source (requires [syft](https://github.com/anchore/syft)):

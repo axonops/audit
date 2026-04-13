@@ -8,7 +8,7 @@ A complete inventory management application with a web UI, Postgres
 database, four simultaneous audit outputs, Grafana dashboards, and
 Prometheus metrics. **One command starts everything.**
 
-This is the capstone example — it ties together every go-audit feature
+This is the capstone example — it ties together every audit feature
 from the previous 16 examples into a realistic application that you
 can explore immediately.
 
@@ -49,7 +49,7 @@ Every action generates audit events: `user_create`, `item_create`,
 ### 3. See audit events in Grafana
 
 Open http://localhost:3000 and navigate to **Dashboards →
-"go-audit: Inventory Demo Audit Dashboard"**. You'll see:
+"audit: Inventory Demo Dashboard"**. You'll see:
 
 - **Events over time** — line chart showing audit activity
 - **Events by category** — pie chart (read, write, security, compliance)
@@ -72,7 +72,7 @@ The dashboard updates in near-real-time as you interact with the app.
 ### 5. Inspect the four outputs
 
 Every audit event goes to four outputs simultaneously, each showing
-different go-audit features:
+different audit features:
 
 ```bash
 # stdout — JSON with full PII (visible in container logs)

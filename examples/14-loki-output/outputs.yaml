@@ -1,4 +1,4 @@
-# Loki output configuration for the go-audit example.
+# Loki output configuration for the audit example.
 #
 # This pushes audit events to a local Grafana Loki instance.
 # Events are batched, gzip-compressed, and grouped by stream labels.

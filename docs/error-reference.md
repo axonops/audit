@@ -11,7 +11,7 @@
 
 ## How to Check Errors
 
-All go-audit errors are sentinel values. Use `errors.Is` to check
+All audit errors are sentinel values. Use `errors.Is` to check
 for specific error types — never compare error strings:
 
 ```go

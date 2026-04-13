@@ -19,7 +19,7 @@ function that produces a fixed-size hash from a message and a secret
 key (salt). When appended to an audit event, it allows anyone with the
 salt to verify the event has not been modified since it was written.
 
-go-audit computes the HMAC over the **complete serialised payload** —
+audit computes the HMAC over the **complete serialised payload** —
 including all fields, sensitivity label filtering, and the
 `event_category` — and appends it as the last field in the output.
 
@@ -201,7 +201,7 @@ However, hash chaining:
 - Makes recovery after failure complex
 - Is not compatible with multi-output architectures
 
-go-audit uses per-event HMAC as a simpler, stateless alternative.
+audit uses per-event HMAC as a simpler, stateless alternative.
 
 ### Storage-Layer Verification
 

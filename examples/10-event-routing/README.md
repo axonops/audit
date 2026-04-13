@@ -49,7 +49,7 @@ categories:
       - auth_failure
 ```
 
-go-audit supports two ways to define categories:
+audit supports two ways to define categories:
 
 - **List format** — just the event names. Events get the default
   severity of 5.

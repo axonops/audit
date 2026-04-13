@@ -1,4 +1,4 @@
-# Full test infrastructure for go-audit integration and BDD tests.
+# Full test infrastructure for audit integration and BDD tests.
 # Combines syslog-ng, webhook receiver, and Loki for fan-out testing.
 #
 # Usage (from repo root):

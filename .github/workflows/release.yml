@@ -1,4 +1,4 @@
-# End-to-end release workflow for go-audit.
+# End-to-end release workflow for audit.
 #
 # Trigger manually with a version string. The workflow:
 #   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)

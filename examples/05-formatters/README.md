@@ -13,7 +13,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 - Configuring per-output formatters in `outputs.yaml`
 - What CEF (Common Event Format) is and when to use it
 - How JSON and CEF output differ
-- How field names map between go-audit and CEF
+- How field names map between audit and CEF
 
 ## Prerequisites
 
@@ -74,10 +74,10 @@ fields mapped to CEF key names.
 
 ### CEF Field Mapping
 
-The formatter automatically translates go-audit field names to standard
+The formatter automatically translates audit field names to standard
 CEF extension keys via `FieldMapping` (configurable):
 
-| go-audit field | CEF key |
+| audit field | CEF key |
 |----------------|---------|
 | `actor_id` | `suser` |
 | `source_ip` | `src` |

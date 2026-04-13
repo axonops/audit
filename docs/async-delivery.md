@@ -51,7 +51,7 @@ industry:
   consistency guarantees
 
 The key is not synchronous delivery — it is **completeness monitoring**.
-go-audit provides this through the [Metrics interface](metrics-monitoring.md):
+audit provides this through the [Metrics interface](metrics-monitoring.md):
 
 - `RecordBufferDrop()` fires if an event is lost due to backpressure
 - `RecordOutputError()` fires if an output fails to write
@@ -119,7 +119,7 @@ or your outputs are too slow.
 
 ## 🏗️ Two-Level Buffering
 
-go-audit has a two-level buffering architecture. Understanding it is
+audit has a two-level buffering architecture. Understanding it is
 essential for tuning performance and diagnosing event drops.
 
 ### Level 1: Core Logger Buffer

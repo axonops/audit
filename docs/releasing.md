@@ -1,6 +1,6 @@
 [&larr; Back to README](../README.md)
 
-# Releasing go-audit
+# Releasing audit
 
 - [How Go Module Publishing Works](#how-go-module-publishing-works)
 - [For Maintainers: Cutting a Release](#for-maintainers-cutting-a-release)
@@ -390,7 +390,7 @@ verified against `sum.golang.org` when the module was first downloaded.
 
 Every release binary and SBOM has a GitHub
 [build attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations)
-that cryptographically proves it was built by the go-audit CI pipeline.
+that cryptographically proves it was built by the audit CI pipeline.
 Verify any downloaded artifact with:
 
 ```bash

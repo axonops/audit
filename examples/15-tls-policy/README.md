@@ -6,13 +6,13 @@
 # Example 15: TLS Policy
 
 Demonstrates how to configure global and per-output TLS policy in
-go-audit. TLS policy controls the minimum TLS version and allowed
+audit. TLS policy controls the minimum TLS version and allowed
 cipher suites for all TLS-enabled outputs (syslog TCP+TLS, webhook
 HTTPS, loki HTTPS).
 
 ## What You'll Learn
 
-1. Why go-audit defaults to **TLS 1.3 only** and when to change this
+1. Why audit defaults to **TLS 1.3 only** and when to change this
 2. How to set a **global TLS policy** that applies to all outputs
 3. How to **override per-output** for legacy infrastructure
 4. What `allow_tls12` and `allow_weak_ciphers` actually do
@@ -69,7 +69,7 @@ stderr):
 
 ### Why TLS 1.3 Only by Default?
 
-go-audit enforces [TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446)
+audit enforces [TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446)
 by default for all TLS-enabled outputs. This is the most secure
 configuration:
 

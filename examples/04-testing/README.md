@@ -5,7 +5,7 @@
 
 # Example 04: Testing
 
-How to test code that uses go-audit. The `audittest` package provides
+How to test code that uses audit. The `audittest` package provides
 an in-memory test logger that captures events and metrics for assertion.
 
 ## What You'll Learn

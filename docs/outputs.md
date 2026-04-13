@@ -15,7 +15,7 @@
 ## 🔍 What Are Outputs?
 
 Outputs are where your audit events end up after validation and
-serialisation. go-audit can send the same event to multiple outputs
+serialisation. audit can send the same event to multiple outputs
 at once — a local file for long-term retention, a syslog server for
 your SIEM, and a webhook for real-time alerting, all simultaneously.
 
@@ -51,11 +51,11 @@ filter, and [sensitivity label exclusions](sensitivity-labels.md).
 
 | Output | Module | Transport | Key Features |
 |--------|--------|-----------|--------------|
-| **File** | `go-audit/file` | Local filesystem | Size-based rotation, gzip compression, backup retention, configurable permissions |
-| **Syslog** | `go-audit/syslog` | TCP, UDP, TCP+TLS | RFC 5424 format, mTLS client certs, automatic reconnection |
-| **Webhook** | `go-audit/webhook` | HTTPS | Batched delivery, retry with backoff, SSRF protection, custom headers |
-| **Loki** | `go-audit/loki` | HTTPS | Stream labels, gzip compression, multi-tenancy, retry with backoff, SSRF protection |
-| **Stdout** | `go-audit` (core) | Standard output | Built into the core module — no additional dependency needed |
+| **File** | `audit/file` | Local filesystem | Size-based rotation, gzip compression, backup retention, configurable permissions |
+| **Syslog** | `audit/syslog` | TCP, UDP, TCP+TLS | RFC 5424 format, mTLS client certs, automatic reconnection |
+| **Webhook** | `audit/webhook` | HTTPS | Batched delivery, retry with backoff, SSRF protection, custom headers |
+| **Loki** | `audit/loki` | HTTPS | Stream labels, gzip compression, multi-tenancy, retry with backoff, SSRF protection |
+| **Stdout** | `audit` (core) | Standard output | Built into the core module — no additional dependency needed |
 
 ---
 

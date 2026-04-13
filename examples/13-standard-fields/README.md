@@ -22,7 +22,7 @@ where did it come from (`source_ip`), what was affected (`target_id`), why
 
 ## The Solution: Reserved Standard Fields
 
-go-audit defines **31 well-known audit field names** that are always
+audit defines **31 well-known audit field names** that are always
 available on every event without taxonomy declaration:
 
 | Category | Fields |

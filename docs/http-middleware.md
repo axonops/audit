@@ -16,7 +16,7 @@ When you build an HTTP API, you want to audit who did what — which
 user called which endpoint, from which IP address, how long it took,
 and whether it succeeded or failed.
 
-The go-audit middleware is a convenience wrapper that automatically
+The audit middleware is a convenience wrapper that automatically
 captures standard HTTP request fields so you don't have to extract
 them manually in every handler. It wraps your HTTP router and:
 

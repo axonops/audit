@@ -16,13 +16,13 @@ logging (slog, zap, zerolog).
 
 ## Side-by-Side Coexistence
 
-go-audit and your application logger run independently:
+audit and your application logger run independently:
 
 ```go
 // Application logger (slog)
 slog.Info("handling request", "method", r.Method, "path", r.URL.Path)
 
-// Audit logger (go-audit)
+// Audit logger (audit)
 logger.AuditEvent(audit.NewEventKV("user_create",
     "outcome", "success",
     "actor_id", userID,
@@ -35,7 +35,7 @@ different formats.
 
 ## Pattern Mapping
 
-| slog/zap Pattern | go-audit Equivalent |
+| slog/zap Pattern | audit Equivalent |
 |------------------|---------------------|
 | `slog.Info("user created", ...)` | `logger.AuditEvent(NewUserCreateEvent(...))` |
 | `zap.String("user_id", id)` | `.SetActorID(id)` on the generated builder |
@@ -44,7 +44,7 @@ different formats.
 
 ## When to Audit vs When to Log
 
-**Audit** (go-audit):
+**Audit** (audit):
 - User authentication success/failure
 - Data creation, modification, deletion
 - Permission changes
@@ -58,9 +58,9 @@ different formats.
 - Error stack traces
 - Debug information
 
-## Redirecting go-audit Diagnostics
+## Redirecting audit Diagnostics
 
-go-audit uses `log/slog` for its own diagnostic messages (startup,
+audit uses `log/slog` for its own diagnostic messages (startup,
 shutdown, buffer drops). By default these go to `slog.Default()`.
 Redirect them with `WithLogger`:
 

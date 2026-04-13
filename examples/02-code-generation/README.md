@@ -7,7 +7,7 @@
 
 Define your audit events in a YAML file, generate type-safe Go
 constants, and configure outputs in a separate YAML file. This is the
-recommended workflow for go-audit — all subsequent examples follow it.
+recommended workflow for audit — all subsequent examples follow it.
 
 ## What You'll Learn
 

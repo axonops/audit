@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the internal design of go-audit for contributors.
+This document describes the internal design of audit for contributors.
 For usage documentation, see the [README](README.md) and [examples](examples/).
 
 ## Data Flow

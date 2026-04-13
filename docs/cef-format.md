@@ -71,12 +71,12 @@ CEF:0|MyCompany|MyApp|1.0|auth_failure|An authentication attempt failed|8|rt=170
 
 Use CEF when your events are consumed by a SIEM. Use JSON when events
 go to log aggregators (ELK, Datadog) or custom analytics pipelines.
-You can use both simultaneously — go-audit supports per-output
+You can use both simultaneously — audit supports per-output
 formatter overrides.
 
 ## 🗺️ Field Mapping
 
-go-audit maps audit field names to standard CEF extension keys:
+audit maps audit field names to standard CEF extension keys:
 
 | Audit Field | CEF Extension Key | CEF Meaning |
 |-------------|-------------------|-------------|

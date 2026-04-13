@@ -1,6 +1,6 @@
 # Acknowledgements
 
-go-audit builds on the work of these open-source projects. We are
+audit builds on the work of these open-source projects. We are
 grateful to their authors and contributors.
 
 ## Runtime Dependencies
@@ -31,5 +31,5 @@ grateful to their authors and contributors.
 
 All runtime and test dependencies use licenses compatible with
 Apache 2.0 (MIT, BSD-3-Clause, Apache-2.0). No GPL-licensed code is
-linked into the go-audit binary — `golangci-lint` is a build tool
+linked into the audit binary — `golangci-lint` is a build tool
 only, not a library dependency.

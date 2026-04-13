@@ -1,7 +1,7 @@
 # Inventory Demo Capstone — 4-output fan-out topology
 #
 # Every audit event flows through all four outputs simultaneously.
-# Each output demonstrates a different go-audit feature combination:
+# Each output demonstrates a different audit feature combination:
 #
 #   stdout        → JSON, all events, full PII      (developer debugging)
 #   audit.log     → CEF, all events, HMAC v1        (compliance archive)

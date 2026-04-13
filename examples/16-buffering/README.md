@@ -12,7 +12,7 @@ event drops in production.
 
 ## What You'll Learn
 
-- Why go-audit has two levels of buffering and how they interact
+- Why audit has two levels of buffering and how they interact
 - What `ErrBufferFull` means and when it fires (Level 1)
 - What `RecordWebhookDrop` / `RecordLokiDrop` mean (Level 2)
 - The difference between `buffer_size` and `batch_size`

@@ -19,7 +19,7 @@ failing, and when validation errors indicate application bugs.
 
 ## The Metrics Interface
 
-go-audit defines a `Metrics` interface that you implement with your
+audit defines a `Metrics` interface that you implement with your
 metrics library (Prometheus, OpenTelemetry, Datadog, etc.). The core
 library never imports a concrete metrics implementation.
 

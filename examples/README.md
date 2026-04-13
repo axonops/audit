@@ -1,6 +1,6 @@
 [&larr; Back to project README](../README.md)
 
-# go-audit Examples
+# audit Examples
 
 Progressive examples from "hello world" to a complete CRUD REST API.
 Each example introduces one new concept and builds on the previous.
@@ -29,7 +29,7 @@ Each example introduces one new concept and builds on the previous.
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —
-that's how you'd use go-audit in a real application.
+that's how you'd use audit in a real application.
 
 ### Buffering and Performance
 

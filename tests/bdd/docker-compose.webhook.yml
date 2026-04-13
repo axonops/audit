@@ -1,4 +1,4 @@
-# Webhook receiver service for go-audit integration tests.
+# Webhook receiver service for audit integration tests.
 #
 # Endpoints:
 #   POST /events    — store received audit events

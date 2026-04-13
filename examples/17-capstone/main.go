@@ -80,6 +80,10 @@ func main() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
+	// Emit startup audit event — good practice for compliance.
+	emitLifecycleEvent(logger, NewAppStartupEvent("success").
+		SetMessage("inventory demo started on "+addr))
+
 	go func() {
 		log.Printf("listening on %s", addr)
 		if listenErr := srv.ListenAndServe(); listenErr != nil && listenErr != http.ErrServerClosed {
@@ -97,14 +101,25 @@ func main() {
 		log.Printf("http shutdown: %v", err)
 	}
 
+	// Emit shutdown audit event — good practice for compliance.
+	emitLifecycleEvent(logger, NewAppShutdownEvent("success").
+		SetMessage("graceful shutdown initiated"))
+
 	// CRITICAL: Close the audit logger. This flushes all buffered events
 	// to every output. Without this call, pending events are lost and the
-	// drain goroutine leaks.
+	// drain goroutine leaks. The shutdown event above is only delivered
+	// because Close() drains the buffer before returning.
 	if err := logger.Close(); err != nil {
 		log.Printf("close logger: %v", err)
 	}
 
 	log.Println("shutdown complete")
+}
+
+func emitLifecycleEvent(logger *audit.Logger, evt audit.Event) {
+	if err := logger.AuditEvent(evt); err != nil {
+		log.Printf("audit lifecycle event: %v", err)
+	}
 }
 
 func envOr(key, fallback string) string {

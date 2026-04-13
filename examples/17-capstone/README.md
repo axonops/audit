@@ -221,6 +221,28 @@ result, err := outputconfig.Load(ctx, outputsYAML, tax,
 No `RegisterOutputFactory` calls needed. Adding a new output type to
 `outputs.yaml` is a config change, not a code change.
 
+### Lifecycle Events (Best Practice)
+
+Always emit audit events for application startup and shutdown. These
+are critical for compliance — auditors need to know when the system
+was running, and gaps in the audit trail need to be explainable.
+
+```go
+// Emit on startup — after the logger is created, before serving.
+logger.AuditEvent(NewAppStartupEvent("success").
+    SetMessage("inventory demo started on " + addr))
+
+// Emit on shutdown — after stopping HTTP, before logger.Close().
+logger.AuditEvent(NewAppShutdownEvent("success").
+    SetMessage("graceful shutdown initiated"))
+```
+
+The shutdown event only reaches outputs because `logger.Close()`
+drains the buffer before returning. If you skip `Close()`, the
+shutdown event is lost — along with any other buffered events.
+
+See `main.go` for the exact placement in the signal handling flow.
+
 ### Authentication and Audit Hints
 
 Auth and audit middleware are composed as HTTP handler layers:

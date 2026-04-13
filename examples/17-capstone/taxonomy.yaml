@@ -40,6 +40,11 @@ categories:
       - item_read
       - order_list
       - order_read
+  lifecycle:
+    severity: 7
+    events:
+      - app_startup
+      - app_shutdown
   compliance:
     severity: 9
     events:
@@ -176,6 +181,17 @@ events:
 
   order_read:
     description: "An order was viewed"
+    fields:
+      outcome: { required: true }
+
+  # --- Lifecycle events ---
+  app_startup:
+    description: "Application started and audit pipeline is ready"
+    fields:
+      outcome: { required: true }
+
+  app_shutdown:
+    description: "Application is shutting down gracefully"
     fields:
       outcome: { required: true }
 

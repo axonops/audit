@@ -8,6 +8,10 @@ import "github.com/axonops/audit"
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
 const (
+	// EventAppShutdown — Application is shutting down gracefully
+	EventAppShutdown = "app_shutdown"
+	// EventAppStartup — Application started and audit pipeline is ready
+	EventAppStartup = "app_startup"
 	// EventAuthFailure — An authentication attempt failed
 	EventAuthFailure = "auth_failure"
 	// EventAuthLogout — A user logged out
@@ -60,6 +64,7 @@ const (
 // Logger.DisableCategory.
 const (
 	CategoryCompliance = "compliance"
+	CategoryLifecycle  = "lifecycle"
 	CategoryRead       = "read"
 	CategorySecurity   = "security"
 	CategoryWrite      = "write"
@@ -130,6 +135,14 @@ var EventFields = map[string]struct {
 	Required []string
 	Optional []string
 }{
+	EventAppShutdown: {
+		Required: []string{FieldOutcome},
+		Optional: []string{},
+	},
+	EventAppStartup: {
+		Required: []string{FieldOutcome},
+		Optional: []string{},
+	},
 	EventAuthFailure: {
 		Required: []string{FieldActorID, FieldOutcome},
 		Optional: []string{},
@@ -227,9 +240,576 @@ var EventFields = map[string]struct {
 // CategoryEvents maps category names to their member event types.
 var CategoryEvents = map[string][]string{
 	CategoryCompliance: {EventBulkDelete, EventDataExport},
+	CategoryLifecycle:  {EventAppShutdown, EventAppStartup},
 	CategoryRead:       {EventItemList, EventItemRead, EventOrderList, EventOrderRead, EventUserList, EventUserRead},
 	CategorySecurity:   {EventAuthFailure, EventAuthLogout, EventAuthSuccess, EventAuthorizationFailure, EventRateLimitExceeded, EventTokenExpired},
 	CategoryWrite:      {EventConfigChange, EventItemCreate, EventItemDelete, EventItemUpdate, EventOrderCreate, EventOrderUpdate, EventUserCreate, EventUserDelete, EventUserUpdate},
+}
+
+// AppShutdownFields describes every field on [EventAppShutdown] events.
+type AppShutdownFields struct {
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorID    audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// AppShutdownEvent builds a type-safe audit event: Application is shutting down gracefully.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type AppShutdownEvent struct {
+	fields audit.Fields
+}
+
+// NewAppShutdownEvent creates a EventAppShutdown event with required fields.
+func NewAppShutdownEvent(outcome string) *AppShutdownEvent {
+	return &AppShutdownEvent{fields: audit.Fields{
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *AppShutdownEvent) SetAction(v string) *AppShutdownEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorID sets the reserved standard field "actor_id".
+func (e *AppShutdownEvent) SetActorID(v string) *AppShutdownEvent {
+	e.fields[FieldActorID] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *AppShutdownEvent) SetActorUID(v string) *AppShutdownEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *AppShutdownEvent) SetDestHost(v string) *AppShutdownEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *AppShutdownEvent) SetDestIP(v string) *AppShutdownEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *AppShutdownEvent) SetDestPort(v int) *AppShutdownEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *AppShutdownEvent) SetEndTime(v string) *AppShutdownEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *AppShutdownEvent) SetFileHash(v string) *AppShutdownEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *AppShutdownEvent) SetFileName(v string) *AppShutdownEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *AppShutdownEvent) SetFilePath(v string) *AppShutdownEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *AppShutdownEvent) SetFileSize(v int) *AppShutdownEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *AppShutdownEvent) SetMessage(v string) *AppShutdownEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *AppShutdownEvent) SetMethod(v string) *AppShutdownEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *AppShutdownEvent) SetPath(v string) *AppShutdownEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *AppShutdownEvent) SetProtocol(v string) *AppShutdownEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *AppShutdownEvent) SetReason(v string) *AppShutdownEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *AppShutdownEvent) SetReferrer(v string) *AppShutdownEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *AppShutdownEvent) SetRequestID(v string) *AppShutdownEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *AppShutdownEvent) SetRole(v string) *AppShutdownEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *AppShutdownEvent) SetSessionID(v string) *AppShutdownEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *AppShutdownEvent) SetSourceHost(v string) *AppShutdownEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *AppShutdownEvent) SetSourceIP(v string) *AppShutdownEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *AppShutdownEvent) SetSourcePort(v int) *AppShutdownEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *AppShutdownEvent) SetStartTime(v string) *AppShutdownEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *AppShutdownEvent) SetTargetID(v string) *AppShutdownEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *AppShutdownEvent) SetTargetRole(v string) *AppShutdownEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *AppShutdownEvent) SetTargetType(v string) *AppShutdownEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *AppShutdownEvent) SetTargetUID(v string) *AppShutdownEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *AppShutdownEvent) SetTransport(v string) *AppShutdownEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *AppShutdownEvent) SetUserAgent(v string) *AppShutdownEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *AppShutdownEvent) EventType() string { return EventAppShutdown }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *AppShutdownEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *AppShutdownEvent) Description() string { return "Application is shutting down gracefully" }
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *AppShutdownEvent) FieldInfo() AppShutdownFields {
+	return AppShutdownFields{
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorID:    audit.FieldInfo{Name: FieldActorID},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *AppShutdownEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryLifecycle, Severity: intPtr(7)},
+	}
+}
+
+// AppStartupFields describes every field on [EventAppStartup] events.
+type AppStartupFields struct {
+	Outcome    audit.FieldInfo // required
+	Action     audit.FieldInfo // reserved standard
+	ActorID    audit.FieldInfo // reserved standard
+	ActorUID   audit.FieldInfo // reserved standard
+	DestHost   audit.FieldInfo // reserved standard
+	DestIP     audit.FieldInfo // reserved standard
+	DestPort   audit.FieldInfo // reserved standard
+	EndTime    audit.FieldInfo // reserved standard
+	FileHash   audit.FieldInfo // reserved standard
+	FileName   audit.FieldInfo // reserved standard
+	FilePath   audit.FieldInfo // reserved standard
+	FileSize   audit.FieldInfo // reserved standard
+	Message    audit.FieldInfo // reserved standard
+	Method     audit.FieldInfo // reserved standard
+	Path       audit.FieldInfo // reserved standard
+	Protocol   audit.FieldInfo // reserved standard
+	Reason     audit.FieldInfo // reserved standard
+	Referrer   audit.FieldInfo // reserved standard
+	RequestID  audit.FieldInfo // reserved standard
+	Role       audit.FieldInfo // reserved standard
+	SessionID  audit.FieldInfo // reserved standard
+	SourceHost audit.FieldInfo // reserved standard
+	SourceIP   audit.FieldInfo // reserved standard
+	SourcePort audit.FieldInfo // reserved standard
+	StartTime  audit.FieldInfo // reserved standard
+	TargetID   audit.FieldInfo // reserved standard
+	TargetRole audit.FieldInfo // reserved standard
+	TargetType audit.FieldInfo // reserved standard
+	TargetUID  audit.FieldInfo // reserved standard
+	Transport  audit.FieldInfo // reserved standard
+	UserAgent  audit.FieldInfo // reserved standard
+}
+
+// AppStartupEvent builds a type-safe audit event: Application started and audit pipeline is ready.
+// A builder is not safe for concurrent use. Calling a setter
+// multiple times overwrites the previous value.
+type AppStartupEvent struct {
+	fields audit.Fields
+}
+
+// NewAppStartupEvent creates a EventAppStartup event with required fields.
+func NewAppStartupEvent(outcome string) *AppStartupEvent {
+	return &AppStartupEvent{fields: audit.Fields{
+		FieldOutcome: outcome,
+	}}
+}
+
+// SetAction sets the reserved standard field "action".
+func (e *AppStartupEvent) SetAction(v string) *AppStartupEvent {
+	e.fields[FieldAction] = v
+	return e
+}
+
+// SetActorID sets the reserved standard field "actor_id".
+func (e *AppStartupEvent) SetActorID(v string) *AppStartupEvent {
+	e.fields[FieldActorID] = v
+	return e
+}
+
+// SetActorUID sets the reserved standard field "actor_uid".
+func (e *AppStartupEvent) SetActorUID(v string) *AppStartupEvent {
+	e.fields[FieldActorUID] = v
+	return e
+}
+
+// SetDestHost sets the reserved standard field "dest_host".
+func (e *AppStartupEvent) SetDestHost(v string) *AppStartupEvent {
+	e.fields[FieldDestHost] = v
+	return e
+}
+
+// SetDestIP sets the reserved standard field "dest_ip".
+func (e *AppStartupEvent) SetDestIP(v string) *AppStartupEvent {
+	e.fields[FieldDestIP] = v
+	return e
+}
+
+// SetDestPort sets the reserved standard field "dest_port".
+func (e *AppStartupEvent) SetDestPort(v int) *AppStartupEvent {
+	e.fields[FieldDestPort] = v
+	return e
+}
+
+// SetEndTime sets the reserved standard field "end_time".
+func (e *AppStartupEvent) SetEndTime(v string) *AppStartupEvent {
+	e.fields[FieldEndTime] = v
+	return e
+}
+
+// SetFileHash sets the reserved standard field "file_hash".
+func (e *AppStartupEvent) SetFileHash(v string) *AppStartupEvent {
+	e.fields[FieldFileHash] = v
+	return e
+}
+
+// SetFileName sets the reserved standard field "file_name".
+func (e *AppStartupEvent) SetFileName(v string) *AppStartupEvent {
+	e.fields[FieldFileName] = v
+	return e
+}
+
+// SetFilePath sets the reserved standard field "file_path".
+func (e *AppStartupEvent) SetFilePath(v string) *AppStartupEvent {
+	e.fields[FieldFilePath] = v
+	return e
+}
+
+// SetFileSize sets the reserved standard field "file_size".
+func (e *AppStartupEvent) SetFileSize(v int) *AppStartupEvent {
+	e.fields[FieldFileSize] = v
+	return e
+}
+
+// SetMessage sets the reserved standard field "message".
+func (e *AppStartupEvent) SetMessage(v string) *AppStartupEvent {
+	e.fields[FieldMessage] = v
+	return e
+}
+
+// SetMethod sets the reserved standard field "method".
+func (e *AppStartupEvent) SetMethod(v string) *AppStartupEvent {
+	e.fields[FieldMethod] = v
+	return e
+}
+
+// SetPath sets the reserved standard field "path".
+func (e *AppStartupEvent) SetPath(v string) *AppStartupEvent {
+	e.fields[FieldPath] = v
+	return e
+}
+
+// SetProtocol sets the reserved standard field "protocol".
+func (e *AppStartupEvent) SetProtocol(v string) *AppStartupEvent {
+	e.fields[FieldProtocol] = v
+	return e
+}
+
+// SetReason sets the reserved standard field "reason".
+func (e *AppStartupEvent) SetReason(v string) *AppStartupEvent {
+	e.fields[FieldReason] = v
+	return e
+}
+
+// SetReferrer sets the reserved standard field "referrer".
+func (e *AppStartupEvent) SetReferrer(v string) *AppStartupEvent {
+	e.fields[FieldReferrer] = v
+	return e
+}
+
+// SetRequestID sets the reserved standard field "request_id".
+func (e *AppStartupEvent) SetRequestID(v string) *AppStartupEvent {
+	e.fields[FieldRequestID] = v
+	return e
+}
+
+// SetRole sets the reserved standard field "role".
+func (e *AppStartupEvent) SetRole(v string) *AppStartupEvent {
+	e.fields[FieldRole] = v
+	return e
+}
+
+// SetSessionID sets the reserved standard field "session_id".
+func (e *AppStartupEvent) SetSessionID(v string) *AppStartupEvent {
+	e.fields[FieldSessionID] = v
+	return e
+}
+
+// SetSourceHost sets the reserved standard field "source_host".
+func (e *AppStartupEvent) SetSourceHost(v string) *AppStartupEvent {
+	e.fields[FieldSourceHost] = v
+	return e
+}
+
+// SetSourceIP sets the reserved standard field "source_ip".
+func (e *AppStartupEvent) SetSourceIP(v string) *AppStartupEvent {
+	e.fields[FieldSourceIP] = v
+	return e
+}
+
+// SetSourcePort sets the reserved standard field "source_port".
+func (e *AppStartupEvent) SetSourcePort(v int) *AppStartupEvent {
+	e.fields[FieldSourcePort] = v
+	return e
+}
+
+// SetStartTime sets the reserved standard field "start_time".
+func (e *AppStartupEvent) SetStartTime(v string) *AppStartupEvent {
+	e.fields[FieldStartTime] = v
+	return e
+}
+
+// SetTargetID sets the reserved standard field "target_id".
+func (e *AppStartupEvent) SetTargetID(v string) *AppStartupEvent {
+	e.fields[FieldTargetID] = v
+	return e
+}
+
+// SetTargetRole sets the reserved standard field "target_role".
+func (e *AppStartupEvent) SetTargetRole(v string) *AppStartupEvent {
+	e.fields[FieldTargetRole] = v
+	return e
+}
+
+// SetTargetType sets the reserved standard field "target_type".
+func (e *AppStartupEvent) SetTargetType(v string) *AppStartupEvent {
+	e.fields[FieldTargetType] = v
+	return e
+}
+
+// SetTargetUID sets the reserved standard field "target_uid".
+func (e *AppStartupEvent) SetTargetUID(v string) *AppStartupEvent {
+	e.fields[FieldTargetUID] = v
+	return e
+}
+
+// SetTransport sets the reserved standard field "transport".
+func (e *AppStartupEvent) SetTransport(v string) *AppStartupEvent {
+	e.fields[FieldTransport] = v
+	return e
+}
+
+// SetUserAgent sets the reserved standard field "user_agent".
+func (e *AppStartupEvent) SetUserAgent(v string) *AppStartupEvent {
+	e.fields[FieldUserAgent] = v
+	return e
+}
+
+// EventType returns the event type name.
+func (e *AppStartupEvent) EventType() string { return EventAppStartup }
+
+// Fields returns the event fields for [audit.Logger.AuditEvent].
+func (e *AppStartupEvent) Fields() audit.Fields { return e.fields }
+
+// Description returns the taxonomy description.
+func (e *AppStartupEvent) Description() string {
+	return "Application started and audit pipeline is ready"
+}
+
+// FieldInfo returns typed descriptors for every field on this event.
+func (e *AppStartupEvent) FieldInfo() AppStartupFields {
+	return AppStartupFields{
+		Outcome:    audit.FieldInfo{Name: FieldOutcome, Required: true},
+		Action:     audit.FieldInfo{Name: FieldAction},
+		ActorID:    audit.FieldInfo{Name: FieldActorID},
+		ActorUID:   audit.FieldInfo{Name: FieldActorUID},
+		DestHost:   audit.FieldInfo{Name: FieldDestHost},
+		DestIP:     audit.FieldInfo{Name: FieldDestIP},
+		DestPort:   audit.FieldInfo{Name: FieldDestPort},
+		EndTime:    audit.FieldInfo{Name: FieldEndTime},
+		FileHash:   audit.FieldInfo{Name: FieldFileHash},
+		FileName:   audit.FieldInfo{Name: FieldFileName},
+		FilePath:   audit.FieldInfo{Name: FieldFilePath},
+		FileSize:   audit.FieldInfo{Name: FieldFileSize},
+		Message:    audit.FieldInfo{Name: FieldMessage},
+		Method:     audit.FieldInfo{Name: FieldMethod},
+		Path:       audit.FieldInfo{Name: FieldPath},
+		Protocol:   audit.FieldInfo{Name: FieldProtocol},
+		Reason:     audit.FieldInfo{Name: FieldReason},
+		Referrer:   audit.FieldInfo{Name: FieldReferrer},
+		RequestID:  audit.FieldInfo{Name: FieldRequestID},
+		Role:       audit.FieldInfo{Name: FieldRole},
+		SessionID:  audit.FieldInfo{Name: FieldSessionID},
+		SourceHost: audit.FieldInfo{Name: FieldSourceHost},
+		SourceIP:   audit.FieldInfo{Name: FieldSourceIP},
+		SourcePort: audit.FieldInfo{Name: FieldSourcePort},
+		StartTime:  audit.FieldInfo{Name: FieldStartTime},
+		TargetID:   audit.FieldInfo{Name: FieldTargetID},
+		TargetRole: audit.FieldInfo{Name: FieldTargetRole},
+		TargetType: audit.FieldInfo{Name: FieldTargetType},
+		TargetUID:  audit.FieldInfo{Name: FieldTargetUID},
+		Transport:  audit.FieldInfo{Name: FieldTransport},
+		UserAgent:  audit.FieldInfo{Name: FieldUserAgent},
+	}
+}
+
+// Categories returns the categories this event belongs to.
+func (e *AppStartupEvent) Categories() []audit.CategoryInfo {
+	return []audit.CategoryInfo{
+		{Name: CategoryLifecycle, Severity: intPtr(7)},
+	}
 }
 
 // AuthFailureFields describes every field on [EventAuthFailure] events.

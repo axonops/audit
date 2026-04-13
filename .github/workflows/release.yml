@@ -369,21 +369,6 @@ jobs:
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
 
-          # Also update examples/17-capstone (not published but must be consistent)
-          cd examples/17-capstone
-          echo "Updating examples/17-capstone/go.mod..."
-          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/loki@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
-          GOWORK=off go mod tidy
-          echo "  ✓ Tidied."
-          cd "$GITHUB_WORKSPACE"
-
       - name: Commit dependency updates
         run: |
           set -euo pipefail
@@ -392,7 +377,6 @@ jobs:
 
           git add outputconfig/go.mod outputconfig/go.sum
           git add outputs/go.mod outputs/go.sum
-          git add examples/17-capstone/go.mod examples/17-capstone/go.sum
 
           if git diff --cached --quiet; then
             echo "No changes — deps already at $PUBLISH_VERSION"
@@ -427,7 +411,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [tag-tier2]
+    permissions:
+      contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
+
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
@@ -499,6 +492,36 @@ jobs:
 
           go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
           echo "✓ All modules compile and install successfully"
+
+      - name: Update example go.mod files
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Update capstone example (all tier-2 modules are now on proxy)
+          cd examples/17-capstone
+          echo "Updating examples/17-capstone/go.mod..."
+          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/loki@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
+          GOWORK=off go mod tidy
+          echo "  ✓ Tidied."
+          cd "$GITHUB_WORKSPACE"
+
+          git add examples/17-capstone/go.mod examples/17-capstone/go.sum
+          if git diff --cached --quiet; then
+            echo "No example changes"
+          else
+            git commit -m "release: update example deps to $PUBLISH_VERSION"
+            git push origin main
+            echo "✓ Pushed example go.mod updates"
+          fi
 
   # =====================================================================
   # Summary (always runs)

@@ -526,3 +526,50 @@ func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
 			"paths %q and %q should produce the same key", tests[0].path, tests[i].path)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Write — data visible on disk without Close (#450)
+// ---------------------------------------------------------------------------
+
+func TestFileOutput_Write_DataVisibleWithoutClose(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	event := []byte(`{"event_type":"auth.login","outcome":"success"}` + "\n")
+	require.NoError(t, out.Write(event))
+
+	// Read file WITHOUT closing the output.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(event), string(data),
+		"event must be visible on disk immediately after Write, without Close (#450)")
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks
+// ---------------------------------------------------------------------------
+
+func BenchmarkFileOutput_Write(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "bench.log")
+
+	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ResetTimer()
+	b.SetBytes(int64(len(event)))
+	for b.Loop() {
+		if err := out.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -187,6 +187,15 @@ func (w *Writer) writeLocked(p []byte) (n int, rotated bool, err error) {
 	if err != nil {
 		return n, rotated, fmt.Errorf("rotate: write: %w", err)
 	}
+
+	// Flush buffered data to the OS page cache after every write so
+	// audit events are visible on disk immediately. This does NOT
+	// call fsync — the OS persists to stable storage on its own
+	// schedule. For a compliance audit log, prompt visibility is
+	// more important than syscall batching. (#450)
+	if fErr := w.bw.Flush(); fErr != nil {
+		return n, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+	}
 	return n, rotated, nil
 }
 

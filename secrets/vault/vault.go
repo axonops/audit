@@ -75,6 +75,13 @@ type Config struct { //nolint:govet // readability over alignment
 	// Vault runs on 127.0.0.1. Cloud metadata endpoints remain
 	// blocked. Default: false.
 	AllowPrivateRanges bool
+
+	// AllowInsecureHTTP permits http:// URLs. Default: false.
+	// MUST NOT be set to true in production. Plaintext HTTP exposes
+	// the authentication token to network observers. Use only for
+	// local development with Docker Compose where Vault runs
+	// on the internal Docker network.
+	AllowInsecureHTTP bool
 }
 
 // Provider resolves secret references from a HashiCorp Vault KV v2
@@ -90,9 +97,10 @@ type Provider struct { //nolint:govet // readability over alignment
 }
 
 // New creates a HashiCorp Vault provider from the given configuration.
-// Validates the address (HTTPS required), builds the TLS config and
-// HTTP client, but performs no network I/O.
-func New(cfg *Config) (*Provider, error) {
+// Validates the address (HTTPS required unless [Config.AllowInsecureHTTP]
+// is set), builds the TLS config and HTTP client, but performs no
+// network I/O.
+func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear validation pipeline
 	// Validate address.
 	if cfg.Address == "" {
 		return nil, fmt.Errorf("vault: address is required")
@@ -101,8 +109,8 @@ func New(cfg *Config) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vault: invalid address: %w", err)
 	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("vault: address must use https (got %q)", u.Scheme)
+	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
+		return nil, fmt.Errorf("vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("vault: address has empty host")
@@ -119,10 +127,13 @@ func New(cfg *Config) (*Provider, error) {
 		return nil, fmt.Errorf("vault: token is required")
 	}
 
-	// Build TLS config.
-	tlsCfg, err := buildTLSConfig(cfg)
-	if err != nil {
-		return nil, err
+	// Build TLS config (skip when using plain HTTP for development).
+	var tlsCfg *tls.Config
+	if u.Scheme == "https" {
+		tlsCfg, err = buildTLSConfig(cfg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Build SSRF dial control.
@@ -177,8 +188,8 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vault: invalid address: %w", err)
 	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("vault: address must use https (got %q)", u.Scheme)
+	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
+		return nil, fmt.Errorf("vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("vault: address has empty host")

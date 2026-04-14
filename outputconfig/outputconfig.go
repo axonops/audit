@@ -146,26 +146,18 @@ func (o *NamedOutput) String() string {
 // prevents YAML injection via env var values.
 //
 // Secret reference resolution (ref+SCHEME://PATH#KEY) runs after env
-// var expansion when providers are registered via [WithSecretProvider].
-// The ctx parameter controls timeout for network I/O during secret
-// resolution. Use [WithSecretTimeout] to configure the resolution
-// timeout.
+// var expansion when providers are registered via [WithSecretProvider]
+// or configured in the YAML secrets: section. The ctx parameter
+// controls timeout for network I/O during secret resolution. Use
+// [WithSecretTimeout] or the YAML secrets.timeout field to configure
+// the resolution timeout.
+//
+// When providers are configured in the YAML secrets: section, they are
+// constructed, used for resolution, and closed within Load. They do
+// not outlive the call.
 func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
 	lo := resolveOptions(opts)
 
-	// Build the secret resolver from registered providers.
-	secretResolver, rErr := newResolver(lo.providers)
-	if rErr != nil {
-		return nil, rErr
-	}
-
-	// Derive a context with the secret timeout applied.
-	secretCtx := ctx
-	if secretResolver != nil {
-		var cancel context.CancelFunc
-		secretCtx, cancel = contextWithSecretTimeout(ctx, lo.secretTimeout)
-		defer cancel()
-	}
 	// Phase 1: Size check.
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrOutputConfigInvalid)
@@ -190,11 +182,53 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		return nil, fmt.Errorf("%w: trailing content: %w", ErrOutputConfigInvalid, err)
 	}
 
+	// Phase 3b: Extract and parse secrets: section (pre-pass).
+	// The secrets: section is parsed BEFORE the resolver is built because
+	// it creates the providers needed for ref+ resolution. Only env var
+	// substitution is applied — ref+ URIs are not resolved (circular).
+	filteredDoc, yamlProviders, yamlTimeout, sErr := extractAndParseSecrets(doc)
+	if sErr != nil {
+		return nil, sErr
+	}
+	// Ensure YAML-created providers are closed on all exit paths.
+	defer func() {
+		for _, p := range yamlProviders {
+			_ = p.Close()
+		}
+	}()
+
+	// Merge YAML-created providers with programmatic ones.
+	allProviders, mErr := mergeProviders(lo.providers, yamlProviders)
+	if mErr != nil {
+		return nil, mErr
+	}
+
+	// Determine effective secret timeout.
+	// Precedence: WithSecretTimeout > YAML timeout > DefaultSecretTimeout.
+	secretTimeout := lo.secretTimeout
+	if !lo.secretTimeoutSet && yamlTimeout > 0 {
+		secretTimeout = yamlTimeout
+	}
+
+	// Build the secret resolver from combined providers.
+	secretResolver, rErr := newResolver(allProviders)
+	if rErr != nil {
+		return nil, rErr
+	}
+
+	// Derive a context with the secret timeout applied.
+	secretCtx := ctx
+	if secretResolver != nil {
+		var cancel context.CancelFunc
+		secretCtx, cancel = contextWithSecretTimeout(ctx, secretTimeout)
+		defer cancel()
+	}
+
 	// Phase 4-6: Parse top-level fields, validate version, resolve config.
 	// Extract ordered outputs separately (goccy/go-yaml decodes nested
 	// maps as map[string]any which loses key order).
 	orderedOutputs, orderedErr := extractOutputsOrdered(data)
-	top, err := parseTopLevel(secretCtx, doc, orderedOutputs, orderedErr, secretResolver)
+	top, err := parseTopLevel(secretCtx, filteredDoc, orderedOutputs, orderedErr, secretResolver)
 	if err != nil {
 		return nil, err
 	}

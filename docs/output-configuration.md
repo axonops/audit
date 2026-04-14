@@ -168,8 +168,9 @@ outputs:
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
 | `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/13-standard-fields/#the-solution-reserved-standard-fields). |
+| `secrets` | No | Secret provider configuration. Constructs providers from YAML instead of programmatic setup. See [Secrets Configuration](#secrets-configuration). |
 | `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
-| `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. |
+| `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. Does NOT apply to secret providers — each provider defaults to TLS 1.3 independently. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
 ## ⚙️ Logger Configuration
@@ -214,6 +215,65 @@ defaults (`false`).
 
 Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
 or `network: udp`) ignore the global TLS policy.
+
+## 🔐 Secrets Configuration
+
+The optional `secrets:` section configures secret providers
+declaratively in YAML, replacing programmatic provider setup via
+`WithSecretProvider`. Providers are constructed, used for `ref+`
+URI resolution during `Load`, and closed automatically — callers
+do not manage their lifecycle.
+
+```yaml
+secrets:
+  timeout: "15s"
+  openbao:
+    address: "${BAO_ADDR}"
+    token: "${BAO_TOKEN}"
+    allow_insecure_http: true    # dev-only — NEVER in production
+    allow_private_ranges: true   # Docker internal network
+  vault:
+    address: "${VAULT_ADDR}"
+    token: "${VAULT_TOKEN}"
+```
+
+### Reserved keys
+
+| Key | Description |
+|-----|-------------|
+| `timeout` | Secret resolution timeout. Min `1s`, max `120s`. Default: `10s`. `WithSecretTimeout` takes precedence when set programmatically. |
+
+All other keys under `secrets:` are treated as provider scheme names.
+Supported providers: `openbao`, `vault`. Unknown keys are rejected
+with an actionable error.
+
+### Provider fields
+
+Both `openbao` and `vault` accept the same configuration fields:
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `address` | Yes | — | Server URL. HTTPS required unless `allow_insecure_http` is set. |
+| `token` | Yes | — | Authentication token. Use `${ENV_VAR}` — never hardcode. |
+| `namespace` | No | `""` | Namespace prefix (sent as `X-Vault-Namespace` header). |
+| `tls_ca` | No | `""` | Path to custom CA certificate PEM file. |
+| `tls_cert` | No | `""` | Path to client certificate for mTLS. Must be paired with `tls_key`. |
+| `tls_key` | No | `""` | Path to client private key for mTLS. Must be paired with `tls_cert`. |
+| `tls_policy` | No | TLS 1.3 only | Per-provider TLS policy. The global `tls_policy` does NOT apply to secret providers. |
+| `allow_insecure_http` | No | `false` | Permit `http://` URLs. **MUST NOT be `true` in production.** Plaintext HTTP exposes the authentication token to network observers. Use only for local development with Docker Compose. |
+| `allow_private_ranges` | No | `false` | Permit connections to RFC 1918 private addresses and loopback. Required for local development where the provider runs on `127.0.0.1` or a Docker network. Cloud metadata endpoints remain blocked. |
+
+> ⚠️ **Security:** Only environment variable substitution (`${VAR}`)
+> is applied in the `secrets:` section — `ref+` secret references are
+> NOT resolved (this would be circular since providers must exist
+> before secrets can be resolved). Tokens MUST come from environment
+> variables.
+
+### Duplicate scheme detection
+
+If the same provider scheme appears in both the YAML `secrets:`
+section and a programmatic `WithSecretProvider` call, `Load` returns
+an error. Choose one or the other for each provider scheme.
 
 ## 📦 Output Block
 

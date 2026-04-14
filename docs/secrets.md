@@ -246,13 +246,14 @@ Both `openbao.Config` and `vault.Config` share the same field set:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `Address` | Yes | Server URL. MUST use `https://`. |
+| `Address` | Yes | Server URL. MUST use `https://` unless `AllowInsecureHTTP` is set. |
 | `Token` | Yes | Authentication token. See [Authentication](#authentication). |
 | `Namespace` | No | Namespace prefix. Sent as `X-Vault-Namespace` header. |
 | `TLSCA` | No | Path to CA certificate PEM file for server verification. |
 | `TLSCert` | No | Client certificate path for mTLS. MUST be set together with `TLSKey`. |
 | `TLSKey` | No | Client private key path for mTLS. MUST be set together with `TLSCert`. |
 | `TLSPolicy` | No | `*audit.TLSPolicy`. Nil defaults to TLS 1.3 only. |
+| `AllowInsecureHTTP` | No | Permit `http://` URLs. **MUST NOT be `true` in production.** Plaintext HTTP exposes the authentication token to network observers. Use only for local development with Docker Compose where the provider runs on the internal Docker network. Default: `false`. |
 | `AllowPrivateRanges` | No | Permit connections to RFC 1918 addresses (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), IPv6 ULA (`fc00::/7`), and loopback (`127.0.0.0/8`, `::1`). Cloud metadata endpoints (`169.254.169.254`) remain blocked even when this is `true`. Required for local development. Default: `false`. |
 
 ### WithSecretTimeout
@@ -270,6 +271,43 @@ result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 ```
 
 Default: `10s` (`outputconfig.DefaultSecretTimeout`).
+
+### YAML-Based Provider Configuration
+
+Instead of creating providers programmatically, you can configure them
+declaratively in the `secrets:` section of `outputs.yaml`. Providers
+are constructed, used for resolution, and closed automatically within
+`outputconfig.Load` — no manual lifecycle management is needed.
+
+```yaml
+secrets:
+  timeout: "15s"
+  openbao:
+    address: "${BAO_ADDR}"
+    token: "${BAO_TOKEN}"
+    allow_insecure_http: true    # dev-only — NEVER in production
+    allow_private_ranges: true   # Docker internal network
+```
+
+```go
+// No programmatic provider setup needed — just Load.
+result, err := outputconfig.Load(ctx, yamlData, taxonomy)
+```
+
+This replaces the programmatic pattern shown above. The YAML field
+names use `snake_case` equivalents of the Go struct fields (e.g.
+`allow_insecure_http` for `AllowInsecureHTTP`, `tls_ca` for `TLSCA`).
+
+Only environment variable substitution (`${VAR}`) is applied in the
+`secrets:` section — `ref+` secret references are NOT resolved, since
+that would be circular (providers must exist before secrets can be
+resolved).
+
+**Timeout precedence:** `WithSecretTimeout` (programmatic) >
+`secrets.timeout` (YAML) > `DefaultSecretTimeout` (10s).
+
+See [Secrets Configuration](output-configuration.md#secrets-configuration)
+in the output configuration reference for the full field table.
 
 ## Authentication
 

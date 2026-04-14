@@ -23,7 +23,6 @@ import (
 	_ "github.com/axonops/audit/file" // register "file" output type
 	_ "github.com/axonops/audit/loki" // register "loki" output type
 	"github.com/axonops/audit/outputconfig"
-	"github.com/axonops/audit/secrets/openbao"
 )
 
 // setupAuditLogger loads outputs.yaml from the filesystem and creates
@@ -40,6 +39,11 @@ import (
 // HMAC salts, versions, algorithms, and enabled flags are resolved
 // from OpenBao at startup via ref+openbao:// URIs in outputs.yaml.
 // No secrets are stored in configuration files or environment variables.
+//
+// The OpenBao provider is configured declaratively in the outputs.yaml
+// secrets: section. Environment variables BAO_ADDR and BAO_TOKEN are
+// resolved by outputconfig.Load via ${} substitution in the YAML.
+// No programmatic provider setup is needed.
 func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
 	// Load output configuration from the filesystem.
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
@@ -48,31 +52,9 @@ func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, erro
 		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
 	}
 
-	// Build LoadOptions: core metrics + OpenBao secret provider.
-	loadOpts := []outputconfig.LoadOption{
+	result, err := outputconfig.Load(context.Background(), outputsYAML, tax,
 		outputconfig.WithCoreMetrics(m),
-	}
-
-	// Connect to OpenBao for ref+openbao:// URI resolution.
-	// HMAC salts, versions, algorithms, and enabled flags are all
-	// stored in OpenBao — no secrets in config files or env vars.
-	baoAddr := os.Getenv("BAO_ADDR")
-	baoToken := os.Getenv("BAO_TOKEN")
-	if baoAddr != "" && baoToken != "" {
-		provider, providerErr := openbao.New(&openbao.Config{
-			Address:            baoAddr,
-			Token:              baoToken,
-			AllowPrivateRanges: true, // Docker internal network
-			AllowInsecureHTTP:  true, // Dev-only — NEVER in production
-		})
-		if providerErr != nil {
-			return nil, fmt.Errorf("openbao provider: %w", providerErr)
-		}
-		defer func() { _ = provider.Close() }()
-		loadOpts = append(loadOpts, outputconfig.WithSecretProvider(provider))
-	}
-
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax, loadOpts...)
+	)
 	if err != nil {
 		return nil, fmt.Errorf("load output config: %w", err)
 	}

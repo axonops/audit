@@ -12,6 +12,18 @@ version: 1
 app_name: "inventory-demo"
 host: "${HOSTNAME:-localhost}"
 
+# Secret providers — configured declaratively.
+# Tokens come from environment variables; no secrets in config files.
+# Providers are constructed, used for ref+ URI resolution, and closed
+# within outputconfig.Load().
+secrets:
+  timeout: "15s"
+  openbao:
+    address: "${BAO_ADDR}"
+    token: "${BAO_TOKEN}"
+    allow_insecure_http: true    # Dev-only — NEVER in production
+    allow_private_ranges: true   # Docker internal network
+
 logger:
   buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"

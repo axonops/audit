@@ -69,7 +69,7 @@ Feature: YAML Output Configuration
       """
     When I try to create a logger from the YAML config
     Then the config load should fail with an error containing "unknown output type"
-    And the config load error should contain "did you import"
+    And the config load error should contain "add import"
 
   Scenario: Missing environment variable returns clear error
     Given a test taxonomy

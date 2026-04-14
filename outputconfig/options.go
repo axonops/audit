@@ -30,10 +30,11 @@ type LoadOption func(*loadOptions)
 
 // loadOptions holds the resolved options for a Load call.
 type loadOptions struct {
-	coreMetrics   audit.Metrics
-	factories     map[string]audit.OutputFactory
-	providers     []secrets.Provider
-	secretTimeout time.Duration
+	coreMetrics      audit.Metrics
+	factories        map[string]audit.OutputFactory
+	providers        []secrets.Provider
+	secretTimeout    time.Duration
+	secretTimeoutSet bool // true when WithSecretTimeout was called explicitly
 }
 
 // WithSecretProvider registers a secret provider for resolving ref+
@@ -54,6 +55,7 @@ func WithSecretTimeout(d time.Duration) LoadOption {
 	return func(o *loadOptions) {
 		if d > 0 {
 			o.secretTimeout = d
+			o.secretTimeoutSet = true
 		}
 	}
 }

@@ -279,7 +279,29 @@ declaratively in the `secrets:` section of `outputs.yaml`. Providers
 are constructed, used for resolution, and closed automatically within
 `outputconfig.Load` — no manual lifecycle management is needed.
 
+**Before (programmatic):**
+
+```go
+provider, err := openbao.New(&openbao.Config{
+    Address:            os.Getenv("BAO_ADDR"),
+    Token:              os.Getenv("BAO_TOKEN"),
+    AllowPrivateRanges: true,
+    AllowInsecureHTTP:  true,
+})
+if err != nil {
+    return fmt.Errorf("openbao provider: %w", err)
+}
+defer provider.Close()
+
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+    outputconfig.WithSecretProvider(provider),
+)
+```
+
+**After (YAML):**
+
 ```yaml
+# outputs.yaml
 secrets:
   timeout: "15s"
   openbao:
@@ -290,24 +312,30 @@ secrets:
 ```
 
 ```go
-// No programmatic provider setup needed — just Load.
+// No programmatic provider setup — Load handles everything.
 result, err := outputconfig.Load(ctx, yamlData, taxonomy)
 ```
 
-This replaces the programmatic pattern shown above. The YAML field
-names use `snake_case` equivalents of the Go struct fields (e.g.
-`allow_insecure_http` for `AllowInsecureHTTP`, `tls_ca` for `TLSCA`).
+The YAML approach eliminates the `secrets/openbao` import, the manual
+`Close()` call, the conditional env var checks, and the `LoadOption`
+assembly. Provider config becomes an ops concern, not a code change.
+
+The YAML field names use `snake_case` equivalents of the Go struct
+fields (e.g. `allow_insecure_http` for `AllowInsecureHTTP`, `tls_ca`
+for `TLSCA`).
 
 Only environment variable substitution (`${VAR}`) is applied in the
 `secrets:` section — `ref+` secret references are NOT resolved, since
 that would be circular (providers must exist before secrets can be
 resolved).
 
-**Timeout precedence:** `WithSecretTimeout` (programmatic) >
-`secrets.timeout` (YAML) > `DefaultSecretTimeout` (10s).
+**Timeout precedence:** If you set both, the programmatic value wins:
+`WithSecretTimeout` (programmatic) > `secrets.timeout` (YAML) >
+`DefaultSecretTimeout` (10s).
 
-See [Secrets Configuration](output-configuration.md#secrets-configuration)
-in the output configuration reference for the full field table.
+For the complete field table, see
+[Secrets Configuration](output-configuration.md#secrets-configuration)
+in the output configuration reference.
 
 ## Authentication
 
@@ -593,16 +621,20 @@ logger before replacing it -- `Close` drains buffered events.
 
 ## Security Model
 
-### HTTPS-Only
+### HTTPS by Default
 
-Both providers MUST connect over HTTPS. `New` rejects any address
+Both providers enforce HTTPS by default. `New` rejects any address
 that does not use the `https` scheme:
 
 ```
-openbao: address must use https (got "http")
+vault: address must use https (got "http"); set AllowInsecureHTTP for local development
 ```
 
-There is no `AllowInsecureHTTP` escape hatch for provider connections.
+The `AllowInsecureHTTP` field (Go) / `allow_insecure_http` (YAML)
+overrides this check for local development only. **MUST NOT be
+`true` in production** — plaintext HTTP exposes the authentication
+token to network observers. Use only when the provider runs on the
+Docker internal network or localhost during development.
 
 ### SSRF Protection
 

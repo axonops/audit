@@ -1,8 +1,10 @@
-# Build stage — dependencies are published on proxy.golang.org.
+# Build stage — fetch dependencies directly from GitHub to avoid
+# Go module proxy indexing delays on newly released versions.
 FROM golang:1.26-alpine AS builder
+RUN apk add --no-cache git
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app .
 

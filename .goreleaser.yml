@@ -28,11 +28,10 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 before:
-  hooks:
-    # go mod tidy hooks removed — CI already verified tidiness.
-    # The release workflow updates go.mod files on main after tagging,
-    # so the checkout ref (main) always has tidy modules.
-    - bash -c "cd cmd/audit-gen && GOWORK=off GOPROXY=direct go mod tidy"
+  hooks: []
+  # Before hooks removed — GoReleaser checks out the core tag commit,
+  # which has valid (though not latest-version) go.mod files. The build
+  # works because all referenced module versions are published.
 
 changelog:
   use: github

@@ -4,8 +4,9 @@
 #   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)
 #   2. Tags and publishes modules in dependency order (three tiers)
 #   3. Updates inter-module go.mod dependencies between tiers
-#   4. Verifies all modules are indexed on proxy.golang.org
-#   5. Runs a smoke test (go get + compile in a fresh module)
+#   4. Builds binaries, SBOMs, and creates the GitHub Release via GoReleaser
+#   5. Verifies all modules are indexed on proxy.golang.org
+#   6. Runs a smoke test (go get + compile in a fresh module)
 #
 # Three-tier tagging:
 #   Tier 0: core + secrets (no internal deps) — tagged at CI-tested commit
@@ -19,8 +20,8 @@
 # pattern — the core tag is on the CI-tested commit, sub-module tags
 # are on follow-up commits that update require directives.
 #
-# The v* tag push (Tier 0) also triggers goreleaser.yml automatically,
-# which builds binaries, generates SBOMs, and creates the GitHub Release.
+# After Tier 0 tagging, a goreleaser job builds binaries, generates
+# SBOMs, and creates the GitHub Release — all within this workflow.
 #
 # See: docs/releasing.md
 name: Release
@@ -146,7 +147,73 @@ jobs:
               exit 1
             fi
           done
-          echo "✓ Tier 0 tags pushed. goreleaser.yml will trigger automatically."
+          echo "✓ Tier 0 tags pushed."
+
+  # =====================================================================
+  # Job 2b: Build binaries, SBOMs, create GitHub Release via GoReleaser.
+  # Runs in parallel with tier 1/2 tagging — only needs the core v* tag.
+  # =====================================================================
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [tag-tier0]
+    permissions:
+      contents: write
+      id-token: write       # OIDC for attestation
+      attestations: write   # upload attestations
+    steps:
+      # Checkout main with full history, then explicitly fetch and
+      # checkout the release tag. This is more resilient than using
+      # ref: directly, which can fail if GitHub's internal ref
+      # propagation hasn't completed from the tag-tier0 push.
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch and checkout release tag
+        run: |
+          git fetch origin tag "$PUBLISH_VERSION" --no-tags
+          git checkout "$PUBLISH_VERSION"
+
+      - name: Verify tag is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
+            echo "ERROR: tag must point to a commit on main"
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work for inter-module resolution
+        run: make workspace
+
+      - name: Install syft (SBOM generation)
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+
+      - name: Run GoReleaser
+        id: goreleaser
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          version: 'v2.15.0'
+          args: release --clean --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+            dist/*_sbom.*
 
   # =====================================================================
   # Job 3: Tag Tier 1 modules (depend on core and/or secrets).
@@ -454,7 +521,7 @@ jobs:
     name: Summary
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    needs: [ci, tag-tier0, tag-tier1, tag-tier2, verify]
+    needs: [ci, tag-tier0, goreleaser, tag-tier1, tag-tier2, verify]
     if: always()
     steps:
       - name: Generate summary
@@ -467,6 +534,7 @@ jobs:
           |------|--------|
           | CI Gate | ${{ needs.ci.result }} |
           | Tag Tier 0 (core + secrets) | ${{ needs.tag-tier0.result }} |
+          | GoReleaser | ${{ needs.goreleaser.result }} |
           | Tag Tier 1 (core-dependent) | ${{ needs.tag-tier1.result }} |
           | Tag Tier 2 (outputconfig, outputs) | ${{ needs.tag-tier2.result }} |
           | Verify Release | ${{ needs.verify.result }} |
@@ -485,4 +553,4 @@ jobs:
           done
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**GoReleaser** runs automatically via [goreleaser.yml](../actions/workflows/goreleaser.yml) — check separately." >> "$GITHUB_STEP_SUMMARY"
+          echo "**GoReleaser** completed as part of this workflow." >> "$GITHUB_STEP_SUMMARY"

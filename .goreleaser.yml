@@ -69,7 +69,7 @@ sboms:
     args:
       - "${artifact}"
       - "--output"
-      - "cyclonedx-json"
+      - "cyclonedx-json=${document}"
   - id: spdx
     artifacts: archive
     documents:
@@ -79,7 +79,7 @@ sboms:
     args:
       - "${artifact}"
       - "--output"
-      - "spdx-json"
+      - "spdx-json=${document}"
 
 checksum:
   name_template: 'checksums.txt'

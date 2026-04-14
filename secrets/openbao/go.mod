@@ -3,8 +3,8 @@ module github.com/axonops/audit/secrets/openbao
 go 1.26.2
 
 require (
-	github.com/axonops/audit v0.1.6
-	github.com/axonops/audit/secrets v0.1.6
+	github.com/axonops/audit v0.1.7
+	github.com/axonops/audit/secrets v0.1.7
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 )

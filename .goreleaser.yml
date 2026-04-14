@@ -61,7 +61,7 @@ changelog:
 
 sboms:
   - id: cyclonedx
-    artifacts: archive
+    artifacts: source
     documents:
       - >-
         {{ .ProjectName }}_{{ .Version }}_sbom.cdx.json
@@ -71,7 +71,7 @@ sboms:
       - "--output"
       - "cyclonedx-json=${document}"
   - id: spdx
-    artifacts: archive
+    artifacts: source
     documents:
       - >-
         {{ .ProjectName }}_{{ .Version }}_sbom.spdx.json

@@ -15,6 +15,12 @@
 </div>
 
 ---
+## ⚠️ Status
+
+This library is **pre-release (v0.x)**. The API may change between
+minor versions until v1.0.0. Pin your dependency version.
+
+---
 
 ## 🔍 Overview
 
@@ -291,13 +297,6 @@ See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for mo
 | 🔧 [Troubleshooting](docs/troubleshooting.md) | Common problems and how to fix them |
 | 🔒 [Security Policy](SECURITY.md) | Vulnerability reporting |
 | ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline and methodology |
-
----
-
-## ⚠️ Status
-
-This library is **pre-release (v0.x)**. The API may change between
-minor versions until v1.0.0. Pin your dependency version.
 
 ---
 

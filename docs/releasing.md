@@ -111,14 +111,14 @@ If a release contains a serious bug, the correct response is:
 
 ### Release Workflow Overview
 
-Two GitHub Actions workflows handle the release pipeline:
+One GitHub Actions workflow handles the entire release pipeline:
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
-| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates tags, verifies proxy indexing, runs smoke test |
-| **GoReleaser** | `goreleaser.yml` | Automatic (on `v*` tag push) | Builds binaries, SBOMs, creates GitHub Release |
+| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates tags, builds binaries + GitHub Release, verifies proxy, runs smoke test |
+| **GoReleaser** | `goreleaser.yml` | Manual re-run only | Re-runs GoReleaser if the goreleaser job in release.yml failed |
 
-**You only trigger `Release`.** It runs the entire pipeline end-to-end: CI → tags → proxy verification → smoke test. GoReleaser triggers automatically when the tags are pushed.
+**You only trigger `Release`.** It runs the entire pipeline end-to-end: CI → tags → GoReleaser (binaries, SBOMs, GitHub Release) → proxy verification → smoke test. The workflow does not report success until the GitHub Release exists.
 
 ### Pre-Release Checklist
 
@@ -165,20 +165,20 @@ The workflow will:
 2. Validate the version format and confirm HEAD is on `main`
 3. Verify no tags already exist for this version
 4. Create annotated tags for all 7 modules at HEAD
-5. Push all tags — the `v*` root tag triggers `release.yml` (GoReleaser) automatically
+5. Push all tags and run GoReleaser to build binaries and create the GitHub Release
 
 If you need to test the workflow without burning a real version number,
 use a pre-release tag like `v0.1.1-alpha.1` or `v0.1.1-rc.1`.
 
 ### After the Release
 
-The `release.yml` workflow handles everything end-to-end: after creating
-tags, it automatically verifies proxy indexing, checksums, and runs a
-smoke test. Monitor the workflow run for the final status.
+The `release.yml` workflow handles everything end-to-end: CI, tagging,
+GoReleaser (binaries, SBOMs, GitHub Release), proxy verification, and
+smoke test. Monitor the single workflow run for the final status.
 
-`goreleaser.yml` runs in parallel (triggered by the `v*` tag push) and
-creates the GitHub Release with binaries, checksums, and SBOMs. Monitor at:
-[Actions → GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
+If the GoReleaser step fails but tags were already pushed, re-run it
+manually via [Actions → GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
+on the `v*` tag ref.
 
 Optionally verify locally:
 

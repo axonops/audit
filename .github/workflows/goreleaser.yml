@@ -1,28 +1,23 @@
 # Builds binaries, generates SBOMs, creates the GitHub Release, and
 # attests all artifacts for supply chain verification.
-# Triggered automatically when release.yml pushes a v* tag.
-# Can also be triggered manually for re-runs.
+#
+# This workflow is for MANUAL RE-RUNS ONLY — the normal release flow
+# runs GoReleaser as a job inside release.yml.
+# Trigger manually on a v* tag ref if the goreleaser job in release.yml failed.
 name: GoReleaser
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
-  ci:
-    name: CI Gate
-    uses: ./.github/workflows/ci.yml
-
   release:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [ci]
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
       id-token: write      # required for attestation OIDC

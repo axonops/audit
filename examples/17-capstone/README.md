@@ -23,7 +23,7 @@ Then open:
 - **http://localhost:8080** — Web UI (inventory management)
 - **http://localhost:3000/d/audit-events/** — Audit events dashboard (Loki)
 - **http://localhost:3000/d/audit-metrics/** — Pipeline health dashboard (Prometheus)
-- **https://localhost:8200** — OpenBao UI (token: `demo-root-token`)
+- **http://localhost:8200** — OpenBao UI (token: `demo-root-token`)
 - **http://localhost:9090** — Prometheus UI (direct query access)
 
 That's it. Docker Compose builds the app from source, starts Postgres,

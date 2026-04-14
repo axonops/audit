@@ -75,6 +75,13 @@ type Config struct { //nolint:govet // readability over alignment
 	// OpenBao runs on 127.0.0.1. Cloud metadata endpoints remain
 	// blocked. Default: false.
 	AllowPrivateRanges bool
+
+	// AllowInsecureHTTP permits http:// URLs. Default: false.
+	// MUST NOT be set to true in production. Plaintext HTTP exposes
+	// the authentication token to network observers. Use only for
+	// local development with Docker Compose where OpenBao runs
+	// on the internal Docker network.
+	AllowInsecureHTTP bool
 }
 
 // Provider resolves secret references from an OpenBao KV v2 engine.
@@ -101,8 +108,8 @@ func New(cfg *Config) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("openbao: invalid address: %w", err)
 	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("openbao: address must use https (got %q)", u.Scheme)
+	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
+		return nil, fmt.Errorf("openbao: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("openbao: address has empty host")
@@ -177,8 +184,8 @@ func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("openbao: invalid address: %w", err)
 	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("openbao: address must use https (got %q)", u.Scheme)
+	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
+		return nil, fmt.Errorf("openbao: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
 		return nil, fmt.Errorf("openbao: address has empty host")

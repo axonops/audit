@@ -184,7 +184,7 @@ jobs:
             echo "Updating $dir/go.mod → core@$PUBLISH_VERSION"
             cd "$dir"
             go mod edit -require "$CORE@$PUBLISH_VERSION"
-            GOWORK=off GOPROXY=direct go mod tidy
+            GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
             cd "$GITHUB_WORKSPACE"
           done
 
@@ -194,7 +194,7 @@ jobs:
             cd "$dir"
             go mod edit -require "$CORE@$PUBLISH_VERSION"
             go mod edit -require "$SECRETS@$PUBLISH_VERSION"
-            GOWORK=off GOPROXY=direct go mod tidy
+            GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
             cd "$GITHUB_WORKSPACE"
           done
 
@@ -299,7 +299,7 @@ jobs:
           go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/secrets/vault@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct go mod tidy
+          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
 
@@ -311,7 +311,7 @@ jobs:
           go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/loki@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct go mod tidy
+          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
 
@@ -394,7 +394,7 @@ jobs:
 
           go mod init smoketest
           for mod in $PUBLISH_MODULES; do
-            GOPROXY=direct go get "$mod@$PUBLISH_VERSION"
+            GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go get "$mod@$PUBLISH_VERSION"
           done
 
           cat > main.go << 'GOEOF'
@@ -412,9 +412,9 @@ jobs:
           )
           func main() {}
           GOEOF
-          GOPROXY=direct go build -o /dev/null .
+          GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go build -o /dev/null .
 
-          GOPROXY=direct go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
+          GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
           echo "✓ All modules compile and install successfully"
 
       - name: Update example go.mod files
@@ -434,7 +434,7 @@ jobs:
           go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
           go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct go mod tidy
+          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
           echo "  ✓ Tidied."
           cd "$GITHUB_WORKSPACE"
 

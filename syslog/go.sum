@@ -1,5 +1,5 @@
-github.com/axonops/audit v0.1.7 h1:3ImOXVsLXcXP3Paq5L8283LXed2CWbpPhyjLuUJ6Bt4=
-github.com/axonops/audit v0.1.7/go.mod h1:XxgQyZIAaV3ey5cW2qqDucCM2puaVUSJE9W3+pHitUg=
+github.com/axonops/audit v0.1.8 h1:3AH3WqtDJrwby7NPBvptZjXsdGcuuSskkDRlYao9EIs=
+github.com/axonops/audit v0.1.8/go.mod h1:XxgQyZIAaV3ey5cW2qqDucCM2puaVUSJE9W3+pHitUg=
 github.com/axonops/srslog v1.0.1 h1:TucvspQNxwL18w3xo9r3p+ulxJ5ltR8S9DalDTYDfA4=
 github.com/axonops/srslog v1.0.1/go.mod h1:KmR9aaV5bdRj/WE95Nzfwwed8MKdDpjFCcFO5syaJWg=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=

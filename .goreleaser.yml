@@ -1,5 +1,19 @@
 version: 2
 
+git:
+  # Ignore sub-module tags (file/v*, syslog/v*, etc.) — only use the
+  # core v* tag for versioning. Sub-module tags are on different commits
+  # by design (three-tier release process).
+  ignore_tags:
+    - "file/*"
+    - "syslog/*"
+    - "webhook/*"
+    - "loki/*"
+    - "outputconfig/*"
+    - "outputs/*"
+    - "cmd/*"
+    - "secrets/*"
+
 builds:
   - id: audit-gen
     dir: cmd/audit-gen

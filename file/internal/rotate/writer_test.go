@@ -832,6 +832,55 @@ func TestWriter_Sync(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Write — data visible on disk without Sync/Close (#450)
+// ---------------------------------------------------------------------------
+
+func TestWriter_Write_DataVisibleWithoutSync(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1 << 20, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	event := []byte(`{"event_type":"auth.login","outcome":"success"}` + "\n")
+	_, err = w.Write(event)
+	require.NoError(t, err)
+
+	// Data must be visible on disk WITHOUT calling Sync() or Close().
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(event), string(data),
+		"event must be visible on disk immediately after Write (#450)")
+}
+
+func TestWriter_Write_MultipleEventsVisibleWithoutSync(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{MaxSize: 1 << 20, Mode: 0o600})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	const count = 10
+	for i := range count {
+		event := []byte(fmt.Sprintf(`{"seq":%d}`+"\n", i))
+		_, err = w.Write(event)
+		require.NoError(t, err)
+	}
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	assert.Len(t, lines, count,
+		"all %d events must be visible on disk without Sync or Close (#450)", count)
+}
+
+// ---------------------------------------------------------------------------
 // Edge cases for coverage
 // ---------------------------------------------------------------------------
 

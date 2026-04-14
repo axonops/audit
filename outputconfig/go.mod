@@ -3,11 +3,11 @@ module github.com/axonops/audit/outputconfig
 go 1.26.2
 
 require (
-	github.com/axonops/audit v0.1.6
-	github.com/axonops/audit/file v0.1.6
-	github.com/axonops/audit/secrets v0.1.6
-	github.com/axonops/audit/secrets/openbao v0.1.6
-	github.com/axonops/audit/secrets/vault v0.1.6
+	github.com/axonops/audit v0.1.7
+	github.com/axonops/audit/file v0.1.7
+	github.com/axonops/audit/secrets v0.1.7
+	github.com/axonops/audit/secrets/openbao v0.1.7
+	github.com/axonops/audit/secrets/vault v0.1.7
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/stretchr/testify v1.11.1

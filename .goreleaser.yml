@@ -15,17 +15,10 @@ builds:
 
 before:
   hooks:
-    - go mod tidy
-    - bash -c "cd file && go mod tidy"
-    - bash -c "cd syslog && go mod tidy"
-    - bash -c "cd webhook && go mod tidy"
-    - bash -c "cd loki && go mod tidy"
-    - bash -c "cd outputconfig && go mod tidy"
-    - bash -c "cd cmd/audit-gen && go mod tidy"
-    - bash -c "cd secrets && go mod tidy"
-    - bash -c "cd secrets/openbao && go mod tidy"
-    - bash -c "cd secrets/vault && go mod tidy"
-    - bash -c "cd examples/17-capstone && go mod tidy"
+    # go mod tidy hooks removed — CI already verified tidiness.
+    # The release workflow updates go.mod files on main after tagging,
+    # so the checkout ref (main) always has tidy modules.
+    - bash -c "cd cmd/audit-gen && GOWORK=off GOPROXY=direct go mod tidy"
 
 changelog:
   use: github

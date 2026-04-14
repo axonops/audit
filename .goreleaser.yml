@@ -91,4 +91,5 @@ release:
     name: audit
   draft: false
   prerelease: auto
+  replace_existing_artifacts: true
   name_template: '{{ .Tag }}'

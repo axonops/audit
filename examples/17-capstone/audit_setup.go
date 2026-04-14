@@ -62,8 +62,8 @@ func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, erro
 		provider, providerErr := openbao.New(&openbao.Config{
 			Address:            baoAddr,
 			Token:              baoToken,
-			AllowPrivateRanges: true,  // Docker internal network
-			AllowInsecureHTTP:  true,  // Dev-only — NEVER in production
+			AllowPrivateRanges: true, // Docker internal network
+			AllowInsecureHTTP:  true, // Dev-only — NEVER in production
 		})
 		if providerErr != nil {
 			return nil, fmt.Errorf("openbao provider: %w", providerErr)

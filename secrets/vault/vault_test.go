@@ -84,6 +84,32 @@ func TestNew_RequiresHTTPS(t *testing.T) {
 	_, err := vault.New(&vault.Config{Address: "http://vault.example.com", Token: "t"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "https")
+	assert.Contains(t, err.Error(), "AllowInsecureHTTP")
+}
+
+func TestNew_AllowInsecureHTTP(t *testing.T) {
+	t.Parallel()
+	p, err := vault.New(&vault.Config{
+		Address:            "http://vault.example.com",
+		Token:              "t",
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+	})
+	require.NoError(t, err)
+	defer func() { _ = p.Close() }()
+	assert.Equal(t, "vault", p.Scheme())
+}
+
+func TestNewWithHTTPClient_AllowInsecureHTTP(t *testing.T) {
+	t.Parallel()
+	p, err := vault.NewWithHTTPClient(&vault.Config{
+		Address:           "http://vault.example.com",
+		Token:             "t",
+		AllowInsecureHTTP: true,
+	}, http.DefaultClient)
+	require.NoError(t, err)
+	defer func() { _ = p.Close() }()
+	assert.Equal(t, "vault", p.Scheme())
 }
 
 func TestNew_RequiresAddress(t *testing.T) {
@@ -671,6 +697,7 @@ func TestNewWithHTTPClient_RequiresHTTPS(t *testing.T) {
 	}, http.DefaultClient)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "https")
+	assert.Contains(t, err.Error(), "AllowInsecureHTTP")
 }
 
 func TestResolve_RedirectBlocked(t *testing.T) {

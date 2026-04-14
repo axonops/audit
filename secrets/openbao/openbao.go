@@ -97,8 +97,9 @@ type Provider struct { //nolint:govet // readability over alignment
 }
 
 // New creates an OpenBao provider from the given configuration.
-// Validates the address (HTTPS required), builds the TLS config and
-// HTTP client, but performs no network I/O.
+// Validates the address (HTTPS required unless [Config.AllowInsecureHTTP]
+// is set), builds the TLS config and HTTP client, but performs no
+// network I/O.
 func New(cfg *Config) (*Provider, error) {
 	// Validate address.
 	if cfg.Address == "" {

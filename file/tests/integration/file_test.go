@@ -46,7 +46,6 @@ func TestFileOutput_Rotation(t *testing.T) {
 		MaxSizeMB:  1, // 1 MB to trigger rotation quickly
 		MaxBackups: 3,
 		MaxAgeDays: 30,
-		BufferSize: 2000, // large enough to absorb burst without drops
 	}, nil)
 	require.NoError(t, err)
 
@@ -83,7 +82,6 @@ func TestFileOutput_Compression(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-		BufferSize: 2000, // large enough to absorb burst without drops
 	}, nil)
 	require.NoError(t, err)
 
@@ -129,7 +127,6 @@ func TestFileOutput_CompressionDisabled(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-		BufferSize: 2000, // large enough to absorb burst without drops
 	}, nil)
 	require.NoError(t, err)
 
@@ -161,7 +158,6 @@ func TestFileOutput_MaxBackups(t *testing.T) {
 		MaxBackups: 2, // Keep only 2 backups
 		MaxAgeDays: 30,
 		Compress:   &compress,
-		BufferSize: 10000, // large enough to absorb burst without drops
 	}, nil)
 	require.NoError(t, err)
 
@@ -191,9 +187,9 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	// Buffer must be large enough to absorb the burst from all
-	// goroutines without dropping. 50 goroutines × 100 events = 5000.
-	out, err := file.New(file.Config{Path: path, BufferSize: 10000}, nil)
+	// Explicit buffer size documents intent: 50 goroutines × 100
+	// events = 5000 events; buffer must absorb the burst.
+	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

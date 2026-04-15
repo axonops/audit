@@ -54,10 +54,9 @@ const (
 	MaxAgeDays = 365
 
 	// DefaultBufferSize is the default async buffer capacity for the
-	// file output. File writes to local disk are typically fast
-	// (1–5ms), so a smaller buffer is sufficient compared to network
-	// outputs.
-	DefaultBufferSize = 1024
+	// file output. Matches the default for webhook and loki outputs
+	// to provide consistent behaviour across all async outputs.
+	DefaultBufferSize = 10_000
 
 	// MaxOutputBufferSize is the maximum allowed per-output async
 	// buffer capacity. Values above this limit cause [New] to return

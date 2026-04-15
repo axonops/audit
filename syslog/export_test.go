@@ -19,3 +19,15 @@ var BackoffDuration = backoffDuration
 
 // MapSeverity is exported for testing only.
 var MapSeverity = mapSeverity
+
+// SimulatePanicOnNextWrite exercises the error path in writeEntry
+// by temporarily setting the writer to nil. This causes
+// errSyslogNotConnected to be returned, triggering handleWriteFailure
+// which records RecordError when retries are exhausted. Called
+// synchronously from the test goroutine, not from writeLoop.
+func (s *Output) SimulatePanicOnNextWrite() {
+	saved := s.writer
+	s.writer = nil
+	s.writeEntry(syslogEntry{data: []byte("trigger-error"), priority: 0})
+	s.writer = saved
+}

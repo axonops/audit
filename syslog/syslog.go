@@ -545,10 +545,15 @@ func (s *Output) drainRemaining() {
 	}
 }
 
-// drainOne writes a single event during drain with panic recovery.
-// No reconnection is attempted — if the write fails, the event is
-// dropped.
+// drainOne writes a single event during drain with panic recovery
+// and metrics recording. No reconnection is attempted — if the write
+// fails, the event is dropped.
 func (s *Output) drainOne(entry syslogEntry) {
+	var om audit.OutputMetrics
+	if omp := s.outputMetrics.Load(); omp != nil {
+		om = *omp
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
@@ -556,13 +561,27 @@ func (s *Output) drainOne(entry syslogEntry) {
 			s.logger.Error("audit: output syslog: panic recovered during drain",
 				"panic", r,
 				"stack", string(buf[:n]))
+			if om != nil {
+				om.RecordError()
+			}
 		}
 	}()
 
-	if s.writer != nil {
-		if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-			s.logger.Error("audit: output syslog: delivery failed during drain",
-				"error", err)
+	if s.writer == nil {
+		return
+	}
+
+	var start time.Time
+	if om != nil {
+		start = time.Now()
+	}
+	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
+		s.logger.Error("audit: output syslog: delivery failed during drain",
+			"error", err)
+		if om != nil {
+			om.RecordError()
 		}
+	} else if om != nil {
+		om.RecordFlush(1, time.Since(start))
 	}
 }

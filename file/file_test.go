@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 )
+
+// mockOutputMetrics implements audit.OutputMetrics for testing.
+// All fields use atomic counters — safe for concurrent use between
+// the test goroutine and the output's writeLoop goroutine.
+type mockOutputMetrics struct {
+	audit.NoOpOutputMetrics
+	drops      atomic.Int64
+	flushes    atomic.Int64
+	errors     atomic.Int64
+	retries    atomic.Int64
+	depthCalls atomic.Int64
+}
+
+func (m *mockOutputMetrics) RecordDrop()                        { m.drops.Add(1) }
+func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) { m.flushes.Add(1) }
+func (m *mockOutputMetrics) RecordError()                       { m.errors.Add(1) }
+func (m *mockOutputMetrics) RecordRetry(_ int)                  { m.retries.Add(1) }
+func (m *mockOutputMetrics) RecordQueueDepth(_, _ int)          { m.depthCalls.Add(1) }
+
+var _ audit.OutputMetrics = (*mockOutputMetrics)(nil)
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
@@ -84,14 +105,22 @@ func TestFileOutput_BufferFull_Drops(t *testing.T) {
 	// Tiny buffer to trigger drops.
 	out, err := file.New(file.Config{Path: path, BufferSize: 1}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
 
 	// Flood the buffer. Some writes will succeed, some will be dropped.
-	// We can't assert exact counts because the background goroutine
-	// may drain between sends.
-	for range 100 {
+	const writes = 200
+	for range writes {
 		_ = out.Write([]byte(`{"event":"flood"}` + "\n"))
 	}
+
+	require.NoError(t, out.Close())
+
+	assert.Positive(t, om.drops.Load(),
+		"RecordDrop must be called when the buffer is full")
+	assert.LessOrEqual(t, om.flushes.Load()+om.drops.Load(), int64(writes),
+		"flushes plus drops must not exceed total writes")
 }
 
 func TestFileOutput_Close_DrainsBuffer(t *testing.T) {
@@ -643,6 +672,78 @@ func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
 		assert.Equal(t, keys[0], keys[i],
 			"paths %q and %q should produce the same key", tests[0].path, tests[i].path)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// OutputMetrics tests
+// ---------------------------------------------------------------------------
+
+func TestFileOutput_OutputMetrics_RecordFlush(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
+	require.NoError(t, err)
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	const n = 10
+	for range n {
+		require.NoError(t, out.Write([]byte(`{"event":"flush"}`+"\n")))
+	}
+	require.NoError(t, out.Close())
+
+	assert.Equal(t, int64(n), om.flushes.Load(),
+		"RecordFlush must be called for each successfully written event")
+}
+
+func TestFileOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
+	require.NoError(t, err)
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	// 65 events guarantees writeCount hits 64 at least once.
+	for range 65 {
+		require.NoError(t, out.Write([]byte(`{"event":"depth"}`+"\n")))
+	}
+	require.NoError(t, out.Close())
+
+	assert.Positive(t, om.depthCalls.Load(),
+		"RecordQueueDepth must be called every 64 events in writeLoop")
+}
+
+func TestFileOutput_PanicRecovery_RecordsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	// Simulate a panic inside writeEvent — the deferred recovery
+	// catches it. Called synchronously, not through the channel.
+	out.SimulatePanicOnNextWrite()
+
+	assert.Equal(t, int64(1), om.errors.Load(),
+		"RecordError must be called when writeEvent panics")
+
+	// The output must still be functional after recovery.
+	require.NoError(t, out.Write([]byte(`{"event":"post-panic"}`+"\n")))
+	require.NoError(t, out.Close())
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "post-panic",
+		"output must remain functional after panic recovery")
 }
 
 // ---------------------------------------------------------------------------

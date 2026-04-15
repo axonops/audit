@@ -208,6 +208,24 @@ func (m *mockMetrics) getSyslogReconnectCount(address string, success bool) int 
 
 var _ syslog.Metrics = (*mockMetrics)(nil)
 
+// mockOutputMetrics implements audit.OutputMetrics for testing.
+type mockOutputMetrics struct {
+	audit.NoOpOutputMetrics
+	drops      atomic.Int64
+	flushes    atomic.Int64
+	errors     atomic.Int64
+	retries    atomic.Int64
+	depthCalls atomic.Int64
+}
+
+func (m *mockOutputMetrics) RecordDrop()                        { m.drops.Add(1) }
+func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) { m.flushes.Add(1) }
+func (m *mockOutputMetrics) RecordError()                       { m.errors.Add(1) }
+func (m *mockOutputMetrics) RecordRetry(_ int)                  { m.retries.Add(1) }
+func (m *mockOutputMetrics) RecordQueueDepth(_, _ int)          { m.depthCalls.Add(1) }
+
+var _ audit.OutputMetrics = (*mockOutputMetrics)(nil)
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
@@ -665,7 +683,6 @@ func TestSyslogOutput_Write_NonBlocking(t *testing.T) {
 }
 
 func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
-	// Use a tiny buffer and a slow server to force buffer-full drops.
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
@@ -675,12 +692,22 @@ func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
 		BufferSize: 1,
 	}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
 
 	// Flood the buffer. Some writes will be dropped.
-	for range 100 {
+	const writes = 200
+	for range writes {
 		_ = out.Write([]byte(`{"event":"flood"}`))
 	}
+
+	require.NoError(t, out.Close())
+
+	assert.Positive(t, om.drops.Load(),
+		"RecordDrop must be called when the buffer is full")
+	assert.LessOrEqual(t, om.flushes.Load()+om.drops.Load(), int64(writes),
+		"flushes plus drops must not exceed total writes")
 }
 
 func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
@@ -694,18 +721,26 @@ func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
 	const n = 20
 	for range n {
-		require.NoError(t, out.Write([]byte(`{"event":"drain"}`)))
+		require.NoError(t, out.Write([]byte(`{"event":"drain-marker"}`)))
 	}
 
 	// Close must drain all buffered events.
 	require.NoError(t, out.Close())
 
-	// Verify server received events (may not be exactly n due to
-	// syslog framing, but should be > 0).
+	// Verify server received events.
 	require.True(t, srv.waitForData(2*time.Second),
 		"server should have received data after Close drains buffer")
+
+	// All events should have been flushed via OutputMetrics.
+	assert.Equal(t, int64(n), om.flushes.Load(),
+		"Close must drain all %d buffered events", n)
+	assert.Zero(t, om.drops.Load(),
+		"no events should be dropped with a large buffer")
 }
 
 func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
@@ -2291,4 +2326,98 @@ func TestSyslogConfig_Format_RedactsTLSPaths(t *testing.T) {
 	}
 	out := fmt.Sprintf("%+v", cfg)
 	assert.NotContains(t, out, "/secret/path/server.key", "Format must not leak TLS key path via %%+v")
+}
+
+// ---------------------------------------------------------------------------
+// OutputMetrics tests
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_OutputMetrics_RecordFlush(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		Facility:   "local0",
+		BufferSize: 10_000,
+	}, nil)
+	require.NoError(t, err)
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	const n = 10
+	for range n {
+		require.NoError(t, out.Write([]byte(`{"event":"flush"}`)))
+	}
+	require.NoError(t, out.Close())
+
+	assert.Equal(t, int64(n), om.flushes.Load(),
+		"RecordFlush must be called for each successfully written event")
+}
+
+func TestSyslogOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		Facility:   "local0",
+		BufferSize: 10_000,
+	}, nil)
+	require.NoError(t, err)
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	// Write 200 events and wait for writeLoop to process them
+	// (not during drain). RecordQueueDepth samples every 64 events.
+	for range 200 {
+		require.NoError(t, out.Write([]byte(`{"event":"depth"}`)))
+	}
+
+	// Wait for the writeLoop to process events before closing.
+	require.Eventually(t, func() bool {
+		return om.flushes.Load() >= 64
+	}, 5*time.Second, 50*time.Millisecond,
+		"writeLoop should process at least 64 events before close")
+
+	require.NoError(t, out.Close())
+
+	assert.Positive(t, om.depthCalls.Load(),
+		"RecordQueueDepth must be called every 64 events in writeLoop")
+}
+
+func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		Facility:   "local0",
+		BufferSize: 100,
+		MaxRetries: 1,
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	// SimulatePanicOnNextWrite sets writer to nil, triggering
+	// handleWriteFailure which calls RecordRetry during reconnection.
+	out.SimulatePanicOnNextWrite()
+
+	assert.Positive(t, om.retries.Load(),
+		"RecordRetry must be called during reconnection attempt")
+
+	// The output must still be functional after reconnection.
+	require.NoError(t, out.Write([]byte(`{"event":"post-reconnect"}`)))
+	require.NoError(t, out.Close())
+
+	require.True(t, srv.waitForData(2*time.Second),
+		"server should receive events after reconnection")
 }

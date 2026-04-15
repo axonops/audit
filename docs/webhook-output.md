@@ -130,7 +130,7 @@ goroutine. This isolation ensures that a webhook outage does not
 affect delivery to other outputs.
 
 A rate-limited `slog.Warn` fires at most once per 10 seconds during
-sustained drops. The `RecordWebhookDrop()` metric fires on **every**
+sustained drops. The `RecordDrop()` metric fires on **every**
 drop — use metrics, not log lines, for precise monitoring.
 
 ### Relationship to Core Buffer
@@ -350,7 +350,7 @@ Additional protections:
 
 The webhook's internal buffer has a fixed capacity (`buffer_size`,
 default 10,000). When full, new events are **dropped** and
-`webhook.Metrics.RecordWebhookDrop()` is called.
+`webhook.Metrics.RecordDrop()` is called.
 
 Common causes:
 - Webhook endpoint is down and retries are exhausting capacity
@@ -362,31 +362,19 @@ receiving endpoint.
 
 ## Metrics and Monitoring
 
-The webhook output provides an optional `Metrics` interface:
-
-```go
-type Metrics interface {
-    RecordWebhookDrop()                                   // event dropped (buffer full)
-    RecordWebhookFlush(batchSize int, dur time.Duration)  // batch delivered
-}
-```
-
-Register your implementation before calling `outputconfig.Load`. This
-replaces the default factory registered by the blank import. If you
-don't need webhook-specific metrics, the blank import
-`_ "github.com/axonops/audit/webhook"` is sufficient.
-
-```go
-audit.RegisterOutputFactory("webhook", webhook.NewFactory(myWebhookMetrics))
-```
+The webhook output receives per-output metrics via the unified
+`audit.OutputMetrics` interface. Wire it through
+`outputconfig.WithOutputMetrics(factory)` — see
+[Metrics and Monitoring](metrics-monitoring.md#per-output-metrics-outputmetrics)
+for the factory pattern and complete interface documentation.
 
 ### What to Monitor
 
 | Metric | Condition | Action |
 |--------|-----------|--------|
-| `RecordWebhookDrop` rate > 0 | Events being lost | Increase `buffer_size`, check endpoint health |
-| `RecordWebhookFlush` duration > timeout | Requests timing out | Increase `timeout`, check network latency |
-| `RecordWebhookFlush` batch_size = max | Batches always full | Increase `batch_size` or decrease `flush_interval` |
+| `RecordDrop` rate > 0 | Events being lost | Increase `buffer_size`, check endpoint health |
+| `RecordFlush` duration > timeout | Requests timing out | Increase `timeout`, check network latency |
+| `RecordFlush` batch_size = max | Batches always full | Increase `batch_size` or decrease `flush_interval` |
 
 ## Production Configuration
 
@@ -451,7 +439,7 @@ outputs:
 | `audit: webhook url must be https (got "http"); set AllowInsecureHTTP for testing` | Using `http://` without flag | Use `https://` or add `allow_insecure_http: true` (dev only) |
 | `audit: webhook url must not contain credentials; use Headers for auth` | Embedded user:pass in URL | Move credentials to `headers:` block |
 | `audit: ssrf: dial blocked` | SSRF protection blocked private/loopback address | Add `allow_private_ranges: true` (dev only) |
-| Events not arriving | Buffer full, events being dropped | Check `RecordWebhookDrop`; increase `buffer_size` |
+| Events not arriving | Buffer full, events being dropped | Check `RecordDrop`; increase `buffer_size` |
 | Batches rejected with 401 | Auth token expired or invalid | Update the `Authorization` header value |
 | Batches rejected with 413 | Payload too large | Decrease `batch_size` |
 | High latency, timeouts | Endpoint slow or unreachable | Increase `timeout`; check endpoint health |

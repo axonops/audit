@@ -139,7 +139,7 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 | **HTTPS required** | The webhook output requires `https://` by default. Set `allow_insecure_http: true` only for local development. |
 | **SSRF protection blocking** | Private/loopback IPs are blocked by default. Set `allow_private_ranges: true` for local development. |
 | **Server returning errors** | 4xx errors are not retried (client error). 5xx errors are retried up to `max_retries` times. Check the server-side logs. |
-| **Buffer full** | The webhook has its own internal buffer. If events arrive faster than batches can be sent, events are dropped. Monitor `RecordWebhookDrop` and increase `buffer_size` if needed. |
+| **Buffer full** | The webhook has its own internal buffer. If events arrive faster than batches can be sent, events are dropped. Monitor `RecordDrop` and increase `buffer_size` if needed. |
 | **Redirect blocked** | Webhook follows no redirects. Make sure the URL is the final endpoint, not a redirect. |
 
 ---
@@ -153,9 +153,9 @@ audit: output "alerts": POST https://ingest.example.com/audit: 403 Forbidden
 | **`allow_insecure_http` not set** | For `http://` URLs, set `allow_insecure_http: true`. HTTPS is required by default. |
 | **Loki ingestion delay** | Loki has a short delay between push and query availability. Wait 2-5 seconds, or query with a wider time range. |
 | **Tenant ID mismatch** | If `tenant_id` is set, queries MUST include the `X-Scope-OrgID` header with the same value. |
-| **429 rate limiting** | Loki is rate-limiting pushes. Monitor `RecordLokiDrop` metrics. Increase `flush_interval` or reduce event volume. |
+| **429 rate limiting** | Loki is rate-limiting pushes. Monitor `RecordDrop` metrics. Increase `flush_interval` or reduce event volume. |
 | **High cardinality rejection** | Too many unique label combinations. Exclude high-cardinality labels: set `pid: false` or `severity: false` in `labels.dynamic`. |
-| **Buffer full, events dropped** | The internal buffer is full. Monitor `RecordLokiDrop` and increase `buffer_size`. |
+| **Buffer full, events dropped** | The internal buffer is full. Monitor `RecordDrop` and increase `buffer_size`. |
 | **Redirect blocked** | Loki output never follows HTTP redirects. Ensure the URL is the final endpoint. |
 
 ---

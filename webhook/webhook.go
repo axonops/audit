@@ -24,7 +24,7 @@ package webhook
 //
 // The internal channel decouples the Logger's drain loop from HTTP
 // latency. If the channel is full, events are dropped (non-blocking)
-// and [Metrics.RecordWebhookDrop] is recorded.
+// and [audit.OutputMetrics.RecordDrop] is recorded.
 
 import (
 	"context"
@@ -69,7 +69,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // On HTTP 5xx or 429, the batch is retried with exponential backoff
 // and jitter (100ms to 5s). On 4xx (other than 429), the batch is
 // dropped immediately. On retry exhaustion, the batch is dropped and
-// [Metrics.RecordWebhookDrop] is called for each event.
+// [audit.OutputMetrics.RecordDrop] is called for each event.
 //
 // # SSRF Prevention
 //
@@ -190,7 +190,7 @@ func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 
 // Write enqueues a serialised audit event for batched delivery. The
 // data is copied before enqueuing. If the internal buffer is full,
-// the event is dropped and [Metrics.RecordWebhookDrop] is called.
+// the event is dropped and [audit.OutputMetrics.RecordDrop] is called.
 // Write never blocks the caller.
 func (w *Output) Write(data []byte) error {
 	if w.closed.Load() {

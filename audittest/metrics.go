@@ -25,10 +25,9 @@ var _ audit.Metrics = (*MetricsRecorder)(nil)
 // MetricsRecorder implements [audit.Metrics] and captures all metric
 // calls for assertion. It is safe for concurrent use.
 //
-// MetricsRecorder also satisfies the per-output metrics interfaces
-// (file.Metrics, syslog.Metrics, webhook.Metrics, loki.Metrics) via
-// structural typing. When passed as coreMetrics to outputconfig.Load
-// via WithCoreMetrics, per-output metrics are auto-detected.
+// MetricsRecorder also satisfies the output-specific extension
+// interfaces (file.Metrics, syslog.Metrics) via structural typing,
+// enabling per-output rotation and reconnection recording.
 type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over alignment
 	mu                  sync.Mutex     // guards all fields below
 	events              map[string]int // "output:status" → count
@@ -153,6 +152,14 @@ func (m *MetricsRecorder) BufferDrops() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.bufferDrops
+}
+
+// SubmittedCount returns the total number of events submitted via
+// [audit.Logger.AuditEvent], before any filtering or buffering.
+func (m *MetricsRecorder) SubmittedCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.submitted
 }
 
 // OutputErrors returns the count of write errors for the given output.

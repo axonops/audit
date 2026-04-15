@@ -218,6 +218,6 @@
 // to call Close leaks the drain goroutine and causes any buffered events to be
 // lost. Close signals the drain goroutine to stop, waits up to
 // [Config.DrainTimeout] for pending events to flush, then closes all outputs
-// in sequence. Events still in the buffer when DrainTimeout expires are lost;
+// in parallel. Events still in the buffer when DrainTimeout expires are lost;
 // a warning is emitted via [log/slog]. Close is idempotent via [sync.Once].
 package audit

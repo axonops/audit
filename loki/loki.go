@@ -193,7 +193,7 @@ func (o *Output) SetLogger(l *slog.Logger) {
 // WriteWithMetadata enqueues a serialised audit event with per-event
 // metadata for batched delivery. The data is copied before enqueuing.
 // If the internal buffer is full, the event is dropped and
-// [Metrics.RecordLokiDrop] is called. WriteWithMetadata never blocks.
+// [audit.OutputMetrics.RecordDrop] is called. WriteWithMetadata never blocks.
 func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error {
 	if o.closed.Load() {
 		return audit.ErrOutputClosed

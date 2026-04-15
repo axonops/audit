@@ -25,9 +25,8 @@ import (
 var _ audit.Metrics = (*MockMetrics)(nil)
 
 // MockMetrics is a thread-safe mock that satisfies [audit.Metrics] and
-// structurally satisfies the output-specific metrics interfaces
-// (file.Metrics, syslog.Metrics, webhook.Metrics) without importing
-// those packages.
+// structurally satisfies the output-specific extension interfaces
+// (file.Metrics, syslog.Metrics) without importing those packages.
 // QueueDepthRecord captures a single RecordQueueDepth call.
 type QueueDepthRecord struct {
 	Depth    int

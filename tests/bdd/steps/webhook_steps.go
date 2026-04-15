@@ -303,6 +303,9 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
+		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
@@ -455,6 +458,9 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 		out, err := webhook.New(cfg, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
+		}
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -871,6 +877,9 @@ func createWebhookLoggerSSRF(tc *AuditTestContext, url string, allowPrivate bool
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	if tc.WebhookMetrics != nil {
+		out.SetOutputMetrics(tc.WebhookMetrics)
 	}
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

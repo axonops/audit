@@ -194,4 +194,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerLokiFanoutSteps(ctx, tc)
 	registerLokiUncategorisedSteps(ctx, tc)
 	registerSyslogSeveritySteps(ctx, tc)
+	registerIsolationSteps(ctx, tc)
 }

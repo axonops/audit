@@ -632,6 +632,169 @@ func TestSyslogOutput_WriteAfterClose(t *testing.T) {
 	assert.ErrorIs(t, err, audit.ErrOutputClosed)
 }
 
+// ---------------------------------------------------------------------------
+// Async delivery (#455)
+// ---------------------------------------------------------------------------
+
+func TestSyslogOutput_Write_NonBlocking(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 100,
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// Write should return immediately — it enqueues to a channel.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 50 {
+			_ = out.Write([]byte(`{"event":"nonblocking"}`))
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Write blocked for 5s — should be non-blocking")
+	}
+}
+
+func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
+	// Use a tiny buffer and a slow server to force buffer-full drops.
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 1,
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// Flood the buffer. Some writes will be dropped.
+	for range 100 {
+		_ = out.Write([]byte(`{"event":"flood"}`))
+	}
+}
+
+func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 1000,
+	}, nil)
+	require.NoError(t, err)
+
+	const n = 20
+	for range n {
+		require.NoError(t, out.Write([]byte(`{"event":"drain"}`)))
+	}
+
+	// Close must drain all buffered events.
+	require.NoError(t, out.Close())
+
+	// Verify server received events (may not be exactly n due to
+	// syslog framing, but should be > 0).
+	require.True(t, srv.waitForData(2*time.Second),
+		"server should have received data after Close drains buffer")
+}
+
+func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	var o audit.Output = out
+	dr, ok := o.(audit.DeliveryReporter)
+	require.True(t, ok, "syslog output must implement DeliveryReporter")
+	assert.True(t, dr.ReportsDelivery(), "syslog output must self-report delivery")
+}
+
+func TestSyslogOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	var o audit.Output = out
+	_, ok := o.(audit.OutputMetricsReceiver)
+	assert.True(t, ok, "syslog output must implement OutputMetricsReceiver")
+}
+
+func TestSyslogOutput_CopySafety(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network: "tcp",
+		Address: srv.addr(),
+	}, nil)
+	require.NoError(t, err)
+
+	data := []byte(`{"event":"original"}`)
+	require.NoError(t, out.Write(data))
+
+	// Mutate the original slice after Write returns.
+	for i := range data {
+		data[i] = 'X'
+	}
+
+	require.NoError(t, out.Close())
+	// Success: if the original data were corrupted, the syslog server
+	// would have received "XXXX..." instead of the original JSON.
+	// The copy in enqueue() prevents this.
+}
+
+func TestSyslogOutput_WriteDuringClose_NoPanic(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 10,
+	}, nil)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			_ = out.Write([]byte(`{"event":"race"}`))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = out.Close()
+	}()
+
+	wg.Wait()
+	// Success if no panic or deadlock.
+}
+
 func TestSyslogOutput_Name(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()

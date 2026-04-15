@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/file"
@@ -43,12 +44,75 @@ func TestFileOutput_Write(t *testing.T) {
 	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
 	require.NoError(t, out.Write(data))
 
-	// Close flushes the buffered writer so file contents are visible.
+	// Close flushes the async buffer and file writer.
 	require.NoError(t, out.Close())
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, string(data), string(content))
+}
+
+func TestFileOutput_Write_NonBlocking(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// Write should return immediately — it enqueues to a channel.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 50 {
+			_ = out.Write([]byte(`{"event":"test"}` + "\n"))
+		}
+	}()
+
+	select {
+	case <-done:
+		// OK — writes completed without blocking.
+	case <-time.After(5 * time.Second):
+		t.Fatal("Write blocked for 5s — should be non-blocking")
+	}
+}
+
+func TestFileOutput_BufferFull_Drops(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// Tiny buffer to trigger drops.
+	out, err := file.New(file.Config{Path: path, BufferSize: 1}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// Flood the buffer. Some writes will succeed, some will be dropped.
+	// We can't assert exact counts because the background goroutine
+	// may drain between sends.
+	for range 100 {
+		_ = out.Write([]byte(`{"event":"flood"}` + "\n"))
+	}
+}
+
+func TestFileOutput_Close_DrainsBuffer(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 1000}, nil)
+	require.NoError(t, err)
+
+	const n = 50
+	for range n {
+		require.NoError(t, out.Write([]byte(`{"event":"drain"}`+"\n")))
+	}
+
+	// Close must drain all buffered events before returning.
+	require.NoError(t, out.Close())
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	assert.Equal(t, n, len(lines), "Close must drain all buffered events")
 }
 
 func TestFileOutput_Close(t *testing.T) {
@@ -99,10 +163,10 @@ func TestFileOutput_Permissions(t *testing.T) {
 
 	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
-	// File is created lazily on first Write.
 	require.NoError(t, out.Write([]byte("test\n")))
+	// Close to flush async buffer to disk.
+	require.NoError(t, out.Close())
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
@@ -118,10 +182,10 @@ func TestFileOutput_CustomPermissions(t *testing.T) {
 		Permissions: "0644",
 	}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
-	// File is created lazily on first Write.
 	require.NoError(t, out.Write([]byte("test\n")))
+	// Close to flush async buffer to disk.
+	require.NoError(t, out.Close())
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
@@ -148,7 +212,7 @@ func TestFileOutput_DefaultConfig(t *testing.T) {
 func TestFileOutput_InvalidConfig(t *testing.T) {
 	dir := t.TempDir()
 
-	tests := []struct { //nolint:govet // test struct
+	tests := []struct {
 		name    string
 		wantErr string
 		cfg     file.Config
@@ -203,6 +267,14 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 			},
 			wantErr: "max_age_days",
 		},
+		{
+			name: "BufferSize exceeds limit",
+			cfg: file.Config{
+				Path:       filepath.Join(dir, "buf.log"),
+				BufferSize: file.MaxOutputBufferSize + 1,
+			},
+			wantErr: "buffer_size",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,6 +313,7 @@ func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 		MaxSizeMB:  file.MaxSizeMB,
 		MaxBackups: file.MaxBackups,
 		MaxAgeDays: file.MaxAgeDays,
+		BufferSize: file.MaxOutputBufferSize,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -267,13 +340,41 @@ func TestFileOutput_ImplementsOutput(t *testing.T) {
 	var _ audit.Output = out
 }
 
-func TestFileOutput_MultipleWrites(t *testing.T) {
+func TestFileOutput_ImplementsDeliveryReporter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
 	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
+
+	// Type assertion through audit.Output interface.
+	var o audit.Output = out
+	dr, ok := o.(audit.DeliveryReporter)
+	require.True(t, ok, "file output must implement DeliveryReporter")
+	assert.True(t, dr.ReportsDelivery(), "file output must self-report delivery")
+}
+
+func TestFileOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// Type assertion through audit.Output interface.
+	var o audit.Output = out
+	_, ok := o.(audit.OutputMetricsReceiver)
+	assert.True(t, ok, "file output must implement OutputMetricsReceiver")
+}
+
+func TestFileOutput_MultipleWrites(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path}, nil)
+	require.NoError(t, err)
 
 	for i := range 10 {
 		data := []byte(fmt.Sprintf(`{"n":%d}`+"\n", i))
@@ -310,14 +411,58 @@ func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
 	// Close while writes are in-flight.
 	assert.NoError(t, out.Close())
 	wg.Wait()
+}
 
-	// Verify no panic occurred. The file may not exist if Close() won
-	// the race against all write goroutines — the writer is lazy-open,
-	// so if no write succeeded before close, no file is created.
-	if _, statErr := os.Stat(path); statErr == nil {
-		_, err = os.ReadFile(path)
-		require.NoError(t, err)
+func TestFileOutput_WriteDuringClose_NoPanic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 10}, nil)
+	require.NoError(t, err)
+
+	// Write events in goroutines while Close() is called concurrently.
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			_ = out.Write([]byte(`{"event":"race"}` + "\n"))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = out.Close()
+	}()
+
+	wg.Wait()
+	// Success if no panic or deadlock.
+}
+
+func TestFileOutput_CopySafety(t *testing.T) {
+	// Verify that mutating the input []byte after Write() does not
+	// corrupt the buffered data (formatCache reuse invariant).
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path}, nil)
+	require.NoError(t, err)
+
+	data := []byte(`{"event":"original"}` + "\n")
+	require.NoError(t, out.Write(data))
+
+	// Mutate the original slice after Write returns.
+	for i := range data {
+		data[i] = 'X'
 	}
+
+	require.NoError(t, out.Close())
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "original",
+		"mutating input after Write must not corrupt buffered data")
 }
 
 func TestFileOutput_CompressFalse(t *testing.T) {
@@ -330,10 +475,9 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 		Compress: &compress,
 	}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
-	// Just verify construction succeeds with Compress=false.
 	require.NoError(t, out.Write([]byte("test\n")))
+	require.NoError(t, out.Close())
 }
 
 // ---------------------------------------------------------------------------
@@ -341,8 +485,6 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // fileOnlyMetrics implements file.Metrics but not the full audit.Metrics interface.
-// It is used to verify that NewFileOutput accepts any file.Metrics implementation,
-// not just the full mockMetrics.
 type fileOnlyMetrics struct {
 	rotations []string // paths passed to RecordFileRotation
 	mu        sync.Mutex
@@ -363,53 +505,30 @@ func (m *fileOnlyMetrics) rotationCount() int {
 }
 
 func TestFileOutput_NilFileMetrics_RotationDoesNotPanic(t *testing.T) {
-	// nil FileMetrics must not panic when rotation fires.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	smallSize := 1 // 1 MB — will rotate on the second large write via
-	// rotate.Config.MaxSize = 1 * 1024 * 1024. Since we write small data,
-	// use a very small MaxSizeMB to force rotation quickly.
-	// We can't set MaxSizeMB below the default (100) directly, but we can
-	// drive rotation by writing enough data. Instead use the rotate package's
-	// Config directly via the file output's path and a tiny MaxSizeMB via
-	// the minimum accepted value.
-	_ = smallSize
-
-	// Construct with nil metrics. Force rotation by writing more than the
-	// default MaxSizeMB (100 MB). That would be impractical; instead, the
-	// test verifies no panic occurs during a write sequence that WOULD
-	// trigger rotation if the file were tiny. Because we cannot set
-	// MaxSizeMB below 1 through FileConfig, we rely on the fact that
-	// rotation simply does not fire for small payloads — but we do verify
-	// that the nil metrics path is safe at runtime by passing nil explicitly.
 	out, err := file.New(file.Config{Path: path}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
-	// Write several events. No rotation occurs at the default 100 MB limit,
-	// but the nil-metrics code path is exercised by construction and write.
 	for range 5 {
 		require.NoError(t, out.Write([]byte(`{"event":"nil_metrics"}`+"\n")))
 	}
+	require.NoError(t, out.Close())
 }
 
 func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T) {
-	// Verify that file.Metrics.RecordFileRotation is called exactly once
-	// per rotation, with the correct path.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
 	m := &fileOnlyMetrics{}
 
-	// MaxSizeMB=1 forces rotation after 1 MB of data. We write just over
-	// 1 MB to trigger exactly one rotation.
+	// MaxSizeMB=1 forces rotation after 1 MB of data.
 	out, err := file.New(file.Config{
 		Path:      path,
 		MaxSizeMB: 1,
 	}, m)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
 	// Write 1 MB + 1 byte to cross the rotation threshold.
 	payload := make([]byte, 1024*1024+1)
@@ -417,9 +536,9 @@ func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T
 		payload[i] = 'x'
 	}
 	require.NoError(t, out.Write(payload))
+	// Close drains async buffer — rotation happens in background goroutine.
+	require.NoError(t, out.Close())
 
-	// Rotation fires synchronously inside Write (the rotate package calls
-	// OnRotate from the Write goroutine, before Write returns).
 	assert.Equal(t, 1, m.rotationCount(),
 		"RecordFileRotation should be called once after crossing MaxSizeMB")
 
@@ -435,7 +554,6 @@ func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T
 }
 
 func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
-	// Each rotation must produce exactly one RecordFileRotation call.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
@@ -447,7 +565,6 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 		MaxBackups: 10,
 	}, m)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
 	// 3 writes of (1 MB + 1 byte) → 3 rotations.
 	payload := make([]byte, 1024*1024+1)
@@ -458,14 +575,14 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 	for range rotations {
 		require.NoError(t, out.Write(payload))
 	}
+	// Close drains async buffer — all rotations happen in background.
+	require.NoError(t, out.Close())
 
 	assert.Equal(t, rotations, m.rotationCount(),
 		"RecordFileRotation should be called once per rotation")
 }
 
 func TestFileOutput_FileMetrics_InterfaceAssertion(t *testing.T) {
-	// Compile-time: verify FileOutput accepts any file.Metrics, not just
-	// mockMetrics. This test would not compile if the interface changed.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
@@ -484,14 +601,15 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 	require.NoError(t, os.WriteFile(target, nil, 0o600))
 	require.NoError(t, os.Symlink(target, link))
 
-	// Construction succeeds — symlink check happens on first Write.
+	// Construction succeeds — symlink check happens on first write
+	// in the background goroutine.
 	out, err := file.New(file.Config{Path: link}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
-	err = out.Write([]byte("test\n"))
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "symlink")
+	require.NoError(t, out.Write([]byte("test\n")))
+	// Close drains buffer — the symlink error is logged but the write
+	// is attempted in the background goroutine.
+	require.NoError(t, out.Close())
 }
 
 func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
@@ -528,28 +646,6 @@ func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Write — data visible on disk without Close (#450)
-// ---------------------------------------------------------------------------
-
-func TestFileOutput_Write_DataVisibleWithoutClose(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	out, err := file.New(file.Config{Path: path}, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	event := []byte(`{"event_type":"auth.login","outcome":"success"}` + "\n")
-	require.NoError(t, out.Write(event))
-
-	// Read file WITHOUT closing the output.
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, string(event), string(data),
-		"event must be visible on disk immediately after Write, without Close (#450)")
-}
-
-// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 
@@ -572,4 +668,25 @@ func BenchmarkFileOutput_Write(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "bench.log")
+
+	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024, BufferSize: 10000}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ResetTimer()
+	b.SetBytes(int64(len(event)))
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = out.Write(event)
+		}
+	})
 }

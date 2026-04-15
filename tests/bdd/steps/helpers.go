@@ -232,6 +232,46 @@ func (m *MockMetrics) RecordQueueDepth(depth, capacity int) {
 	m.QueueDepths = append(m.QueueDepths, QueueDepthRecord{Depth: depth, Capacity: capacity})
 }
 
+// SubmittedCount returns the number of RecordSubmitted calls.
+func (m *MockMetrics) SubmittedCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Submitted
+}
+
+// QueueDepthCallCount returns the number of RecordQueueDepth calls.
+func (m *MockMetrics) QueueDepthCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.QueueDepths)
+}
+
+// HasSuccessEventFor returns true if any "key:success" event was recorded
+// where key contains the given substring.
+func (m *MockMetrics) HasSuccessEventFor(substr string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, v := range m.Events {
+		if strings.Contains(k, substr) && strings.HasSuffix(k, ":success") && v > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// HasOutputErrorFor returns true if any output error was recorded
+// where the key contains the given substring.
+func (m *MockMetrics) HasOutputErrorFor(substr string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, v := range m.OutputErrors {
+		if strings.Contains(k, substr) && v > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Mock output metrics ---
 
 // MockOutputMetrics captures all OutputMetrics calls for BDD assertion.

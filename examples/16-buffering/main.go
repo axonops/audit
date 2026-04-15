@@ -21,8 +21,8 @@
 //   - Level 2 (webhook buffer): an unreachable webhook endpoint fills
 //     the per-output buffer, triggering silent drops with metrics.
 //
-// The file output writes synchronously — it has no internal buffer.
-// The webhook output has its own buffer and batch goroutine.
+// All non-stdout outputs have their own internal buffer and goroutine.
+// The webhook output additionally batches events before HTTP delivery.
 //
 // Run:
 //
@@ -58,11 +58,10 @@ func main() {
 
 	// --- Level 1: Core Buffer Backpressure ---
 	//
-	// The core buffer is set to 5 (outputs.yaml: logger.buffer_size: 5).
-	// We emit 20 events in a tight loop. The drain goroutine processes
-	// events sequentially, so some AuditEvent() calls will find the
-	// channel full and return ErrQueueFull.
-	fmt.Println("--- Level 1: Core Buffer (buffer_size: 5) ---")
+	// The core queue is set to 5 (outputs.yaml: logger.queue_size: 5).
+	// We emit 20 events in a tight loop. Some AuditEvent() calls will
+	// find the channel full and return ErrQueueFull.
+	fmt.Println("--- Level 1: Core Queue (queue_size: 5) ---")
 	fmt.Println("Emitting 20 events in a tight loop...")
 
 	var delivered, dropped int
@@ -82,8 +81,7 @@ func main() {
 
 	fmt.Printf("  Delivered: %d, Dropped (ErrQueueFull): %d\n", delivered, dropped)
 	if dropped > 0 {
-		fmt.Println("  → Core buffer was full. In production, increase logger.buffer_size")
-		fmt.Println("    or investigate slow synchronous outputs blocking the drain goroutine.")
+		fmt.Println("  → Core queue was full. In production, increase logger.queue_size.")
 	}
 
 	// --- Level 2: Per-Output Buffer Drops ---
@@ -94,13 +92,13 @@ func main() {
 	// buffer (buffer_size: 10) fills, subsequent events are dropped
 	// silently with a rate-limited slog.Warn.
 	//
-	// The file output is unaffected — it writes synchronously and
-	// succeeds. Events dropped by the webhook are still delivered to
-	// the file.
+	// The file output is unaffected — it has its own internal buffer
+	// and writes successfully. Events dropped by the webhook are still
+	// delivered to the file.
 	fmt.Println("\n--- Level 2: Webhook Buffer (buffer_size: 10) ---")
 	fmt.Println("The webhook points at an unreachable endpoint.")
 	fmt.Println("Watch stderr for drop warnings from the webhook output.")
-	fmt.Println("The file output (synchronous) is unaffected.")
+	fmt.Println("The file output (async, separate buffer) is unaffected.")
 
 	// Give the drain goroutine time to process the first burst and
 	// let the webhook's batch loop attempt delivery.
@@ -111,18 +109,18 @@ func main() {
 	fmt.Print(`
 Two levels of buffering exist in the pipeline:
 
-  Level 1: Core Logger Buffer
-    AuditEvent() → channel (logger.buffer_size) → drain goroutine
+  Level 1: Core Intake Queue
+    AuditEvent() → channel (logger.queue_size) → drain goroutine
     Drop signal: ErrQueueFull returned to caller
-    Tuning: increase logger.buffer_size (default 10,000)
+    Tuning: increase logger.queue_size (default 10,000)
 
-  Level 2: Per-Output Buffer (webhook, Loki only)
-    Drain goroutine → output channel (output buffer_size) → batch loop → HTTP
-    Drop signal: RecordWebhookDrop / RecordLokiDrop metric + slog.Warn
+  Level 2: Per-Output Buffer (all outputs except stdout)
+    Drain goroutine → output channel (output buffer_size) → writeLoop/batchLoop
+    Drop signal: OutputMetrics.RecordDrop() + slog.Warn
     Tuning: increase output buffer_size, decrease flush_interval
 
-  Synchronous outputs (file, syslog, stdout) have NO Level 2 buffer.
-  They write directly from the drain goroutine.
+  Only stdout writes synchronously from the drain goroutine.
+  All other outputs have independent async buffers.
 
 See docs/async-delivery.md for the full architecture reference.
 `)

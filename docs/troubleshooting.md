@@ -3,7 +3,7 @@
 # Troubleshooting
 
 - [Events Not Appearing in Output](#events-not-appearing-in-output)
-- [ErrBufferFull at Runtime](#errbufferfull-at-runtime)
+- [ErrQueueFull at Runtime](#errqueuefull-at-runtime)
 - [Drain Timeout at Shutdown](#drain-timeout-at-shutdown)
 - [Validation Errors on Valid-Looking Events](#validation-errors-on-valid-looking-events)
 - [Syslog Connection Failures](#syslog-connection-failures)
@@ -35,25 +35,29 @@ This is the most common problem. Work through this checklist:
 
 ---
 
-## 📦 ErrBufferFull at Runtime
+## 📦 ErrQueueFull at Runtime
 
 ```
-audit: buffer full
+audit: queue full
 ```
 
-The async buffer is at capacity. Events are being produced faster
-than the drain goroutine can write them to outputs.
+The core intake queue is at capacity. Events are being produced
+faster than the drain goroutine can process them.
 
 | Cause | Fix |
 |-------|-----|
-| **Burst of events** | Increase `buffer_size` in your outputs YAML `logger:` section, or use `WithBufferSize()` (default: 10,000, max: 1,000,000) |
-| **Slow output** | A syslog server or webhook endpoint with high latency backs up the entire pipeline. Check output connectivity and latency. |
-| **Output error loop** | If an output is failing on every write, the drain goroutine spends time on error handling instead of processing events. Check `RecordOutputError` metrics. |
+| **Burst of events** | Increase `queue_size` in your outputs YAML `logger:` section, or use `WithQueueSize()` (default: 10,000, max: 1,000,000) |
+| **Output error loop** | If an output is failing on every write, the drain goroutine spends time on error handling. Check `RecordOutputError` metrics. |
 
-Monitor `RecordBufferDrop()` in your metrics to catch this before
-users notice. See [Metrics & Monitoring](metrics-monitoring.md) and
-[Two-Level Buffering](async-delivery.md#two-level-buffering) for the
-complete pipeline architecture and tuning guidance.
+All non-stdout outputs now have their own internal async buffers, so
+a slow output destination does not block the drain goroutine. If you
+see per-output drops (`RecordDrop()` via `OutputMetrics`), that output
+is overwhelmed — increase its `buffer_size` or check destination health.
+
+Monitor `RecordBufferDrop()` in your metrics to catch core queue drops
+before users notice. See [Metrics & Monitoring](metrics-monitoring.md)
+and [Two-Level Buffering](async-delivery.md#two-level-buffering) for
+the complete pipeline architecture and tuning guidance.
 
 ---
 

@@ -25,13 +25,15 @@ library never imports a concrete metrics implementation.
 
 ```go
 type Metrics interface {
-    RecordEvent(output, status string)          // "success" or "error"
+    RecordSubmitted()                           // total events entering the pipeline
+    RecordEvent(output, status string)          // "success" or "error" (non-DeliveryReporter outputs only)
     RecordOutputError(output string)
     RecordOutputFiltered(output string)
     RecordValidationError(eventType string)
     RecordFiltered(eventType string)
     RecordSerializationError(eventType string)
     RecordBufferDrop()
+    RecordQueueDepth(depth, capacity int)       // sampled every 64 events
 }
 ```
 
@@ -51,7 +53,7 @@ logger, err := audit.NewLogger(
 
 | Metric | Method | Meaning |
 |--------|--------|---------|
-| **Buffer drops** | `RecordBufferDrop()` | Events lost because the async buffer is full. The application is producing events faster than the pipeline can drain. Increase `buffer_size` in your outputs YAML or use `WithBufferSize()`, and investigate slow outputs. |
+| **Buffer drops** | `RecordBufferDrop()` | Events lost because the core intake queue is full. The application is producing events faster than the pipeline can drain. Increase `queue_size` in your outputs YAML or use `WithQueueSize()`. |
 | **Output errors** | `RecordOutputError(output)` | An output failed to write. The syslog server may be down, the file system full, or the webhook endpoint unreachable. |
 
 ### Important — Monitor for Trends
@@ -103,65 +105,79 @@ func (m *prometheusMetrics) RecordValidationError(eventType string) {
 | Delivery error rate | `RecordEvent("error")` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
-## 🔀 Per-Output Metrics
+## 🔀 Per-Output Metrics (`OutputMetrics`)
 
-In addition to the global `Metrics` interface, each output type has
-its own metrics interface for output-specific telemetry. These are
-passed when constructing the output:
-
-### File Output Metrics (`file.Metrics`)
+Every async output (file, syslog, webhook, Loki) can receive a
+scoped metrics instance via the unified `OutputMetrics` interface.
+This replaces the old per-output interfaces (`webhook.Metrics`,
+`loki.Metrics`) with a single interface for all outputs:
 
 ```go
-type Metrics interface {
-    RecordFileRotation(path string) // called when a log file is rotated
+type OutputMetrics interface {
+    RecordDrop()                              // event dropped (internal buffer full)
+    RecordFlush(batchSize int, dur time.Duration) // batch/event written successfully
+    RecordError()                             // non-retryable delivery error
+    RecordRetry(attempt int)                  // retry attempt (1-indexed)
+    RecordQueueDepth(depth, capacity int)     // buffer pressure gauge
 }
 ```
 
-Wire this to track how often rotation occurs and which paths are
-being written to.
+### Wiring via `OutputMetricsFactory`
 
-### Syslog Output Metrics (`syslog.Metrics`)
-
-```go
-type Metrics interface {
-    RecordSyslogReconnect(address string, success bool) // called on reconnection attempt
-}
-```
-
-Monitor reconnection attempts — frequent reconnections indicate
-network instability or a failing syslog server.
-
-### Webhook Output Metrics (`webhook.Metrics`)
+The factory creates a scoped instance per output, labelled by type
+and name:
 
 ```go
-type Metrics interface {
-    RecordWebhookDrop()                            // event dropped (internal buffer full)
-    RecordWebhookFlush(batchSize int, dur time.Duration) // batch flushed successfully
+factory := func(outputType, outputName string) audit.OutputMetrics {
+    return &myOutputMetrics{
+        drops: dropsVec.WithLabelValues(outputType, outputName),
+        // ...
+    }
 }
+
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+    outputconfig.WithOutputMetrics(factory),
+)
 ```
 
-Monitor `RecordWebhookDrop` — if this fires, the webhook's internal
-buffer is full and events are being lost. Increase `buffer_size` in
-the webhook configuration.
+The `outputType` is the output kind (e.g., "file", "syslog",
+"webhook", "loki"). The `outputName` is the consumer-chosen YAML key
+(e.g., "compliance_archive", "security_feed"). Together they allow
+fully scoped Prometheus labels.
 
-### Loki Output Metrics (`loki.Metrics`)
+### Extension Interfaces
+
+Output-specific metrics beyond the common five are available as
+type-assertion extensions on the `OutputMetrics` value:
+
+- `file.Metrics` — adds `RecordFileRotation(path string)` for tracking
+  log rotation events
+- `syslog.Metrics` — adds `RecordSyslogReconnect(address string,
+  success bool)` for tracking reconnection attempts
+
+To receive extension callbacks, your `OutputMetrics` implementation
+must also satisfy the extension interface:
 
 ```go
-type Metrics interface {
-    RecordLokiDrop()                                      // event dropped (buffer full or retries exhausted)
-    RecordLokiFlush(batchSize int, dur time.Duration)     // batch delivered successfully
+type myOutputMetrics struct {
+    audit.NoOpOutputMetrics // embed for forward compatibility
+    drops prometheus.Counter
+    // ...
 }
+
+// Core OutputMetrics methods:
+func (m *myOutputMetrics) RecordDrop() { m.drops.Inc() }
+
+// Extension: file.Metrics (detected via type assertion):
+func (m *myOutputMetrics) RecordFileRotation(path string) { /* ... */ }
+
+// Extension: syslog.Metrics (detected via type assertion):
+func (m *myOutputMetrics) RecordSyslogReconnect(addr string, ok bool) { /* ... */ }
 ```
 
-Monitor `RecordLokiDrop` — if this fires, the Loki output's internal
-buffer is full or retries are exhausted and events are being lost.
-Increase `buffer_size` or check Loki connectivity.
-
-See [Loki Output Reference](loki-output.md#metrics-and-monitoring)
-for the complete Loki metrics documentation.
-
-See [Progressive Example: Capstone](../examples/17-capstone/) for a
-complete Prometheus implementation of all five metrics interfaces.
+Consumers SHOULD embed `audit.NoOpOutputMetrics` for forward
+compatibility — new methods added to the interface in future
+versions will be absorbed by the embedded no-op.
 
 ## 🧪 Testing Metrics
 

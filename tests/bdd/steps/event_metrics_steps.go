@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/cucumber/godog"
 
@@ -146,10 +145,9 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		if tc.Logger != nil {
 			_ = tc.Logger.Close()
 		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		if tc.MockMetrics.Submitted != n {
-			return fmt.Errorf("expected RecordSubmitted called %d times, got %d", n, tc.MockMetrics.Submitted)
+		got := tc.MockMetrics.SubmittedCount()
+		if got != n {
+			return fmt.Errorf("expected RecordSubmitted called %d times, got %d", n, got)
 		}
 		return nil
 	})
@@ -158,10 +156,9 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		if tc.Logger != nil {
 			_ = tc.Logger.Close()
 		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		if len(tc.MockMetrics.QueueDepths) < n {
-			return fmt.Errorf("expected RecordQueueDepth called >= %d times, got %d", n, len(tc.MockMetrics.QueueDepths))
+		got := tc.MockMetrics.QueueDepthCallCount()
+		if got < n {
+			return fmt.Errorf("expected RecordQueueDepth called >= %d times, got %d", n, got)
 		}
 		return nil
 	})
@@ -170,12 +167,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		if tc.Logger != nil {
 			_ = tc.Logger.Close()
 		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		for k, v := range tc.MockMetrics.Events {
-			if strings.Contains(k, "file:") && strings.HasSuffix(k, ":success") && v > 0 {
-				return fmt.Errorf("expected no core success metrics for file, but found %q=%d", k, v)
-			}
+		if tc.MockMetrics.HasSuccessEventFor("file:") {
+			return fmt.Errorf("expected no core success metrics for file, but found success events")
 		}
 		return nil
 	})
@@ -197,12 +190,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		if tc.Logger != nil {
 			_ = tc.Logger.Close()
 		}
-		tc.MockMetrics.mu.Lock()
-		defer tc.MockMetrics.mu.Unlock()
-		for k, v := range tc.MockMetrics.OutputErrors {
-			if strings.Contains(k, "file:") && v > 0 {
-				return fmt.Errorf("expected no output errors for file, but found %q=%d", k, v)
-			}
+		if tc.MockMetrics.HasOutputErrorFor("file:") {
+			return fmt.Errorf("expected no output errors for file, but found output errors")
 		}
 		return nil
 	})

@@ -149,8 +149,8 @@ drop — use metrics, not log lines, for precise monitoring.
 
 ### Relationship to Core Buffer
 
-The Loki `buffer_size` is independent of the core `logger.buffer_size`
-(`Config.BufferSize`). Both default to 10,000 but they serve different
+The Loki `buffer_size` is independent of the core `logger.queue_size`
+(`Config.QueueSize`). Both default to 10,000 but they serve different
 pipeline stages. See
 [Two-Level Buffering](async-delivery.md#two-level-buffering) for the
 full architecture diagram and memory sizing guidance.

@@ -23,7 +23,7 @@ AuditEvent(event)
 ```
 
 The **caller goroutine** does validation and a non-blocking channel send.
-If the buffer is full, `AuditEvent` returns `ErrBufferFull` immediately.
+If the queue is full, `AuditEvent` returns `ErrQueueFull` immediately.
 
 The **drain goroutine** is the only goroutine that calls `Output.Write`,
 so outputs do not need to be thread-safe. This also gives deterministic

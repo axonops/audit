@@ -19,7 +19,7 @@ version: 1
 
 logger:
   enabled: true                    # default: true (set false to disable auditing)
-  buffer_size: 10000               # default: 10,000 (max: 1,000,000)
+  queue_size: 10000                # default: 10,000 (max: 1,000,000)
   drain_timeout: "5s"              # default: "5s" (max: "60s")
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
@@ -181,7 +181,7 @@ fields are optional — omitted fields use sensible defaults.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `true` | Set `false` to disable audit logging entirely (no-op logger). |
-| `buffer_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
+| `queue_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
 | `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
 | `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
@@ -190,7 +190,7 @@ All values support environment variable substitution:
 
 ```yaml
 logger:
-  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  queue_size: ${AUDIT_QUEUE_SIZE:-10000}
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
   enabled: ${AUDIT_ENABLED:-true}
 ```

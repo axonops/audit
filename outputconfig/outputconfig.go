@@ -82,6 +82,9 @@ type NamedOutput struct {
 	// Name is the config-level name of the output, as declared in the
 	// YAML outputs map key.
 	Name string
+	// Type is the output type name (e.g. "file", "syslog", "webhook",
+	// "loki", "stdout") as declared in the YAML type: field.
+	Type string
 	// Output is the constructed output instance, ready for use.
 	Output audit.Output
 	// Route is the optional per-output event filter. Nil means all
@@ -266,6 +269,13 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 				ErrOutputConfigInvalid)
 		}
 
+		if err := audit.ValidateOutputName(name); err != nil {
+			closeAll(outputs)
+			// ValidateOutputName wraps ErrConfigInvalid; re-wrap with
+			// ErrOutputConfigInvalid so callers can match either sentinel.
+			return nil, fmt.Errorf("%w: output %q: %w", ErrOutputConfigInvalid, name, err)
+		}
+
 		if _, dup := seen[name]; dup {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: duplicate output name %q",
@@ -287,6 +297,15 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	if len(outputs) == 0 {
 		return nil, fmt.Errorf("%w: all outputs are disabled; at least one enabled output is required",
 			ErrOutputConfigInvalid)
+	}
+
+	// Phase 7b: Wire per-output metrics via OutputMetricsReceiver.
+	if lo.outputMetricsFactory != nil {
+		for i := range outputs {
+			if recv, ok := outputs[i].Output.(audit.OutputMetricsReceiver); ok {
+				recv.SetOutputMetrics(lo.outputMetricsFactory(outputs[i].Type, outputs[i].Name))
+			}
+		}
 	}
 
 	// Phase 8: Build Options slice.

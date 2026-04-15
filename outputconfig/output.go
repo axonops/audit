@@ -80,7 +80,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		_ = output.Close()
 		return nil, err
 	}
-	no := &NamedOutput{Name: name, Output: output, Route: route, Formatter: formatter, HMACConfig: hmacCfg}
+	no := &NamedOutput{Name: name, Type: fields.typeName, Output: output, Route: route, Formatter: formatter, HMACConfig: hmacCfg}
 	if len(fields.excludeLabels) > 0 {
 		no.ExcludeLabels = fields.excludeLabels
 	}

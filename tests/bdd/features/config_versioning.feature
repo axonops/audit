@@ -14,12 +14,12 @@ Feature: Logger Configuration
     When I create a logger with buffer size 0
     Then the logger should be created successfully
 
-  Scenario: BufferSize exceeding maximum is rejected with exact error
+  Scenario: QueueSize exceeding maximum is rejected with exact error
     Given a standard test taxonomy
     When I try to create a logger with buffer size 2000000
     Then the logger construction should fail with an error matching:
       """
-      audit: config validation failed: buffer_size 2000000 exceeds maximum 1000000
+      audit: config validation failed: queue_size 2000000 exceeds maximum 1000000
       """
 
   Scenario: DrainTimeout defaults when zero

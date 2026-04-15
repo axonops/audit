@@ -265,7 +265,7 @@ func auditConcurrent(tc *AuditTestContext, total, goroutines int) error {
 
 func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	// Each event is roughly 200 bytes. Write enough to exceed target.
-	// Tolerate ErrBufferFull — the drain goroutine may not keep up.
+	// Tolerate ErrQueueFull — the drain goroutine may not keep up.
 	targetBytes := mb * 1024 * 1024
 	eventSize := 200
 	count := (targetBytes / eventSize) + 100
@@ -273,7 +273,7 @@ func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rot_%d_padding_data_for_size", i)
 		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
-		if err != nil && !errors.Is(err, audit.ErrBufferFull) {
+		if err != nil && !errors.Is(err, audit.ErrQueueFull) {
 			return fmt.Errorf("write event %d: %w", i, err)
 		}
 	}

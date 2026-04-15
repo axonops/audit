@@ -148,7 +148,7 @@
 //	var ve *audit.ValidationError
 //	if errors.As(err, &ve) { log.Println(ve.Error()) }
 //
-// [ErrBufferFull] and [ErrClosed] are NOT validation errors and will
+// [ErrQueueFull] and [ErrClosed] are NOT validation errors and will
 // never match [ErrValidation].
 //
 // # Code Generation Support
@@ -209,7 +209,7 @@
 //
 // Events are enqueued to a buffered channel (configurable capacity, default
 // 10,000) and drained by a single background goroutine. If the buffer is
-// full, [Logger.AuditEvent] returns [ErrBufferFull] and the drop is recorded via
+// full, [Logger.AuditEvent] returns [ErrQueueFull] and the drop is recorded via
 // the [Metrics] interface.
 //
 // # Graceful Shutdown

@@ -666,6 +666,8 @@ func (m *mockCoreMetrics) RecordValidationError(_ string)    {}
 func (m *mockCoreMetrics) RecordFiltered(_ string)           {}
 func (m *mockCoreMetrics) RecordSerializationError(_ string) {}
 func (m *mockCoreMetrics) RecordBufferDrop()                 {}
+func (m *mockCoreMetrics) RecordSubmitted()                  {}
+func (m *mockCoreMetrics) RecordQueueDepth(_, _ int)         {}
 
 // Verify interface satisfaction.
 var _ audit.Metrics = (*mockCoreMetrics)(nil)

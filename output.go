@@ -129,3 +129,17 @@ type FrameworkFieldReceiver interface {
 type LoggerReceiver interface {
 	SetLogger(l *slog.Logger)
 }
+
+// OutputMetricsReceiver is an optional interface that [Output]
+// implementations may satisfy to receive per-output metrics. The
+// library calls SetOutputMetrics once after construction, before the
+// first Write call. Outputs that do not implement it operate without
+// per-output metrics.
+//
+// This is the output-side analogue of [LoggerReceiver] and
+// [FrameworkFieldReceiver]. The [OutputMetrics] value is created by
+// the [OutputMetricsFactory] registered via
+// outputconfig.WithOutputMetrics.
+type OutputMetricsReceiver interface {
+	SetOutputMetrics(m OutputMetrics)
+}

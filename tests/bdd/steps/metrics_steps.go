@@ -64,7 +64,7 @@ func registerMetricsGivenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 	ctx.Step(`^a logger with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLoggerWithOpts(tc, audit.WithBufferSize(bufSize))
+		return createStdoutLoggerWithOpts(tc, audit.WithQueueSize(bufSize))
 	})
 
 }

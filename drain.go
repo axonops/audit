@@ -55,7 +55,13 @@ func (l *Logger) drainRemaining() {
 // processEntry fans out an audit entry to all matching outputs. Events
 // are serialised once per unique Formatter; per-output routes are
 // checked before delivery. Output failures are isolated.
-func (l *Logger) processEntry(entry *auditEntry) {
+func (l *Logger) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyclop // queue depth sampling adds 1 to baseline complexity
+	// Sample queue depth every 64 events for metrics gauges.
+	l.drainCount++
+	if l.metrics != nil && l.drainCount%64 == 0 {
+		l.metrics.RecordQueueDepth(len(l.ch), cap(l.ch))
+	}
+
 	// Defers execute LIFO. The pool return must happen after the
 	// panic recovery, so it is declared first (executes last).
 	defer func() {

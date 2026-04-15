@@ -752,7 +752,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -769,12 +769,12 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 			"outcome":  "failure",
 			"actor_id": "bob",
 		}))
-		if errors.Is(err, audit.ErrBufferFull) {
+		if errors.Is(err, audit.ErrQueueFull) {
 			bufferFullSeen = true
 		}
 	}
 
-	assert.True(t, bufferFullSeen, "should have seen ErrBufferFull")
+	assert.True(t, bufferFullSeen, "should have seen ErrQueueFull")
 	assert.Greater(t, metrics.GetBufferDrops(), 0, "should have recorded buffer drops")
 }
 
@@ -862,7 +862,7 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(10),
+		audit.WithQueueSize(10),
 		audit.WithDrainTimeout(10*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -1452,9 +1452,9 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 // Config bounds tests
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_BufferSizeExceedsMax(t *testing.T) {
+func TestNewLogger_QueueSizeExceedsMax(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.WithBufferSize(audit.MaxBufferSize+1),
+		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
@@ -1764,7 +1764,7 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -1938,7 +1938,7 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -2626,7 +2626,7 @@ func BenchmarkAudit_PoolAmortised(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -2666,7 +2666,7 @@ func BenchmarkAudit_FanOut_SharedFormatter(b *testing.B) {
 	out2 := testhelper.NewMockOutput("out2")
 	out3 := testhelper.NewMockOutput("out3")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out1, out2, out3),
 	)
@@ -2698,7 +2698,7 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	out3 := testhelper.NewMockOutput("json2")
 	cefFmt := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out1),                                // default JSON
 		audit.WithNamedOutput(out2, audit.OutputFormatter(cefFmt)), // CEF
@@ -2732,7 +2732,7 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 	out2 := testhelper.NewMockOutput("write-only")
 	out3 := testhelper.NewMockOutput("security-only")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out1), // receives all events
 		audit.WithNamedOutput(out2, audit.OutputRoute(&audit.EventRoute{
@@ -2771,7 +2771,7 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 		outputs[i] = testhelper.NewMockOutput("out" + string(rune('0'+i)))
 	}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(outputs...),
 	)
@@ -2857,7 +2857,7 @@ func BenchmarkAudit_EndToEnd(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -2885,7 +2885,7 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
@@ -2918,7 +2918,7 @@ func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out),
 		audit.WithStandardFieldDefaults(map[string]string{
@@ -2950,7 +2950,7 @@ func BenchmarkDeliverToOutputs_WithMetadataWriter(b *testing.B) {
 	silenceSlog(b)
 	mock := &mockMetadataOutput{name: "bench-mw"}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(mock),
 	)
@@ -2974,7 +2974,7 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	mwOut := &mockMetadataOutput{name: "bench-mw"}
 	plainOut := testhelper.NewMockOutput("bench-plain")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(mwOut),
 		audit.WithNamedOutput(plainOut),

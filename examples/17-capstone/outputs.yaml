@@ -25,7 +25,7 @@ secrets:
     allow_private_ranges: true   # Docker internal network
 
 logger:
-  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  queue_size: ${AUDIT_BUFFER_SIZE:-10000}
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
 
 outputs:

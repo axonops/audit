@@ -20,7 +20,7 @@ app_name: "buffering-example"
 host: "localhost"
 
 logger:
-  buffer_size: 5           # Tiny core buffer to demonstrate ErrBufferFull.
+  queue_size: 5            # Tiny core queue to demonstrate ErrQueueFull.
   drain_timeout: "2s"      # Short drain for fast shutdown.
 
 outputs:

@@ -43,7 +43,7 @@
 //	timezone: "UTC"                 # optional, overrides auto-detected timezone
 //	logger:                         # optional, core logger settings
 //	  enabled: true                 # default: true
-//	  buffer_size: 10000            # default: 10,000 (max: 1,000,000)
+//	  queue_size: 10000             # default: 10,000 (max: 1,000,000)
 //	  drain_timeout: "5s"           # default: "5s" (max: "60s")
 //	  validation_mode: strict       # "strict" (default), "warn", "permissive"
 //	  omit_empty: false             # default: false

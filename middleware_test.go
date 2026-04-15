@@ -607,7 +607,7 @@ func BenchmarkMiddleware(b *testing.B) {
 	taxonomy := middlewareTaxonomy()
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1_000_000),
+		audit.WithQueueSize(1_000_000),
 		audit.WithTaxonomy(taxonomy),
 		audit.WithOutputs(out),
 	)

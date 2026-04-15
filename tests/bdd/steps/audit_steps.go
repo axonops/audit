@@ -230,7 +230,7 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^I fill the buffer and audit one more event$`, func() error {
 		// The logger has buffer size 1. The drain goroutine processes
 		// events async, so we need to fill the buffer faster than drain.
-		// Send events in a tight loop until we get ErrBufferFull.
+		// Send events in a tight loop until we get ErrQueueFull.
 		for range 1000 {
 			err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
@@ -241,11 +241,11 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				return nil //nolint:nilerr // scenario asserts on tc.LastErr
 			}
 		}
-		return fmt.Errorf("never got ErrBufferFull after 1000 attempts")
+		return fmt.Errorf("never got ErrQueueFull after 1000 attempts")
 	})
 
 	ctx.Step(`^a logger with stdout output and buffer size (\d+)$`, func(bufSize int) error {
-		return createStdoutLogger(tc, audit.WithBufferSize(bufSize))
+		return createStdoutLogger(tc, audit.WithQueueSize(bufSize))
 	})
 
 	ctx.Step(`^I audit via handle with fields:$`, func(table *godog.Table) error {
@@ -547,7 +547,7 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 // sentinelsByName maps BDD sentinel names to their Go error values.
 var sentinelsByName = map[string]error{
 	"ErrClosed":               audit.ErrClosed,
-	"ErrBufferFull":           audit.ErrBufferFull,
+	"ErrQueueFull":            audit.ErrQueueFull,
 	"ErrValidation":           audit.ErrValidation,
 	"ErrUnknownEventType":     audit.ErrUnknownEventType,
 	"ErrMissingRequiredField": audit.ErrMissingRequiredField,

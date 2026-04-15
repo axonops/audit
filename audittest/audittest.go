@@ -29,7 +29,7 @@ type config struct {
 }
 
 // WithConfig applies a [audit.Config] struct to the test logger.
-// Non-zero fields override the test defaults (BufferSize=100).
+// Non-zero fields override the test defaults (QueueSize=100).
 func WithConfig(cfg audit.Config) Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithConfig(cfg)) }
 }
@@ -73,7 +73,7 @@ func WithAsync() Option {
 // into asynchronous delivery for tests that exercise drain timeout or
 // buffer backpressure.
 //
-// BufferSize defaults to 100 (intentionally small — the in-memory
+// QueueSize defaults to 100 (intentionally small — the in-memory
 // recorder has no I/O cost). tb.Cleanup is registered to call
 // logger.Close() as a safety net against goroutine leaks.
 func NewLogger(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
@@ -125,7 +125,7 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.L
 	met := NewMetricsRecorder()
 
 	auditOpts := []audit.Option{
-		audit.WithBufferSize(100), // small buffer — recorder has no I/O cost
+		audit.WithQueueSize(100), // small buffer — recorder has no I/O cost
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(rec),
 		audit.WithMetrics(met),

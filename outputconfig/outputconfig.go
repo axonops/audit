@@ -42,12 +42,12 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 	// Config is the logger configuration parsed from the optional
 	// top-level `logger:` section. Exposed for inspection; pass
 	// Options to [audit.NewLogger] instead — Options includes
-	// config-equivalent options ([audit.WithBufferSize], etc.).
+	// config-equivalent options ([audit.WithQueueSize], etc.).
 	Config audit.Config
 
 	// Options contains all options needed to create the logger:
 	// framework fields ([audit.WithAppName], [audit.WithHost]),
-	// config-equivalent options ([audit.WithBufferSize], etc.),
+	// config-equivalent options ([audit.WithQueueSize], etc.),
 	// and one [audit.WithNamedOutput] per configured output.
 	// Pass directly to [audit.NewLogger] along with
 	// [audit.WithTaxonomy].
@@ -301,8 +301,8 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 
 	// Config-equivalent options so callers can use NewLogger(result.Options...).
 	cfg := top.loggerResult.config
-	if cfg.BufferSize > 0 {
-		result.Options = append(result.Options, audit.WithBufferSize(cfg.BufferSize))
+	if cfg.QueueSize > 0 {
+		result.Options = append(result.Options, audit.WithQueueSize(cfg.QueueSize))
 	}
 	if cfg.DrainTimeout > 0 {
 		result.Options = append(result.Options, audit.WithDrainTimeout(cfg.DrainTimeout))

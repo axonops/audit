@@ -27,12 +27,12 @@ var (
 	// [Logger.AuditEvent] calls return ErrClosed immediately.
 	ErrClosed = errors.New("audit: logger is closed")
 
-	// ErrBufferFull is returned by [Logger.AuditEvent] when the async
-	// buffer is at capacity and the event is dropped. Consumers SHOULD
-	// treat this as a drop notification rather than a fatal error.
-	// Increasing [Config.BufferSize] or reducing event emission rate
+	// ErrQueueFull is returned by [Logger.AuditEvent] when the async
+	// intake queue is at capacity and the event is dropped. Consumers
+	// SHOULD treat this as a drop notification rather than a fatal error.
+	// Increasing [Config.QueueSize] or reducing event emission rate
 	// reduces the frequency of this error.
-	ErrBufferFull = errors.New("audit: buffer full")
+	ErrQueueFull = errors.New("audit: queue full")
 
 	// ErrDuplicateDestination is returned by [WithOutputs] and
 	// [WithNamedOutput] when two outputs implement [DestinationKeyer]
@@ -81,7 +81,7 @@ var (
 	//
 	//	if errors.Is(err, audit.ErrValidation) { ... }
 	//
-	// [ErrBufferFull] and [ErrClosed] are NOT validation errors.
+	// [ErrQueueFull] and [ErrClosed] are NOT validation errors.
 	ErrValidation = errors.New("audit: validation error")
 
 	// ErrUnknownEventType is returned by [Logger.AuditEvent] when the

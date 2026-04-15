@@ -1184,7 +1184,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, result.Config.BufferSize, "zero means applyDefaults will set 10000")
+	assert.Equal(t, 0, result.Config.QueueSize, "zero means applyDefaults will set 10000")
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "zero means applyDefaults will set 5s")
 	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
 	assert.False(t, result.Config.OmitEmpty)
@@ -1198,7 +1198,7 @@ app_name: test
 host: test
 logger:
   enabled: true
-  buffer_size: 50000
+  queue_size: 50000
   drain_timeout: "30s"
   validation_mode: warn
   omit_empty: true
@@ -1210,7 +1210,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 50000, result.Config.BufferSize)
+	assert.Equal(t, 50000, result.Config.QueueSize)
 	assert.Equal(t, 30*time.Second, result.Config.DrainTimeout)
 	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
 	assert.True(t, result.Config.OmitEmpty)
@@ -1223,7 +1223,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: 25000
+  queue_size: 25000
 outputs:
   console:
     type: stdout
@@ -1232,7 +1232,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 25000, result.Config.BufferSize)
+	assert.Equal(t, 25000, result.Config.QueueSize)
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "default drain timeout")
 }
 
@@ -1262,7 +1262,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: ${TEST_BUFFER_SIZE}
+  queue_size: ${TEST_BUFFER_SIZE}
   drain_timeout: "${TEST_DRAIN_TIMEOUT}"
 outputs:
   console:
@@ -1272,7 +1272,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 75000, result.Config.BufferSize)
+	assert.Equal(t, 75000, result.Config.QueueSize)
 	assert.Equal(t, 15*time.Second, result.Config.DrainTimeout)
 }
 
@@ -1343,7 +1343,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: -1
+  queue_size: -1
 outputs:
   console:
     type: stdout
@@ -1362,7 +1362,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: 2000000
+  queue_size: 2000000
 outputs:
   console:
     type: stdout

@@ -28,7 +28,13 @@ var _ audit.Metrics = (*MockMetrics)(nil)
 // structurally satisfies the output-specific metrics interfaces
 // (file.Metrics, syslog.Metrics, webhook.Metrics) without importing
 // those packages.
-type MockMetrics struct {
+// QueueDepthRecord captures a single RecordQueueDepth call.
+type QueueDepthRecord struct {
+	Depth    int
+	Capacity int
+}
+
+type MockMetrics struct { //nolint:govet // fieldalignment: readability preferred
 	Events              map[string]int // "output:status" -> count
 	OutputErrors        map[string]int
 	FilteredCount       map[string]int
@@ -37,6 +43,7 @@ type MockMetrics struct {
 	SerializationErrors map[string]int // eventType -> count
 	FileRotations       map[string]int // path -> count
 	SyslogReconnects    map[string]int // "address:success|failure" -> count
+	QueueDepths         []QueueDepthRecord
 	// EventCh is signalled (non-blocking) on every RecordEvent call.
 	// It is buffered to 1000 entries and is consumed internally by
 	// [MockMetrics.WaitForMetric]; consumers do not need to read it.
@@ -44,6 +51,7 @@ type MockMetrics struct {
 	Mu           sync.Mutex
 	BufferDrops  int
 	WebhookDrops int
+	Submitted    int
 }
 
 // NewMockMetrics creates a ready-to-use MockMetrics.
@@ -62,6 +70,12 @@ func NewMockMetrics() *MockMetrics {
 }
 
 // --- audit.Metrics methods ---
+
+func (m *MockMetrics) RecordSubmitted() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.Submitted++
+}
 
 func (m *MockMetrics) RecordEvent(output, status string) {
 	m.Mu.Lock()
@@ -107,6 +121,12 @@ func (m *MockMetrics) RecordSerializationError(eventType string) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.SerializationErrors[eventType]++
+}
+
+func (m *MockMetrics) RecordQueueDepth(depth, capacity int) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.QueueDepths = append(m.QueueDepths, QueueDepthRecord{Depth: depth, Capacity: capacity})
 }
 
 // --- webhook.Metrics methods (structural satisfaction) ---
@@ -225,4 +245,20 @@ func (m *MockMetrics) GetFileRotationCount(path string) int {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	return m.FileRotations[path]
+}
+
+// GetSubmitted returns the total number of RecordSubmitted calls.
+func (m *MockMetrics) GetSubmitted() int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.Submitted
+}
+
+// GetQueueDepths returns all recorded queue depth samples.
+func (m *MockMetrics) GetQueueDepths() []QueueDepthRecord {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	cp := make([]QueueDepthRecord, len(m.QueueDepths))
+	copy(cp, m.QueueDepths)
+	return cp
 }

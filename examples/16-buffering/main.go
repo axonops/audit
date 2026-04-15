@@ -16,7 +16,7 @@
 //
 // Demonstrates the two-level buffering architecture:
 //
-//   - Level 1 (core buffer): a tiny buffer_size triggers ErrBufferFull
+//   - Level 1 (core buffer): a tiny buffer_size triggers ErrQueueFull
 //     when events are produced faster than the drain goroutine can process.
 //   - Level 2 (webhook buffer): an unreachable webhook endpoint fills
 //     the per-output buffer, triggering silent drops with metrics.
@@ -61,7 +61,7 @@ func main() {
 	// The core buffer is set to 5 (outputs.yaml: logger.buffer_size: 5).
 	// We emit 20 events in a tight loop. The drain goroutine processes
 	// events sequentially, so some AuditEvent() calls will find the
-	// channel full and return ErrBufferFull.
+	// channel full and return ErrQueueFull.
 	fmt.Println("--- Level 1: Core Buffer (buffer_size: 5) ---")
 	fmt.Println("Emitting 20 events in a tight loop...")
 
@@ -70,7 +70,7 @@ func main() {
 		actor := fmt.Sprintf("user-%d", i)
 		evt := NewUserCreateEvent(actor, "success")
 		if auditErr := logger.AuditEvent(evt); auditErr != nil {
-			if errors.Is(auditErr, audit.ErrBufferFull) {
+			if errors.Is(auditErr, audit.ErrQueueFull) {
 				dropped++
 			} else {
 				log.Printf("unexpected error: %v", auditErr)
@@ -80,7 +80,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("  Delivered: %d, Dropped (ErrBufferFull): %d\n", delivered, dropped)
+	fmt.Printf("  Delivered: %d, Dropped (ErrQueueFull): %d\n", delivered, dropped)
 	if dropped > 0 {
 		fmt.Println("  → Core buffer was full. In production, increase logger.buffer_size")
 		fmt.Println("    or investigate slow synchronous outputs blocking the drain goroutine.")
@@ -113,7 +113,7 @@ Two levels of buffering exist in the pipeline:
 
   Level 1: Core Logger Buffer
     AuditEvent() → channel (logger.buffer_size) → drain goroutine
-    Drop signal: ErrBufferFull returned to caller
+    Drop signal: ErrQueueFull returned to caller
     Tuning: increase logger.buffer_size (default 10,000)
 
   Level 2: Per-Output Buffer (webhook, Loki only)

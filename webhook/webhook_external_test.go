@@ -242,6 +242,10 @@ func (m *mockMetrics) RecordSerializationError(eventType string) {
 	m.serializationErr[eventType]++
 }
 
+func (m *mockMetrics) RecordSubmitted() {}
+
+func (m *mockMetrics) RecordQueueDepth(_, _ int) {}
+
 // --- webhook.Metrics methods ---
 
 func (m *mockMetrics) RecordWebhookDrop() {
@@ -1337,6 +1341,8 @@ func (m *coreOnlyMetrics) RecordValidationError(_ string)    {}
 func (m *coreOnlyMetrics) RecordFiltered(_ string)           {}
 func (m *coreOnlyMetrics) RecordSerializationError(_ string) {}
 func (m *coreOnlyMetrics) RecordBufferDrop()                 {}
+func (m *coreOnlyMetrics) RecordSubmitted()                  {}
+func (m *coreOnlyMetrics) RecordQueueDepth(_, _ int)         {}
 
 var _ audit.Metrics = (*coreOnlyMetrics)(nil)
 

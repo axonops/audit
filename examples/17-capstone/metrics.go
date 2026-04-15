@@ -118,6 +118,10 @@ func newMetrics() *auditMetrics {
 
 // --- audit.Metrics ---
 
+func (m *auditMetrics) RecordSubmitted() {}
+
+func (m *auditMetrics) RecordQueueDepth(_, _ int) {}
+
 func (m *auditMetrics) RecordEvent(output, status string) {
 	m.events.WithLabelValues(output, status).Inc()
 }

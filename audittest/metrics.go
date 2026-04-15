@@ -39,6 +39,7 @@ type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over
 	filtered            map[string]int
 	serializationErrors map[string]int
 	bufferDrops         int
+	submitted           int
 
 	// Per-output metrics (satisfies file.Metrics, syslog.Metrics,
 	// webhook.Metrics, loki.Metrics via structural typing).
@@ -68,6 +69,13 @@ func NewMetricsRecorder() *MetricsRecorder {
 }
 
 // --- audit.Metrics implementation ---
+
+// RecordSubmitted implements [audit.Metrics].
+func (m *MetricsRecorder) RecordSubmitted() {
+	m.mu.Lock()
+	m.submitted++
+	m.mu.Unlock()
+}
 
 // RecordEvent implements [audit.Metrics].
 func (m *MetricsRecorder) RecordEvent(output, status string) {
@@ -117,6 +125,9 @@ func (m *MetricsRecorder) RecordBufferDrop() {
 	m.bufferDrops++
 	m.mu.Unlock()
 }
+
+// RecordQueueDepth implements [audit.Metrics].
+func (m *MetricsRecorder) RecordQueueDepth(_, _ int) {}
 
 // --- Query methods ---
 

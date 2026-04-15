@@ -207,3 +207,9 @@ func (m *MockMetrics) RecordBufferDrop() {
 	defer m.mu.Unlock()
 	m.BufferDrops++
 }
+
+// RecordSubmitted satisfies audit.Metrics.
+func (m *MockMetrics) RecordSubmitted() {}
+
+// RecordQueueDepth satisfies audit.Metrics.
+func (m *MockMetrics) RecordQueueDepth(_, _ int) {}

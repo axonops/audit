@@ -268,12 +268,12 @@ Feature: Core Audit Logging
     When I must-handle event type "nonexistent"
     Then the must-handle should have panicked
 
-  # --- ErrBufferFull ---
+  # --- ErrQueueFull ---
 
-  Scenario: Buffer full returns ErrBufferFull
+  Scenario: Buffer full returns ErrQueueFull
     Given a logger with stdout output and buffer size 1
     When I fill the buffer and audit one more event
-    Then the audit call should return an error wrapping "ErrBufferFull"
+    Then the audit call should return an error wrapping "ErrQueueFull"
 
   # --- Handle / MustHandle ---
 

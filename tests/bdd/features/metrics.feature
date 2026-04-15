@@ -46,11 +46,11 @@ Feature: Metrics Interface
     And I close the logger
     Then the event should be delivered successfully
 
-  Scenario: Multiple outputs each record success metric
+  Scenario: Multiple outputs record success metric for non-DeliveryReporter outputs
     Given a logger with file and stdout outputs and metrics
     When I audit event "user_create" with required fields
     And I close the logger
-    Then the metrics should have recorded at least 2 success events
+    Then the metrics should have recorded at least 1 success events
 
   Scenario: Unknown field in strict mode records validation error
     Given a logger with stdout output and metrics in strict mode

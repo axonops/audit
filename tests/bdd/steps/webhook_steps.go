@@ -145,27 +145,6 @@ func (r *localWebhookReceiver) close() {
 	r.server.Close()
 }
 
-// MockWebhookMetrics captures webhook.Metrics calls.
-type MockWebhookMetrics struct {
-	mu      sync.Mutex
-	flushes int
-	drops   int
-}
-
-// RecordWebhookDrop satisfies webhook.Metrics.
-func (m *MockWebhookMetrics) RecordWebhookDrop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.drops++
-}
-
-// RecordWebhookFlush satisfies webhook.Metrics.
-func (m *MockWebhookMetrics) RecordWebhookFlush(_ int, _ time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.flushes++
-}
-
 func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with webhook output configured for batch size (\d+)$`, func(batchSize int) error {
 		return createWebhookLogger(tc, &webhook.Config{
@@ -212,7 +191,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	})
 
 	ctx.Step(`^mock webhook metrics are configured$`, func() error {
-		tc.WebhookMetrics = &MockWebhookMetrics{}
+		tc.WebhookMetrics = &MockOutputMetrics{}
 		return nil
 	})
 
@@ -569,17 +548,12 @@ func registerWebhookThenMetricsAndErrorSteps(ctx *godog.ScenarioContext, tc *Aud
 		}
 		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
 		for time.Now().Before(deadline) {
-			tc.WebhookMetrics.mu.Lock()
-			drops := tc.WebhookMetrics.drops
-			tc.WebhookMetrics.mu.Unlock()
-			if drops >= minDrops {
+			if tc.WebhookMetrics.DropCount() >= minDrops {
 				return nil
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
-		tc.WebhookMetrics.mu.Lock()
-		defer tc.WebhookMetrics.mu.Unlock()
-		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.drops, timeout)
+		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.DropCount(), timeout)
 	})
 
 	ctx.Step(`^the webhook construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
@@ -617,6 +591,11 @@ func createWebhookLoggerWithWebhookMetrics(tc *AuditTestContext, batchSize int) 
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+
+	// Inject per-output metrics via OutputMetricsReceiver.
+	if tc.WebhookMetrics != nil {
+		out.SetOutputMetrics(tc.WebhookMetrics)
 	}
 
 	opts := []audit.Option{
@@ -728,10 +707,8 @@ func assertWebhookFlushCount(tc *AuditTestContext, minFlush int) error {
 	if tc.Logger != nil {
 		_ = tc.Logger.Close()
 	}
-	tc.WebhookMetrics.mu.Lock()
-	defer tc.WebhookMetrics.mu.Unlock()
-	if tc.WebhookMetrics.flushes < minFlush {
-		return fmt.Errorf("expected >= %d webhook flushes, got %d", minFlush, tc.WebhookMetrics.flushes)
+	if tc.WebhookMetrics.FlushCount() < minFlush {
+		return fmt.Errorf("expected >= %d webhook flushes, got %d", minFlush, tc.WebhookMetrics.FlushCount())
 	}
 	return nil
 }

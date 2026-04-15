@@ -19,7 +19,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,45 +27,6 @@ import (
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/loki"
 )
-
-// MockLokiMetrics captures Loki-specific metric calls for BDD assertions.
-type MockLokiMetrics struct {
-	mu      sync.Mutex
-	flushes int
-	drops   int
-}
-
-// RecordLokiDrop records a drop event.
-func (m *MockLokiMetrics) RecordLokiDrop() {
-	m.mu.Lock()
-	m.drops++
-	m.mu.Unlock()
-}
-
-// RecordLokiFlush records a flush event.
-func (m *MockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) {
-	m.mu.Lock()
-	m.flushes++
-	m.mu.Unlock()
-}
-
-// RecordLokiRetry records a retry event (satisfies loki.Metrics).
-func (m *MockLokiMetrics) RecordLokiRetry(_, _ int) {}
-
-// RecordLokiError records a non-retryable error (satisfies loki.Metrics).
-func (m *MockLokiMetrics) RecordLokiError(_ int) {}
-
-func (m *MockLokiMetrics) flushCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.flushes
-}
-
-func (m *MockLokiMetrics) dropCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.drops
-}
 
 // localLokiReceiver is an httptest.Server that simulates Loki for
 // retry, SSRF, and metrics BDD scenarios.
@@ -145,7 +105,7 @@ func registerLokiReceiverSetupSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 	})
 
 	ctx.Step(`^mock loki metrics are configured$`, func() error {
-		tc.LokiMetrics = &MockLokiMetrics{}
+		tc.LokiMetrics = &MockOutputMetrics{}
 		return nil
 	})
 }
@@ -306,8 +266,8 @@ func assertMinFlushes(tc *AuditTestContext, n int) error {
 	if m == nil {
 		return fmt.Errorf("no mock loki metrics configured")
 	}
-	if m.flushCount() < n {
-		return fmt.Errorf("expected at least %d flushes, got %d", n, m.flushCount())
+	if m.FlushCount() < n {
+		return fmt.Errorf("expected at least %d flushes, got %d", n, m.FlushCount())
 	}
 	return nil
 }
@@ -321,12 +281,12 @@ func waitForDrops(tc *AuditTestContext, n int, timeout time.Duration) error {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		if m.dropCount() >= n {
+		if m.DropCount() >= n {
 			return nil
 		}
 		select {
 		case <-deadline:
-			return fmt.Errorf("timed out: wanted %d drops, got %d", n, m.dropCount())
+			return fmt.Errorf("timed out: wanted %d drops, got %d", n, m.DropCount())
 		case <-tick.C:
 		}
 	}
@@ -337,8 +297,8 @@ func assertZeroDrops(tc *AuditTestContext) error {
 	if m == nil {
 		return fmt.Errorf("no mock loki metrics configured")
 	}
-	if m.dropCount() > 0 {
-		return fmt.Errorf("expected 0 drops, got %d", m.dropCount())
+	if m.DropCount() > 0 {
+		return fmt.Errorf("expected 0 drops, got %d", m.DropCount())
 	}
 	return nil
 }
@@ -366,6 +326,11 @@ func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 	out, err := loki.New(cfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
+	}
+
+	// Inject per-output metrics via OutputMetricsReceiver if configured.
+	if tc.LokiMetrics != nil {
+		out.SetOutputMetrics(tc.LokiMetrics)
 	}
 
 	logger, err := audit.NewLogger(

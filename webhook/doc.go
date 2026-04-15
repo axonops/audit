@@ -37,7 +37,7 @@
 //	    URL:       "https://ingest.example.com/audit",
 //	    BatchSize: 50,
 //	    Timeout:   15 * time.Second,
-//	}, nil, nil) // optional audit.Metrics and webhook.Metrics
+//	}, nil) // optional audit.Metrics for pipeline delivery reporting
 //
 // Recommended import alias:
 //

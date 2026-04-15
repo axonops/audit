@@ -89,7 +89,7 @@ func newLokiOutput(t *testing.T, opts ...func(*loki.Config)) *loki.Output {
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := loki.New(cfg, nil, nil)
+	out, err := loki.New(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out

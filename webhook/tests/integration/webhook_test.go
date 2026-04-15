@@ -106,7 +106,7 @@ func newWebhookOutput(t *testing.T, opts ...func(*webhook.Config)) *webhook.Outp
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := webhook.New(cfg, nil, nil)
+	out, err := webhook.New(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out

@@ -193,7 +193,7 @@ func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := New(&tt.cfg, nil, nil)
+			_, err := New(&tt.cfg, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})

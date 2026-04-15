@@ -119,7 +119,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
@@ -224,7 +224,7 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}

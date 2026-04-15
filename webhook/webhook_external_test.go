@@ -184,7 +184,6 @@ type mockMetrics struct {
 	serializationErr map[string]int
 	mu               sync.Mutex
 	bufferDrops      int
-	webhookDrops     int
 }
 
 func newMockMetrics() *mockMetrics {
@@ -246,16 +245,6 @@ func (m *mockMetrics) RecordSubmitted() {}
 
 func (m *mockMetrics) RecordQueueDepth(_, _ int) {}
 
-// --- webhook.Metrics methods ---
-
-func (m *mockMetrics) RecordWebhookDrop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.webhookDrops++
-}
-
-func (m *mockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
-
 // --- Accessors ---
 
 func (m *mockMetrics) getEventCount(output, status string) int {
@@ -264,14 +253,52 @@ func (m *mockMetrics) getEventCount(output, status string) int {
 	return m.events[output+":"+status]
 }
 
-func (m *mockMetrics) getWebhookDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.webhookDrops
+var _ audit.Metrics = (*mockMetrics)(nil)
+
+// mockOutputMetrics implements audit.OutputMetrics for testing.
+type mockOutputMetrics struct {
+	mu      sync.Mutex
+	drops   int
+	flushes int
+	errors  int
+	retries int
 }
 
-var _ audit.Metrics = (*mockMetrics)(nil)
-var _ webhook.Metrics = (*mockMetrics)(nil)
+func (m *mockOutputMetrics) RecordDrop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.drops++
+}
+func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.flushes++
+}
+func (m *mockOutputMetrics) RecordError() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.errors++
+}
+func (m *mockOutputMetrics) RecordRetry(_ int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retries++
+}
+func (m *mockOutputMetrics) RecordQueueDepth(_, _ int) {}
+
+func (m *mockOutputMetrics) getDrops() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.drops
+}
+
+func (m *mockOutputMetrics) getRetries() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.retries
+}
+
+var _ audit.OutputMetrics = (*mockOutputMetrics)(nil)
 
 // ---------------------------------------------------------------------------
 // Test helpers: taxonomy
@@ -393,7 +420,7 @@ func newTestWebhookOutput(t *testing.T, url string, opts ...func(*webhook.Config
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := webhook.New(cfg, nil, nil)
+	out, err := webhook.New(cfg, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out
@@ -411,13 +438,13 @@ func TestNewWebhookOutput_Valid(t *testing.T) {
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
 
 func TestNewWebhookOutput_InvalidConfig(t *testing.T) {
-	_, err := webhook.New(&webhook.Config{}, nil, nil)
+	_, err := webhook.New(&webhook.Config{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must not be empty")
 }
@@ -452,7 +479,7 @@ func TestWebhookOutput_WriteAfterClose(t *testing.T) {
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -468,7 +495,7 @@ func TestWebhookOutput_CloseIdempotent(t *testing.T) {
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 	assert.NoError(t, out.Close())
 	assert.NoError(t, out.Close())
@@ -489,7 +516,7 @@ func TestWebhookOutput_CloseShutdownTimeout_ExceedsHTTPTimeout(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            100 * time.Millisecond,
 		MaxRetries:         0,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"test"}`)))
@@ -511,6 +538,7 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := newMockMetrics()
+	om := &mockOutputMetrics{}
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -520,8 +548,9 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         3, // tiny buffer
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
+	out.SetOutputMetrics(om)
 
 	// First event triggers flush (blocks on slow server).
 	// Subsequent writes fill buffer and overflow.
@@ -536,8 +565,8 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.getWebhookDrops(), 0,
-		"RecordWebhookDrop should be called for overflow")
+	assert.Greater(t, om.getDrops(), 0,
+		"OutputMetrics.RecordDrop should be called for buffer overflow")
 }
 
 // ---------------------------------------------------------------------------
@@ -615,7 +644,7 @@ func TestWebhookOutput_CloseFlushesRemaining(t *testing.T) {
 		FlushInterval:      10 * time.Second, // won't trigger on timer
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	for range 3 {
@@ -777,6 +806,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 		w.WriteHeader(503)
 	})
 	metrics := newMockMetrics()
+	om := &mockOutputMetrics{}
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -786,15 +816,18 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 		MaxRetries:         2,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
+	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"exhaust"}`+"\n")))
 	// Close blocks until batch goroutine exits (retries complete or cancelled).
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.getWebhookDrops(), 0,
-		"RecordWebhookDrop should be called on retry exhaustion")
+	assert.Greater(t, om.getDrops(), 0,
+		"OutputMetrics.RecordDrop should be called on retry exhaustion")
+	assert.Greater(t, om.getRetries(), 0,
+		"OutputMetrics.RecordRetry should be called during retry attempts")
 }
 
 // ---------------------------------------------------------------------------
@@ -859,7 +892,7 @@ func TestWebhookOutput_SSRFBlocked(t *testing.T) {
 		Timeout:            1 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"ssrf"}`+"\n")))
@@ -876,6 +909,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := newMockMetrics()
+	om := &mockOutputMetrics{}
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -885,14 +919,15 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		Timeout:            100 * time.Millisecond, // very short
 		MaxRetries:         1,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
+	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"timeout"}`+"\n")))
 	// Close blocks until batch goroutine exits (timeout + retries complete).
 	require.NoError(t, out.Close())
 
-	assert.Greater(t, metrics.getWebhookDrops(), 0,
+	assert.Greater(t, om.getDrops(), 0,
 		"timed out request should result in dropped batch")
 }
 
@@ -932,7 +967,7 @@ func TestBuildNDJSON_Empty(t *testing.T) {
 func TestNewWebhookOutput_EmbeddedCredentials_Rejected(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{
 		URL: "https://user:pass@example.com/webhook",
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must not contain credentials")
 }
@@ -941,7 +976,7 @@ func TestNewWebhookOutput_HeaderValueCRLF_Rejected(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{
 		URL:     "https://example.com/webhook",
 		Headers: map[string]string{"X-Custom": "val\r\nEvil: injected"},
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid characters")
 }
@@ -950,7 +985,7 @@ func TestNewWebhookOutput_TLSCA_NonexistentFile(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{
 		URL:   "https://example.com/webhook",
 		TLSCA: "/nonexistent/ca.pem",
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "tls file")
@@ -964,7 +999,7 @@ func TestNewWebhookOutput_TLSCA_InvalidPEM(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{
 		URL:   "https://example.com/webhook",
 		TLSCA: badCA,
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse ca certificate")
 }
@@ -974,7 +1009,7 @@ func TestNewWebhookOutput_TLSCert_NonexistentFile(t *testing.T) {
 		URL:     "https://example.com/webhook",
 		TLSCert: "/nonexistent/cert.pem",
 		TLSKey:  "/nonexistent/key.pem",
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "tls file")
@@ -992,7 +1027,7 @@ func TestWebhookOutput_ConcurrentWriteAndClose(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	// Start writers and close concurrently — exercise the race detector.
@@ -1036,7 +1071,7 @@ func TestWebhookOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"nil_policy"}`+"\n")))
@@ -1066,7 +1101,7 @@ func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"tls12_policy"}`+"\n")))
@@ -1103,7 +1138,7 @@ func TestWebhookOutput_TLS_WithCustomCA(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"tls_test"}`+"\n")))
@@ -1133,7 +1168,7 @@ func TestWebhookOutput_TLS_MTLS(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"mtls_test"}`+"\n")))
@@ -1154,6 +1189,7 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	wrongCerts := generateTestCerts(t)
 
 	metrics := newMockMetrics()
+	om := &mockOutputMetrics{}
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
 		TLSCA:              wrongCerts.caPath, // wrong CA
@@ -1163,16 +1199,15 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
+	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"wrong_ca"}`+"\n")))
 
-	// Poll for the TLS failure to be recorded as a webhook drop.
-	// This replaces time.Sleep synchronisation with an observable
-	// condition, per CLAUDE.md requirements.
+	// Poll for the TLS failure to be recorded as an output drop.
 	require.Eventually(t, func() bool {
-		return metrics.getWebhookDrops() > 0
+		return om.getDrops() > 0
 	}, 5*time.Second, 50*time.Millisecond,
 		"wrong CA should cause TLS failure and event drop")
 
@@ -1196,7 +1231,7 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
 
 	for range 3 {
@@ -1231,7 +1266,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         2,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
 
 	for range 2 {
@@ -1262,7 +1297,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         3,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
 
 	// Fill buffer — overflow events get RecordEvent(error).
@@ -1292,7 +1327,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 		FlushInterval:      50 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, metrics, metrics)
+	}, metrics)
 	require.NoError(t, err)
 
 	// Create a logger with the webhook output and metrics.
@@ -1362,7 +1397,7 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         3,
-	}, m, nil) // Metrics but no WebhookMetrics
+	}, m) // core Metrics only, no OutputMetrics (injected separately)
 	require.NoError(t, err)
 
 	// Overflow the buffer — should not panic despite nil WebhookMetrics.
@@ -1405,7 +1440,7 @@ func TestWebhookOutput_Close_InFlightRequestCompletes(t *testing.T) {
 		BufferSize:         10,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	// Write one event — BatchSize=1 triggers immediate flush (HTTP in-flight).
@@ -1439,7 +1474,7 @@ func TestNewWebhookOutput_TLSCert_IsDirectory(t *testing.T) {
 		URL:     "https://example.com/webhook",
 		TLSCert: dir,
 		TLSKey:  dir,
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "directory")
@@ -1450,7 +1485,7 @@ func TestNewWebhookOutput_TLSCA_IsDirectory(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{
 		URL:   "https://example.com/webhook",
 		TLSCA: dir,
-	}, nil, nil)
+	}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "directory")

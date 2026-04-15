@@ -241,7 +241,7 @@ func registerLokiHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, excludeLabels []string) error {
 	cfg := defaultLokiTestConfig(tc)
 
-	out, err := loki.New(cfg, nil, nil)
+	out, err := loki.New(cfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -290,7 +290,7 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVersion string) error {
 	cfg := defaultLokiTestConfig(tc)
 
-	out, err := loki.New(cfg, nil, nil)
+	out, err := loki.New(cfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

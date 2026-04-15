@@ -457,7 +457,7 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 	applyLokiTestDefaults(tc, cfg)
 
-	out, err := loki.New(cfg, nil, nil)
+	out, err := loki.New(cfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -478,7 +478,7 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 }
 
 func tryCreateLokiOutput(tc *AuditTestContext, cfg *loki.Config) error {
-	_, err := loki.New(cfg, nil, nil)
+	_, err := loki.New(cfg, nil)
 	tc.LastErr = err
 	return nil
 }

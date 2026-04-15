@@ -47,11 +47,10 @@ type MockMetrics struct { //nolint:govet // fieldalignment: readability preferre
 	// EventCh is signalled (non-blocking) on every RecordEvent call.
 	// It is buffered to 1000 entries and is consumed internally by
 	// [MockMetrics.WaitForMetric]; consumers do not need to read it.
-	EventCh      chan struct{}
-	Mu           sync.Mutex
-	BufferDrops  int
-	WebhookDrops int
-	Submitted    int
+	EventCh     chan struct{}
+	Mu          sync.Mutex
+	BufferDrops int
+	Submitted   int
 }
 
 // NewMockMetrics creates a ready-to-use MockMetrics.
@@ -129,16 +128,6 @@ func (m *MockMetrics) RecordQueueDepth(depth, capacity int) {
 	m.QueueDepths = append(m.QueueDepths, QueueDepthRecord{Depth: depth, Capacity: capacity})
 }
 
-// --- webhook.Metrics methods (structural satisfaction) ---
-
-func (m *MockMetrics) RecordWebhookDrop() {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.WebhookDrops++
-}
-
-func (m *MockMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
-
 // --- file.Metrics methods (structural satisfaction) ---
 
 func (m *MockMetrics) RecordFileRotation(path string) {
@@ -211,13 +200,6 @@ func (m *MockMetrics) GetSerializationErrorCount(eventType string) int {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	return m.SerializationErrors[eventType]
-}
-
-// GetWebhookDrops returns the total number of webhook drops recorded.
-func (m *MockMetrics) GetWebhookDrops() int {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	return m.WebhookDrops
 }
 
 // GetBufferDrops returns the total number of buffer drops recorded.

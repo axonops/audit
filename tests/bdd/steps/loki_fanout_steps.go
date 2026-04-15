@@ -220,7 +220,7 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
-	lokiOut, err := loki.New(lokiCfg, nil, nil)
+	lokiOut, err := loki.New(lokiCfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -273,7 +273,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
-	lokiOut, err := loki.New(lokiCfg, nil, nil)
+	lokiOut, err := loki.New(lokiCfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -326,7 +326,7 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 		Compress:           false,
 	}
 
-	lokiOut, err := loki.New(lokiCfg, nil, nil)
+	lokiOut, err := loki.New(lokiCfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

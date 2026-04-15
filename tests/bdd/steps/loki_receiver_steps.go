@@ -363,12 +363,7 @@ func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 		cfg.BufferSize = 100
 	}
 
-	var lokiMetrics loki.Metrics
-	if tc.LokiMetrics != nil {
-		lokiMetrics = tc.LokiMetrics
-	}
-
-	out, err := loki.New(cfg, nil, lokiMetrics)
+	out, err := loki.New(cfg, nil)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

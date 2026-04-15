@@ -16,13 +16,11 @@ package webhook_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
-	"github.com/axonops/audit/webhook"
 )
 
 func TestWebhookFactory_RegisteredByInit(t *testing.T) {
@@ -155,26 +153,6 @@ func TestWebhookFactory_WithTLSPolicy(t *testing.T) {
 	t.Cleanup(func() { _ = out.Close() })
 }
 
-func TestWebhookNewFactory_WithMetrics(t *testing.T) {
-	metrics := &mockWebhookMetrics{}
-	factory := webhook.NewFactory(metrics)
-
-	yaml := []byte("url: https://example.com/events\n")
-	out, err := factory("with_metrics", yaml, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-	assert.Equal(t, "with_metrics", out.Name())
-}
-
-func TestWebhookNewFactory_NilMetrics(t *testing.T) {
-	factory := webhook.NewFactory(nil)
-
-	yaml := []byte("url: https://example.com/events\n")
-	out, err := factory("nil_metrics", yaml, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-}
-
 func TestWebhookFactory_DurationParsing(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -209,11 +187,6 @@ func TestWebhookFactory_DurationParsing(t *testing.T) {
 		})
 	}
 }
-
-type mockWebhookMetrics struct{}
-
-func (m *mockWebhookMetrics) RecordWebhookDrop()                        {}
-func (m *mockWebhookMetrics) RecordWebhookFlush(_ int, _ time.Duration) {}
 
 func TestWebhookFactory_ExplicitZeroMaxRetries_Rejected(t *testing.T) {
 	yaml := []byte("url: https://example.com/events\nmax_retries: 0\n")

@@ -522,7 +522,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: bs,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -715,7 +715,7 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil, nil)
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}
@@ -752,7 +752,7 @@ func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) er
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil, nil)
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}

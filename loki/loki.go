@@ -43,6 +43,7 @@ var (
 	_ audit.DeliveryReporter       = (*Output)(nil)
 	_ audit.DestinationKeyer       = (*Output)(nil)
 	_ audit.FrameworkFieldReceiver = (*Output)(nil)
+	_ audit.OutputMetricsReceiver  = (*Output)(nil)
 )
 
 // errRedirectBlocked is returned by the HTTP client's CheckRedirect
@@ -74,20 +75,20 @@ type frameworkFields struct {
 // Events are buffered and flushed in batches based on count, byte
 // size, or time interval — whichever threshold is reached first.
 type Output struct { //nolint:govet // fieldalignment: readability preferred
-	cfg         *Config
-	metrics     audit.Metrics  // core pipeline metrics (optional)
-	lokiMetrics Metrics        // loki-specific metrics (optional)
-	ch          chan lokiEntry // buffered input channel
-	done        chan struct{}  // signals batch goroutine exit
-	closeCh     chan struct{}  // signals batchLoop to drain and exit
-	cancel      context.CancelFunc
-	client      *http.Client
-	name        string // "loki:<host>", cached at construction
-	mu          sync.Mutex
-	closed      atomic.Bool
-	fw          atomic.Pointer[frameworkFields]
-	logger      *slog.Logger
-	drops       dropLimiter // rate-limits buffer-full warnings
+	cfg           *Config
+	metrics       audit.Metrics       // core pipeline metrics (optional)
+	outputMetrics audit.OutputMetrics // unified per-output metrics (may be nil)
+	ch            chan lokiEntry      // buffered input channel
+	done          chan struct{}       // signals batch goroutine exit
+	closeCh       chan struct{}       // signals batchLoop to drain and exit
+	cancel        context.CancelFunc
+	client        *http.Client
+	name          string // "loki:<host>", cached at construction
+	mu            sync.Mutex
+	closed        atomic.Bool
+	fw            atomic.Pointer[frameworkFields]
+	logger        *slog.Logger
+	drops         dropLimiter // rate-limits buffer-full warnings
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams      map[string]*lokiStream // reused across flushes
@@ -102,9 +103,10 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 
 // New creates a new Loki [Output] from the given config. It validates
 // the config, builds an SSRF-safe HTTP client, and starts the
-// background batch goroutine. Both metrics parameters are optional
-// (may be nil).
-func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, error) {
+// background batch goroutine. The metrics parameter is optional
+// (may be nil). Per-output metrics are injected via
+// [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
+func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
@@ -158,17 +160,16 @@ func New(cfg *Config, metrics audit.Metrics, lokiMetrics Metrics) (*Output, erro
 	ctx, cancel := context.WithCancel(context.Background())
 
 	o := &Output{
-		cfg:         cfg,
-		metrics:     metrics,
-		lokiMetrics: lokiMetrics,
-		logger:      slog.Default(),
-		ch:          make(chan lokiEntry, cfg.BufferSize),
-		closeCh:     make(chan struct{}),
-		cancel:      cancel,
-		done:        make(chan struct{}),
-		client:      client,
-		name:        lokiName(cfg.URL),
-		streams:     make(map[string]*lokiStream),
+		cfg:     cfg,
+		metrics: metrics,
+		logger:  slog.Default(),
+		ch:      make(chan lokiEntry, cfg.BufferSize),
+		closeCh: make(chan struct{}),
+		cancel:  cancel,
+		done:    make(chan struct{}),
+		client:  client,
+		name:    lokiName(cfg.URL),
+		streams: make(map[string]*lokiStream),
 	}
 	o.compressDest = &o.compressBuf // default; overridden in tests
 
@@ -206,12 +207,12 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		return nil
 	default:
 		o.drops.record(dropWarnInterval, func(dropped int64) {
-			o.logger.Warn("audit: loki buffer full, events dropped",
+			o.logger.Warn("audit: output loki: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
-		if o.lokiMetrics != nil {
-			o.lokiMetrics.RecordLokiDrop()
+		if o.outputMetrics != nil {
+			o.outputMetrics.RecordDrop()
 		}
 		if o.metrics != nil {
 			o.metrics.RecordEvent(o.Name(), "error")
@@ -265,6 +266,11 @@ func (o *Output) Close() error {
 // its own delivery metrics from the batch goroutine after actual HTTP
 // delivery, not from the Write enqueue path.
 func (o *Output) ReportsDelivery() bool { return true }
+
+// SetOutputMetrics receives the per-output metrics instance.
+func (o *Output) SetOutputMetrics(m audit.OutputMetrics) {
+	o.outputMetrics = m
+}
 
 // Name returns the human-readable identifier for this output.
 func (o *Output) Name() string { return o.name }

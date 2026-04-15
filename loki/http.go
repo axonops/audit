@@ -73,7 +73,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			}
 		}
 
-		retryable, status, err := o.doPost(ctx, body, compressed)
+		retryable, _, err := o.doPost(ctx, body, compressed)
 		if err == nil {
 			o.recordSuccess(batchSize, time.Since(start))
 			return
@@ -83,12 +83,12 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 			o.logger.Error("audit: loki non-retryable error",
 				"error", err,
 				"batch_size", batchSize)
-			o.recordError(status)
+			o.recordError()
 			o.recordDrop(batchSize)
 			return
 		}
 
-		o.recordRetry(status, attempt+1)
+		o.recordRetry(attempt + 1)
 		o.logger.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
@@ -176,8 +176,8 @@ func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
-	if o.lokiMetrics != nil {
-		o.lokiMetrics.RecordLokiFlush(batchSize, dur)
+	if o.outputMetrics != nil {
+		o.outputMetrics.RecordFlush(batchSize, dur)
 	}
 	if o.metrics != nil {
 		name := o.Name()
@@ -191,8 +191,8 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 func (o *Output) recordDrop(count int) {
 	name := o.Name()
 	for range count {
-		if o.lokiMetrics != nil {
-			o.lokiMetrics.RecordLokiDrop()
+		if o.outputMetrics != nil {
+			o.outputMetrics.RecordDrop()
 		}
 		if o.metrics != nil {
 			o.metrics.RecordEvent(name, "error")
@@ -200,17 +200,17 @@ func (o *Output) recordDrop(count int) {
 	}
 }
 
-// recordRetry records a retry attempt in loki-specific metrics.
-func (o *Output) recordRetry(statusCode, attempt int) {
-	if o.lokiMetrics != nil && statusCode > 0 {
-		o.lokiMetrics.RecordLokiRetry(statusCode, attempt)
+// recordRetry records a retry attempt in output metrics.
+func (o *Output) recordRetry(attempt int) {
+	if o.outputMetrics != nil {
+		o.outputMetrics.RecordRetry(attempt)
 	}
 }
 
-// recordError records a non-retryable error in loki-specific metrics.
-func (o *Output) recordError(statusCode int) {
-	if o.lokiMetrics != nil && statusCode > 0 {
-		o.lokiMetrics.RecordLokiError(statusCode)
+// recordError records a non-retryable error in output metrics.
+func (o *Output) recordError() {
+	if o.outputMetrics != nil {
+		o.outputMetrics.RecordError()
 	}
 }
 

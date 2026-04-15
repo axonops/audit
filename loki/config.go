@@ -86,25 +86,6 @@ const (
 	MinBufferSize = 100
 )
 
-// Metrics is an optional interface for recording Loki output
-// operational metrics. Pass nil to disable metrics collection.
-type Metrics interface {
-	// RecordLokiDrop is called when an event is dropped (buffer full
-	// or retries exhausted).
-	RecordLokiDrop()
-
-	// RecordLokiFlush is called after each successful push to Loki.
-	RecordLokiFlush(batchSize int, dur time.Duration)
-
-	// RecordLokiRetry is called when a push is retried after a 429
-	// or 5xx response.
-	RecordLokiRetry(statusCode int, attempt int)
-
-	// RecordLokiError is called when a push fails with a non-retryable
-	// error (4xx except 429) or after all retries are exhausted.
-	RecordLokiError(statusCode int)
-}
-
 // validLabelName matches Loki's label name requirement.
 var validLabelName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 

@@ -16,7 +16,6 @@ package audittest
 
 import (
 	"sync"
-	"time"
 
 	"github.com/axonops/audit"
 )
@@ -41,16 +40,10 @@ type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over
 	bufferDrops         int
 	submitted           int
 
-	// Per-output metrics (satisfies file.Metrics, syslog.Metrics,
-	// webhook.Metrics, loki.Metrics via structural typing).
+	// Per-output metrics (satisfies file.Metrics, syslog.Metrics
+	// via structural typing for output-specific extensions).
 	fileRotations    map[string]int // path → count
 	syslogReconnects map[string]int // "address:success"/"address:failure" → count
-	webhookDrops     int
-	webhookFlushes   int
-	lokiDrops        int
-	lokiFlushes      int
-	lokiRetries      int
-	lokiErrors       int
 }
 
 // NewMetricsRecorder creates a MetricsRecorder ready for use with
@@ -204,48 +197,6 @@ func (m *MetricsRecorder) RecordSyslogReconnect(address string, success bool) {
 	m.mu.Unlock()
 }
 
-// RecordWebhookDrop satisfies webhook.Metrics.
-func (m *MetricsRecorder) RecordWebhookDrop() {
-	m.mu.Lock()
-	m.webhookDrops++
-	m.mu.Unlock()
-}
-
-// RecordWebhookFlush satisfies webhook.Metrics.
-func (m *MetricsRecorder) RecordWebhookFlush(_ int, _ time.Duration) {
-	m.mu.Lock()
-	m.webhookFlushes++
-	m.mu.Unlock()
-}
-
-// RecordLokiDrop satisfies loki.Metrics.
-func (m *MetricsRecorder) RecordLokiDrop() {
-	m.mu.Lock()
-	m.lokiDrops++
-	m.mu.Unlock()
-}
-
-// RecordLokiFlush satisfies loki.Metrics.
-func (m *MetricsRecorder) RecordLokiFlush(_ int, _ time.Duration) {
-	m.mu.Lock()
-	m.lokiFlushes++
-	m.mu.Unlock()
-}
-
-// RecordLokiRetry satisfies loki.Metrics.
-func (m *MetricsRecorder) RecordLokiRetry(_, _ int) {
-	m.mu.Lock()
-	m.lokiRetries++
-	m.mu.Unlock()
-}
-
-// RecordLokiError satisfies loki.Metrics.
-func (m *MetricsRecorder) RecordLokiError(_ int) {
-	m.mu.Lock()
-	m.lokiErrors++
-	m.mu.Unlock()
-}
-
 // --- Per-output query methods ---
 
 // FileRotations returns the count of file rotations for the given path.
@@ -267,48 +218,6 @@ func (m *MetricsRecorder) SyslogReconnects(address string, success bool) int {
 	return m.syslogReconnects[key]
 }
 
-// WebhookDrops returns the total count of webhook event drops.
-func (m *MetricsRecorder) WebhookDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.webhookDrops
-}
-
-// WebhookFlushes returns the total count of webhook batch flushes.
-func (m *MetricsRecorder) WebhookFlushes() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.webhookFlushes
-}
-
-// LokiDrops returns the total count of Loki event drops.
-func (m *MetricsRecorder) LokiDrops() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.lokiDrops
-}
-
-// LokiFlushes returns the total count of Loki batch flushes.
-func (m *MetricsRecorder) LokiFlushes() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.lokiFlushes
-}
-
-// LokiRetries returns the total count of Loki push retries.
-func (m *MetricsRecorder) LokiRetries() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.lokiRetries
-}
-
-// LokiErrors returns the total count of Loki push errors.
-func (m *MetricsRecorder) LokiErrors() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.lokiErrors
-}
-
 // Reset clears all recorded metrics.
 func (m *MetricsRecorder) Reset() {
 	m.mu.Lock()
@@ -321,11 +230,6 @@ func (m *MetricsRecorder) Reset() {
 	m.fileRotations = make(map[string]int)
 	m.syslogReconnects = make(map[string]int)
 	m.bufferDrops = 0
-	m.webhookDrops = 0
-	m.webhookFlushes = 0
-	m.lokiDrops = 0
-	m.lokiFlushes = 0
-	m.lokiRetries = 0
-	m.lokiErrors = 0
+	m.submitted = 0
 	m.mu.Unlock()
 }

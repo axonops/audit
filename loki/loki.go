@@ -76,11 +76,11 @@ type frameworkFields struct {
 // size, or time interval — whichever threshold is reached first.
 type Output struct { //nolint:govet // fieldalignment: readability preferred
 	cfg           *Config
-	metrics       audit.Metrics       // core pipeline metrics (optional)
-	outputMetrics audit.OutputMetrics // unified per-output metrics (may be nil)
-	ch            chan lokiEntry      // buffered input channel
-	done          chan struct{}       // signals batch goroutine exit
-	closeCh       chan struct{}       // signals batchLoop to drain and exit
+	metrics       audit.Metrics                       // core pipeline metrics (optional)
+	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
+	ch            chan lokiEntry                      // buffered input channel
+	done          chan struct{}                       // signals batch goroutine exit
+	closeCh       chan struct{}                       // signals batchLoop to drain and exit
 	cancel        context.CancelFunc
 	client        *http.Client
 	name          string // "loki:<host>", cached at construction
@@ -211,8 +211,8 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
-		if o.outputMetrics != nil {
-			o.outputMetrics.RecordDrop()
+		if omp := o.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
 			o.metrics.RecordEvent(o.Name(), "error")
@@ -248,9 +248,12 @@ func (o *Output) Close() error {
 	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
 	// final flush) plus 5s buffer for backoff and channel drain.
 	shutdownTimeout := 2*o.cfg.Timeout + 5*time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-o.done:
-	case <-time.After(shutdownTimeout):
+	case <-timer.C:
 		o.logger.Error("audit: loki batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
@@ -269,7 +272,7 @@ func (o *Output) ReportsDelivery() bool { return true }
 
 // SetOutputMetrics receives the per-output metrics instance.
 func (o *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	o.outputMetrics = m
+	o.outputMetrics.Store(&m)
 }
 
 // Name returns the human-readable identifier for this output.

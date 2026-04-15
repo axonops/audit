@@ -176,8 +176,8 @@ func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
-	if o.outputMetrics != nil {
-		o.outputMetrics.RecordFlush(batchSize, dur)
+	if omp := o.outputMetrics.Load(); omp != nil {
+		(*omp).RecordFlush(batchSize, dur)
 	}
 	if o.metrics != nil {
 		name := o.Name()
@@ -191,8 +191,8 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 func (o *Output) recordDrop(count int) {
 	name := o.Name()
 	for range count {
-		if o.outputMetrics != nil {
-			o.outputMetrics.RecordDrop()
+		if omp := o.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
 			o.metrics.RecordEvent(name, "error")
@@ -202,15 +202,15 @@ func (o *Output) recordDrop(count int) {
 
 // recordRetry records a retry attempt in output metrics.
 func (o *Output) recordRetry(attempt int) {
-	if o.outputMetrics != nil {
-		o.outputMetrics.RecordRetry(attempt)
+	if omp := o.outputMetrics.Load(); omp != nil {
+		(*omp).RecordRetry(attempt)
 	}
 }
 
 // recordError records a non-retryable error in output metrics.
 func (o *Output) recordError() {
-	if o.outputMetrics != nil {
-		o.outputMetrics.RecordError()
+	if omp := o.outputMetrics.Load(); omp != nil {
+		(*omp).RecordError()
 	}
 }
 

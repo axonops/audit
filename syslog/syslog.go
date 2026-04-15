@@ -21,6 +21,7 @@ package syslog
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -147,17 +148,19 @@ type syslogEntry struct {
 // Output is safe for concurrent use.
 type Output struct {
 	writer        *srslog.Writer
-	tlsCfg        *tls.Config         // cached for reconnection; nil for non-TLS
-	syslogMetrics Metrics             // optional; nil disables syslog-specific metrics
-	outputMetrics audit.OutputMetrics // unified per-output metrics (may be nil)
-	logger        *slog.Logger        // diagnostic logger; set via SetLogger
-	ch            chan syslogEntry    // async buffer
-	closeCh       chan struct{}       // signals writeLoop to drain and exit
-	done          chan struct{}       // closed when writeLoop exits
+	tlsCfg        *tls.Config                         // cached for reconnection; nil for non-TLS
+	syslogMetrics atomic.Pointer[Metrics]             // extension: RecordSyslogReconnect (may be nil)
+	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
+	logger        *slog.Logger                        // diagnostic logger; set via SetLogger
+	ch            chan syslogEntry                    // async buffer
+	closeCh       chan struct{}                       // signals writeLoop to drain and exit
+	done          chan struct{}                       // closed when writeLoop exits
+	name          string                              // cached Name() result
 	address       string
 	network       string
 	appName       string
 	hostname      string
+	writeCount    uint64      // drain-side event counter for RecordQueueDepth sampling
 	drops         dropLimiter // rate-limits buffer-full drop warnings
 	closed        atomic.Bool
 	mu            sync.Mutex      // protects Close sequence
@@ -212,18 +215,21 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 	}
 
 	s := &Output{
-		tlsCfg:        tlsCfg,
-		syslogMetrics: syslogMetrics,
-		logger:        slog.Default(),
-		ch:            make(chan syslogEntry, bufSize),
-		closeCh:       make(chan struct{}),
-		done:          make(chan struct{}),
-		address:       cfg.Address,
-		network:       cfg.Network,
-		appName:       cfg.AppName,
-		hostname:      hostname,
-		facility:      priority, // parseFacility returns facility bits only
-		maxRetry:      maxRetry,
+		tlsCfg:   tlsCfg,
+		logger:   slog.Default(),
+		ch:       make(chan syslogEntry, bufSize),
+		closeCh:  make(chan struct{}),
+		done:     make(chan struct{}),
+		name:     "syslog:" + cfg.Address,
+		address:  cfg.Address,
+		network:  cfg.Network,
+		appName:  cfg.AppName,
+		hostname: hostname,
+		facility: priority, // parseFacility returns facility bits only
+		maxRetry: maxRetry,
+	}
+	if syslogMetrics != nil {
+		s.syslogMetrics.Store(&syslogMetrics)
 	}
 
 	if err := s.connect(); err != nil {
@@ -269,8 +275,8 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 				"dropped", dropped,
 				"buffer_size", cap(s.ch))
 		})
-		if s.outputMetrics != nil {
-			s.outputMetrics.RecordDrop()
+		if omp := s.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}
@@ -292,9 +298,12 @@ func (s *Output) Close() error {
 
 	// Wait for writeLoop to finish draining.
 	shutdownTimeout := 10 * time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-s.done:
-	case <-time.After(shutdownTimeout):
+	case <-timer.C:
 		remaining := len(s.ch)
 		s.logger.Error("audit: output syslog: shutdown timeout, events lost",
 			"timeout", shutdownTimeout,
@@ -317,17 +326,17 @@ func (s *Output) ReportsDelivery() bool { return true }
 
 // SetOutputMetrics receives the per-output metrics instance.
 func (s *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	s.outputMetrics = m
+	s.outputMetrics.Store(&m)
 	// Check if the OutputMetrics also implements the syslog-specific
 	// Metrics extension interface for reconnection recording.
 	if sm, ok := m.(Metrics); ok {
-		s.syslogMetrics = sm
+		s.syslogMetrics.Store(&sm)
 	}
 }
 
 // Name returns the human-readable identifier for this output.
 func (s *Output) Name() string {
-	return "syslog:" + s.address
+	return s.name
 }
 
 // DestinationKey returns the syslog server address, enabling
@@ -380,9 +389,19 @@ func (s *Output) writeLoop() {
 	}
 }
 
+// errSyslogNotConnected is returned when the syslog writer is nil
+// (previous reconnect failed). Pre-allocated to avoid per-event alloc.
+var errSyslogNotConnected = errors.New("audit: syslog writer not connected")
+
 // writeEntry writes a single event to the syslog server with panic
 // recovery and reconnection handling.
-func (s *Output) writeEntry(entry syslogEntry) {
+func (s *Output) writeEntry(entry syslogEntry) { //nolint:gocyclo,cyclop // event write with recovery and reconnection
+	// Load metrics once per event for consistent snapshot.
+	var om audit.OutputMetrics
+	if omp := s.outputMetrics.Load(); omp != nil {
+		om = *omp
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
@@ -390,40 +409,49 @@ func (s *Output) writeEntry(entry syslogEntry) {
 			s.logger.Error("audit: output syslog: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
-			if s.outputMetrics != nil {
-				s.outputMetrics.RecordError()
+			if om != nil {
+				om.RecordError()
 			}
 		}
 	}()
 
-	start := time.Now()
+	// Sample queue depth every 64 events.
+	s.writeCount++
+	if om != nil && s.writeCount&63 == 0 {
+		om.RecordQueueDepth(len(s.ch), cap(s.ch))
+	}
+
+	var start time.Time
+	if om != nil {
+		start = time.Now()
+	}
 
 	// Attempt write. If the writer is nil (previous reconnect failed),
 	// treat as a write failure.
 	var writeErr error
 	if s.writer == nil {
-		writeErr = fmt.Errorf("audit: syslog writer not connected")
+		writeErr = errSyslogNotConnected
 	} else if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
 		writeErr = err
 	}
 
 	if writeErr == nil {
 		s.failures = 0
-		if s.outputMetrics != nil {
-			s.outputMetrics.RecordFlush(1, time.Since(start))
+		if om != nil {
+			om.RecordFlush(1, time.Since(start))
 		}
 		return
 	}
 
 	// Write failed — attempt reconnection with backoff.
-	s.handleWriteFailure(entry, writeErr)
+	s.handleWriteFailure(entry, writeErr, om)
 }
 
 // handleWriteFailure attempts reconnection with bounded exponential
 // backoff. Called from writeLoop (single goroutine — no mutex needed).
 // On success, retries the original write. On exhaustion, drops the
 // event.
-func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error) { //nolint:gocyclo,cyclop // reconnection with backoff
+func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.OutputMetrics) { //nolint:gocyclo,cyclop // reconnection with backoff
 	s.failures++
 
 	if s.failures > s.maxRetry {
@@ -431,8 +459,8 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error) { //nolin
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
-		if s.outputMetrics != nil {
-			s.outputMetrics.RecordError()
+		if om != nil {
+			om.RecordError()
 		}
 		return
 	}
@@ -449,17 +477,26 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error) { //nolin
 		"attempt", s.failures,
 		"backoff", backoff)
 
-	if s.outputMetrics != nil {
-		s.outputMetrics.RecordRetry(s.failures)
+	if om != nil {
+		om.RecordRetry(s.failures)
 	}
 
 	// Sleep with closeCh interrupt — no mutex to release since the
 	// writeLoop goroutine owns the connection exclusively.
+	timer := time.NewTimer(backoff)
 	select {
-	case <-time.After(backoff):
+	case <-timer.C:
 	case <-s.closeCh:
+		timer.Stop()
 		// Shutting down — don't reconnect, just drop.
 		return
+	}
+	timer.Stop()
+
+	// Load syslog extension metrics for reconnect recording.
+	var sm Metrics
+	if smp := s.syslogMetrics.Load(); smp != nil {
+		sm = *smp
 	}
 
 	if err := s.connect(); err != nil {
@@ -467,30 +504,30 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error) { //nolin
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
-		if s.syslogMetrics != nil {
-			s.syslogMetrics.RecordSyslogReconnect(s.address, false)
+		if sm != nil {
+			sm.RecordSyslogReconnect(s.address, false)
 		}
 		return
 	}
 
 	s.logger.Info("audit: syslog reconnected", "address", s.address)
-	if s.syslogMetrics != nil {
-		s.syslogMetrics.RecordSyslogReconnect(s.address, true)
+	if sm != nil {
+		sm.RecordSyslogReconnect(s.address, true)
 	}
 
 	// Retry the write on the new connection.
 	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
 		s.logger.Error("audit: output syslog: delivery failed after reconnect",
 			"error", err)
-		if s.outputMetrics != nil {
-			s.outputMetrics.RecordError()
+		if om != nil {
+			om.RecordError()
 		}
 		return
 	}
 
 	s.failures = 0
-	if s.outputMetrics != nil {
-		s.outputMetrics.RecordFlush(1, 0) // duration not meaningful after reconnect
+	if om != nil {
+		om.RecordFlush(1, 0) // duration not meaningful after reconnect
 	}
 }
 
@@ -501,15 +538,31 @@ func (s *Output) drainRemaining() {
 	for {
 		select {
 		case entry := <-s.ch:
-			// No reconnection during drain: if write fails, drop.
-			if s.writer != nil {
-				if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-					s.logger.Error("audit: output syslog: delivery failed during drain",
-						"error", err)
-				}
-			}
+			s.drainOne(entry)
 		default:
 			return
+		}
+	}
+}
+
+// drainOne writes a single event during drain with panic recovery.
+// No reconnection is attempted — if the write fails, the event is
+// dropped.
+func (s *Output) drainOne(entry syslogEntry) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			s.logger.Error("audit: output syslog: panic recovered during drain",
+				"panic", r,
+				"stack", string(buf[:n]))
+		}
+	}()
+
+	if s.writer != nil {
+		if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
+			s.logger.Error("audit: output syslog: delivery failed during drain",
+				"error", err)
 		}
 	}
 }

@@ -86,7 +86,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // Output is safe for concurrent use.
 type Output struct {
 	metrics       audit.Metrics
-	outputMetrics audit.OutputMetrics // unified per-output metrics (may be nil)
+	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
 	client        *http.Client
 	logger        *slog.Logger
 	cancel        context.CancelFunc
@@ -209,8 +209,8 @@ func (w *Output) Write(data []byte) error {
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
-		if w.outputMetrics != nil {
-			w.outputMetrics.RecordDrop()
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
 			w.metrics.RecordEvent(w.Name(), "error")
@@ -241,9 +241,12 @@ func (w *Output) Close() error {
 	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
 	// final flush) plus 5s buffer for backoff and channel drain.
 	shutdownTimeout := 2*w.timeout + 5*time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-w.done:
-	case <-time.After(shutdownTimeout):
+	case <-timer.C:
 		w.logger.Error("audit: webhook batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
@@ -262,7 +265,7 @@ func (w *Output) ReportsDelivery() bool { return true }
 
 // SetOutputMetrics receives the per-output metrics instance.
 func (w *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	w.outputMetrics = m
+	w.outputMetrics.Store(&m)
 }
 
 // Name returns the human-readable identifier for this output.

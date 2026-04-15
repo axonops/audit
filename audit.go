@@ -412,7 +412,8 @@ func (l *Logger) closeOutputs() error {
 	// Overall close timeout: drain timeout covers the per-output buffer
 	// drain. If any output hangs beyond this, we log and move on.
 	closeTimeout := l.cfg.DrainTimeout + 5*time.Second
-	deadline := time.After(closeTimeout)
+	deadlineTimer := time.NewTimer(closeTimeout)
+	defer deadlineTimer.Stop()
 
 	var closeErrs []error
 	collected := 0
@@ -426,7 +427,7 @@ func (l *Logger) closeOutputs() error {
 					"error", r.err)
 				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", r.name, r.err))
 			}
-		case <-deadline:
+		case <-deadlineTimer.C:
 			remaining := len(l.entries) - collected
 			l.logger.Error("audit: output close timed out",
 				"timeout", closeTimeout,
@@ -444,9 +445,12 @@ func (l *Logger) closeOutputs() error {
 // timeout. No extra goroutine is spawned; we select on the drainDone
 // channel that drainLoop closes when it exits.
 func (l *Logger) waitForDrain() {
+	timer := time.NewTimer(l.cfg.DrainTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-l.drainDone:
-	case <-time.After(l.cfg.DrainTimeout):
+	case <-timer.C:
 		l.logger.Warn("audit: drain timed out, some events may be lost",
 			"drain_timeout", l.cfg.DrainTimeout,
 			"buffer_remaining", len(l.ch))

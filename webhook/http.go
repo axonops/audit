@@ -52,8 +52,8 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 			w.logger.Error("audit: output webhook: non-retryable error",
 				"error", err,
 				"batch_size", len(batch))
-			if w.outputMetrics != nil {
-				w.outputMetrics.RecordError()
+			if omp := w.outputMetrics.Load(); omp != nil {
+				(*omp).RecordError()
 			}
 			w.recordDrop(len(batch))
 			return
@@ -63,8 +63,8 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
 			"error", err)
-		if w.outputMetrics != nil {
-			w.outputMetrics.RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
 		}
 	}
 
@@ -72,8 +72,8 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 	w.logger.Error("audit: output webhook: retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
-	if w.outputMetrics != nil {
-		w.outputMetrics.RecordError()
+	if omp := w.outputMetrics.Load(); omp != nil {
+		(*omp).RecordError()
 	}
 	w.recordDrop(len(batch))
 }
@@ -126,8 +126,8 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
-	if w.outputMetrics != nil {
-		w.outputMetrics.RecordFlush(batchSize, dur)
+	if omp := w.outputMetrics.Load(); omp != nil {
+		(*omp).RecordFlush(batchSize, dur)
 	}
 	if w.metrics != nil {
 		name := w.Name()
@@ -144,8 +144,8 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 func (w *Output) recordDrop(count int) {
 	name := w.Name()
 	for range count {
-		if w.outputMetrics != nil {
-			w.outputMetrics.RecordDrop()
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
 			w.metrics.RecordEvent(name, "error")

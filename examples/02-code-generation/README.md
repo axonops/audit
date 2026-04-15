@@ -238,7 +238,7 @@ result, err := outputconfig.Load(ctx, outputsYAML, &tax, nil)
 Or use the facade — one call instead of three steps:
 
 ```go
-logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
+logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
 ```
 
 ### Two Files, Two Purposes

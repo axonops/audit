@@ -49,18 +49,11 @@ func main() {
 		defer func() { _ = appLog.Close() }()
 	}
 
-	// Parse taxonomy.
-	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
-	if err != nil {
-		appLogger.Error("fatal: parse taxonomy", "error", err)
-		return
-	}
-
 	// Set up Prometheus metrics.
 	metrics := newMetrics()
 
 	// Set up audit logger with four outputs.
-	logger, err := setupAuditLogger(tax, metrics)
+	logger, err := setupAuditLogger(metrics)
 	if err != nil {
 		appLogger.Error("fatal: setup audit logger", "error", err)
 		return

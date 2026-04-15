@@ -16,8 +16,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/axonops/audit"
 	_ "github.com/axonops/audit/file" // register "file" output type
@@ -25,10 +23,10 @@ import (
 	"github.com/axonops/audit/outputconfig"
 )
 
-// setupAuditLogger loads outputs.yaml from the filesystem and creates
-// the logger. The taxonomy is embedded (compile-time contract), but
-// output configuration is loaded at runtime so it can change per
-// environment without rebuilding the binary.
+// setupAuditLogger creates a logger using the NewLogger facade.
+// The taxonomy is embedded (compile-time contract), and output
+// configuration is loaded from the filesystem at runtime so it can
+// change per environment without rebuilding the binary.
 //
 // Blank imports register each output type's factory via init().
 // The YAML file defines which outputs are active — adding or removing
@@ -38,32 +36,12 @@ import (
 //
 // HMAC salts, versions, algorithms, and enabled flags are resolved
 // from OpenBao at startup via ref+openbao:// URIs in outputs.yaml.
-// No secrets are stored in configuration files or environment variables.
-//
 // The OpenBao provider is configured declaratively in the outputs.yaml
-// secrets: section. Environment variables BAO_ADDR and BAO_TOKEN are
-// resolved by outputconfig.Load via ${} substitution in the YAML.
-// No programmatic provider setup is needed.
-func setupAuditLogger(tax *audit.Taxonomy, m *auditMetrics) (*audit.Logger, error) {
-	// Load output configuration from the filesystem.
+// secrets: section — no programmatic provider setup is needed.
+func setupAuditLogger(m *auditMetrics) (*audit.Logger, error) {
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
-	outputsYAML, err := os.ReadFile(configPath) //nolint:gosec // config path from trusted source (env var or default)
-	if err != nil {
-		return nil, fmt.Errorf("read output config %s: %w", configPath, err)
-	}
-
-	result, err := outputconfig.Load(context.Background(), outputsYAML, tax,
-		outputconfig.WithCoreMetrics(m),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("load output config: %w", err)
-	}
-
-	opts := []audit.Option{
-		audit.WithTaxonomy(tax),
+	return outputconfig.NewLogger(context.Background(), taxonomyYAML, configPath,
+		[]outputconfig.LoadOption{outputconfig.WithCoreMetrics(m)},
 		audit.WithMetrics(m),
-	}
-	opts = append(opts, result.Options...)
-
-	return audit.NewLogger(opts...)
+	)
 }

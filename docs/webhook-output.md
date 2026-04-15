@@ -350,7 +350,7 @@ Additional protections:
 
 The webhook's internal buffer has a fixed capacity (`buffer_size`,
 default 10,000). When full, new events are **dropped** and
-`webhook.Metrics.RecordDrop()` is called.
+`OutputMetrics.RecordDrop()` is called.
 
 Common causes:
 - Webhook endpoint is down and retries are exhausting capacity

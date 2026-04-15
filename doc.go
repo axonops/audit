@@ -49,7 +49,7 @@
 //	//go:embed taxonomy.yaml
 //	var taxonomyYAML []byte
 //
-//	logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
+//	logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}

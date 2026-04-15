@@ -34,6 +34,10 @@ import (
 // from [os.Hostname]. This is useful for local development and
 // quick evaluation.
 //
+// loadOpts are forwarded to [Load] and can include [WithCoreMetrics],
+// [WithSecretProvider], [WithSecretTimeout], etc. Pass nil when no
+// load options are needed.
+//
 // Additional opts are applied after the options produced by [Load],
 // so they take precedence (last wins). Use this to add
 // [audit.WithMetrics], [audit.WithDisabled], or other overrides.
@@ -45,11 +49,7 @@ import (
 //	import _ "github.com/axonops/audit/syslog"  // syslog output
 //	import _ "github.com/axonops/audit/webhook" // webhook output
 //	import _ "github.com/axonops/audit/loki"    // loki output
-//
-// For advanced scenarios requiring secret providers, custom
-// LoadOptions, or fine-grained control, use the manual
-// [Load] + [audit.NewLogger] path instead.
-func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, opts ...audit.Option) (*audit.Logger, error) {
+func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loadOpts []LoadOption, opts ...audit.Option) (*audit.Logger, error) {
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
 		return nil, fmt.Errorf("outputconfig: parse taxonomy: %w", err)
@@ -69,7 +69,7 @@ func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath strin
 		if readErr != nil {
 			return nil, readErr
 		}
-		result, loadErr := Load(ctx, data, tax)
+		result, loadErr := Load(ctx, data, tax, loadOpts...)
 		if loadErr != nil {
 			return nil, fmt.Errorf("outputconfig: load: %w", loadErr)
 		}

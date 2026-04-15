@@ -43,7 +43,7 @@ var taxonomyYAML []byte
 func main() {
 	// 1. Parse taxonomy and load output config.
 	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

@@ -51,7 +51,7 @@ func TestNewLogger_BasicEndToEnd(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path)
+	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.NoError(t, err)
 	require.NotNil(t, logger)
 
@@ -65,7 +65,7 @@ func TestNewLogger_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
 	// User option WithDisabled should take precedence over config.
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path,
+	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil,
 		audit.WithDisabled(),
 	)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestNewLogger_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
 func TestNewLogger_EmptyPath_StdoutDevLogger(t *testing.T) {
 	t.Parallel()
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "")
+	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, logger)
 
@@ -92,7 +92,7 @@ func TestNewLogger_EmptyPath_StdoutDevLogger(t *testing.T) {
 func TestNewLogger_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml")
+	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml", nil)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, os.ErrNotExist), "should wrap os.ErrNotExist, got: %v", err)
 	assert.Contains(t, err.Error(), "nonexistent")
@@ -102,7 +102,7 @@ func TestNewLogger_InvalidTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.NewLogger(context.Background(), []byte("not: valid: taxonomy"), path)
+	_, err := outputconfig.NewLogger(context.Background(), []byte("not: valid: taxonomy"), path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
@@ -111,7 +111,7 @@ func TestNewLogger_InvalidOutputConfig(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", []byte("not: [valid: config"))
 
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path)
+	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load")
 }
@@ -120,7 +120,7 @@ func TestNewLogger_EmptyTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.NewLogger(context.Background(), nil, path)
+	_, err := outputconfig.NewLogger(context.Background(), nil, path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
@@ -129,7 +129,7 @@ func TestNewLogger_Close_FlushesEvents(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path)
+	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.NoError(t, err)
 
 	// Send events then close — should not panic or error.
@@ -144,9 +144,21 @@ func TestNewLogger_NotRegularFile(t *testing.T) {
 	dir := t.TempDir()
 
 	// Directories are not regular files.
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, dir)
+	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, dir, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
+}
+
+func TestNewLogger_WithLoadOptions(t *testing.T) {
+	t.Parallel()
+	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
+
+	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path,
+		[]outputconfig.LoadOption{outputconfig.WithCoreMetrics(nil)},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, logger)
+	require.NoError(t, logger.Close())
 }
 
 // writeTempFile creates a temporary file with the given content and

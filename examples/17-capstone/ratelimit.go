@@ -86,16 +86,14 @@ func rateLimitMiddleware(logger *audit.Logger, rl *rateLimiter, appLog ...*slog.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := clientIP(r)
 			if !rl.allow(ip) {
-				// Emit rate limit event directly.
-				fields := audit.Fields{
-					FieldOutcome: "failure",
-					FieldReason:  "too many failed authentication attempts",
-				}
+				// Emit rate limit event using generated builder.
+				ev := NewRateLimitExceededEvent("failure").
+					SetReason("too many failed authentication attempts")
 				if ip != "" {
-					fields[FieldSourceIP] = ip
+					ev.SetSourceIP(ip)
 				}
-				if err := logger.AuditEvent(audit.NewEvent(EventRateLimitExceeded, fields)); err != nil {
-					lg.Error("audit event failed", "event_type", "rate_limit_exceeded", "error", err)
+				if err := logger.AuditEvent(ev); err != nil {
+					lg.Error("audit event failed", "event_type", EventRateLimitExceeded, "error", err)
 				}
 				lg.Warn("rate limit exceeded", "ip", ip)
 

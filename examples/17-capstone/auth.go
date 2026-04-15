@@ -168,8 +168,11 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.log.Warn("login: invalid request body", "ip", clientIP(r), "error", err)
 		a.rl.record(clientIP(r))
-		a.emitAuthEvent(EventAuthFailure, "anonymous", "failure",
-			"invalid request body", r)
+		if auditErr := a.logger.AuditEvent(NewAuthFailureEvent("anonymous", "failure").
+			SetReason("invalid request body").
+			SetSourceIP(clientIP(r))); auditErr != nil {
+			a.log.Error("audit event failed", "event_type", EventAuthFailure, "error", auditErr)
+		}
 		writeLoginError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
@@ -182,15 +185,21 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	if !exists || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		a.log.Warn("login failed", "username", req.Username, "ip", clientIP(r))
 		a.rl.record(clientIP(r))
-		a.emitAuthEvent(EventAuthFailure, req.Username, "failure",
-			"invalid credentials", r)
+		if auditErr := a.logger.AuditEvent(NewAuthFailureEvent(req.Username, "failure").
+			SetReason("invalid credentials").
+			SetSourceIP(clientIP(r))); auditErr != nil {
+			a.log.Error("audit event failed", "event_type", EventAuthFailure, "error", auditErr)
+		}
 		writeLoginError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 
 	a.log.Info("login successful", "username", req.Username, "ip", clientIP(r))
 	token := a.sessions.createToken(req.Username)
-	a.emitAuthEvent(EventAuthSuccess, req.Username, "success", "", r)
+	if auditErr := a.logger.AuditEvent(NewAuthSuccessEvent(req.Username, "success").
+		SetSourceIP(clientIP(r))); auditErr != nil {
+		a.log.Error("audit event failed", "event_type", EventAuthSuccess, "error", auditErr)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -206,38 +215,30 @@ func (a *authHandlers) logout(w http.ResponseWriter, r *http.Request) {
 
 	username, err := a.sessions.validate(token)
 	if err != nil {
-		eventType := EventAuthFailure
+		var ev audit.Event
 		if errors.Is(err, errTokenExpired) {
-			eventType = EventTokenExpired
+			ev = NewTokenExpiredEvent(username, "failure").
+				SetReason("invalid session").
+				SetSourceIP(clientIP(r))
+		} else {
+			ev = NewAuthFailureEvent(username, "failure").
+				SetReason("invalid session").
+				SetSourceIP(clientIP(r))
 		}
-		a.emitAuthEvent(eventType, username, "failure", "invalid session", r)
+		if auditErr := a.logger.AuditEvent(ev); auditErr != nil {
+			a.log.Error("audit event failed", "event_type", ev.EventType(), "error", auditErr)
+		}
 		writeLoginError(w, http.StatusUnauthorized, "invalid session")
 		return
 	}
 
 	a.sessions.revoke(token)
-	a.emitAuthEvent(EventAuthLogout, username, "success", "", r)
+	if auditErr := a.logger.AuditEvent(NewAuthLogoutEvent(username, "success").
+		SetSourceIP(clientIP(r))); auditErr != nil {
+		a.log.Error("audit event failed", "event_type", EventAuthLogout, "error", auditErr)
+	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// emitAuthEvent directly emits a security audit event. This is used
-// by login/logout handlers which are outside the audit middleware.
-func (a *authHandlers) emitAuthEvent(eventType, actorID, outcome, reason string, r *http.Request) {
-	fields := audit.Fields{
-		FieldActorID: actorID,
-		FieldOutcome: outcome,
-	}
-	if reason != "" {
-		fields[FieldReason] = reason
-	}
-	if ip := clientIP(r); ip != "" {
-		fields[FieldSourceIP] = ip
-	}
-	if err := a.logger.AuditEvent(audit.NewEvent(eventType, fields)); err != nil {
-		// Log but don't fail — audit should not block auth.
-		a.log.Error("audit event failed", "event_type", eventType, "error", err)
-	}
 }
 
 // --- Auth middleware for CRUD routes ---

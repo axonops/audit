@@ -570,7 +570,7 @@ The simplest way to create a logger from YAML is the
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml")
+logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
 if err != nil {
     return fmt.Errorf("audit: %w", err)
 }

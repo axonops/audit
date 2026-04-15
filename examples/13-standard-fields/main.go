@@ -39,7 +39,7 @@ func main() {
 	// All 31 standard fields (source_ip, reason, target_id, etc.)
 	// are available automatically.
 	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml")
+	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
 		log.Fatalf("create logger: %v", err)
 	}

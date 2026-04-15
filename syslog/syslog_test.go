@@ -920,7 +920,7 @@ func TestSyslogOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 // Reconnection
 // ---------------------------------------------------------------------------
 
-func TestSyslogOutput_WriteFailure_ReturnsError(t *testing.T) {
+func TestSyslogOutput_WriteFailure_HandledInBackground(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
 
@@ -931,23 +931,22 @@ func TestSyslogOutput_WriteFailure_ReturnsError(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	// First write succeeds.
+	// First write succeeds (enqueued to background goroutine).
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
 
 	// Kill the server.
 	srv.close()
 
-	// Writes should eventually error (server gone, retries exhausted).
-	// May take a couple of attempts due to TCP buffering.
-	var writeErr error
+	// With async delivery, Write() returns nil (non-blocking channel
+	// send). Connection errors are handled in the background writeLoop.
 	for range 5 {
-		writeErr = out.Write([]byte(`{"n":2}`))
-		if writeErr != nil {
-			break
-		}
+		err := out.Write([]byte(`{"n":2}`))
+		assert.NoError(t, err, "async Write should never return connection errors")
 	}
-	assert.Error(t, writeErr, "should error when server is permanently down")
 
+	// Close drains the buffer — the writeLoop will encounter errors
+	// and log them, but Close itself should not return an error from
+	// the write failures (only from closing the underlying writer).
 	require.NoError(t, out.Close())
 }
 
@@ -994,19 +993,15 @@ func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
 	// Kill the server to force reconnect logic.
 	srv.close()
 
-	// Writes after server dies trigger the reconnect path which
-	// would call syslogMetrics.RecordSyslogReconnect if non-nil.
-	// With nil, it must not panic.
-	var writeErr error
+	// Writes after server dies enqueue events. The background
+	// writeLoop triggers the reconnect path which would call
+	// syslogMetrics.RecordSyslogReconnect if non-nil. With nil, it
+	// must not panic.
 	for range 5 {
-		writeErr = out.Write([]byte(`{"n":2}`))
-		if writeErr != nil {
-			break
-		}
+		require.NoError(t, out.Write([]byte(`{"n":2}`)))
 	}
-	// Error is expected (server is gone), not panic.
-	assert.Error(t, writeErr, "should eventually error with server down")
 
+	// Close drains and completes — success means no panic occurred.
 	require.NoError(t, out.Close())
 }
 
@@ -1030,22 +1025,20 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServ
 	// Bring the server down permanently.
 	srv.close()
 
-	// Drive reconnection attempts to exhaustion.
-	var writeErr error
-	for range 10 {
-		writeErr = out.Write([]byte(`{"n":2}`))
-		if writeErr != nil {
-			break
-		}
+	// Enqueue events — the background writeLoop will encounter
+	// failures and attempt reconnection.
+	for range 5 {
+		_ = out.Write([]byte(`{"n":2}`))
 	}
-	assert.Error(t, writeErr, "writes must eventually fail with server permanently down")
+
+	// Wait for at least one reconnect failure to be recorded before
+	// closing. The writeLoop processes events asynchronously.
+	require.Eventually(t, func() bool {
+		return m.getSyslogReconnectCount(addr, false) > 0
+	}, 5*time.Second, 10*time.Millisecond,
+		"RecordSyslogReconnect(address, false) should be called on reconnect failure")
 
 	require.NoError(t, out.Close())
-
-	// At least one reconnect failure must have been recorded.
-	failureCount := m.getSyslogReconnectCount(addr, false)
-	assert.Greater(t, failureCount, 0,
-		"RecordSyslogReconnect(address, false) should be called on reconnect failure, got 0")
 }
 
 func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing.T) {
@@ -1807,35 +1800,17 @@ func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T
 // handleWriteFailure — s.closed is true after backoff timer fires
 // ---------------------------------------------------------------------------
 
-func TestSyslogOutput_HandleWriteFailure_ClosedAfterBackoffTimer(t *testing.T) {
-	// Exercise the `if s.closed { return nil, audit.ErrOutputClosed }` check
-	// (lines 339-341 in syslog.go) that runs after the backoff timer fires
-	// and handleWriteFailure re-acquires the mutex.
-	//
-	// This check is distinct from the closeCh path (lines 332-334):
-	//  - closeCh path: Close() calls close(s.closeCh) while handleWriteFailure
-	//    is still waiting in the select — the closeCh case wins.
-	//  - s.closed path: the time.After case wins the select, but by the time
-	//    handleWriteFailure re-acquires s.mu, Close() has already run and set
-	//    s.closed = true. handleWriteFailure sees the flag and returns
-	//    ErrOutputClosed without attempting to reconnect.
-	//
-	// Reliable reproduction: use a slow-reconnect scenario (MaxRetries=5)
-	// and call Close() from a goroutine that is triggered by the write
-	// goroutine starting. The window (50-100ms backoff) is wide enough that
-	// Close() reliably runs while the timer is ticking, producing both paths
-	// across test runs. Either path is a correct outcome.
-	//
-	// The observable property under test: Write() terminates promptly and
-	// returns an error — it does NOT block indefinitely after Close() is called.
-
+func TestSyslogOutput_CloseInterruptsBackoff(t *testing.T) {
+	// Verify that Close() interrupts the writeLoop's backoff sleep
+	// via closeCh. The writeLoop exits promptly — Close() does not
+	// block indefinitely.
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
 
 	out, err := syslog.New(&syslog.Config{
 		Network:    "tcp",
 		Address:    addr,
-		MaxRetries: 5,
+		MaxRetries: 10, // high retries — Close must interrupt, not wait
 	}, nil)
 	require.NoError(t, err)
 
@@ -1846,38 +1821,22 @@ func TestSyslogOutput_HandleWriteFailure_ClosedAfterBackoffTimer(t *testing.T) {
 	// Kill the server so writes will fail and enter backoff.
 	srv.close()
 
-	// writeStartedCh is closed by the write goroutine before it issues its
-	// first failing write, giving Close() a reliable signal to fire during
-	// the backoff window without using time.Sleep for synchronisation.
-	writeStartedCh := make(chan struct{})
-	writeErrCh := make(chan error, 1)
+	// Enqueue an event that will trigger the reconnect/backoff path.
+	_ = out.Write([]byte(`{"n":1}`))
 
+	// Close should complete promptly by interrupting the backoff via
+	// closeCh, not waiting for all 10 retries to exhaust.
+	done := make(chan struct{})
 	go func() {
-		close(writeStartedCh) // signal: about to write against dead server
-		for {
-			if err := out.Write([]byte(`{"n":1}`)); err != nil {
-				writeErrCh <- err
-				return
-			}
-		}
+		defer close(done)
+		_ = out.Close()
 	}()
 
-	// Wait for the write goroutine to start, then close the output.
-	// The goroutine will enter handleWriteFailure (50-100ms backoff).
-	// Close() fires promptly after writingCh is closed — well before
-	// the first backoff timer fires — exercising the closeCh or the
-	// s.closed check depending on which races ahead.
-	<-writeStartedCh
-	require.NoError(t, out.Close())
-
 	select {
-	case writeErr := <-writeErrCh:
-		// Either ErrOutputClosed (s.closed path), "closed during reconnect"
-		// (closeCh path), or retry-exhausted are all valid outcomes.
-		assert.Error(t, writeErr, "write must return error when output is closed during backoff")
-	case <-time.After(10 * time.Second):
-		t.Error("write goroutine did not terminate — handleWriteFailure may be hanging after Close")
-		_ = out.Close()
+	case <-done:
+		// Close completed — backoff was interrupted.
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close blocked for 5s — backoff was not interrupted by closeCh")
 	}
 }
 
@@ -1885,28 +1844,19 @@ func TestSyslogOutput_HandleWriteFailure_ClosedAfterBackoffTimer(t *testing.T) {
 // handleWriteFailure — max retries exceeded produces a clear error
 // ---------------------------------------------------------------------------
 
-func TestSyslogOutput_HandleWriteFailure_MaxRetriesExceeded_ErrorMessage(t *testing.T) {
-	// Verify the exact shape of the error returned when max retries are
-	// exceeded in handleWriteFailure. The error message must include the
-	// failure count so operators can diagnose it.
-	//
-	// With MaxRetries=1 and a permanently dead server:
-	//   - Write A: failures increments to 1 (not > 1), enters backoff,
-	//     connect() fails → returns a reconnect error. failures stays at 1.
-	//   - Write B: failures increments to 2 (> maxRetry=1), hits the
-	//     early return: "audit: syslog write after %d failures: %w".
-	//     The error contains the word "failures".
-	//
-	// We issue writes in a loop and check each returned error; we stop
-	// when we find one matching the max-retries format.
+func TestSyslogOutput_MaxRetriesExceeded_DropsEvent(t *testing.T) {
+	// With async delivery, max-retries exhaustion is handled in the
+	// background writeLoop. Write() never returns the error. Verify
+	// via metrics that reconnect failures are recorded.
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
 
+	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
 		Network:    "tcp",
 		Address:    addr,
 		MaxRetries: 1,
-	}, nil)
+	}, m)
 	require.NoError(t, err)
 
 	// Establish the connection.
@@ -1916,23 +1866,17 @@ func TestSyslogOutput_HandleWriteFailure_MaxRetriesExceeded_ErrorMessage(t *test
 	// Kill the server permanently.
 	srv.close()
 
-	// Write A: failures=1 ≤ 1, enters backoff → reconnect fails → error.
-	// Write B: failures=2 > 1, hits the max-retries early return.
-	// We loop up to 5 writes to handle any TCP buffering on the first write
-	// (it might succeed silently), and stop when we see the "failures" error.
-	var maxRetriesErr error
+	// Enqueue events — writeLoop will exhaust retries in background.
 	for range 5 {
-		e := out.Write([]byte(`{"n":1}`))
-		if e != nil && strings.Contains(e.Error(), "failures") {
-			maxRetriesErr = e
-			break
-		}
+		_ = out.Write([]byte(`{"n":1}`))
 	}
 
-	require.NotNil(t, maxRetriesErr,
-		"expected a max-retries-exceeded error containing 'failures' within 5 write attempts")
-	assert.Contains(t, maxRetriesErr.Error(), "failures",
-		"max-retries-exceeded error should contain the failure count")
+	// Wait for at least one reconnect failure to be recorded before
+	// closing. The writeLoop processes events asynchronously.
+	require.Eventually(t, func() bool {
+		return m.getSyslogReconnectCount(addr, false) > 0
+	}, 5*time.Second, 10*time.Millisecond,
+		"reconnect failures should be recorded when retries exhausted")
 
 	require.NoError(t, out.Close())
 }

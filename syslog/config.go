@@ -40,6 +40,14 @@ const (
 	// this are rejected to prevent unbounded retry loops.
 	MaxMaxRetries = 20
 
+	// DefaultBufferSize is the default async buffer capacity for the
+	// syslog output. Matches the default for all other async outputs.
+	DefaultBufferSize = 10_000
+
+	// MaxOutputBufferSize is the maximum allowed per-output async
+	// buffer capacity.
+	MaxOutputBufferSize = 100_000
+
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
 
@@ -97,6 +105,13 @@ type Config struct {
 	// attempts before giving up. Zero defaults to
 	// [DefaultMaxRetries] (10).
 	MaxRetries int
+
+	// BufferSize is the internal async buffer capacity. When full,
+	// new events are dropped and [audit.OutputMetrics.RecordDrop] is
+	// called. Zero defaults to [DefaultBufferSize] (10,000). Values
+	// above [MaxOutputBufferSize] (100,000) cause [New] to return an
+	// error wrapping [audit.ErrConfigInvalid].
+	BufferSize int
 }
 
 // String returns a human-readable representation of the config with
@@ -149,6 +164,10 @@ func validateSyslogConfig(cfg *Config) error {
 
 	if cfg.MaxRetries > MaxMaxRetries {
 		return fmt.Errorf("%w: syslog max_retries %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.MaxRetries, MaxMaxRetries)
+	}
+
+	if cfg.BufferSize > MaxOutputBufferSize {
+		return fmt.Errorf("%w: syslog buffer_size %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.BufferSize, MaxOutputBufferSize)
 	}
 
 	if err := validateSyslogHostname(cfg.Hostname); err != nil {

@@ -54,7 +54,7 @@ type yamlTLSPolicy struct {
 // yamlSyslogConfig is the YAML-specific representation of syslog
 // output configuration. Maps snake_case YAML fields to the Go
 // Config struct.
-type yamlSyslogConfig struct {
+type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability preferred
 	Network    string         `yaml:"network"`
 	Address    string         `yaml:"address"`
 	AppName    string         `yaml:"app_name"`
@@ -65,6 +65,23 @@ type yamlSyslogConfig struct {
 	TLSPolicy  *yamlTLSPolicy `yaml:"tls_policy"`
 	Hostname   string         `yaml:"hostname"`
 	MaxRetries int            `yaml:"max_retries"`
+	BufferSize *int           `yaml:"buffer_size"`
+}
+
+// intPtrOrDefault returns the pointed-to value if non-nil, or the
+// default if nil (field not specified in YAML). When the pointer is
+// non-nil and the value is zero, returns -1 as a sentinel.
+// applyDefaults treats values <= 0 as "not set" and replaces them
+// with the default, so explicit YAML zero silently becomes the
+// default. This matches the webhook and loki pattern.
+func intPtrOrDefault(p *int, def int) int {
+	if p == nil {
+		return def
+	}
+	if *p == 0 {
+		return -1 // sentinel: explicit zero from YAML
+	}
+	return *p
 }
 
 func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Output, error) {
@@ -88,6 +105,7 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Ou
 		TLSCA:      yc.TLSCA,
 		Hostname:   yc.Hostname,
 		MaxRetries: yc.MaxRetries,
+		BufferSize: intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 	}
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{

@@ -386,6 +386,28 @@ func (f *MockOutputMetricsFactory) CallCount() int {
 	return len(f.Calls)
 }
 
+// WasCalledWith returns true if the factory was called with the given
+// outputType and outputName.
+func (f *MockOutputMetricsFactory) WasCalledWith(outputType, outputName string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, call := range f.Calls {
+		if call.OutputType == outputType && call.OutputName == outputName {
+			return true
+		}
+	}
+	return false
+}
+
+// GetCalls returns a snapshot of all factory calls.
+func (f *MockOutputMetricsFactory) GetCalls() []OutputMetricsFactoryCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]OutputMetricsFactoryCall, len(f.Calls))
+	copy(cp, f.Calls)
+	return cp
+}
+
 // MetricsFor returns the MockOutputMetrics created for the given key.
 func (f *MockOutputMetricsFactory) MetricsFor(outputType, outputName string) *MockOutputMetrics {
 	f.mu.Lock()

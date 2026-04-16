@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -2992,6 +2993,141 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	}
 	b.StopTimer()
 	_ = logger.Close()
+}
+
+// ---------------------------------------------------------------------------
+// Async output simulation benchmarks (#455)
+// ---------------------------------------------------------------------------
+
+// mockAsyncOutput simulates the async Write pattern used by file and syslog
+// outputs: data is copied, sent to a buffered channel, and discarded by a
+// background goroutine. This faithfully reproduces the per-event cost of
+// async outputs without requiring separate module dependencies or real I/O.
+type mockAsyncOutput struct {
+	ch     chan []byte
+	done   chan struct{}
+	name   string
+	closed atomic.Bool
+}
+
+func newMockAsyncOutput(name string, bufSize int) *mockAsyncOutput {
+	m := &mockAsyncOutput{
+		ch:   make(chan []byte, bufSize),
+		done: make(chan struct{}),
+		name: name,
+	}
+	go m.drainLoop()
+	return m
+}
+
+func (m *mockAsyncOutput) Write(data []byte) error {
+	if m.closed.Load() {
+		return audit.ErrOutputClosed
+	}
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	select {
+	case m.ch <- cp:
+	default:
+		// drop
+	}
+	return nil
+}
+
+func (m *mockAsyncOutput) Close() error {
+	if !m.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	close(m.ch)
+	<-m.done
+	return nil
+}
+
+func (m *mockAsyncOutput) Name() string { return m.name }
+
+func (m *mockAsyncOutput) drainLoop() {
+	defer close(m.done)
+	for data := range m.ch {
+		_ = data // discard
+	}
+}
+
+// BenchmarkProcessEntry_AsyncOutputs measures the full processEntry path
+// (taxonomy lookup, JSON format, format cache, fan-out to 2 async outputs)
+// using WithSynchronousDelivery to run processEntry inline. The async
+// outputs simulate the copy+enqueue pattern of file and syslog outputs.
+// This isolates drain-loop cost from caller-side validation.
+func BenchmarkProcessEntry_AsyncOutputs(b *testing.B) {
+	silenceSlog(b)
+	fileOut := newMockAsyncOutput("async-file", 100_000)
+	syslogOut := newMockAsyncOutput("async-syslog", 100_000)
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(syslogOut),
+		audit.WithSynchronousDelivery(),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":    "success",
+		"actor_id":   "alice",
+		"subject":    "my-topic",
+		"source_ip":  "10.0.0.1",
+		"request_id": "550e8400-e29b-41d4-a716-446655440000",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkOutputClose_Drain measures how long Close() takes to drain
+// N pending events from the async buffer through processEntry to outputs.
+// This is a throughput benchmark for the drain goroutine under backlog.
+func BenchmarkOutputClose_Drain(b *testing.B) {
+	silenceSlog(b)
+
+	for _, n := range []int{100, 1000, 10_000} {
+		b.Run(fmt.Sprintf("events=%d", n), func(b *testing.B) {
+			fields := audit.Fields{
+				"outcome":  "success",
+				"actor_id": "alice",
+				"subject":  "my-topic",
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				b.StopTimer()
+				out := testhelper.NewMockOutput("bench-drain")
+				logger, err := audit.NewLogger(
+					audit.WithQueueSize(n+1000), // room for all events
+					audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+					audit.WithOutputs(out),
+				)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				// Enqueue N events. Some may be processed before Close,
+				// but the benchmark measures the Close() drain path cost.
+				for range n {
+					_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+				}
+
+				b.StartTimer()
+				_ = logger.Close()
+			}
+		})
+	}
 }
 
 func BenchmarkFilterCheck(b *testing.B) {

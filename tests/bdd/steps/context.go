@@ -73,13 +73,14 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	MetadataMock *MetadataWriterMock
 
 	// Metrics capture.
-	MockMetrics       *MockMetrics
-	WebhookMetrics    *MockOutputMetrics
-	FileMetrics       *MockFileMetrics
-	SyslogMetrics     *MockSyslogMetrics
-	LokiMetrics       *MockOutputMetrics
-	OutputMetricsMock *MockOutputMetrics // generic per-output metrics for isolation/drop tests
-	AuditDuration     time.Duration      // measured duration for timing assertions
+	MockMetrics              *MockMetrics
+	WebhookMetrics           *MockOutputMetrics
+	FileMetrics              *MockFileMetrics
+	SyslogMetrics            *MockSyslogMetrics
+	LokiMetrics              *MockOutputMetrics
+	OutputMetricsMock        *MockOutputMetrics        // generic per-output metrics for isolation/drop tests
+	OutputMetricsFactoryMock *MockOutputMetricsFactory // factory mock for outputconfig BDD scenarios
+	AuditDuration            time.Duration             // measured duration for timing assertions
 
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
@@ -127,6 +128,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.SyslogMetrics = nil
 	tc.LokiMetrics = nil
 	tc.OutputMetricsMock = nil
+	tc.OutputMetricsFactoryMock = nil
 	tc.AuditDuration = 0
 	tc.TLSReceiver = nil
 	tc.LocalReceiver = nil

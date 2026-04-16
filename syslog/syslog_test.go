@@ -794,10 +794,19 @@ func TestSyslogOutput_CopySafety(t *testing.T) {
 		data[i] = 'X'
 	}
 
+	// Wait for the event to arrive at the mock server before closing.
+	// The syslog output wraps the payload in RFC 5424 framing, so we
+	// check for the payload as a substring.
+	require.True(t, srv.waitForContent(
+		[]string{`{"event":"original"}`}, 2*time.Second),
+		"server must receive the original payload, not the mutated copy")
+
 	require.NoError(t, out.Close())
-	// Success: if the original data were corrupted, the syslog server
-	// would have received "XXXX..." instead of the original JSON.
-	// The copy in enqueue() prevents this.
+
+	// waitForContent proved the original is present; verify the mutation did not leak.
+	all := strings.Join(srv.getMessages(), "\n")
+	assert.NotContains(t, all, "XXXXXXXXXXXXXXXXXXXX",
+		"server must not contain the mutated data")
 }
 
 func TestSyslogOutput_WriteDuringClose_NoPanic(t *testing.T) {
@@ -2420,4 +2429,145 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 
 	require.True(t, srv.waitForData(2*time.Second),
 		"server should receive events after reconnection")
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks (#455)
+// ---------------------------------------------------------------------------
+
+// discardSyslogServer is a minimal TCP server that accepts connections
+// and discards all received data. Unlike mockSyslogServer it does not
+// collect messages (no mutex, no slice append) to avoid polluting
+// benchmark measurements with collection overhead.
+type discardSyslogServer struct {
+	listener net.Listener
+	done     chan struct{}
+	wg       sync.WaitGroup
+}
+
+func newDiscardSyslogServer(b *testing.B) *discardSyslogServer {
+	b.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		b.Fatal(err)
+	}
+	s := &discardSyslogServer{
+		listener: ln,
+		done:     make(chan struct{}),
+	}
+	s.wg.Add(1)
+	go s.accept()
+	return s
+}
+
+func (s *discardSyslogServer) accept() {
+	defer s.wg.Done()
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			select {
+			case <-s.done:
+				return
+			default:
+				return
+			}
+		}
+		s.wg.Add(1)
+		go s.discard(conn)
+	}
+}
+
+func (s *discardSyslogServer) discard(conn net.Conn) {
+	defer s.wg.Done()
+	defer func() { _ = conn.Close() }()
+	buf := make([]byte, 32*1024)
+	for {
+		_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, err := conn.Read(buf)
+		if err != nil {
+			select {
+			case <-s.done:
+				return
+			default:
+			}
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
+			return
+		}
+	}
+}
+
+func (s *discardSyslogServer) addr() string {
+	return s.listener.Addr().String()
+}
+
+func (s *discardSyslogServer) close() {
+	close(s.done)
+	_ = s.listener.Close()
+	s.wg.Wait()
+}
+
+// BenchmarkSyslogOutput_Write measures the Write() enqueue hot path:
+// closed check (atomic load), data copy (make+copy), and non-blocking
+// channel send. This is the per-event cost paid by the drain goroutine
+// when delivering to a syslog output.
+func BenchmarkSyslogOutput_Write(b *testing.B) {
+	srv := newDiscardSyslogServer(b)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 100_000, // large buffer to avoid drops
+	}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	// Realistic audit event payload (~150 bytes).
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(event)))
+	b.ResetTimer()
+
+	for b.Loop() {
+		if err := out.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkSyslogOutput_Write_Parallel measures Write() contention
+// under concurrent callers. Although the drain goroutine is the only
+// caller in production, this validates the atomic.Bool fast-path and
+// channel send under contention.
+func BenchmarkSyslogOutput_Write_Parallel(b *testing.B) {
+	srv := newDiscardSyslogServer(b)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:    "tcp",
+		Address:    srv.addr(),
+		BufferSize: 100_000,
+	}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(event)))
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = out.Write(event)
+		}
+	})
 }

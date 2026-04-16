@@ -56,6 +56,23 @@ type yamlFileConfig struct { //nolint:govet // fieldalignment: readability prefe
 	MaxBackups  int    `yaml:"max_backups"`
 	MaxAgeDays  int    `yaml:"max_age_days"`
 	Compress    *bool  `yaml:"compress"`
+	BufferSize  *int   `yaml:"buffer_size"`
+}
+
+// intPtrOrDefault returns the pointed-to value if non-nil, or the
+// default if nil (field not specified in YAML). When the pointer is
+// non-nil and the value is zero, returns -1 as a sentinel.
+// applyDefaults treats values <= 0 as "not set" and replaces them
+// with the default, so explicit YAML zero silently becomes the
+// default. This matches the webhook and loki pattern.
+func intPtrOrDefault(p *int, def int) int {
+	if p == nil {
+		return def
+	}
+	if *p == 0 {
+		return -1 // sentinel: explicit zero from YAML → rejected by validation
+	}
+	return *p
 }
 
 func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Output, error) {
@@ -69,7 +86,15 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Outp
 		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
 	}
 
-	cfg := Config(yc)
+	cfg := Config{
+		Path:        yc.Path,
+		Permissions: yc.Permissions,
+		MaxSizeMB:   yc.MaxSizeMB,
+		MaxBackups:  yc.MaxBackups,
+		MaxAgeDays:  yc.MaxAgeDays,
+		Compress:    yc.Compress,
+		BufferSize:  intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+	}
 
 	out, err := New(cfg, fileMetrics)
 	if err != nil {

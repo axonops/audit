@@ -194,10 +194,12 @@ func createSharedFormatterLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file a: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fA.Close() })
 	fB, err := file.New(file.Config{Path: pathB}, nil)
 	if err != nil {
 		return fmt.Errorf("create file b: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fB.Close() })
 
 	// Both outputs share the default JSON formatter (nil = logger default).
 	opts := []audit.Option{
@@ -343,6 +345,7 @@ func tryDuplicateOutputNames(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file a: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f1.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f1), // same output = duplicate name
@@ -361,10 +364,12 @@ func tryDuplicateFilePath(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file 1: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f1.Close() })
 	f2, err := file.New(file.Config{Path: samePath}, nil)
 	if err != nil {
 		return fmt.Errorf("create file 2: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f2.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f2),
@@ -382,6 +387,7 @@ func tryMixedRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
@@ -402,6 +408,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
@@ -440,10 +447,12 @@ func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create syslog 1: %w", err)
 	}
+	tc.AddCleanup(func() { _ = s1.Close() })
 	s2, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"}, nil)
 	if err != nil {
 		return fmt.Errorf("create syslog 2: %w", err)
 	}
+	tc.AddCleanup(func() { _ = s2.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(s1, s2),
@@ -461,6 +470,7 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
@@ -499,6 +509,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
+		tc.AddCleanup(func() { _ = f.Close() })
 		opts = append(opts, audit.WithNamedOutput(f))
 	}
 
@@ -510,6 +521,7 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		if err != nil {
 			return fmt.Errorf("create syslog output: %w", err)
 		}
+		tc.AddCleanup(func() { _ = s.Close() })
 		opts = append(opts, audit.WithNamedOutput(s))
 	}
 
@@ -522,10 +534,11 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: bs,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
+		tc.AddCleanup(func() { _ = w.Close() })
 		opts = append(opts, audit.WithNamedOutput(w, audit.OutputFormatter(webhookFmt)))
 	}
 
@@ -558,6 +571,7 @@ func createErrorOutputLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -593,6 +607,7 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -642,6 +657,7 @@ func createPanicFormatterLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -672,10 +688,12 @@ func createDualFileRoutedLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create security file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = secOut.Close() })
 	writeOut, err := file.New(file.Config{Path: writePath}, nil)
 	if err != nil {
 		return fmt.Errorf("create write file: %w", err)
 	}
+	tc.AddCleanup(func() { _ = writeOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -704,6 +722,7 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 	syslogOut, err := syslog.New(&syslog.Config{
 		Network: "tcp", Address: "localhost:5514",
 		Facility: "local0", AppName: "bdd-triple",
@@ -711,14 +730,16 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create syslog output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = syslogOut.Close() })
 	webhookOut, err := webhook.New(&webhook.Config{
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil, nil)
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = webhookOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -748,14 +769,16 @@ func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) er
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = f.Close() })
 	w, err := webhook.New(&webhook.Config{
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil, nil)
+	}, nil)
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = w.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

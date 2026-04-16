@@ -35,13 +35,13 @@ const (
 	// ValidationPermissive silently accepts unknown fields.
 	ValidationPermissive ValidationMode = "permissive"
 
-	// DefaultBufferSize is the default async channel capacity.
-	DefaultBufferSize = 10_000
+	// DefaultQueueSize is the default async intake queue capacity.
+	DefaultQueueSize = 10_000
 
-	// MaxBufferSize is the maximum allowed async channel capacity.
+	// MaxQueueSize is the maximum allowed async intake queue capacity.
 	// Values above this limit cause [NewLogger] to return an error
 	// wrapping [ErrConfigInvalid].
-	MaxBufferSize = 1_000_000
+	MaxQueueSize = 1_000_000
 
 	// DefaultDrainTimeout is the default graceful shutdown deadline.
 	DefaultDrainTimeout = 5 * time.Second
@@ -56,7 +56,7 @@ const (
 // Config holds tuning parameters for the audit [Logger]. The zero
 // value is a valid configuration: buffer=10,000, drain=5s,
 // validation=strict, omit_empty=false. Pass individual fields via
-// [WithBufferSize], [WithDrainTimeout], [WithValidationMode], or
+// [WithQueueSize], [WithDrainTimeout], [WithValidationMode], or
 // [WithOmitEmpty], or pass the whole struct via [WithConfig].
 type Config struct {
 	// ValidationMode controls how unknown fields are handled.
@@ -76,10 +76,10 @@ type Config struct {
 	// never need to set it — there is only one version.
 	version int
 
-	// BufferSize is the async channel capacity. Zero means
-	// [DefaultBufferSize] (10,000). Values above [MaxBufferSize]
+	// QueueSize is the async intake queue capacity. Zero means
+	// [DefaultQueueSize] (10,000). Values above [MaxQueueSize]
 	// (1,000,000) cause [NewLogger] to return an error.
-	BufferSize int
+	QueueSize int
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are
 	// included in serialised output. When true, only non-zero fields
@@ -94,8 +94,8 @@ func (c *Config) applyDefaults() {
 	if c.version == 0 {
 		c.version = 1
 	}
-	if c.BufferSize <= 0 {
-		c.BufferSize = DefaultBufferSize
+	if c.QueueSize <= 0 {
+		c.QueueSize = DefaultQueueSize
 	}
 	if c.DrainTimeout <= 0 {
 		c.DrainTimeout = DefaultDrainTimeout
@@ -112,9 +112,9 @@ func (c *Config) applyDefaults() {
 func validateConfig(c *Config) error {
 	c.applyDefaults()
 
-	if c.BufferSize > MaxBufferSize {
-		return fmt.Errorf("%w: buffer_size %d exceeds maximum %d",
-			ErrConfigInvalid, c.BufferSize, MaxBufferSize)
+	if c.QueueSize > MaxQueueSize {
+		return fmt.Errorf("%w: queue_size %d exceeds maximum %d",
+			ErrConfigInvalid, c.QueueSize, MaxQueueSize)
 	}
 
 	if c.DrainTimeout > MaxDrainTimeout {

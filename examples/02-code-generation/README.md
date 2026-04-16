@@ -305,7 +305,7 @@ go generate .
 ## Expected Output
 
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Using typed event builders ---
 INFO audit: shutdown started
 {"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}

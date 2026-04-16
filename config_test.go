@@ -34,10 +34,10 @@ func TestNewLogger_InvalidValidationMode(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid validation mode")
 }
 
-func TestNewLogger_BufferSizeDefault(t *testing.T) {
-	// BufferSize 0 should not cause an error; it defaults to 10,000.
+func TestNewLogger_QueueSizeDefault(t *testing.T) {
+	// QueueSize 0 should not cause an error; it defaults to 10,000.
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(0),
+		audit.WithQueueSize(0),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -84,10 +84,10 @@ func TestNewLogger_DisabledNoOp(t *testing.T) {
 	assert.Equal(t, 0, out.EventCount(), "disabled logger must not deliver events")
 }
 
-func TestNewLogger_NegativeBufferSize_DefaultsCorrectly(t *testing.T) {
+func TestNewLogger_NegativeQueueSize_DefaultsCorrectly(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(-1),
+		audit.WithQueueSize(-1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)

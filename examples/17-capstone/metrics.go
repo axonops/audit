@@ -20,15 +20,18 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/axonops/audit"
 )
 
 // auditMetrics implements all three audit metrics interfaces using
 // Prometheus client_golang. A single struct satisfies everything via
 // Go's structural duck-typing:
 //
-//   - audit.Metrics (7 methods)
+//   - audit.Metrics (9 methods including RecordSubmitted, RecordQueueDepth)
+//   - audit.OutputMetrics (5 methods: RecordDrop, RecordFlush, RecordError, RecordRetry, RecordQueueDepth)
 //   - file.Metrics  (RecordFileRotation)
-//   - loki.Metrics  (RecordLokiDrop, RecordLokiFlush, RecordLokiRetry, RecordLokiError)
+//   - syslog.Metrics (RecordSyslogReconnect)
 type auditMetrics struct {
 	events              *prometheus.CounterVec
 	outputErrors        *prometheus.CounterVec
@@ -118,6 +121,10 @@ func newMetrics() *auditMetrics {
 
 // --- audit.Metrics ---
 
+func (m *auditMetrics) RecordSubmitted() {}
+
+func (m *auditMetrics) RecordQueueDepth(_, _ int) {}
+
 func (m *auditMetrics) RecordEvent(output, status string) {
 	m.events.WithLabelValues(output, status).Inc()
 }
@@ -152,24 +159,50 @@ func (m *auditMetrics) RecordFileRotation(path string) {
 	m.fileRotations.WithLabelValues(path).Inc()
 }
 
-// --- loki.Metrics ---
+// --- audit.OutputMetrics via OutputMetricsFactory ---
+//
+// The factory creates a scoped perOutputMetrics instance for each
+// output, labelled by output type and name. This gives per-output
+// Prometheus metrics without a global shared counter.
 
-func (m *auditMetrics) RecordLokiDrop() {
-	m.lokiDrops.Inc()
+// perOutputMetrics implements audit.OutputMetrics with Prometheus
+// counters scoped to a specific output via WithLabelValues.
+type perOutputMetrics struct {
+	audit.NoOpOutputMetrics // forward compatibility
+	drops                   prometheus.Counter
+	flushBatch              prometheus.Observer
+	flushDur                prometheus.Observer
+	retries                 *prometheus.CounterVec
+	errors                  prometheus.Counter
 }
 
-func (m *auditMetrics) RecordLokiFlush(batchSize int, dur time.Duration) {
-	m.lokiFlushBatch.Observe(float64(batchSize))
-	m.lokiFlushDur.Observe(dur.Seconds())
+func (p *perOutputMetrics) RecordDrop() {
+	p.drops.Inc()
 }
 
-func (m *auditMetrics) RecordLokiRetry(statusCode, attempt int) {
-	m.lokiRetries.WithLabelValues(
-		strconv.Itoa(statusCode),
-		strconv.Itoa(attempt),
-	).Inc()
+func (p *perOutputMetrics) RecordFlush(batchSize int, dur time.Duration) {
+	p.flushBatch.Observe(float64(batchSize))
+	p.flushDur.Observe(dur.Seconds())
 }
 
-func (m *auditMetrics) RecordLokiError(statusCode int) {
-	m.lokiErrors.WithLabelValues(strconv.Itoa(statusCode)).Inc()
+func (p *perOutputMetrics) RecordRetry(attempt int) {
+	p.retries.WithLabelValues(strconv.Itoa(attempt)).Inc()
+}
+
+func (p *perOutputMetrics) RecordError() {
+	p.errors.Inc()
+}
+
+// newOutputMetricsFactory returns an OutputMetricsFactory that creates
+// per-output Prometheus metrics scoped by output type and name.
+func (m *auditMetrics) newOutputMetricsFactory() audit.OutputMetricsFactory {
+	return func(outputType, outputName string) audit.OutputMetrics {
+		return &perOutputMetrics{
+			drops:      m.lokiDrops,
+			flushBatch: m.lokiFlushBatch,
+			flushDur:   m.lokiFlushDur,
+			retries:    m.lokiRetries,
+			errors:     m.lokiErrors.WithLabelValues(outputType + ":" + outputName),
+		}
+	}
 }

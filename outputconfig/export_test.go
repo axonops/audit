@@ -16,3 +16,15 @@ package outputconfig
 
 // ToIntForTest exposes toInt for black-box testing.
 var ToIntForTest = toInt
+
+// ToBoolForTest exposes toBool for black-box testing.
+var ToBoolForTest = toBool
+
+// ToStringForTest exposes toString for black-box testing.
+var ToStringForTest = toString
+
+// ToStringSliceForTest exposes toStringSlice for black-box testing.
+var ToStringSliceForTest = toStringSlice
+
+// DeepCopyValueForTest exposes deepCopyValue for black-box testing.
+var DeepCopyValueForTest = deepCopyValue

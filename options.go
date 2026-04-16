@@ -328,13 +328,13 @@ func (l *Logger) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	return nil
 }
 
-// WithBufferSize sets the async channel capacity for the logger.
+// WithQueueSize sets the async intake queue capacity for the logger.
 // Zero or negative values are ignored (the default of
-// [DefaultBufferSize] applies). Values above [MaxBufferSize] cause
+// [DefaultQueueSize] applies). Values above [MaxQueueSize] cause
 // [NewLogger] to return an error wrapping [ErrConfigInvalid].
-func WithBufferSize(n int) Option {
+func WithQueueSize(n int) Option {
 	return func(l *Logger) error {
-		l.cfg.BufferSize = n
+		l.cfg.QueueSize = n
 		return nil
 	}
 }
@@ -394,8 +394,8 @@ func WithDisabled() Option {
 // opt-in to boolean behaviours.
 func WithConfig(cfg Config) Option {
 	return func(l *Logger) error {
-		if cfg.BufferSize > 0 {
-			l.cfg.BufferSize = cfg.BufferSize
+		if cfg.QueueSize > 0 {
+			l.cfg.QueueSize = cfg.QueueSize
 		}
 		if cfg.DrainTimeout > 0 {
 			l.cfg.DrainTimeout = cfg.DrainTimeout

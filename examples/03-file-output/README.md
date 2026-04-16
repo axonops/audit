@@ -104,7 +104,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 --- Contents of audit.log ---

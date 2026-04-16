@@ -29,22 +29,9 @@ func init() {
 
 // defaultFactory creates a webhook output from YAML config. Core
 // metrics are forwarded for delivery reporting. Per-output metrics
-// are auto-detected via type assertion on coreMetrics.
+// are injected via OutputMetricsReceiver after construction.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-	var webhookMetrics Metrics
-	if wm, ok := coreMetrics.(Metrics); ok {
-		webhookMetrics = wm
-	}
-	return buildOutput(name, rawConfig, coreMetrics, webhookMetrics)
-}
-
-// NewFactory returns an [audit.OutputFactory] that creates webhook
-// outputs from YAML configuration with the provided webhook-specific
-// metrics captured in the closure. Pass nil to disable webhook metrics.
-func NewFactory(webhookMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-		return buildOutput(name, rawConfig, coreMetrics, webhookMetrics)
-	}
+	return buildOutput(name, rawConfig, coreMetrics)
 }
 
 // yamlWebhookConfig is the YAML-specific representation of webhook
@@ -105,7 +92,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, webhookMetrics Metrics) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: webhook output %q: config is required", name)
 	}
@@ -137,7 +124,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, webho
 		}
 	}
 
-	out, err := New(cfg, coreMetrics, webhookMetrics)
+	out, err := New(cfg, coreMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("audit: webhook output %q: %w", name, err)
 	}

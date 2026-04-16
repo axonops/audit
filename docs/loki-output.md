@@ -144,13 +144,13 @@ drain goroutine. This isolation ensures that a Loki outage does not
 affect delivery to other outputs.
 
 A rate-limited `slog.Warn` fires at most once per 10 seconds during
-sustained drops. The `RecordLokiDrop()` metric fires on **every**
+sustained drops. The `RecordDrop()` metric fires on **every**
 drop — use metrics, not log lines, for precise monitoring.
 
 ### Relationship to Core Buffer
 
-The Loki `buffer_size` is independent of the core `logger.buffer_size`
-(`Config.BufferSize`). Both default to 10,000 but they serve different
+The Loki `buffer_size` is independent of the core `logger.queue_size`
+(`Config.QueueSize`). Both default to 10,000 but they serve different
 pipeline stages. See
 [Two-Level Buffering](async-delivery.md#two-level-buffering) for the
 full architecture diagram and memory sizing guidance.
@@ -575,11 +575,11 @@ WARN audit: loki buffer full, events dropped  dropped=1523  buffer_size=10000
 ```
 
 This rate-limiting prevents the warning itself from becoming a
-performance bottleneck under backpressure. The `RecordLokiDrop()`
+performance bottleneck under backpressure. The `RecordDrop()`
 metric fires on **every** drop regardless of the warning interval —
 use metrics, not log lines, for precise drop monitoring.
 
-Monitor drops via `loki.Metrics.RecordLokiDrop()`. Increase
+Monitor drops via `OutputMetrics.RecordDrop()`. Increase
 `buffer_size` if you see drops.
 
 ---
@@ -588,10 +588,10 @@ Monitor drops via `loki.Metrics.RecordLokiDrop()`. Increase
 
 | Response | Action | Description |
 |----------|--------|-------------|
-| **2xx** | Success | Event delivered. `RecordLokiFlush()` called. |
+| **2xx** | Success | Event delivered. `RecordFlush()` called. |
 | **429** | Retry | Rate limited. Respects `Retry-After` header (capped at 30s). |
 | **5xx** | Retry | Server error. Exponential backoff. |
-| **4xx** (not 429) | Drop | Client error (bad config). `RecordLokiDrop()` called. No retry. |
+| **4xx** (not 429) | Drop | Client error (bad config). `RecordDrop()` called. No retry. |
 | **Network error** | Retry | Connection refused, DNS failure, etc. |
 | **Redirect** | Drop | All redirects are rejected (SSRF protection). |
 
@@ -604,7 +604,7 @@ Monitor drops via `loki.Metrics.RecordLokiDrop()`. Increase
 - **Max attempts**: `max_retries` (default 3, max 20)
 
 After all retries are exhausted, the batch is dropped and
-`RecordLokiDrop()` is called for each event.
+`RecordDrop()` is called for each event.
 
 ---
 
@@ -789,31 +789,19 @@ deployments up to ~1000 events/second.
 
 ### Loki-Specific Metrics
 
-Implement the `loki.Metrics` interface to receive delivery telemetry:
-
-```go
-type Metrics interface {
-    RecordLokiDrop()                              // event dropped (buffer full or retries exhausted)
-    RecordLokiFlush(batchSize int, dur time.Duration) // batch delivered successfully
-}
-```
-
-Register your implementation before calling `outputconfig.Load`. This
-replaces the default factory registered by the blank import. If you
-don't need Loki-specific metrics, the blank import
-`_ "github.com/axonops/audit/loki"` is sufficient.
-
-```go
-audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
-```
+The Loki output receives per-output metrics via the unified
+`audit.OutputMetrics` interface. Wire it through
+`outputconfig.WithOutputMetrics(factory)` — see
+[Metrics and Monitoring](metrics-monitoring.md#per-output-metrics-outputmetrics)
+for the factory pattern and complete interface documentation.
 
 ### What to Alert On
 
 | Metric | Condition | Action |
 |--------|-----------|--------|
-| `RecordLokiDrop` rate > 0 | Events being lost | Increase `buffer_size`, check Loki health, reduce event volume |
-| `RecordLokiFlush` duration > timeout | Pushes timing out | Increase `timeout`, check network latency to Loki |
-| `RecordLokiFlush` batch_size consistently = max | Batches always full | Increase `batch_size` or decrease `flush_interval` |
+| `RecordDrop` rate > 0 | Events being lost | Increase `buffer_size`, check Loki health, reduce event volume |
+| `RecordFlush` duration > timeout | Pushes timing out | Increase `timeout`, check network latency to Loki |
+| `RecordFlush` batch_size consistently = max | Batches always full | Increase `batch_size` or decrease `flush_interval` |
 
 ---
 
@@ -837,9 +825,9 @@ audit.RegisterOutputFactory("loki", loki.NewFactory(myLokiMetrics))
 | Events not appearing in Loki | Ingestion delay | Wait 2-5 seconds, or query with wider time range |
 | Events not appearing | `tenant_id` mismatch | Query MUST include `X-Scope-OrgID` header matching `tenant_id` |
 | Events not appearing | `allow_private_ranges` not set | Set `allow_private_ranges: true` for local/private Loki |
-| 429 errors, events dropped | Loki rate limiting | Check `RecordLokiDrop`; increase `flush_interval` or reduce event volume |
+| 429 errors, events dropped | Loki rate limiting | Check `RecordDrop`; increase `flush_interval` or reduce event volume |
 | High cardinality rejection | Too many unique label combos | Exclude high-cardinality labels (e.g., `pid: false`) |
-| Events dropped silently | Internal buffer full | Increase `buffer_size`; monitor `RecordLokiDrop` |
+| Events dropped silently | Internal buffer full | Increase `buffer_size`; monitor `RecordDrop` |
 
 ---
 

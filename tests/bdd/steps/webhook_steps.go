@@ -145,27 +145,6 @@ func (r *localWebhookReceiver) close() {
 	r.server.Close()
 }
 
-// MockWebhookMetrics captures webhook.Metrics calls.
-type MockWebhookMetrics struct {
-	mu      sync.Mutex
-	flushes int
-	drops   int
-}
-
-// RecordWebhookDrop satisfies webhook.Metrics.
-func (m *MockWebhookMetrics) RecordWebhookDrop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.drops++
-}
-
-// RecordWebhookFlush satisfies webhook.Metrics.
-func (m *MockWebhookMetrics) RecordWebhookFlush(_ int, _ time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.flushes++
-}
-
 func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^a logger with webhook output configured for batch size (\d+)$`, func(batchSize int) error {
 		return createWebhookLogger(tc, &webhook.Config{
@@ -212,7 +191,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	})
 
 	ctx.Step(`^mock webhook metrics are configured$`, func() error {
-		tc.WebhookMetrics = &MockWebhookMetrics{}
+		tc.WebhookMetrics = &MockOutputMetrics{}
 		return nil
 	})
 
@@ -254,11 +233,12 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            5 * time.Second,
 		}
-		out, err := webhook.New(cfg, nil, nil)
+		out, err := webhook.New(cfg, nil)
 		if err != nil {
 			tc.LastErr = err
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr
 		}
+		tc.AddCleanup(func() { _ = out.Close() })
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
@@ -275,7 +255,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	registerWebhookGivenSSRFSteps(ctx, tc)
 }
 
-func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,gocyclo,cyclop // BDD step registration
 	ctx.Step(`^a local HTTP webhook receiver$`, func() error {
 		r := newLocalWebhookReceiver(false)
 		tc.LocalReceiver = r
@@ -320,9 +300,48 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
 		}
-		out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+		out, err := webhook.New(cfg, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
+		}
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook to local receiver with buffer size (\d+) and metrics$`, func(bufSize int) error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            5 * time.Second,
+			BufferSize:         bufSize,
+		}
+		out, err := webhook.New(cfg, nil)
+		if err != nil {
+			return fmt.Errorf("create webhook output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -391,68 +410,86 @@ func registerWebhookWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 }
 
-func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,gocyclo,cyclop // BDD step registration
 	ctx.Step(`^I try to create a webhook output to "([^"]*)" without AllowInsecureHTTP$`, func(url string) error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                url,
 			AllowInsecureHTTP:  false,
 			AllowPrivateRanges: true,
 			BatchSize:          1,
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a webhook output to "([^"]*)"$`, func(url string) error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                url,
 			AllowInsecureHTTP:  true,
 			AllowPrivateRanges: true,
 			BatchSize:          1,
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a webhook output with header containing CRLF$`, func() error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			Headers:            map[string]string{"X-Bad": "value\r\nInjected: true"},
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a webhook output with batch size (\d+)$`, func(batchSize int) error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",
 			AllowPrivateRanges: true,
 			BatchSize:          batchSize,
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a webhook output with buffer size (\d+)$`, func(bufSize int) error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			BufferSize:         bufSize,
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a webhook output with max retries (\d+)$`, func(maxRetries int) error {
-		_, err := webhook.New(&webhook.Config{
+		out, err := webhook.New(&webhook.Config{
 			URL:                "https://example.com/events",
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			MaxRetries:         maxRetries,
-		}, nil, nil)
+		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
@@ -473,9 +510,13 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
 		}
-		out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+		out, err := webhook.New(cfg, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -569,17 +610,12 @@ func registerWebhookThenMetricsAndErrorSteps(ctx *godog.ScenarioContext, tc *Aud
 		}
 		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
 		for time.Now().Before(deadline) {
-			tc.WebhookMetrics.mu.Lock()
-			drops := tc.WebhookMetrics.drops
-			tc.WebhookMetrics.mu.Unlock()
-			if drops >= minDrops {
+			if tc.WebhookMetrics.DropCount() >= minDrops {
 				return nil
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
-		tc.WebhookMetrics.mu.Lock()
-		defer tc.WebhookMetrics.mu.Unlock()
-		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.drops, timeout)
+		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.DropCount(), timeout)
 	})
 
 	ctx.Step(`^the webhook construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
@@ -613,10 +649,16 @@ func createWebhookLoggerWithWebhookMetrics(tc *AuditTestContext, batchSize int) 
 		Timeout:            5 * time.Second,
 	}
 
-	out, err := webhook.New(cfg, nil, tc.WebhookMetrics)
+	out, err := webhook.New(cfg, nil)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.AddCleanup(func() { _ = out.Close() })
+
+	// Inject per-output metrics via OutputMetricsReceiver.
+	if tc.WebhookMetrics != nil {
+		out.SetOutputMetrics(tc.WebhookMetrics)
 	}
 
 	opts := []audit.Option{
@@ -642,11 +684,12 @@ func createWebhookLoggerWithURL(tc *AuditTestContext, url string, cfg *webhook.C
 }
 
 func createWebhookLoggerFromConfig(tc *AuditTestContext, cfg *webhook.Config) error {
-	out, err := webhook.New(cfg, nil, nil)
+	out, err := webhook.New(cfg, nil)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -728,10 +771,8 @@ func assertWebhookFlushCount(tc *AuditTestContext, minFlush int) error {
 	if tc.Logger != nil {
 		_ = tc.Logger.Close()
 	}
-	tc.WebhookMetrics.mu.Lock()
-	defer tc.WebhookMetrics.mu.Unlock()
-	if tc.WebhookMetrics.flushes < minFlush {
-		return fmt.Errorf("expected >= %d webhook flushes, got %d", minFlush, tc.WebhookMetrics.flushes)
+	if tc.WebhookMetrics.FlushCount() < minFlush {
+		return fmt.Errorf("expected >= %d webhook flushes, got %d", minFlush, tc.WebhookMetrics.FlushCount())
 	}
 	return nil
 }
@@ -890,15 +931,14 @@ func createWebhookLoggerSSRF(tc *AuditTestContext, url string, allowPrivate bool
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
 	}
-	// Avoid passing typed nil pointer as interface (would bypass nil check).
-	var wm webhook.Metrics
-	if tc.WebhookMetrics != nil {
-		wm = tc.WebhookMetrics
-	}
-	out, err := webhook.New(cfg, nil, wm)
+	out, err := webhook.New(cfg, nil)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.AddCleanup(func() { _ = out.Close() })
+	if tc.WebhookMetrics != nil {
+		out.SetOutputMetrics(tc.WebhookMetrics)
 	}
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

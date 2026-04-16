@@ -108,14 +108,14 @@ threshold in the [Event Routing](../10-event-routing/) example.
 audit uses an internal buffer (default 10,000 events) between
 `AuditEvent()` and the output writes. If your application emits events
 faster than outputs can drain them, the buffer fills up and `AuditEvent()`
-returns `audit.ErrBufferFull`.
+returns `audit.ErrQueueFull`.
 
 This is deliberate — audit logging must not silently drop events. Your
 application decides how to handle back-pressure:
 
 ```go
 if err := logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
-    if errors.Is(err, audit.ErrBufferFull) {
+    if errors.Is(err, audit.ErrQueueFull) {
         // Buffer is full — outputs can't keep up.
         // Log to stderr, increment a metric, or slow down.
     }

@@ -87,7 +87,7 @@ func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntr
 	tb.Helper()
 
 	cfg := buildTestConfig(input)
-	o, err := New(cfg, nil, nil)
+	o, err := New(cfg, nil)
 	if err != nil {
 		tb.Fatalf("New() failed: %v", err)
 	}

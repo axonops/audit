@@ -16,7 +16,6 @@ package audittest_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -75,22 +74,8 @@ func TestMetricsRecorder_PerOutputMetrics(t *testing.T) {
 	assert.Equal(t, 2, m.SyslogReconnects("localhost:514", false))
 
 	// Webhook metrics.
-	m.RecordWebhookDrop()
-	m.RecordWebhookDrop()
-	m.RecordWebhookFlush(50, 100*time.Millisecond)
-	assert.Equal(t, 2, m.WebhookDrops())
-	assert.Equal(t, 1, m.WebhookFlushes())
-
-	// Loki metrics.
-	m.RecordLokiDrop()
-	m.RecordLokiFlush(100, 200*time.Millisecond)
-	m.RecordLokiFlush(50, 100*time.Millisecond)
-	m.RecordLokiRetry(429, 1)
-	m.RecordLokiError(400)
-	assert.Equal(t, 1, m.LokiDrops())
-	assert.Equal(t, 2, m.LokiFlushes())
-	assert.Equal(t, 1, m.LokiRetries())
-	assert.Equal(t, 1, m.LokiErrors())
+	// Per-output metrics (webhook/loki) are now handled via
+	// audit.OutputMetrics and OutputMetricsReceiver — see #455.
 }
 
 func TestMetricsRecorder_PerOutputMetrics_ZeroValues(t *testing.T) {
@@ -99,12 +84,6 @@ func TestMetricsRecorder_PerOutputMetrics_ZeroValues(t *testing.T) {
 
 	assert.Equal(t, 0, m.FileRotations("/any"))
 	assert.Equal(t, 0, m.SyslogReconnects("any", true))
-	assert.Equal(t, 0, m.WebhookDrops())
-	assert.Equal(t, 0, m.WebhookFlushes())
-	assert.Equal(t, 0, m.LokiDrops())
-	assert.Equal(t, 0, m.LokiFlushes())
-	assert.Equal(t, 0, m.LokiRetries())
-	assert.Equal(t, 0, m.LokiErrors())
 }
 
 func TestMetricsRecorder_Reset(t *testing.T) {
@@ -116,15 +95,9 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	m.RecordBufferDrop()
 	m.RecordValidationError("test")
 
-	// Per-output metrics.
+	// Per-output extension metrics.
 	m.RecordFileRotation("/path")
 	m.RecordSyslogReconnect("addr", true)
-	m.RecordWebhookDrop()
-	m.RecordWebhookFlush(10, time.Millisecond)
-	m.RecordLokiDrop()
-	m.RecordLokiFlush(10, time.Millisecond)
-	m.RecordLokiRetry(429, 1)
-	m.RecordLokiError(400)
 
 	m.Reset()
 
@@ -133,13 +106,7 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	assert.Equal(t, 0, m.BufferDrops())
 	assert.Equal(t, 0, m.ValidationErrors("test"))
 
-	// Per-output zeroed.
+	// Per-output extension zeroed.
 	assert.Equal(t, 0, m.FileRotations("/path"))
 	assert.Equal(t, 0, m.SyslogReconnects("addr", true))
-	assert.Equal(t, 0, m.WebhookDrops())
-	assert.Equal(t, 0, m.WebhookFlushes())
-	assert.Equal(t, 0, m.LokiDrops())
-	assert.Equal(t, 0, m.LokiFlushes())
-	assert.Equal(t, 0, m.LokiRetries())
-	assert.Equal(t, 0, m.LokiErrors())
 }

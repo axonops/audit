@@ -341,6 +341,7 @@ func createSyslogLoggerWithFormatter(tc *AuditTestContext, cfg *syslog.Config, f
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -368,6 +369,7 @@ func createSyslogLoggerWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, 
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -400,6 +402,7 @@ func createSyslogLoggerWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Confi
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -442,6 +445,7 @@ func createSyslogLoggerWithRoute(tc *AuditTestContext, cfg *syslog.Config, route
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

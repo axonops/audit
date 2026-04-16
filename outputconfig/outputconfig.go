@@ -42,12 +42,12 @@ type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
 	// Config is the logger configuration parsed from the optional
 	// top-level `logger:` section. Exposed for inspection; pass
 	// Options to [audit.NewLogger] instead — Options includes
-	// config-equivalent options ([audit.WithBufferSize], etc.).
+	// config-equivalent options ([audit.WithQueueSize], etc.).
 	Config audit.Config
 
 	// Options contains all options needed to create the logger:
 	// framework fields ([audit.WithAppName], [audit.WithHost]),
-	// config-equivalent options ([audit.WithBufferSize], etc.),
+	// config-equivalent options ([audit.WithQueueSize], etc.),
 	// and one [audit.WithNamedOutput] per configured output.
 	// Pass directly to [audit.NewLogger] along with
 	// [audit.WithTaxonomy].
@@ -82,6 +82,9 @@ type NamedOutput struct {
 	// Name is the config-level name of the output, as declared in the
 	// YAML outputs map key.
 	Name string
+	// Type is the output type name (e.g. "file", "syslog", "webhook",
+	// "loki", "stdout") as declared in the YAML type: field.
+	Type string
 	// Output is the constructed output instance, ready for use.
 	Output audit.Output
 	// Route is the optional per-output event filter. Nil means all
@@ -266,6 +269,13 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 				ErrOutputConfigInvalid)
 		}
 
+		if err := audit.ValidateOutputName(name); err != nil {
+			closeAll(outputs)
+			// ValidateOutputName wraps ErrConfigInvalid; re-wrap with
+			// ErrOutputConfigInvalid so callers can match either sentinel.
+			return nil, fmt.Errorf("%w: output %q: %w", ErrOutputConfigInvalid, name, err)
+		}
+
 		if _, dup := seen[name]; dup {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: duplicate output name %q",
@@ -289,6 +299,15 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 			ErrOutputConfigInvalid)
 	}
 
+	// Phase 7b: Wire per-output metrics via OutputMetricsReceiver.
+	if lo.outputMetricsFactory != nil {
+		for i := range outputs {
+			if recv, ok := outputs[i].Output.(audit.OutputMetricsReceiver); ok {
+				recv.SetOutputMetrics(lo.outputMetricsFactory(outputs[i].Type, outputs[i].Name))
+			}
+		}
+	}
+
 	// Phase 8: Build Options slice.
 	result := &LoadResult{
 		Config:         top.loggerResult.config,
@@ -301,8 +320,8 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 
 	// Config-equivalent options so callers can use NewLogger(result.Options...).
 	cfg := top.loggerResult.config
-	if cfg.BufferSize > 0 {
-		result.Options = append(result.Options, audit.WithBufferSize(cfg.BufferSize))
+	if cfg.QueueSize > 0 {
+		result.Options = append(result.Options, audit.WithQueueSize(cfg.QueueSize))
 	}
 	if cfg.DrainTimeout > 0 {
 		result.Options = append(result.Options, audit.WithDrainTimeout(cfg.DrainTimeout))

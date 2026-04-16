@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -128,4 +129,71 @@ type FrameworkFieldReceiver interface {
 // Outputs that do not implement it use the package-level [slog.Default].
 type LoggerReceiver interface {
 	SetLogger(l *slog.Logger)
+}
+
+// OutputMetricsReceiver is an optional interface that [Output]
+// implementations may satisfy to receive per-output metrics. The
+// library calls SetOutputMetrics once after construction, before the
+// first Write call. Outputs that do not implement it operate without
+// per-output metrics.
+//
+// This is the output-side analogue of [LoggerReceiver] and
+// [FrameworkFieldReceiver]. The [OutputMetrics] value is created by
+// the [OutputMetricsFactory] registered via
+// outputconfig.WithOutputMetrics.
+type OutputMetricsReceiver interface {
+	SetOutputMetrics(m OutputMetrics)
+}
+
+// MaxOutputNameLength is the maximum allowed length for an output name.
+const MaxOutputNameLength = 128
+
+// ValidateOutputName checks that an output name is safe for use in
+// metric labels, log messages, and YAML keys. Returns an error if
+// the name is empty, too long, starts with an underscore (reserved),
+// or contains characters outside [a-zA-Z0-9_-].
+//
+// ValidateOutputName is called by outputconfig.Load for YAML-sourced
+// output names. Programmatic names (via [WithNamedOutput]) are not
+// validated because auto-generated names may contain characters
+// outside the YAML-safe set (e.g. "webhook:host:port").
+func ValidateOutputName(name string) error {
+	if name == "" {
+		return fmt.Errorf("%w: output name must not be empty", ErrConfigInvalid)
+	}
+	if len(name) > MaxOutputNameLength {
+		return fmt.Errorf("%w: output name %q exceeds maximum length %d",
+			ErrConfigInvalid, name, MaxOutputNameLength)
+	}
+	if name[0] == '_' {
+		return fmt.Errorf("%w: output name %q must not start with underscore (reserved)",
+			ErrConfigInvalid, name)
+	}
+	if err := validateOutputNameChars(name); err != nil {
+		return err
+	}
+	if c := name[0]; c >= '0' && c <= '9' {
+		return fmt.Errorf("%w: output name %q must start with a letter",
+			ErrConfigInvalid, name)
+	}
+	return nil
+}
+
+// validateOutputNameChars checks that every byte in name is in the
+// allowed set [a-zA-Z0-9_-].
+func validateOutputNameChars(name string) error {
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if isValidOutputNameChar(c) {
+			continue
+		}
+		return fmt.Errorf("%w: output name %q contains invalid character %q at position %d; "+
+			"only [a-zA-Z0-9_-] are allowed", ErrConfigInvalid, name, string(c), i)
+	}
+	return nil
+}
+
+func isValidOutputNameChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_' || c == '-'
 }

@@ -139,10 +139,10 @@ func TestAuditEvent_UnknownFieldStrict_WrapsErrUnknownField(t *testing.T) {
 // errors.Is — non-validation errors not affected (#400 AC-5, AC-6)
 // ---------------------------------------------------------------------------
 
-func TestErrBufferFull_NotErrValidation(t *testing.T) {
+func TestErrQueueFull_NotErrValidation(t *testing.T) {
 	t.Parallel()
-	assert.False(t, errors.Is(audit.ErrBufferFull, audit.ErrValidation),
-		"ErrBufferFull must NOT be ErrValidation")
+	assert.False(t, errors.Is(audit.ErrQueueFull, audit.ErrValidation),
+		"ErrQueueFull must NOT be ErrValidation")
 }
 
 func TestErrClosed_NotErrValidation(t *testing.T) {

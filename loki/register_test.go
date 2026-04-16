@@ -16,13 +16,12 @@ package loki_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
-	"github.com/axonops/audit/loki"
+	_ "github.com/axonops/audit/loki" // registers "loki" factory
 )
 
 // ---------------------------------------------------------------------------
@@ -365,36 +364,6 @@ func TestLokiFactory_NewFactory_NilMetrics(t *testing.T) {
 	require.NoError(t, out.Close())
 }
 
-// TestLokiFactory_NewFactory_WithMetrics verifies that NewFactory with a
-// non-nil Metrics implementation returns a factory that behaves identically
-// to the default factory in terms of config validation and Phase 1 status.
-func TestLokiFactory_NewFactory_WithMetrics(t *testing.T) {
-	t.Parallel()
-
-	metrics := &mockLokiMetrics{}
-	factory := loki.NewFactory(metrics)
-	require.NotNil(t, factory, "NewFactory must return a non-nil factory")
-
-	out, err := factory("custom_metrics", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil)
-	require.NoError(t, err, "valid config with custom metrics should produce output")
-	require.NotNil(t, out)
-	require.NoError(t, out.Close())
-}
-
-// TestLokiFactory_NewFactory_WithMetrics_InvalidConfig verifies that a
-// factory created with NewFactory still validates config — invalid configs
-// must not reach the Phase 1 gate.
-func TestLokiFactory_NewFactory_WithMetrics_InvalidConfig(t *testing.T) {
-	t.Parallel()
-
-	factory := loki.NewFactory(nil)
-
-	_, err := factory("bad_cfg", nil, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "config is required",
-		"NewFactory factory must enforce config-required check, got: %q", err.Error())
-}
-
 // ---------------------------------------------------------------------------
 // Dynamic label parsing — success paths
 // ---------------------------------------------------------------------------
@@ -458,16 +427,3 @@ labels:
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// Ensure the mock satisfies the loki.Metrics interface at compile time.
-var _ loki.Metrics = (*mockLokiMetrics)(nil)
-
-type mockLokiMetrics struct {
-	drops   int
-	flushes int
-}
-
-func (m *mockLokiMetrics) RecordLokiDrop()                        { m.drops++ }
-func (m *mockLokiMetrics) RecordLokiFlush(_ int, _ time.Duration) { m.flushes++ }
-func (m *mockLokiMetrics) RecordLokiRetry(_, _ int)               {}
-func (m *mockLokiMetrics) RecordLokiError(_ int)                  {}

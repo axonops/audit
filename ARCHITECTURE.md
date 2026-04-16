@@ -23,14 +23,48 @@ AuditEvent(event)
 ```
 
 The **caller goroutine** does validation and a non-blocking channel send.
-If the buffer is full, `AuditEvent` returns `ErrBufferFull` immediately.
+If the queue is full, `AuditEvent` returns `ErrQueueFull` immediately.
 
-The **drain goroutine** is the only goroutine that calls `Output.Write`,
-so outputs do not need to be thread-safe. This also gives deterministic
-event ordering within a single logger.
+The **drain goroutine** calls `Output.Write` for each configured output.
+For async outputs (file, syslog, webhook, loki), `Write` enqueues into
+the output's internal buffer and returns immediately. Each async output
+has its own background goroutine that performs the actual I/O. Only
+stdout writes synchronously from the drain goroutine.
 
 Delivery is **at-most-once** within a process lifetime. Events buffered
 when `Close()` times out are lost.
+
+## Mandatory Async Buffer Pattern
+
+All outputs that perform I/O (file, syslog, webhook, loki) MUST use
+async delivery with internal buffers. This is a **security requirement**
+— output isolation prevents cascade failure that could silence all
+auditing. A stalled syslog server must not prevent file writes; a slow
+webhook must not block Loki delivery.
+
+The pattern for every I/O output:
+
+1. **`Write()` copies data into a buffered channel** (non-blocking).
+   The drain goroutine calls `Write()` for each output. `Write()` must
+   return immediately so the drain loop is never blocked by a slow
+   destination.
+2. **`Write()` MUST copy `[]byte` before returning.** The drain loop
+   reuses the slice across outputs via format caching. If an output
+   retains the slice reference, it will see corrupted data.
+3. **A background goroutine handles actual I/O** with its own
+   `defer func() { recover() }()` per event. A panic in one output
+   does not crash the logger or affect other outputs.
+4. **Buffer full → drop + metrics.** When the internal channel is full,
+   the event is silently dropped. `OutputMetrics.RecordDrop()` fires
+   and a rate-limited `slog.Warn` is emitted (at most once per 10
+   seconds per output).
+5. **`Close()` drains the buffer before returning.** The background
+   goroutine processes all remaining events, bounded by a 10-second
+   shutdown timeout. Events still buffered when the timeout expires
+   are lost.
+6. **Exceptions:** `StdoutOutput` writes synchronously (no buffer,
+   no background goroutine) because stdout I/O is process-local.
+   `audittest.Recorder` is synchronous for the same reason.
 
 ## Module Boundaries
 
@@ -75,7 +109,8 @@ import (
 
 - `AuditEvent()` is safe for concurrent use from multiple goroutines
 - Category enable/disable uses `sync.Map` for lock-free reads on the hot path
-- The single drain goroutine means `Output.Write` is never called concurrently
+- `Output.Write` is called only from the drain goroutine (single caller).
+  For async outputs, actual I/O happens in the output's own goroutine
 - `FormatOptions` is pre-allocated per output entry at construction; `FieldLabels` is
   set per-event in the drain goroutine (single writer, no lock needed)
 - `Logger.Close()` is idempotent via `sync.Once`

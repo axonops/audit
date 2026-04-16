@@ -29,22 +29,9 @@ func init() {
 
 // defaultFactory creates a Loki output from YAML config. Core metrics
 // are forwarded for delivery reporting. Per-output metrics are
-// auto-detected via type assertion on coreMetrics.
+// injected via OutputMetricsReceiver after construction.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-	var lokiMetrics Metrics
-	if lm, ok := coreMetrics.(Metrics); ok {
-		lokiMetrics = lm
-	}
-	return buildOutput(name, rawConfig, coreMetrics, lokiMetrics)
-}
-
-// NewFactory returns an [audit.OutputFactory] that creates Loki outputs
-// from YAML configuration with the provided Loki-specific metrics
-// captured in the closure. Pass nil to disable Loki metrics.
-func NewFactory(lokiMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-		return buildOutput(name, rawConfig, coreMetrics, lokiMetrics)
-	}
+	return buildOutput(name, rawConfig, coreMetrics)
 }
 
 // yamlLokiConfig is the YAML-specific representation of Loki output
@@ -118,7 +105,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiMetrics Metrics) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
 	}
@@ -180,7 +167,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, lokiM
 		}
 	}
 
-	output, err := New(cfg, coreMetrics, lokiMetrics)
+	output, err := New(cfg, coreMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
 	}

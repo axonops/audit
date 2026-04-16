@@ -24,7 +24,7 @@ Each example introduces one new concept and builds on the previous.
 | 13 | [standard-fields](13-standard-fields/) | Reserved standard fields, framework fields, standard_fields YAML defaults |
 | 14 | [loki-output](14-loki-output/) | Loki output with stream labels, batching, gzip, LogQL queries |
 | 15 | [tls-policy](15-tls-policy/) | Global and per-output TLS policy configuration |
-| 16 | [buffering](16-buffering/) | Two-level buffering, ErrBufferFull, per-output drops, tuning |
+| 16 | [buffering](16-buffering/) | Two-level buffering, ErrQueueFull, per-output drops, tuning |
 | 17 | [capstone](17-capstone/) | Complete inventory demo with web UI, Postgres, four outputs, Grafana |
 
 The **basic** example uses the programmatic API to show how the library

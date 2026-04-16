@@ -19,8 +19,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/axonops/audit"
@@ -29,8 +31,10 @@ import (
 
 // Compile-time assertions.
 var (
-	_ audit.Output           = (*Output)(nil)
-	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.Output                = (*Output)(nil)
+	_ audit.DestinationKeyer      = (*Output)(nil)
+	_ audit.DeliveryReporter      = (*Output)(nil)
+	_ audit.OutputMetricsReceiver = (*Output)(nil)
 )
 
 const (
@@ -48,6 +52,16 @@ const (
 	// Values above this limit cause [New] to return an error
 	// wrapping [audit.ErrConfigInvalid].
 	MaxAgeDays = 365
+
+	// DefaultBufferSize is the default async buffer capacity for the
+	// file output. Matches the default for webhook and loki outputs
+	// to provide consistent behaviour across all async outputs.
+	DefaultBufferSize = 10_000
+
+	// MaxOutputBufferSize is the maximum allowed per-output async
+	// buffer capacity. Values above this limit cause [New] to return
+	// an error wrapping [audit.ErrConfigInvalid].
+	MaxOutputBufferSize = 100_000
 )
 
 // Metrics is an optional interface for file-output-specific
@@ -98,20 +112,44 @@ type Config struct {
 	// Compress enables gzip compression of rotated backup files.
 	// When nil, defaults to true.
 	Compress *bool
+
+	// BufferSize is the internal async buffer capacity. When full,
+	// new events are dropped and [audit.OutputMetrics.RecordDrop] is
+	// called. Zero defaults to [DefaultBufferSize] (10,000). Values
+	// above [MaxOutputBufferSize] (100,000) cause [New] to return an
+	// error wrapping [audit.ErrConfigInvalid].
+	BufferSize int
 }
+
+// dropWarnInterval is the minimum interval between slog.Warn calls
+// for buffer-full drop events.
+const dropWarnInterval = 10 * time.Second
 
 // Output writes serialised audit events to a file with automatic
 // size-based rotation. It supports backup retention, age-based cleanup,
 // and optional gzip compression.
 //
+// Write enqueues events into an internal buffered channel and returns
+// immediately. A background goroutine reads from the channel and
+// performs the actual file I/O. If the channel is full, the event is
+// dropped and metrics are recorded.
+//
 // Output is safe for concurrent use, including concurrent calls
 // to [Output.Write] and [Output.Close].
 type Output struct {
-	writer *rotate.Writer
-	logger *slog.Logger
-	path   string
-	mu     sync.RWMutex
-	closed bool
+	writer        *rotate.Writer
+	logger        *slog.Logger
+	outputMetrics atomic.Pointer[audit.OutputMetrics]
+	fileMetrics   atomic.Pointer[Metrics]
+	ch            chan []byte
+	closeCh       chan struct{}
+	done          chan struct{}
+	name          string
+	path          string
+	writeCount    uint64
+	drops         dropLimiter
+	closed        atomic.Bool
+	mu            sync.Mutex
 }
 
 // SetLogger receives the library's diagnostic logger.
@@ -135,14 +173,16 @@ func resolvePath(path string) (string, error) {
 }
 
 // New creates a new [Output] from the given config.
-// It validates the path, permissions, and parent directory existence.
+// It validates the path, permissions, and parent directory existence,
+// then starts a background goroutine for async event delivery.
 // The fileMetrics parameter is optional (may be nil).
 //
 // Unlike other output constructors (syslog, webhook, loki) which take
 // *Config, New takes Config by value. This is intentional: file Config
-// has no pointer fields, so the value copy prevents caller mutation
-// without requiring an explicit defensive copy inside New.
-func New(cfg Config, fileMetrics Metrics) (*Output, error) {
+// has no pointer fields (except Compress), so the value copy prevents
+// caller mutation without requiring an explicit defensive copy inside
+// New.
+func New(cfg Config, fileMetrics Metrics) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
@@ -184,7 +224,17 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 		compress = *cfg.Compress
 	}
 
-	out := &Output{path: cfg.Path, logger: logger}
+	out := &Output{
+		path:    cfg.Path,
+		name:    "file:" + cfg.Path,
+		logger:  logger,
+		ch:      make(chan []byte, cfg.BufferSize),
+		closeCh: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+	if fileMetrics != nil {
+		out.fileMetrics.Store(&fileMetrics)
+	}
 
 	logPath := cfg.Path // capture for closure
 	rotCfg := rotate.Config{
@@ -198,9 +248,12 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 				"path", logPath, "error", err)
 		},
 	}
-	if fileMetrics != nil {
-		rotCfg.OnRotate = func(path string) {
-			fileMetrics.RecordFileRotation(path)
+	// Always install OnRotate — reads from the struct field so that
+	// SetOutputMetrics can provide a Metrics implementation after
+	// construction.
+	rotCfg.OnRotate = func(path string) {
+		if fmp := out.fileMetrics.Load(); fmp != nil {
+			(*fmp).RecordFileRotation(path)
 		}
 	}
 	rw, err := rotate.New(cfg.Path, rotCfg)
@@ -209,43 +262,170 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) {
 	}
 	out.writer = rw
 
+	go out.writeLoop()
 	return out, nil
 }
 
-// Write sends a serialised audit event to the file. Write returns
-// [audit.ErrOutputClosed] if the output has been closed. Write is safe for
-// concurrent use.
+// Write enqueues a serialised audit event for async delivery to the
+// file. The data is copied before enqueuing — the caller may reuse
+// the backing array after Write returns. If the internal buffer is
+// full, the event is dropped and [audit.OutputMetrics.RecordDrop] is
+// called. Write never blocks the caller.
 func (f *Output) Write(data []byte) error {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	if f.closed {
+	if f.closed.Load() {
 		return audit.ErrOutputClosed
 	}
-	if _, err := f.writer.Write(data); err != nil {
-		return fmt.Errorf("audit: file output write: %w", err)
+
+	cp := make([]byte, len(data))
+	copy(cp, data)
+
+	select {
+	case f.ch <- cp:
+		return nil
+	default:
+		f.drops.record(dropWarnInterval, func(dropped int64) {
+			f.logger.Warn("audit: output file: event dropped (buffer full)",
+				"dropped", dropped,
+				"buffer_size", cap(f.ch))
+		})
+		if omp := f.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
+		}
+		return nil // non-blocking — do not return error to drain goroutine
 	}
-	return nil
 }
 
-// Close closes the underlying file writer and marks the output as
-// closed. Close is idempotent and safe for concurrent use with
-// [Output.Write].
+// Close signals the background goroutine to drain the buffer and
+// flush remaining events, then closes the underlying file writer.
+// Close is idempotent and safe for concurrent use with [Output.Write].
 func (f *Output) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.closed {
+
+	if !f.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	f.closed = true
+
+	// Signal writeLoop to drain remaining events and exit.
+	close(f.closeCh)
+
+	// Wait for writeLoop to finish draining.
+	shutdownTimeout := 10 * time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-f.done:
+	case <-timer.C:
+		remaining := len(f.ch)
+		f.logger.Error("audit: output file: shutdown timeout, events lost",
+			"timeout", shutdownTimeout,
+			"events_lost", remaining)
+	}
+
+	// Close the rotate.Writer AFTER the writeLoop exits to ensure all
+	// drained events are written before the file is closed.
 	if err := f.writer.Close(); err != nil {
 		return fmt.Errorf("audit: file output close: %w", err)
 	}
 	return nil
 }
 
+// ReportsDelivery returns true, indicating that Output reports its
+// own delivery metrics from the background writeLoop after actual
+// file I/O, not from the Write enqueue path.
+func (f *Output) ReportsDelivery() bool { return true }
+
+// SetOutputMetrics receives the per-output metrics instance created
+// by the [audit.OutputMetricsFactory]. Called once after construction,
+// before the first Write call.
+func (f *Output) SetOutputMetrics(m audit.OutputMetrics) {
+	f.outputMetrics.Store(&m)
+	// Check if the OutputMetrics also implements the file-specific
+	// Metrics extension interface for rotation recording.
+	if fm, ok := m.(Metrics); ok {
+		f.fileMetrics.Store(&fm)
+	}
+}
+
+// writeLoop is the background goroutine that reads events from the
+// channel and writes them to the rotate.Writer. It runs until closeCh
+// is closed, then drains remaining events before returning.
+func (f *Output) writeLoop() {
+	defer close(f.done)
+
+	for {
+		select {
+		case data := <-f.ch:
+			f.writeEvent(data)
+		case <-f.closeCh:
+			f.drainRemaining()
+			return
+		}
+	}
+}
+
+// writeEvent writes a single event to the rotate.Writer with panic
+// recovery and metrics recording.
+func (f *Output) writeEvent(data []byte) {
+	// Load metrics once per event for consistent snapshot.
+	var om audit.OutputMetrics
+	if omp := f.outputMetrics.Load(); omp != nil {
+		om = *omp
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			f.logger.Error("audit: output file: panic recovered",
+				"panic", r,
+				"stack", string(buf[:n]))
+			if om != nil {
+				om.RecordError()
+			}
+		}
+	}()
+
+	// Sample queue depth every 64 events.
+	f.writeCount++
+	if om != nil && f.writeCount&63 == 0 {
+		om.RecordQueueDepth(len(f.ch), cap(f.ch))
+	}
+
+	var start time.Time
+	if om != nil {
+		start = time.Now()
+	}
+	if _, err := f.writer.Write(data); err != nil {
+		f.logger.Error("audit: output file: delivery failed",
+			"error", err)
+		if om != nil {
+			om.RecordError()
+		}
+		return
+	}
+	if om != nil {
+		om.RecordFlush(1, time.Since(start))
+	}
+}
+
+// drainRemaining reads all remaining events from the channel after
+// closeCh fires and writes them to the file.
+func (f *Output) drainRemaining() {
+	for {
+		select {
+		case data := <-f.ch:
+			f.writeEvent(data)
+		default:
+			return
+		}
+	}
+}
+
 // Name returns the human-readable identifier for this output.
 func (f *Output) Name() string {
-	return "file:" + f.path
+	return f.name
 }
 
 // DestinationKey returns the absolute filesystem path,
@@ -271,7 +451,7 @@ func parsePermissions(s string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// applyFileDefaults fills zero-valued rotation fields with defaults.
+// applyFileDefaults fills zero-valued rotation and buffer fields with defaults.
 func applyFileDefaults(cfg *Config) {
 	if cfg.MaxSizeMB <= 0 {
 		cfg.MaxSizeMB = 100
@@ -282,10 +462,13 @@ func applyFileDefaults(cfg *Config) {
 	if cfg.MaxAgeDays <= 0 {
 		cfg.MaxAgeDays = 30
 	}
+	if cfg.BufferSize <= 0 {
+		cfg.BufferSize = DefaultBufferSize
+	}
 }
 
-// validateFileLimits checks that rotation fields do not exceed their
-// upper bounds.
+// validateFileLimits checks that rotation and buffer fields do not
+// exceed their upper bounds.
 func validateFileLimits(cfg *Config) error {
 	if cfg.MaxSizeMB > MaxSizeMB {
 		return fmt.Errorf("%w: max_size_mb %d exceeds maximum %d",
@@ -298,6 +481,10 @@ func validateFileLimits(cfg *Config) error {
 	if cfg.MaxAgeDays > MaxAgeDays {
 		return fmt.Errorf("%w: max_age_days %d exceeds maximum %d",
 			audit.ErrConfigInvalid, cfg.MaxAgeDays, MaxAgeDays)
+	}
+	if cfg.BufferSize > MaxOutputBufferSize {
+		return fmt.Errorf("%w: buffer_size %d exceeds maximum %d",
+			audit.ErrConfigInvalid, cfg.BufferSize, MaxOutputBufferSize)
 	}
 	return nil
 }

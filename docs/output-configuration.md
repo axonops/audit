@@ -19,7 +19,7 @@ version: 1
 
 logger:
   enabled: true                    # default: true (set false to disable auditing)
-  buffer_size: 10000               # default: 10,000 (max: 1,000,000)
+  queue_size: 10000                # default: 10,000 (max: 1,000,000)
   drain_timeout: "5s"              # default: "5s" (max: "60s")
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
@@ -181,7 +181,7 @@ fields are optional — omitted fields use sensible defaults.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `true` | Set `false` to disable audit logging entirely (no-op logger). |
-| `buffer_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
+| `queue_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
 | `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
 | `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
 | `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
@@ -190,7 +190,7 @@ All values support environment variable substitution:
 
 ```yaml
 logger:
-  buffer_size: ${AUDIT_BUFFER_SIZE:-10000}
+  queue_size: ${AUDIT_QUEUE_SIZE:-10000}
   drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
   enabled: ${AUDIT_ENABLED:-true}
 ```
@@ -396,6 +396,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `max_age_days` | `30` | Delete rotated files older than this. Maximum: 365. |
 | `permissions` | `"0600"` | File permissions (octal string, must be quoted). |
 | `compress` | `true` | Gzip compress rotated files. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 
 ## 📡 Syslog Output Fields
 
@@ -408,6 +409,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. |
 | `tls_key` | — | Client key path for mTLS. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 | `max_retries` | `10` | Reconnection attempts before giving up. |
 | `tls_policy` | — | TLS version policy (nested object). |
 | `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |

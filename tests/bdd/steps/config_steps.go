@@ -41,11 +41,11 @@ func registerConfigWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 
 	ctx.Step(`^I create a logger with buffer size (\d+)$`, func(bufSize int) error {
-		return tryCreateLogger(tc, audit.WithBufferSize(bufSize))
+		return tryCreateLogger(tc, audit.WithQueueSize(bufSize))
 	})
 
 	ctx.Step(`^I try to create a logger with buffer size (\d+)$`, func(bufSize int) error {
-		return tryCreateLogger(tc, audit.WithBufferSize(bufSize))
+		return tryCreateLogger(tc, audit.WithQueueSize(bufSize))
 	})
 
 	ctx.Step(`^I create a logger with drain timeout (\d+)$`, func(timeout int) error {

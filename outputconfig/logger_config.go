@@ -45,18 +45,18 @@ func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,g
 			if !v {
 				result.disabled = true
 			}
-		case "buffer_size":
+		case "queue_size":
 			v, err := toInt(val)
 			if err != nil {
-				return result, fmt.Errorf("buffer_size: %w", err)
+				return result, fmt.Errorf("queue_size: %w", err)
 			}
 			if v < 0 {
-				return result, fmt.Errorf("buffer_size: must be non-negative, got %d", v)
+				return result, fmt.Errorf("queue_size: must be non-negative, got %d", v)
 			}
-			if v > audit.MaxBufferSize {
-				return result, fmt.Errorf("buffer_size: %d exceeds maximum %d", v, audit.MaxBufferSize)
+			if v > audit.MaxQueueSize {
+				return result, fmt.Errorf("queue_size: %d exceeds maximum %d", v, audit.MaxQueueSize)
 			}
-			result.config.BufferSize = v
+			result.config.QueueSize = v
 		case "drain_timeout":
 			s, err := toString(val)
 			if err != nil {

@@ -148,7 +148,7 @@
 //	var ve *audit.ValidationError
 //	if errors.As(err, &ve) { log.Println(ve.Error()) }
 //
-// [ErrBufferFull] and [ErrClosed] are NOT validation errors and will
+// [ErrQueueFull] and [ErrClosed] are NOT validation errors and will
 // never match [ErrValidation].
 //
 // # Code Generation Support
@@ -209,7 +209,7 @@
 //
 // Events are enqueued to a buffered channel (configurable capacity, default
 // 10,000) and drained by a single background goroutine. If the buffer is
-// full, [Logger.AuditEvent] returns [ErrBufferFull] and the drop is recorded via
+// full, [Logger.AuditEvent] returns [ErrQueueFull] and the drop is recorded via
 // the [Metrics] interface.
 //
 // # Graceful Shutdown
@@ -218,6 +218,6 @@
 // to call Close leaks the drain goroutine and causes any buffered events to be
 // lost. Close signals the drain goroutine to stop, waits up to
 // [Config.DrainTimeout] for pending events to flush, then closes all outputs
-// in sequence. Events still in the buffer when DrainTimeout expires are lost;
+// in parallel. Events still in the buffer when DrainTimeout expires are lost;
 // a warning is emitted via [log/slog]. Close is idempotent via [sync.Once].
 package audit

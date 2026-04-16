@@ -1184,7 +1184,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, result.Config.BufferSize, "zero means applyDefaults will set 10000")
+	assert.Equal(t, 0, result.Config.QueueSize, "zero means applyDefaults will set 10000")
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "zero means applyDefaults will set 5s")
 	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
 	assert.False(t, result.Config.OmitEmpty)
@@ -1198,7 +1198,7 @@ app_name: test
 host: test
 logger:
   enabled: true
-  buffer_size: 50000
+  queue_size: 50000
   drain_timeout: "30s"
   validation_mode: warn
   omit_empty: true
@@ -1210,7 +1210,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 50000, result.Config.BufferSize)
+	assert.Equal(t, 50000, result.Config.QueueSize)
 	assert.Equal(t, 30*time.Second, result.Config.DrainTimeout)
 	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
 	assert.True(t, result.Config.OmitEmpty)
@@ -1223,7 +1223,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: 25000
+  queue_size: 25000
 outputs:
   console:
     type: stdout
@@ -1232,7 +1232,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 25000, result.Config.BufferSize)
+	assert.Equal(t, 25000, result.Config.QueueSize)
 	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "default drain timeout")
 }
 
@@ -1262,7 +1262,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: ${TEST_BUFFER_SIZE}
+  queue_size: ${TEST_BUFFER_SIZE}
   drain_timeout: "${TEST_DRAIN_TIMEOUT}"
 outputs:
   console:
@@ -1272,7 +1272,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 75000, result.Config.BufferSize)
+	assert.Equal(t, 75000, result.Config.QueueSize)
 	assert.Equal(t, 15*time.Second, result.Config.DrainTimeout)
 }
 
@@ -1343,7 +1343,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: -1
+  queue_size: -1
 outputs:
   console:
     type: stdout
@@ -1362,7 +1362,7 @@ version: 1
 app_name: test
 host: test
 logger:
-  buffer_size: 2000000
+  queue_size: 2000000
 outputs:
   console:
     type: stdout
@@ -2497,6 +2497,284 @@ func TestLoad_MultipleLoadOptions_Compose(t *testing.T) {
 		outputconfig.WithSecretTimeout(5*time.Second),
 		outputconfig.WithSecretTimeout(20*time.Second),
 	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithOutputMetrics(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  log:\n    type: stdout\n")
+	var called int
+	factory := func(outputType, outputName string) audit.OutputMetrics {
+		called++
+		assert.Equal(t, "stdout", outputType)
+		assert.Equal(t, "log", outputName)
+		return audit.NoOpOutputMetrics{}
+	}
+	result, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithOutputMetrics(factory),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 1, called, "factory should be called once for stdout output")
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithOutputMetrics_NilFactory(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
+	result, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithOutputMetrics(nil),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_WithFactory(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  custom:\n    type: test-custom\n")
+	customFactory := func(name string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+		so, soErr := audit.NewStdoutOutput(audit.StdoutConfig{})
+		if soErr != nil {
+			return nil, soErr
+		}
+		return audit.WrapOutput(so, name), nil
+	}
+	result, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithFactory("test-custom", customFactory),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Outputs, 1)
+	assert.Equal(t, "test-custom", result.Outputs[0].Type)
+	assert.Equal(t, "custom", result.Outputs[0].Name)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_RouteWithExcludeCategories(t *testing.T) {
+	// Exercises toStringSlice and deepCopyValue's []any branch via
+	// route.exclude_categories which is a YAML sequence.
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  log:
+    type: stdout
+    route:
+      exclude_categories:
+        - security
+`)
+	result, err := outputconfig.Load(context.Background(), data, tax)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestLoad_QueueSizeInLoggerSection(t *testing.T) {
+	// Exercises toInt path through logger.queue_size.
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte("version: 1\napp_name: test\nhost: test\nlogger:\n  queue_size: 200\noutputs:\n  c:\n    type: stdout\n")
+	result, err := outputconfig.Load(context.Background(), data, tax)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 200, result.Config.QueueSize)
+	for _, o := range result.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
+func TestToString_NilInput(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToStringForTest(nil)
+	require.NoError(t, err)
+	assert.Equal(t, "", result)
+}
+
+func TestToString_NumericInput(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToStringForTest(42)
+	require.NoError(t, err)
+	assert.Equal(t, "42", result)
+}
+
+func TestToString_BoolInput(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToStringForTest(true)
+	require.NoError(t, err)
+	assert.Equal(t, "true", result)
+}
+
+func TestToInt_Int64Input(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToIntForTest(int64(42))
+	require.NoError(t, err)
+	assert.Equal(t, 42, result)
+}
+
+func TestToInt_Uint64Input(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToIntForTest(uint64(42))
+	require.NoError(t, err)
+	assert.Equal(t, 42, result)
+}
+
+func TestToInt_Float64Input(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToIntForTest(float64(42))
+	require.NoError(t, err)
+	assert.Equal(t, 42, result)
+}
+
+func TestToInt_Float64Fractional(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToIntForTest(42.5)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fractional")
+}
+
+func TestToInt_StringInput(t *testing.T) {
+	t.Parallel()
+	result, err := outputconfig.ToIntForTest("123")
+	require.NoError(t, err)
+	assert.Equal(t, 123, result)
+}
+
+func TestToInt_InvalidString(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToIntForTest("not-a-number")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid integer")
+}
+
+func TestToInt_UnsupportedType(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToIntForTest([]string{"nope"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected integer")
+}
+
+func TestToBool_UnsupportedType(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToBoolForTest(42)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected boolean")
+}
+
+func TestToBool_InvalidString(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToBoolForTest("not-bool")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid boolean")
+}
+
+func TestToStringSlice_NonStringElement(t *testing.T) {
+	t.Parallel()
+	_, err := outputconfig.ToStringSliceForTest([]any{"a", 42})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected string")
+}
+
+func TestDeepCopyValue_SliceCopy(t *testing.T) {
+	t.Parallel()
+	orig := []any{"a", "b", map[string]any{"key": "val"}}
+	cp, ok := outputconfig.DeepCopyValueForTest(orig).([]any)
+	require.True(t, ok, "expected []any from deepCopyValue")
+	require.Len(t, cp, 3)
+	assert.Equal(t, "a", cp[0])
+	assert.Equal(t, "b", cp[1])
+	// Mutating the original should not affect the copy.
+	orig[0] = "CHANGED"
+	assert.Equal(t, "a", cp[0])
+}
+
+func TestDeepCopyValue_ScalarPassthrough(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "hello", outputconfig.DeepCopyValueForTest("hello"))
+	assert.Equal(t, 42, outputconfig.DeepCopyValueForTest(42))
+	assert.Equal(t, true, outputconfig.DeepCopyValueForTest(true))
+	assert.Nil(t, outputconfig.DeepCopyValueForTest(nil))
+}
+
+func TestOutputMetricsFactory_ScopedToOutputName(t *testing.T) {
+	// Verify the factory is called with the output NAME, not just the type.
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  compliance_log:
+    type: stdout
+`)
+	var calledWith struct {
+		outputType string
+		outputName string
+	}
+	var callCount atomic.Int64
+	factory := func(outputType, outputName string) audit.OutputMetrics {
+		callCount.Add(1)
+		calledWith.outputType = outputType
+		calledWith.outputName = outputName
+		return audit.NoOpOutputMetrics{}
+	}
+	result, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithOutputMetrics(factory),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, int64(1), callCount.Load(),
+		"factory should be called once")
+	assert.Equal(t, "stdout", calledWith.outputType,
+		"factory should receive the output type")
+	assert.Equal(t, "compliance_log", calledWith.outputName,
+		"factory should receive the output NAME, not the type")
+}
+
+func TestLoad_GlobalTLSPolicy_WithStdout(t *testing.T) {
+	// Exercises the tls_policy top-level key parsing path.
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+tls_policy:
+  allow_tls12: true
+outputs:
+  c:
+    type: stdout
+`)
+	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	for _, o := range result.Outputs {

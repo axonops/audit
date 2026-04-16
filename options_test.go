@@ -137,22 +137,22 @@ func TestDisabledLogger_MustHandle_DoesNotPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// WithBufferSize (#388 AC-4)
+// WithQueueSize (#388 AC-4)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithBufferSize_SetsCustomSize(t *testing.T) {
+func TestNewLogger_WithQueueSize_SetsCustomSize(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(50000),
+		audit.WithQueueSize(50000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
 	require.NoError(t, logger.Close())
 }
 
-func TestNewLogger_WithBufferSize_RejectsOverMax(t *testing.T) {
+func TestNewLogger_WithQueueSize_RejectsOverMax(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.WithBufferSize(audit.MaxBufferSize+1),
+		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
@@ -244,7 +244,7 @@ func TestNewLogger_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 func TestNewLogger_WithConfig_AppliesStructFields(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	logger, err := audit.NewLogger(
-		audit.WithConfig(audit.Config{BufferSize: 50000}),
+		audit.WithConfig(audit.Config{QueueSize: 50000}),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -253,11 +253,11 @@ func TestNewLogger_WithConfig_AppliesStructFields(t *testing.T) {
 
 func TestNewLogger_WithConfig_IndividualOptionOverrides(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	// WithConfig sets BufferSize=100, then WithBufferSize(200) overrides.
+	// WithConfig sets QueueSize=100, then WithQueueSize(200) overrides.
 	// Last option wins.
 	logger, err := audit.NewLogger(
-		audit.WithConfig(audit.Config{BufferSize: 100}),
-		audit.WithBufferSize(200),
+		audit.WithConfig(audit.Config{QueueSize: 100}),
+		audit.WithQueueSize(200),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
@@ -271,8 +271,8 @@ func TestNewLogger_WithConfig_IndividualOptionOverrides(t *testing.T) {
 func TestConfig_VersionUnexported(t *testing.T) {
 	// This test verifies that Config{} compiles without Version.
 	// If Version were exported, this would be a different test.
-	cfg := audit.Config{BufferSize: 100}
-	assert.Equal(t, 100, cfg.BufferSize)
+	cfg := audit.Config{QueueSize: 100}
+	assert.Equal(t, 100, cfg.QueueSize)
 }
 
 // ---------------------------------------------------------------------------

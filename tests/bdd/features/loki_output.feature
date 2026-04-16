@@ -312,3 +312,11 @@ Feature: Loki Output
     And a logger with loki output to the local Loki receiver with AllowPrivateRanges
     When I audit a uniquely marked "user_create" event
     Then the local Loki receiver should have at least 1 push within 10 seconds
+
+  Scenario: Delivery failure records RecordError metric
+    Given a local Loki receiver returning status 400
+    And mock loki metrics are configured
+    And a logger with loki output to the local Loki receiver with metrics and max retries 0
+    When I audit a uniquely marked "user_create" event
+    And I close the logger
+    Then the loki metrics should have recorded at least 1 error within 5 seconds

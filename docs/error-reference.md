@@ -16,7 +16,7 @@ for specific error types — never compare error strings:
 
 ```go
 err := logger.AuditEvent(event)
-if errors.Is(err, audit.ErrBufferFull) {
+if errors.Is(err, audit.ErrQueueFull) {
     // handle buffer full
 }
 if errors.Is(err, audit.ErrClosed) {
@@ -32,10 +32,10 @@ read the `.Error()` string for specifics.
 
 ## ⚡ Core Errors
 
-### `ErrBufferFull`
+### `ErrQueueFull`
 
 ```
-audit: buffer full
+audit: queue full
 ```
 
 | | |
@@ -43,7 +43,7 @@ audit: buffer full
 | **When** | `AuditEvent()` is called but the async buffer channel is at capacity |
 | **Meaning** | The event was **dropped** — it will not be delivered to any output |
 | **Transient?** | Yes — resolves when the drain goroutine catches up |
-| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the buffer is full and retrying worsens the backlog. If this happens frequently, increase `Config.BufferSize` or investigate slow outputs. See [Two-Level Buffering](async-delivery.md#two-level-buffering) for the pipeline architecture. |
+| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the queue is full and retrying worsens the backlog. If this happens frequently, increase `Config.QueueSize` (or `logger.queue_size` in YAML) or investigate slow outputs. See [Two-Level Buffering](async-delivery.md#two-level-buffering) for the pipeline architecture. |
 
 ### `ErrClosed`
 
@@ -86,7 +86,7 @@ audit: config validation failed
 | **When** | `NewLogger()` is called with an invalid `Config` struct |
 | **Meaning** | Logger creation failed — one or more config values are out of range |
 | **Transient?** | No — permanent configuration error |
-| **What to do** | Check the error message for details. Common causes: `BufferSize` exceeds 1,000,000, `DrainTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
+| **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `DrainTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
 
 ### `ErrOutputConfigInvalid`
 

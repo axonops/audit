@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/axonops/audit"
 	"github.com/axonops/audit/loki"
 )
 
@@ -43,7 +42,7 @@ func ExampleNew() {
 		},
 	}
 
-	out, err := loki.New(cfg, nil, nil)
+	out, err := loki.New(cfg, nil)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -55,18 +54,4 @@ func ExampleNew() {
 	// Output:
 	// loki:localhost:3100
 	// true
-}
-
-// ExampleNewFactory demonstrates registering a Loki output factory
-// with custom Loki-specific metrics.
-func ExampleNewFactory() {
-	// Create a factory with custom metrics (pass nil to disable).
-	factory := loki.NewFactory(nil)
-
-	// The factory can be registered with the audit output registry:
-	audit.RegisterOutputFactory("loki-custom", factory)
-
-	fmt.Println("factory registered")
-	// Output:
-	// factory registered
 }

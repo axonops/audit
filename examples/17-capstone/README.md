@@ -132,7 +132,7 @@ Notice how the **same event** looks different in each output:
 
 The Pipeline Metrics dashboard at http://localhost:3000/d/audit-metrics/
 shows counters from the `audit.Metrics` interface and per-output
-metrics (`file.Metrics`, `loki.Metrics`). All metrics are auto-detected
+metrics (`file.Metrics`, `audit.OutputMetrics`). All metrics are auto-detected
 from a single struct in `metrics.go` via structural typing — no manual
 factory registration needed (see [Metrics Auto-Detection](#metrics-auto-detection)).
 
@@ -210,7 +210,7 @@ docker compose down -v
 
 The `auditMetrics` struct in `metrics.go` implements both the core
 `audit.Metrics` interface and the per-output interfaces (`file.Metrics`,
-`loki.Metrics`) via structural typing. When passed to `outputconfig.Load`
+`audit.OutputMetrics`) via structural typing. When passed to `outputconfig.Load`
 via `WithCoreMetrics(m)`, the output factories automatically detect
 which interfaces it satisfies:
 

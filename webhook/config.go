@@ -101,7 +101,7 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	BatchSize int
 
 	// BufferSize is the internal async buffer capacity. When full,
-	// new events are dropped and [Metrics.RecordWebhookDrop] is called.
+	// new events are dropped and [audit.OutputMetrics.RecordDrop] is called.
 	// Zero defaults to [DefaultBufferSize] (10,000).
 	// Values above [MaxBufferSize] (1,000,000) are rejected.
 	BufferSize int

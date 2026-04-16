@@ -73,12 +73,14 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	MetadataMock *MetadataWriterMock
 
 	// Metrics capture.
-	MockMetrics    *MockMetrics
-	WebhookMetrics *MockWebhookMetrics
-	FileMetrics    *MockFileMetrics
-	SyslogMetrics  *MockSyslogMetrics
-	LokiMetrics    *MockLokiMetrics
-	AuditDuration  time.Duration // measured duration for timing assertions
+	MockMetrics              *MockMetrics
+	WebhookMetrics           *MockOutputMetrics
+	FileMetrics              *MockFileMetrics
+	SyslogMetrics            *MockSyslogMetrics
+	LokiMetrics              *MockOutputMetrics
+	OutputMetricsMock        *MockOutputMetrics        // generic per-output metrics for isolation/drop tests
+	OutputMetricsFactoryMock *MockOutputMetricsFactory // factory mock for outputconfig BDD scenarios
+	AuditDuration            time.Duration             // measured duration for timing assertions
 
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
@@ -125,6 +127,8 @@ func (tc *AuditTestContext) Reset() {
 	tc.FileMetrics = nil
 	tc.SyslogMetrics = nil
 	tc.LokiMetrics = nil
+	tc.OutputMetricsMock = nil
+	tc.OutputMetricsFactoryMock = nil
 	tc.AuditDuration = 0
 	tc.TLSReceiver = nil
 	tc.LocalReceiver = nil
@@ -194,4 +198,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerLokiFanoutSteps(ctx, tc)
 	registerLokiUncategorisedSteps(ctx, tc)
 	registerSyslogSeveritySteps(ctx, tc)
+	registerIsolationSteps(ctx, tc)
+	registerEventMetricsSteps(ctx, tc)
+	registerOutputConfigSteps(ctx, tc)
 }

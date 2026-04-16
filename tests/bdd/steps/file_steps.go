@@ -114,13 +114,19 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a file output with a symlink path$`, func() error { return trySymlinkFileOutput(tc) })
 	ctx.Step(`^I try to create a file output with empty path$`, func() error { return tryFileOutputWithPath(tc, "") })
 	ctx.Step(`^I try to create a file output with MaxSizeMB (\d+)$`, func(mb int) error {
-		_, err := file.New(file.Config{Path: "/tmp/test.log", MaxSizeMB: mb}, nil)
+		out, err := file.New(file.Config{Path: "/tmp/test.log", MaxSizeMB: mb}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 	ctx.Step(`^I try to create a file output at "([^"]*)"$`, func(path string) error { return tryFileOutputWithPath(tc, path) })
 	ctx.Step(`^I try to create a file output with MaxBackups (\d+)$`, func(mb int) error {
-		_, err := file.New(file.Config{Path: "/tmp/test.log", MaxBackups: mb}, nil)
+		out, err := file.New(file.Config{Path: "/tmp/test.log", MaxBackups: mb}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
@@ -129,7 +135,10 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		if dirErr != nil {
 			return dirErr
 		}
-		_, err := file.New(file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms}, nil)
+		out, err := file.New(file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
@@ -265,7 +274,7 @@ func auditConcurrent(tc *AuditTestContext, total, goroutines int) error {
 
 func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	// Each event is roughly 200 bytes. Write enough to exceed target.
-	// Tolerate ErrBufferFull — the drain goroutine may not keep up.
+	// Tolerate ErrQueueFull — the drain goroutine may not keep up.
 	targetBytes := mb * 1024 * 1024
 	eventSize := 200
 	count := (targetBytes / eventSize) + 100
@@ -273,7 +282,7 @@ func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rot_%d_padding_data_for_size", i)
 		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
-		if err != nil && !errors.Is(err, audit.ErrBufferFull) {
+		if err != nil && !errors.Is(err, audit.ErrQueueFull) {
 			return fmt.Errorf("write event %d: %w", i, err)
 		}
 	}
@@ -301,6 +310,7 @@ func trySymlinkFileOutput(tc *AuditTestContext) error {
 		tc.LastErr = err
 		return nil //nolint:nilerr // construction rejected it
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 	// Try writing — the symlink should be rejected by safeOpen.
 	writeErr := out.Write([]byte(`{"test":"symlink"}\n`))
 	_ = out.Close()
@@ -315,7 +325,10 @@ func trySymlinkFileOutput(tc *AuditTestContext) error {
 }
 
 func tryFileOutputWithPath(tc *AuditTestContext, path string) error {
-	_, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(file.Config{Path: path}, nil)
+	if out != nil {
+		tc.AddCleanup(func() { _ = out.Close() })
+	}
 	tc.LastErr = err
 	return nil
 }
@@ -486,6 +499,7 @@ func createFileLoggerImpl(tc *AuditTestContext, fileCfg file.Config, fileMetrics
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

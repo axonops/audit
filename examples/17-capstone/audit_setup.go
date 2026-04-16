@@ -30,9 +30,9 @@ import (
 //
 // Blank imports register each output type's factory via init().
 // The YAML file defines which outputs are active — adding or removing
-// outputs is a config change, not a code change. Per-output metrics
-// (file rotation, Loki flush) are auto-detected from the core metrics
-// interface via type assertion when passed through WithCoreMetrics.
+// outputs is a config change, not a code change. Per-output delivery
+// metrics (drops, flushes, errors, retries) are scoped by output
+// type and name via the OutputMetricsFactory.
 //
 // HMAC salts, versions, algorithms, and enabled flags are resolved
 // from OpenBao at startup via ref+openbao:// URIs in outputs.yaml.
@@ -41,7 +41,10 @@ import (
 func setupAuditLogger(m *auditMetrics) (*audit.Logger, error) {
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
 	return outputconfig.NewLogger(context.Background(), taxonomyYAML, configPath,
-		[]outputconfig.LoadOption{outputconfig.WithCoreMetrics(m)},
+		[]outputconfig.LoadOption{
+			outputconfig.WithCoreMetrics(m),
+			outputconfig.WithOutputMetrics(m.newOutputMetricsFactory()),
+		},
 		audit.WithMetrics(m),
 	)
 }

@@ -64,7 +64,7 @@ func registerMetricsGivenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 	ctx.Step(`^a logger with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLoggerWithOpts(tc, audit.WithBufferSize(bufSize))
+		return createStdoutLoggerWithOpts(tc, audit.WithQueueSize(bufSize))
 	})
 
 }
@@ -90,6 +90,7 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -119,10 +120,11 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
+		tc.AddCleanup(func() { _ = w.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -224,10 +226,11 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil, nil)
+		}, nil)
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
+		tc.AddCleanup(func() { _ = whOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),

@@ -24,19 +24,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBufferCap_ReturnsConfiguredSize(t *testing.T) {
+func TestQueueCap_ReturnsConfiguredSize(t *testing.T) {
 	t.Parallel()
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(500),
+		audit.WithQueueSize(500),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	assert.Equal(t, 500, logger.BufferCap())
+	assert.Equal(t, 500, logger.QueueCap())
 }
 
-func TestBufferLen_ReturnsCurrentOccupancy(t *testing.T) {
+func TestQueueLen_ReturnsCurrentOccupancy(t *testing.T) {
 	t.Parallel()
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -44,8 +44,8 @@ func TestBufferLen_ReturnsCurrentOccupancy(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	// BufferLen starts at 0 (drain goroutine may process immediately).
-	assert.GreaterOrEqual(t, logger.BufferLen(), 0)
+	// QueueLen starts at 0 (drain goroutine may process immediately).
+	assert.GreaterOrEqual(t, logger.QueueLen(), 0)
 }
 
 func TestOutputNames_ReturnsSortedNames(t *testing.T) {
@@ -99,8 +99,8 @@ func TestIntrospection_DisabledLogger_ReturnsZero(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logger.Close() })
 
-	assert.Equal(t, 0, logger.BufferLen())
-	assert.Equal(t, 0, logger.BufferCap())
+	assert.Equal(t, 0, logger.QueueLen())
+	assert.Equal(t, 0, logger.QueueCap())
 	assert.True(t, logger.IsDisabled())
 	assert.False(t, logger.IsCategoryEnabled("security"))
 	assert.False(t, logger.IsEventEnabled("auth_failure"))
@@ -117,8 +117,8 @@ func TestIntrospection_SyncLogger(t *testing.T) {
 
 	assert.True(t, logger.IsSynchronous())
 	assert.False(t, logger.IsDisabled())
-	assert.Equal(t, 0, logger.BufferLen(), "sync logger has no buffer")
-	assert.Equal(t, 0, logger.BufferCap(), "sync logger has no buffer")
+	assert.Equal(t, 0, logger.QueueLen(), "sync logger has no buffer")
+	assert.Equal(t, 0, logger.QueueCap(), "sync logger has no buffer")
 }
 
 func TestIntrospection_ConcurrentWithAuditEvent_NoRace(t *testing.T) {
@@ -144,8 +144,8 @@ func TestIntrospection_ConcurrentWithAuditEvent_NoRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = logger.BufferLen()
-			_ = logger.BufferCap()
+			_ = logger.QueueLen()
+			_ = logger.QueueCap()
 			_ = logger.OutputNames()
 			_ = logger.IsCategoryEnabled("security")
 			_ = logger.IsEventEnabled("auth_failure")

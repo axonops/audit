@@ -187,7 +187,9 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	// Explicit buffer size documents intent: 50 goroutines × 100
+	// events = 5000 events; buffer must absorb the burst.
+	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

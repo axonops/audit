@@ -30,11 +30,12 @@ type LoadOption func(*loadOptions)
 
 // loadOptions holds the resolved options for a Load call.
 type loadOptions struct {
-	coreMetrics      audit.Metrics
-	factories        map[string]audit.OutputFactory
-	providers        []secrets.Provider
-	secretTimeout    time.Duration
-	secretTimeoutSet bool // true when WithSecretTimeout was called explicitly
+	coreMetrics          audit.Metrics
+	outputMetricsFactory audit.OutputMetricsFactory
+	factories            map[string]audit.OutputFactory
+	providers            []secrets.Provider
+	secretTimeout        time.Duration
+	secretTimeoutSet     bool // true when WithSecretTimeout was called explicitly
 }
 
 // WithSecretProvider registers a secret provider for resolving ref+
@@ -68,6 +69,20 @@ func WithSecretTimeout(d time.Duration) LoadOption {
 func WithCoreMetrics(m audit.Metrics) LoadOption {
 	return func(o *loadOptions) {
 		o.coreMetrics = m
+	}
+}
+
+// WithOutputMetrics sets the [audit.OutputMetricsFactory] used to
+// create per-output metrics during [Load]. The factory is called once
+// per output with the output type name and YAML key name. Pass nil to
+// disable per-output metrics.
+//
+// The factory is called after output construction. Each output's
+// [audit.OutputMetricsReceiver.SetOutputMetrics] is invoked with the
+// scoped [audit.OutputMetrics] returned by the factory.
+func WithOutputMetrics(factory audit.OutputMetricsFactory) LoadOption {
+	return func(o *loadOptions) {
+		o.outputMetricsFactory = factory
 	}
 }
 

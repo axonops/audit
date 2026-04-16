@@ -28,10 +28,17 @@ flowchart LR
 
 ## ❓ Why Async?
 
-Audit logging must not slow down the operations it audits. If writing
-to a syslog server takes 5ms, a synchronous audit call would add 5ms
-to every request. The async pipeline decouples event production from
-delivery:
+Audit logging must not slow down the operations it audits, and
+**output isolation is a security requirement**. If one output stalls
+(a syslog server goes unreachable, a webhook endpoint is slow), it
+must not prevent delivery to other outputs. Without async buffers, a
+stalled output blocks the drain goroutine, silencing all auditing —
+a cascade failure that is worse than losing events to a single
+destination.
+
+If writing to a syslog server takes 5ms, a synchronous audit call
+would add 5ms to every request. The async pipeline decouples event
+production from delivery:
 
 - `AuditEvent()` validates and enqueues — sub-microsecond
 - A single drain goroutine reads events from the channel **continuously** as they arrive — there is no periodic flush interval
@@ -53,9 +60,10 @@ industry:
 The key is not synchronous delivery — it is **completeness monitoring**.
 audit provides this through the [Metrics interface](metrics-monitoring.md):
 
-- `RecordBufferDrop()` fires if an event is lost due to backpressure
-- `RecordOutputError()` fires if an output fails to write
-- `RecordEvent(output, "error")` tracks delivery failures per output
+- `RecordBufferDrop()` fires if an event is lost at the core queue
+- `RecordSubmitted()` counts every event entering the pipeline
+- `OutputMetrics.RecordDrop()` fires if an event is lost at a per-output buffer
+- `RecordOutputError()` fires if a synchronous output fails to write
 
 Wire these to your monitoring system and alert on any non-zero buffer
 drops or output errors. This gives you the same assurance as
@@ -80,7 +88,7 @@ your output YAML:
 
 ```yaml
 logger:
-  buffer_size: 50000         # default: 10,000, max: 1,000,000
+  queue_size: 50000          # default: 10,000, max: 1,000,000
   drain_timeout: "30s"       # default: "5s", max: "60s"
 ```
 
@@ -88,7 +96,7 @@ Or programmatically via functional options:
 
 ```go
 logger, err := audit.NewLogger(
-    audit.WithBufferSize(50_000),
+    audit.WithQueueSize(50_000),
     audit.WithDrainTimeout(30 * time.Second),
     audit.WithTaxonomy(tax),
     audit.WithOutputs(out),
@@ -96,12 +104,12 @@ logger, err := audit.NewLogger(
 ```
 
 When using `outputconfig.Load`, `result.Options` includes
-config-equivalent options (`WithBufferSize`, `WithDrainTimeout`, etc.)
+config-equivalent options (`WithQueueSize`, `WithDrainTimeout`, etc.)
 from your YAML — pass them directly to `NewLogger`.
 
 | Field | Default | Max | What It Does |
 |-------|---------|-----|-------------|
-| `BufferSize` | 10,000 | 1,000,000 | Capacity of the async channel. When full, `AuditEvent()` returns `ErrBufferFull` and the event is lost. |
+| `QueueSize` | 10,000 | 1,000,000 | Capacity of the core intake queue. When full, `AuditEvent()` returns `ErrQueueFull` and the event is lost. |
 | `DrainTimeout` | 5 seconds | 60 seconds | How long `Close()` waits for remaining events to flush before giving up. Events still in the buffer after this timeout are lost. |
 
 **Note:** `DrainTimeout` only applies during shutdown (when you call
@@ -126,13 +134,12 @@ essential for tuning performance and diagnosing event drops.
 
 Every `AuditEvent()` call validates the event and enqueues it into a
 buffered Go channel. A single drain goroutine reads from this channel,
-serialises each event, and delivers it to every configured output in
-sequence.
+serialises each event, and delivers it to every configured output.
 
 ```
 AuditEvent()
   → validate against taxonomy
-  → enqueue to channel (capacity: Config.BufferSize, default 10,000)
+  → enqueue to channel (capacity: Config.QueueSize, default 10,000)
   → return immediately (sub-microsecond)
 
 Drain goroutine (single, runs continuously)
@@ -143,52 +150,49 @@ Drain goroutine (single, runs continuously)
   → return entry to sync.Pool for reuse
 ```
 
-If the channel is full, `AuditEvent()` returns `ErrBufferFull` and the
+If the channel is full, `AuditEvent()` returns `ErrQueueFull` and the
 event is lost. The `RecordBufferDrop()` metric fires on every drop.
 
-### Level 2: Per-Output Buffer (Loki and Webhook Only)
+### Level 2: Per-Output Buffer (All Outputs Except Stdout)
 
-Loki and webhook outputs have their own internal buffered channel and
-a background goroutine that accumulates events into batches before
-sending them as HTTP requests. File, syslog, and stdout outputs do
-**not** have this second level — they write synchronously from the
-drain goroutine.
+Every output except stdout has its own internal buffered channel and
+a background goroutine. File and syslog outputs write one event at a
+time from their `writeLoop` goroutine. Webhook and Loki outputs
+accumulate events into batches before sending them as HTTP requests.
 
 ```
 Drain goroutine                        Output goroutine
 ───────────────                        ────────────────
-  delivers to Loki/Webhook output        reads from output channel
-    → WriteWithMetadata() /                → accumulates into batch
-      Write()                              → flushes when:
-    → copies event bytes                       batch_size reached
-    → enqueues to output channel               max_batch_bytes reached (Loki)
-      (capacity: output buffer_size,           flush_interval elapsed
-       default 10,000)                         shutdown
-    → returns immediately                  → HTTP POST to destination
-                                           → retry on 429/5xx
+  delivers to any async output           reads from output channel
+    → Write() / WriteWithMetadata()      → file/syslog: write to disk/TCP
+    → copies event bytes                 → webhook/loki: accumulate batch
+    → enqueues to output channel             flush when batch_size reached,
+      (capacity: output buffer_size,         flush_interval elapsed, or
+       default 10,000)                       shutdown
+    → returns immediately                → HTTP POST to destination
+                                         → retry on 429/5xx (webhook/loki)
 ```
 
 If the output's channel is full (e.g., the destination is down and
-retries are consuming time), new events are dropped. The output-specific
-metric (`RecordLokiDrop()` or `RecordWebhookDrop()`) fires on every
-drop, and `audit.Metrics.RecordEvent(outputName, "error")` is also
-called on the core metrics interface. A rate-limited `slog.Warn`
-diagnostic fires at most once per 10 seconds. Consumers monitoring
-core metrics may see error counts for a webhook or Loki output name
-that represent buffer drops, not HTTP delivery failures.
+retries are consuming time), new events are dropped. The
+`OutputMetrics.RecordDrop()` method fires on every drop. A rate-limited
+`slog.Warn` diagnostic fires at most once per 10 seconds. Drops in one
+output's buffer do not affect other outputs.
 
 ### The Complete Pipeline
 
 ```
                     Level 1                              Level 2
                     ───────                              ───────
-AuditEvent() ──► core channel ──► drain goroutine ─┬──► File.Write()                  [synchronous]
-                 (10,000)          (single)        ├──► Syslog.WriteWithMetadata()     [synchronous]
-                                                   ├──► Stdout.Write()                 [synchronous]
-                                                   ├──► Webhook.Write() ──────────────► batchLoop ──► HTTP POST
-                                                   │    (10,000)
-                                                   └──► Loki.WriteWithMetadata() ─────► batchLoop ──► HTTP POST
-                                                        (10,000)
+AuditEvent() ──► core queue  ──► drain goroutine ─┬──► Stdout.Write()                  [synchronous]
+                 (queue_size)     (single)         ├──► File.Write() ──────────────────► writeLoop ──► disk
+                                                   │    (buffer_size, default 10,000)
+                                                   ├──► Syslog.WriteWithMetadata() ────► writeLoop ──► TCP/UDP
+                                                   │    (buffer_size, default 10,000)
+                                                   ├──► Webhook.Write() ───────────────► batchLoop ──► HTTP POST
+                                                   │    (buffer_size, default 10,000)
+                                                   └──► Loki.WriteWithMetadata() ──────► batchLoop ──► HTTP POST
+                                                        (buffer_size, default 10,000)
 ```
 
 Outputs that implement `MetadataWriter` (Loki, Syslog) receive
@@ -198,28 +202,28 @@ Syslog uses it for RFC 5424 severity mapping.
 
 ### Key Implications
 
-**A slow synchronous output blocks all outputs.** The drain goroutine
-delivers to outputs sequentially. If a syslog TCP write blocks for 30
-seconds (server unreachable), no events reach file, webhook, or Loki
-during that time. Monitor output errors. You SHOULD use async outputs
-(webhook, Loki) for unreliable destinations to avoid blocking the
-drain goroutine.
+**Only stdout writes synchronously.** All other outputs (file, syslog,
+webhook, Loki) have their own internal buffer and background goroutine.
+A stalled file or syslog destination drops events into its own buffer
+rather than blocking the drain goroutine. This means a dead syslog
+server does not prevent file or webhook delivery.
 
-**Async output drops are isolated.** If Loki's buffer fills because
-Loki is down, Loki drops events but the core buffer and all other
+**Per-output drops are isolated.** If Loki's buffer fills because
+Loki is down, Loki drops events but the core queue and all other
 outputs are unaffected.
 
-**Two different `buffer_size` configs exist.** `logger.buffer_size`
-(or `Config.BufferSize`) is the Level 1 core channel.
-`buffer_size` on a Loki or webhook output is that output's Level 2
-channel. They are independent. Both default to 10,000 but they are
-not the same thing.
+**`queue_size` and `buffer_size` are different things.**
+`logger.queue_size` (or `Config.QueueSize`) is the Level 1 core
+intake queue. `buffer_size` on any output (file, syslog, webhook,
+Loki) is that output's Level 2 channel. They are independent. Both
+default to 10,000 but they serve different purposes.
 
 **`batch_size` is not `buffer_size`.** `batch_size` controls how many
-events are grouped into a single HTTP request. `buffer_size` controls
-how many events can queue up waiting to be batched. With the defaults
-(`buffer_size: 10000`, `batch_size: 100`), up to 100 batches of
-events can be queued before drops begin.
+events are grouped into a single HTTP request (webhook and Loki only).
+`buffer_size` controls how many events can queue up waiting to be
+written or batched. With the defaults (`buffer_size: 10000`,
+`batch_size: 100`), up to 100 batches of events can be queued before
+drops begin.
 
 ### Memory Sizing
 
@@ -260,8 +264,8 @@ memory-constrained environments.
 
 | Symptom | Diagnosis | Fix |
 |---------|-----------|-----|
-| `ErrBufferFull` from `AuditEvent()` | Core buffer (Level 1) full — drain goroutine can't keep up | Increase `logger.buffer_size`, or check if a synchronous output is blocking the drain |
-| `RecordLokiDrop` / `RecordWebhookDrop` firing | Output buffer (Level 2) full — destination too slow or down | Increase output `buffer_size`, decrease `flush_interval`, check destination health |
+| `ErrQueueFull` from `AuditEvent()` | Core queue (Level 1) full — drain goroutine can't keep up | Increase `logger.queue_size` |
+| `OutputMetrics.RecordDrop()` firing | Per-output buffer (Level 2) full — destination too slow or down | Increase output `buffer_size`, decrease `flush_interval`, check destination health |
 | High event latency | Events queued too long before flushing | Decrease `flush_interval` or `batch_size` for faster delivery |
 | Excessive memory | Large buffers with large events | Decrease `buffer_size` on outputs you can afford to drop from |
 
@@ -272,7 +276,7 @@ memory-constrained environments.
 An event is either delivered to all outputs or lost. Events can be
 lost in two scenarios:
 
-1. **Buffer full** — `AuditEvent()` returns `ErrBufferFull`
+1. **Queue full** — `AuditEvent()` returns `ErrQueueFull`
 2. **Shutdown timeout** — events still in the buffer when `Close()`'s
    drain timeout expires are dropped with a warning
 
@@ -286,7 +290,7 @@ has its own at-least-once retry semantics for HTTP delivery — see
 
 1. Signals the drain goroutine to stop accepting new events
 2. Flushes pending events from the buffer (up to `DrainTimeout`)
-3. Closes all outputs in sequence
+3. Closes all outputs in parallel
 4. Returns any close errors
 
 **Failing to call Close leaks the drain goroutine and loses all

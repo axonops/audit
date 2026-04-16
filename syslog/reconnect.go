@@ -16,73 +16,9 @@ package syslog
 
 import (
 	"crypto/rand"
-	"fmt"
 	"math"
 	"time"
-
-	"github.com/axonops/audit"
-	"github.com/axonops/srslog"
 )
-
-func (s *Output) handleWriteFailure(data []byte, priority srslog.Priority, writeErr error) (*bool, error) {
-	s.failures++
-
-	if s.failures > s.maxRetry {
-		s.logger.Error("audit: syslog max retries exceeded",
-			"address", s.address,
-			"failures", s.failures,
-			"last_error", writeErr)
-		return nil, fmt.Errorf("audit: syslog write after %d failures: %w",
-			s.failures, writeErr)
-	}
-
-	// Close the old writer before reconnecting.
-	if s.writer != nil {
-		_ = s.writer.Close()
-		s.writer = nil
-	}
-
-	backoff := backoffDuration(s.failures)
-	s.logger.Warn("audit: syslog reconnecting",
-		"address", s.address,
-		"attempt", s.failures,
-		"backoff", backoff)
-
-	// Release the mutex during backoff so Close() can proceed.
-	s.mu.Unlock()
-	select {
-	case <-time.After(backoff):
-	case <-s.closeCh:
-		s.mu.Lock()
-		return nil, fmt.Errorf("audit: syslog closed during reconnect: %w", writeErr)
-	}
-	s.mu.Lock()
-
-	// Check if we were closed while sleeping.
-	if s.closed {
-		return nil, audit.ErrOutputClosed
-	}
-
-	if err := s.connect(); err != nil {
-		s.logger.Error("audit: syslog reconnect failed",
-			"address", s.address,
-			"attempt", s.failures,
-			"error", err)
-		reconnected := false
-		return &reconnected, fmt.Errorf("audit: syslog reconnect: %w", err)
-	}
-
-	s.logger.Info("audit: syslog reconnected", "address", s.address)
-	reconnected := true
-
-	// Retry the write on the new connection with the original priority.
-	if _, err := s.writer.WriteWithPriority(priority, data); err != nil {
-		return &reconnected, fmt.Errorf("audit: syslog write after reconnect: %w", err)
-	}
-
-	s.failures = 0
-	return &reconnected, nil
-}
 
 // backoffDuration returns the backoff duration for the given attempt
 // number using bounded exponential backoff with jitter
@@ -108,5 +44,3 @@ func backoffDuration(attempt int) time.Duration {
 	}
 	return d
 }
-
-// validateSyslogConfig checks the config for correctness, applying

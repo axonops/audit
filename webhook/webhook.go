@@ -24,7 +24,7 @@ package webhook
 //
 // The internal channel decouples the Logger's drain loop from HTTP
 // latency. If the channel is full, events are dropped (non-blocking)
-// and [Metrics.RecordWebhookDrop] is recorded.
+// and [audit.OutputMetrics.RecordDrop] is recorded.
 
 import (
 	"context"
@@ -47,23 +47,11 @@ const dropWarnInterval = 10 * time.Second
 
 // Compile-time assertions.
 var (
-	_ audit.Output           = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
-	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.Output                = (*Output)(nil)
+	_ audit.DeliveryReporter      = (*Output)(nil)
+	_ audit.DestinationKeyer      = (*Output)(nil)
+	_ audit.OutputMetricsReceiver = (*Output)(nil)
 )
-
-// Metrics is an optional interface for webhook-specific
-// instrumentation. Pass an implementation to [New] to
-// collect batch-level telemetry. Pass nil to disable.
-type Metrics interface {
-	// RecordWebhookDrop records that an event was dropped because the
-	// webhook output's internal buffer was full.
-	RecordWebhookDrop()
-
-	// RecordWebhookFlush records a webhook batch flush with the number
-	// of events in the batch and the flush duration.
-	RecordWebhookFlush(batchSize int, dur time.Duration)
-}
 
 // errRedirectBlocked is returned by the http.Client's CheckRedirect
 // function. It is checked in doPost to classify redirect errors as
@@ -81,7 +69,7 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // On HTTP 5xx or 429, the batch is retried with exponential backoff
 // and jitter (100ms to 5s). On 4xx (other than 429), the batch is
 // dropped immediately. On retry exhaustion, the batch is dropped and
-// [Metrics.RecordWebhookDrop] is called for each event.
+// [audit.OutputMetrics.RecordDrop] is called for each event.
 //
 // # SSRF Prevention
 //
@@ -97,24 +85,24 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 //
 // Output is safe for concurrent use.
 type Output struct {
-	metrics        audit.Metrics
-	webhookMetrics Metrics
-	client         *http.Client
-	logger         *slog.Logger
-	cancel         context.CancelFunc
-	done           chan struct{}
-	closeCh        chan struct{} // signals batchLoop to drain and exit
-	headers        map[string]string
-	ch             chan []byte
-	url            string
-	name           string      // cached from url.Parse at construction
-	drops          dropLimiter // rate-limits buffer-full warnings
-	flushIvl       time.Duration
-	timeout        time.Duration
-	mu             sync.Mutex
-	batchSize      int
-	maxRetries     int
-	closed         atomic.Bool
+	metrics       audit.Metrics
+	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
+	client        *http.Client
+	logger        *slog.Logger
+	cancel        context.CancelFunc
+	done          chan struct{}
+	closeCh       chan struct{} // signals batchLoop to drain and exit
+	headers       map[string]string
+	ch            chan []byte
+	url           string
+	name          string      // cached from url.Parse at construction
+	drops         dropLimiter // rate-limits buffer-full warnings
+	flushIvl      time.Duration
+	timeout       time.Duration
+	mu            sync.Mutex
+	batchSize     int
+	maxRetries    int
+	closed        atomic.Bool
 }
 
 // SetLogger receives the library's diagnostic logger.
@@ -124,9 +112,10 @@ func (w *Output) SetLogger(l *slog.Logger) {
 
 // New creates a new [Output] from the given config.
 // It validates the config, builds an SSRF-safe HTTP client, and starts
-// the background batch goroutine. Both metrics parameters are optional
-// (may be nil).
-func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, error) {
+// the background batch goroutine. The metrics parameter is optional
+// (may be nil). Per-output metrics are injected via
+// [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
+func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
@@ -179,21 +168,20 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Output{
-		logger:         slog.Default(),
-		client:         client,
-		url:            cfg.URL,
-		name:           webhookName(cfg.URL),
-		headers:        headers,
-		metrics:        metrics,
-		webhookMetrics: webhookMetrics,
-		ch:             make(chan []byte, cfg.BufferSize),
-		closeCh:        make(chan struct{}),
-		cancel:         cancel,
-		done:           make(chan struct{}),
-		batchSize:      cfg.BatchSize,
-		maxRetries:     cfg.MaxRetries,
-		flushIvl:       cfg.FlushInterval,
-		timeout:        cfg.Timeout,
+		logger:     slog.Default(),
+		client:     client,
+		url:        cfg.URL,
+		name:       webhookName(cfg.URL),
+		headers:    headers,
+		metrics:    metrics,
+		ch:         make(chan []byte, cfg.BufferSize),
+		closeCh:    make(chan struct{}),
+		cancel:     cancel,
+		done:       make(chan struct{}),
+		batchSize:  cfg.BatchSize,
+		maxRetries: cfg.MaxRetries,
+		flushIvl:   cfg.FlushInterval,
+		timeout:    cfg.Timeout,
 	}
 
 	go w.batchLoop(ctx)
@@ -202,7 +190,7 @@ func New(cfg *Config, metrics audit.Metrics, webhookMetrics Metrics) (*Output, e
 
 // Write enqueues a serialised audit event for batched delivery. The
 // data is copied before enqueuing. If the internal buffer is full,
-// the event is dropped and [Metrics.RecordWebhookDrop] is called.
+// the event is dropped and [audit.OutputMetrics.RecordDrop] is called.
 // Write never blocks the caller.
 func (w *Output) Write(data []byte) error {
 	if w.closed.Load() {
@@ -217,12 +205,12 @@ func (w *Output) Write(data []byte) error {
 		return nil
 	default:
 		w.drops.record(dropWarnInterval, func(dropped int64) {
-			w.logger.Warn("audit: webhook buffer full, events dropped",
+			w.logger.Warn("audit: output webhook: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
-		if w.webhookMetrics != nil {
-			w.webhookMetrics.RecordWebhookDrop()
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
 			w.metrics.RecordEvent(w.Name(), "error")
@@ -253,9 +241,12 @@ func (w *Output) Close() error {
 	// Shutdown timeout: 2x HTTP timeout (worst-case in-flight +
 	// final flush) plus 5s buffer for backoff and channel drain.
 	shutdownTimeout := 2*w.timeout + 5*time.Second
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-w.done:
-	case <-time.After(shutdownTimeout):
+	case <-timer.C:
 		w.logger.Error("audit: webhook batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
@@ -271,6 +262,11 @@ func (w *Output) Close() error {
 // its own delivery metrics from the batch goroutine after actual HTTP
 // delivery, not from the Write enqueue path.
 func (w *Output) ReportsDelivery() bool { return true }
+
+// SetOutputMetrics receives the per-output metrics instance.
+func (w *Output) SetOutputMetrics(m audit.OutputMetrics) {
+	w.outputMetrics.Store(&m)
+}
 
 // Name returns the human-readable identifier for this output.
 // The name is cached at construction time to avoid per-call url.Parse.

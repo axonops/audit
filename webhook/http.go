@@ -27,16 +27,18 @@ import (
 )
 
 // doPostWithRetry attempts HTTP POST with exponential backoff retry.
-func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
+func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint:gocognit // retry loop with metrics recording
 	start := time.Now()
 	body := buildNDJSON(batch)
 
 	for attempt := range w.maxRetries {
 		if attempt > 0 {
 			backoff := webhookBackoff(attempt)
+			timer := time.NewTimer(backoff)
 			select {
-			case <-time.After(backoff):
+			case <-timer.C:
 			case <-ctx.Done():
+				timer.Stop()
 				w.recordDrop(len(batch))
 				return
 			}
@@ -49,23 +51,32 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 		}
 
 		if !retryable {
-			w.logger.Error("audit: webhook non-retryable error",
+			w.logger.Error("audit: output webhook: non-retryable error",
 				"error", err,
 				"batch_size", len(batch))
+			if omp := w.outputMetrics.Load(); omp != nil {
+				(*omp).RecordError()
+			}
 			w.recordDrop(len(batch))
 			return
 		}
 
-		w.logger.Warn("audit: webhook retryable error",
+		w.logger.Warn("audit: output webhook: retrying",
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
 			"error", err)
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
+		}
 	}
 
 	// All retries exhausted.
-	w.logger.Error("audit: webhook retries exhausted, dropping batch",
+	w.logger.Error("audit: output webhook: retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
+	if omp := w.outputMetrics.Load(); omp != nil {
+		(*omp).RecordError()
+	}
 	w.recordDrop(len(batch))
 }
 
@@ -117,11 +128,8 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
-	if w.webhookMetrics == nil && w.metrics == nil {
-		return
-	}
-	if w.webhookMetrics != nil {
-		w.webhookMetrics.RecordWebhookFlush(batchSize, dur)
+	if omp := w.outputMetrics.Load(); omp != nil {
+		(*omp).RecordFlush(batchSize, dur)
 	}
 	if w.metrics != nil {
 		name := w.Name()
@@ -131,16 +139,15 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	}
 }
 
-// recordDrop records dropped events in metrics. [Metrics.RecordWebhookDrop]
-// and RecordEvent(name, "error") are called per dropped event.
+// recordDrop records dropped events in metrics. Called when retries
+// are exhausted or a non-retryable error occurs.
+// RecordDrop is called per dropped event on OutputMetrics.
+// RecordEvent(name, "error") is called per dropped event on core Metrics.
 func (w *Output) recordDrop(count int) {
-	if w.webhookMetrics == nil && w.metrics == nil {
-		return
-	}
 	name := w.Name()
 	for range count {
-		if w.webhookMetrics != nil {
-			w.webhookMetrics.RecordWebhookDrop()
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
 			w.metrics.RecordEvent(name, "error")

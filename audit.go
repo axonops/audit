@@ -120,6 +120,7 @@ type Logger struct {
 	standardFieldDefaults map[string]string
 	logger                *slog.Logger // library diagnostics logger
 	drops                 dropLimiter  // rate-limits buffer-full warnings
+	drainCount            uint64       // events processed by drain loop; for sampling RecordQueueDepth
 }
 
 // NewLogger creates a new audit [Logger] from the given options.
@@ -127,7 +128,7 @@ type Logger struct {
 // is applied; NewLogger returns an error if none is supplied.
 //
 // The zero-value [Config] is valid: buffer=10,000, drain=5s,
-// validation=strict. Pass tuning options like [WithBufferSize] or
+// validation=strict. Pass tuning options like [WithQueueSize] or
 // [WithDrainTimeout] to override defaults, or [WithConfig] to apply
 // a struct.
 //
@@ -183,13 +184,13 @@ func NewLogger(opts ...Option) (*Logger, error) {
 	if !l.synchronous {
 		ctx, cancel := context.WithCancel(context.Background())
 		l.cancel = cancel
-		l.ch = make(chan *auditEntry, l.cfg.BufferSize)
+		l.ch = make(chan *auditEntry, l.cfg.QueueSize)
 		l.drainDone = make(chan struct{})
 		go l.drainLoop(ctx)
 	}
 
 	l.logger.Info("audit: logger created",
-		"buffer_size", l.cfg.BufferSize,
+		"queue_size", l.cfg.QueueSize,
 		"drain_timeout", l.cfg.DrainTimeout,
 		"validation_mode", string(l.cfg.ValidationMode),
 		"outputs", len(l.entries),
@@ -239,7 +240,7 @@ func (l *Logger) propagateLogger() {
 // generated event builders from audit-gen for compile-time field
 // safety, or [NewEvent] for dynamic event construction.
 //
-// AuditEvent returns [ErrBufferFull] if the async buffer is at
+// AuditEvent returns [ErrQueueFull] if the async buffer is at
 // capacity (the event is dropped), [ErrClosed] if the logger has
 // been closed, or a descriptive error for validation failures.
 // If the event's category is globally disabled (and no per-event
@@ -259,6 +260,10 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 	}
 	if l.closed.Load() {
 		return ErrClosed
+	}
+
+	if l.metrics != nil {
+		l.metrics.RecordSubmitted()
 	}
 
 	_, copied, err := l.validateEvent(eventType, fields)
@@ -333,7 +338,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		l.drops.record(dropWarnInterval, func(dropped int64) {
 			l.logger.Warn("audit: buffer full, events dropped",
 				"dropped", dropped,
-				"buffer_size", cap(l.ch))
+				"queue_size", cap(l.ch))
 		})
 		if l.metrics != nil {
 			l.metrics.RecordBufferDrop()
@@ -343,7 +348,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 		entry.eventType = ""
 		entry.fields = nil
 		auditEntryPool.Put(entry)
-		return ErrBufferFull
+		return ErrQueueFull
 	}
 }
 
@@ -353,7 +358,7 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 //
 // Close signals the drain goroutine to stop, waits up to
 // [Config.DrainTimeout] for pending events to flush, then closes all
-// outputs in sequence.
+// outputs in parallel.
 //
 // Close is idempotent -- subsequent calls return nil (or the same
 // error if an output failed to close on the first call).
@@ -373,16 +378,7 @@ func (l *Logger) Close() error {
 			l.waitForDrain()
 		}
 
-		var closeErrs []error
-		for _, oe := range l.entries {
-			if err := oe.output.Close(); err != nil {
-				l.logger.Error("audit: output close failed",
-					"output", oe.output.Name(),
-					"error", err)
-				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", oe.output.Name(), err))
-			}
-		}
-		l.closeErr = errors.Join(closeErrs...)
+		l.closeErr = l.closeOutputs()
 
 		l.logger.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
@@ -390,13 +386,71 @@ func (l *Logger) Close() error {
 	return l.closeErr
 }
 
+// closeOutputs closes all outputs in parallel. Each output's Close
+// runs in its own goroutine. An overall timeout prevents a single
+// misbehaving output from blocking shutdown indefinitely.
+func (l *Logger) closeOutputs() error {
+	if len(l.entries) == 0 {
+		return nil
+	}
+
+	type closeResult struct { //nolint:govet // fieldalignment: readability preferred
+		name string
+		err  error
+	}
+
+	results := make(chan closeResult, len(l.entries))
+	for _, oe := range l.entries {
+		go func(oe *outputEntry) {
+			results <- closeResult{
+				name: oe.output.Name(),
+				err:  oe.output.Close(),
+			}
+		}(oe)
+	}
+
+	// Overall close timeout: drain timeout covers the per-output buffer
+	// drain. If any output hangs beyond this, we log and move on.
+	closeTimeout := l.cfg.DrainTimeout + 5*time.Second
+	deadlineTimer := time.NewTimer(closeTimeout)
+	defer deadlineTimer.Stop()
+
+	var closeErrs []error
+	collected := 0
+	for range len(l.entries) {
+		select {
+		case r := <-results:
+			collected++
+			if r.err != nil {
+				l.logger.Error("audit: output close failed",
+					"output", r.name,
+					"error", r.err)
+				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", r.name, r.err))
+			}
+		case <-deadlineTimer.C:
+			remaining := len(l.entries) - collected
+			l.logger.Error("audit: output close timed out",
+				"timeout", closeTimeout,
+				"remaining_outputs", remaining)
+			closeErrs = append(closeErrs, fmt.Errorf(
+				"audit: %d output(s) did not close within %s", remaining, closeTimeout))
+			return errors.Join(closeErrs...)
+		}
+	}
+
+	return errors.Join(closeErrs...)
+}
+
 // waitForDrain waits for the drain goroutine to finish, with a
 // timeout. No extra goroutine is spawned; we select on the drainDone
 // channel that drainLoop closes when it exits.
 func (l *Logger) waitForDrain() {
+	timer := time.NewTimer(l.cfg.DrainTimeout)
+	defer timer.Stop()
+
 	select {
 	case <-l.drainDone:
-	case <-time.After(l.cfg.DrainTimeout):
+	case <-timer.C:
 		l.logger.Warn("audit: drain timed out, some events may be lost",
 			"drain_timeout", l.cfg.DrainTimeout,
 			"buffer_remaining", len(l.ch))

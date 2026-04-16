@@ -16,18 +16,18 @@ package audit
 
 import "slices"
 
-// BufferLen returns the number of events currently queued in the async
-// buffer. Returns 0 for disabled or synchronous loggers.
-func (l *Logger) BufferLen() int {
+// QueueLen returns the number of events currently queued in the async
+// intake queue. Returns 0 for disabled or synchronous loggers.
+func (l *Logger) QueueLen() int {
 	if l.ch == nil {
 		return 0
 	}
 	return len(l.ch)
 }
 
-// BufferCap returns the configured async buffer capacity. Returns 0
-// for disabled or synchronous loggers.
-func (l *Logger) BufferCap() int {
+// QueueCap returns the configured async intake queue capacity. Returns
+// 0 for disabled or synchronous loggers.
+func (l *Logger) QueueCap() int {
 	if l.ch == nil {
 		return 0
 	}

@@ -1,31 +1,31 @@
 # Buffering example — demonstrates the two-level buffering architecture.
 #
-# Level 1 (core buffer): the logger section controls the channel between
-# AuditEvent() and the drain goroutine. We set buffer_size to 5 to
-# trigger ErrBufferFull with a small burst.
+# Level 1 (core queue): the logger section controls the channel between
+# AuditEvent() and the drain goroutine. We set queue_size to 5 to
+# trigger ErrQueueFull with a small burst.
 #
-# Level 2 (per-output buffer): the webhook output has its own internal
-# buffer (buffer_size: 10) and batching (batch_size: 5). We point it at
-# a port with nothing listening — writes fail, the buffer fills, and
-# events are dropped with RecordWebhookDrop().
+# Level 2 (per-output buffer): every non-stdout output has its own
+# internal buffer. The webhook output has buffer_size: 10 and
+# batching (batch_size: 5). We point it at a port with nothing
+# listening — writes fail, the buffer fills, and events are dropped
+# with OutputMetrics.RecordDrop().
 #
-# The file output is synchronous — it writes directly from the drain
-# goroutine with no internal buffer.
+# The file output also has an internal async buffer (default 10,000).
+# It writes one event at a time from its own writeLoop goroutine.
 #
-# In production, use the defaults (logger buffer_size: 10000,
-# drain_timeout: 5s, webhook buffer_size: 10000, batch_size: 100).
+# In production, use the defaults (logger queue_size: 10000,
+# drain_timeout: 5s, per-output buffer_size: 10000, batch_size: 100).
 
 version: 1
 app_name: "buffering-example"
 host: "localhost"
 
 logger:
-  buffer_size: 5           # Tiny core buffer to demonstrate ErrBufferFull.
+  queue_size: 5            # Tiny core queue to demonstrate ErrQueueFull.
   drain_timeout: "2s"      # Short drain for fast shutdown.
 
 outputs:
-  # Synchronous output — writes directly from the drain goroutine.
-  # No internal buffer. Write latency affects all outputs.
+  # Async file output — has its own internal buffer and writeLoop goroutine.
   audit_file:
     type: file
     file:
@@ -34,7 +34,7 @@ outputs:
       max_backups: 0
       max_age_days: 0
 
-  # Async output — has its own internal buffer and batch goroutine.
+  # Async webhook output — has its own internal buffer and batch goroutine.
   # Points at a port with nothing listening to demonstrate Level 2 drops.
   webhook_demo:
     type: webhook

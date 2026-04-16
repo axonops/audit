@@ -57,6 +57,26 @@ func TestNoOpMetrics_Embedding_OverrideSingleMethod(t *testing.T) {
 	assert.Equal(t, int64(0), m.drops.Load())
 }
 
+func TestNoOpOutputMetrics_SatisfiesInterface(t *testing.T) {
+	t.Parallel()
+	// Compile-time check (also verified by var _ in metrics.go).
+	var m audit.OutputMetrics = audit.NoOpOutputMetrics{}
+	_ = m
+}
+
+func TestNoOpOutputMetrics_AllMethodsCallable(t *testing.T) {
+	t.Parallel()
+
+	var m audit.OutputMetrics = audit.NoOpOutputMetrics{}
+
+	// All methods are callable without panic.
+	m.RecordDrop()
+	m.RecordFlush(10, 0)
+	m.RecordError()
+	m.RecordRetry(1)
+	m.RecordQueueDepth(50, 100)
+}
+
 func TestNoOpMetrics_WithMetrics_Accepted(t *testing.T) {
 	t.Parallel()
 	logger, err := audit.NewLogger(

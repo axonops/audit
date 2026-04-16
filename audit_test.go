@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -752,7 +753,7 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -769,12 +770,12 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 			"outcome":  "failure",
 			"actor_id": "bob",
 		}))
-		if errors.Is(err, audit.ErrBufferFull) {
+		if errors.Is(err, audit.ErrQueueFull) {
 			bufferFullSeen = true
 		}
 	}
 
-	assert.True(t, bufferFullSeen, "should have seen ErrBufferFull")
+	assert.True(t, bufferFullSeen, "should have seen ErrQueueFull")
 	assert.Greater(t, metrics.GetBufferDrops(), 0, "should have recorded buffer drops")
 }
 
@@ -862,7 +863,7 @@ func TestLogger_Close_DrainTimeout(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(10),
+		audit.WithQueueSize(10),
 		audit.WithDrainTimeout(10*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -1452,9 +1453,9 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 // Config bounds tests
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_BufferSizeExceedsMax(t *testing.T) {
+func TestNewLogger_QueueSizeExceedsMax(t *testing.T) {
 	_, err := audit.NewLogger(
-		audit.WithBufferSize(audit.MaxBufferSize+1),
+		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
@@ -1764,7 +1765,7 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -1938,7 +1939,7 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 	t.Cleanup(func() { close(out.blockCh) })
 
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(1),
+		audit.WithQueueSize(1),
 		audit.WithDrainTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -2626,7 +2627,7 @@ func BenchmarkAudit_PoolAmortised(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -2666,7 +2667,7 @@ func BenchmarkAudit_FanOut_SharedFormatter(b *testing.B) {
 	out2 := testhelper.NewMockOutput("out2")
 	out3 := testhelper.NewMockOutput("out3")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out1, out2, out3),
 	)
@@ -2698,7 +2699,7 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	out3 := testhelper.NewMockOutput("json2")
 	cefFmt := &audit.CEFFormatter{Vendor: "V", Product: "P", Version: "1"}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out1),                                // default JSON
 		audit.WithNamedOutput(out2, audit.OutputFormatter(cefFmt)), // CEF
@@ -2732,7 +2733,7 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 	out2 := testhelper.NewMockOutput("write-only")
 	out3 := testhelper.NewMockOutput("security-only")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out1), // receives all events
 		audit.WithNamedOutput(out2, audit.OutputRoute(&audit.EventRoute{
@@ -2771,7 +2772,7 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 		outputs[i] = testhelper.NewMockOutput("out" + string(rune('0'+i)))
 	}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(outputs...),
 	)
@@ -2857,7 +2858,7 @@ func BenchmarkAudit_EndToEnd(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
@@ -2885,7 +2886,7 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
@@ -2918,7 +2919,7 @@ func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewMockOutput("bench")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out),
 		audit.WithStandardFieldDefaults(map[string]string{
@@ -2950,7 +2951,7 @@ func BenchmarkDeliverToOutputs_WithMetadataWriter(b *testing.B) {
 	silenceSlog(b)
 	mock := &mockMetadataOutput{name: "bench-mw"}
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(mock),
 	)
@@ -2974,7 +2975,7 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	mwOut := &mockMetadataOutput{name: "bench-mw"}
 	plainOut := testhelper.NewMockOutput("bench-plain")
 	logger, err := audit.NewLogger(
-		audit.WithBufferSize(100_000),
+		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(mwOut),
 		audit.WithNamedOutput(plainOut),
@@ -2992,6 +2993,141 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	}
 	b.StopTimer()
 	_ = logger.Close()
+}
+
+// ---------------------------------------------------------------------------
+// Async output simulation benchmarks (#455)
+// ---------------------------------------------------------------------------
+
+// mockAsyncOutput simulates the async Write pattern used by file and syslog
+// outputs: data is copied, sent to a buffered channel, and discarded by a
+// background goroutine. This faithfully reproduces the per-event cost of
+// async outputs without requiring separate module dependencies or real I/O.
+type mockAsyncOutput struct {
+	ch     chan []byte
+	done   chan struct{}
+	name   string
+	closed atomic.Bool
+}
+
+func newMockAsyncOutput(name string, bufSize int) *mockAsyncOutput {
+	m := &mockAsyncOutput{
+		ch:   make(chan []byte, bufSize),
+		done: make(chan struct{}),
+		name: name,
+	}
+	go m.drainLoop()
+	return m
+}
+
+func (m *mockAsyncOutput) Write(data []byte) error {
+	if m.closed.Load() {
+		return audit.ErrOutputClosed
+	}
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	select {
+	case m.ch <- cp:
+	default:
+		// drop
+	}
+	return nil
+}
+
+func (m *mockAsyncOutput) Close() error {
+	if !m.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	close(m.ch)
+	<-m.done
+	return nil
+}
+
+func (m *mockAsyncOutput) Name() string { return m.name }
+
+func (m *mockAsyncOutput) drainLoop() {
+	defer close(m.done)
+	for data := range m.ch {
+		_ = data // discard
+	}
+}
+
+// BenchmarkProcessEntry_AsyncOutputs measures the full processEntry path
+// (taxonomy lookup, JSON format, format cache, fan-out to 2 async outputs)
+// using WithSynchronousDelivery to run processEntry inline. The async
+// outputs simulate the copy+enqueue pattern of file and syslog outputs.
+// This isolates drain-loop cost from caller-side validation.
+func BenchmarkProcessEntry_AsyncOutputs(b *testing.B) {
+	silenceSlog(b)
+	fileOut := newMockAsyncOutput("async-file", 100_000)
+	syslogOut := newMockAsyncOutput("async-syslog", 100_000)
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithNamedOutput(fileOut),
+		audit.WithNamedOutput(syslogOut),
+		audit.WithSynchronousDelivery(),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = logger.Close() })
+
+	fields := audit.Fields{
+		"outcome":    "success",
+		"actor_id":   "alice",
+		"subject":    "my-topic",
+		"source_ip":  "10.0.0.1",
+		"request_id": "550e8400-e29b-41d4-a716-446655440000",
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkOutputClose_Drain measures how long Close() takes to drain
+// N pending events from the async buffer through processEntry to outputs.
+// This is a throughput benchmark for the drain goroutine under backlog.
+func BenchmarkOutputClose_Drain(b *testing.B) {
+	silenceSlog(b)
+
+	for _, n := range []int{100, 1000, 10_000} {
+		b.Run(fmt.Sprintf("events=%d", n), func(b *testing.B) {
+			fields := audit.Fields{
+				"outcome":  "success",
+				"actor_id": "alice",
+				"subject":  "my-topic",
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				b.StopTimer()
+				out := testhelper.NewMockOutput("bench-drain")
+				logger, err := audit.NewLogger(
+					audit.WithQueueSize(n+1000), // room for all events
+					audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+					audit.WithOutputs(out),
+				)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				// Enqueue N events. Some may be processed before Close,
+				// but the benchmark measures the Close() drain path cost.
+				for range n {
+					_ = logger.AuditEvent(audit.NewEvent("schema_register", fields))
+				}
+
+				b.StartTimer()
+				_ = logger.Close()
+			}
+		})
+	}
 }
 
 func BenchmarkFilterCheck(b *testing.B) {
@@ -4598,4 +4734,164 @@ events:
 	// Serialization error metric should be recorded.
 	assert.Greater(t, metrics.GetSerializationErrorCount("user_create"), 0,
 		"serialization error metric must be recorded for format failure on exclusion path")
+}
+
+// ---------------------------------------------------------------------------
+// Named tests for issue #455 acceptance criteria
+// ---------------------------------------------------------------------------
+
+// slowOutput is an output that adds artificial delay to each Write call.
+type slowOutput struct { //nolint:govet // fieldalignment: readability preferred
+	delay  time.Duration
+	events [][]byte
+	mu     sync.Mutex
+	closed bool
+}
+
+func (s *slowOutput) Write(data []byte) error {
+	time.Sleep(s.delay)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	s.events = append(s.events, cp)
+	return nil
+}
+
+func (s *slowOutput) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	return nil
+}
+
+func (s *slowOutput) Name() string { return "slow" }
+
+func TestDrainLoop_SlowOutput_DoesNotBlockOthers(t *testing.T) {
+	// A slow output must not prevent a fast output from receiving events.
+	slow := &slowOutput{delay: 100 * time.Millisecond}
+	fast := testhelper.NewMockOutput("fast")
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(slow, fast),
+	)
+	require.NoError(t, err)
+
+	const n = 5
+	for range n {
+		require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			"outcome": "success",
+		})))
+	}
+
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, n, fast.EventCount(),
+		"fast output must receive all %d events despite slow output", n)
+}
+
+func TestDrainLoop_AllOutputsAsync_NoSequentialBlocking(t *testing.T) {
+	// Verify two async outputs both receive events.
+	outA := testhelper.NewMockOutput("output-a")
+	outB := testhelper.NewMockOutput("output-b")
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(outA, outB),
+	)
+	require.NoError(t, err)
+
+	const n = 3
+	for range n {
+		require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			"outcome": "success",
+		})))
+	}
+
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, n, outA.EventCount(),
+		"output-a must receive all %d events", n)
+	assert.Equal(t, n, outB.EventCount(),
+		"output-b must receive all %d events", n)
+}
+
+func TestCoreMetrics_RecordSubmitted_CalledPerAuditEvent(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	const n = 5
+	for range n {
+		require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			"outcome": "success",
+		})))
+	}
+
+	require.NoError(t, logger.Close())
+
+	assert.Equal(t, n, metrics.GetSubmitted(),
+		"RecordSubmitted must be called once per AuditEvent call")
+}
+
+func TestCoreMetrics_RecordSubmitted_CalledBeforeFiltering(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	// Disable "read" category so events in it are filtered.
+	require.NoError(t, logger.DisableCategory("read"))
+
+	// Audit an event in the disabled category.
+	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_get", audit.Fields{
+		"outcome": "success",
+	})))
+
+	require.NoError(t, logger.Close())
+
+	// RecordSubmitted is called BEFORE filtering — so count is 1
+	// even though the event was filtered and not delivered.
+	assert.Equal(t, 1, metrics.GetSubmitted(),
+		"RecordSubmitted must be called before filtering")
+	assert.Equal(t, 0, out.EventCount(),
+		"filtered event must not be delivered to output")
+}
+
+func TestCoreMetrics_RecordQueueDepth_SampledEveryNEvents(t *testing.T) {
+	out := testhelper.NewMockOutput("test")
+	metrics := testhelper.NewMockMetrics()
+
+	logger, err := audit.NewLogger(
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+
+	// Audit 65 events — RecordQueueDepth is sampled every 64.
+	const n = 65
+	for range n {
+		require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			"outcome": "success",
+		})))
+	}
+
+	require.NoError(t, logger.Close())
+
+	depths := metrics.GetQueueDepths()
+	assert.NotEmpty(t, depths,
+		"RecordQueueDepth must be called at least once after 65 events (sampled every 64)")
 }

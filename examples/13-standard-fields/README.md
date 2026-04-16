@@ -180,7 +180,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
 --- Event with standard fields ---
 --- Event with default source_ip ---
 --- Event with explicit source_ip ---

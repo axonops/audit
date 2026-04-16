@@ -25,9 +25,11 @@ AuditEvent(event)
 The **caller goroutine** does validation and a non-blocking channel send.
 If the queue is full, `AuditEvent` returns `ErrQueueFull` immediately.
 
-The **drain goroutine** is the only goroutine that calls `Output.Write`,
-so outputs do not need to be thread-safe. This also gives deterministic
-event ordering within a single logger.
+The **drain goroutine** calls `Output.Write` for each configured output.
+For async outputs (file, syslog, webhook, loki), `Write` enqueues into
+the output's internal buffer and returns immediately. Each async output
+has its own background goroutine that performs the actual I/O. Only
+stdout writes synchronously from the drain goroutine.
 
 Delivery is **at-most-once** within a process lifetime. Events buffered
 when `Close()` times out are lost.
@@ -75,7 +77,8 @@ import (
 
 - `AuditEvent()` is safe for concurrent use from multiple goroutines
 - Category enable/disable uses `sync.Map` for lock-free reads on the hot path
-- The single drain goroutine means `Output.Write` is never called concurrently
+- `Output.Write` is called only from the drain goroutine (single caller).
+  For async outputs, actual I/O happens in the output's own goroutine
 - `FormatOptions` is pre-allocated per output entry at construction; `FieldLabels` is
   set per-event in the drain goroutine (single writer, no lock needed)
 - `Logger.Close()` is idempotent via `sync.Once`

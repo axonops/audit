@@ -396,6 +396,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `max_age_days` | `30` | Delete rotated files older than this. Maximum: 365. |
 | `permissions` | `"0600"` | File permissions (octal string, must be quoted). |
 | `compress` | `true` | Gzip compress rotated files. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 
 ## 📡 Syslog Output Fields
 
@@ -408,6 +409,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. |
 | `tls_key` | — | Client key path for mTLS. |
+| `buffer_size` | `10000` | Internal async buffer capacity. Maximum: 100,000. |
 | `max_retries` | `10` | Reconnection attempts before giving up. |
 | `tls_policy` | — | TLS version policy (nested object). |
 | `tls_policy.allow_tls12` | `false` | Allow TLS 1.2 in addition to TLS 1.3. |

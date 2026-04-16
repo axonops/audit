@@ -159,7 +159,7 @@ batches (idempotent processing).
 ### Buffer Drops
 
 If events arrive faster than batches can be sent, the internal buffer
-fills and events are **dropped**. The `webhook.Metrics.RecordWebhookDrop()`
+fills and events are **dropped**. The `OutputMetrics.RecordDrop()`
 callback fires when this happens. Increase `buffer_size` if you see
 drops:
 

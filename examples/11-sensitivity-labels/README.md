@@ -256,7 +256,7 @@ Three log files are created, each receiving the same events with
 different field subsets:
 
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=3
+INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=3
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 

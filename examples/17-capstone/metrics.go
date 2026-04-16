@@ -26,9 +26,10 @@ import (
 // Prometheus client_golang. A single struct satisfies everything via
 // Go's structural duck-typing:
 //
-//   - audit.Metrics (7 methods)
+//   - audit.Metrics (9 methods including RecordSubmitted, RecordQueueDepth)
+//   - audit.OutputMetrics (5 methods: RecordDrop, RecordFlush, RecordError, RecordRetry, RecordQueueDepth)
 //   - file.Metrics  (RecordFileRotation)
-//   - loki.Metrics  (RecordLokiDrop, RecordLokiFlush, RecordLokiRetry, RecordLokiError)
+//   - syslog.Metrics (RecordSyslogReconnect)
 type auditMetrics struct {
 	events              *prometheus.CounterVec
 	outputErrors        *prometheus.CounterVec
@@ -156,24 +157,28 @@ func (m *auditMetrics) RecordFileRotation(path string) {
 	m.fileRotations.WithLabelValues(path).Inc()
 }
 
-// --- loki.Metrics ---
+// --- audit.OutputMetrics ---
+// These methods are called per-output via the OutputMetricsFactory.
+// In this example, a single auditMetrics struct serves as both the
+// core Metrics and the per-output OutputMetrics (via structural typing).
 
-func (m *auditMetrics) RecordLokiDrop() {
-	m.lokiDrops.Inc()
+func (m *auditMetrics) RecordDrop() {
+	m.lokiDrops.Inc() // reuses existing counter
 }
 
-func (m *auditMetrics) RecordLokiFlush(batchSize int, dur time.Duration) {
+func (m *auditMetrics) RecordFlush(batchSize int, dur time.Duration) {
 	m.lokiFlushBatch.Observe(float64(batchSize))
 	m.lokiFlushDur.Observe(dur.Seconds())
 }
 
-func (m *auditMetrics) RecordLokiRetry(statusCode, attempt int) {
-	m.lokiRetries.WithLabelValues(
-		strconv.Itoa(statusCode),
-		strconv.Itoa(attempt),
-	).Inc()
+func (m *auditMetrics) RecordRetry(attempt int) {
+	m.lokiRetries.WithLabelValues(strconv.Itoa(attempt)).Inc()
 }
 
-func (m *auditMetrics) RecordLokiError(statusCode int) {
-	m.lokiErrors.WithLabelValues(strconv.Itoa(statusCode)).Inc()
+func (m *auditMetrics) RecordError() {
+	m.lokiErrors.WithLabelValues("non-retryable").Inc()
 }
+
+// Note: RecordQueueDepth is already declared above for audit.Metrics.
+// It also satisfies audit.OutputMetrics.RecordQueueDepth via
+// structural typing — the same method serves both interfaces.

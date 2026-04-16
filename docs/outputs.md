@@ -217,8 +217,8 @@ the core drain goroutine:
 | **Stdout** | No | No | Synchronous — blocks drain goroutine until write to `os.Stdout` completes |
 | **File** | Yes (`buffer_size`, default 10,000, max 100,000) | No | Async — own `writeLoop` goroutine, one-event-per-write to disk |
 | **Syslog** | Yes (`buffer_size`, default 10,000, max 100,000) | No | Async — own `writeLoop` goroutine, one-message-per-write via TCP/UDP |
-| **Webhook** | Yes (`buffer_size`, default 10,000, max 100,000) | Yes (`batch_size`, `flush_interval`) | Async — own goroutine, batched HTTP POST |
-| **Loki** | Yes (`buffer_size`, default 10,000, max 100,000) | Yes (`batch_size`, `max_batch_bytes`, `flush_interval`) | Async — own goroutine, batched HTTP POST with gzip |
+| **Webhook** | Yes (`buffer_size`, default 10,000, max 1,000,000) | Yes (`batch_size`, `flush_interval`) | Async — own goroutine, batched HTTP POST |
+| **Loki** | Yes (`buffer_size`, default 10,000, max 1,000,000) | Yes (`batch_size`, `max_batch_bytes`, `flush_interval`) | Async — own goroutine, batched HTTP POST with gzip |
 
 **Only stdout writes synchronously** from the drain goroutine. All
 other outputs copy the event bytes into their own internal buffer and
@@ -247,8 +247,9 @@ flowchart TD
 The drain goroutine serialises each event once per unique format and
 delivers to all outputs in sequence. An error returned by one output
 does not prevent delivery to others — the drain loop continues.
-However, a synchronous output that blocks (e.g., during syslog
-reconnection) delays all subsequent outputs for that event. See
+Only stdout writes synchronously. All other outputs return
+immediately from `Write()`, so a stalled destination does not delay
+delivery to other outputs. See
 [Buffering and Delivery Model](#-buffering-and-delivery-model) above.
 
 ## 📚 Further Reading

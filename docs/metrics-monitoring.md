@@ -96,6 +96,26 @@ func (m *prometheusMetrics) RecordValidationError(eventType string) {
 // ... implement remaining methods
 ```
 
+## 📊 Event Accounting
+
+The pipeline metrics form a closed accounting equation:
+
+```
+submitted = filtered + validation_errors + buffer_drops
+            + serialization_errors + reached_fanout
+
+Per output:
+  reached_fanout = delivered + output_filtered + output_error
+                   + output_buffer_drops
+```
+
+Where:
+- `submitted` = `RecordSubmitted()` count
+- `filtered` = `RecordFiltered()` count (global category filter)
+- `buffer_drops` = `RecordBufferDrop()` count (core queue full)
+- `output_buffer_drops` = `OutputMetrics.RecordDrop()` count
+- `delivered` = `OutputMetrics.RecordFlush()` count
+
 ## 🚨 Recommended Alerts
 
 | Alert | Condition | Action |

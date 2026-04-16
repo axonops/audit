@@ -90,16 +90,17 @@ flowchart LR
 
 ## Delivery Model
 
-The file output writes **synchronously** from the core drain
-goroutine. It has no internal buffer or batching — each event is
-written directly to the underlying file as soon as the drain goroutine
-processes it.
+The file output uses **async delivery** with an internal buffered
+channel and a background `writeLoop` goroutine. `Write()` copies
+the event data and enqueues it into the channel, returning
+immediately. The `writeLoop` goroutine reads from the channel and
+performs the actual file I/O one event at a time.
 
-This means file write latency directly affects the drain loop
-throughput and delivery to all other outputs. In practice, local file
-writes are fast (microseconds with OS-level buffering), so this is
-rarely a bottleneck. However, if the filesystem is slow (network
-mount, full disk), it will delay delivery to every output.
+If the internal buffer is full (destination too slow or disk
+stalled), the event is dropped and `OutputMetrics.RecordDrop()` is
+called. A rate-limited `slog.Warn` fires at most once per 10
+seconds. Drops in the file output's buffer do not affect other
+outputs.
 
 See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
 the complete pipeline architecture.
@@ -114,6 +115,7 @@ the complete pipeline architecture.
 | `max_age_days` | int | `30` | 0–365 | Delete backups older than this. 0 = no age limit. Values <= 0 default to 30 |
 | `permissions` | string | `"0600"` | Octal (0–0777) | File permissions. MUST be quoted in YAML |
 | `compress` | bool | `true` | — | Gzip compress rotated backup files |
+| `buffer_size` | int | `10000` | 1–100,000 | Internal async buffer capacity. Events dropped when full |
 
 ### Validation Rules
 

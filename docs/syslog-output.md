@@ -281,19 +281,18 @@ See [TLS and mTLS Configuration](#tls-and-mtls-configuration) below.
 
 ## Delivery Model
 
-The syslog output writes **synchronously** from the core drain
-goroutine via `WriteWithMetadata()`, which carries per-event metadata
-(event type, severity, category, timestamp) used for severity mapping
-into the RFC 5424 PRIORITY field. It has no internal buffer or
-batching — each event is sent directly to the syslog server as soon
-as the drain goroutine processes it.
+The syslog output uses **async delivery** with an internal buffered
+channel and a background `writeLoop` goroutine. `Write()` /
+`WriteWithMetadata()` copies the event data, maps the audit severity
+to an RFC 5424 PRIORITY value, and enqueues the entry into the
+channel, returning immediately. The `writeLoop` goroutine reads from
+the channel and performs the actual syslog write with reconnection
+handling.
 
-This means syslog write latency directly affects the drain loop
-throughput and delivery to all other outputs. If the syslog server is
-slow or unreachable, the reconnection backoff (100ms to 30s) will
-delay delivery to every configured output. For unreliable syslog
-servers, you SHOULD pair with an async output (webhook or Loki) to
-ensure other destinations are not blocked.
+If the internal buffer is full (syslog server unreachable, backoff
+in progress), the event is dropped and `OutputMetrics.RecordDrop()`
+is called. Drops in the syslog output's buffer do not affect other
+outputs.
 
 See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
 the complete pipeline architecture.
@@ -307,6 +306,7 @@ the complete pipeline architecture.
 | `app_name` | string | `"audit"` | RFC 5424 APP-NAME header field |
 | `facility` | string | `"local0"` | Syslog facility name (see [Facility Values](#facility-values)) |
 | `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency. **In container environments** (Docker, Kubernetes), `os.Hostname()` typically returns the container ID — set this explicitly to the pod name or service name for meaningful SIEM correlation. |
+| `buffer_size` | int | `10000` | Internal async buffer capacity (1–100,000). Events dropped when full |
 | `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Range: 0-20 (0 defaults to 10, values > 20 rejected) |
 | `tls_ca` | string | *(none)* | Path to CA certificate for server verification |
 | `tls_cert` | string | *(none)* | Path to client certificate for mTLS |

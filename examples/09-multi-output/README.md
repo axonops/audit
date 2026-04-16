@@ -96,7 +96,7 @@ Three JSON events appear on stdout, followed by the same three events
 read back from `audit.log`:
 
 ```
-INFO audit: logger created buffer_size=10000 drain_timeout=5s validation_mode=strict outputs=2
+INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=2
 INFO audit: shutdown started
 {"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"write"}
 {"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"security"}

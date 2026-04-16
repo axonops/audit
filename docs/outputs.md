@@ -223,7 +223,10 @@ the core drain goroutine:
 **Only stdout writes synchronously** from the drain goroutine. All
 other outputs copy the event bytes into their own internal buffer and
 return immediately, so a stalled destination does not block delivery
-to other outputs. If the internal buffer fills, events are dropped.
+to other outputs. This output isolation is a security requirement —
+a stalled syslog server must not prevent file writes, and a slow
+webhook must not block Loki delivery. Without async buffers, one
+failed output would silence all auditing. If the internal buffer fills, events are dropped.
 `OutputMetrics.RecordDrop()` fires on every drop, and a rate-limited
 `slog.Warn` fires at most once per 10 seconds. Drops in one output's
 buffer do not affect other outputs.

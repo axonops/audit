@@ -31,3 +31,11 @@ Feature: Output Isolation
     When I audit 5 events rapidly
     And I close the logger
     Then both recording outputs should have received all 5 events
+
+  @docker @syslog
+  Scenario: Unreachable syslog does not block file delivery
+    Given a logger with file and syslog outputs
+    When I stop the syslog-ng process
+    And I audit 5 uniquely marked events after syslog down
+    And I close the logger
+    Then the file should contain exactly 5 events

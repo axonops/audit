@@ -168,7 +168,44 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 }
 
-func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit // BDD step registration
+	ctx.Step(`^I stop the syslog-ng process$`, func() error {
+		// Kill syslog-ng inside the Docker container without restarting.
+		_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
+			"sh", "-c", "kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null").CombinedOutput()
+		// Give it a moment to fully stop.
+		time.Sleep(200 * time.Millisecond)
+		// Restart at the end of the scenario to leave infra clean.
+		tc.AddCleanup(func() {
+			_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
+				"sh", "-c", "syslog-ng --no-caps -F &").CombinedOutput()
+			// Wait for it to come back.
+			deadline := time.Now().Add(10 * time.Second)
+			for time.Now().Before(deadline) {
+				conn, err := net.DialTimeout("tcp", "localhost:5514", 500*time.Millisecond)
+				if err == nil {
+					_ = conn.Close()
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		})
+		return nil
+	})
+
+	ctx.Step(`^I audit (\d+) uniquely marked events after syslog down$`, func(n int) error {
+		for i := range n {
+			marker := fmt.Sprintf("after-syslog-down-%d", i)
+			tc.Markers[fmt.Sprintf("event-%d", i)] = marker
+			ev := audit.NewEvent("user_create", audit.Fields{
+				"outcome": "success",
+				"reason":  marker,
+			})
+			_ = tc.Logger.AuditEvent(ev) // may return error (syslog dead), that's expected
+		}
+		return nil
+	})
+
 	ctx.Step(`^I restart the syslog-ng process$`, func() error {
 		// Kill and restart syslog-ng inside the Docker container.
 		out, err := exec.Command("docker", "exec", "bdd-syslog-ng-1",

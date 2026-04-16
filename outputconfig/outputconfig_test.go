@@ -2717,6 +2717,49 @@ func TestDeepCopyValue_ScalarPassthrough(t *testing.T) {
 	assert.Nil(t, outputconfig.DeepCopyValueForTest(nil))
 }
 
+func TestOutputMetricsFactory_ScopedToOutputName(t *testing.T) {
+	// Verify the factory is called with the output NAME, not just the type.
+	t.Parallel()
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  compliance_log:
+    type: stdout
+`)
+	var calledWith struct {
+		outputType string
+		outputName string
+	}
+	var callCount atomic.Int64
+	factory := func(outputType, outputName string) audit.OutputMetrics {
+		callCount.Add(1)
+		calledWith.outputType = outputType
+		calledWith.outputName = outputName
+		return audit.NoOpOutputMetrics{}
+	}
+	result, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithOutputMetrics(factory),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, int64(1), callCount.Load(),
+		"factory should be called once")
+	assert.Equal(t, "stdout", calledWith.outputType,
+		"factory should receive the output type")
+	assert.Equal(t, "compliance_log", calledWith.outputName,
+		"factory should receive the output NAME, not the type")
+}
+
 func TestLoad_GlobalTLSPolicy_WithStdout(t *testing.T) {
 	// Exercises the tls_policy top-level key parsing path.
 	t.Parallel()

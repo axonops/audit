@@ -747,6 +747,64 @@ func TestFileOutput_PanicRecovery_RecordsError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Named tests for issue #455 acceptance criteria
+// ---------------------------------------------------------------------------
+
+func TestFileOutput_RotationInBackgroundGoroutine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{
+		Path:       path,
+		MaxSizeMB:  1,
+		MaxBackups: 3,
+	}, nil)
+	require.NoError(t, err)
+
+	// Write >1 MB to trigger rotation in the background writeLoop.
+	payload := make([]byte, 1024*1024+1)
+	for i := range payload {
+		payload[i] = 'x'
+	}
+	require.NoError(t, out.Write(payload))
+
+	// Close drains the async buffer — rotation happens in writeLoop.
+	require.NoError(t, out.Close())
+
+	// Verify backup file exists (rotation happened).
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+
+	var backupCount int
+	for _, e := range entries {
+		if e.Name() != "audit.log" && strings.Contains(e.Name(), "audit") {
+			backupCount++
+		}
+	}
+	assert.Positive(t, backupCount,
+		"rotation should produce at least one backup file")
+}
+
+func TestOutputMetrics_RecordError_CalledOnNonRetryableError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	om := &mockOutputMetrics{}
+	out.SetOutputMetrics(om)
+
+	// SimulatePanicOnNextWrite triggers a nil-pointer panic inside
+	// writeEvent — the deferred recovery catches it and calls RecordError.
+	out.SimulatePanicOnNextWrite()
+
+	assert.Equal(t, int64(1), om.errors.Load(),
+		"RecordError must be called on non-retryable error (panic recovery)")
+}
+
+// ---------------------------------------------------------------------------
 // Benchmarks
 // ---------------------------------------------------------------------------
 

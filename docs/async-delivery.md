@@ -28,10 +28,17 @@ flowchart LR
 
 ## ❓ Why Async?
 
-Audit logging must not slow down the operations it audits. If writing
-to a syslog server takes 5ms, a synchronous audit call would add 5ms
-to every request. The async pipeline decouples event production from
-delivery:
+Audit logging must not slow down the operations it audits, and
+**output isolation is a security requirement**. If one output stalls
+(a syslog server goes unreachable, a webhook endpoint is slow), it
+must not prevent delivery to other outputs. Without async buffers, a
+stalled output blocks the drain goroutine, silencing all auditing —
+a cascade failure that is worse than losing events to a single
+destination.
+
+If writing to a syslog server takes 5ms, a synchronous audit call
+would add 5ms to every request. The async pipeline decouples event
+production from delivery:
 
 - `AuditEvent()` validates and enqueues — sub-microsecond
 - A single drain goroutine reads events from the channel **continuously** as they arrive — there is no periodic flush interval

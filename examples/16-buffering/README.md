@@ -16,7 +16,8 @@ event drops in production.
 - What `ErrQueueFull` means and when it fires (Level 1)
 - What `OutputMetrics.RecordDrop()` means (Level 2)
 - The difference between `queue_size`, `buffer_size`, and `batch_size`
-- How per-output async buffers provide isolation
+- How per-output async buffers provide isolation — this is a security
+  requirement: a stalled output must not silence all auditing
 - How to tune buffer sizes for your workload
 
 ## Prerequisites

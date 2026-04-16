@@ -243,3 +243,128 @@ func (m *MockMetrics) GetQueueDepths() []QueueDepthRecord {
 	copy(cp, m.QueueDepths)
 	return cp
 }
+
+// ---------------------------------------------------------------------------
+// MockOutputMetrics — per-output metrics mock
+// ---------------------------------------------------------------------------
+
+// Compile-time assertion: MockOutputMetrics satisfies audit.OutputMetrics.
+var _ audit.OutputMetrics = (*MockOutputMetrics)(nil)
+
+// MockOutputMetrics is a thread-safe mock that satisfies
+// [audit.OutputMetrics] for per-output delivery metrics.
+type MockOutputMetrics struct { //nolint:govet // fieldalignment: readability preferred
+	Mu       sync.Mutex
+	Drops    int
+	Flushes  int
+	Errors   int
+	Retries  int
+	FlushDur []time.Duration
+}
+
+// RecordDrop satisfies audit.OutputMetrics.
+func (m *MockOutputMetrics) RecordDrop() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.Drops++
+}
+
+// RecordFlush satisfies audit.OutputMetrics.
+func (m *MockOutputMetrics) RecordFlush(_ int, dur time.Duration) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.Flushes++
+	m.FlushDur = append(m.FlushDur, dur)
+}
+
+// RecordError satisfies audit.OutputMetrics.
+func (m *MockOutputMetrics) RecordError() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.Errors++
+}
+
+// RecordRetry satisfies audit.OutputMetrics.
+func (m *MockOutputMetrics) RecordRetry(_ int) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.Retries++
+}
+
+// RecordQueueDepth satisfies audit.OutputMetrics.
+func (m *MockOutputMetrics) RecordQueueDepth(_, _ int) {}
+
+// DropCount returns the number of recorded drops.
+func (m *MockOutputMetrics) DropCount() int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.Drops
+}
+
+// FlushCount returns the number of recorded flushes.
+func (m *MockOutputMetrics) FlushCount() int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.Flushes
+}
+
+// ErrorCount returns the number of recorded errors.
+func (m *MockOutputMetrics) ErrorCount() int {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	return m.Errors
+}
+
+// ---------------------------------------------------------------------------
+// MockOutputMetricsFactory — factory that records calls
+// ---------------------------------------------------------------------------
+
+// OutputMetricsFactoryCall records a single factory invocation.
+type OutputMetricsFactoryCall struct {
+	OutputType string
+	OutputName string
+}
+
+// MockOutputMetricsFactory records all factory calls and returns
+// MockOutputMetrics instances keyed by "outputType:outputName".
+type MockOutputMetricsFactory struct { //nolint:govet // fieldalignment: readability preferred
+	Mu      sync.Mutex
+	Calls   []OutputMetricsFactoryCall
+	Metrics map[string]*MockOutputMetrics
+}
+
+// NewMockOutputMetricsFactory creates a factory that records calls.
+func NewMockOutputMetricsFactory() *MockOutputMetricsFactory {
+	return &MockOutputMetricsFactory{
+		Metrics: make(map[string]*MockOutputMetrics),
+	}
+}
+
+// Factory returns the [audit.OutputMetricsFactory] function.
+func (f *MockOutputMetricsFactory) Factory() audit.OutputMetricsFactory {
+	return func(outputType, outputName string) audit.OutputMetrics {
+		f.Mu.Lock()
+		defer f.Mu.Unlock()
+		f.Calls = append(f.Calls, OutputMetricsFactoryCall{
+			OutputType: outputType,
+			OutputName: outputName,
+		})
+		m := &MockOutputMetrics{}
+		f.Metrics[outputType+":"+outputName] = m
+		return m
+	}
+}
+
+// CallCount returns the number of times the factory was invoked.
+func (f *MockOutputMetricsFactory) CallCount() int {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	return len(f.Calls)
+}
+
+// MetricsFor returns the MockOutputMetrics for the given key.
+func (f *MockOutputMetricsFactory) MetricsFor(outputType, outputName string) *MockOutputMetrics {
+	f.Mu.Lock()
+	defer f.Mu.Unlock()
+	return f.Metrics[outputType+":"+outputName]
+}

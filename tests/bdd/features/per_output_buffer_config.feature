@@ -65,3 +65,36 @@ Feature: Per-Output Buffer Configuration
       """
     When I load the outputs config
     Then the config load should fail with an error containing "buffer_size 200000 exceeds maximum 100000"
+
+  @docker @syslog
+  Scenario: Syslog output buffer_size accepted in YAML
+    Given the following outputs YAML:
+      """
+      version: 1
+      app_name: bdd-test
+      host: bdd-host
+      outputs:
+        audit_syslog:
+          type: syslog
+          syslog:
+            address: "localhost:5514"
+            buffer_size: 500
+      """
+    When I load the outputs config
+    Then the config should load successfully
+
+  @docker @syslog
+  Scenario: Syslog output defaults buffer_size when omitted
+    Given the following outputs YAML:
+      """
+      version: 1
+      app_name: bdd-test
+      host: bdd-host
+      outputs:
+        audit_syslog:
+          type: syslog
+          syslog:
+            address: "localhost:5514"
+      """
+    When I load the outputs config
+    Then the config should load successfully

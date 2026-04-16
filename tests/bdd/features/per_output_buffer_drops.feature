@@ -43,3 +43,27 @@ Feature: Per-Output Buffer Drops
     When I audit 50 events rapidly
     And I close the logger
     Then the output metrics should have recorded at least 1 drop
+
+  @docker @syslog
+  Scenario: Syslog output drops events when internal buffer is full
+    Given a syslog output with buffer_size 1 and mock output metrics
+    And a logger with those outputs and queue_size 10000
+    When I audit 100 events rapidly
+    And I close the logger
+    Then the output metrics should have recorded at least 1 drop
+
+  @docker @webhook
+  Scenario: Webhook output drops events when internal buffer is full
+    Given a webhook output with buffer_size 1 and mock output metrics
+    And a logger with those outputs and queue_size 10000
+    When I audit 200 events rapidly
+    And I close the logger
+    Then the output metrics should have recorded at least 1 drop
+
+  @docker @loki
+  Scenario: Loki output drops events when internal buffer is full
+    Given a loki output with buffer_size 100 and mock output metrics
+    And a logger with those outputs and queue_size 10000
+    When I audit 500 events rapidly
+    And I close the logger
+    Then the output metrics should have recorded at least 1 drop

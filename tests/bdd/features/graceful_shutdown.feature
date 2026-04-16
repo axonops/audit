@@ -56,3 +56,11 @@ Feature: Graceful Shutdown
     And I close the logger
     Then the file should contain the marker
     And the syslog server should contain the marker within 10 seconds
+
+  @docker @syslog
+  Scenario: Per-output async buffers drained during close
+    Given a logger with file and syslog outputs
+    When I audit 10 uniquely marked events
+    And I close the logger
+    Then the file should contain exactly 10 events
+    And the syslog server should contain all 10 markers within 15 seconds

@@ -15,6 +15,8 @@
 package audittest
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/axonops/audit"
@@ -26,6 +28,7 @@ type Option func(*config)
 type config struct {
 	extraOpts []audit.Option
 	async     bool // opt out of default synchronous delivery
+	verbose   bool // re-enable diagnostic logs (silenced by default)
 }
 
 // WithConfig applies a [audit.Config] struct to the test auditor.
@@ -64,6 +67,22 @@ func WithAsync() Option {
 	return func(c *config) { c.async = true }
 }
 
+// WithAuditOption passes an arbitrary [audit.Option] through to the
+// underlying [audit.New] call. Use for options not covered by the
+// audittest.With* helpers (e.g., WithNamedOutput, WithFormatter,
+// WithAppName, WithHost).
+func WithAuditOption(opt audit.Option) Option {
+	return func(c *config) { c.extraOpts = append(c.extraOpts, opt) }
+}
+
+// WithVerbose re-enables diagnostic log output from the auditor. By
+// default, test auditors silence diagnostic logs (lifecycle messages,
+// shutdown notices) to keep test output clean. Use this option when
+// debugging auditor behaviour in tests.
+func WithVerbose() Option {
+	return func(c *config) { c.verbose = true }
+}
+
 // New creates a test auditor with an in-memory [Recorder]
 // and [MetricsRecorder]. The taxonomy is parsed from YAML bytes.
 //
@@ -91,7 +110,7 @@ func New(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Auditor, *R
 // are available in the Recorder immediately without calling Close.
 func NewQuick(tb testing.TB, eventTypes ...string) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
-	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive), WithSync())
+	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive))
 }
 
 // QuickTaxonomy builds a minimal [*audit.Taxonomy] where every listed
@@ -129,6 +148,11 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.A
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(rec),
 		audit.WithMetrics(met),
+	}
+	if !c.verbose {
+		auditOpts = append(auditOpts, audit.WithDiagnosticLogger(
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+		))
 	}
 	if !c.async {
 		auditOpts = append(auditOpts, audit.WithSynchronousDelivery())

@@ -16,7 +16,6 @@ package audittest_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -133,8 +132,8 @@ func TestNew_TableDriven_WithReset(t *testing.T) {
 			events.Reset()
 			err := auditor.AuditEvent(audit.NewEvent(tc.eventType, tc.fields))
 			require.NoError(t, err)
-			// Wait for drain to process — auditor stays open across sub-tests.
-			require.Eventually(t, func() bool { return events.Count() == 1 }, 2*time.Second, 10*time.Millisecond)
+			// Synchronous delivery — events available immediately.
+			require.Equal(t, 1, events.Count())
 			assert.Equal(t, tc.eventType, events.Events()[0].EventType)
 		})
 	}
@@ -147,4 +146,57 @@ func TestQuickTaxonomy(t *testing.T) {
 	assert.Contains(t, tax.Events, "user_create")
 	assert.Contains(t, tax.Events, "user_delete")
 	assert.Contains(t, tax.Categories, "test")
+}
+
+func TestNew_WithConfig(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, testTaxonomyYAML,
+		audittest.WithConfig(audit.Config{QueueSize: 50}),
+	)
+
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}))
+	require.NoError(t, err)
+
+	require.Equal(t, 1, events.Count())
+	assert.Equal(t, "user_create", events.Events()[0].EventType)
+}
+
+func TestNew_WithAsync(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, testTaxonomyYAML,
+		audittest.WithAsync(),
+	)
+
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}))
+	require.NoError(t, err)
+
+	// Async delivery — must Close before assertions.
+	require.NoError(t, auditor.Close())
+
+	require.Equal(t, 1, events.Count())
+	assert.Equal(t, "user_create", events.Events()[0].EventType)
+}
+
+func TestNew_WithAuditOption(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, testTaxonomyYAML,
+		audittest.WithAuditOption(audit.WithAppName("test-app")),
+	)
+
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}))
+	require.NoError(t, err)
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+	assert.Equal(t, "user_create", evt.EventType)
+	assert.Equal(t, "test-app", evt.StringField("app_name"))
 }

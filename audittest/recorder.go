@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/axonops/audit"
@@ -88,6 +89,13 @@ func (e RecordedEvent) FloatField(key string) float64 { //nolint:gocritic // val
 	return v
 }
 
+// BoolField returns the value of the named field as a bool.
+// Returns false if the key is missing or the value is not a bool.
+func (e RecordedEvent) BoolField(key string) bool { //nolint:gocritic // value receiver for consistency
+	v, _ := e.Fields[key].(bool)
+	return v
+}
+
 // UserFields returns a copy of the event's fields with framework
 // fields removed (event_category, app_name, host, timezone, pid,
 // duration_ms, _hmac, _hmac_v). This is useful for count assertions
@@ -123,16 +131,28 @@ func (e RecordedEvent) GoString() string { //nolint:gocritic // value receiver r
 // Recorder implements [audit.Output] and captures events in memory
 // for assertion. It is safe for concurrent use by the drain goroutine
 // (writing) and the test goroutine (reading).
+//
+// The Recorder only parses JSON-formatted events. Events formatted
+// with CEFFormatter will have ParseErr set and structured fields will
+// be zero-valued.
 type Recorder struct {
+	name   string
 	events []RecordedEvent
 	mu     sync.Mutex
 }
 
-// NewRecorder creates a Recorder. Use it with [audit.WithOutputs] or
-// [audit.WithNamedOutput] when composing an auditor manually. For the
-// common case, use [New] or [NewQuick] instead.
+// NewRecorder creates a Recorder with the default name "recorder".
+// Use it with [audit.WithOutputs] or [audit.WithNamedOutput] when
+// composing an auditor manually. For the common case, use [New] or
+// [NewQuick] instead.
 func NewRecorder() *Recorder {
-	return &Recorder{}
+	return &Recorder{name: "recorder"}
+}
+
+// NewNamedRecorder creates a Recorder with a custom name. The name is
+// returned by [Recorder.Name] and appears in metrics keys.
+func NewNamedRecorder(name string) *Recorder {
+	return &Recorder{name: name}
 }
 
 // Write implements [audit.Output]. It parses the serialised JSON event
@@ -146,14 +166,16 @@ func (r *Recorder) Write(data []byte) error {
 }
 
 // Name implements [audit.Output].
-func (r *Recorder) Name() string { return "recorder" }
+func (r *Recorder) Name() string { return r.name }
 
 // Close implements [audit.Output]. It is a no-op — the Recorder does
 // not own any resources.
 func (r *Recorder) Close() error { return nil }
 
 // Events returns a snapshot of all recorded events in drain order.
-// The returned slice is a copy; later Reset calls do not affect it.
+// The returned slice is a shallow copy of the event list. Later Reset
+// calls do not affect the slice, but the Fields maps within events
+// share references with the Recorder's internal state.
 // Call after [audit.Auditor.Close] to ensure all events have been processed.
 func (r *Recorder) Events() []RecordedEvent {
 	r.mu.Lock()
@@ -183,12 +205,105 @@ func (r *Recorder) Count() int {
 	return len(r.events)
 }
 
+// Last returns the most recently recorded event, or false if the
+// Recorder is empty.
+func (r *Recorder) Last() (RecordedEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.events) == 0 {
+		return RecordedEvent{}, false
+	}
+	return r.events[len(r.events)-1], true
+}
+
+// First returns the earliest recorded event, or false if the Recorder
+// is empty.
+func (r *Recorder) First() (RecordedEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.events) == 0 {
+		return RecordedEvent{}, false
+	}
+	return r.events[0], true
+}
+
+// FindByField returns all recorded events where the given field
+// matches val (compared with [reflect.DeepEqual]).
+func (r *Recorder) FindByField(key string, val any) []RecordedEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var result []RecordedEvent
+	for _, e := range r.events {
+		if reflect.DeepEqual(e.Fields[key], val) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// RequireEvent asserts that exactly one event of the given type was
+// recorded and returns it. It calls tb.Fatal if the count is not 1.
+func (r *Recorder) RequireEvent(tb testing.TB, eventType string) RecordedEvent {
+	tb.Helper()
+	found := r.FindByType(eventType)
+	if len(found) != 1 {
+		tb.Fatalf("audittest: expected 1 %q event, got %d\n%s", eventType, len(found), r.GoString())
+	}
+	return found[0]
+}
+
+// RequireEvents asserts that exactly n events were recorded and
+// returns them. It calls tb.Fatal if the count does not match.
+func (r *Recorder) RequireEvents(tb testing.TB, n int) []RecordedEvent {
+	tb.Helper()
+	events := r.Events()
+	if len(events) != n {
+		tb.Fatalf("audittest: expected %d events, got %d\n%s", n, len(events), r.GoString())
+	}
+	return events
+}
+
+// RequireEmpty asserts that no events have been recorded. It calls
+// tb.Fatal if any events are present.
+func (r *Recorder) RequireEmpty(tb testing.TB) {
+	tb.Helper()
+	if c := r.Count(); c != 0 {
+		tb.Fatalf("audittest: expected 0 events, got %d\n%s", c, r.GoString())
+	}
+}
+
+// AssertContains asserts that at least one event of the given type
+// was recorded with fields matching every key-value pair in fields.
+// It calls tb.Error (not Fatal) on failure, allowing further
+// assertions to run.
+func (r *Recorder) AssertContains(tb testing.TB, eventType string, fields audit.Fields) {
+	tb.Helper()
+	found := r.FindByType(eventType)
+	if len(found) == 0 {
+		tb.Errorf("audittest: no %q events recorded\n%s", eventType, r.GoString())
+		return
+	}
+	for _, evt := range found {
+		match := true
+		for k, v := range fields {
+			if !evt.HasField(k, v) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return
+		}
+	}
+	tb.Errorf("audittest: no %q event matches fields %v\n%s", eventType, fields, r.GoString())
+}
+
 // Reset clears all recorded events. The underlying auditor remains
 // open and functional. Use Reset between sub-tests to isolate
 // assertions without creating a new auditor.
 func (r *Recorder) Reset() {
 	r.mu.Lock()
-	r.events = r.events[:0]
+	r.events = nil
 	r.mu.Unlock()
 }
 

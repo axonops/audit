@@ -44,7 +44,6 @@ func ExampleNew() {
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
-	_ = auditor.Close()
 
 	fmt.Println("count:", events.Count())
 	fmt.Println("type:", events.Events()[0].EventType)
@@ -63,7 +62,6 @@ func ExampleNewQuick() {
 	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"any_field": "any_value",
 	}))
-	_ = auditor.Close()
 
 	fmt.Println("count:", events.Count())
 	fmt.Println("type:", events.Events()[0].EventType)
@@ -80,7 +78,6 @@ func ExampleRecorder_FindByType() {
 	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "alice"}))
 	_ = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"actor_id": "bob"}))
 	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "charlie"}))
-	_ = auditor.Close()
 
 	creates := events.FindByType("user_create")
 	fmt.Println("user_create count:", len(creates))

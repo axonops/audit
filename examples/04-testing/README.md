@@ -32,7 +32,7 @@ an in-memory test logger that captures events and metrics for assertion.
 
 ## Key Concepts
 
-The patterns below address the core challenge of testing async audit
+The patterns below address the core challenge of testing audit
 pipelines. Each pattern maps to a distinct testing need.
 
 ### The Testing Problem
@@ -47,8 +47,9 @@ untyped maps. That's ~25 lines of boilerplate per test.
 
 The `audittest` package gives you an in-memory audit logger that
 works exactly like production — same validation, same taxonomy
-enforcement, same async pipeline — but events land in a `Recorder`
-instead of being written anywhere.
+enforcement — but events land in a `Recorder` instead of being
+written anywhere. By default, delivery is synchronous, so events
+are available immediately after `AuditEvent()` returns.
 
 ### Pattern 1: Full Integration Test
 
@@ -58,14 +59,13 @@ taxonomy.
 
 ```go
 func TestCreateUser(t *testing.T) {
-    logger, events, metrics := audittest.New(t, taxonomyYAML)
+    auditor, events, metrics := audittest.New(t, taxonomyYAML)
 
-    svc := NewUserService(logger)
+    svc := NewUserService(auditor)
     err := svc.CreateUser("alice", "alice@example.com")
     require.NoError(t, err)
 
-    auditor.Close() // drain async buffer
-
+    // Synchronous delivery — assert immediately, no Close needed.
     require.Equal(t, 1, events.Count())
     evt := events.Events()[0]
     assert.Equal(t, EventUserCreate, evt.EventType)
@@ -81,12 +81,12 @@ about field validation:
 
 ```go
 func TestAuditHappens(t *testing.T) {
-    logger, events, _ := audittest.NewQuick(t, "user_create")
+    auditor, events, _ := audittest.NewQuick(t, "user_create")
 
-    svc := NewUserService(logger)
+    svc := NewUserService(auditor)
     _ = svc.CreateUser("alice", "alice@example.com")
 
-    auditor.Close()
+    // Synchronous delivery — assert immediately.
     assert.Equal(t, 1, events.Count())
 }
 ```
@@ -101,7 +101,7 @@ buffer drops, delivery counts:
 
 ```go
 func TestValidationError(t *testing.T) {
-    logger, _, metrics := audittest.New(t, taxonomyYAML)
+    auditor, _, metrics := audittest.New(t, taxonomyYAML)
 
     // Emit event missing required field "actor_id"
     err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
@@ -111,36 +111,37 @@ func TestValidationError(t *testing.T) {
     require.Error(t, err)
     assert.Contains(t, err.Error(), "missing required")
 
-    auditor.Close()
     assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }
 ```
 
-### Close Before Assert
+### Synchronous Delivery (Default)
 
-The audit logger delivers events asynchronously. Call
-`auditor.Close()` before making assertions to drain the buffer.
-`New` registers `t.Cleanup(auditor.Close)` as a safety net
-against goroutine leaks, but your assertions need the explicit
-Close to see events.
+Both `New` and `NewQuick` default to synchronous delivery — events
+are available in the `Recorder` immediately after `AuditEvent()`
+returns. No `Close()` call is needed before assertions. `New`
+registers `t.Cleanup(auditor.Close)` to clean up resources after
+the test completes.
+
+Use `WithAsync()` only when testing async-specific behaviour such
+as drain timeout or buffer backpressure. With `WithAsync()`, you
+MUST call `auditor.Close()` before assertions.
 
 ### Table-Driven Tests with Reset
 
-Use `events.Reset()` to clear captured events between sub-tests
-without creating a new logger:
+Use `events.Reset()` and `metrics.Reset()` to clear captured state
+between sub-tests without creating a new auditor:
 
 ```go
 for _, tc := range tests {
     t.Run(tc.name, func(t *testing.T) {
         events.Reset()
+        metrics.Reset()
         svc.Do(tc.action)
         // assert on events for this sub-test only
     })
 }
 ```
-
-When sharing an auditor across sub-tests without calling Close(), use
-`require.Eventually` to wait for the async drain.
 
 ### RecordedEvent API
 
@@ -153,6 +154,11 @@ Each captured event provides structured access:
 | `evt.Timestamp` | `time.Time` | When the event was processed |
 | `evt.Fields` | `map[string]any` | Non-framework field values |
 | `evt.Field(key)` | `any` | Single field value (nil if absent) |
+| `evt.StringField(key)` | `string` | String value (empty if missing or wrong type) |
+| `evt.IntField(key)` | `int` | Int value with float64 coercion (0 if missing) |
+| `evt.FloatField(key)` | `float64` | Float value (0 if missing or wrong type) |
+| `evt.BoolField(key)` | `bool` | Bool value (false if missing or wrong type) |
+| `evt.UserFields()` | `map[string]any` | Fields with framework fields removed |
 | `evt.HasField(key, val)` | `bool` | Deep-equal check on field value |
 | `evt.RawJSON` | `[]byte` | Original serialised bytes |
 | `evt.ParseErr` | `error` | JSON deserialisation error (nil on success) |
@@ -165,11 +171,11 @@ pass a real logger, in tests you pass the audittest logger:
 
 ```go
 type UserService struct {
-    logger *audit.Auditor
+    auditor *audit.Auditor
 }
 
-func NewUserService(logger *audit.Auditor) *UserService {
-    return &UserService{logger: logger}
+func NewUserService(auditor *audit.Auditor) *UserService {
+    return &UserService{auditor: auditor}
 }
 ```
 
@@ -196,11 +202,8 @@ PASS
 ```
 
 All five tests pass, each demonstrating a different testing pattern.
-You will also see `INFO audit:` lifecycle messages from logger creation
-and shutdown — these are normal.
 
 ## Further Reading
 
 - [Testing](../../docs/testing.md) — full audittest reference and testing patterns
 - [Troubleshooting](../../docs/troubleshooting.md) — common issues and solutions
-

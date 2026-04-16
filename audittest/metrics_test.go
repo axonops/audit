@@ -15,6 +15,7 @@
 package audittest_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -109,4 +110,71 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	// Per-output extension zeroed.
 	assert.Equal(t, 0, m.FileRotations("/path"))
 	assert.Equal(t, 0, m.SyslogReconnects("addr", true))
+}
+
+func TestMetricsRecorder_SubmittedCount(t *testing.T) {
+	t.Parallel()
+	m := audittest.NewMetricsRecorder()
+
+	assert.Equal(t, 0, m.SubmittedCount())
+	m.RecordSubmitted()
+	m.RecordSubmitted()
+	m.RecordSubmitted()
+	assert.Equal(t, 3, m.SubmittedCount())
+}
+
+func TestMetricsRecorder_Reset_AllFields(t *testing.T) {
+	t.Parallel()
+	m := audittest.NewMetricsRecorder()
+
+	// Populate all 10 metric fields.
+	m.RecordSubmitted()
+	m.RecordEvent("out", "success")
+	m.RecordOutputError("out")
+	m.RecordOutputFiltered("out")
+	m.RecordValidationError("evt")
+	m.RecordFiltered("evt")
+	m.RecordSerializationError("evt")
+	m.RecordBufferDrop()
+	m.RecordFileRotation("/path")
+	m.RecordSyslogReconnect("addr", true)
+
+	m.Reset()
+
+	assert.Equal(t, 0, m.SubmittedCount())
+	assert.Equal(t, 0, m.EventDeliveries("out", "success"))
+	assert.Equal(t, 0, m.OutputErrors("out"))
+	assert.Equal(t, 0, m.OutputFiltered("out"))
+	assert.Equal(t, 0, m.ValidationErrors("evt"))
+	assert.Equal(t, 0, m.FilteredCount("evt"))
+	assert.Equal(t, 0, m.SerializationErrors("evt"))
+	assert.Equal(t, 0, m.BufferDrops())
+	assert.Equal(t, 0, m.FileRotations("/path"))
+	assert.Equal(t, 0, m.SyslogReconnects("addr", true))
+}
+
+func TestMetricsRecorder_Concurrent(t *testing.T) {
+	t.Parallel()
+	m := audittest.NewMetricsRecorder()
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.RecordSubmitted()
+			m.RecordEvent("out", "success")
+			m.RecordOutputError("out")
+			m.RecordBufferDrop()
+			_ = m.SubmittedCount()
+			_ = m.EventDeliveries("out", "success")
+			_ = m.BufferDrops()
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, 100, m.SubmittedCount())
+	assert.Equal(t, 100, m.EventDeliveries("out", "success"))
+	assert.Equal(t, 100, m.OutputErrors("out"))
+	assert.Equal(t, 100, m.BufferDrops())
 }

@@ -27,6 +27,35 @@ Feature: Queue Size YAML Configuration
     Then the config should load successfully
     And the loaded config queue_size should be 500
 
+  Scenario: queue_size exceeding maximum is rejected via YAML
+    Given the following outputs YAML:
+      """
+      version: 1
+      app_name: bdd-test
+      host: bdd-host
+      logger:
+        queue_size: 2000000
+      outputs:
+        console:
+          type: stdout
+      """
+    When I load the outputs config
+    Then the config load should fail with an error containing "exceeds maximum"
+
+  Scenario: queue_size defaults to zero when omitted
+    Given the following outputs YAML:
+      """
+      version: 1
+      app_name: bdd-test
+      host: bdd-host
+      outputs:
+        console:
+          type: stdout
+      """
+    When I load the outputs config
+    Then the config should load successfully
+    And the loaded config queue_size should be 0
+
   Scenario: Old buffer_size under logger section is rejected
     Given the following outputs YAML:
       """

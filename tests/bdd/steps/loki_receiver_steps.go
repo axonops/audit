@@ -128,6 +128,44 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		})
 	})
 
+	ctx.Step(`^a logger with loki output to the local Loki receiver with metrics and max retries (\d+)$`, func(retries int) error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		cfg := &loki.Config{
+			MaxRetries: retries,
+			BatchSize:  1,
+			Compress:   true,
+		}
+		cfg.URL = r.server.URL + "/loki/api/v1/push"
+		cfg.AllowInsecureHTTP = true
+		cfg.AllowPrivateRanges = true
+
+		out, err := loki.New(cfg, nil)
+		if err != nil {
+			return fmt.Errorf("create loki output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+
+		if tc.LokiMetrics != nil {
+			out.SetOutputMetrics(tc.LokiMetrics)
+		}
+
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.LokiOutputName = out.Name()
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
 	ctx.Step(`^a logger with loki output to unreachable server with metrics$`, func() error {
 		cfg := &loki.Config{
 			URL:                "http://127.0.0.1:19999/loki/api/v1/push", // nothing listening
@@ -227,6 +265,11 @@ func registerLokiReceiverMetricSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 	ctx.Step(`^the loki metrics should have recorded 0 drops$`, func() error {
 		return assertZeroDrops(tc)
 	})
+
+	ctx.Step(`^the loki metrics should have recorded at least (\d+) errors? within (\d+) seconds$`,
+		func(n, secs int) error {
+			return waitForErrors(tc, n, time.Duration(secs)*time.Second)
+		})
 }
 
 func waitForLocalPushes(tc *AuditTestContext, n int, timeout time.Duration) error {
@@ -287,6 +330,26 @@ func waitForDrops(tc *AuditTestContext, n int, timeout time.Duration) error {
 		select {
 		case <-deadline:
 			return fmt.Errorf("timed out: wanted %d drops, got %d", n, m.DropCount())
+		case <-tick.C:
+		}
+	}
+}
+
+func waitForErrors(tc *AuditTestContext, n int, timeout time.Duration) error {
+	m := tc.LokiMetrics
+	if m == nil {
+		return fmt.Errorf("no mock loki metrics configured")
+	}
+	deadline := time.After(timeout)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if m.ErrorCount() >= n {
+			return nil
+		}
+		select {
+		case <-deadline:
+			return fmt.Errorf("timed out: wanted %d errors, got %d", n, m.ErrorCount())
 		case <-tick.C:
 		}
 	}

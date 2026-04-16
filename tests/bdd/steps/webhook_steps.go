@@ -255,7 +255,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	registerWebhookGivenSSRFSteps(ctx, tc)
 }
 
-func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,gocyclo,cyclop // BDD step registration
 	ctx.Step(`^a local HTTP webhook receiver$`, func() error {
 		r := newLocalWebhookReceiver(false)
 		tc.LocalReceiver = r
@@ -299,6 +299,41 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
+		}
+		out, err := webhook.New(cfg, nil)
+		if err != nil {
+			return fmt.Errorf("create webhook output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+		if tc.WebhookMetrics != nil {
+			out.SetOutputMetrics(tc.WebhookMetrics)
+		}
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		logger, err := audit.NewLogger(opts...)
+		if err != nil {
+			return fmt.Errorf("create logger: %w", err)
+		}
+		tc.Logger = logger
+		tc.AddCleanup(func() { _ = logger.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a logger with webhook to local receiver with buffer size (\d+) and metrics$`, func(bufSize int) error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            5 * time.Second,
+			BufferSize:         bufSize,
 		}
 		out, err := webhook.New(cfg, nil)
 		if err != nil {

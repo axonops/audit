@@ -49,3 +49,19 @@ Feature: Per-Output Buffer Configuration
     When I audit 50 events rapidly
     And I close the logger
     Then the file should contain exactly 50 events
+
+  Scenario: Syslog output buffer_size exceeding maximum is rejected
+    Given the following outputs YAML:
+      """
+      version: 1
+      app_name: bdd-test
+      host: bdd-host
+      outputs:
+        audit_syslog:
+          type: syslog
+          syslog:
+            address: "localhost:99999"
+            buffer_size: 200000
+      """
+    When I load the outputs config
+    Then the config load should fail with an error containing "buffer_size 200000 exceeds maximum 100000"

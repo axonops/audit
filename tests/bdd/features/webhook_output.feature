@@ -248,6 +248,14 @@ Feature: Webhook Output
     When I rapidly audit 200 webhook events measuring time
     Then all 200 audit calls should complete within 2 seconds
 
+  Scenario: Buffer overflow records per-output RecordDrop metric
+    Given a local HTTP webhook receiver
+    And mock webhook metrics are configured
+    And a logger with webhook to local receiver with buffer size 1 and metrics
+    When I rapidly audit 200 webhook events measuring time
+    And I close the logger
+    Then the webhook metrics should have recorded at least 1 drop within 5 seconds
+
   # --- Close idempotent ---
 
   Scenario: Close is idempotent

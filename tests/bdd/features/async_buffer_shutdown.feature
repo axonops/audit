@@ -36,3 +36,8 @@ Feature: Async Buffer Shutdown
     When I audit a uniquely marked "user_create" event
     And I close the logger
     Then the file should contain the marker
+
+  Scenario: Shutdown completes within timeout when output Write blocks
+    Given a logger with a blocking output and drain timeout 1s
+    When I audit event "user_create" with required fields
+    Then closing the logger should complete within 5 seconds

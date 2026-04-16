@@ -21,20 +21,20 @@ import (
 	"github.com/axonops/audit"
 )
 
-// loggerConfigResult holds both the Config and the disabled flag parsed
-// from the YAML logger: section. Disabled is tracked separately because
+// auditorConfigResult holds both the Config and the disabled flag parsed
+// from the YAML auditor: section. Disabled is tracked separately because
 // Config no longer has an Enabled field.
-type loggerConfigResult struct {
+type auditorConfigResult struct {
 	config   audit.Config
 	disabled bool
 }
 
-func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
+func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return loggerConfigResult{}, fmt.Errorf("expected mapping, got %T", raw)
+		return auditorConfigResult{}, fmt.Errorf("expected mapping, got %T", raw)
 	}
-	var result loggerConfigResult
+	var result auditorConfigResult
 	for key, val := range m {
 		switch key {
 		case "enabled":
@@ -57,23 +57,23 @@ func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,g
 				return result, fmt.Errorf("queue_size: %d exceeds maximum %d", v, audit.MaxQueueSize)
 			}
 			result.config.QueueSize = v
-		case "drain_timeout":
+		case "shutdown_timeout":
 			s, err := toString(val)
 			if err != nil {
-				return result, fmt.Errorf("drain_timeout: %w", err)
+				return result, fmt.Errorf("shutdown_timeout: %w", err)
 			}
 			if s != "" {
 				d, err := time.ParseDuration(s)
 				if err != nil {
-					return result, fmt.Errorf("drain_timeout: invalid duration %q: %w", s, err)
+					return result, fmt.Errorf("shutdown_timeout: invalid duration %q: %w", s, err)
 				}
 				if d < 0 {
-					return result, fmt.Errorf("drain_timeout: must be non-negative, got %s", s)
+					return result, fmt.Errorf("shutdown_timeout: must be non-negative, got %s", s)
 				}
-				if d > audit.MaxDrainTimeout {
-					return result, fmt.Errorf("drain_timeout: %s exceeds maximum %s", d, audit.MaxDrainTimeout)
+				if d > audit.MaxShutdownTimeout {
+					return result, fmt.Errorf("shutdown_timeout: %s exceeds maximum %s", d, audit.MaxShutdownTimeout)
 				}
-				result.config.DrainTimeout = d
+				result.config.ShutdownTimeout = d
 			}
 		case "validation_mode":
 			s, err := toString(val)
@@ -94,6 +94,8 @@ func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,g
 				return result, fmt.Errorf("omit_empty: %w", err)
 			}
 			result.config.OmitEmpty = v
+		case "drain_timeout":
+			return result, fmt.Errorf("unknown field %q (renamed to %q in this version)", "drain_timeout", "shutdown_timeout")
 		default:
 			return result, fmt.Errorf("unknown field %q", key)
 		}
@@ -101,10 +103,10 @@ func parseLoggerConfig(raw any) (loggerConfigResult, error) { //nolint:gocyclo,g
 	return result, nil
 }
 
-// defaultLoggerConfigResult returns a default logger config result
-// for when the logger: section is omitted from YAML.
-func defaultLoggerConfigResult() loggerConfigResult {
-	return loggerConfigResult{}
+// defaultAuditorConfigResult returns a default auditor config result
+// for when the auditor: section is omitted from YAML.
+func defaultAuditorConfigResult() auditorConfigResult {
+	return auditorConfigResult{}
 }
 
 func parseStandardFields(raw any) (map[string]string, error) {

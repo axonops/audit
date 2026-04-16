@@ -650,16 +650,16 @@ events:
 	tax, err := audit.ParseTaxonomyYAML([]byte(yaml))
 	require.NoError(t, err)
 
-	// Create a logger and audit an event — the description should not
+	// Create an auditor and audit an event — the description should not
 	// be treated as a field name. An event with only outcome + actor_id
 	// should pass strict validation (no unknown fields).
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 	)
 	require.NoError(t, err)
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))

@@ -14,13 +14,13 @@ This is a complete reference for everything that can go in an
 ```yaml
 version: 1
 
-# ── Logger Configuration (optional) ────────────────────────
-# Core logger settings. If omitted, sensible defaults are used.
+# ── Auditor Configuration (optional) ────────────────────────
+# Core auditor settings. If omitted, sensible defaults are used.
 
-logger:
+auditor:
   enabled: true                    # default: true (set false to disable auditing)
   queue_size: 10000                # default: 10,000 (max: 1,000,000)
-  drain_timeout: "5s"              # default: "5s" (max: "60s")
+  shutdown_timeout: "5s"              # default: "5s" (max: "60s")
   validation_mode: strict          # "strict" (default), "warn", "permissive"
   omit_empty: false                # default: false
 
@@ -169,29 +169,29 @@ outputs:
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
 | `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/13-standard-fields/#the-solution-reserved-standard-fields). |
 | `secrets` | No | Secret provider configuration. Constructs providers from YAML instead of programmatic setup. See [Secrets Configuration](#secrets-configuration). |
-| `logger` | No | Logger configuration. All fields optional; defaults applied if omitted. |
+| `auditor` | No | Auditor configuration. All fields optional; defaults applied if omitted. |
 | `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. Does NOT apply to secret providers — each provider defaults to TLS 1.3 independently. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
 ## ⚙️ Logger Configuration
 
-The optional `logger:` section configures the core audit logger. All
+The optional `auditor:` section configures the core auditor. All
 fields are optional — omitted fields use sensible defaults.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `enabled` | `true` | Set `false` to disable audit logging entirely (no-op logger). |
+| `enabled` | `true` | Set `false` to disable audit logging entirely (no-op auditor). |
 | `queue_size` | `10000` | Core async channel capacity (Level 1). Events dropped when full. Maximum: 1,000,000. See [Two-Level Buffering](async-delivery.md#two-level-buffering). |
-| `drain_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
+| `shutdown_timeout` | `"5s"` | How long `Close()` waits for pending events to flush. Maximum: `"60s"`. |
 | `validation_mode` | `"strict"` | `"strict"` rejects unknown fields, `"warn"` logs them, `"permissive"` accepts all. |
 | `omit_empty` | `false` | `true` to skip zero-value fields in output. Consumers under compliance regimes that require all registered fields SHOULD leave this `false`. Only applies when no per-output `formatter` is configured — when an explicit formatter is present, the formatter's own `omit_empty` takes precedence. |
 
 All values support environment variable substitution:
 
 ```yaml
-logger:
+auditor:
   queue_size: ${AUDIT_QUEUE_SIZE:-10000}
-  drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
+  shutdown_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
   enabled: ${AUDIT_ENABLED:-true}
 ```
 
@@ -565,18 +565,18 @@ available (built into core).
 
 ## 📦 Loading Output Configuration
 
-The simplest way to create a logger from YAML is the
-`outputconfig.NewLogger` facade — one call, no manual wiring:
+The simplest way to create an auditor from YAML is the
+`outputconfig.New` facade — one call, no manual wiring:
 
 ```go
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
 if err != nil {
     return fmt.Errorf("audit: %w", err)
 }
-defer func() { _ = logger.Close() }()
+defer func() { _ = auditor.Close() }()
 ```
 
 For advanced control (custom metrics, secret providers, per-call
@@ -595,7 +595,7 @@ if err != nil {
 
 opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 opts = append(opts, result.Options...)
-logger, err := audit.NewLogger(opts...)
+auditor, err := audit.New(opts...)
 ```
 
 ## 📚 Further Reading

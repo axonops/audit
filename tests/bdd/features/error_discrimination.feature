@@ -10,7 +10,7 @@ Feature: Error Discrimination
   # --- Unknown event type ---
 
   Scenario: Unknown event type wraps ErrValidation and ErrUnknownEventType
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
@@ -26,7 +26,7 @@ Feature: Error Discrimination
   # --- Missing required field ---
 
   Scenario: Missing required field wraps ErrValidation and ErrMissingRequiredField
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field | value |
     Then the audit call should return an error wrapping "ErrValidation"
@@ -37,7 +37,7 @@ Feature: Error Discrimination
   # --- Unknown field (strict mode) ---
 
   Scenario: Unknown field in strict mode wraps ErrValidation and ErrUnknownField
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "auth_failure" with required fields and an unknown field "bogus"
     Then the audit call should return an error wrapping "ErrValidation"
     And the audit call should return an error wrapping "ErrUnknownField"
@@ -47,8 +47,8 @@ Feature: Error Discrimination
   # --- Non-validation errors ---
 
   Scenario: ErrClosed is not ErrValidation
-    Given a logger with stdout output
-    When I close the logger
+    Given an auditor with stdout output
+    When I close the auditor
     And I audit event "auth_failure" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
     And the audit call should return an error NOT wrapping "ErrValidation"

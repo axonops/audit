@@ -34,17 +34,17 @@ events:
       actor_id: {required: true}
 `)
 
-func ExampleNewLogger() {
+func ExampleNew() {
 	// Use a real *testing.T in actual tests — this is for runnable doc only.
 	t := &testing.T{}
 
-	logger, events, metrics := audittest.NewLogger(t, exampleTaxonomyYAML)
+	auditor, events, metrics := audittest.New(t, exampleTaxonomyYAML)
 
-	_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	fmt.Println("count:", events.Count())
 	fmt.Println("type:", events.Events()[0].EventType)
@@ -55,15 +55,15 @@ func ExampleNewLogger() {
 	// deliveries: 1
 }
 
-func ExampleNewLoggerQuick() {
+func ExampleNewQuick() {
 	t := &testing.T{}
 
-	logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "user_delete")
+	auditor, events, _ := audittest.NewQuick(t, "user_create", "user_delete")
 
-	_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"any_field": "any_value",
 	}))
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	fmt.Println("count:", events.Count())
 	fmt.Println("type:", events.Events()[0].EventType)
@@ -75,12 +75,12 @@ func ExampleNewLoggerQuick() {
 func ExampleRecorder_FindByType() {
 	t := &testing.T{}
 
-	logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "auth_failure")
+	auditor, events, _ := audittest.NewQuick(t, "user_create", "auth_failure")
 
-	_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "alice"}))
-	_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"actor_id": "bob"}))
-	_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "charlie"}))
-	_ = logger.Close()
+	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "alice"}))
+	_ = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"actor_id": "bob"}))
+	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"actor_id": "charlie"}))
+	_ = auditor.Close()
 
 	creates := events.FindByType("user_create")
 	fmt.Println("user_create count:", len(creates))

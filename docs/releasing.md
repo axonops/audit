@@ -337,7 +337,7 @@ ensure `make check` passes on your branch.
 
 Requires **Go 1.26.2+**.
 
-Install only the modules you need. The core module provides the logger,
+Install only the modules you need. The core module provides the auditor,
 taxonomy validation, formatters, stdout output, HTTP middleware, and the
 `audittest` testing package. Output modules are separate to keep the core
 dependency footprint minimal.

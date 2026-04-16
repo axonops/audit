@@ -25,7 +25,7 @@ Feature: Field-Level Sensitivity Labels
             actor_id: {required: true}
             email: {}
       """
-    And a logger with stdout output and no exclusions
+    And an auditor with stdout output and no exclusions
     When I audit event "user_create" with fields:
       | field    | value         |
       | outcome  | success       |
@@ -391,7 +391,7 @@ Feature: Field-Level Sensitivity Labels
             actor_id: {required: true}
             email: {}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field    | value             |
       | outcome  | success           |
@@ -419,7 +419,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email: {}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field   | value             |
       | outcome | success           |
@@ -443,7 +443,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email: {}
       """
-    And a logger with stdout output and no exclusions
+    And an auditor with stdout output and no exclusions
     When I audit event "user_create" with fields:
       | field   | value             |
       | outcome | success           |
@@ -467,7 +467,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             actor_id: {required: true}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -494,7 +494,7 @@ Feature: Field-Level Sensitivity Labels
             actor_id: {required: true}
             email: {}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field    | value             |
       | outcome  | success           |
@@ -505,7 +505,7 @@ Feature: Field-Level Sensitivity Labels
     And the output should not contain field "actor_id"
     And the output should not contain field "email"
 
-  Scenario: Undefined label in exclude_labels → logger construction error
+  Scenario: Undefined label in exclude_labels → auditor construction error
     Given a taxonomy with sensitivity labels:
       """
       version: 1
@@ -521,10 +521,10 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
       """
-    When I try to create a logger with stdout output excluding labels "nonexistent"
+    When I try to create an auditor with stdout output excluding labels "nonexistent"
     Then logger creation should fail with an error containing "undefined sensitivity label"
 
-  Scenario: Exclude_labels on output but no sensitivity config → logger construction error
+  Scenario: Exclude_labels on output but no sensitivity config → auditor construction error
     Given a taxonomy without sensitivity labels:
       """
       version: 1
@@ -536,7 +536,7 @@ Feature: Field-Level Sensitivity Labels
           fields:
             outcome: {required: true}
       """
-    When I try to create a logger with stdout output excluding labels "pii"
+    When I try to create an auditor with stdout output excluding labels "pii"
     Then logger creation should fail with an error containing "no sensitivity config"
 
   Scenario: No fields match any labels plus exclude_labels present → no stripping
@@ -556,7 +556,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             email: {}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field   | value             |
       | outcome | success           |
@@ -588,7 +588,7 @@ Feature: Field-Level Sensitivity Labels
             card_number: {}
             merchant: {}
       """
-    And a logger with stdout output excluding labels "pii,financial"
+    And an auditor with stdout output excluding labels "pii,financial"
     When I audit event "payment" with fields:
       | field       | value             |
       | outcome     | success           |
@@ -616,7 +616,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
             actor_id: {required: true}
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |

@@ -54,42 +54,42 @@ func registerLokiGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
-	ctx.Step(`^a logger with loki output$`, func() error {
-		return createLokiLogger(tc, &loki.Config{Compress: true})
+	ctx.Step(`^an auditor with loki output$`, func() error {
+		return createLokiAuditor(tc, &loki.Config{Compress: true})
 	})
 
-	ctx.Step(`^a logger with loki output to tenant "([^"]*)"$`, func(tenant string) error {
-		return createLokiLogger(tc, &loki.Config{TenantID: tenant, Compress: true})
+	ctx.Step(`^an auditor with loki output to tenant "([^"]*)"$`, func(tenant string) error {
+		return createLokiAuditor(tc, &loki.Config{TenantID: tenant, Compress: true})
 	})
 
-	ctx.Step(`^a logger with loki output with static label "([^"]*)" = "([^"]*)"$`, func(name, value string) error {
-		return createLokiLogger(tc, &loki.Config{
+	ctx.Step(`^an auditor with loki output with static label "([^"]*)" = "([^"]*)"$`, func(name, value string) error {
+		return createLokiAuditor(tc, &loki.Config{
 			Compress: true,
 			Labels:   loki.LabelConfig{Static: map[string]string{name: value}},
 		})
 	})
 
-	ctx.Step(`^a logger with loki output with batch size (\d+)$`, func(size int) error {
-		return createLokiLogger(tc, &loki.Config{BatchSize: size, Compress: true})
+	ctx.Step(`^an auditor with loki output with batch size (\d+)$`, func(size int) error {
+		return createLokiAuditor(tc, &loki.Config{BatchSize: size, Compress: true})
 	})
 
-	ctx.Step(`^a logger with loki output with batch size (\d+) and flush interval (\d+)ms$`, func(size, ms int) error {
-		return createLokiLogger(tc, &loki.Config{
+	ctx.Step(`^an auditor with loki output with batch size (\d+) and flush interval (\d+)ms$`, func(size, ms int) error {
+		return createLokiAuditor(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(ms) * time.Millisecond,
 			Compress:      true,
 		})
 	})
 
-	ctx.Step(`^a logger with loki output with batch size (\d+) and flush interval (\d+)s$`, func(size, s int) error {
-		return createLokiLogger(tc, &loki.Config{
+	ctx.Step(`^an auditor with loki output with batch size (\d+) and flush interval (\d+)s$`, func(size, s int) error {
+		return createLokiAuditor(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(s) * time.Second,
 			Compress:      true,
 		})
 	})
 
-	ctx.Step(`^a logger with loki output excluding dynamic label "([^"]*)"$`, func(label string) error {
+	ctx.Step(`^an auditor with loki output excluding dynamic label "([^"]*)"$`, func(label string) error {
 		cfg := &loki.Config{Compress: true}
 		switch label {
 		case "severity":
@@ -107,17 +107,17 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 		default:
 			return fmt.Errorf("unknown dynamic label: %s", label)
 		}
-		return createLokiLogger(tc, cfg)
+		return createLokiAuditor(tc, cfg)
 	})
 
-	ctx.Step(`^a logger with loki output with gzip enabled$`, func() error {
-		return createLokiLogger(tc, &loki.Config{Compress: true})
+	ctx.Step(`^an auditor with loki output with gzip enabled$`, func() error {
+		return createLokiAuditor(tc, &loki.Config{Compress: true})
 	})
 
-	ctx.Step(`^a logger with loki output with gzip disabled$`, func() error {
+	ctx.Step(`^an auditor with loki output with gzip disabled$`, func() error {
 		cfg := &loki.Config{}
 		cfg.Compress = false
-		return createLokiLogger(tc, cfg)
+		return createLokiAuditor(tc, cfg)
 	})
 }
 
@@ -265,7 +265,7 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 			fields := defaultRequiredFields(tc.Taxonomy, eventType)
 			fields["marker"] = m
 			fields[field] = value
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 	ctx.Step(`^I audit (\d+) loki events with a shared marker$`, func(count int) error {
@@ -274,7 +274,7 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		for i := range count {
 			fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 			fields["marker"] = m
-			if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+			if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 				return fmt.Errorf("audit event %d: %w", i, err)
 			}
 		}
@@ -291,7 +291,7 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 			}
 			fields := defaultRequiredFields(tc.Taxonomy, eventType)
 			fields["marker"] = m
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 	ctx.Step(`^I audit (\d+) uniquely marked events with the same timestamp$`,
@@ -304,7 +304,7 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 				}
 				fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 				fields["marker"] = m
-				if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+				if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 					return fmt.Errorf("audit event %d: %w", i, err)
 				}
 			}
@@ -316,7 +316,7 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 func registerLokiWhenLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to audit a "([^"]*)" event$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
@@ -454,7 +454,7 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 	cfg.Labels.Static["test_suite"] = "bdd"
 }
 
-func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
+func createLokiAuditor(tc *AuditTestContext, cfg *loki.Config) error {
 	applyLokiTestDefaults(tc, cfg)
 
 	out, err := loki.New(cfg, nil)
@@ -463,17 +463,17 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 

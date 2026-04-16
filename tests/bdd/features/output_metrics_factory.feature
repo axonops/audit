@@ -140,9 +140,9 @@ Feature: OutputMetrics Factory
     When I load the outputs config with the output metrics factory
     Then the config should load successfully
     And the output metrics factory should have been called with type "file" and name "audit_log"
-    When I create a logger from the loaded config
+    When I create an auditor from the loaded config
     And I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the output metrics for "file:audit_log" should have recorded at least 1 flush
     And the output metrics for "file:audit_log" should have recorded 0 errors
     And the output metrics for "file:audit_log" should have recorded 0 drops
@@ -161,7 +161,7 @@ Feature: OutputMetrics Factory
       """
     When I load the outputs config with a nil-returning output metrics factory
     Then the config should load successfully
-    When I create a logger from the loaded config
+    When I create an auditor from the loaded config
     And I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the event should be delivered successfully

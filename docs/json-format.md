@@ -36,7 +36,7 @@ Fields are emitted in a deterministic order:
    - `app_name` — application name (when configured via `WithAppName` or outputs YAML)
    - `host` — hostname (when configured via `WithHost` or outputs YAML)
    - `timezone` — timezone name (auto-detected from system, or set via `WithTimezone` / outputs YAML)
-   - `pid` — process ID (always present, auto-captured at logger construction)
+   - `pid` — process ID (always present, auto-captured at auditor construction)
 
 2. **Required fields** — sorted alphabetically
 3. **Optional fields** — sorted alphabetically

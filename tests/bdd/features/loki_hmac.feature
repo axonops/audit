@@ -35,9 +35,9 @@ Feature: HMAC Integrity with Loki Output
       """
 
   Scenario: HMAC fields present on event stored in Loki
-    Given a logger with loki output and HMAC enabled using salt "loki-hmac-salt-16b!" version "v1" and hash "HMAC-SHA-256"
+    Given an auditor with loki output and HMAC enabled using salt "loki-hmac-salt-16b!" version "v1" and hash "HMAC-SHA-256"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should contain field "_hmac"
     And the loki event payload should contain field "_hmac_v" with value "v1"
@@ -51,33 +51,33 @@ Feature: HMAC Integrity with Loki Output
       | event_category | write        |
 
   Scenario: HMAC fields absent when HMAC not configured on Loki output
-    Given a logger with loki output
+    Given an auditor with loki output
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should not contain field "_hmac"
     And the loki event payload should not contain field "_hmac_v"
 
   Scenario: HMAC stored in Loki is independently verifiable
-    Given a logger with loki output and HMAC enabled using salt "loki-verify-salt-16!" version "v1" and hash "HMAC-SHA-256"
+    Given an auditor with loki output and HMAC enabled using salt "loki-verify-salt-16!" version "v1" and hash "HMAC-SHA-256"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And independently recomputing HMAC-SHA-256 over the loki payload with salt "loki-verify-salt-16!" matches the "_hmac" value
 
   Scenario: Different HMAC salts produce different HMACs on same event
-    Given a logger with loki output using HMAC salt "loki-salt-alpha-16!" version "v1"
+    Given an auditor with loki output using HMAC salt "loki-salt-alpha-16!" version "v1"
     And a capture output with HMAC salt "capture-salt-beta16!" version "v2"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the capture output should contain the marker
     And the HMAC in Loki should differ from the HMAC in the capture output
 
   Scenario: Salt version stored in Loki event
-    Given a logger with loki output and HMAC enabled using salt "loki-version-salt-16" version "2026-Q2" and hash "HMAC-SHA-256"
+    Given an auditor with loki output and HMAC enabled using salt "loki-version-salt-16" version "2026-Q2" and hash "HMAC-SHA-256"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should contain field "_hmac_v" with value "2026-Q2"
 
@@ -102,10 +102,10 @@ Feature: HMAC Integrity with Loki Output
             email:
               labels: [pii]
       """
-    And a logger with loki output excluding label "pii" with HMAC salt "loki-strip-salt-16b!" version "v1"
+    And an auditor with loki output excluding label "pii" with HMAC salt "loki-strip-salt-16b!" version "v1"
     And a capture output with no exclusions and HMAC salt "capture-full-salt-16" version "v2"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success" and field "email" = "alice@example.com"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should not contain field "email"
     And the capture output event should contain field "email" with value "alice@example.com"
@@ -113,9 +113,9 @@ Feature: HMAC Integrity with Loki Output
     And the HMAC values should differ between Loki and the capture output
 
   Scenario: Complete payload preserved alongside HMAC fields in Loki
-    Given a logger with loki output and HMAC enabled using salt "loki-full-salt-16by!" version "v1" and hash "HMAC-SHA-256"
+    Given an auditor with loki output and HMAC enabled using salt "loki-full-salt-16by!" version "v1" and hash "HMAC-SHA-256"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should contain:
       | field          | value        |

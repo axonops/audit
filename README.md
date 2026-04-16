@@ -189,14 +189,14 @@ go run github.com/axonops/audit/cmd/audit-gen \
 
 ```go
 // Required fields are constructor parameters — typos are compile errors
-err := logger.AuditEvent(
+err := auditor.AuditEvent(
     NewUserCreateEvent("alice", "success").
         SetTargetID("user-42"),
 )
 ```
 
 > 📚 For the complete runnable application (taxonomy loading, output
-> configuration, logger creation), see
+> configuration, auditor creation), see
 > [examples/02-code-generation](examples/02-code-generation/).
 
 ### Output
@@ -226,7 +226,7 @@ CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... ac
 Requires **Go 1.26+**.
 
 ```bash
-go get github.com/axonops/audit             # core: logger, taxonomy, validation, formatters, stdout output
+go get github.com/axonops/audit             # core: auditor, taxonomy, validation, formatters, stdout output
 go get github.com/axonops/audit/file         # file output with rotation
 go get github.com/axonops/audit/syslog       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
 go get github.com/axonops/audit/webhook      # batched HTTP webhook with SSRF protection
@@ -243,7 +243,7 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 
 | Module | Description |
 |--------|-------------|
-| `github.com/axonops/audit` | Core: Logger, taxonomy validation, JSON + CEF formatters, HTTP middleware, stdout output, fan-out, routing, `audittest` |
+| `github.com/axonops/audit` | Core: Auditor, taxonomy validation, JSON + CEF formatters, HTTP middleware, stdout output, fan-out, routing, `audittest` |
 | `github.com/axonops/audit/file` | File output with size-based rotation and gzip compression |
 | `github.com/axonops/audit/syslog` | RFC 5424 syslog output (TCP/UDP/TLS/mTLS) |
 | `github.com/axonops/audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
@@ -267,14 +267,14 @@ The `audittest` package provides an in-memory recorder for testing audit events:
 
 ```go
 func TestUserCreation(t *testing.T) {
-    logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
+    auditor, events, _ := audittest.NewQuick(t, "user_create")
 
     // Exercise the code under test...
-    err := logger.AuditEvent(audit.NewEventKV("user_create",
+    err := auditor.AuditEvent(audit.NewEventKV("user_create",
         "outcome", "success", "actor_id", "alice"))
     require.NoError(t, err)
 
-    // Assert immediately — NewLoggerQuick uses synchronous delivery.
+    // Assert immediately — NewQuick uses synchronous delivery.
     assert.Equal(t, 1, events.Count())
     assert.Equal(t, "alice", events.Events()[0].StringField("actor_id"))
 }

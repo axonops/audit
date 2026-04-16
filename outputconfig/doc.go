@@ -14,7 +14,7 @@
 
 // Package outputconfig loads audit output configuration from a YAML
 // document and returns ready-to-use [audit.Option] values for
-// [audit.NewLogger].
+// [audit.New].
 //
 // # Registry Pattern
 //
@@ -41,10 +41,10 @@
 //	app_name: "my-service"          # required, application name (max 255 bytes)
 //	host: "${HOSTNAME:-localhost}"   # required, hostname (max 255 bytes; env vars supported)
 //	timezone: "UTC"                 # optional, overrides auto-detected timezone
-//	logger:                         # optional, core logger settings
+//	auditor:                         # optional, core auditor settings
 //	  enabled: true                 # default: true
 //	  queue_size: 10000             # default: 10,000 (max: 1,000,000)
-//	  drain_timeout: "5s"           # default: "5s" (max: "60s")
+//	  shutdown_timeout: "5s"           # default: "5s" (max: "60s")
 //	  validation_mode: strict       # "strict" (default), "warn", "permissive"
 //	  omit_empty: false             # default: false
 //	tls_policy:                     # optional, global TLS policy
@@ -101,7 +101,7 @@
 //
 //	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 //	opts = append(opts, result.Options...)
-//	logger, err := audit.NewLogger(opts...)
+//	auditor, err := audit.New(opts...)
 //
 // [Load] fails hard on any configuration error — partial configurations
 // are never returned. This ensures that a misconfigured output does not

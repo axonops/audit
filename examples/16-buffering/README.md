@@ -65,7 +65,7 @@ Three different configs that mean different things:
 
 | Config | Where | Default | What It Controls |
 |--------|-------|---------|------------------|
-| `logger.queue_size` | YAML `logger:` section | 10,000 | Level 1 core queue capacity |
+| `auditor.queue_size` | YAML `logger:` section | 10,000 | Level 1 core queue capacity |
 | output `buffer_size` | Per output (file, syslog, webhook, Loki) | 10,000 | Level 2 per-output channel capacity |
 | output `batch_size` | Per webhook/Loki output | 100 | Events grouped per HTTP POST |
 
@@ -100,9 +100,9 @@ outputs.
 
 ```yaml
 # Level 1 — core queue
-logger:
+auditor:
   queue_size: 5            # Tiny queue to trigger ErrQueueFull
-  drain_timeout: "2s"
+  shutdown_timeout: "2s"
 
 outputs:
   # Async file output — has its own internal buffer
@@ -134,12 +134,12 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created queue_size=5 drain_timeout=2s validation_mode=strict outputs=2
+INFO audit: auditor created queue_size=5 shutdown_timeout=2s validation_mode=strict outputs=2
 --- Level 1: Core Queue (queue_size: 5) ---
 Emitting 20 events in a tight loop...
 WARN audit: queue full, events dropped dropped=1 queue_size=5
   Delivered: 6, Dropped (ErrQueueFull): 14
-  → Core queue was full. In production, increase logger.queue_size.
+  → Core queue was full. In production, increase auditor.queue_size.
 
 --- Level 2: Webhook Buffer (buffer_size: 10) ---
 The webhook points at an unreachable endpoint.
@@ -166,7 +166,7 @@ affecting the file output.
 
 | Symptom | Fix |
 |---------|-----|
-| `ErrQueueFull` from `AuditEvent()` | Increase `logger.queue_size` (default 10,000, max 1,000,000) |
+| `ErrQueueFull` from `AuditEvent()` | Increase `auditor.queue_size` (default 10,000, max 1,000,000) |
 | `OutputMetrics.RecordDrop()` | Increase output `buffer_size`, decrease `flush_interval` |
 | High event latency | Decrease `flush_interval` or `batch_size` |
 | Excessive memory | Decrease `buffer_size` (each 10,000 events ≈ 5 MB with typical events) |

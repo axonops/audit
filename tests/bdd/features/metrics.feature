@@ -1,6 +1,6 @@
 @core @metrics
 Feature: Metrics Interface
-  As a library consumer, I want the logger to record metrics for all
+  As a library consumer, I want the auditor to record metrics for all
   pipeline events so that I can monitor audit health via my observability
   stack.
 
@@ -14,20 +14,20 @@ Feature: Metrics Interface
     And mock metrics are configured
 
   Scenario: Successful event delivery records success metric
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded event "success" for output "stdout"
 
   Scenario: Validation error records validation metric
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit event "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
     Then the metrics should have recorded a validation error
 
   Scenario: Missing required field records validation metric
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
@@ -35,47 +35,47 @@ Feature: Metrics Interface
 
   Scenario: Filtered event records filter metric
     Given a standard test taxonomy
-    And a logger with stdout output and metrics
+    And an auditor with stdout output and metrics
     And I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the metrics should have recorded a filtered event "auth_failure"
 
   Scenario: Nil metrics does not cause panic
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the event should be delivered successfully
 
   Scenario: Multiple outputs record success metric for non-DeliveryReporter outputs
-    Given a logger with file and stdout outputs and metrics
+    Given an auditor with file and stdout outputs and metrics
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded at least 1 success events
 
   Scenario: Unknown field in strict mode records validation error
-    Given a logger with stdout output and metrics in strict mode
+    Given an auditor with stdout output and metrics in strict mode
     When I audit event "user_create" with required fields and an unknown field "extra"
     Then the metrics should have recorded a validation error
 
   Scenario: Unknown field in warn mode does not record validation error
-    Given a logger with stdout output and metrics in warn mode
+    Given an auditor with stdout output and metrics in warn mode
     When I audit event "user_create" with required fields and an unknown field "extra"
     Then the metrics should not have recorded a validation error
 
   Scenario: Buffer drop metric recorded when buffer full
-    Given a logger with stdout output and metrics and buffer size 1
-    When I fill the logger buffer beyond capacity
+    Given an auditor with stdout output and metrics and buffer size 1
+    When I fill the auditor buffer beyond capacity
     Then the metrics should have recorded at least 1 buffer drop
 
   Scenario: Per-output route filter records output filtered metric
     Given a routing taxonomy with write, read, and security categories
-    And a logger with routed outputs and metrics where webhook excludes "write"
+    And an auditor with routed outputs and metrics where webhook excludes "write"
     When I audit a "user_create" event in category "write" with marker "m_filt"
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded an output filtered event
 
   Scenario: Nil metrics with validation error does not panic
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
@@ -86,30 +86,30 @@ Feature: Metrics Interface
 
   Scenario: Serialization error records serialization metric
     Given mock metrics are configured
-    And a logger with error-returning formatter and metrics
+    And an auditor with error-returning formatter and metrics
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded a serialization error
 
   @docker @webhook
   Scenario: DeliveryReporter output does not double-record in core metrics
     Given mock metrics are configured
-    And a logger with webhook output and metrics
+    And an auditor with webhook output and metrics
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
-    And I close the logger
+    And I close the auditor
     And the metrics should not have recorded a success event for webhook output
 
   Scenario: Output write failure records output error metric
     Given mock metrics are configured
-    And a logger with error output and metrics
+    And an auditor with error output and metrics
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded an output error for "error-output"
 
   Scenario: Nil metrics with filtered event does not panic
     Given a standard test taxonomy
-    And a logger with stdout output
+    And an auditor with stdout output
     And I disable category "security"
     When I audit event "auth_failure" with required fields
     Then the audit call should return no error

@@ -123,7 +123,7 @@ type TransportMetadata struct {
 // after the handler returns (or panics).
 //
 // Return values:
-//   - eventType: the taxonomy event type name to pass to [Logger.AuditEvent]
+//   - eventType: the taxonomy event type name to pass to [Auditor.AuditEvent]
 //   - fields: the audit event fields
 //   - skip: if true, no audit event is emitted for this request
 type EventBuilder func(hints *Hints, transport *TransportMetadata) (eventType string, fields Fields, skip bool)
@@ -140,17 +140,17 @@ func HintsFromContext(ctx context.Context) *Hints {
 // returns. The builder transforms [Hints] (populated by the handler)
 // and [TransportMetadata] into an audit event.
 //
-// If logger is nil, the returned middleware is an identity function
+// If auditor is nil, the returned middleware is an identity function
 // that passes requests through without auditing. This allows
 // consumers to conditionally disable audit middleware without
 // nil-checking at every call site.
 //
 // Middleware panics if builder is nil. Passing a nil builder is a
 // programming error: there is no recoverable behaviour when the
-// event-building callback is absent. Pass a nil *[Logger] instead
+// event-building callback is absent. Pass a nil *[Auditor] instead
 // to disable auditing without removing the middleware.
-func Middleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Handler {
-	if logger == nil {
+func Middleware(auditor *Auditor, builder EventBuilder) func(http.Handler) http.Handler {
+	if auditor == nil {
 		return func(next http.Handler) http.Handler { return next }
 	}
 	if builder == nil {
@@ -158,14 +158,14 @@ func Middleware(logger *Logger, builder EventBuilder) func(http.Handler) http.Ha
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			serveAudit(w, r, next, logger, builder)
+			serveAudit(w, r, next, auditor, builder)
 		})
 	}
 }
 
 // serveAudit is the per-request handler logic extracted from
 // [Middleware] to keep cognitive complexity within bounds.
-func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, logger *Logger, builder EventBuilder) {
+func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, auditor *Auditor, builder EventBuilder) {
 	hints := &Hints{}
 	ctx := context.WithValue(r.Context(), hintsKey{}, hints)
 	r = r.WithContext(ctx)
@@ -196,7 +196,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, logge
 		Duration:          time.Since(start),
 	}
 
-	emitAuditEvent(logger, builder, hints, transport)
+	emitAuditEvent(auditor, builder, hints, transport)
 
 	if panicked {
 		panic(panicVal)
@@ -223,7 +223,7 @@ func invokeHandler(next http.Handler, rw *responseWriter, r *http.Request) (pani
 
 // emitAuditEvent calls the EventBuilder and, if not skipped, emits
 // the audit event. Builder panics are recovered and logged.
-func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transport *TransportMetadata) {
+func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transport *TransportMetadata) {
 	var (
 		eventType string
 		fields    Fields
@@ -234,7 +234,7 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 		defer func() {
 			if v := recover(); v != nil {
 				panicStr := truncateString(fmt.Sprintf("%v", v), 512)
-				logger.logger.Error("audit: EventBuilder panicked",
+				auditor.logger.Error("audit: EventBuilder panicked",
 					"panic", panicStr,
 					"request_id", transport.RequestID)
 				skip = true
@@ -247,8 +247,8 @@ func emitAuditEvent(logger *Logger, builder EventBuilder, hints *Hints, transpor
 		return
 	}
 
-	if err := logger.AuditEvent(NewEvent(eventType, fields)); err != nil {
-		logger.logger.Warn("audit: middleware event failed",
+	if err := auditor.AuditEvent(NewEvent(eventType, fields)); err != nil {
+		auditor.logger.Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,
 			"error", err)

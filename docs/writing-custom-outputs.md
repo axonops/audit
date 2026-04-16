@@ -22,7 +22,7 @@ optional interfaces add capabilities:
 Output (required)
 ├── MetadataWriter         — receive structured event metadata (type, severity, category)
 ├── FrameworkFieldReceiver — receive app_name, host, timezone, pid at startup
-├── LoggerReceiver         — receive the library's slog.Logger for diagnostics
+├── DiagnosticLoggerReceiver         — receive the library's slog.Logger for diagnostics
 ├── DestinationKeyer       — prevent duplicate outputs to the same destination
 ├── OutputMetricsReceiver  — receive per-output delivery metrics
 └── DeliveryReporter       — signal that delivery metrics are recorded after actual I/O
@@ -34,7 +34,7 @@ Output (required)
 |----------|-----------|
 | Do you need event type, severity, or category? | Implement `MetadataWriter` |
 | Do you need app_name/host for labelling? | Implement `FrameworkFieldReceiver` |
-| Do you want the library's diagnostic logger? | Implement `LoggerReceiver` |
+| Do you want the library's diagnostic logger? | Implement `DiagnosticLoggerReceiver` |
 | Can two outputs point to the same destination? | Implement `DestinationKeyer` |
 | Does your output want per-output drop/flush/error metrics? | Implement `OutputMetricsReceiver` |
 | Does your output use a background goroutine that records delivery outcomes after actual I/O? | Implement `DeliveryReporter` |
@@ -261,7 +261,7 @@ func (o *AsyncOutput) Close() error {
     return nil
 }
 
-// ReportsDelivery signals the core logger to skip RecordEvent for
+// ReportsDelivery signals the core auditor to skip RecordEvent for
 // this output — delivery accounting is handled by OutputMetrics in
 // writeLoop.
 func (o *AsyncOutput) ReportsDelivery() bool { return true }
@@ -292,7 +292,7 @@ background goroutine may already be running at this point (started
 in the output constructor). The `atomic.Pointer` storage pattern
 ensures safe handoff: the goroutine checks for nil before using
 `outputMetrics`, and `SetOutputMetrics` stores atomically. Because
-`NewLogger` is not called until after `Load` returns, no `Write`
+`New` is not called until after `Load` returns, no `Write`
 calls are made before `SetOutputMetrics` completes. This happens
 only when the consumer passes `WithOutputMetrics(factory)` as a
 load option:
@@ -415,7 +415,7 @@ type DeliveryReporter interface {
 
 ### What It Controls
 
-When `ReportsDelivery()` returns `true`, the core logger's post-write
+When `ReportsDelivery()` returns `true`, the core auditor's post-write
 logic skips `Metrics.RecordEvent(outputName, "success"|"error")` and
 `Metrics.RecordOutputError(outputName)` for that output. Delivery
 accounting is left entirely to the output via `OutputMetrics`:

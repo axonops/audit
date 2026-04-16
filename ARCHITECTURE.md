@@ -53,7 +53,7 @@ The pattern for every I/O output:
    retains the slice reference, it will see corrupted data.
 3. **A background goroutine handles actual I/O** with its own
    `defer func() { recover() }()` per event. A panic in one output
-   does not crash the logger or affect other outputs.
+   does not crash the auditor or affect other outputs.
 4. **Buffer full → drop + metrics.** When the internal channel is full,
    the event is silently dropped. `OutputMetrics.RecordDrop()` fires
    and a rate-limited `slog.Warn` is emitted (at most once per 10
@@ -69,7 +69,7 @@ The pattern for every I/O output:
 ## Module Boundaries
 
 ```
-github.com/axonops/audit              ← core (Logger, Output, taxonomy, formatters)
+github.com/axonops/audit              ← core (Auditor, Output, taxonomy, formatters)
 github.com/axonops/audit/file         ← file output (depends on core)
 github.com/axonops/audit/syslog       ← syslog output (depends on core + srslog)
 github.com/axonops/audit/webhook      ← webhook output (depends on core)
@@ -113,7 +113,7 @@ import (
   For async outputs, actual I/O happens in the output's own goroutine
 - `FormatOptions` is pre-allocated per output entry at construction; `FieldLabels` is
   set per-event in the drain goroutine (single writer, no lock needed)
-- `Logger.Close()` is idempotent via `sync.Once`
+- `Auditor.Close()` is idempotent via `sync.Once`
 
 ## Field Categories
 
@@ -125,7 +125,7 @@ The library distinguishes three categories of event fields:
 | **Reserved standard fields** | `actor_id`, `source_ip`, `reason`, `target_id` (31 total) | Optional — can be required or labeled | Yes — via sensitivity labels |
 | **User-defined fields** | Application-specific fields | Yes — in taxonomy YAML | Yes — via sensitivity labels |
 
-Framework fields are set once at logger construction (`WithAppName`, `WithHost`,
+Framework fields are set once at auditor construction (`WithAppName`, `WithHost`,
 `WithTimezone`; `pid` auto-captured via `os.Getpid()`). They appear in every
 serialised event before user fields.
 
@@ -137,7 +137,7 @@ and map to standard ArcSight CEF extension keys.
 
 | File | Purpose |
 |------|---------|
-| `audit.go` | `Logger`, `NewLogger`, `AuditEvent`, `Close`, drain goroutine |
+| `audit.go` | `Auditor`, `New`, `AuditEvent`, `Close`, drain goroutine |
 | `event.go` | `Event` interface, `NewEvent`, `EventType` handle, `FieldInfo`, `CategoryInfo` |
 | `taxonomy.go` | `Taxonomy`, `EventDef`, `CategoryDef`, validation, sensitivity pre-computation |
 | `taxonomy_yaml.go` | `ParseTaxonomyYAML`, YAML deserialization, `ErrInvalidInput` |

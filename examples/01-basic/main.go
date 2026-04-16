@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Basic demonstrates the absolute minimum: a file-free logger that
+// Basic demonstrates the absolute minimum: a file-free auditor that
 // requires no YAML, no go:embed, and no output configuration. This is
 // the fastest way to evaluate audit in a playground or single-file
 // program. For production use, see examples 02+ which use YAML
@@ -27,20 +27,20 @@ import (
 )
 
 func main() {
-	// Create a logger with a development taxonomy and stdout output.
+	// Create an auditor with a development taxonomy and stdout output.
 	// DevTaxonomy accepts any event type with any fields — not for production.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
 		audit.WithOutputs(audit.Stdout()),
 	)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	// Emit a valid event using slog-style key-value pairs.
 	fmt.Println("--- Valid event ---")
-	if auditErr := logger.AuditEvent(audit.NewEventKV("user_create",
+	if auditErr := auditor.AuditEvent(audit.NewEventKV("user_create",
 		"outcome", "success",
 		"actor_id", "alice",
 	)); auditErr != nil {
@@ -49,7 +49,7 @@ func main() {
 
 	// Emit another event using the Fields map style.
 	fmt.Println("\n--- Auth failure event ---")
-	if auditErr := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	if auditErr := auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "unknown",
 	})); auditErr != nil {

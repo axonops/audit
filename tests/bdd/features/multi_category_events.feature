@@ -18,7 +18,7 @@ Feature: Multi-category event delivery and severity
   # ---------------------------------------------------------------------------
 
   Scenario: Event in two enabled categories is delivered twice to unrouted output
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -27,7 +27,7 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "auth_failure"
 
   Scenario: Event in two categories with include route for one category delivers once
-    Given a logger with stdout output routed to include only "security"
+    Given an auditor with stdout output routed to include only "security"
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -36,7 +36,7 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "auth_failure"
 
   Scenario: Event in two categories with exclude route for one category delivers once
-    Given a logger with stdout output routed to exclude "compliance"
+    Given an auditor with stdout output routed to exclude "compliance"
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -45,7 +45,7 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "auth_failure"
 
   Scenario: Uncategorised event delivered exactly once to unrouted output
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "data_export" with fields:
       | field   | value   |
       | outcome | success |
@@ -53,14 +53,14 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "data_export"
 
   Scenario: Uncategorised event not delivered to category-routed include output
-    Given a logger with stdout output routed to include only "security"
+    Given an auditor with stdout output routed to include only "security"
     When I audit event "data_export" with fields:
       | field   | value   |
       | outcome | success |
     Then the output should contain exactly 0 events
 
   Scenario: Uncategorised event delivered via event-type include route
-    Given a logger with stdout output routed to include event type "data_export"
+    Given an auditor with stdout output routed to include event type "data_export"
     When I audit event "data_export" with fields:
       | field   | value   |
       | outcome | success |
@@ -72,7 +72,7 @@ Feature: Multi-category event delivery and severity
   # ---------------------------------------------------------------------------
 
   Scenario: Disabling one of two categories reduces delivery count to 1
-    Given a logger with stdout output
+    Given an auditor with stdout output
     And I disable category "compliance"
     When I audit event "auth_failure" with fields:
       | field    | value   |
@@ -82,7 +82,7 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "auth_failure"
 
   Scenario: Disabling both categories produces 0 deliveries
-    Given a logger with stdout output
+    Given an auditor with stdout output
     And I disable category "security"
     And I disable category "compliance"
     When I audit event "auth_failure" with fields:
@@ -92,7 +92,7 @@ Feature: Multi-category event delivery and severity
     Then the output should contain exactly 0 events
 
   Scenario: DisableEvent overrides both enabled categories and delivers 0 times
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I disable event "auth_failure"
     And I audit event "auth_failure" with fields:
       | field    | value   |
@@ -101,7 +101,7 @@ Feature: Multi-category event delivery and severity
     Then the output should contain exactly 0 events
 
   Scenario: EnableEvent overrides both disabled categories and delivers on all category passes
-    Given a logger with stdout output
+    Given an auditor with stdout output
     And I disable category "security"
     And I disable category "compliance"
     When I enable event "auth_failure"
@@ -113,7 +113,7 @@ Feature: Multi-category event delivery and severity
     And all delivered events should have event_type "auth_failure"
 
   Scenario: EnableEvent with one category enabled and one disabled delivers on all passes
-    Given a logger with stdout output
+    Given an auditor with stdout output
     And I disable category "compliance"
     When I enable event "auth_failure"
     And I audit event "auth_failure" with fields:
@@ -129,7 +129,7 @@ Feature: Multi-category event delivery and severity
 
   Scenario: Category severity appears in JSON output for an event with no event-level severity
     Given a multi-category severity taxonomy
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -139,7 +139,7 @@ Feature: Multi-category event delivery and severity
 
   Scenario: Event-level severity overrides category severity in JSON output
     Given a taxonomy where auth_failure has event severity 10 in category with severity 3
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -159,7 +159,7 @@ Feature: Multi-category event delivery and severity
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "ping" with fields:
       | field   | value   |
       | outcome | success |
@@ -179,7 +179,7 @@ Feature: Multi-category event delivery and severity
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "audit_event" with fields:
       | field   | value   |
       | outcome | success |
@@ -188,7 +188,7 @@ Feature: Multi-category event delivery and severity
 
   Scenario: CEF header contains correct taxonomy severity
     Given a multi-category severity taxonomy
-    And a logger with stdout output using CEF formatter
+    And an auditor with stdout output using CEF formatter
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -210,7 +210,7 @@ Feature: Multi-category event delivery and severity
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field   | value   |
       | outcome | failure |
@@ -222,7 +222,7 @@ Feature: Multi-category event delivery and severity
   # ---------------------------------------------------------------------------
 
   Scenario: Same event audited twice produces double deliveries
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "auth_failure" with fields:
       | field    | value    |
       | outcome  | failure  |

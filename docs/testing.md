@@ -27,19 +27,19 @@ asserting on `map[string]interface{}`.
 `audittest` reduces this to one line:
 
 ```go
-logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+auditor, events, metrics := audittest.New(t, taxonomyYAML)
 ```
 
 ## 🚀 Quick Start
 
 ```go
 func TestCreateUser(t *testing.T) {
-    logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+    auditor, events, metrics := audittest.New(t, taxonomyYAML)
 
-    svc := NewUserService(logger)
+    svc := NewUserService(auditor)
     svc.CreateUser("alice", "alice@example.com")
 
-    // Assert immediately — NewLogger uses synchronous delivery by default.
+    // Assert immediately — New uses synchronous delivery by default.
     require.Equal(t, 1, events.Count())
     evt := events.Events()[0]
     assert.Equal(t, "user_create", evt.EventType)
@@ -50,40 +50,40 @@ func TestCreateUser(t *testing.T) {
 
 ### Synchronous Delivery (Default)
 
-Both `NewLogger` and `NewLoggerQuick` default to synchronous delivery:
+Both `New` and `NewQuick` default to synchronous delivery:
 events are available in the `Recorder` immediately after `AuditEvent()`
 returns. No `Close()` call is needed before assertions.
-`NewLogger` registers `t.Cleanup(logger.Close)` to clean up resources
+`New` registers `t.Cleanup(auditor.Close)` to clean up resources
 after the test completes. Use `WithAsync()` to opt into asynchronous
 delivery for tests that exercise drain timeout or buffer backpressure.
 
 ## 💉 Dependency Injection
 
-The Quick Start above uses `NewUserService(logger)` — this is the
-correct pattern. Your service takes a `*audit.Logger` as a constructor
+The Quick Start above uses `NewUserService(auditor)` — this is the
+correct pattern. Your service takes a `*audit.Auditor` as a constructor
 parameter, not from a package-level global:
 
 ```go
-// ✅ Correct: inject the logger
+// ✅ Correct: inject the auditor
 type UserService struct {
-    audit *audit.Logger
+    audit *audit.Auditor
 }
 
-func NewUserService(logger *audit.Logger) *UserService {
-    return &UserService{audit: logger}
+func NewUserService(auditor *audit.Auditor) *UserService {
+    return &UserService{audit: auditor}
 }
 ```
 
 ```go
 // ❌ Wrong: package-level global logger
-var logger *audit.Logger // data races in parallel tests
+var auditor *audit.Auditor // data races in parallel tests
 
 type UserService struct{}
 ```
 
 Why this matters for testing:
 
-- **Injected logger**: each test creates its own `audittest.NewLogger`,
+- **Injected logger**: each test creates its own `audittest.New`,
   passes it to the service, and asserts on its own events. Tests run in
   parallel safely.
 - **Global logger**: all tests share the same logger. Events from one
@@ -94,22 +94,22 @@ the only pattern that makes audit testing reliable.
 
 ## 🔧 Two Constructor Patterns
 
-### NewLogger — full integration test
+### New — full integration test
 
 Uses your real taxonomy YAML. Generated typed builders work because
 they compile from the same taxonomy:
 
 ```go
-logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+auditor, events, metrics := audittest.New(t, taxonomyYAML)
 ```
 
-### NewLoggerQuick — quick smoke test
+### NewQuick — quick smoke test
 
 Creates a permissive logger — any fields accepted, no required field
 enforcement:
 
 ```go
-logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "auth_failure")
+auditor, events, _ := audittest.NewQuick(t, "user_create", "auth_failure")
 ```
 
 ## 📋 Recorded Event API
@@ -140,7 +140,7 @@ metrics.OutputErrors("recorder")               // output write errors
 ## 📊 Table-Driven Tests
 
 Use `events.Reset()` to clear captured events between sub-tests
-without creating a new logger:
+without creating a new auditor:
 
 ```go
 for _, tc := range tests {

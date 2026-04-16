@@ -35,29 +35,29 @@ func registerLokiHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerLokiHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
-	ctx.Step(`^a logger with loki output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
+	ctx.Step(`^an auditor with loki output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
-			return createLokiLoggerWithHMAC(tc, salt, version, hash, nil)
+			return createLokiAuditorWithHMAC(tc, salt, version, hash, nil)
 		})
 
-	ctx.Step(`^a logger with loki output using HMAC salt "([^"]*)" version "([^"]*)"$`,
+	ctx.Step(`^an auditor with loki output using HMAC salt "([^"]*)" version "([^"]*)"$`,
 		func(salt, version string) error {
-			return createLokiLoggerWithHMACAndCapture(tc, salt, version)
+			return createLokiAuditorWithHMACAndCapture(tc, salt, version)
 		})
 
 	ctx.Step(`^a capture output with HMAC salt "([^"]*)" version "([^"]*)"$`,
 		func(salt, version string) error {
-			// This step is called AFTER the loki logger is already set up
-			// with a capture output added alongside. The loki logger setup
-			// with capture is handled by createLokiLoggerWithHMACAndCapture.
+			// This step is called AFTER the loki auditor is already set up
+			// with a capture output added alongside. The loki auditor setup
+			// with capture is handled by createLokiAuditorWithHMACAndCapture.
 			// This step is a no-op marker for readability.
 			return nil
 		})
 
-	ctx.Step(`^a logger with loki output excluding label "([^"]*)" with HMAC salt "([^"]*)" version "([^"]*)"$`,
+	ctx.Step(`^an auditor with loki output excluding label "([^"]*)" with HMAC salt "([^"]*)" version "([^"]*)"$`,
 		func(label, salt, version string) error {
 			excludeLabels := []string{label}
-			return createLokiLoggerWithHMAC(tc, salt, version, "HMAC-SHA-256", excludeLabels)
+			return createLokiAuditorWithHMAC(tc, salt, version, "HMAC-SHA-256", excludeLabels)
 		})
 
 	ctx.Step(`^a capture output with no exclusions and HMAC salt "([^"]*)" version "([^"]*)"$`,
@@ -72,8 +72,8 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)"$`,
 		func(eventType, actor, outcome string) error {
-			if tc.Logger == nil {
-				return fmt.Errorf("logger is nil")
+			if tc.Auditor == nil {
+				return fmt.Errorf("auditor is nil")
 			}
 			m := marker("BDD")
 			tc.Markers["default"] = m
@@ -82,13 +82,13 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				"outcome":  outcome,
 				"marker":   m,
 			}
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)" and field "([^"]*)" = "([^"]*)"$`,
 		func(eventType, actor, outcome, field, value string) error {
-			if tc.Logger == nil {
-				return fmt.Errorf("logger is nil")
+			if tc.Auditor == nil {
+				return fmt.Errorf("auditor is nil")
 			}
 			m := marker("BDD")
 			tc.Markers["default"] = m
@@ -98,13 +98,13 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				"marker":   m,
 				field:      value,
 			}
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)" named "([^"]*)"$`,
 		func(eventType, actor, outcome, name string) error {
-			if tc.Logger == nil {
-				return fmt.Errorf("logger is nil")
+			if tc.Auditor == nil {
+				return fmt.Errorf("auditor is nil")
 			}
 			m := marker("BDD")
 			tc.Markers[name] = m
@@ -113,13 +113,13 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				"outcome":  outcome,
 				"marker":   m,
 			}
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with actor "([^"]*)" and outcome "([^"]*)" and field "([^"]*)" = "([^"]*)" named "([^"]*)"$`,
 		func(eventType, actor, outcome, field, value, name string) error {
-			if tc.Logger == nil {
-				return fmt.Errorf("logger is nil")
+			if tc.Auditor == nil {
+				return fmt.Errorf("auditor is nil")
 			}
 			m := marker("BDD")
 			tc.Markers[name] = m
@@ -129,7 +129,7 @@ func registerLokiHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				"marker":   m,
 				field:      value,
 			}
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
 }
@@ -234,11 +234,11 @@ func registerLokiHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		})
 }
 
-// createLokiLoggerWithHMAC creates a Loki output + logger with HMAC
+// createLokiAuditorWithHMAC creates a Loki output + auditor with HMAC
 // enabled. If excludeLabels is non-nil, sensitivity label stripping
 // is applied to the Loki output. A captureOutput is also added for
 // cross-output comparison when excludeLabels is set.
-func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, excludeLabels []string) error {
+func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string, excludeLabels []string) error {
 	cfg := defaultLokiTestConfig(tc)
 
 	out, err := loki.New(cfg, nil)
@@ -276,18 +276,18 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 	}
 	opts = append(opts, audit.WithNamedOutput(out, lokiOpts...))
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-// createLokiLoggerWithHMACAndCapture creates a Loki+capture logger
+// createLokiAuditorWithHMACAndCapture creates a Loki+capture auditor
 // for cross-output HMAC comparison (different salts).
-func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVersion string) error {
+func createLokiAuditorWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVersion string) error {
 	cfg := defaultLokiTestConfig(tc)
 
 	out, err := loki.New(cfg, nil)
@@ -300,7 +300,7 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 	capture := newCaptureOutput("capture-compare")
 	tc.CaptureOutput = capture
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
@@ -318,10 +318,10 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 		})),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 

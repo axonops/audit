@@ -31,7 +31,7 @@ import (
 // (e.g. the content under the "file:" key). The factory MUST NOT
 // retain rawConfig after returning.
 //
-// coreMetrics is the logger-level [Metrics] recorder (may be nil).
+// coreMetrics is the auditor-level [Metrics] recorder (may be nil).
 // Forwarded to outputs that need it (e.g. webhook for delivery
 // reporting). Per-output-type metrics are auto-detected via type
 // assertion: if coreMetrics satisfies the output's specific Metrics
@@ -95,18 +95,18 @@ func RegisteredOutputTypes() []string {
 }
 
 // Compile-time assertions: namedOutput satisfies all optional output
-// interfaces so the wrapper is transparent to the core logger.
+// interfaces so the wrapper is transparent to the core auditor.
 var (
-	_ MetadataWriter         = (*namedOutput)(nil)
-	_ FrameworkFieldReceiver = (*namedOutput)(nil)
-	_ LoggerReceiver         = (*namedOutput)(nil)
-	_ OutputMetricsReceiver  = (*namedOutput)(nil)
+	_ MetadataWriter           = (*namedOutput)(nil)
+	_ FrameworkFieldReceiver   = (*namedOutput)(nil)
+	_ DiagnosticLoggerReceiver = (*namedOutput)(nil)
+	_ OutputMetricsReceiver    = (*namedOutput)(nil)
 )
 
 // namedOutput wraps an [Output] to override its [Output.Name] method
 // with a consumer-chosen name from the YAML config. All other methods
 // delegate to the inner output, including optional interfaces
-// ([MetadataWriter], [FrameworkFieldReceiver], [LoggerReceiver],
+// ([MetadataWriter], [FrameworkFieldReceiver], [DiagnosticLoggerReceiver],
 // [OutputMetricsReceiver], [DestinationKeyer], [DeliveryReporter]).
 type namedOutput struct {
 	Output
@@ -128,7 +128,7 @@ func (n *namedOutput) DestinationKey() string {
 }
 
 // ReportsDelivery forwards to the inner output if it implements
-// [DeliveryReporter]. This ensures the core logger correctly skips
+// [DeliveryReporter]. This ensures the core auditor correctly skips
 // per-event metrics for self-reporting outputs like webhook.
 func (n *namedOutput) ReportsDelivery() bool {
 	if dr, ok := n.Output.(DeliveryReporter); ok {
@@ -159,13 +159,13 @@ func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int
 	}
 }
 
-// SetLogger forwards to the inner output if it implements
-// [LoggerReceiver]. This ensures the library's diagnostic logger
+// SetDiagnosticLogger forwards to the inner output if it implements
+// [DiagnosticLoggerReceiver]. This ensures the library's diagnostic logger
 // propagates through the name wrapper to outputs created via YAML
 // config.
-func (n *namedOutput) SetLogger(l *slog.Logger) {
-	if lr, ok := n.Output.(LoggerReceiver); ok {
-		lr.SetLogger(l)
+func (n *namedOutput) SetDiagnosticLogger(l *slog.Logger) {
+	if lr, ok := n.Output.(DiagnosticLoggerReceiver); ok {
+		lr.SetDiagnosticLogger(l)
 	}
 }
 
@@ -186,12 +186,12 @@ func (n *namedOutput) SetOutputMetrics(m OutputMetrics) {
 //
 // The returned output always satisfies [DestinationKeyer],
 // [DeliveryReporter], [MetadataWriter], [FrameworkFieldReceiver],
-// [LoggerReceiver], and [OutputMetricsReceiver] regardless of the
+// [DiagnosticLoggerReceiver], and [OutputMetricsReceiver] regardless of the
 // inner output. When the inner
 // output does not implement these interfaces, the wrapper returns
 // zero-value behaviour: empty string for DestinationKey, false for
 // ReportsDelivery, delegation to Write for WriteWithMetadata, and
-// no-op for SetFrameworkFields and SetLogger.
+// no-op for SetFrameworkFields and SetDiagnosticLogger.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

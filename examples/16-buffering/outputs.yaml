@@ -1,6 +1,6 @@
 # Buffering example — demonstrates the two-level buffering architecture.
 #
-# Level 1 (core queue): the logger section controls the channel between
+# Level 1 (core queue): the auditor section controls the channel between
 # AuditEvent() and the drain goroutine. We set queue_size to 5 to
 # trigger ErrQueueFull with a small burst.
 #
@@ -13,16 +13,16 @@
 # The file output also has an internal async buffer (default 10,000).
 # It writes one event at a time from its own writeLoop goroutine.
 #
-# In production, use the defaults (logger queue_size: 10000,
-# drain_timeout: 5s, per-output buffer_size: 10000, batch_size: 100).
+# In production, use the defaults (auditor queue_size: 10000,
+# shutdown_timeout: 5s, per-output buffer_size: 10000, batch_size: 100).
 
 version: 1
 app_name: "buffering-example"
 host: "localhost"
 
-logger:
+auditor:
   queue_size: 5            # Tiny core queue to demonstrate ErrQueueFull.
-  drain_timeout: "2s"      # Short drain for fast shutdown.
+  shutdown_timeout: "2s"   # Short shutdown for fast shutdown.
 
 outputs:
   # Async file output — has its own internal buffer and writeLoop goroutine.

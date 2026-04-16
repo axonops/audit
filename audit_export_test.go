@@ -18,13 +18,13 @@ package audit
 import "time"
 
 // IsEnabledForTest checks whether the given event type is enabled in
-// the logger's current filter state. Lock-free, matching the
+// the auditor's current filter state. Lock-free, matching the
 // production Audit() hot path.
-func IsEnabledForTest(l *Logger, eventType string) bool {
-	if l.disabled || l.filter == nil || l.taxonomy == nil {
+func IsEnabledForTest(a *Auditor, eventType string) bool {
+	if a.disabled || a.filter == nil || a.taxonomy == nil {
 		return false
 	}
-	return l.filter.isEnabled(eventType, l.taxonomy)
+	return a.filter.isEnabled(eventType, a.taxonomy)
 }
 
 // FormatCacheSizeForTest exposes the array capacity constant.

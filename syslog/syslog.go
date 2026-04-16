@@ -82,7 +82,7 @@ var syslogSeverities = [11]srslog.Priority{
 // outside [0, 10] silently fall back to LOG_INFO (syslog severity 6).
 // The taxonomy enforces the 0–10 range at registration time, so
 // out-of-range values indicate a programming error in a custom [Output]
-// that bypasses the logger and calls this function directly.
+// that bypasses the auditor and calls this function directly.
 func mapSeverity(auditSeverity int) srslog.Priority {
 	if auditSeverity < 0 || auditSeverity > 10 {
 		return srslog.LOG_INFO
@@ -151,7 +151,7 @@ type Output struct {
 	tlsCfg        *tls.Config                         // cached for reconnection; nil for non-TLS
 	syslogMetrics atomic.Pointer[Metrics]             // extension: RecordSyslogReconnect (may be nil)
 	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	logger        *slog.Logger                        // diagnostic logger; set via SetLogger
+	logger        *slog.Logger                        // diagnostic logger; set via SetDiagnosticLogger
 	ch            chan syslogEntry                    // async buffer
 	closeCh       chan struct{}                       // signals writeLoop to drain and exit
 	done          chan struct{}                       // closed when writeLoop exits
@@ -169,8 +169,8 @@ type Output struct {
 	maxRetry      int
 }
 
-// SetLogger receives the library's diagnostic logger.
-func (s *Output) SetLogger(l *slog.Logger) {
+// SetDiagnosticLogger receives the library's diagnostic logger.
+func (s *Output) SetDiagnosticLogger(l *slog.Logger) {
 	s.logger = l
 }
 

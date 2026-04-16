@@ -36,20 +36,20 @@ const MaxOutputConfigSize = 1 << 20 // 1 MiB
 // MaxOutputCount is the maximum number of outputs in a single config.
 const MaxOutputCount = 100
 
-// LoadResult holds the outputs, options, and logger configuration
-// produced by [Load], ready to be passed to [audit.NewLogger].
+// LoadResult holds the outputs, options, and auditor configuration
+// produced by [Load], ready to be passed to [audit.New].
 type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
-	// Config is the logger configuration parsed from the optional
-	// top-level `logger:` section. Exposed for inspection; pass
-	// Options to [audit.NewLogger] instead — Options includes
+	// Config is the auditor configuration parsed from the optional
+	// top-level `auditor:` section. Exposed for inspection; pass
+	// Options to [audit.New] instead — Options includes
 	// config-equivalent options ([audit.WithQueueSize], etc.).
 	Config audit.Config
 
-	// Options contains all options needed to create the logger:
+	// Options contains all options needed to create the auditor:
 	// framework fields ([audit.WithAppName], [audit.WithHost]),
 	// config-equivalent options ([audit.WithQueueSize], etc.),
 	// and one [audit.WithNamedOutput] per configured output.
-	// Pass directly to [audit.NewLogger] along with
+	// Pass directly to [audit.New] along with
 	// [audit.WithTaxonomy].
 	Options []audit.Option
 
@@ -91,7 +91,7 @@ type NamedOutput struct {
 	// events are delivered to this output.
 	Route *audit.EventRoute
 	// Formatter is the optional per-output formatter override. Nil
-	// means the logger's default formatter is used.
+	// means the auditor's default formatter is used.
 	Formatter audit.Formatter
 	// HMACConfig is the optional per-output HMAC configuration.
 	// Nil means no HMAC for this output.
@@ -136,7 +136,7 @@ func (o *NamedOutput) String() string {
 
 // Load parses a YAML output configuration, constructs all outputs via
 // the registry, validates routes against the taxonomy, and returns
-// [audit.Option] values ready for [audit.NewLogger].
+// [audit.Option] values ready for [audit.New].
 //
 // Load fails hard on any error — unknown output types, missing factory
 // registrations, invalid YAML, unknown YAML keys, malformed routes,
@@ -310,7 +310,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 
 	// Phase 8: Build Options slice.
 	result := &LoadResult{
-		Config:         top.loggerResult.config,
+		Config:         top.auditorResult.config,
 		Outputs:        outputs,
 		AppName:        top.appName,
 		Host:           top.host,
@@ -318,13 +318,13 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		StandardFields: top.standardFields,
 	}
 
-	// Config-equivalent options so callers can use NewLogger(result.Options...).
-	cfg := top.loggerResult.config
+	// Config-equivalent options so callers can use audit.New(result.Options...).
+	cfg := top.auditorResult.config
 	if cfg.QueueSize > 0 {
 		result.Options = append(result.Options, audit.WithQueueSize(cfg.QueueSize))
 	}
-	if cfg.DrainTimeout > 0 {
-		result.Options = append(result.Options, audit.WithDrainTimeout(cfg.DrainTimeout))
+	if cfg.ShutdownTimeout > 0 {
+		result.Options = append(result.Options, audit.WithShutdownTimeout(cfg.ShutdownTimeout))
 	}
 	if cfg.ValidationMode != "" {
 		result.Options = append(result.Options, audit.WithValidationMode(cfg.ValidationMode))
@@ -332,7 +332,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	if cfg.OmitEmpty {
 		result.Options = append(result.Options, audit.WithOmitEmpty())
 	}
-	if top.loggerResult.disabled {
+	if top.auditorResult.disabled {
 		result.Options = append(result.Options, audit.WithDisabled())
 	}
 
@@ -375,7 +375,7 @@ type topLevel struct {
 	appName        string
 	host           string
 	timezone       string
-	loggerResult   loggerConfigResult
+	auditorResult  auditorConfigResult
 }
 
 // parseTopLevel extracts and validates top-level YAML fields.
@@ -387,9 +387,9 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 	}
 
 	var (
-		version   int
-		loggerRaw any
-		result    topLevel
+		version    int
+		auditorRaw any
+		result     topLevel
 	)
 	for _, item := range doc {
 		key, ok := item.Key.(string)
@@ -406,8 +406,8 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 		case "default_formatter":
 			return nil, fmt.Errorf("%w: default_formatter has been removed; set formatter on each output individually",
 				ErrOutputConfigInvalid)
-		case "logger":
-			loggerRaw = item.Value
+		case "auditor":
+			auditorRaw = item.Value
 		case "tls_policy":
 			result.tlsPolicyRaw = item.Value
 		case "outputs":
@@ -490,6 +490,9 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 				return nil, sfErr
 			}
 			result.standardFields = sf
+		case "logger":
+			return nil, fmt.Errorf("%w: unknown top-level key %q (renamed to %q in this version)",
+				ErrOutputConfigInvalid, "logger", "auditor")
 		default:
 			return nil, fmt.Errorf("%w: unknown top-level key %q", ErrOutputConfigInvalid, key)
 		}
@@ -500,25 +503,25 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 			ErrOutputConfigInvalid, version)
 	}
 
-	if loggerRaw != nil {
-		expanded, err := expandEnvInValue(loggerRaw, "logger")
+	if auditorRaw != nil {
+		expanded, err := expandEnvInValue(auditorRaw, "auditor")
 		if err != nil {
-			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, err)
+			return nil, fmt.Errorf("%w: auditor: %w", ErrOutputConfigInvalid, err)
 		}
-		resolved, rErr := expandSecretsInValue(ctx, expanded, "logger", r)
+		resolved, rErr := expandSecretsInValue(ctx, expanded, "auditor", r)
 		if rErr != nil {
-			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, rErr)
+			return nil, fmt.Errorf("%w: auditor: %w", ErrOutputConfigInvalid, rErr)
 		}
-		if vnErr := validateNoUnresolvedRefs(resolved, "logger"); vnErr != nil {
-			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, vnErr)
+		if vnErr := validateNoUnresolvedRefs(resolved, "auditor"); vnErr != nil {
+			return nil, fmt.Errorf("%w: auditor: %w", ErrOutputConfigInvalid, vnErr)
 		}
-		lr, cfgErr := parseLoggerConfig(resolved)
+		lr, cfgErr := parseAuditorConfig(resolved)
 		if cfgErr != nil {
-			return nil, fmt.Errorf("%w: logger: %w", ErrOutputConfigInvalid, cfgErr)
+			return nil, fmt.Errorf("%w: auditor: %w", ErrOutputConfigInvalid, cfgErr)
 		}
-		result.loggerResult = lr
+		result.auditorResult = lr
 	} else {
-		result.loggerResult = defaultLoggerConfigResult()
+		result.auditorResult = defaultAuditorConfigResult()
 	}
 
 	// Expand env vars and validate global TLS policy eagerly so that

@@ -343,7 +343,7 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 	return cf.resolvedMapping
 }
 
-// SetFrameworkFields stores logger-wide framework metadata for
+// SetFrameworkFields stores auditor-wide framework metadata for
 // emission in every CEF event. Called once at construction time.
 func (cf *CEFFormatter) SetFrameworkFields(appName, host, timezone string, pid int) {
 	cf.appName = appName

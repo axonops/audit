@@ -1330,8 +1330,8 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	}, metrics)
 	require.NoError(t, err)
 
-	// Create a logger with the webhook output and metrics.
-	logger, err := audit.NewLogger(
+	// Create an auditor with the webhook output and metrics.
+	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{})),
@@ -1339,7 +1339,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 
 	// Wait for the batch goroutine to finish delivery and record the
 	// success metric. Polling the metric is the correct synchronisation
@@ -1351,7 +1351,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond,
 		"webhook should report delivery success from batch goroutine")
 
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 // ---------------------------------------------------------------------------

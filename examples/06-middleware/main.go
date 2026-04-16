@@ -66,10 +66,10 @@ func buildEvent(hints *audit.Hints, transport *audit.TransportMetadata) (eventTy
 }
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// Set up HTTP routes.
@@ -100,7 +100,7 @@ func main() {
 	})
 
 	// Wrap with audit middleware.
-	handler := audit.Middleware(logger, buildEvent)(mux)
+	handler := audit.Middleware(auditor, buildEvent)(mux)
 
 	// Start a test server and make programmatic requests.
 	server := httptest.NewServer(handler)
@@ -111,9 +111,9 @@ func main() {
 	makeRequest(client, "GET", server.URL+"/items")
 	makeRequest(client, "POST", server.URL+"/items")
 
-	// Close the logger to flush buffered events.
-	if err := logger.Close(); err != nil {
-		log.Printf("close logger: %v", err)
+	// Close the auditor to flush buffered events.
+	if err := auditor.Close(); err != nil {
+		log.Printf("close auditor: %v", err)
 	}
 
 	fmt.Println("\nNote: /healthz produced no audit event (skipped by EventBuilder).")

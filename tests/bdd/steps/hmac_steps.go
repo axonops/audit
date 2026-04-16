@@ -34,12 +34,12 @@ func registerHMACSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with stdout output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
+	ctx.Step(`^an auditor with stdout output and HMAC enabled using salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
 			out := newCaptureOutput("stdout")
 			tc.CaptureOutput = out
 
-			logger, err := audit.NewLogger(
+			auditor, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 					Enabled:     true,
@@ -49,19 +49,19 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 				})),
 			)
 			if err != nil {
-				return fmt.Errorf("create logger with HMAC: %w", err)
+				return fmt.Errorf("create auditor with HMAC: %w", err)
 			}
-			tc.Logger = logger
+			tc.Auditor = auditor
 			return nil
 		})
 }
 
 func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^I try to create a logger with HMAC salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
+	ctx.Step(`^I try to create an auditor with HMAC salt "([^"]*)" version "([^"]*)" and hash "([^"]*)"$`,
 		func(salt, version, hash string) error {
 			out := newCaptureOutput("stdout")
 
-			_, err := audit.NewLogger(
+			_, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
 					Enabled:     true,
@@ -154,7 +154,7 @@ func registerHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			return nil
 		})
 
-	ctx.Step(`^logger creation should fail with an error containing "([^"]*)"$`, func(substr string) error {
+	ctx.Step(`^auditor creation should fail with an error containing "([^"]*)"$`, func(substr string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", substr)
 		}
@@ -305,7 +305,7 @@ func registerHMACLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 	ctx.Step(`^two HMAC-enabled outputs where "([^"]*)" excludes label "([^"]*)" using salts "([^"]*)" and "([^"]*)"$`,
 		func(strippedName, label, fullSalt, strippedSalt string) error {
-			return createDualHMACLogger(tc, strippedName, label, fullSalt, strippedSalt)
+			return createDualHMACAuditor(tc, strippedName, label, fullSalt, strippedSalt)
 		})
 	ctx.Step(`^output "([^"]*)" should contain field "([^"]*)" with value "([^"]*)"$`,
 		func(outputName, field, want string) error {
@@ -324,7 +324,7 @@ func registerHMACLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		})
 }
 
-func createDualHMACLogger(tc *AuditTestContext, strippedName, label, fullSalt, strippedSalt string) error {
+func createDualHMACAuditor(tc *AuditTestContext, strippedName, label, fullSalt, strippedSalt string) error {
 	fullOut := newCaptureOutput("full")
 	strippedOut := newCaptureOutput(strippedName)
 	tc.CaptureOutputs = map[string]*captureOutput{
@@ -347,15 +347,15 @@ func createDualHMACLogger(tc *AuditTestContext, strippedName, label, fullSalt, s
 		Algorithm:   "HMAC-SHA-256",
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fullOut, audit.OutputHMAC(fullHMACCfg)),
 		audit.WithNamedOutput(strippedOut, audit.OutputExcludeLabels(label), audit.OutputHMAC(strippedHMACCfg)),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
+	tc.Auditor = auditor
 	return nil
 }
 

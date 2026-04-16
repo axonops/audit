@@ -32,12 +32,12 @@ import (
 func TestAuditEvent_AllValidationErrors_WrapErrValidation(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	tests := []struct { //nolint:govet // fieldalignment: test readability
 		name      string
@@ -63,7 +63,7 @@ func TestAuditEvent_AllValidationErrors_WrapErrValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := logger.AuditEvent(audit.NewEvent(tt.eventType, tt.fields))
+			err := auditor.AuditEvent(audit.NewEvent(tt.eventType, tt.fields))
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrValidation, "all validation errors must wrap ErrValidation")
 		})
@@ -77,14 +77,14 @@ func TestAuditEvent_AllValidationErrors_WrapErrValidation(t *testing.T) {
 func TestAuditEvent_UnknownEventType_WrapsErrUnknownEventType(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.ErrorIs(t, err, audit.ErrValidation)
@@ -96,14 +96,14 @@ func TestAuditEvent_UnknownEventType_WrapsErrUnknownEventType(t *testing.T) {
 func TestAuditEvent_MissingRequired_WrapsErrMissingRequiredField(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.ErrorIs(t, err, audit.ErrValidation)
@@ -115,14 +115,14 @@ func TestAuditEvent_MissingRequired_WrapsErrMissingRequiredField(t *testing.T) {
 func TestAuditEvent_UnknownFieldStrict_WrapsErrUnknownField(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "fail",
 		"actor_id": "bob",
 		"bogus":    "val",
@@ -158,14 +158,14 @@ func TestErrClosed_NotErrValidation(t *testing.T) {
 func TestValidationError_ErrorsAs(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 	require.Error(t, err)
 
 	var ve *audit.ValidationError
@@ -180,20 +180,20 @@ func TestValidationError_ErrorsAs(t *testing.T) {
 func TestValidationError_MessageTextUnchanged(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	// Unknown event type — exact text check.
-	err = logger.AuditEvent(audit.NewEvent("bogus", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("bogus", audit.Fields{}))
 	require.Error(t, err)
 	assert.Equal(t, `audit: unknown event type "bogus"`, err.Error())
 
 	// Missing required — text starts with expected prefix.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `audit: event "auth_failure" missing required fields:`)
 }
@@ -205,14 +205,14 @@ func TestValidationError_MessageTextUnchanged(t *testing.T) {
 func TestValidationError_ConsumerWrapping_PreservesErrorsIs(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	inner := logger.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	inner := auditor.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 	require.Error(t, inner)
 
 	// Consumer wraps the error with additional context.
@@ -228,15 +228,15 @@ func TestValidationError_ConsumerWrapping_PreservesErrorsIs(t *testing.T) {
 func TestAuditEvent_WarnMode_NoSentinelLeak(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationWarn),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "fail",
 		"actor_id": "bob",
 		"bogus":    "val",
@@ -247,15 +247,15 @@ func TestAuditEvent_WarnMode_NoSentinelLeak(t *testing.T) {
 func TestAuditEvent_PermissiveMode_NoSentinelLeak(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "fail",
 		"actor_id": "bob",
 		"bogus":    "val",
@@ -270,15 +270,15 @@ func TestAuditEvent_PermissiveMode_NoSentinelLeak(t *testing.T) {
 func TestAuditEvent_ReservedStandardField_NotErrUnknownField(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	// actor_id is a reserved standard field — should not trigger unknown field.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":   "fail",
 		"actor_id":  "bob",
 		"source_ip": "10.0.0.1", // reserved standard field
@@ -293,14 +293,14 @@ func TestAuditEvent_ReservedStandardField_NotErrUnknownField(t *testing.T) {
 func TestAuditEvent_EmptyEventType_WrapsErrUnknownEventType(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("", audit.Fields{}))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.ErrorIs(t, err, audit.ErrValidation)

@@ -22,12 +22,12 @@ import (
 // Sentinel errors returned by the audit package.
 // Use [errors.Is] to test for these in consumer code.
 var (
-	// ErrClosed is returned by [Logger.AuditEvent] when the logger has
-	// been shut down via [Logger.Close]. Once returned, all subsequent
-	// [Logger.AuditEvent] calls return ErrClosed immediately.
-	ErrClosed = errors.New("audit: logger is closed")
+	// ErrClosed is returned by [Auditor.AuditEvent] when the auditor has
+	// been shut down via [Auditor.Close]. Once returned, all subsequent
+	// [Auditor.AuditEvent] calls return ErrClosed immediately.
+	ErrClosed = errors.New("audit: auditor is closed")
 
-	// ErrQueueFull is returned by [Logger.AuditEvent] when the async
+	// ErrQueueFull is returned by [Auditor.AuditEvent] when the async
 	// intake queue is at capacity and the event is dropped. Consumers
 	// SHOULD treat this as a drop notification rather than a fatal error.
 	// Increasing [Config.QueueSize] or reducing event emission rate
@@ -46,8 +46,8 @@ var (
 	//	if errors.Is(err, audit.ErrConfigInvalid) { ... }
 	ErrConfigInvalid = errors.New("audit: config validation failed")
 
-	// ErrHandleNotFound is returned by [Logger.Handle], and wrapped in
-	// the panic value of [Logger.MustHandle], when the requested event
+	// ErrHandleNotFound is returned by [Auditor.Handle], and wrapped in
+	// the panic value of [Auditor.MustHandle], when the requested event
 	// type is not registered in the taxonomy.
 	ErrHandleNotFound = errors.New("audit: event type not found")
 
@@ -56,11 +56,11 @@ var (
 	ErrOutputClosed = errors.New("audit: output is closed")
 
 	// ErrDisabled is returned by methods that require a taxonomy
-	// ([Logger.EnableCategory], [Logger.DisableCategory],
-	// [Logger.EnableEvent], [Logger.DisableEvent],
-	// [Logger.SetOutputRoute]) when called on a disabled logger.
-	// [Logger.Handle] returns a valid no-op handle instead.
-	ErrDisabled = errors.New("audit: logger is disabled")
+	// ([Auditor.EnableCategory], [Auditor.DisableCategory],
+	// [Auditor.EnableEvent], [Auditor.DisableEvent],
+	// [Auditor.SetOutputRoute]) when called on a disabled auditor.
+	// [Auditor.Handle] returns a valid no-op handle instead.
+	ErrDisabled = errors.New("audit: auditor is disabled")
 
 	// ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
 	// validation failures. Use [errors.Is] to test for it:
@@ -74,7 +74,7 @@ var (
 	// content validation errors wrap [ErrTaxonomyInvalid] instead.
 	ErrInvalidInput = errors.New("audit: invalid input")
 
-	// ErrValidation is the parent sentinel for all [Logger.AuditEvent]
+	// ErrValidation is the parent sentinel for all [Auditor.AuditEvent]
 	// validation failures (unknown event type, missing required fields,
 	// unknown fields in strict mode). Use [errors.Is] to catch any
 	// validation failure:
@@ -84,24 +84,24 @@ var (
 	// [ErrQueueFull] and [ErrClosed] are NOT validation errors.
 	ErrValidation = errors.New("audit: validation error")
 
-	// ErrUnknownEventType is returned by [Logger.AuditEvent] when the
+	// ErrUnknownEventType is returned by [Auditor.AuditEvent] when the
 	// event type is not registered in the taxonomy. Always wrapped
 	// alongside [ErrValidation] via [ValidationError].
 	ErrUnknownEventType = errors.New("audit: unknown event type")
 
-	// ErrMissingRequiredField is returned by [Logger.AuditEvent] when
+	// ErrMissingRequiredField is returned by [Auditor.AuditEvent] when
 	// one or more required fields are absent. Always wrapped alongside
 	// [ErrValidation] via [ValidationError].
 	ErrMissingRequiredField = errors.New("audit: missing required field")
 
-	// ErrUnknownField is returned by [Logger.AuditEvent] in strict
+	// ErrUnknownField is returned by [Auditor.AuditEvent] in strict
 	// validation mode when one or more fields are not declared in the
 	// taxonomy. Always wrapped alongside [ErrValidation] via
 	// [ValidationError].
 	ErrUnknownField = errors.New("audit: unknown field")
 )
 
-// ValidationError is returned by [Logger.AuditEvent] for event
+// ValidationError is returned by [Auditor.AuditEvent] for event
 // validation failures. It wraps both [ErrValidation] and a specific
 // sentinel ([ErrUnknownEventType], [ErrMissingRequiredField], or
 // [ErrUnknownField]). Use [errors.Is] to match broadly or narrowly,

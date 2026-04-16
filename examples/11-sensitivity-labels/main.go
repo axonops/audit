@@ -38,28 +38,28 @@ var taxonomyYAML []byte
 var logFiles = []string{"full-audit.log", "public-audit.log", "pci-audit.log"}
 
 func main() {
-	logger := createLogger()
-	emitEvents(logger)
+	auditor := createAuditor()
+	emitEvents(auditor)
 
-	if err := logger.Close(); err != nil {
-		log.Printf("close logger: %v", err)
+	if err := auditor.Close(); err != nil {
+		log.Printf("close auditor: %v", err)
 	}
 
 	printLogFiles()
 	cleanupLogFiles()
 }
 
-func createLogger() *audit.Logger {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+func createAuditor() *audit.Auditor {
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
-	return logger
+	return auditor
 }
 
-func emitEvents(logger *audit.Logger) {
-	if err := logger.AuditEvent(NewUserCreateEvent("admin", "success").
+func emitEvents(auditor *audit.Auditor) {
+	if err := auditor.AuditEvent(NewUserCreateEvent("admin", "success").
 		SetEmail("alice@example.com").
 		SetPhone("555-0100").
 		SetUserName("alice_smith").
@@ -67,7 +67,7 @@ func emitEvents(logger *audit.Logger) {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.AuditEvent(NewPaymentProcessEvent("alice", "success").
+	if err := auditor.AuditEvent(NewPaymentProcessEvent("alice", "success").
 		SetCardNumber("4111111111111111").
 		SetCardExpiry("12/28").
 		SetAmount("99.99")); err != nil {

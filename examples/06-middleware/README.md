@@ -102,7 +102,7 @@ mux.HandleFunc("POST /items", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-The handler doesn't import the logger or construct audit events. It just
+The handler doesn't import the auditor or construct audit events. It just
 sets hints — who did it, did it succeed, what was affected.
 
 Available hints:
@@ -149,7 +149,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
 GET http://127.0.0.1:.../healthz -> 200
 GET http://127.0.0.1:.../items -> 200
 POST http://127.0.0.1:.../items -> 201

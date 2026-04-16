@@ -64,7 +64,7 @@ func withAppLogger(l *slog.Logger) func(*serverOpts) {
 //
 // Login/logout emit audit events directly because they ARE the
 // security action. CRUD routes emit events via the audit middleware.
-func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rateLimiter, settings *settingsStore, opts ...func(*serverOpts)) http.Handler {
+func newServer(auditor *audit.Auditor, db *sql.DB, sessions *sessionStore, rl *rateLimiter, settings *settingsStore, opts ...func(*serverOpts)) http.Handler {
 	so := &serverOpts{log: slog.Default()}
 	for _, o := range opts {
 		o(so)
@@ -81,16 +81,16 @@ func newServer(logger *audit.Logger, db *sql.DB, sessions *sessionStore, rl *rat
 
 	// Apply middleware: auth first, then audit.
 	authed := authMiddleware(sessions)(innerMux)
-	audited := audit.Middleware(logger, buildAuditEvent)(authed)
+	audited := audit.Middleware(auditor, buildAuditEvent)(authed)
 
 	// --- Outer mux: auth endpoints (self-auditing, no middleware) ---
 	outerMux := http.NewServeMux()
 
-	authH := &authHandlers{logger: logger, sessions: sessions, rl: rl, log: so.log}
+	authH := &authHandlers{auditor: auditor, sessions: sessions, rl: rl, log: so.log}
 
 	// Login is wrapped by rate limiter. Logout is not.
 	outerMux.Handle("POST /login",
-		rateLimitMiddleware(logger, rl)(http.HandlerFunc(authH.login)))
+		rateLimitMiddleware(auditor, rl)(http.HandlerFunc(authH.login)))
 	outerMux.HandleFunc("POST /logout", authH.logout)
 
 	// Web UI — served directly, not audited (page loads are not audit events).

@@ -24,13 +24,13 @@ import (
 	"github.com/axonops/audit"
 )
 
-// NewLogger is a convenience facade that creates a ready-to-use
-// [audit.Logger] from embedded taxonomy YAML and a filesystem path
+// New is a convenience facade that creates a ready-to-use
+// [audit.Auditor] from embedded taxonomy YAML and a filesystem path
 // to the outputs configuration. It combines [audit.ParseTaxonomyYAML],
-// [Load], and [audit.NewLogger] into a single call.
+// [Load], and [audit.New] into a single call.
 //
-// When outputsConfigPath is empty, NewLogger creates a stdout-only
-// development logger with app_name derived from [os.Args] and host
+// When outputsConfigPath is empty, New creates a stdout-only
+// development auditor with app_name derived from [os.Args] and host
 // from [os.Hostname]. This is useful for local development and
 // quick evaluation.
 //
@@ -49,21 +49,21 @@ import (
 //	import _ "github.com/axonops/audit/syslog"  // syslog output
 //	import _ "github.com/axonops/audit/webhook" // webhook output
 //	import _ "github.com/axonops/audit/loki"    // loki output
-func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loadOpts []LoadOption, opts ...audit.Option) (*audit.Logger, error) {
+func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loadOpts []LoadOption, opts ...audit.Option) (*audit.Auditor, error) {
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
 		return nil, fmt.Errorf("outputconfig: parse taxonomy: %w", err)
 	}
 
-	var loggerOpts []audit.Option
-	loggerOpts = append(loggerOpts, audit.WithTaxonomy(tax))
+	var auditorOpts []audit.Option
+	auditorOpts = append(auditorOpts, audit.WithTaxonomy(tax))
 
 	if outputsConfigPath == "" {
 		devOpts, devErr := devModeOptions()
 		if devErr != nil {
 			return nil, fmt.Errorf("outputconfig: dev mode: %w", devErr)
 		}
-		loggerOpts = append(loggerOpts, devOpts...)
+		auditorOpts = append(auditorOpts, devOpts...)
 	} else {
 		data, readErr := readConfigFile(outputsConfigPath)
 		if readErr != nil {
@@ -73,33 +73,33 @@ func NewLogger(ctx context.Context, taxonomyYAML []byte, outputsConfigPath strin
 		if loadErr != nil {
 			return nil, fmt.Errorf("outputconfig: load: %w", loadErr)
 		}
-		loggerOpts = append(loggerOpts, result.Options...)
+		auditorOpts = append(auditorOpts, result.Options...)
 
 		// User options applied last — highest precedence.
-		loggerOpts = append(loggerOpts, opts...)
+		auditorOpts = append(auditorOpts, opts...)
 
-		logger, loggerErr := audit.NewLogger(loggerOpts...)
-		if loggerErr != nil {
+		auditor, auditorErr := audit.New(auditorOpts...)
+		if auditorErr != nil {
 			// Clean up outputs that Load constructed.
 			for _, o := range result.Outputs {
 				_ = o.Output.Close()
 			}
-			return nil, fmt.Errorf("outputconfig: create logger: %w", loggerErr)
+			return nil, fmt.Errorf("outputconfig: create auditor: %w", auditorErr)
 		}
-		return logger, nil
+		return auditor, nil
 	}
 
 	// Dev mode: user options applied after dev defaults.
-	loggerOpts = append(loggerOpts, opts...)
+	auditorOpts = append(auditorOpts, opts...)
 
-	logger, loggerErr := audit.NewLogger(loggerOpts...)
-	if loggerErr != nil {
-		return nil, fmt.Errorf("outputconfig: create logger: %w", loggerErr)
+	auditor, auditorErr := audit.New(auditorOpts...)
+	if auditorErr != nil {
+		return nil, fmt.Errorf("outputconfig: create auditor: %w", auditorErr)
 	}
-	return logger, nil
+	return auditor, nil
 }
 
-// devModeOptions returns options for a stdout-only development logger
+// devModeOptions returns options for a stdout-only development auditor
 // with auto-detected app_name and host.
 func devModeOptions() ([]audit.Option, error) {
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})

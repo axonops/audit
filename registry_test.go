@@ -231,29 +231,29 @@ func TestWrapOutput_NonFrameworkFieldReceiver_NoOp(t *testing.T) {
 	fr.SetFrameworkFields("app", "host", "UTC", 1)
 }
 
-func TestWrapOutput_PreservesLoggerReceiver(t *testing.T) {
-	inner := &mockLoggerReceiver{
+func TestWrapOutput_PreservesDiagnosticLoggerReceiver(t *testing.T) {
+	inner := &mockDiagnosticLoggerReceiver{
 		MockOutput: *testhelper.NewMockOutput("syslog:localhost:514"),
 	}
 	wrapped := audit.WrapOutput(inner, "my_syslog")
 
-	lr, ok := wrapped.(audit.LoggerReceiver)
-	require.True(t, ok, "wrapped output should implement LoggerReceiver")
+	lr, ok := wrapped.(audit.DiagnosticLoggerReceiver)
+	require.True(t, ok, "wrapped output should implement DiagnosticLoggerReceiver")
 
 	customLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	lr.SetLogger(customLogger)
-	assert.Same(t, customLogger, inner.logger, "logger should be forwarded to inner")
+	lr.SetDiagnosticLogger(customLogger)
+	assert.Same(t, customLogger, inner.logger, "auditor should be forwarded to inner")
 }
 
-func TestWrapOutput_NonLoggerReceiver_NoOp(t *testing.T) {
+func TestWrapOutput_NonDiagnosticLoggerReceiver_NoOp(t *testing.T) {
 	inner := testhelper.NewMockOutput("file:/tmp/test.log")
 	wrapped := audit.WrapOutput(inner, "my_file")
 
-	lr, ok := wrapped.(audit.LoggerReceiver)
-	require.True(t, ok, "namedOutput always implements LoggerReceiver")
+	lr, ok := wrapped.(audit.DiagnosticLoggerReceiver)
+	require.True(t, ok, "namedOutput always implements DiagnosticLoggerReceiver")
 
 	// Should not panic.
-	lr.SetLogger(slog.Default())
+	lr.SetDiagnosticLogger(slog.Default())
 }
 
 // --- Test helper types ---
@@ -302,12 +302,12 @@ func (m *mockFrameworkFieldReceiver) SetFrameworkFields(appName, host, timezone 
 	m.pid = pid
 }
 
-// mockLoggerReceiver wraps MockOutput with LoggerReceiver.
-type mockLoggerReceiver struct { //nolint:govet // fieldalignment: test struct, readability preferred
+// mockDiagnosticLoggerReceiver wraps MockOutput with DiagnosticLoggerReceiver.
+type mockDiagnosticLoggerReceiver struct { //nolint:govet // fieldalignment: test struct, readability preferred
 	testhelper.MockOutput
 	logger *slog.Logger
 }
 
-func (m *mockLoggerReceiver) SetLogger(l *slog.Logger) {
+func (m *mockDiagnosticLoggerReceiver) SetDiagnosticLogger(l *slog.Logger) {
 	m.logger = l
 }

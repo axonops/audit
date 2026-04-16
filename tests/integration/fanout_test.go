@@ -176,18 +176,18 @@ func TestFanOut_AllOutputs(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	// Create logger with all three outputs.
-	logger, err := audit.NewLogger(
+	// Create auditor with all three outputs.
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(syslogOut),
 		audit.WithNamedOutput(webhookOut),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	// Send an event.
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
@@ -200,7 +200,7 @@ func TestFanOut_AllOutputs(t *testing.T) {
 		"webhook should receive event before close")
 
 	// Close flushes remaining outputs.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// Verify file output.
 	data, err := os.ReadFile(filePath)
@@ -236,7 +236,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut), // all events
 		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{
@@ -247,7 +247,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	// Send a write event (should go to file, NOT webhook).
 	writeMarker := marker(t)
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   writeMarker,
@@ -256,7 +256,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	// Send a security event (should go to BOTH).
 	secMarker := marker(t)
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"marker":   secMarker,
@@ -265,7 +265,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	// Wait for webhook delivery before closing.
 	assert.True(t, waitForWebhookEvents(t, 1, 10*time.Second))
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// File should have both events.
 	data, err := os.ReadFile(filePath)
@@ -323,7 +323,7 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(syslogOut),
@@ -332,7 +332,7 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send event while webhook is failing.
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
@@ -340,7 +340,7 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	// Close flushes file and syslog despite webhook failure.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	data, err := os.ReadFile(filePath)
 	require.NoError(t, err)
@@ -376,7 +376,7 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 		Version: "1.0",
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut),                                   // JSON (default)
 		audit.WithNamedOutput(webhookOut, audit.OutputFormatter(cefFmt)), // CEF
@@ -384,7 +384,7 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 	require.NoError(t, err)
 
 	m := marker(t)
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"marker":   m,
@@ -393,7 +393,7 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 
 	// Wait for webhook delivery before closing.
 	assert.True(t, waitForWebhookEvents(t, 1, 10*time.Second))
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// File should have JSON format.
 	data, err := os.ReadFile(filePath)

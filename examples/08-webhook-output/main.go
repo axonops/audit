@@ -50,10 +50,10 @@ func main() {
 	time.Sleep(50 * time.Millisecond)
 
 	// 2. Parse taxonomy and load output config.
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// 4. Emit audit events — they are batched internally and POSTed
@@ -66,14 +66,14 @@ func main() {
 	}
 
 	for _, e := range events {
-		if auditErr := logger.AuditEvent(e); auditErr != nil {
+		if auditErr := auditor.AuditEvent(e); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}
 	}
 
 	// 5. Close triggers a final flush of any buffered events.
-	if closeErr := logger.Close(); closeErr != nil {
-		log.Printf("close logger: %v", closeErr)
+	if closeErr := auditor.Close(); closeErr != nil {
+		log.Printf("close auditor: %v", closeErr)
 	}
 
 	// 6. Print what the webhook receiver captured.

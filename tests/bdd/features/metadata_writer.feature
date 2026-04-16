@@ -10,7 +10,7 @@ Feature: MetadataWriter Interface
     Given a standard test taxonomy
 
   Scenario: MetadataWriter output receives correct event_type
-    Given a logger with a MetadataWriter output
+    Given an auditor with a MetadataWriter output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -18,7 +18,7 @@ Feature: MetadataWriter Interface
     Then the MetadataWriter should have received event_type "user_create"
 
   Scenario: MetadataWriter output receives correct severity
-    Given a logger with a MetadataWriter output
+    Given an auditor with a MetadataWriter output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -26,7 +26,7 @@ Feature: MetadataWriter Interface
     Then the MetadataWriter should have received severity 5
 
   Scenario: MetadataWriter output receives delivery-specific category
-    Given a logger with a MetadataWriter output
+    Given an auditor with a MetadataWriter output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -34,7 +34,7 @@ Feature: MetadataWriter Interface
     Then the MetadataWriter should have received category "write"
 
   Scenario: Non-MetadataWriter output still receives events
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |

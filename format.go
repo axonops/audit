@@ -82,7 +82,7 @@ type Formatter interface {
 }
 
 // FrameworkFieldSetter is implemented by formatters that emit
-// logger-wide framework metadata (app_name, host, timezone, pid) in
+// auditor-wide framework metadata (app_name, host, timezone, pid) in
 // serialised output. The library calls SetFrameworkFields once at
 // construction time, after all options are applied and before the
 // first Format call.

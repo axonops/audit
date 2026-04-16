@@ -1,6 +1,6 @@
 @core @taxonomy
 Feature: Taxonomy Validation
-  As a library consumer, I want the logger to validate my YAML taxonomy
+  As a library consumer, I want the auditor to validate my YAML taxonomy
   and reject malformed or inconsistent definitions so that only well-formed
   audit events can be emitted.
 
@@ -37,7 +37,7 @@ Feature: Taxonomy Validation
     And the taxonomy should contain event type "auth_failure"
     And the taxonomy event "user_create" should require field "outcome"
     And the taxonomy event "user_create" should require field "actor_id"
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -64,7 +64,7 @@ Feature: Taxonomy Validation
     Then the taxonomy should contain category "ops"
     And the taxonomy should contain event type "health_check"
     And the taxonomy event "health_check" should require field "outcome"
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
@@ -257,7 +257,7 @@ Feature: Taxonomy Validation
 
   Scenario: Unknown fields rejected in strict mode
     Given a standard test taxonomy
-    And a logger with stdout output and validation mode "strict"
+    And an auditor with stdout output and validation mode "strict"
     When I audit event "user_create" with fields:
       | field      | value   |
       | outcome    | success |
@@ -270,7 +270,7 @@ Feature: Taxonomy Validation
 
   Scenario: Unknown fields accepted with warning in warn mode
     Given a standard test taxonomy
-    And a logger with stdout output and validation mode "warn"
+    And an auditor with stdout output and validation mode "warn"
     When I audit event "user_create" with fields:
       | field      | value   |
       | outcome    | success |
@@ -280,7 +280,7 @@ Feature: Taxonomy Validation
 
   Scenario: Unknown fields silently accepted in permissive mode
     Given a standard test taxonomy
-    And a logger with stdout output and validation mode "permissive"
+    And an auditor with stdout output and validation mode "permissive"
     When I audit event "user_create" with fields:
       | field      | value   |
       | outcome    | success |
@@ -291,7 +291,7 @@ Feature: Taxonomy Validation
 
   Scenario Outline: Missing required field fails in all validation modes
     Given a standard test taxonomy
-    And a logger with stdout output and validation mode "<mode>"
+    And an auditor with stdout output and validation mode "<mode>"
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
@@ -390,7 +390,7 @@ Feature: Taxonomy Validation
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output and validation mode "strict"
+    And an auditor with stdout output and validation mode "strict"
     When I audit event "user_create" with fields:
       | field     | value    |
       | outcome   | success  |
@@ -416,7 +416,7 @@ Feature: Taxonomy Validation
             source_ip:
               labels: [pii]
       """
-    And a logger with stdout output excluding labels "pii"
+    And an auditor with stdout output excluding labels "pii"
     When I audit event "user_create" with fields:
       | field     | value    |
       | outcome   | success  |
@@ -492,7 +492,7 @@ Feature: Taxonomy Validation
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output and validation mode "permissive"
+    And an auditor with stdout output and validation mode "permissive"
     When I audit event "user_create" with fields:
       | field     | value    |
       | outcome   | success  |
@@ -512,7 +512,7 @@ Feature: Taxonomy Validation
           fields:
             outcome: {required: true}
       """
-    And a logger with stdout output and validation mode "warn"
+    And an auditor with stdout output and validation mode "warn"
     When I audit event "user_create" with fields:
       | field     | value    |
       | outcome   | success  |

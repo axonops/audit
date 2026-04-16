@@ -52,10 +52,10 @@ func main() {
 	// Set up Prometheus metrics.
 	metrics := newMetrics()
 
-	// Set up audit logger with four outputs.
-	logger, err := setupAuditLogger(metrics)
+	// Set up audit auditor with four outputs.
+	auditor, err := setupAuditor(metrics)
 	if err != nil {
-		appLogger.Error("fatal: setup audit logger", "error", err)
+		appLogger.Error("fatal: setup audit auditor", "error", err)
 		return
 	}
 
@@ -81,7 +81,7 @@ func main() {
 	addr := envOr("LISTEN_ADDR", ":8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newServer(logger, db, sessions, rl, settings, withAppLogger(appLogger)),
+		Handler:           newServer(auditor, db, sessions, rl, settings, withAppLogger(appLogger)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -90,7 +90,7 @@ func main() {
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	// Emit startup audit event — good practice for compliance.
-	emitLifecycleEvent(logger, appLogger, NewAppStartupEvent("success").
+	emitLifecycleEvent(auditor, appLogger, NewAppStartupEvent("success").
 		SetMessage("inventory demo started on "+addr))
 
 	go func() {
@@ -111,21 +111,21 @@ func main() {
 	}
 
 	// Emit shutdown audit event — good practice for compliance.
-	emitLifecycleEvent(logger, appLogger, NewAppShutdownEvent("success").
+	emitLifecycleEvent(auditor, appLogger, NewAppShutdownEvent("success").
 		SetMessage("graceful shutdown initiated"))
 
-	// CRITICAL: Close the audit logger. This flushes all buffered events
+	// CRITICAL: Close the audit auditor. This flushes all buffered events
 	// to every output. Without this call, pending events are lost and the
 	// drain goroutine leaks. The shutdown event above is only delivered
 	// because Close() drains the buffer before returning.
-	if err := logger.Close(); err != nil {
-		appLogger.Warn("close logger", "error", err)
+	if err := auditor.Close(); err != nil {
+		appLogger.Warn("close auditor", "error", err)
 	}
 
 	appLogger.Info("shutdown complete")
 }
 
-// setupAppLogger creates a structured JSON logger writing to both
+// setupAppLogger creates a structured JSON application logger writing to both
 // a file (for Promtail → Loki) and stderr (for docker compose logs).
 func setupAppLogger() (*os.File, *slog.Logger) {
 	logPath := envOr("APP_LOG_PATH", "/data/app.log")
@@ -133,18 +133,18 @@ func setupAppLogger() (*os.File, *slog.Logger) {
 	if err != nil {
 		// Fall back to stderr only — Promtail won't see these logs
 		// but the app still works.
-		logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-		logger.Warn("could not open app log file, using stderr only",
+		auditor := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+		auditor.Warn("could not open app log file, using stderr only",
 			"path", logPath, "error", err)
-		return nil, logger
+		return nil, auditor
 	}
 	// Write to both the file (for Promtail) and stderr (for docker compose logs).
 	w := io.MultiWriter(f, os.Stderr)
 	return f, slog.New(slog.NewJSONHandler(w, nil))
 }
 
-func emitLifecycleEvent(logger *audit.Logger, appLogger *slog.Logger, evt audit.Event) {
-	if err := logger.AuditEvent(evt); err != nil {
+func emitLifecycleEvent(auditor *audit.Auditor, appLogger *slog.Logger, evt audit.Event) {
+	if err := auditor.AuditEvent(evt); err != nil {
 		appLogger.Warn("audit lifecycle event failed", "error", err)
 	}
 }

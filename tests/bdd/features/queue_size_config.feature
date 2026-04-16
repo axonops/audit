@@ -1,23 +1,23 @@
 @core @config
 Feature: Queue Size YAML Configuration
   As a library consumer, I want to configure the core intake queue
-  via queue_size in the YAML logger section so that I can control
+  via queue_size in the YAML auditor section so that I can control
   back-pressure behaviour.
 
-  The logger-level queue was renamed from buffer_size to queue_size
+  The auditor-level queue was renamed from buffer_size to queue_size
   to avoid confusion with per-output buffer_size. The old field name
   is rejected as an unknown field.
 
   Background:
     Given a standard test taxonomy
 
-  Scenario: queue_size accepted in logger section
+  Scenario: queue_size accepted in auditor section
     Given the following outputs YAML:
       """
       version: 1
       app_name: bdd-test
       host: bdd-host
-      logger:
+      auditor:
         queue_size: 500
       outputs:
         console:
@@ -33,7 +33,7 @@ Feature: Queue Size YAML Configuration
       version: 1
       app_name: bdd-test
       host: bdd-host
-      logger:
+      auditor:
         queue_size: 2000000
       outputs:
         console:
@@ -56,13 +56,13 @@ Feature: Queue Size YAML Configuration
     Then the config should load successfully
     And the loaded config queue_size should be 0
 
-  Scenario: Old buffer_size under logger section is rejected
+  Scenario: Old buffer_size under auditor section is rejected
     Given the following outputs YAML:
       """
       version: 1
       app_name: bdd-test
       host: bdd-host
-      logger:
+      auditor:
         buffer_size: 1000
       outputs:
         console:

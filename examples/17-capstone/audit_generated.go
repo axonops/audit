@@ -60,8 +60,8 @@ const (
 	EventUserUpdate = "user_update"
 )
 
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 	CategoryCompliance = "compliance"
 	CategoryLifecycle  = "lifecycle"
@@ -478,7 +478,7 @@ func (e *AppShutdownEvent) SetUserAgent(v string) *AppShutdownEvent {
 // EventType returns the event type name.
 func (e *AppShutdownEvent) EventType() string { return EventAppShutdown }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AppShutdownEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -760,7 +760,7 @@ func (e *AppStartupEvent) SetUserAgent(v string) *AppStartupEvent {
 // EventType returns the event type name.
 func (e *AppStartupEvent) EventType() string { return EventAppStartup }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AppStartupEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1039,7 +1039,7 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1316,7 +1316,7 @@ func (e *AuthLogoutEvent) SetUserAgent(v string) *AuthLogoutEvent {
 // EventType returns the event type name.
 func (e *AuthLogoutEvent) EventType() string { return EventAuthLogout }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthLogoutEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1593,7 +1593,7 @@ func (e *AuthSuccessEvent) SetUserAgent(v string) *AuthSuccessEvent {
 // EventType returns the event type name.
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthSuccessEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1870,7 +1870,7 @@ func (e *AuthorizationFailureEvent) SetUserAgent(v string) *AuthorizationFailure
 // EventType returns the event type name.
 func (e *AuthorizationFailureEvent) EventType() string { return EventAuthorizationFailure }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthorizationFailureEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -2156,7 +2156,7 @@ func (e *BulkDeleteEvent) SetUserAgent(v string) *BulkDeleteEvent {
 // EventType returns the event type name.
 func (e *BulkDeleteEvent) EventType() string { return EventBulkDelete }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *BulkDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -2455,7 +2455,7 @@ func (e *ConfigChangeEvent) SetUserAgent(v string) *ConfigChangeEvent {
 // EventType returns the event type name.
 func (e *ConfigChangeEvent) EventType() string { return EventConfigChange }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ConfigChangeEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -2742,7 +2742,7 @@ func (e *DataExportEvent) SetUserAgent(v string) *DataExportEvent {
 // EventType returns the event type name.
 func (e *DataExportEvent) EventType() string { return EventDataExport }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *DataExportEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -3020,7 +3020,7 @@ func (e *ItemCreateEvent) SetUserAgent(v string) *ItemCreateEvent {
 // EventType returns the event type name.
 func (e *ItemCreateEvent) EventType() string { return EventItemCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ItemCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -3297,7 +3297,7 @@ func (e *ItemDeleteEvent) SetUserAgent(v string) *ItemDeleteEvent {
 // EventType returns the event type name.
 func (e *ItemDeleteEvent) EventType() string { return EventItemDelete }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ItemDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -3579,7 +3579,7 @@ func (e *ItemListEvent) SetUserAgent(v string) *ItemListEvent {
 // EventType returns the event type name.
 func (e *ItemListEvent) EventType() string { return EventItemList }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ItemListEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -3861,7 +3861,7 @@ func (e *ItemReadEvent) SetUserAgent(v string) *ItemReadEvent {
 // EventType returns the event type name.
 func (e *ItemReadEvent) EventType() string { return EventItemRead }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ItemReadEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -4138,7 +4138,7 @@ func (e *ItemUpdateEvent) SetUserAgent(v string) *ItemUpdateEvent {
 // EventType returns the event type name.
 func (e *ItemUpdateEvent) EventType() string { return EventItemUpdate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *ItemUpdateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -4415,7 +4415,7 @@ func (e *OrderCreateEvent) SetUserAgent(v string) *OrderCreateEvent {
 // EventType returns the event type name.
 func (e *OrderCreateEvent) EventType() string { return EventOrderCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *OrderCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -4697,7 +4697,7 @@ func (e *OrderListEvent) SetUserAgent(v string) *OrderListEvent {
 // EventType returns the event type name.
 func (e *OrderListEvent) EventType() string { return EventOrderList }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *OrderListEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -4979,7 +4979,7 @@ func (e *OrderReadEvent) SetUserAgent(v string) *OrderReadEvent {
 // EventType returns the event type name.
 func (e *OrderReadEvent) EventType() string { return EventOrderRead }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *OrderReadEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -5256,7 +5256,7 @@ func (e *OrderUpdateEvent) SetUserAgent(v string) *OrderUpdateEvent {
 // EventType returns the event type name.
 func (e *OrderUpdateEvent) EventType() string { return EventOrderUpdate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *OrderUpdateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -5538,7 +5538,7 @@ func (e *RateLimitExceededEvent) SetUserAgent(v string) *RateLimitExceededEvent 
 // EventType returns the event type name.
 func (e *RateLimitExceededEvent) EventType() string { return EventRateLimitExceeded }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *RateLimitExceededEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -5817,7 +5817,7 @@ func (e *TokenExpiredEvent) SetUserAgent(v string) *TokenExpiredEvent {
 // EventType returns the event type name.
 func (e *TokenExpiredEvent) EventType() string { return EventTokenExpired }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *TokenExpiredEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -6110,7 +6110,7 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 // EventType returns the event type name.
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -6389,7 +6389,7 @@ func (e *UserDeleteEvent) SetUserAgent(v string) *UserDeleteEvent {
 // EventType returns the event type name.
 func (e *UserDeleteEvent) EventType() string { return EventUserDelete }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -6671,7 +6671,7 @@ func (e *UserListEvent) SetUserAgent(v string) *UserListEvent {
 // EventType returns the event type name.
 func (e *UserListEvent) EventType() string { return EventUserList }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserListEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -6953,7 +6953,7 @@ func (e *UserReadEvent) SetUserAgent(v string) *UserReadEvent {
 // EventType returns the event type name.
 func (e *UserReadEvent) EventType() string { return EventUserRead }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserReadEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -7246,7 +7246,7 @@ func (e *UserUpdateEvent) SetUserAgent(v string) *UserUpdateEvent {
 // EventType returns the event type name.
 func (e *UserUpdateEvent) EventType() string { return EventUserUpdate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserUpdateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

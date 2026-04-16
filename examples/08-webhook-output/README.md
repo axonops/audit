@@ -32,7 +32,7 @@ log aggregator, or any HTTP-based receiver.
 
 | File | Purpose |
 |------|---------|
-| [`main.go`](main.go) | Creates a logger with webhook output, starts a local HTTP receiver, emits 4 events |
+| [`main.go`](main.go) | Creates an auditor with webhook output, starts a local HTTP receiver, emits 4 events |
 | [`outputs.yaml`](outputs.yaml) | Webhook output YAML configuration with batching and custom headers |
 | [`taxonomy.yaml`](taxonomy.yaml) | 4 event types across 2 categories with varying severity levels |
 | [`audit_generated.go`](audit_generated.go) | Generated typed builders |
@@ -90,9 +90,9 @@ conditions is met:
 |---------|-------------|---------|--------------|
 | **Event count** | `batch_size` | 100 | 10 |
 | **Time elapsed** | `flush_interval` | 5s | 1s |
-| **Logger closed** | `logger.Close()` | — | Triggers final flush |
+| **Logger closed** | `auditor.Close()` | — | Triggers final flush |
 
-In this example, `logger.Close()` triggers the flush because we emit
+In this example, `auditor.Close()` triggers the flush because we emit
 only 4 events (below the batch_size threshold of 10) and close
 immediately (before the 1s timer fires).
 

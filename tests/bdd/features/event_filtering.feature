@@ -11,7 +11,7 @@ Feature: Event Filtering
 
   Background:
     Given a taxonomy with categories "write" and "security"
-    And a logger with stdout output
+    And an auditor with stdout output
 
   # --- Category-level filtering ---
 

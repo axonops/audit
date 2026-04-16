@@ -22,7 +22,7 @@ import (
 	"github.com/axonops/audit"
 )
 
-func ExampleNewLogger() {
+func ExampleNew() {
 	// Create a stdout output that writes to a buffer for this example.
 	var buf bytes.Buffer
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
@@ -30,7 +30,7 @@ func ExampleNewLogger() {
 		log.Fatal(err)
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -47,7 +47,7 @@ func ExampleNewLogger() {
 	}
 
 	// Emit an event — it will be written to the buffer as a JSON line.
-	if err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	if err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	})); err != nil {
@@ -55,7 +55,7 @@ func ExampleNewLogger() {
 	}
 
 	// Close drains the async buffer so all events are flushed.
-	if err := logger.Close(); err != nil {
+	if err := auditor.Close(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -67,14 +67,14 @@ func ExampleNewLogger() {
 	// has actor_id: true
 }
 
-func ExampleLogger_AuditEvent() {
+func ExampleAuditor_AuditEvent() {
 	var buf bytes.Buffer
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -88,12 +88,12 @@ func ExampleLogger_AuditEvent() {
 		log.Fatal(err)
 	}
 
-	if err = logger.AuditEvent(audit.NewEvent("doc_create", audit.Fields{"outcome": "success"})); err != nil {
+	if err = auditor.AuditEvent(audit.NewEvent("doc_create", audit.Fields{"outcome": "success"})); err != nil {
 		fmt.Println("audit error:", err)
 		return
 	}
 
-	if err = logger.Close(); err != nil {
+	if err = auditor.Close(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -105,8 +105,8 @@ func ExampleLogger_AuditEvent() {
 	// has outcome: true
 }
 
-func ExampleLogger_MustHandle() {
-	logger, err := audit.NewLogger(
+func ExampleAuditor_MustHandle() {
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -119,13 +119,13 @@ func ExampleLogger_MustHandle() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
+		if closeErr := auditor.Close(); closeErr != nil {
 			log.Printf("audit close: %v", closeErr)
 		}
 	}()
 
 	// Get a handle for zero-allocation audit calls.
-	docCreate := logger.MustHandle("doc_create")
+	docCreate := auditor.MustHandle("doc_create")
 
 	if err = docCreate.Audit(audit.Fields{"outcome": "success"}); err != nil {
 		fmt.Println("audit error:", err)
@@ -136,8 +136,8 @@ func ExampleLogger_MustHandle() {
 	// Output: handle event type: doc_create
 }
 
-func ExampleLogger_EnableCategory() {
-	logger, err := audit.NewLogger(
+func ExampleAuditor_EnableCategory() {
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -154,13 +154,13 @@ func ExampleLogger_EnableCategory() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := logger.Close(); err != nil {
+		if err := auditor.Close(); err != nil {
 			log.Printf("audit close: %v", err)
 		}
 	}()
 
 	// "read" category is disabled by default. Enable it at runtime.
-	if err := logger.EnableCategory("read"); err != nil {
+	if err := auditor.EnableCategory("read"); err != nil {
 		fmt.Println("enable error:", err)
 		return
 	}
@@ -169,8 +169,8 @@ func ExampleLogger_EnableCategory() {
 	// Output: read category enabled
 }
 
-func ExampleLogger_Close() {
-	logger, err := audit.NewLogger(
+func ExampleAuditor_Close() {
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
@@ -185,13 +185,13 @@ func ExampleLogger_Close() {
 
 	// Best practice: defer Close immediately after creation.
 	defer func() {
-		if err := logger.Close(); err != nil {
+		if err := auditor.Close(); err != nil {
 			log.Printf("audit close: %v", err)
 		}
 	}()
 
-	fmt.Println("logger will be closed on function exit")
-	// Output: logger will be closed on function exit
+	fmt.Println("auditor will be closed on function exit")
+	// Output: auditor will be closed on function exit
 }
 
 func ExampleWithFormatter() {
@@ -207,7 +207,7 @@ func ExampleWithFormatter() {
 		},
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    1,
 			Categories: map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
@@ -221,7 +221,7 @@ func ExampleWithFormatter() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if err := logger.Close(); err != nil {
+		if err := auditor.Close(); err != nil {
 			log.Printf("audit close: %v", err)
 		}
 	}()
@@ -264,14 +264,14 @@ func ExampleEventRoute_exclude() {
 	// Output: empty: false
 }
 
-func ExampleLogger_SetOutputRoute() {
+func ExampleAuditor_SetOutputRoute() {
 	var buf bytes.Buffer
 	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -289,13 +289,13 @@ func ExampleLogger_SetOutputRoute() {
 		log.Fatal(err)
 	}
 	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
+		if closeErr := auditor.Close(); closeErr != nil {
 			log.Printf("audit close: %v", closeErr)
 		}
 	}()
 
 	// Restrict output to security events only at runtime.
-	if err := logger.SetOutputRoute("stdout", &audit.EventRoute{
+	if err := auditor.SetOutputRoute("stdout", &audit.EventRoute{
 		IncludeCategories: []string{"security"},
 	}); err != nil {
 		fmt.Println("route error:", err)

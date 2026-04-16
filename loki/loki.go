@@ -57,7 +57,7 @@ type lokiEntry struct { //nolint:govet // fieldalignment: readability preferred
 	metadata audit.EventMetadata // per-event fields for stream labels
 }
 
-// frameworkFields holds logger-wide constant metadata used for Loki
+// frameworkFields holds auditor-wide constant metadata used for Loki
 // stream labels. Stored atomically to avoid data races between the
 // core library's SetFrameworkFields call and the batchLoop goroutine.
 type frameworkFields struct {
@@ -177,16 +177,16 @@ func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	return o, nil
 }
 
-// SetFrameworkFields receives logger-wide framework metadata for use
-// as Loki stream labels. Called once by the core library at logger
+// SetFrameworkFields receives auditor-wide framework metadata for use
+// as Loki stream labels. Called once by the core library at auditor
 // construction time. The data is stored atomically, safe for
 // concurrent access from the batchLoop goroutine.
 func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
 	o.fw.Store(&frameworkFields{appName: appName, host: host, timezone: timezone, pid: pid})
 }
 
-// SetLogger receives the library's diagnostic logger.
-func (o *Output) SetLogger(l *slog.Logger) {
+// SetDiagnosticLogger receives the library's diagnostic logger.
+func (o *Output) SetDiagnosticLogger(l *slog.Logger) {
 	o.logger = l
 }
 

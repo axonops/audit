@@ -69,14 +69,14 @@ events:
 		"pre-condition: resolved severity must be 3 (compliance wins alphabetically)")
 
 	out := testhelper.NewMockOutput("pipeline")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "alice",
 	}))
@@ -129,14 +129,14 @@ events:
 		"pre-condition: alpha (3) < beta (7) alphabetically, so severity must be 3")
 
 	out := testhelper.NewMockOutput("consistent")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("shared_event", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("shared_event", audit.Fields{"outcome": "success"})))
 
 	require.True(t, out.WaitForEvents(2, 2*time.Second),
 		"expected 2 deliveries, got %d", out.EventCount())
@@ -175,14 +175,14 @@ events:
 	require.NoError(t, err)
 
 	out := testhelper.NewMockOutput("three-cats")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("multi_event", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("multi_event", audit.Fields{"outcome": "success"})))
 
 	require.True(t, out.WaitForEvents(3, 2*time.Second),
 		"expected 3 deliveries (one per category), got %d", out.EventCount())
@@ -215,7 +215,7 @@ events:
 	require.NoError(t, err)
 
 	out := testhelper.NewMockOutput("concurrent-filter")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
@@ -233,7 +233,7 @@ events:
 	for i := 0; i < writers; i++ {
 		go func(n int) {
 			defer wg.Done()
-			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+			_ = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 				"outcome":  "failure",
 				"actor_id": fmt.Sprintf("writer-%d", n),
 			}))
@@ -245,11 +245,11 @@ events:
 		go func(n int) {
 			defer wg.Done()
 			if n%2 == 0 {
-				_ = logger.EnableCategory("security")
-				_ = logger.DisableCategory("compliance")
+				_ = auditor.EnableCategory("security")
+				_ = auditor.DisableCategory("compliance")
 			} else {
-				_ = logger.DisableCategory("security")
-				_ = logger.EnableCategory("compliance")
+				_ = auditor.DisableCategory("security")
+				_ = auditor.EnableCategory("compliance")
 			}
 		}(i)
 	}
@@ -258,7 +258,7 @@ events:
 
 	// Close drains remaining events. If there is a data race the -race
 	// detector will have already fired before we reach this point.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +426,7 @@ events:
 }
 
 // ---------------------------------------------------------------------------
-// JSON output: severity field parsing via full logger pipeline
+// JSON output: severity field parsing via full auditor pipeline
 // ---------------------------------------------------------------------------
 
 // TestPipeline_SeverityInJSONOutput exercises the complete async pipeline
@@ -497,14 +497,14 @@ events:
 			require.NoError(t, err)
 
 			out := testhelper.NewMockOutput("sev-pipeline")
-			logger, err := audit.NewLogger(
+			auditor, err := audit.New(
 				audit.WithTaxonomy(tax),
 				audit.WithOutputs(out),
 			)
 			require.NoError(t, err)
-			t.Cleanup(func() { _ = logger.Close() })
+			t.Cleanup(func() { _ = auditor.Close() })
 
-			require.NoError(t, logger.AuditEvent(audit.NewEvent(tt.eventType, audit.Fields{"outcome": "ok"})))
+			require.NoError(t, auditor.AuditEvent(audit.NewEvent(tt.eventType, audit.Fields{"outcome": "ok"})))
 			require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 			ev := out.GetEvent(0)
@@ -566,14 +566,14 @@ events:
 
 	// Drive the full pipeline and check the JSON output.
 	out := testhelper.NewMockOutput("mixed-fmt")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"})))
 
 	// Two categories, both enabled → two deliveries.
 	require.True(t, out.WaitForEvents(2, 2*time.Second),

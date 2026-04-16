@@ -34,27 +34,27 @@ import (
 var taxonomyYAML []byte
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// Emit one event per category.
-	if err := logger.AuditEvent(NewUserCreateEvent("alice", "success")); err != nil {
+	if err := auditor.AuditEvent(NewUserCreateEvent("alice", "success")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.AuditEvent(NewUserReadEvent("success")); err != nil {
+	if err := auditor.AuditEvent(NewUserReadEvent("success")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure")); err != nil {
+	if err := auditor.AuditEvent(NewAuthFailureEvent("unknown", "failure")); err != nil {
 		log.Printf("audit error: %v", err)
 	}
 
-	if err := logger.Close(); err != nil {
-		log.Printf("close logger: %v", err)
+	if err := auditor.Close(); err != nil {
+		log.Printf("close auditor: %v", err)
 	}
 
 	// Show filtered output.

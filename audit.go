@@ -24,7 +24,7 @@ package audit
 // recorded.
 //
 // Close() cancels the drain goroutine's context, waits up to
-// DrainTimeout for pending events to flush, then closes all outputs in
+// ShutdownTimeout for pending events to flush, then closes all outputs in
 // sequence. Close is idempotent via sync.Once.
 
 import (
@@ -60,7 +60,7 @@ var fieldsPool = sync.Pool{
 	New: func() any { return make(Fields, 8) },
 }
 
-// Logger is the core audit logger. It validates events against a
+// Auditor is the core type. It validates events against a
 // registered [Taxonomy], filters by category and per-event overrides,
 // and delivers events asynchronously to configured [Output]
 // destinations.
@@ -69,10 +69,10 @@ var fieldsPool = sync.Pool{
 // serialisation failures, output write errors). Consumers can configure
 // the slog default handler to control this output.
 //
-// A Logger is safe for concurrent use by multiple goroutines.
+// An Auditor is safe for concurrent use by multiple goroutines.
 //
 //nolint:govet // field order: logical grouping over alignment optimisation
-type Logger struct {
+type Auditor struct {
 	closeErr  error
 	filter    *filterState
 	metrics   Metrics
@@ -94,10 +94,10 @@ type Logger struct {
 	// usedWithOutputs is set during construction when WithOutputs is
 	// applied; prevents mixing WithOutputs and WithNamedOutput.
 	usedWithOutputs bool
-	// disabled is set by WithDisabled to create a no-op logger that
+	// disabled is set by WithDisabled to create a no-op auditor that
 	// discards all events without validation or delivery. Replaces
 	// the former Config.Enabled field (inverted: disabled=true means
-	// the logger does nothing).
+	// the auditor does nothing).
 	disabled bool
 	// synchronous is set by WithSynchronousDelivery to deliver events
 	// inline within AuditEvent instead of via the async channel. No
@@ -123,115 +123,115 @@ type Logger struct {
 	drainCount            uint64       // events processed by drain loop; for sampling RecordQueueDepth
 }
 
-// NewLogger creates a new audit [Logger] from the given options.
+// New creates a new [Auditor] from the given options.
 // A taxonomy MUST be provided via [WithTaxonomy] unless [WithDisabled]
-// is applied; NewLogger returns an error if none is supplied.
+// is applied; New returns an error if none is supplied.
 //
-// The zero-value [Config] is valid: buffer=10,000, drain=5s,
+// The zero-value [Config] is valid: buffer=10,000, shutdown=5s,
 // validation=strict. Pass tuning options like [WithQueueSize] or
-// [WithDrainTimeout] to override defaults, or [WithConfig] to apply
+// [WithShutdownTimeout] to override defaults, or [WithConfig] to apply
 // a struct.
 //
-// When [WithDisabled] is applied, NewLogger returns a valid no-op
-// logger without requiring a taxonomy. All [Logger.AuditEvent] calls
+// When [WithDisabled] is applied, New returns a valid no-op
+// auditor without requiring a taxonomy. All [Auditor.AuditEvent] calls
 // return nil immediately without validation or delivery. Methods
-// that require a taxonomy ([Logger.EnableCategory], etc.) return
+// that require a taxonomy ([Auditor.EnableCategory], etc.) return
 // [ErrDisabled].
-func NewLogger(opts ...Option) (*Logger, error) {
-	l := &Logger{}
+func New(opts ...Option) (*Auditor, error) {
+	a := &Auditor{}
 
 	for _, opt := range opts {
-		if err := opt(l); err != nil {
+		if err := opt(a); err != nil {
 			return nil, err
 		}
 	}
 
 	// validateConfig calls applyDefaults internally, then validates.
 	// migrateConfig runs after defaults so version is always set.
-	if err := validateConfig(&l.cfg); err != nil {
+	if err := validateConfig(&a.cfg); err != nil {
 		return nil, err
 	}
-	if err := migrateConfig(&l.cfg); err != nil {
+	if err := migrateConfig(&a.cfg); err != nil {
 		return nil, err
 	}
 
 	// Release construction-only state.
-	l.destKeys = nil
+	a.destKeys = nil
 
-	if l.logger == nil {
-		l.logger = slog.Default()
+	if a.logger == nil {
+		a.logger = slog.Default()
 	}
 
-	if l.disabled {
-		l.applyConstructionDefaults()
-		return l, nil
+	if a.disabled {
+		a.applyConstructionDefaults()
+		return a, nil
 	}
 
-	if l.taxonomy == nil {
+	if a.taxonomy == nil {
 		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
 	}
 
-	l.applyDevTaxonomyOverrides()
+	a.applyDevTaxonomyOverrides()
 
-	if err := l.validateOutputRoutes(); err != nil {
+	if err := a.validateOutputRoutes(); err != nil {
 		return nil, err
 	}
 
-	l.prepareOutputEntries()
+	a.prepareOutputEntries()
 
-	l.applyConstructionDefaults()
+	a.applyConstructionDefaults()
 
-	if !l.synchronous {
+	if !a.synchronous {
 		ctx, cancel := context.WithCancel(context.Background())
-		l.cancel = cancel
-		l.ch = make(chan *auditEntry, l.cfg.QueueSize)
-		l.drainDone = make(chan struct{})
-		go l.drainLoop(ctx)
+		a.cancel = cancel
+		a.ch = make(chan *auditEntry, a.cfg.QueueSize)
+		a.drainDone = make(chan struct{})
+		go a.drainLoop(ctx)
 	}
 
-	l.logger.Info("audit: logger created",
-		"queue_size", l.cfg.QueueSize,
-		"drain_timeout", l.cfg.DrainTimeout,
-		"validation_mode", string(l.cfg.ValidationMode),
-		"outputs", len(l.entries),
-		"synchronous", l.synchronous,
+	a.logger.Info("audit: auditor created",
+		"queue_size", a.cfg.QueueSize,
+		"shutdown_timeout", a.cfg.ShutdownTimeout,
+		"validation_mode", string(a.cfg.ValidationMode),
+		"outputs", len(a.entries),
+		"synchronous", a.synchronous,
 	)
 
-	return l, nil
+	return a, nil
 }
 
 // applyDevTaxonomyOverrides warns about DevTaxonomy and forces permissive
 // validation mode when a dev taxonomy is used.
-func (l *Logger) applyDevTaxonomyOverrides() {
-	if l.taxonomy == nil || !l.taxonomy.dev {
+func (a *Auditor) applyDevTaxonomyOverrides() {
+	if a.taxonomy == nil || !a.taxonomy.dev {
 		return
 	}
-	l.logger.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
-	if l.cfg.ValidationMode == ValidationStrict {
-		l.cfg.ValidationMode = ValidationPermissive
+	a.logger.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+	if a.cfg.ValidationMode == ValidationStrict {
+		a.cfg.ValidationMode = ValidationPermissive
 	}
 }
 
 // applyConstructionDefaults sets formatter, PID, timezone, and propagates
-// framework fields. Called once during NewLogger after all options are applied.
-func (l *Logger) applyConstructionDefaults() {
-	if l.formatter == nil {
-		l.formatter = &JSONFormatter{OmitEmpty: l.cfg.OmitEmpty}
+// framework fields. Called once during New after all options are applied.
+func (a *Auditor) applyConstructionDefaults() {
+	if a.formatter == nil {
+		a.formatter = &JSONFormatter{OmitEmpty: a.cfg.OmitEmpty}
 	}
-	l.pid = os.Getpid()
-	if l.timezone == "" {
-		l.timezone = time.Now().Location().String()
+	a.pid = os.Getpid()
+	if a.timezone == "" {
+		a.timezone = time.Now().Location().String()
 	}
-	l.propagateFrameworkFields()
-	l.propagateLogger()
+	a.propagateFrameworkFields()
+	a.propagateLogger()
 }
 
 // propagateLogger forwards the library's slog.Logger to outputs that
-// implement [LoggerReceiver].
-func (l *Logger) propagateLogger() {
-	for _, oe := range l.entries {
-		if recv, ok := oe.output.(LoggerReceiver); ok {
-			recv.SetLogger(l.logger)
+// implement [DiagnosticLoggerReceiver].
+func (a *Auditor) propagateLogger() {
+	for _, oe := range a.entries {
+		if recv, ok := oe.output.(DiagnosticLoggerReceiver); ok {
+			recv.SetDiagnosticLogger(a.logger)
 		}
 	}
 }
@@ -241,39 +241,39 @@ func (l *Logger) propagateLogger() {
 // safety, or [NewEvent] for dynamic event construction.
 //
 // AuditEvent returns [ErrQueueFull] if the async buffer is at
-// capacity (the event is dropped), [ErrClosed] if the logger has
+// capacity (the event is dropped), [ErrClosed] if the auditor has
 // been closed, or a descriptive error for validation failures.
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
-func (l *Logger) AuditEvent(evt Event) error {
+func (a *Auditor) AuditEvent(evt Event) error {
 	if evt == nil {
 		return fmt.Errorf("audit: event must not be nil")
 	}
-	return l.auditInternal(evt.EventType(), evt.Fields())
+	return a.auditInternal(evt.EventType(), evt.Fields())
 }
 
 // auditInternal is the shared validation-and-enqueue path used by
-// both [Logger.AuditEvent] and internal callers.
-func (l *Logger) auditInternal(eventType string, fields Fields) error {
-	if l.disabled {
+// both [Auditor.AuditEvent] and internal callers.
+func (a *Auditor) auditInternal(eventType string, fields Fields) error {
+	if a.disabled {
 		return nil
 	}
-	if l.closed.Load() {
+	if a.closed.Load() {
 		return ErrClosed
 	}
 
-	if l.metrics != nil {
-		l.metrics.RecordSubmitted()
+	if a.metrics != nil {
+		a.metrics.RecordSubmitted()
 	}
 
-	_, copied, err := l.validateEvent(eventType, fields)
+	_, copied, err := a.validateEvent(eventType, fields)
 	if err != nil {
 		return err
 	}
 
-	if !l.filter.isEnabled(eventType, l.taxonomy) {
-		if l.metrics != nil {
-			l.metrics.RecordFiltered(eventType)
+	if !a.filter.isEnabled(eventType, a.taxonomy) {
+		if a.metrics != nil {
+			a.metrics.RecordFiltered(eventType)
 		}
 		return nil
 	}
@@ -285,29 +285,29 @@ func (l *Logger) auditInternal(eventType string, fields Fields) error {
 	entry.eventType = eventType
 	entry.fields = copied
 
-	if l.synchronous {
-		l.deliverSync(entry)
+	if a.synchronous {
+		a.deliverSync(entry)
 		return nil
 	}
-	return l.enqueue(entry)
+	return a.enqueue(entry)
 }
 
 // validateEvent checks the event type exists, copies fields with defaults,
 // and validates field constraints. Returns the definition and copied fields.
-func (l *Logger) validateEvent(eventType string, fields Fields) (*EventDef, Fields, error) {
-	def, ok := l.taxonomy.Events[eventType]
+func (a *Auditor) validateEvent(eventType string, fields Fields) (*EventDef, Fields, error) {
+	def, ok := a.taxonomy.Events[eventType]
 	if !ok {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
+		if a.metrics != nil {
+			a.metrics.RecordValidationError(eventType)
 		}
 		return nil, nil, newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
 	}
 
-	copied := l.copyFieldsWithDefaults(fields)
+	copied := a.copyFieldsWithDefaults(fields)
 
-	if err := l.validateFields(eventType, def, copied); err != nil {
-		if l.metrics != nil {
-			l.metrics.RecordValidationError(eventType)
+	if err := a.validateFields(eventType, def, copied); err != nil {
+		if a.metrics != nil {
+			a.metrics.RecordValidationError(eventType)
 		}
 		return nil, nil, err
 	}
@@ -321,27 +321,27 @@ func (l *Logger) validateEvent(eventType string, fields Fields) (*EventDef, Fiel
 // A mutex serialises calls because processEntry reuses per-output
 // state (formatOpts, HMAC) that is only safe under single-goroutine
 // access.
-func (l *Logger) deliverSync(entry *auditEntry) {
-	l.syncMu.Lock()
-	defer l.syncMu.Unlock()
-	l.processEntry(entry)
+func (a *Auditor) deliverSync(entry *auditEntry) {
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
+	a.processEntry(entry)
 }
 
 // enqueue attempts a non-blocking send to the async channel. On
 // buffer-full, the entry is returned to the pool to avoid leaking
 // pooled objects.
-func (l *Logger) enqueue(entry *auditEntry) error {
+func (a *Auditor) enqueue(entry *auditEntry) error {
 	select {
-	case l.ch <- entry:
+	case a.ch <- entry:
 		return nil
 	default:
-		l.drops.record(dropWarnInterval, func(dropped int64) {
-			l.logger.Warn("audit: buffer full, events dropped",
+		a.drops.record(dropWarnInterval, func(dropped int64) {
+			a.logger.Warn("audit: buffer full, events dropped",
 				"dropped", dropped,
-				"queue_size", cap(l.ch))
+				"queue_size", cap(a.ch))
 		})
-		if l.metrics != nil {
-			l.metrics.RecordBufferDrop()
+		if a.metrics != nil {
+			a.metrics.RecordBufferDrop()
 		}
 		// Return dropped entry and fields map to pools.
 		returnFieldsToPool(entry.fields)
@@ -352,45 +352,45 @@ func (l *Logger) enqueue(entry *auditEntry) error {
 	}
 }
 
-// Close shuts down the logger gracefully. Close MUST be called when the
-// logger is no longer needed; failing to call Close leaks the drain
+// Close shuts down the auditor gracefully. Close MUST be called when the
+// auditor is no longer needed; failing to call Close leaks the drain
 // goroutine and loses all buffered events.
 //
 // Close signals the drain goroutine to stop, waits up to
-// [Config.DrainTimeout] for pending events to flush, then closes all
+// [Config.ShutdownTimeout] for pending events to flush, then closes all
 // outputs in parallel.
 //
 // Close is idempotent -- subsequent calls return nil (or the same
 // error if an output failed to close on the first call).
-func (l *Logger) Close() error {
-	l.closeOnce.Do(func() {
-		l.closed.Store(true)
+func (a *Auditor) Close() error {
+	a.closeOnce.Do(func() {
+		a.closed.Store(true)
 
-		if l.disabled {
+		if a.disabled {
 			return
 		}
 
 		shutdownStart := time.Now()
-		l.logger.Info("audit: shutdown started")
+		a.logger.Info("audit: shutdown started")
 
-		if !l.synchronous {
-			l.cancel()
-			l.waitForDrain()
+		if !a.synchronous {
+			a.cancel()
+			a.waitForDrain()
 		}
 
-		l.closeErr = l.closeOutputs()
+		a.closeErr = a.closeOutputs()
 
-		l.logger.Info("audit: shutdown complete",
+		a.logger.Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
 	})
-	return l.closeErr
+	return a.closeErr
 }
 
 // closeOutputs closes all outputs in parallel. Each output's Close
 // runs in its own goroutine. An overall timeout prevents a single
 // misbehaving output from blocking shutdown indefinitely.
-func (l *Logger) closeOutputs() error {
-	if len(l.entries) == 0 {
+func (a *Auditor) closeOutputs() error {
+	if len(a.entries) == 0 {
 		return nil
 	}
 
@@ -399,8 +399,8 @@ func (l *Logger) closeOutputs() error {
 		err  error
 	}
 
-	results := make(chan closeResult, len(l.entries))
-	for _, oe := range l.entries {
+	results := make(chan closeResult, len(a.entries))
+	for _, oe := range a.entries {
 		go func(oe *outputEntry) {
 			results <- closeResult{
 				name: oe.output.Name(),
@@ -411,25 +411,25 @@ func (l *Logger) closeOutputs() error {
 
 	// Overall close timeout: drain timeout covers the per-output buffer
 	// drain. If any output hangs beyond this, we log and move on.
-	closeTimeout := l.cfg.DrainTimeout + 5*time.Second
+	closeTimeout := a.cfg.ShutdownTimeout + 5*time.Second
 	deadlineTimer := time.NewTimer(closeTimeout)
 	defer deadlineTimer.Stop()
 
 	var closeErrs []error
 	collected := 0
-	for range len(l.entries) {
+	for range len(a.entries) {
 		select {
 		case r := <-results:
 			collected++
 			if r.err != nil {
-				l.logger.Error("audit: output close failed",
+				a.logger.Error("audit: output close failed",
 					"output", r.name,
 					"error", r.err)
 				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", r.name, r.err))
 			}
 		case <-deadlineTimer.C:
-			remaining := len(l.entries) - collected
-			l.logger.Error("audit: output close timed out",
+			remaining := len(a.entries) - collected
+			a.logger.Error("audit: output close timed out",
 				"timeout", closeTimeout,
 				"remaining_outputs", remaining)
 			closeErrs = append(closeErrs, fmt.Errorf(
@@ -444,30 +444,30 @@ func (l *Logger) closeOutputs() error {
 // waitForDrain waits for the drain goroutine to finish, with a
 // timeout. No extra goroutine is spawned; we select on the drainDone
 // channel that drainLoop closes when it exits.
-func (l *Logger) waitForDrain() {
-	timer := time.NewTimer(l.cfg.DrainTimeout)
+func (a *Auditor) waitForDrain() {
+	timer := time.NewTimer(a.cfg.ShutdownTimeout)
 	defer timer.Stop()
 
 	select {
-	case <-l.drainDone:
+	case <-a.drainDone:
 	case <-timer.C:
-		l.logger.Warn("audit: drain timed out, some events may be lost",
-			"drain_timeout", l.cfg.DrainTimeout,
-			"buffer_remaining", len(l.ch))
+		a.logger.Warn("audit: drain timed out, some events may be lost",
+			"shutdown_timeout", a.cfg.ShutdownTimeout,
+			"buffer_remaining", len(a.ch))
 	}
 }
 
 // validateOutputRoutes checks all per-output event routes and
 // sensitivity exclusion labels against the taxonomy.
-func (l *Logger) validateOutputRoutes() error {
-	for _, oe := range l.entries {
+func (a *Auditor) validateOutputRoutes() error {
+	for _, oe := range a.entries {
 		route := oe.route.Load()
 		if route != nil {
-			if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+			if err := ValidateEventRoute(route, a.taxonomy); err != nil {
 				return fmt.Errorf("audit: output %q: %w", oe.output.Name(), err)
 			}
 		}
-		if err := l.validateExcludeLabels(oe); err != nil {
+		if err := a.validateExcludeLabels(oe); err != nil {
 			return err
 		}
 	}
@@ -476,16 +476,16 @@ func (l *Logger) validateOutputRoutes() error {
 
 // validateExcludeLabels checks that all exclude_labels on an output
 // reference labels defined in the taxonomy's sensitivity config.
-func (l *Logger) validateExcludeLabels(oe *outputEntry) error {
+func (a *Auditor) validateExcludeLabels(oe *outputEntry) error {
 	if len(oe.excludedLabels) == 0 {
 		return nil
 	}
-	if l.taxonomy == nil || l.taxonomy.Sensitivity == nil {
+	if a.taxonomy == nil || a.taxonomy.Sensitivity == nil {
 		return fmt.Errorf("audit: output %q has exclude_labels but taxonomy has no sensitivity config",
 			oe.output.Name())
 	}
 	for label := range oe.excludedLabels {
-		if _, ok := l.taxonomy.Sensitivity.Labels[label]; !ok {
+		if _, ok := a.taxonomy.Sensitivity.Labels[label]; !ok {
 			return fmt.Errorf("audit: output %q exclude_labels references undefined sensitivity label %q",
 				oe.output.Name(), label)
 		}
@@ -495,67 +495,67 @@ func (l *Logger) validateExcludeLabels(oe *outputEntry) error {
 
 // EnableCategory enables all events in the named category. The
 // category MUST exist in the registered taxonomy. Per-event overrides
-// via [Logger.DisableEvent] take precedence over category state.
-func (l *Logger) EnableCategory(category string) error {
-	if l.disabled {
-		return fmt.Errorf("audit: cannot enable category on disabled logger: %w", ErrDisabled)
+// via [Auditor.DisableEvent] take precedence over category state.
+func (a *Auditor) EnableCategory(category string) error {
+	if a.disabled {
+		return fmt.Errorf("audit: cannot enable category on disabled auditor: %w", ErrDisabled)
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
-	if _, ok := l.taxonomy.Categories[category]; !ok {
+	if _, ok := a.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.filter.enabledCategories.Store(category, true)
-	l.logger.Info("audit: category enabled", "category", category)
+	a.filter.enabledCategories.Store(category, true)
+	a.logger.Info("audit: category enabled", "category", category)
 	return nil
 }
 
 // DisableCategory disables all events in the named category. The
 // category MUST exist in the registered taxonomy. Per-event overrides
-// via [Logger.EnableEvent] take precedence over category state.
-func (l *Logger) DisableCategory(category string) error {
-	if l.disabled {
-		return fmt.Errorf("audit: cannot disable category on disabled logger: %w", ErrDisabled)
+// via [Auditor.EnableEvent] take precedence over category state.
+func (a *Auditor) DisableCategory(category string) error {
+	if a.disabled {
+		return fmt.Errorf("audit: cannot disable category on disabled auditor: %w", ErrDisabled)
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
-	if _, ok := l.taxonomy.Categories[category]; !ok {
+	if _, ok := a.taxonomy.Categories[category]; !ok {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
-	l.filter.enabledCategories.Store(category, false)
-	l.logger.Info("audit: category disabled", "category", category)
+	a.filter.enabledCategories.Store(category, false)
+	a.logger.Info("audit: category disabled", "category", category)
 	return nil
 }
 
 // EnableEvent enables a specific event type regardless of its
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
-func (l *Logger) EnableEvent(eventType string) error {
-	if l.disabled {
-		return fmt.Errorf("audit: cannot enable event on disabled logger: %w", ErrDisabled)
+func (a *Auditor) EnableEvent(eventType string) error {
+	if a.disabled {
+		return fmt.Errorf("audit: cannot enable event on disabled auditor: %w", ErrDisabled)
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
-	if _, ok := l.taxonomy.Events[eventType]; !ok {
+	if _, ok := a.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.filter.eventOverrides.Store(eventType, true)
-	l.filter.hasEventOverrides.Store(true)
-	l.logger.Info("audit: event enabled", "event_type", eventType)
+	a.filter.eventOverrides.Store(eventType, true)
+	a.filter.hasEventOverrides.Store(true)
+	a.logger.Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
 // DisableEvent disables a specific event type regardless of its
 // category's state. The event type MUST exist in the registered
 // taxonomy. Per-event overrides take precedence over category state.
-func (l *Logger) DisableEvent(eventType string) error {
-	if l.disabled {
-		return fmt.Errorf("audit: cannot disable event on disabled logger: %w", ErrDisabled)
+func (a *Auditor) DisableEvent(eventType string) error {
+	if a.disabled {
+		return fmt.Errorf("audit: cannot disable event on disabled auditor: %w", ErrDisabled)
 	}
 	// taxonomy is immutable after construction; safe to read without lock.
-	if _, ok := l.taxonomy.Events[eventType]; !ok {
+	if _, ok := a.taxonomy.Events[eventType]; !ok {
 		return fmt.Errorf("audit: unknown event type %q", eventType)
 	}
-	l.filter.eventOverrides.Store(eventType, false)
-	l.filter.hasEventOverrides.Store(true)
-	l.logger.Info("audit: event disabled", "event_type", eventType)
+	a.filter.eventOverrides.Store(eventType, false)
+	a.filter.hasEventOverrides.Store(true)
+	a.logger.Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -565,19 +565,19 @@ func (l *Logger) DisableEvent(eventType string) error {
 // error. An unknown output name returns an error.
 //
 // SetOutputRoute is safe for concurrent use with event delivery.
-func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
-	if l.disabled {
-		return fmt.Errorf("audit: cannot set output route on disabled logger: %w", ErrDisabled)
+func (a *Auditor) SetOutputRoute(outputName string, route *EventRoute) error {
+	if a.disabled {
+		return fmt.Errorf("audit: cannot set output route on disabled auditor: %w", ErrDisabled)
 	}
-	oe, ok := l.outputsByName[outputName]
+	oe, ok := a.outputsByName[outputName]
 	if !ok {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
-	if err := ValidateEventRoute(route, l.taxonomy); err != nil {
+	if err := ValidateEventRoute(route, a.taxonomy); err != nil {
 		return err
 	}
 	oe.setRoute(route)
-	l.logger.Info("audit: output route set", "output", outputName)
+	a.logger.Info("audit: output route set", "output", outputName)
 	return nil
 }
 
@@ -585,20 +585,20 @@ func (l *Logger) SetOutputRoute(outputName string, route *EventRoute) error {
 // output, causing it to receive all globally-enabled events.
 //
 // ClearOutputRoute is safe for concurrent use with event delivery.
-func (l *Logger) ClearOutputRoute(outputName string) error {
-	oe, ok := l.outputsByName[outputName]
+func (a *Auditor) ClearOutputRoute(outputName string) error {
+	oe, ok := a.outputsByName[outputName]
 	if !ok {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
 	oe.setRoute(&EventRoute{})
-	l.logger.Info("audit: output route cleared", "output", outputName)
+	a.logger.Info("audit: output route cleared", "output", outputName)
 	return nil
 }
 
 // OutputRoute returns a copy of the current per-output event route
 // for the named output. An unknown output name returns an error.
-func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
-	oe, ok := l.outputsByName[outputName]
+func (a *Auditor) OutputRoute(outputName string) (EventRoute, error) {
+	oe, ok := a.outputsByName[outputName]
 	if !ok {
 		return EventRoute{}, fmt.Errorf("audit: unknown output %q", outputName)
 	}
@@ -608,22 +608,22 @@ func (l *Logger) OutputRoute(outputName string) (EventRoute, error) {
 // Handle returns an [EventHandle] for the named event type. The
 // handle enables zero-allocation audit calls. Returns
 // [ErrHandleNotFound] if the event type is not registered.
-func (l *Logger) Handle(eventType string) (*EventHandle, error) {
-	if l.disabled {
-		return &EventHandle{name: eventType, logger: l}, nil
+func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
+	if a.disabled {
+		return &EventHandle{name: eventType, auditor: a}, nil
 	}
-	if _, ok := l.taxonomy.Events[eventType]; !ok {
+	if _, ok := a.taxonomy.Events[eventType]; !ok {
 		return nil, fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
-	return &EventHandle{name: eventType, logger: l}, nil
+	return &EventHandle{name: eventType, auditor: a}, nil
 }
 
 // MustHandle returns an [EventHandle] for the named event type.
 // It panics with an error wrapping [ErrHandleNotFound] if the event
-// type is not registered. Use [Logger.Handle] to receive the error
+// type is not registered. Use [Auditor.Handle] to receive the error
 // instead of panicking.
-func (l *Logger) MustHandle(eventType string) *EventHandle {
-	h, err := l.Handle(eventType)
+func (a *Auditor) MustHandle(eventType string) *EventHandle {
+	h, err := a.Handle(eventType)
 	if err != nil {
 		panic(err)
 	}
@@ -643,8 +643,8 @@ func returnFieldsToPool(fields Fields) {
 // defaults. Standard field defaults have lower precedence (key existence,
 // not zero value). This avoids the double allocation that would result
 // from separate copy + merge steps.
-func (l *Logger) copyFieldsWithDefaults(fields Fields) Fields {
-	size := len(fields) + len(l.standardFieldDefaults)
+func (a *Auditor) copyFieldsWithDefaults(fields Fields) Fields {
+	size := len(fields) + len(a.standardFieldDefaults)
 	if size == 0 {
 		return nil
 	}
@@ -653,7 +653,7 @@ func (l *Logger) copyFieldsWithDefaults(fields Fields) Fields {
 	for k, v := range fields {
 		cp[k] = v
 	}
-	for k, v := range l.standardFieldDefaults {
+	for k, v := range a.standardFieldDefaults {
 		if _, exists := cp[k]; !exists {
 			cp[k] = v
 		}

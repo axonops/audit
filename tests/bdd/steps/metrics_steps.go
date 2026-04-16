@@ -47,30 +47,30 @@ func registerMetricsGivenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		return nil
 	})
 
-	ctx.Step(`^a logger with stdout output and metrics$`, func() error {
+	ctx.Step(`^an auditor with stdout output and metrics$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc)
+		return createStdoutAuditor(tc)
 	})
 
-	ctx.Step(`^a logger with stdout output and metrics in strict mode$`, func() error {
+	ctx.Step(`^an auditor with stdout output and metrics in strict mode$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLogger(tc)
+		return createStdoutAuditor(tc)
 	})
 
-	ctx.Step(`^a logger with stdout output and metrics in warn mode$`, func() error {
+	ctx.Step(`^an auditor with stdout output and metrics in warn mode$`, func() error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLoggerWithOpts(tc, audit.WithValidationMode(audit.ValidationWarn))
+		return createStdoutAuditorWithOpts(tc, audit.WithValidationMode(audit.ValidationWarn))
 	})
 
-	ctx.Step(`^a logger with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
+	ctx.Step(`^an auditor with stdout output and metrics and buffer size (\d+)$`, func(bufSize int) error {
 		tc.Options = append(tc.Options, audit.WithMetrics(tc.MockMetrics))
-		return createStdoutLoggerWithOpts(tc, audit.WithQueueSize(bufSize))
+		return createStdoutAuditorWithOpts(tc, audit.WithQueueSize(bufSize))
 	})
 
 }
 
 func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file and stdout outputs and metrics$`, func() error {
+	ctx.Step(`^an auditor with file and stdout outputs and metrics$`, func() error {
 		buf := &bytes.Buffer{}
 		tc.StdoutBuf = buf
 
@@ -99,21 +99,21 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			audit.WithNamedOutput(fileOut),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
 }
 
 func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with webhook output and metrics$`, func() error {
+	ctx.Step(`^an auditor with webhook output and metrics$`, func() error {
 		// Pass nil for core metrics to the webhook output — it self-reports
-		// delivery via DeliveryReporter. The core logger's global metrics
+		// delivery via DeliveryReporter. The core auditor's global metrics
 		// (tc.MockMetrics) should NOT record for webhook because
 		// ReportsDelivery() returns true.
 		w, err := webhook.New(&webhook.Config{
@@ -132,16 +132,16 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(w),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with panicking formatter and metrics$`, func() error {
+	ctx.Step(`^an auditor with panicking formatter and metrics$`, func() error {
 		buf := &bytes.Buffer{}
 		tc.StdoutBuf = buf
 
@@ -157,16 +157,16 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(stdoutOut),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with error-returning formatter and metrics$`, func() error {
+	ctx.Step(`^an auditor with error-returning formatter and metrics$`, func() error {
 		buf := &bytes.Buffer{}
 		tc.StdoutBuf = buf
 
@@ -182,34 +182,34 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithOutputs(stdoutOut),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with error output and metrics$`, func() error {
+	ctx.Step(`^an auditor with error output and metrics$`, func() error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(&errorOutput{}),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with routed outputs and metrics where webhook excludes "([^"]*)"$`, func(excludeCat string) error {
+	ctx.Step(`^an auditor with routed outputs and metrics where webhook excludes "([^"]*)"$`, func(excludeCat string) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -239,21 +239,21 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			audit.WithNamedOutput(whOut, audit.OutputRoute(&audit.EventRoute{ExcludeCategories: []string{excludeCat}})),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerMetricsWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^I fill the logger buffer beyond capacity$`, func() error {
+	ctx.Step(`^I fill the auditor buffer beyond capacity$`, func() error {
 		// Send more events than buffer can hold. Some will be dropped.
 		for range 100 {
-			_ = tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			_ = tc.Auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": "overflow",
 			}))
@@ -298,8 +298,8 @@ func registerMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 // --- Metrics assertion helpers ---
 
 func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -311,8 +311,8 @@ func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
 }
 
 func assertMetricsTotalSuccessEvents(tc *AuditTestContext, minCount int) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -345,8 +345,8 @@ func assertMetricsValidationError(tc *AuditTestContext, expectPresent bool) erro
 }
 
 func assertMetricsFiltered(tc *AuditTestContext, eventType string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -357,8 +357,8 @@ func assertMetricsFiltered(tc *AuditTestContext, eventType string) error {
 }
 
 func assertMetricsBufferDrops(tc *AuditTestContext, minCount int) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -369,8 +369,8 @@ func assertMetricsBufferDrops(tc *AuditTestContext, minCount int) error {
 }
 
 func assertMetricsSerializationError(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -385,8 +385,8 @@ func assertMetricsSerializationError(tc *AuditTestContext) error {
 }
 
 func assertMetricsNoWebhookCoreSuccess(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -402,8 +402,8 @@ func assertMetricsNoWebhookCoreSuccess(tc *AuditTestContext) error {
 }
 
 func assertMetricsOutputFiltered(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
@@ -418,8 +418,8 @@ func assertMetricsOutputFiltered(tc *AuditTestContext) error {
 }
 
 func assertMetricsOutputError(tc *AuditTestContext, output string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()

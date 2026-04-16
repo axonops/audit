@@ -28,7 +28,7 @@ import "time"
 //
 // # Ownership: Metrics vs OutputMetrics
 //
-// [Metrics] records pipeline-level counters that span the entire logger:
+// [Metrics] records pipeline-level counters that span the entire auditor:
 //
 //   - RecordSubmitted — total events entering the pipeline
 //   - RecordEvent — per-output delivery outcome (for non-self-reporting outputs)
@@ -46,11 +46,11 @@ import "time"
 //
 // For outputs that implement [DeliveryReporter] (webhook, loki, file,
 // syslog), the output itself calls RecordEvent after actual delivery.
-// The core logger skips RecordEvent for these outputs to avoid
+// The core auditor skips RecordEvent for these outputs to avoid
 // phantom success counting.
 type Metrics interface {
 	// RecordSubmitted records that an event was submitted to the
-	// pipeline via [Logger.AuditEvent]. Called once per AuditEvent
+	// pipeline via [Auditor.AuditEvent]. Called once per AuditEvent
 	// call, before any filtering or buffering. This is the "total
 	// events in" counter.
 	RecordSubmitted()
@@ -69,7 +69,7 @@ type Metrics interface {
 	// global category/event filter drops before any output is reached.
 	RecordOutputFiltered(output string)
 
-	// RecordValidationError records that [Logger.AuditEvent] rejected an
+	// RecordValidationError records that [Auditor.AuditEvent] rejected an
 	// event due to a validation failure: unknown event type, missing
 	// required fields, or unknown fields in strict mode. The
 	// eventType parameter is the event type string that was passed to

@@ -15,48 +15,48 @@ Feature: Syslog Output
   # --- Transport variants ---
 
   Scenario: Deliver event over TCP plain
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Deliver event over UDP
-    Given a logger with syslog output on "udp" to "127.0.0.1:5515"
+    Given an auditor with syslog output on "udp" to "127.0.0.1:5515"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Deliver event over TLS with CA certificate
-    Given a logger with syslog TLS output to "localhost:6514" with CA cert
+    Given an auditor with syslog TLS output to "localhost:6514" with CA cert
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Deliver event over mTLS with client certificate
-    Given a logger with syslog mTLS output to "localhost:6515"
+    Given an auditor with syslog mTLS output to "localhost:6515"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Multiple events delivered over TCP
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit 5 uniquely marked events
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain all 5 markers within 10 seconds
 
   # --- RFC 5424 format ---
 
   Scenario: Syslog message contains app name
-    Given a logger with syslog output on "tcp" to "localhost:5514" with app name "bdd-audit"
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with app name "bdd-audit"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain "bdd-audit"
 
   Scenario: Syslog message contains timestamp
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain the current year
 
@@ -108,16 +108,16 @@ Feature: Syslog Output
   # --- Hostname configuration (#237) ---
 
   Scenario: Syslog hostname from Config appears in RFC 5424 header
-    Given a logger with syslog output on "tcp" to "localhost:5514" with hostname "bdd-custom-host"
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with hostname "bdd-custom-host"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain "bdd-custom-host"
 
   Scenario: Syslog hostname defaults to os.Hostname when not configured
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Syslog invalid hostname with space is rejected
@@ -129,16 +129,16 @@ Feature: Syslog Output
     Then the syslog construction should fail with an error containing "exceeds RFC 5424 maximum"
 
   Scenario: Default app name is "audit"
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain "audit"
 
   Scenario Outline: Valid facility names are accepted
-    Given a logger with syslog output on "tcp" to "localhost:5514" with facility "<facility>"
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with facility "<facility>"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
     Examples:
@@ -152,34 +152,34 @@ Feature: Syslog Output
   # --- UDP edge cases ---
 
   Scenario: UDP large payload accepted without panic
-    Given a logger with syslog output on "udp" to "127.0.0.1:5515"
+    Given an auditor with syslog output on "udp" to "127.0.0.1:5515"
     When I audit an event with a 4096-byte payload
     Then the audit call should return no error
 
   Scenario: UDP does not use octet-count framing
-    Given a logger with syslog output on "udp" to "127.0.0.1:5515"
+    Given an auditor with syslog output on "udp" to "127.0.0.1:5515"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   # --- Lifecycle ---
 
   Scenario: Write after close returns error
-    Given a logger with syslog output on "tcp" to "localhost:5514"
-    When I close the logger
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
+    When I close the auditor
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
 
   # --- Reconnection ---
 
   Scenario: Syslog reconnects after server process restart
-    Given a logger with syslog output on "tcp" to "localhost:5514" with max retries 10
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with max retries 10
     When I audit a uniquely marked "user_create" event
     Then the syslog server should contain the marker within 10 seconds
     When I restart the syslog-ng process
     And I wait for syslog-ng to be ready
     And I audit a second uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the second marker within 15 seconds
 
   Scenario: Max retries exceeded returns error
@@ -189,36 +189,36 @@ Feature: Syslog Output
   # --- Syslog-specific metrics ---
 
   Scenario: Nil syslog metrics does not panic during delivery
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Syslog metrics configured during delivery does not panic
     Given mock syslog metrics are configured
-    And a logger with syslog output on "tcp" to "localhost:5514" with metrics and max retries 10
+    And an auditor with syslog output on "tcp" to "localhost:5514" with metrics and max retries 10
     When I audit a uniquely marked "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
 
   Scenario: Close is idempotent
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "user_create" event
-    And I close the logger
-    And I close the logger again
+    And I close the auditor
+    And I close the auditor again
     Then the second close should return no error
 
   # --- Complete payload verification ---
 
   Scenario: All event fields present in syslog output
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit event "user_create" with fields:
       | field     | value      |
       | outcome   | success    |
       | actor_id  | alice      |
       | marker    | syslog_all |
       | target_id | user-42    |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain "syslog_all" within 10 seconds
     And the syslog line with "syslog_all" should contain "user_create"
     And the syslog line with "syslog_all" should contain "alice"

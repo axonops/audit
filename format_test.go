@@ -796,7 +796,7 @@ func TestCEFFormatter_HeaderPipeInjection(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Logger integration tests
+// Auditor integration tests
 // ---------------------------------------------------------------------------
 
 func TestLogger_WithFormatter_Custom(t *testing.T) {
@@ -809,15 +809,15 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 		},
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(custom),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
@@ -836,14 +836,14 @@ func (s *stubFormatter) Format(ts time.Time, eventType string, fields audit.Fiel
 
 func TestLogger_DefaultJSONFormatter(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
@@ -864,15 +864,15 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 		Version: "2.0",
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithFormatter(cef),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
@@ -884,7 +884,7 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 }
 
 func TestLogger_WithFormatter_Nil(t *testing.T) {
-	_, err := audit.NewLogger(
+	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithFormatter(nil),
 	)

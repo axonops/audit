@@ -104,42 +104,42 @@ events:
 }
 
 func registerMultiCatLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with stdout output routed to include only "([^"]*)"$`, func(category string) error {
-		return createMultiCatLogger(tc, &audit.EventRoute{IncludeCategories: []string{category}}, nil)
+	ctx.Step(`^an auditor with stdout output routed to include only "([^"]*)"$`, func(category string) error {
+		return createMultiCatAuditor(tc, &audit.EventRoute{IncludeCategories: []string{category}}, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed to exclude "([^"]*)"$`, func(category string) error {
-		return createMultiCatLogger(tc, &audit.EventRoute{ExcludeCategories: []string{category}}, nil)
+	ctx.Step(`^an auditor with stdout output routed to exclude "([^"]*)"$`, func(category string) error {
+		return createMultiCatAuditor(tc, &audit.EventRoute{ExcludeCategories: []string{category}}, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed to include event type "([^"]*)"$`, func(eventType string) error {
-		return createMultiCatLogger(tc, &audit.EventRoute{IncludeEventTypes: []string{eventType}}, nil)
+	ctx.Step(`^an auditor with stdout output routed to include event type "([^"]*)"$`, func(eventType string) error {
+		return createMultiCatAuditor(tc, &audit.EventRoute{IncludeEventTypes: []string{eventType}}, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output using CEF formatter$`, func() error {
+	ctx.Step(`^an auditor with stdout output using CEF formatter$`, func() error {
 		cefFmt := &audit.CEFFormatter{
 			Vendor:  "Test",
 			Product: "BDD",
 			Version: "1.0",
 		}
-		return createMultiCatLogger(tc, nil, cefFmt)
+		return createMultiCatAuditor(tc, nil, cefFmt)
 	})
 }
 
-func createMultiCatLogger(tc *AuditTestContext, route *audit.EventRoute, formatter audit.Formatter) error {
+func createMultiCatAuditor(tc *AuditTestContext, route *audit.EventRoute, formatter audit.Formatter) error {
 	tc.StdoutBuf = &bytes.Buffer{}
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 	if err != nil {
 		return fmt.Errorf("create stdout: %w", err)
 	}
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, audit.OutputRoute(route), audit.OutputFormatter(formatter)),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
+	tc.Auditor = auditor
 	return nil
 }
 
@@ -151,7 +151,7 @@ func registerMultiCatAssertionSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 func registerMultiCatCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the output should contain exactly (\d+) events?$`, func(expected int) error {
-		if err := flushLogger(tc); err != nil {
+		if err := flushAuditor(tc); err != nil {
 			return err
 		}
 		lines := nonEmptyLines(tc.StdoutBuf.String())
@@ -164,14 +164,14 @@ func registerMultiCatCountSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 
 func registerMultiCatContentSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^all delivered events should have event_type "([^"]*)"$`, func(et string) error {
-		if err := flushLogger(tc); err != nil {
+		if err := flushAuditor(tc); err != nil {
 			return err
 		}
 		return assertAllEventsHaveField(tc, "event_type", et)
 	})
 
 	ctx.Step(`^all delivered events should have JSON field "([^"]*)" equal to (\d+)$`, func(field string, expected int) error {
-		if err := flushLogger(tc); err != nil {
+		if err := flushAuditor(tc); err != nil {
 			return err
 		}
 		return assertAllEventsHaveNumericField(tc, field, expected)
@@ -180,21 +180,21 @@ func registerMultiCatContentSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 func registerMultiCatCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the CEF output severity should be (\d+)$`, func(expected int) error {
-		if err := flushLogger(tc); err != nil {
+		if err := flushAuditor(tc); err != nil {
 			return err
 		}
 		return assertMultiCatCEFSeverity(tc, expected)
 	})
 }
 
-// flushLogger closes the logger to flush buffered events. Safe to
+// flushAuditor closes the auditor to flush buffered events. Safe to
 // call multiple times — subsequent calls are no-ops.
-func flushLogger(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		if err := tc.Logger.Close(); err != nil {
-			return fmt.Errorf("close logger: %w", err)
+func flushAuditor(tc *AuditTestContext) error {
+	if tc.Auditor != nil {
+		if err := tc.Auditor.Close(); err != nil {
+			return fmt.Errorf("close auditor: %w", err)
 		}
-		tc.Logger = nil
+		tc.Auditor = nil
 	}
 	return nil
 }

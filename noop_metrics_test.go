@@ -43,15 +43,15 @@ func TestNoOpMetrics_Embedding_OverrideSingleMethod(t *testing.T) {
 	// Verify it satisfies the interface.
 	var _ audit.Metrics = m
 
-	// Use it in a real logger.
+	// Use it in a real auditor.
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 		audit.WithMetrics(m),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// The embedded NoOpMetrics handles all other methods silently.
 	assert.Equal(t, int64(0), m.drops.Load())
@@ -79,10 +79,10 @@ func TestNoOpOutputMetrics_AllMethodsCallable(t *testing.T) {
 
 func TestNoOpMetrics_WithMetrics_Accepted(t *testing.T) {
 	t.Parallel()
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithMetrics(audit.NoOpMetrics{}),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }

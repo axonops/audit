@@ -14,28 +14,28 @@ Feature: Output Isolation
     Given a standard test taxonomy
 
   Scenario: Events delivered to all outputs after close
-    Given a logger with stdout and a recording mock output
+    Given an auditor with stdout and a recording mock output
     When I audit 5 events rapidly
-    And I close the logger
+    And I close the auditor
     Then stdout should have received all 5 events
     And the recording output should have received all 5 events
 
   Scenario: Stdout remains synchronous
-    Given a logger with stdout output only
+    Given an auditor with stdout output only
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then stdout should have received the event before close returned
 
   Scenario: Multiple recording outputs each receive all events
-    Given a logger with two recording mock outputs
+    Given an auditor with two recording mock outputs
     When I audit 5 events rapidly
-    And I close the logger
+    And I close the auditor
     Then both recording outputs should have received all 5 events
 
   @docker @syslog
   Scenario: Unreachable syslog does not block file delivery
-    Given a logger with file and syslog outputs
+    Given an auditor with file and syslog outputs
     When I stop the syslog-ng process
     And I audit 5 uniquely marked events after syslog down
-    And I close the logger
+    And I close the auditor
     Then the file should contain exactly 5 events

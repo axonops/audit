@@ -28,12 +28,12 @@ func registerBuilderSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit via NewEvent "([^"]*)" with fields:$`,
 		func(eventType string, table *godog.Table) error {
 			fields := tableToFields(table)
-			tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 			return nil
 		})
 
 	ctx.Step(`^I audit a nil event$`, func() error {
-		tc.LastErr = tc.Logger.AuditEvent(nil)
+		tc.LastErr = tc.Auditor.AuditEvent(nil)
 		return nil
 	})
 
@@ -60,9 +60,9 @@ func registerBuilderSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func assertStdoutContainsField(tc *AuditTestContext, field, value string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
-		tc.Logger = nil
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
+		tc.Auditor = nil
 	}
 	if tc.StdoutBuf == nil {
 		return fmt.Errorf("no stdout buffer configured")

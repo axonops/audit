@@ -19,11 +19,11 @@ import (
 	"strings"
 )
 
-func (l *Logger) validateFields(eventType string, def *EventDef, fields Fields) error {
+func (a *Auditor) validateFields(eventType string, def *EventDef, fields Fields) error {
 	if err := checkRequiredFields(eventType, def, fields); err != nil {
 		return err
 	}
-	return l.checkUnknownFields(eventType, def, fields)
+	return a.checkUnknownFields(eventType, def, fields)
 }
 
 // checkRequiredFields returns an error listing any missing required fields.
@@ -43,8 +43,8 @@ func checkRequiredFields(eventType string, def *EventDef, fields Fields) error {
 }
 
 // checkUnknownFields validates unknown fields per the validation mode.
-func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fields) error {
-	if l.cfg.ValidationMode == ValidationPermissive {
+func (a *Auditor) checkUnknownFields(eventType string, def *EventDef, fields Fields) error {
+	if a.cfg.ValidationMode == ValidationPermissive {
 		return nil
 	}
 
@@ -61,12 +61,12 @@ func (l *Logger) checkUnknownFields(eventType string, def *EventDef, fields Fiel
 
 	slices.Sort(unknown)
 
-	switch l.cfg.ValidationMode {
+	switch a.cfg.ValidationMode {
 	case ValidationStrict:
 		return newValidationError(ErrUnknownField, "audit: event %q has unknown fields: [%s]",
 			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		l.logger.Warn("audit: event has unknown fields",
+		a.logger.Warn("audit: event has unknown fields",
 			"event_type", eventType,
 			"unknown_fields", unknown)
 	case ValidationPermissive:

@@ -66,7 +66,7 @@ func TestParseTaxonomyYAML_EmptyInput_ReturnsNilAndError(t *testing.T) {
 
 func TestWithTaxonomy_NilPointer_ReturnsError(t *testing.T) {
 	t.Parallel()
-	_, err := audit.NewLogger(
+	_, err := audit.New(
 		audit.WithTaxonomy(nil),
 	)
 	require.Error(t, err)
@@ -95,20 +95,20 @@ events:
 	tax, err := audit.ParseTaxonomyYAML(yaml)
 	require.NoError(t, err)
 
-	// Create logger — should succeed without re-validating.
+	// Create auditor — should succeed without re-validating.
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	// Verify the logger works.
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	// Verify the auditor works.
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome": "success",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 	assert.Equal(t, 1, out.EventCount())
 }
 
@@ -116,7 +116,7 @@ events:
 // Deep copy prevents post-construction mutation (#389 AC-6)
 // ---------------------------------------------------------------------------
 
-func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectLogger(t *testing.T) {
+func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectAuditor(t *testing.T) {
 	t.Parallel()
 
 	tax := &audit.Taxonomy{
@@ -133,30 +133,30 @@ func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectLogger(t *testing.T)
 	}
 
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	// Mutate the original taxonomy AFTER logger creation.
+	// Mutate the original taxonomy AFTER auditor creation.
 	delete(tax.Events, "user_create")
 	tax.Events["hacked_event"] = &audit.EventDef{Required: []string{"x"}}
 
-	// The logger should still accept user_create (uses the deep copy).
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	// The auditor should still accept user_create (uses the deep copy).
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome": "success",
 	}))
-	require.NoError(t, err, "logger should use deep copy, not the mutated original")
+	require.NoError(t, err, "auditor should use deep copy, not the mutated original")
 
-	// The logger should NOT accept hacked_event (not in the copy).
-	err = logger.AuditEvent(audit.NewEvent("hacked_event", audit.Fields{
+	// The auditor should NOT accept hacked_event (not in the copy).
+	err = auditor.AuditEvent(audit.NewEvent("hacked_event", audit.Fields{
 		"x": "y",
 	}))
-	require.Error(t, err, "hacked_event should not be in the logger's taxonomy")
+	require.Error(t, err, "hacked_event should not be in the auditor's taxonomy")
 	assert.Contains(t, err.Error(), "unknown event type")
 
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectLogger(t *testing.T)
 func TestWithTaxonomy_InlineTaxonomy_TakesAddress(t *testing.T) {
 	t.Parallel()
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version: 1,
 			Categories: map[string]*audit.CategoryDef{
@@ -178,5 +178,5 @@ func TestWithTaxonomy_InlineTaxonomy_TakesAddress(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }

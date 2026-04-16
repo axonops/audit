@@ -24,9 +24,9 @@ secrets:
     allow_insecure_http: true    # Dev-only — NEVER in production
     allow_private_ranges: true   # Docker internal network
 
-logger:
+auditor:
   queue_size: ${AUDIT_QUEUE_SIZE:-10000}
-  drain_timeout: "${AUDIT_DRAIN_TIMEOUT:-5s}"
+  shutdown_timeout: "${AUDIT_SHUTDOWN_TIMEOUT:-5s}"
 
 outputs:
   # 1. Developer debugging — all events, full PII, no HMAC.

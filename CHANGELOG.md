@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
-- `NewLogger` signature changed from `NewLogger(Config, ...Option)` to `NewLogger(...Option)` — Config fields expressed as Options (#388)
+- `New` signature changed from `New(Config, ...Option)` to `New(...Option)` — Config fields expressed as Options (#388)
 - `Config.Version` unexported, `Config.Enabled` removed — use `WithDisabled()` (#388)
 - `Fields` changed from type alias to defined type `type Fields map[string]any` with `Has()`, `String()`, `Int()` methods (#388)
 - `EmitEventCategory` renamed to `SuppressEventCategory` (inverted semantics) (#388)
@@ -25,12 +25,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `ErrValidation`, `ErrUnknownEventType`, `ErrMissingRequiredField`, `ErrUnknownField` sentinels with `ValidationError` struct (#400)
-- `outputconfig.NewLogger()` facade for single-call logger creation (#392)
+- `outputconfig.New()` facade for single-call logger creation (#392)
 - `github.com/axonops/audit/outputs` convenience package — single blank import registers all output factories (#393)
 - `Stdout()` convenience constructor, `NewEventKV()` slog-style event creation, `DevTaxonomy()` permissive development taxonomy (#395)
 - `WithSynchronousDelivery()` for inline event processing — no drain goroutine, no Close-before-assert in tests (#403)
-- `WithLogger(*slog.Logger)` for configurable library diagnostics (#397)
-- `LoggerReceiver` interface — sub-module outputs receive the library's diagnostic logger (#397)
+- `WithDiagnosticLogger(*slog.Logger)` for configurable library diagnostics (#397)
+- `DiagnosticLoggerReceiver` interface — sub-module outputs receive the library's diagnostic logger (#397)
 - `RecordedEvent.StringField()`, `IntField()`, `FloatField()` accessors with JSON float64 coercion (#397)
 - `NoOpMetrics` base struct for composable Metrics implementations (#401)
 - `WithFactory` LoadOption for per-call factory overrides (#399)
@@ -110,7 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `emit_event_category` taxonomy config (under `categories:`) controls category emission; defaults to `true` (#227)
 - `PostField` and `AppendPostFields` extensible post-serialisation append mechanism (#227)
 - Reserved field name validation: `timestamp`, `event_type`, `severity`, `event_category` rejected as user-defined fields (#227)
-- `audittest` package: in-memory `Recorder` and `MetricsRecorder`, `NewLogger`, `NewLoggerQuick`, `QuickTaxonomy`, `WithConfig`, `WithValidationMode` for consumer testing (#184)
+- `audittest` package: in-memory `Recorder` and `MetricsRecorder`, `New`, `NewQuick`, `QuickTaxonomy`, `WithConfig`, `WithValidationMode` for consumer testing (#184)
 - `Event` interface, `LabelInfo`, `FieldInfo`, `CategoryInfo` core types (#205)
 - `NewEvent()` for dynamic event construction without code generation (#205)
 - Per-event typed builders with required-field constructors and optional-field setters (#205)

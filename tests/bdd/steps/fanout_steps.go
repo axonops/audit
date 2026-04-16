@@ -87,30 +87,30 @@ func registerFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 }
 
 func registerFanoutGivenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file and webhook outputs$`, func() error {
-		return createFanoutLogger(tc, true, false, true, nil, nil)
+	ctx.Step(`^an auditor with file and webhook outputs$`, func() error {
+		return createFanoutAuditor(tc, true, false, true, nil, nil)
 	})
-	ctx.Step(`^a logger with file and webhook outputs configured for batch size (\d+)$`, func(bs int) error {
-		return createFanoutLogger(tc, true, false, true, nil, &bs)
+	ctx.Step(`^an auditor with file and webhook outputs configured for batch size (\d+)$`, func(bs int) error {
+		return createFanoutAuditor(tc, true, false, true, nil, &bs)
 	})
-	ctx.Step(`^a logger with file and syslog outputs$`, func() error {
-		return createFanoutLogger(tc, true, true, false, nil, nil)
+	ctx.Step(`^an auditor with file and syslog outputs$`, func() error {
+		return createFanoutAuditor(tc, true, true, false, nil, nil)
 	})
-	ctx.Step(`^a logger with file, syslog, and webhook outputs$`, func() error {
-		return createFanoutLogger(tc, true, true, true, nil, nil)
+	ctx.Step(`^an auditor with file, syslog, and webhook outputs$`, func() error {
+		return createFanoutAuditor(tc, true, true, true, nil, nil)
 	})
-	ctx.Step(`^a logger with file output and an error-returning output$`, func() error {
-		return createErrorOutputLogger(tc)
+	ctx.Step(`^an auditor with file output and an error-returning output$`, func() error {
+		return createErrorOutputAuditor(tc)
 	})
-	ctx.Step(`^a logger with file output and a panicking output$`, func() error {
-		return createPanicOutputLogger(tc)
+	ctx.Step(`^an auditor with file output and a panicking output$`, func() error {
+		return createPanicOutputAuditor(tc)
 	})
-	ctx.Step(`^a logger with file output and a panicking formatter on a second output$`, func() error {
-		return createPanicFormatterLogger(tc)
+	ctx.Step(`^an auditor with file output and a panicking formatter on a second output$`, func() error {
+		return createPanicFormatterAuditor(tc)
 	})
-	ctx.Step(`^a logger with file output using JSON and webhook output using CEF$`, func() error {
+	ctx.Step(`^an auditor with file output using JSON and webhook output using CEF$`, func() error {
 		cefFmt := &audit.CEFFormatter{Vendor: "Test", Product: "BDD", Version: "1.0"}
-		return createFanoutLogger(tc, true, false, true, cefFmt, nil)
+		return createFanoutAuditor(tc, true, false, true, cefFmt, nil)
 	})
 }
 
@@ -123,48 +123,48 @@ func registerFanoutGivenRoutingSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		tc.Taxonomy = tax
 		return nil
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook receiving only "([^"]*)"$`, func(cat string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{IncludeCategories: []string{cat}})
+	ctx.Step(`^an auditor with file receiving all events and webhook receiving only "([^"]*)"$`, func(cat string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: []string{cat}})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook including event types "([^"]*)"$`, func(types string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{IncludeEventTypes: strings.Split(types, ",")})
+	ctx.Step(`^an auditor with file receiving all events and webhook including event types "([^"]*)"$`, func(types string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{IncludeEventTypes: strings.Split(types, ",")})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)"$`, func(cat string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat}})
+	ctx.Step(`^an auditor with file receiving all events and webhook excluding categories "([^"]*)"$`, func(cat string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{ExcludeCategories: []string{cat}})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook including categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{IncludeCategories: []string{cat1, cat2}})
+	ctx.Step(`^an auditor with file receiving all events and webhook including categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{IncludeCategories: []string{cat1, cat2}})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook including categories "([^"]*)" and event types "([^"]*)"$`, func(cats, types string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{
+	ctx.Step(`^an auditor with file receiving all events and webhook including categories "([^"]*)" and event types "([^"]*)"$`, func(cats, types string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{
 			IncludeCategories: strings.Split(cats, ","),
 			IncludeEventTypes: strings.Split(types, ","),
 		})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{ExcludeCategories: []string{cat1, cat2}})
+	ctx.Step(`^an auditor with file receiving all events and webhook excluding categories "([^"]*)" and "([^"]*)"$`, func(cat1, cat2 string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{ExcludeCategories: []string{cat1, cat2}})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook excluding categories "([^"]*)" and event types "([^"]*)"$`, func(cat, types string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{
+	ctx.Step(`^an auditor with file receiving all events and webhook excluding categories "([^"]*)" and event types "([^"]*)"$`, func(cat, types string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{
 			ExcludeCategories: []string{cat},
 			ExcludeEventTypes: strings.Split(types, ","),
 		})
 	})
-	ctx.Step(`^a logger with file receiving all events and webhook excluding event types "([^"]*)"$`, func(types string) error {
-		return createRoutedLogger(tc, &audit.EventRoute{ExcludeEventTypes: strings.Split(types, ",")})
+	ctx.Step(`^an auditor with file receiving all events and webhook excluding event types "([^"]*)"$`, func(types string) error {
+		return createRoutedAuditor(tc, &audit.EventRoute{ExcludeEventTypes: strings.Split(types, ",")})
 	})
 }
 
 func registerFanoutGivenRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file and webhook both receiving all events$`, func() error {
-		return createRoutedLogger(tc, nil) // nil route = all events
+	ctx.Step(`^an auditor with file and webhook both receiving all events$`, func() error {
+		return createRoutedAuditor(tc, nil) // nil route = all events
 	})
 	ctx.Step(`^I set the webhook output route to include only "([^"]*)"$`, func(cat string) error {
 		// Webhook output name is "webhook:<host:port>" (from url.Parse).
 		// tc.WebhookURL is "http://localhost:8080", so name is "webhook:localhost:8080".
 		u := strings.TrimPrefix(tc.WebhookURL, "http://")
 		u = strings.TrimPrefix(u, "https://")
-		return tc.Logger.SetOutputRoute(
+		return tc.Auditor.SetOutputRoute(
 			"webhook:"+u,
 			&audit.EventRoute{IncludeCategories: []string{cat}},
 		)
@@ -172,15 +172,15 @@ func registerFanoutGivenRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 }
 
 func registerFanoutGivenSharedFmtSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with two file outputs sharing the same formatter$`, func() error {
-		return createSharedFormatterLogger(tc)
+	ctx.Step(`^an auditor with two file outputs sharing the same formatter$`, func() error {
+		return createSharedFormatterAuditor(tc)
 	})
 	ctx.Step(`^both files should contain identical content$`, func() error {
 		return assertFilesIdentical(tc, "file-a", "file-b")
 	})
 }
 
-func createSharedFormatterLogger(tc *AuditTestContext) error {
+func createSharedFormatterAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -201,19 +201,19 @@ func createSharedFormatterLogger(tc *AuditTestContext) error {
 	}
 	tc.AddCleanup(func() { _ = fB.Close() })
 
-	// Both outputs share the default JSON formatter (nil = logger default).
+	// Both outputs share the default JSON formatter (nil = auditor default).
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fA),
 		audit.WithNamedOutput(fB),
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -234,18 +234,18 @@ func assertFilesIdentical(tc *AuditTestContext, nameA, nameB string) error {
 }
 
 func registerFanoutGivenMultiOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with two file outputs where security goes to file-a and write goes to file-b$`, func() error { return createDualFileRoutedLogger(tc) })
-	ctx.Step(`^a logger with file getting all, syslog getting security, and webhook getting write$`, func() error { return createTripleRoutedLogger(tc) })
+	ctx.Step(`^an auditor with two file outputs where security goes to file-a and write goes to file-b$`, func() error { return createDualFileRoutedAuditor(tc) })
+	ctx.Step(`^an auditor with file getting all, syslog getting security, and webhook getting write$`, func() error { return createTripleRoutedAuditor(tc) })
 	ctx.Step(`^I query the webhook output route$`, func() error { return queryWebhookRoute(tc) })
 	ctx.Step(`^the route should include category "([^"]*)"$`, func(cat string) error { return assertRouteIncludesCategory(tc, cat) })
 	ctx.Step(`^I try to set route for unknown output "([^"]*)"$`, func(name string) error {
-		tc.LastErr = tc.Logger.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: []string{"write"}})
+		tc.LastErr = tc.Auditor.SetOutputRoute(name, &audit.EventRoute{IncludeCategories: []string{"write"}})
 		return nil
 	})
 	ctx.Step(`^I clear the webhook output route$`, func() error {
 		u := strings.TrimPrefix(tc.WebhookURL, "http://")
 		u = strings.TrimPrefix(u, "https://")
-		return tc.Logger.ClearOutputRoute("webhook:" + u)
+		return tc.Auditor.ClearOutputRoute("webhook:" + u)
 	})
 	// Note: "I disable category" step is registered in filter_steps.go
 	ctx.Step(`^file "([^"]*)" should contain "([^"]*)"$`, func(name, text string) error {
@@ -277,22 +277,22 @@ func registerFanoutWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit (?:a|an) "([^"]*)" event in category "[^"]*" with marker "([^"]*)"$`, func(eventType, m string) error {
 		return auditEventWithMarker(tc, eventType, m)
 	})
-	ctx.Step(`^I try to create a logger with two syslog outputs to the same address$`, func() error {
+	ctx.Step(`^I try to create an auditor with two syslog outputs to the same address$`, func() error {
 		return tryDuplicateSyslogAddress(tc)
 	})
-	ctx.Step(`^I try to create a logger with duplicate output names$`, func() error {
+	ctx.Step(`^I try to create an auditor with duplicate output names$`, func() error {
 		return tryDuplicateOutputNames(tc)
 	})
-	ctx.Step(`^I try to create a logger with two file outputs to the same path$`, func() error {
+	ctx.Step(`^I try to create an auditor with two file outputs to the same path$`, func() error {
 		return tryDuplicateFilePath(tc)
 	})
-	ctx.Step(`^I try to create a logger with mixed include and exclude route$`, func() error {
+	ctx.Step(`^I try to create an auditor with mixed include and exclude route$`, func() error {
 		return tryMixedRoute(tc)
 	})
-	ctx.Step(`^I try to create a logger with route referencing unknown category$`, func() error {
+	ctx.Step(`^I try to create an auditor with route referencing unknown category$`, func() error {
 		return tryUnknownCategoryRoute(tc)
 	})
-	ctx.Step(`^I try to create a logger with route referencing unknown event type$`, func() error {
+	ctx.Step(`^I try to create an auditor with route referencing unknown event type$`, func() error {
 		return tryUnknownEventTypeRoute(tc)
 	})
 }
@@ -326,13 +326,13 @@ func registerFanoutThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 // --- Extracted when-step helpers ---
 
 func auditEventWithMarker(tc *AuditTestContext, eventType, m string) error {
-	if tc.Logger == nil {
-		return fmt.Errorf("logger is nil")
+	if tc.Auditor == nil {
+		return fmt.Errorf("auditor is nil")
 	}
 	tc.Markers[m] = m
 	fields := defaultRequiredFields(tc.Taxonomy, eventType)
 	fields["marker"] = m
-	tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+	tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 	return nil
 }
 
@@ -346,7 +346,7 @@ func tryDuplicateOutputNames(tc *AuditTestContext) error {
 		return fmt.Errorf("create file a: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f1.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f1), // same output = duplicate name
 	)
@@ -370,7 +370,7 @@ func tryDuplicateFilePath(tc *AuditTestContext) error {
 		return fmt.Errorf("create file 2: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f2.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(f1, f2),
 	)
@@ -388,7 +388,7 @@ func tryMixedRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
@@ -409,7 +409,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
@@ -422,7 +422,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 func queryWebhookRoute(tc *AuditTestContext) error {
 	u := strings.TrimPrefix(tc.WebhookURL, "http://")
 	u = strings.TrimPrefix(u, "https://")
-	route, err := tc.Logger.OutputRoute("webhook:" + u)
+	route, err := tc.Auditor.OutputRoute("webhook:" + u)
 	if err != nil {
 		return fmt.Errorf("OutputRoute: %w", err)
 	}
@@ -453,7 +453,7 @@ func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
 		return fmt.Errorf("create syslog 2: %w", err)
 	}
 	tc.AddCleanup(func() { _ = s2.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithOutputs(s1, s2),
 	)
@@ -471,7 +471,7 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f.Close() })
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
 			IncludeEventTypes: []string{"nonexistent_event"},
@@ -494,7 +494,7 @@ func assertFileContainsText(tc *AuditTestContext, name, text string) error {
 	return nil
 }
 
-func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook bool, webhookFmt audit.Formatter, batchSize *int) error {
+func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bool, webhookFmt audit.Formatter, batchSize *int) error {
 	var opts []audit.Option
 	opts = append(opts, audit.WithTaxonomy(tc.Taxonomy))
 
@@ -542,13 +542,13 @@ func createFanoutLogger(tc *AuditTestContext, useFile, useSyslog, useWebhook boo
 		opts = append(opts, audit.WithNamedOutput(w, audit.OutputFormatter(webhookFmt)))
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -559,7 +559,7 @@ func (e *errorOutput) Write(_ []byte) error { return fmt.Errorf("intentional wri
 func (e *errorOutput) Close() error         { return nil }
 func (e *errorOutput) Name() string         { return "error-output" }
 
-func createErrorOutputLogger(tc *AuditTestContext) error {
+func createErrorOutputAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -579,12 +579,12 @@ func createErrorOutputLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&errorOutput{}),
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -595,7 +595,7 @@ func (p *panicOutput) Write(_ []byte) error { panic("intentional panic in output
 func (p *panicOutput) Close() error         { return nil }
 func (p *panicOutput) Name() string         { return "panic-output" }
 
-func createPanicOutputLogger(tc *AuditTestContext) error {
+func createPanicOutputAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -615,12 +615,12 @@ func createPanicOutputLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&panicOutput{}),
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -645,7 +645,7 @@ func (d *devNullOutput) Write(_ []byte) error { return nil }
 func (d *devNullOutput) Close() error         { return nil }
 func (d *devNullOutput) Name() string         { return "devnull" }
 
-func createPanicFormatterLogger(tc *AuditTestContext) error {
+func createPanicFormatterAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -665,16 +665,16 @@ func createPanicFormatterLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(&devNullOutput{}, audit.OutputFormatter(&panicFormatter{})), // panicking formatter
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-func createDualFileRoutedLogger(tc *AuditTestContext) error {
+func createDualFileRoutedAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -701,16 +701,16 @@ func createDualFileRoutedLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(writeOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-func createTripleRoutedLogger(tc *AuditTestContext) error {
+func createTripleRoutedAuditor(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -748,16 +748,16 @@ func createTripleRoutedLogger(tc *AuditTestContext) error {
 		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) error {
+func createRoutedAuditor(tc *AuditTestContext, webhookRoute *audit.EventRoute) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -786,12 +786,12 @@ func createRoutedLogger(tc *AuditTestContext, webhookRoute *audit.EventRoute) er
 		audit.WithNamedOutput(w, audit.OutputRoute(webhookRoute)),
 	}
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }

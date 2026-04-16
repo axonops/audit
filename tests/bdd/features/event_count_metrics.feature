@@ -15,42 +15,42 @@ Feature: Event Count Metrics
     And mock metrics are configured
 
   Scenario: RecordSubmitted called for every AuditEvent
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit 10 events rapidly
-    And I close the logger
+    And I close the auditor
     Then RecordSubmitted should have been called 10 times
 
   Scenario: RecordSubmitted called even for filtered events
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     And I disable category "security"
     When I audit event "auth_failure" with required fields
     And I audit event "auth_failure" with required fields
     And I audit event "auth_failure" with required fields
-    And I close the logger
+    And I close the auditor
     Then RecordSubmitted should have been called 3 times
 
   Scenario: RecordSubmitted called for validation errors
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit event "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
-    And I close the logger
+    And I close the auditor
     Then RecordSubmitted should have been called 1 time
 
   Scenario: RecordQueueDepth called from drain loop
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit 200 events rapidly
-    And I close the logger
+    And I close the auditor
     Then RecordQueueDepth should have been called at least 1 time
 
   Scenario: DeliveryReporter output skips core RecordEvent
-    Given a logger with file output and pipeline metrics
+    Given an auditor with file output and pipeline metrics
     When I audit 5 events rapidly
-    And I close the logger
+    And I close the auditor
     Then the pipeline metrics should not have recorded a success event for file output
 
   Scenario: Non-DeliveryReporter output records core RecordEvent
-    Given a logger with stdout output and metrics
+    Given an auditor with stdout output and metrics
     When I audit event "user_create" with required fields
-    And I close the logger
+    And I close the auditor
     Then the metrics should have recorded event "success" for output "stdout"

@@ -116,19 +116,19 @@ func registerLokiReceiverLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 }
 
 func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with loki output to the local receiver with max retries (\d+)$`, func(retries int) error {
+	ctx.Step(`^an auditor with loki output to the local receiver with max retries (\d+)$`, func(retries int) error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			MaxRetries: retries,
 			BatchSize:  1,
 			Compress:   true,
 		})
 	})
 
-	ctx.Step(`^a logger with loki output to the local Loki receiver with metrics and max retries (\d+)$`, func(retries int) error {
+	ctx.Step(`^an auditor with loki output to the local Loki receiver with metrics and max retries (\d+)$`, func(retries int) error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
@@ -156,17 +156,17 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(out),
 		}
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
+		tc.Auditor = auditor
 		tc.LokiOutputName = out.Name()
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with loki output to unreachable server with metrics$`, func() error {
+	ctx.Step(`^an auditor with loki output to unreachable server with metrics$`, func() error {
 		cfg := &loki.Config{
 			URL:                "http://127.0.0.1:19999/loki/api/v1/push", // nothing listening
 			AllowInsecureHTTP:  true,
@@ -175,12 +175,12 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 			MaxRetries:         1,
 			Compress:           true,
 		}
-		return createLokiLoggerFromConfig(tc, cfg)
+		return createLokiAuditorFromConfig(tc, cfg)
 	})
 }
 
 func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with loki output to the local Loki receiver without AllowPrivateRanges$`, func() error {
+	ctx.Step(`^an auditor with loki output to the local Loki receiver without AllowPrivateRanges$`, func() error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
@@ -196,37 +196,37 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 			BufferSize:         100,
 			Compress:           true,
 		}
-		return createLokiLoggerFromConfig(tc, cfg)
+		return createLokiAuditorFromConfig(tc, cfg)
 	})
 
-	ctx.Step(`^a logger with loki output to the local Loki receiver with AllowPrivateRanges$`, func() error {
+	ctx.Step(`^an auditor with loki output to the local Loki receiver with AllowPrivateRanges$`, func() error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize: 1,
 			Compress:  true,
 		})
 	})
 
-	ctx.Step(`^a logger with loki output to the local Loki receiver with metrics$`, func() error {
+	ctx.Step(`^an auditor with loki output to the local Loki receiver with metrics$`, func() error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize: 1,
 			Compress:  true,
 		})
 	})
 
-	ctx.Step(`^a logger with loki output to the redirecting Loki receiver with metrics$`, func() error {
+	ctx.Step(`^an auditor with loki output to the redirecting Loki receiver with metrics$`, func() error {
 		r, ok := tc.LocalReceiver.(*localLokiReceiver)
 		if !ok || r == nil {
 			return fmt.Errorf("no local Loki receiver configured")
 		}
-		return createLokiLoggerWithReceiver(tc, r, &loki.Config{
+		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize:  1,
 			MaxRetries: 1,
 			Compress:   true,
@@ -366,16 +366,16 @@ func assertZeroDrops(tc *AuditTestContext) error {
 	return nil
 }
 
-// createLokiLoggerWithReceiver creates a Loki output pointing at the local receiver.
-func createLokiLoggerWithReceiver(tc *AuditTestContext, r *localLokiReceiver, cfg *loki.Config) error {
+// createLokiAuditorWithReceiver creates a Loki output pointing at the local receiver.
+func createLokiAuditorWithReceiver(tc *AuditTestContext, r *localLokiReceiver, cfg *loki.Config) error {
 	cfg.URL = r.server.URL + "/loki/api/v1/push"
 	cfg.AllowInsecureHTTP = true
 	cfg.AllowPrivateRanges = true
-	return createLokiLoggerFromConfig(tc, cfg)
+	return createLokiAuditorFromConfig(tc, cfg)
 }
 
-// createLokiLoggerFromConfig creates a Loki output from the exact config.
-func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
+// createLokiAuditorFromConfig creates a Loki output from the exact config.
+func createLokiAuditorFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 	if cfg.FlushInterval == 0 {
 		cfg.FlushInterval = 200 * time.Millisecond
 	}
@@ -397,16 +397,16 @@ func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 		out.SetOutputMetrics(tc.LokiMetrics)
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }

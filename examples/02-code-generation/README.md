@@ -185,7 +185,7 @@ func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
 ```
 
 Each builder implements the `audit.Event` interface (`EventType()`,
-`Fields()`), so it passes directly to `logger.AuditEvent()`.
+`Fields()`), so it passes directly to `auditor.AuditEvent()`.
 
 Now a typo like `NewUserCrateEvent` fails the build instead of silently
 passing as a runtime validation error. The metadata vars reference
@@ -238,7 +238,7 @@ result, err := outputconfig.Load(ctx, outputsYAML, &tax, nil)
 Or use the facade — one call instead of three steps:
 
 ```go
-logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
 ```
 
 ### Two Files, Two Purposes
@@ -261,18 +261,18 @@ type. Required fields are constructor parameters (compile-time
 enforcement); optional fields use chainable setters:
 
 ```go
-if err := logger.AuditEvent(NewUserCreateEvent("alice", "success").
+if err := auditor.AuditEvent(NewUserCreateEvent("alice", "success").
     SetTargetID("user-42")); err != nil {
     log.Printf("audit error: %v", err)
 }
 
-if err := logger.AuditEvent(NewAuthFailureEvent("unknown", "failure").
+if err := auditor.AuditEvent(NewAuthFailureEvent("unknown", "failure").
     SetReason("invalid credentials").
     SetSourceIP("192.168.1.100")); err != nil {
     log.Printf("audit error: %v", err)
 }
 
-if err := logger.AuditEvent(NewUserReadEvent("success").
+if err := auditor.AuditEvent(NewUserReadEvent("success").
     SetActorID("bob")); err != nil {
     log.Printf("audit error: %v", err)
 }
@@ -281,7 +281,7 @@ if err := logger.AuditEvent(NewUserReadEvent("success").
 Compare with the raw-string approach from the basic example:
 
 ```go
-logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
     "outcome":  "success",
     "actor_id": "alice",
 }))
@@ -305,7 +305,7 @@ go generate .
 ## Expected Output
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
 --- Using typed event builders ---
 INFO audit: shutdown started
 {"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}

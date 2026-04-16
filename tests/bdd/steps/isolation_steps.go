@@ -58,14 +58,14 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		recOut1, recOut2 *recordingMockOutput
 	)
 
-	ctx.Step(`^a logger with stdout and a recording mock output$`, func() error {
+	ctx.Step(`^an auditor with stdout and a recording mock output$`, func() error {
 		stdoutBuf = &bytes.Buffer{}
 		stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: stdoutBuf})
 		if err != nil {
 			return fmt.Errorf("create stdout: %w", err)
 		}
 		recOut1 = &recordingMockOutput{name: "recording-1"}
-		tc.Logger, err = audit.NewLogger(
+		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(stdout, recOut1),
 			audit.WithQueueSize(1000),
@@ -73,13 +73,13 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		return err //nolint:wrapcheck // BDD step
 	})
 
-	ctx.Step(`^a logger with stdout output only$`, func() error {
+	ctx.Step(`^an auditor with stdout output only$`, func() error {
 		stdoutBuf = &bytes.Buffer{}
 		stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: stdoutBuf})
 		if err != nil {
 			return fmt.Errorf("create stdout: %w", err)
 		}
-		tc.Logger, err = audit.NewLogger(
+		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(stdout),
 			audit.WithQueueSize(1000),
@@ -87,11 +87,11 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		return err //nolint:wrapcheck // BDD step
 	})
 
-	ctx.Step(`^a logger with two recording mock outputs$`, func() error {
+	ctx.Step(`^an auditor with two recording mock outputs$`, func() error {
 		recOut1 = &recordingMockOutput{name: "recording-1"}
 		recOut2 = &recordingMockOutput{name: "recording-2"}
 		var err error
-		tc.Logger, err = audit.NewLogger(
+		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(recOut1, recOut2),
 			audit.WithQueueSize(1000),

@@ -34,7 +34,7 @@ type Output interface {
 
 	// Close flushes any buffered data and releases resources. The
 	// library guarantees Write will not be called after Close. Close
-	// is called exactly once by [Logger.Close].
+	// is called exactly once by [Auditor.Close].
 	Close() error
 
 	// Name returns a human-readable identifier for the output,
@@ -64,7 +64,7 @@ type DestinationKeyer interface {
 // DeliveryReporter is an optional interface that [Output] implementations
 // may satisfy to indicate they handle their own delivery metrics
 // reporting. When satisfied and [DeliveryReporter.ReportsDelivery]
-// returns true, the core logger skips its default per-event
+// returns true, the core auditor skips its default per-event
 // [Metrics.RecordEvent] calls for that output — the output is
 // responsible for calling them after actual delivery.
 type DeliveryReporter interface {
@@ -110,7 +110,7 @@ type MetadataWriter interface {
 }
 
 // FrameworkFieldReceiver is an optional interface that [Output]
-// implementations may satisfy to receive logger-wide framework fields
+// implementations may satisfy to receive auditor-wide framework fields
 // (app_name, host, timezone, pid) at construction time. The library
 // calls SetFrameworkFields once after all options are applied and
 // before the first Write or WriteWithMetadata call.
@@ -123,12 +123,12 @@ type FrameworkFieldReceiver interface {
 	SetFrameworkFields(appName, host, timezone string, pid int)
 }
 
-// LoggerReceiver is an optional interface that [Output] implementations
+// DiagnosticLoggerReceiver is an optional interface that [Output] implementations
 // may satisfy to receive the library's [log/slog.Logger] for diagnostic
-// output. The library calls SetLogger once after all options are applied.
+// output. The library calls SetDiagnosticLogger once after all options are applied.
 // Outputs that do not implement it use the package-level [slog.Default].
-type LoggerReceiver interface {
-	SetLogger(l *slog.Logger)
+type DiagnosticLoggerReceiver interface {
+	SetDiagnosticLogger(l *slog.Logger)
 }
 
 // OutputMetricsReceiver is an optional interface that [Output]
@@ -137,7 +137,7 @@ type LoggerReceiver interface {
 // first Write call. Outputs that do not implement it operate without
 // per-output metrics.
 //
-// This is the output-side analogue of [LoggerReceiver] and
+// This is the output-side analogue of [DiagnosticLoggerReceiver] and
 // [FrameworkFieldReceiver]. The [OutputMetrics] value is created by
 // the [OutputMetricsFactory] registered via
 // outputconfig.WithOutputMetrics.

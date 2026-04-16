@@ -10,8 +10,8 @@ an in-memory test logger that captures events and metrics for assertion.
 
 ## What You'll Learn
 
-- Using `audittest.NewLogger` for full integration tests
-- Using `audittest.NewLoggerQuick` for smoke tests with a permissive taxonomy
+- Using `audittest.New` for full integration tests
+- Using `audittest.NewQuick` for smoke tests with a permissive taxonomy
 - Asserting on captured events and metrics
 - Table-driven tests with `Reset()`
 - Testing validation error paths
@@ -58,13 +58,13 @@ taxonomy.
 
 ```go
 func TestCreateUser(t *testing.T) {
-    logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+    logger, events, metrics := audittest.New(t, taxonomyYAML)
 
     svc := NewUserService(logger)
     err := svc.CreateUser("alice", "alice@example.com")
     require.NoError(t, err)
 
-    logger.Close() // drain async buffer
+    auditor.Close() // drain async buffer
 
     require.Equal(t, 1, events.Count())
     evt := events.Events()[0]
@@ -81,17 +81,17 @@ about field validation:
 
 ```go
 func TestAuditHappens(t *testing.T) {
-    logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
+    logger, events, _ := audittest.NewQuick(t, "user_create")
 
     svc := NewUserService(logger)
     _ = svc.CreateUser("alice", "alice@example.com")
 
-    logger.Close()
+    auditor.Close()
     assert.Equal(t, 1, events.Count())
 }
 ```
 
-`NewLoggerQuick` creates a permissive logger — any fields accepted,
+`NewQuick` creates a permissive logger — any fields accepted,
 no required field enforcement.
 
 ### Pattern 3: Metrics Assertions
@@ -101,17 +101,17 @@ buffer drops, delivery counts:
 
 ```go
 func TestValidationError(t *testing.T) {
-    logger, _, metrics := audittest.NewLogger(t, taxonomyYAML)
+    logger, _, metrics := audittest.New(t, taxonomyYAML)
 
     // Emit event missing required field "actor_id"
-    err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+    err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
         "outcome": "success",
         // actor_id missing — validation error
     }))
     require.Error(t, err)
     assert.Contains(t, err.Error(), "missing required")
 
-    logger.Close()
+    auditor.Close()
     assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }
 ```
@@ -119,8 +119,8 @@ func TestValidationError(t *testing.T) {
 ### Close Before Assert
 
 The audit logger delivers events asynchronously. Call
-`logger.Close()` before making assertions to drain the buffer.
-`NewLogger` registers `t.Cleanup(logger.Close)` as a safety net
+`auditor.Close()` before making assertions to drain the buffer.
+`New` registers `t.Cleanup(auditor.Close)` as a safety net
 against goroutine leaks, but your assertions need the explicit
 Close to see events.
 
@@ -139,7 +139,7 @@ for _, tc := range tests {
 }
 ```
 
-When sharing a logger across sub-tests without calling Close(), use
+When sharing an auditor across sub-tests without calling Close(), use
 `require.Eventually` to wait for the async drain.
 
 ### RecordedEvent API
@@ -160,15 +160,15 @@ Each captured event provides structured access:
 ### Dependency Injection
 
 The key to testable audit logging is dependency injection. Your
-service takes `*audit.Logger` as a parameter — in production you
+service takes `*audit.Auditor` as a parameter — in production you
 pass a real logger, in tests you pass the audittest logger:
 
 ```go
 type UserService struct {
-    logger *audit.Logger
+    logger *audit.Auditor
 }
 
-func NewUserService(logger *audit.Logger) *UserService {
+func NewUserService(logger *audit.Auditor) *UserService {
     return &UserService{logger: logger}
 }
 ```

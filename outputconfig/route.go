@@ -64,7 +64,7 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 
 func buildOutputFormatter(name string, raw any) (audit.Formatter, error) {
 	if raw == nil {
-		return nil, nil //nolint:nilnil // nil = use logger default
+		return nil, nil //nolint:nilnil // nil = use auditor default
 	}
 	f, err := buildFormatter(raw)
 	if err != nil {

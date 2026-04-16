@@ -24,16 +24,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewLogger_ValidTaxonomy(t *testing.T) {
-	logger, err := audit.NewLogger(
+func TestNew_ValidTaxonomy(t *testing.T) {
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
-	require.NoError(t, logger.Close())
+	require.NotNil(t, auditor)
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_TaxonomyValidation(t *testing.T) {
+func TestNew_TaxonomyValidation(t *testing.T) {
 	tests := []struct { //nolint:govet // fieldalignment: test struct readability
 		name      string
 		wantError string
@@ -72,7 +72,7 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := audit.NewLogger(
+			_, err := audit.New(
 				audit.WithTaxonomy(tt.taxonomy),
 			)
 			require.Error(t, err)
@@ -82,14 +82,14 @@ func TestNewLogger_TaxonomyValidation(t *testing.T) {
 	}
 }
 
-func TestNewLogger_TaxonomyRequired(t *testing.T) {
-	_, err := audit.NewLogger()
+func TestNew_TaxonomyRequired(t *testing.T) {
+	_, err := audit.New()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy is required")
 }
 
-func TestNewLogger_TaxonomyValidation_SentinelError(t *testing.T) {
-	_, err := audit.NewLogger(
+func TestNew_TaxonomyValidation_SentinelError(t *testing.T) {
+	_, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{Version: 0}),
 	)
 	require.Error(t, err)
@@ -336,8 +336,8 @@ func TestMigrateTaxonomy(t *testing.T) {
 	})
 }
 
-func TestNewLogger_TaxonomyVersionNegative(t *testing.T) {
-	_, err := audit.NewLogger(
+func TestNew_TaxonomyVersionNegative(t *testing.T) {
+	_, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{
 			Version:    -1,
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},

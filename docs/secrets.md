@@ -570,13 +570,13 @@ result, err := outputconfig.Load(ctx, yamlData, taxonomy,
 
 Secrets are resolved once, at `outputconfig.Load` time. The resolved
 plaintext values are embedded in the constructed outputs for the
-lifetime of the `Logger`.
+lifetime of the `Auditor`.
 
 To rotate a secret (e.g. an HMAC salt or webhook bearer token):
 
 1. Update the secret in OpenBao/Vault.
 2. Restart the application process (or the component that creates the
-   `Logger`).
+   `Auditor`).
 
 There is no built-in hot-reload mechanism. A reload pattern for
 long-running services:
@@ -592,8 +592,8 @@ import (
 	"github.com/axonops/audit/secrets/openbao"
 )
 
-// reload rebuilds the logger with fresh secrets.
-func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy) (*audit.Logger, error) {
+// reload rebuilds the auditor with fresh secrets.
+func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy) (*audit.Auditor, error) {
 	provider, err := openbao.New(&openbao.Config{
 		Address: os.Getenv("BAO_ADDR"),
 		Token:   os.Getenv("BAO_TOKEN"),
@@ -612,7 +612,7 @@ func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy) (*au
 
 	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
 	opts = append(opts, result.Options...)
-	return audit.NewLogger(opts...)
+	return audit.New(opts...)
 }
 ```
 

@@ -44,11 +44,11 @@ func registerFormatterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 }
 
 func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using JSON formatter$`, func() error {
-		return createFileLogger(tc, file.Config{})
+	ctx.Step(`^an auditor with file output using JSON formatter$`, func() error {
+		return createFileAuditor(tc, file.Config{})
 	})
 
-	ctx.Step(`^a logger with file output using JSON formatter with unix millis timestamps$`, func() error {
+	ctx.Step(`^an auditor with file output using JSON formatter with unix millis timestamps$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -68,26 +68,26 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			audit.WithOutputs(fileOut),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with file output using JSON formatter and OmitEmpty (true|false)$`, func(val string) error {
+	ctx.Step(`^an auditor with file output using JSON formatter and OmitEmpty (true|false)$`, func(val string) error {
 		if val == "true" {
 			tc.Options = append(tc.Options, audit.WithOmitEmpty())
 		}
-		return createFileLogger(tc, file.Config{})
+		return createFileAuditor(tc, file.Config{})
 	})
 
 }
 
 func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using CEF formatter with vendor "([^"]*)" product "([^"]*)" version "([^"]*)"$`, func(vendor, product, version string) error {
+	ctx.Step(`^an auditor with file output using CEF formatter with vendor "([^"]*)" product "([^"]*)" version "([^"]*)"$`, func(vendor, product, version string) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -113,19 +113,19 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
 }
 
 func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with two file outputs using JSON and CEF formatters$`, func() error {
+	ctx.Step(`^an auditor with two file outputs using JSON and CEF formatters$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -155,18 +155,18 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithNamedOutput(cefOut, audit.OutputFormatter(cefFmt)), // CEF
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using CEF formatter with custom severity function$`, func() error {
+	ctx.Step(`^an auditor with file output using CEF formatter with custom severity function$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -195,18 +195,18 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using CEF formatter with invalid field mapping$`, func() error {
+	ctx.Step(`^an auditor with file output using CEF formatter with invalid field mapping$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -232,18 +232,18 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using CEF formatter with severity below (\d+)$`, func(_ int) error {
+	ctx.Step(`^an auditor with file output using CEF formatter with severity below (\d+)$`, func(_ int) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -267,18 +267,18 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output using CEF formatter with severity above (\d+)$`, func(above int) error {
+	ctx.Step(`^an auditor with file output using CEF formatter with severity above (\d+)$`, func(above int) error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -306,12 +306,12 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			audit.WithNamedOutput(fileOut, audit.OutputFormatter(cefFmt)),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
@@ -320,63 +320,63 @@ func registerFormatterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^I audit event "([^"]*)" with a duration field$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["duration_ms"] = 150 * time.Millisecond
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a tab character$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\ttab\tafter"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a (\d+)-character field value$`, func(eventType string, length int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = strings.Repeat("a", length)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing control characters$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\x01\x02\x03after"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing invalid UTF-8$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "bad\xfe\xffbyte"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing null bytes$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\x00after"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2028$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\u2028after"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing U\+2029$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\u2029after"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with a field containing a newline$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = "before\n{\"injected\":true}"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 }
@@ -654,9 +654,9 @@ func readFirstLine(tc *AuditTestContext, name string) (string, error) {
 
 // readRawFile reads the raw content of a named file output.
 func readRawFile(tc *AuditTestContext, name string) (string, error) {
-	// Close logger to flush pending events.
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	// Close auditor to flush pending events.
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 
 	path, ok := tc.FilePaths[name]

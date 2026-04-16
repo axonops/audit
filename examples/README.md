@@ -9,10 +9,10 @@ Each example introduces one new concept and builds on the previous.
 
 | # | Example | What it teaches |
 |---|---------|-----------------|
-| 1 | [basic](01-basic/) | Taxonomy, Logger, AuditEvent(), Fields, validation — programmatic setup |
+| 1 | [basic](01-basic/) | Taxonomy, Auditor, AuditEvent(), Fields, validation — programmatic setup |
 | 2 | [code-generation](02-code-generation/) | YAML taxonomy, audit-gen, typed builders, go:embed, outputconfig.Load |
 | 3 | [file-output](03-file-output/) | File output with rotation and permissions in YAML |
-| 4 | [testing](04-testing/) | Testing audit events with audittest.NewLogger |
+| 4 | [testing](04-testing/) | Testing audit events with audittest.New |
 | 5 | [formatters](05-formatters/) | JSON vs CEF with category severity levels |
 | 6 | [middleware](06-middleware/) | Automatic HTTP audit logging with Hints |
 | 7 | [syslog-output](07-syslog-output/) | Syslog output with RFC 5424, TCP/UDP/TLS, facility values |

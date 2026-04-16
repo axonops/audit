@@ -15,12 +15,12 @@ All audit errors are sentinel values. Use `errors.Is` to check
 for specific error types — never compare error strings:
 
 ```go
-err := logger.AuditEvent(event)
+err := auditor.AuditEvent(event)
 if errors.Is(err, audit.ErrQueueFull) {
     // handle buffer full
 }
 if errors.Is(err, audit.ErrClosed) {
-    // logger was already closed
+    // auditor was already closed
 }
 ```
 
@@ -43,20 +43,20 @@ audit: queue full
 | **When** | `AuditEvent()` is called but the async buffer channel is at capacity |
 | **Meaning** | The event was **dropped** — it will not be delivered to any output |
 | **Transient?** | Yes — resolves when the drain goroutine catches up |
-| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the queue is full and retrying worsens the backlog. If this happens frequently, increase `Config.QueueSize` (or `logger.queue_size` in YAML) or investigate slow outputs. See [Two-Level Buffering](async-delivery.md#two-level-buffering) for the pipeline architecture. |
+| **What to do** | Log a warning, increment a metric (`RecordBufferDrop` fires automatically). Do NOT retry immediately — the queue is full and retrying worsens the backlog. If this happens frequently, increase `Config.QueueSize` (or `auditor.queue_size` in YAML) or investigate slow outputs. See [Two-Level Buffering](async-delivery.md#two-level-buffering) for the pipeline architecture. |
 
 ### `ErrClosed`
 
 ```
-audit: logger is closed
+audit: auditor is closed
 ```
 
 | | |
 |---|---|
-| **When** | `AuditEvent()` is called after `Logger.Close()` has been called |
-| **Meaning** | The logger has been shut down — no more events can be emitted |
-| **Transient?** | No — permanent. The logger cannot be reopened. |
-| **What to do** | This usually means your shutdown ordering is wrong. Make sure you stop generating events (e.g., stop the HTTP server) before calling `logger.Close()`. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
+| **When** | `AuditEvent()` is called after `Auditor.Close()` has been called |
+| **Meaning** | The auditor has been shut down — no more events can be emitted |
+| **Transient?** | No — permanent. The auditor cannot be reopened. |
+| **What to do** | This usually means your shutdown ordering is wrong. Make sure you stop generating events (e.g., stop the HTTP server) before calling `auditor.Close()`. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
 
 ### `ErrDuplicateDestination`
 
@@ -66,8 +66,8 @@ audit: duplicate destination
 
 | | |
 |---|---|
-| **When** | `NewLogger()` is called with two outputs that write to the same destination (e.g., two file outputs with the same path, two syslog outputs with the same address) |
-| **Meaning** | Logger creation failed — duplicate outputs would cause data corruption or interleaved writes |
+| **When** | `New()` is called with two outputs that write to the same destination (e.g., two file outputs with the same path, two syslog outputs with the same address) |
+| **Meaning** | Auditor creation failed — duplicate outputs would cause data corruption or interleaved writes |
 | **Transient?** | No — permanent configuration error |
 | **What to do** | Check your output configuration for duplicate paths, addresses, or URLs. Each output must write to a unique destination. |
 
@@ -83,10 +83,10 @@ audit: config validation failed
 
 | | |
 |---|---|
-| **When** | `NewLogger()` is called with an invalid `Config` struct |
-| **Meaning** | Logger creation failed — one or more config values are out of range |
+| **When** | `New()` is called with an invalid `Config` struct |
+| **Meaning** | Auditor creation failed — one or more config values are out of range |
 | **Transient?** | No — permanent configuration error |
-| **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `DrainTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
+| **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `ShutdownTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
 
 ### `ErrOutputConfigInvalid`
 
@@ -148,7 +148,7 @@ receives invalid HMAC parameters.
 | `hmac salt must be at least` | Salt is shorter than `audit.MinSaltLength` (currently 16) bytes |
 | `unknown hmac algorithm` | Algorithm is not in `audit.SupportedHMACAlgorithms()` (currently: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512) |
 
-All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconfig.Load()`, and `NewLogger`) wrap `audit.ErrConfigInvalid`. Use `errors.Is(err, audit.ErrConfigInvalid)` to detect them programmatically. Errors returned by `ComputeHMAC` and `VerifyHMAC` do not wrap this sentinel and must be handled separately.
+All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconfig.Load()`, and `New`) wrap `audit.ErrConfigInvalid`. Use `errors.Is(err, audit.ErrConfigInvalid)` to detect them programmatically. Errors returned by `ComputeHMAC` and `VerifyHMAC` do not wrap this sentinel and must be handled separately.
 
 ---
 
@@ -340,7 +340,7 @@ audit: event type not found
 
 | | |
 |---|---|
-| **When** | `Logger.Handle()` or `Logger.MustHandle()` is called with an event type name not registered in the taxonomy |
+| **When** | `Auditor.Handle()` or `Auditor.MustHandle()` is called with an event type name not registered in the taxonomy |
 | **Meaning** | The event type string does not match any event defined in the taxonomy |
 | **Transient?** | No — permanent. The event type must exist in the taxonomy. |
 | **What to do** | Check for typos in the event type name. Use generated constants (`EventUserCreate`) instead of string literals to catch this at compile time. If using `MustHandle()`, note that it **panics** instead of returning an error — use `Handle()` if you want to handle the error gracefully. |

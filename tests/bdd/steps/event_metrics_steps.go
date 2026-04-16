@@ -37,7 +37,7 @@ func registerEventMetricsSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 }
 
 func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit // BDD step registration
-	ctx.Step(`^a logger with file output and pipeline metrics$`, func() error {
+	ctx.Step(`^an auditor with file output and pipeline metrics$`, func() error {
 		dir, err := tc.EnsureFileDir()
 		if err != nil {
 			return err
@@ -57,12 +57,12 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 			audit.WithNamedOutput(fileOut),
 		}
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
@@ -88,23 +88,23 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		return nil
 	})
 
-	ctx.Step(`^a logger with that file output and queue_size (\d+)$`, func(queueSize int) error {
+	ctx.Step(`^an auditor with that file output and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithQueueSize(queueSize),
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with that file output and pipeline metrics and queue_size (\d+)$`, func(queueSize int) error {
+	ctx.Step(`^an auditor with that file output and pipeline metrics and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
@@ -112,16 +112,16 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
-	ctx.Step(`^a logger with that file output and a stdout output$`, func() error {
+	ctx.Step(`^an auditor with that file output and a stdout output$`, func() error {
 		stdoutBuf := &bytes.Buffer{}
 		tc.StdoutBuf = stdoutBuf
 
@@ -136,20 +136,20 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }
 
 func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,gocyclo,cyclop // BDD step registration
 	ctx.Step(`^RecordSubmitted should have been called (\d+) times?$`, func(n int) error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		got := tc.MockMetrics.SubmittedCount()
 		if got != n {
@@ -159,8 +159,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^RecordQueueDepth should have been called at least (\d+) times?$`, func(n int) error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		got := tc.MockMetrics.QueueDepthCallCount()
 		if got < n {
@@ -170,8 +170,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^the pipeline metrics should not have recorded a success event for file output$`, func() error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		if tc.MockMetrics.HasSuccessEventFor("file:") {
 			return fmt.Errorf("expected no core success metrics for file, but found success events")
@@ -180,8 +180,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^the output metrics should have recorded at least (\d+) drops?$`, func(n int) error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		if tc.OutputMetricsMock == nil {
 			return fmt.Errorf("no output metrics configured")
@@ -193,8 +193,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^the pipeline metrics should not have recorded an output error for file$`, func() error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		if tc.MockMetrics.HasOutputErrorFor("file:") {
 			return fmt.Errorf("expected no output errors for file, but found output errors")
@@ -268,19 +268,19 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		return nil
 	})
 
-	ctx.Step(`^a logger with those outputs and queue_size (\d+)$`, func(queueSize int) error {
+	ctx.Step(`^an auditor with those outputs and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithQueueSize(queueSize),
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 }

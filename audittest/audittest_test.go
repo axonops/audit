@@ -53,72 +53,72 @@ events:
 
 func TestNewLogger(t *testing.T) {
 	t.Parallel()
-	logger, events, metrics := audittest.NewLogger(t, testTaxonomyYAML)
+	auditor, events, metrics := audittest.New(t, testTaxonomyYAML)
 
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	require.Equal(t, 1, events.Count())
 	assert.Equal(t, "user_create", events.Events()[0].EventType)
 	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 }
 
-func TestNewLoggerQuick(t *testing.T) {
+func TestNewQuick(t *testing.T) {
 	t.Parallel()
-	logger, events, _ := audittest.NewLoggerQuick(t, "user_create", "user_delete")
+	auditor, events, _ := audittest.NewQuick(t, "user_create", "user_delete")
 
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":   "success",
 		"any_field": "any_value",
 		"extra":     42,
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	require.Equal(t, 1, events.Count())
 	assert.Equal(t, "user_create", events.Events()[0].EventType)
 }
 
-func TestNewLogger_ValidationError(t *testing.T) {
+func TestNew_ValidationError(t *testing.T) {
 	t.Parallel()
-	logger, events, metrics := audittest.NewLogger(t, testTaxonomyYAML)
+	auditor, events, metrics := audittest.New(t, testTaxonomyYAML)
 
 	// Missing required field "actor_id".
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome": "success",
 	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required")
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	assert.Equal(t, 0, events.Count())
 	assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }
 
-func TestNewLogger_WithDisabled(t *testing.T) {
+func TestNew_WithDisabled(t *testing.T) {
 	t.Parallel()
-	logger, events, _ := audittest.NewLogger(t, testTaxonomyYAML,
+	auditor, events, _ := audittest.New(t, testTaxonomyYAML,
 		audittest.WithDisabled(),
 	)
 
-	// Disabled logger accepts events without error but does not deliver.
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	// Disabled auditor accepts events without error but does not deliver.
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	assert.Equal(t, 0, events.Count())
 }
 
-func TestNewLogger_TableDriven_WithReset(t *testing.T) {
-	// Not parallel — subtests share a logger and use Reset.
-	logger, events, _ := audittest.NewLogger(t, testTaxonomyYAML)
+func TestNew_TableDriven_WithReset(t *testing.T) {
+	// Not parallel — subtests share an auditor and use Reset.
+	auditor, events, _ := audittest.New(t, testTaxonomyYAML)
 
 	tests := []struct {
 		fields    audit.Fields
@@ -131,9 +131,9 @@ func TestNewLogger_TableDriven_WithReset(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			events.Reset()
-			err := logger.AuditEvent(audit.NewEvent(tc.eventType, tc.fields))
+			err := auditor.AuditEvent(audit.NewEvent(tc.eventType, tc.fields))
 			require.NoError(t, err)
-			// Wait for drain to process — logger stays open across sub-tests.
+			// Wait for drain to process — auditor stays open across sub-tests.
 			require.Eventually(t, func() bool { return events.Count() == 1 }, 2*time.Second, 10*time.Millisecond)
 			assert.Equal(t, tc.eventType, events.Events()[0].EventType)
 		})

@@ -90,6 +90,7 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -123,6 +124,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
+		tc.AddCleanup(func() { _ = w.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -228,6 +230,7 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
+		tc.AddCleanup(func() { _ = whOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),

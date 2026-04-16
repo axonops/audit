@@ -2416,9 +2416,9 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 	om := &mockOutputMetrics{}
 	out.SetOutputMetrics(om)
 
-	// SimulatePanicOnNextWrite sets writer to nil, triggering
+	// SimulateWriteFailure sets writer to nil, triggering
 	// handleWriteFailure which calls RecordRetry during reconnection.
-	out.SimulatePanicOnNextWrite()
+	out.SimulateWriteFailure()
 
 	assert.Positive(t, om.retries.Load(),
 		"RecordRetry must be called during reconnection attempt")

@@ -217,6 +217,7 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
@@ -224,6 +225,7 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = lokiOut.Close() })
 	tc.LokiOutputName = lokiOut.Name()
 
 	opts := []audit.Option{
@@ -245,8 +247,6 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 
 	logger, err := audit.NewLogger(opts...)
 	if err != nil {
-		_ = fileOut.Close()
-		_ = lokiOut.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
@@ -270,6 +270,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
@@ -277,6 +278,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = lokiOut.Close() })
 	tc.LokiOutputName = lokiOut.Name()
 
 	logger, err := audit.NewLogger(
@@ -287,8 +289,6 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		audit.WithNamedOutput(lokiOut, audit.OutputExcludeLabels(excludeLabel)), // strip PII
 	)
 	if err != nil {
-		_ = fileOut.Close()
-		_ = lokiOut.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
@@ -312,6 +312,7 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = fileOut.Close() })
 
 	// Unreachable Loki — connect to a port nothing is listening on.
 	lokiCfg := &loki.Config{
@@ -330,6 +331,7 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = lokiOut.Close() })
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -339,8 +341,6 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 		audit.WithNamedOutput(lokiOut),
 	)
 	if err != nil {
-		_ = fileOut.Close()
-		_ = lokiOut.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger

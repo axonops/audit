@@ -327,6 +327,7 @@ func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	// Inject per-output metrics via OutputMetricsReceiver if configured.
 	if tc.LokiMetrics != nil {
@@ -340,7 +341,6 @@ func createLokiLoggerFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 		audit.WithOutputs(out),
 	)
 	if err != nil {
-		_ = out.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger

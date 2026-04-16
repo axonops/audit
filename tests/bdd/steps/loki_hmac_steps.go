@@ -245,6 +245,7 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 	tc.LokiOutputName = out.Name()
 
 	hmacCfg := &audit.HMACConfig{
@@ -277,7 +278,6 @@ func createLokiLoggerWithHMAC(tc *AuditTestContext, salt, version, hash string, 
 
 	logger, err := audit.NewLogger(opts...)
 	if err != nil {
-		_ = out.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
@@ -294,6 +294,7 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 	tc.LokiOutputName = out.Name()
 
 	capture := newCaptureOutput("capture-compare")
@@ -317,7 +318,6 @@ func createLokiLoggerWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVers
 		})),
 	)
 	if err != nil {
-		_ = out.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger

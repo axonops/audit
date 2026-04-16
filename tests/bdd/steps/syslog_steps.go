@@ -138,24 +138,30 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)" with invalid CA$`, func(network, address string) error {
 		certs := certDir()
-		_, err := syslog.New(&syslog.Config{
+		out, err := syslog.New(&syslog.Config{
 			Network: network,
 			Address: address,
 			TLSCA:   filepath.Join(certs, "invalid.crt"),
 		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a syslog output with TLS cert but no key$`, func() error {
 		certs := certDir()
-		_, err := syslog.New(&syslog.Config{
+		out, err := syslog.New(&syslog.Config{
 			Network: "tcp+tls",
 			Address: "localhost:6514",
 			TLSCA:   filepath.Join(certs, "ca.crt"),
 			TLSCert: filepath.Join(certs, "client.crt"),
 			// No TLSKey
 		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
@@ -220,35 +226,47 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to create a syslog output with TLS key but no cert$`, func() error {
 		certs := certDir()
-		_, err := syslog.New(&syslog.Config{
+		out, err := syslog.New(&syslog.Config{
 			Network: "tcp+tls",
 			Address: "localhost:6514",
 			TLSCA:   filepath.Join(certs, "ca.crt"),
 			TLSKey:  filepath.Join(certs, "client.key"),
 			// No TLSCert
 		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a syslog output with empty address$`, func() error {
-		_, err := syslog.New(&syslog.Config{Network: "tcp", Address: ""}, nil)
+		out, err := syslog.New(&syslog.Config{Network: "tcp", Address: ""}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)"$`, func(network, address string) error {
-		_, err := syslog.New(&syslog.Config{Network: network, Address: address}, nil)
+		out, err := syslog.New(&syslog.Config{Network: network, Address: address}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
 
 	ctx.Step(`^I try to create a syslog output with facility "([^"]*)"$`, func(facility string) error {
-		_, err := syslog.New(&syslog.Config{
+		out, err := syslog.New(&syslog.Config{
 			Network:  "tcp",
 			Address:  "localhost:5514",
 			Facility: facility,
 		}, nil)
+		if out != nil {
+			tc.AddCleanup(func() { _ = out.Close() })
+		}
 		tc.LastErr = err
 		return nil
 	})
@@ -347,6 +365,7 @@ func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -377,6 +396,7 @@ func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) err
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),

@@ -45,6 +45,7 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -73,6 +74,7 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		om := &MockOutputMetrics{}
 		fileOut.SetOutputMetrics(om)

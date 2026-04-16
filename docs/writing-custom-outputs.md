@@ -46,8 +46,12 @@ is appropriate for synchronous, non-I/O outputs such as in-process
 sinks, test recorders, and channel-based outputs. For outputs that
 perform network or file I/O, see [Async Delivery](#async-delivery).
 
-All `OutputFactory` implementations MUST wrap the output with
-`WrapOutput` to preserve optional interface forwarding. See
+All `OutputFactory` implementations MUST call `WrapOutput` to set
+the consumer-chosen output name. The `name` argument passed to the
+factory is the YAML config key (e.g. `compliance_file`) —
+`WrapOutput` installs this as the output's `Name()`. Without it,
+`output.Name()` returns whatever the inner type returns, which
+causes mismatched metrics labels and log messages. See
 [WrapOutput Transparency](#wrapoutput-transparency).
 
 ```go
@@ -116,9 +120,9 @@ the same pattern:
 ### Data Copy Requirement
 
 The `data []byte` argument to `Write` MUST be copied before sending
-to the channel. The library reuses the underlying buffer between
-events — the slice is not valid after `Write` returns. Every built-in
-output copies the data in its enqueue path:
+to the channel. The same slice may be passed to multiple outputs
+during fan-out, and the library's contract does not guarantee the
+slice remains valid after `Write` returns. Always copy defensively:
 
 ```go
 cp := make([]byte, len(data))
@@ -191,6 +195,8 @@ func (o *AsyncOutput) Write(data []byte) error {
         return nil
     default:
         // Buffer full — drop the event.
+        // Note: built-in outputs rate-limit this warning to at most
+        // once per 10 seconds. See file/droplimit.go for the pattern.
         if omp := o.outputMetrics.Load(); omp != nil {
             (*omp).RecordDrop()
         }
@@ -204,7 +210,7 @@ func (o *AsyncOutput) writeLoop() {
         select {
         case data := <-o.ch:
             start := time.Now()
-            err := o.doWrite(data) // your actual I/O
+            err := o.doWrite(data)
             if omp := o.outputMetrics.Load(); omp != nil {
                 if err != nil {
                     (*omp).RecordError()
@@ -217,6 +223,22 @@ func (o *AsyncOutput) writeLoop() {
             return
         }
     }
+}
+
+func (o *AsyncOutput) drainRemaining() {
+    for {
+        select {
+        case data := <-o.ch:
+            _ = o.doWrite(data) // best-effort during shutdown
+        default:
+            return
+        }
+    }
+}
+
+func (o *AsyncOutput) doWrite(data []byte) error {
+    // Replace with your actual I/O: HTTP POST, file write, etc.
+    return nil
 }
 
 func (o *AsyncOutput) Close() error {
@@ -265,11 +287,15 @@ type OutputMetricsReceiver interface {
 ### When It Is Called
 
 `outputconfig.Load` calls `SetOutputMetrics` once per output after
-all outputs are constructed, before `Load` returns. Because `NewLogger`
-is called after `Load` returns (and the drain goroutine does not start
-until `NewLogger`), `SetOutputMetrics` is always called before the
-first `Write`. This happens only when the consumer passes
-`WithOutputMetrics(factory)` as a load option:
+all outputs are constructed, before `Load` returns. The output's
+background goroutine may already be running at this point (started
+in the output constructor). The `atomic.Pointer` storage pattern
+ensures safe handoff: the goroutine checks for nil before using
+`outputMetrics`, and `SetOutputMetrics` stores atomically. Because
+`NewLogger` is not called until after `Load` returns, no `Write`
+calls are made before `SetOutputMetrics` completes. This happens
+only when the consumer passes `WithOutputMetrics(factory)` as a
+load option:
 
 ```go
 factory := func(outputType, outputName string) audit.OutputMetrics {
@@ -412,7 +438,8 @@ that it was delivered. If the output also calls
 `OutputMetrics.RecordFlush` after actual delivery, every event is
 counted twice.
 
-Implementing `DeliveryReporter` eliminates this double-counting:
+Implementing `DeliveryReporter` eliminates this double-counting.
+For an async output that calls `RecordFlush` after actual delivery:
 
 | | Without DeliveryReporter | With DeliveryReporter |
 |---|---|---|

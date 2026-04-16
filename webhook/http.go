@@ -34,9 +34,11 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 	for attempt := range w.maxRetries {
 		if attempt > 0 {
 			backoff := webhookBackoff(attempt)
+			timer := time.NewTimer(backoff)
 			select {
-			case <-time.After(backoff):
+			case <-timer.C:
 			case <-ctx.Done():
+				timer.Stop()
 				w.recordDrop(len(batch))
 				return
 			}

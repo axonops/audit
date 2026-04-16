@@ -461,6 +461,7 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
+	tc.AddCleanup(func() { _ = out.Close() })
 
 	logger, err := audit.NewLogger(
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -469,7 +470,6 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 		audit.WithOutputs(out),
 	)
 	if err != nil {
-		_ = out.Close()
 		return fmt.Errorf("create logger: %w", err)
 	}
 	tc.Logger = logger
@@ -478,7 +478,10 @@ func createLokiLogger(tc *AuditTestContext, cfg *loki.Config) error {
 }
 
 func tryCreateLokiOutput(tc *AuditTestContext, cfg *loki.Config) error {
-	_, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil)
+	if out != nil {
+		tc.AddCleanup(func() { _ = out.Close() })
+	}
 	tc.LastErr = err
 	return nil
 }

@@ -60,6 +60,7 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -98,6 +99,7 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{
 			Vendor:  vendor,
@@ -137,11 +139,13 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		if err != nil {
 			return fmt.Errorf("create json file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = jsonOut.Close() })
 
 		cefOut, err := file.New(file.Config{Path: cefPath}, nil)
 		if err != nil {
 			return fmt.Errorf("create cef file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = cefOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{Vendor: "Test", Product: "BDD", Version: "1.0"}
 
@@ -174,6 +178,7 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{
 			Vendor: "Test", Product: "Test", Version: "1.0",
@@ -213,6 +218,7 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{
 			Vendor: "Test", Product: "Test", Version: "1.0",
@@ -249,6 +255,7 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{
 			Vendor: "Test", Product: "Test", Version: "1.0",
@@ -283,6 +290,7 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
+		tc.AddCleanup(func() { _ = fileOut.Close() })
 
 		cefFmt := &audit.CEFFormatter{
 			Vendor:  "Test",

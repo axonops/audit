@@ -34,17 +34,11 @@ func TestCreateUser_EmitsAuditEvent(t *testing.T) {
 	err := svc.CreateUser("alice", "alice@example.com")
 	require.NoError(t, err)
 
-	// Close drains the async buffer — events are now in the recorder.
-	_ = auditor.Close()
-
-	// Assert on captured events.
-	require.Equal(t, 1, events.Count())
-	evt := events.Events()[0]
-	assert.Equal(t, EventUserCreate, evt.EventType)
-	assert.True(t, evt.HasField(FieldActorID, "alice"))
-	assert.True(t, evt.HasField(FieldEmail, "alice@example.com"))
-
-	// Assert on metrics.
+	// Synchronous delivery — events are immediately available.
+	// No Close() needed before assertions.
+	evt := events.RequireEvent(t, EventUserCreate)
+	assert.Equal(t, "alice", evt.StringField(FieldActorID))
+	assert.Equal(t, "alice@example.com", evt.StringField(FieldEmail))
 	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 }
 
@@ -55,13 +49,9 @@ func TestLogin_Failure_EmitsAuthEvent(t *testing.T) {
 	err := svc.Login("bob", "wrong-password")
 	require.NoError(t, err) // AuditEvent itself shouldn't error
 
-	_ = auditor.Close()
-
-	require.Equal(t, 1, events.Count())
-	evt := events.Events()[0]
-	assert.Equal(t, EventAuthFailure, evt.EventType)
-	assert.True(t, evt.HasField(FieldActorID, "bob"))
-	assert.True(t, evt.HasField(FieldReason, "invalid password"))
+	evt := events.RequireEvent(t, EventAuthFailure)
+	assert.Equal(t, "bob", evt.StringField(FieldActorID))
+	assert.Equal(t, "invalid password", evt.StringField(FieldReason))
 }
 
 func TestLogin_Success_NoAuditEvent(t *testing.T) {
@@ -71,10 +61,8 @@ func TestLogin_Success_NoAuditEvent(t *testing.T) {
 	err := svc.Login("alice", "correct")
 	require.NoError(t, err)
 
-	_ = auditor.Close()
-
 	// Successful login does not emit an audit event.
-	assert.Equal(t, 0, events.Count())
+	events.RequireEmpty(t)
 }
 
 // --- Pattern 2: Quick smoke test (permissive taxonomy, any fields accepted) ---
@@ -86,17 +74,29 @@ func TestAuditEventEmitted_Quick(t *testing.T) {
 	svc := NewUserService(auditor)
 	_ = svc.CreateUser("charlie", "charlie@example.com")
 
-	_ = auditor.Close()
-
 	// Just verify the event was emitted — no field validation.
-	assert.Equal(t, 1, events.Count())
-	assert.Equal(t, "user_create", events.Events()[0].EventType)
+	events.RequireEvent(t, "user_create")
 }
 
-// --- Pattern 3: Validation error testing ---
+// --- Pattern 3: One-liner field assertion ---
+
+func TestCreateUser_AssertContains(t *testing.T) {
+	auditor, events, _ := audittest.New(t, taxonomyYAML)
+
+	svc := NewUserService(auditor)
+	_ = svc.CreateUser("alice", "alice@example.com")
+
+	// One-liner: assert event type + specific fields.
+	events.AssertContains(t, EventUserCreate, audit.Fields{
+		FieldActorID: "alice",
+		FieldEmail:   "alice@example.com",
+	})
+}
+
+// --- Pattern 4: Validation error testing ---
 
 func TestValidationError_MissingRequiredField(t *testing.T) {
-	auditor, _, metrics := audittest.New(t, taxonomyYAML)
+	auditor, events, metrics := audittest.New(t, taxonomyYAML)
 
 	// Emit event missing required field "actor_id" using NewEvent directly.
 	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
@@ -104,9 +104,9 @@ func TestValidationError_MissingRequiredField(t *testing.T) {
 		// actor_id missing — validation error
 	}))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "missing required")
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 
-	_ = auditor.Close()
-
+	// Event was rejected — nothing in the recorder.
+	events.RequireEmpty(t)
 	assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }

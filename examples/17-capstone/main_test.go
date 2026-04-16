@@ -16,7 +16,7 @@
 //
 // These tests demonstrate how to verify audit events in a realistic
 // HTTP application using audittest.New and the full middleware
-// stack. The audit auditor is wired with the production middleware,
+// stack. The auditor is wired with the production middleware,
 // so events flow through buildAuditEvent → collectFields → Auditor
 // exactly as they do in the running application.
 package main
@@ -44,7 +44,7 @@ type testEnv struct {
 	auditor interface{ Close() error }
 }
 
-// Flush stops the HTTP server and closes the audit auditor so all
+// Flush stops the HTTP server and closes the auditor so all
 // buffered events are visible in the recorder. Call this before
 // any assertions on the recorder. Safe to call multiple times.
 func (e *testEnv) Flush(t *testing.T) {
@@ -132,9 +132,9 @@ func TestAuthFailure_InvalidAPIKey(t *testing.T) {
 	evt := events[0]
 	require.Nil(t, evt.ParseErr)
 	// The auth middleware truncates the key to 4 chars + "..."
-	assert.Equal(t, "bad-...", evt.Field(FieldActorID))
-	assert.Equal(t, "failure", evt.Field(FieldOutcome))
-	assert.Equal(t, "invalid credentials", evt.Field(FieldReason))
+	assert.Equal(t, "bad-...", evt.StringField(FieldActorID))
+	assert.Equal(t, "failure", evt.StringField(FieldOutcome))
+	assert.Equal(t, "invalid credentials", evt.StringField(FieldReason))
 }
 
 func TestAuthFailure_NoCredentials(t *testing.T) {
@@ -147,7 +147,7 @@ func TestAuthFailure_NoCredentials(t *testing.T) {
 
 	events := env.rec.FindByType(EventAuthFailure)
 	require.Len(t, events, 1)
-	assert.Equal(t, "anonymous", events[0].Field(FieldActorID))
+	assert.Equal(t, "anonymous", events[0].StringField(FieldActorID))
 }
 
 // --- Admin authorization tests (no DB needed) ---
@@ -165,9 +165,9 @@ func TestAdminSettings_NonAdmin_Forbidden(t *testing.T) {
 
 	evt := events[0]
 	require.Nil(t, evt.ParseErr)
-	assert.Equal(t, "alice", evt.Field(FieldActorID))
-	assert.Equal(t, "failure", evt.Field(FieldOutcome))
-	assert.Equal(t, "admin access required", evt.Field(FieldReason))
+	assert.Equal(t, "alice", evt.StringField(FieldActorID))
+	assert.Equal(t, "failure", evt.StringField(FieldOutcome))
+	assert.Equal(t, "admin access required", evt.StringField(FieldReason))
 }
 
 func TestAdminSettings_AdminAllowed(t *testing.T) {
@@ -205,11 +205,11 @@ func TestConfigChange_EmitsEventWithOldNewValues(t *testing.T) {
 
 	evt := events[0]
 	require.Nil(t, evt.ParseErr)
-	assert.Equal(t, "admin", evt.Field(FieldActorID))
-	assert.Equal(t, "success", evt.Field(FieldOutcome))
-	assert.Equal(t, "maintenance_mode", evt.Field(FieldSettingKey))
-	assert.Equal(t, "false", evt.Field(FieldOldValue))
-	assert.Equal(t, "true", evt.Field(FieldNewValue))
+	assert.Equal(t, "admin", evt.StringField(FieldActorID))
+	assert.Equal(t, "success", evt.StringField(FieldOutcome))
+	assert.Equal(t, "maintenance_mode", evt.StringField(FieldSettingKey))
+	assert.Equal(t, "false", evt.StringField(FieldOldValue))
+	assert.Equal(t, "true", evt.StringField(FieldNewValue))
 }
 
 // --- Item CRUD test (requires sqlmock) ---
@@ -235,9 +235,9 @@ func TestCreateItem_EmitsItemCreateEvent(t *testing.T) {
 
 	evt := events[0]
 	require.Nil(t, evt.ParseErr)
-	assert.Equal(t, "alice", evt.Field(FieldActorID))
-	assert.Equal(t, "success", evt.Field(FieldOutcome))
-	assert.NotEmpty(t, evt.Field(FieldTargetID))
+	assert.Equal(t, "alice", evt.StringField(FieldActorID))
+	assert.Equal(t, "success", evt.StringField(FieldOutcome))
+	assert.NotEmpty(t, evt.StringField(FieldTargetID))
 }
 
 // --- User create with PII fields ---
@@ -263,13 +263,13 @@ func TestCreateUser_EmitsPIIFields(t *testing.T) {
 
 	evt := events[0]
 	require.Nil(t, evt.ParseErr)
-	assert.Equal(t, "alice", evt.Field(FieldActorID))
-	assert.Equal(t, "success", evt.Field(FieldOutcome))
+	assert.Equal(t, "alice", evt.StringField(FieldActorID))
+	assert.Equal(t, "success", evt.StringField(FieldOutcome))
 	// PII fields should be present in the recorder (they are only
 	// stripped by the Loki output's exclude_labels, not by the
 	// recorder which captures all fields).
-	assert.Equal(t, "test@example.com", evt.Field(FieldEmail))
-	assert.Equal(t, "+1555000", evt.Field(FieldPhone))
+	assert.Equal(t, "test@example.com", evt.StringField(FieldEmail))
+	assert.Equal(t, "+1555000", evt.StringField(FieldPhone))
 }
 
 // --- Login/Logout tests (direct audit events, no middleware) ---
@@ -285,8 +285,8 @@ func TestLogin_Success_EmitsAuthSuccess(t *testing.T) {
 
 	events := env.rec.FindByType(EventAuthSuccess)
 	require.Len(t, events, 1, "expected one auth_success event")
-	assert.Equal(t, "alice", events[0].Field(FieldActorID))
-	assert.Equal(t, "success", events[0].Field(FieldOutcome))
+	assert.Equal(t, "alice", events[0].StringField(FieldActorID))
+	assert.Equal(t, "success", events[0].StringField(FieldOutcome))
 }
 
 func TestLogin_BadPassword_EmitsAuthFailure(t *testing.T) {
@@ -300,6 +300,6 @@ func TestLogin_BadPassword_EmitsAuthFailure(t *testing.T) {
 
 	events := env.rec.FindByType(EventAuthFailure)
 	require.Len(t, events, 1, "expected one auth_failure event")
-	assert.Equal(t, "alice", events[0].Field(FieldActorID))
-	assert.Equal(t, "invalid credentials", events[0].Field(FieldReason))
+	assert.Equal(t, "alice", events[0].StringField(FieldActorID))
+	assert.Equal(t, "invalid credentials", events[0].StringField(FieldReason))
 }

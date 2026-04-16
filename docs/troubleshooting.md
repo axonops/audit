@@ -185,7 +185,7 @@ goroutine will cause test failures.
 |-------|-----|
 | **`auditor.Close()` not called** | The drain goroutine runs until `Close()` is called. Always call `Close()` in tests. |
 | **`Close()` called too late** | `goleak` checks at test end. If `Close()` is deferred but another deferred function runs first, the goroutine may still be active. Put `Close()` as the first defer or use `t.Cleanup()`. |
-| **Using `audittest.New`** | The `audittest` constructors register `t.Cleanup(auditor.Close)` automatically — but you MUST call `auditor.Close()` explicitly before assertions. The cleanup is a safety net, not a substitute. See [Testing](testing.md#️-close-before-assert--critical). |
+| **Using `audittest.New`** | The `audittest` constructors default to synchronous delivery and register `t.Cleanup(auditor.Close)` automatically. With the default synchronous mode, no explicit `Close()` is needed before assertions. If you use `WithAsync()`, call `auditor.Close()` before assertions to drain the buffer. See [Testing](testing.md). |
 
 ---
 

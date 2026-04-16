@@ -23,7 +23,7 @@ import (
 	"github.com/axonops/audit/outputconfig"
 )
 
-// setupAuditLogger creates a logger using the NewLogger facade.
+// setupAuditor creates an auditor using the outputconfig.New facade.
 // The taxonomy is embedded (compile-time contract), and output
 // configuration is loaded from the filesystem at runtime so it can
 // change per environment without rebuilding the binary.
@@ -38,9 +38,9 @@ import (
 // from OpenBao at startup via ref+openbao:// URIs in outputs.yaml.
 // The OpenBao provider is configured declaratively in the outputs.yaml
 // secrets: section — no programmatic provider setup is needed.
-func setupAuditLogger(m *auditMetrics) (*audit.Logger, error) {
+func setupAuditor(m *auditMetrics) (*audit.Auditor, error) {
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
-	return outputconfig.NewLogger(context.Background(), taxonomyYAML, configPath,
+	return outputconfig.New(context.Background(), taxonomyYAML, configPath,
 		[]outputconfig.LoadOption{
 			outputconfig.WithCoreMetrics(m),
 			outputconfig.WithOutputMetrics(m.newOutputMetricsFactory()),

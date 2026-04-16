@@ -301,7 +301,7 @@ outputs:
 
 	assert.Len(t, result.Outputs, 2)
 	// Both outputs have nil per-output formatter — they inherit the
-	// logger's default JSONFormatter at runtime via effectiveFormatter.
+	// auditor's default JSONFormatter at runtime via effectiveFormatter.
 	assert.Nil(t, result.Outputs[0].Formatter)
 	assert.Nil(t, result.Outputs[1].Formatter)
 	_ = result.Outputs[0].Output.Close()
@@ -638,12 +638,12 @@ outputs:
 	// Options should contain at least one WithNamedOutput.
 	assert.NotEmpty(t, result.Options)
 
-	// Verify options can be applied to NewLogger without error.
+	// Verify options can be applied to New without error.
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 func TestLoad_ConfigKeyMismatch(t *testing.T) {
@@ -798,13 +798,13 @@ outputs:
 
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
 	opts = append(opts, result.Options...)
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	require.NoError(t, err)
 
 	// Emit a write event and a read event.
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success", "actor_id": "alice"})))
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("user_read", audit.Fields{"outcome": "success"})))
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success", "actor_id": "alice"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_read", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.Close())
 
 	// all.log should have both events.
 	allData, err := os.ReadFile(filepath.Join(dir, "all.log"))
@@ -1160,14 +1160,14 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	// The Load itself succeeds — validation happens at NewLogger time.
+	// The Load itself succeeds — validation happens at auditor creation time.
 	// Verify the labels are stored and will be passed through.
 	require.Len(t, result.Outputs, 1)
 	assert.Equal(t, []string{"pii"}, result.Outputs[0].ExcludeLabels)
 }
 
 // ---------------------------------------------------------------------------
-// Logger config from YAML (#183)
+// Auditor config from YAML (#183)
 // ---------------------------------------------------------------------------
 
 func TestLoad_LoggerConfig_Defaults(t *testing.T) {
@@ -1185,7 +1185,7 @@ outputs:
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, result.Config.QueueSize, "zero means applyDefaults will set 10000")
-	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "zero means applyDefaults will set 5s")
+	assert.Equal(t, time.Duration(0), result.Config.ShutdownTimeout, "zero means applyDefaults will set 5s")
 	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
 	assert.False(t, result.Config.OmitEmpty)
 }
@@ -1196,10 +1196,10 @@ func TestLoad_LoggerConfig_AllFields(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   enabled: true
   queue_size: 50000
-  drain_timeout: "30s"
+  shutdown_timeout: "30s"
   validation_mode: warn
   omit_empty: true
 outputs:
@@ -1211,7 +1211,7 @@ outputs:
 	require.NoError(t, err)
 
 	assert.Equal(t, 50000, result.Config.QueueSize)
-	assert.Equal(t, 30*time.Second, result.Config.DrainTimeout)
+	assert.Equal(t, 30*time.Second, result.Config.ShutdownTimeout)
 	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
 	assert.True(t, result.Config.OmitEmpty)
 }
@@ -1222,7 +1222,7 @@ func TestLoad_LoggerConfig_PartialFields(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   queue_size: 25000
 outputs:
   console:
@@ -1233,7 +1233,7 @@ outputs:
 	require.NoError(t, err)
 
 	assert.Equal(t, 25000, result.Config.QueueSize)
-	assert.Equal(t, time.Duration(0), result.Config.DrainTimeout, "default drain timeout")
+	assert.Equal(t, time.Duration(0), result.Config.ShutdownTimeout, "default drain timeout")
 }
 
 func TestLoad_LoggerConfig_EnabledFalse(t *testing.T) {
@@ -1242,7 +1242,7 @@ func TestLoad_LoggerConfig_EnabledFalse(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   enabled: false
 outputs:
   console:
@@ -1261,9 +1261,9 @@ func TestLoad_LoggerConfig_EnvVars(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   queue_size: ${TEST_BUFFER_SIZE}
-  drain_timeout: "${TEST_DRAIN_TIMEOUT}"
+  shutdown_timeout: "${TEST_DRAIN_TIMEOUT}"
 outputs:
   console:
     type: stdout
@@ -1273,7 +1273,7 @@ outputs:
 	require.NoError(t, err)
 
 	assert.Equal(t, 75000, result.Config.QueueSize)
-	assert.Equal(t, 15*time.Second, result.Config.DrainTimeout)
+	assert.Equal(t, 15*time.Second, result.Config.ShutdownTimeout)
 }
 
 func TestLoad_LoggerConfig_EnvVars_Boolean(t *testing.T) {
@@ -1284,7 +1284,7 @@ func TestLoad_LoggerConfig_EnvVars_Boolean(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   enabled: ${TEST_ENABLED}
   omit_empty: ${TEST_OMIT_EMPTY}
 outputs:
@@ -1304,7 +1304,7 @@ func TestLoad_LoggerConfig_NotAMapping(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger: "not a mapping"
+auditor: "not a mapping"
 outputs:
   console:
     type: stdout
@@ -1313,7 +1313,7 @@ outputs:
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "logger")
+	assert.Contains(t, err.Error(), "auditor")
 }
 
 func TestLoad_LoggerConfig_UnknownField(t *testing.T) {
@@ -1322,7 +1322,7 @@ func TestLoad_LoggerConfig_UnknownField(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   enabled: true
   bogus_field: 42
 outputs:
@@ -1333,7 +1333,7 @@ outputs:
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "logger")
+	assert.Contains(t, err.Error(), "auditor")
 }
 
 func TestLoad_LoggerConfig_NegativeBufferSize(t *testing.T) {
@@ -1342,7 +1342,7 @@ func TestLoad_LoggerConfig_NegativeBufferSize(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   queue_size: -1
 outputs:
   console:
@@ -1361,7 +1361,7 @@ func TestLoad_LoggerConfig_BufferSizeExceedsMax(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   queue_size: 2000000
 outputs:
   console:
@@ -1374,14 +1374,14 @@ outputs:
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
-func TestLoad_LoggerConfig_NegativeDrainTimeout(t *testing.T) {
+func TestLoad_LoggerConfig_NegativeShutdownTimeout(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
 app_name: test
 host: test
-logger:
-  drain_timeout: "-5s"
+auditor:
+  shutdown_timeout: "-5s"
 outputs:
   console:
     type: stdout
@@ -1393,14 +1393,14 @@ outputs:
 	assert.Contains(t, err.Error(), "non-negative")
 }
 
-func TestLoad_LoggerConfig_DrainTimeoutExceedsMax(t *testing.T) {
+func TestLoad_LoggerConfig_ShutdownTimeoutExceedsMax(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
 app_name: test
 host: test
-logger:
-  drain_timeout: "120s"
+auditor:
+  shutdown_timeout: "120s"
 outputs:
   console:
     type: stdout
@@ -1412,14 +1412,14 @@ outputs:
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
-func TestLoad_LoggerConfig_InvalidDrainTimeout(t *testing.T) {
+func TestLoad_LoggerConfig_InvalidShutdownTimeout(t *testing.T) {
 	t.Parallel()
 	data := []byte(`
 version: 1
 app_name: test
 host: test
-logger:
-  drain_timeout: "not-a-duration"
+auditor:
+  shutdown_timeout: "not-a-duration"
 outputs:
   console:
     type: stdout
@@ -1437,7 +1437,7 @@ func TestLoad_LoggerConfig_InvalidValidationMode(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   validation_mode: invalid
 outputs:
   console:
@@ -1459,7 +1459,7 @@ func TestLoad_LoggerConfig_ValidationModes(t *testing.T) {
 version: 1
 app_name: test
 host: test
-logger:
+auditor:
   validation_mode: %s
 outputs:
   console:
@@ -2592,10 +2592,10 @@ outputs:
 }
 
 func TestLoad_QueueSizeInLoggerSection(t *testing.T) {
-	// Exercises toInt path through logger.queue_size.
+	// Exercises toInt path through auditor.queue_size.
 	t.Parallel()
 	tax := testTaxonomy(t)
-	data := []byte("version: 1\napp_name: test\nhost: test\nlogger:\n  queue_size: 200\noutputs:\n  c:\n    type: stdout\n")
+	data := []byte("version: 1\napp_name: test\nhost: test\nauditor:\n  queue_size: 200\noutputs:\n  c:\n    type: stdout\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result)

@@ -153,7 +153,7 @@ var credentials = map[string]string{
 // they ARE the security action, not a business action that happens
 // to need auth.
 type authHandlers struct {
-	logger   *audit.Logger
+	auditor  *audit.Auditor
 	sessions *sessionStore
 	rl       *rateLimiter
 	log      *slog.Logger
@@ -168,7 +168,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.log.Warn("login: invalid request body", "ip", clientIP(r), "error", err)
 		a.rl.record(clientIP(r))
-		if auditErr := a.logger.AuditEvent(NewAuthFailureEvent("anonymous", "failure").
+		if auditErr := a.auditor.AuditEvent(NewAuthFailureEvent("anonymous", "failure").
 			SetReason("invalid request body").
 			SetSourceIP(clientIP(r))); auditErr != nil {
 			a.log.Error("audit event failed", "event_type", EventAuthFailure, "error", auditErr)
@@ -185,7 +185,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 	if !exists || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		a.log.Warn("login failed", "username", req.Username, "ip", clientIP(r))
 		a.rl.record(clientIP(r))
-		if auditErr := a.logger.AuditEvent(NewAuthFailureEvent(req.Username, "failure").
+		if auditErr := a.auditor.AuditEvent(NewAuthFailureEvent(req.Username, "failure").
 			SetReason("invalid credentials").
 			SetSourceIP(clientIP(r))); auditErr != nil {
 			a.log.Error("audit event failed", "event_type", EventAuthFailure, "error", auditErr)
@@ -196,7 +196,7 @@ func (a *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 
 	a.log.Info("login successful", "username", req.Username, "ip", clientIP(r))
 	token := a.sessions.createToken(req.Username)
-	if auditErr := a.logger.AuditEvent(NewAuthSuccessEvent(req.Username, "success").
+	if auditErr := a.auditor.AuditEvent(NewAuthSuccessEvent(req.Username, "success").
 		SetSourceIP(clientIP(r))); auditErr != nil {
 		a.log.Error("audit event failed", "event_type", EventAuthSuccess, "error", auditErr)
 	}
@@ -225,7 +225,7 @@ func (a *authHandlers) logout(w http.ResponseWriter, r *http.Request) {
 				SetReason("invalid session").
 				SetSourceIP(clientIP(r))
 		}
-		if auditErr := a.logger.AuditEvent(ev); auditErr != nil {
+		if auditErr := a.auditor.AuditEvent(ev); auditErr != nil {
 			a.log.Error("audit event failed", "event_type", ev.EventType(), "error", auditErr)
 		}
 		writeLoginError(w, http.StatusUnauthorized, "invalid session")
@@ -233,7 +233,7 @@ func (a *authHandlers) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.sessions.revoke(token)
-	if auditErr := a.logger.AuditEvent(NewAuthLogoutEvent(username, "success").
+	if auditErr := a.auditor.AuditEvent(NewAuthLogoutEvent(username, "success").
 		SetSourceIP(clientIP(r))); auditErr != nil {
 		a.log.Error("audit event failed", "event_type", EventAuthLogout, "error", auditErr)
 	}

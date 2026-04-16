@@ -33,21 +33,21 @@ import (
 var taxonomyYAML []byte
 
 // UserService is a simple service that emits audit events.
-// It takes a *audit.Logger as a dependency — making it testable.
+// It takes a *audit.Auditor as a dependency — making it testable.
 type UserService struct {
-	logger *audit.Logger
+	auditor *audit.Auditor
 }
 
-// NewUserService creates a UserService with the given logger.
-func NewUserService(logger *audit.Logger) *UserService {
-	return &UserService{logger: logger}
+// NewUserService creates a UserService with the given auditor.
+func NewUserService(auditor *audit.Auditor) *UserService {
+	return &UserService{auditor: auditor}
 }
 
 // CreateUser creates a user and emits an audit event.
 func (s *UserService) CreateUser(actorID, email string) error {
 	// ... business logic would go here ...
 
-	return s.logger.AuditEvent(
+	return s.auditor.AuditEvent(
 		NewUserCreateEvent(actorID, "success").
 			SetEmail(email),
 	)
@@ -57,7 +57,7 @@ func (s *UserService) CreateUser(actorID, email string) error {
 func (s *UserService) Login(username, password string) error {
 	// Simulate failed authentication.
 	if password != "correct" {
-		return s.logger.AuditEvent(
+		return s.auditor.AuditEvent(
 			NewAuthFailureEvent(username, "failure").
 				SetReason("invalid password"),
 		)
@@ -66,14 +66,14 @@ func (s *UserService) Login(username, password string) error {
 }
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
-	svc := NewUserService(logger)
+	svc := NewUserService(auditor)
 	_ = svc.CreateUser("alice", "alice@example.com")
 	_ = svc.Login("bob", "wrong")
 

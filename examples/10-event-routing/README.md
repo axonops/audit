@@ -188,7 +188,7 @@ categories:
       - admin_delete
 ```
 
-When a multi-category event is emitted, the logger processes it once
+When a multi-category event is emitted, the auditor processes it once
 per enabled category. If `write` routes to a file output and `admin`
 routes to a webhook, the event is delivered to both — each with the
 severity from its respective category. This means the same event can
@@ -207,7 +207,7 @@ All three events appear on stdout (all events). Each file contains only
 the events matching its route:
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=4
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=4
 INFO audit: shutdown started
 ... (stdout shows all three events)
 INFO audit: shutdown complete duration=...

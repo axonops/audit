@@ -41,22 +41,22 @@ func registerSensitivityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 }
 
 func registerSensitivityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with stdout output and no exclusions$`, func() error {
-		return createSensitivityLogger(tc, nil)
+	ctx.Step(`^an auditor with stdout output and no exclusions$`, func() error {
+		return createSensitivityAuditor(tc, nil)
 	})
-	ctx.Step(`^a logger with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
+	ctx.Step(`^an auditor with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
 		excludeLabels := strings.Split(labels, ",")
 		for i := range excludeLabels {
 			excludeLabels[i] = strings.TrimSpace(excludeLabels[i])
 		}
-		return createSensitivityLogger(tc, excludeLabels)
+		return createSensitivityAuditor(tc, excludeLabels)
 	})
-	ctx.Step(`^I try to create a logger with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
+	ctx.Step(`^I try to create an auditor with stdout output excluding labels "([^"]*)"$`, func(labels string) error {
 		excludeLabels := strings.Split(labels, ",")
 		for i := range excludeLabels {
 			excludeLabels[i] = strings.TrimSpace(excludeLabels[i])
 		}
-		err := createSensitivityLogger(tc, excludeLabels)
+		err := createSensitivityAuditor(tc, excludeLabels)
 		if err != nil {
 			tc.LastErr = err
 		}
@@ -64,21 +64,21 @@ func registerSensitivityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	})
 }
 
-func createSensitivityLogger(tc *AuditTestContext, excludeLabels []string) error {
+func createSensitivityAuditor(tc *AuditTestContext, excludeLabels []string) error {
 	tc.StdoutBuf = &bytes.Buffer{}
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 	if err != nil {
 		return fmt.Errorf("create stdout output: %w", err)
 	}
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -97,7 +97,7 @@ func registerSensitivityThenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		})
 	// Note: "the output should not contain field" is registered in audit_steps.go.
 	// Note: "the output should contain an event with field" is registered in audit_steps.go.
-	// Note: "logger creation should fail with an error containing" is registered in hmac_steps.go.
+	// Note: "auditor creation should fail with an error containing" is registered in hmac_steps.go.
 	// Do not duplicate any of these here.
 }
 
@@ -136,9 +136,9 @@ func assertFieldLabeled(tc *AuditTestContext, eventType, field, label string) er
 }
 
 func assertOutputContainsFieldValue(tc *AuditTestContext, field, value string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
-		tc.Logger = nil
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
+		tc.Auditor = nil
 	}
 	if tc.StdoutBuf == nil {
 		return fmt.Errorf("no stdout buffer configured")

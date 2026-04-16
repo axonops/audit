@@ -45,9 +45,9 @@ Feature: Per-Output Buffer Configuration
     Then the config load should fail with an error containing "buffer_size"
 
   Scenario: File output defaults buffer_size when omitted
-    Given a logger with file output at a temporary path
+    Given an auditor with file output at a temporary path
     When I audit 50 events rapidly
-    And I close the logger
+    And I close the auditor
     Then the file should contain exactly 50 events
 
   Scenario: Syslog output buffer_size exceeding maximum is rejected

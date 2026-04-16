@@ -38,14 +38,14 @@ func main() {
 	// Parse taxonomy — only outcome and actor_id are declared.
 	// All 31 standard fields (source_ip, reason, target_id, etc.)
 	// are available automatically.
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 	defer func() {
-		if closeErr := logger.Close(); closeErr != nil {
-			log.Printf("close logger: %v", closeErr)
+		if closeErr := auditor.Close(); closeErr != nil {
+			log.Printf("close auditor: %v", closeErr)
 		}
 	}()
 
@@ -53,7 +53,7 @@ func main() {
 	// SetTargetID, SetSourceIP, SetReason are available on every builder
 	// because they are reserved standard fields.
 	fmt.Println("--- Event with standard fields ---")
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewUserCreateEvent("alice", "success").
 			SetTargetID("user-42").
 			SetReason("admin request"),
@@ -63,7 +63,7 @@ func main() {
 
 	// source_ip is not set here — the standard_fields default applies.
 	fmt.Println("--- Event with default source_ip ---")
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewAuthFailureEvent("unknown", "failure").
 			SetReason("invalid credentials"),
 	); err != nil {
@@ -72,7 +72,7 @@ func main() {
 
 	// Per-event source_ip overrides the default.
 	fmt.Println("--- Event with explicit source_ip ---")
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewAuthFailureEvent("bob", "failure").
 			SetReason("expired token").
 			SetSourceIP("192.168.1.100"),

@@ -36,18 +36,18 @@ func registerLokiFanoutSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
-	ctx.Step(`^a logger with file and loki outputs$`,
+	ctx.Step(`^an auditor with file and loki outputs$`,
 		func() error {
-			return createFileAndLokiLogger(tc, nil, nil)
+			return createFileAndLokiAuditor(tc, nil, nil)
 		})
 
-	ctx.Step(`^a logger with file receiving all events and loki receiving only "([^"]*)"$`,
+	ctx.Step(`^an auditor with file receiving all events and loki receiving only "([^"]*)"$`,
 		func(category string) error {
 			lokiRoute := &audit.EventRoute{IncludeCategories: []string{category}}
-			return createFileAndLokiLogger(tc, nil, lokiRoute)
+			return createFileAndLokiAuditor(tc, nil, lokiRoute)
 		})
 
-	ctx.Step(`^a logger with file and loki outputs both HMAC-enabled with salt "([^"]*)" version "([^"]*)"$`,
+	ctx.Step(`^an auditor with file and loki outputs both HMAC-enabled with salt "([^"]*)" version "([^"]*)"$`,
 		func(salt, version string) error {
 			hmacCfg := &audit.HMACConfig{
 				Enabled:     true,
@@ -55,17 +55,17 @@ func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				SaltValue:   []byte(salt),
 				Algorithm:   "HMAC-SHA-256",
 			}
-			return createFileAndLokiLogger(tc, hmacCfg, nil)
+			return createFileAndLokiAuditor(tc, hmacCfg, nil)
 		})
 
-	ctx.Step(`^a logger with file output keeping all fields and loki output excluding label "([^"]*)"$`,
+	ctx.Step(`^an auditor with file output keeping all fields and loki output excluding label "([^"]*)"$`,
 		func(label string) error {
-			return createFileAndLokiLoggerWithExclusion(tc, label)
+			return createFileAndLokiAuditorWithExclusion(tc, label)
 		})
 
-	ctx.Step(`^a logger with file output and loki output to unreachable server$`,
+	ctx.Step(`^an auditor with file output and loki output to unreachable server$`,
 		func() error {
-			return createFileAndLokiLoggerUnreachable(tc)
+			return createFileAndLokiAuditorUnreachable(tc)
 		})
 
 }
@@ -188,7 +188,7 @@ func registerLokiFanoutCountSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 					"outcome":  outcome,
 					"marker":   m,
 				}
-				if err := tc.Logger.AuditEvent(audit.NewEvent(eventType, fields)); err != nil {
+				if err := tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields)); err != nil {
 					return fmt.Errorf("audit event %d: %w", i, err)
 				}
 			}
@@ -197,10 +197,10 @@ func registerLokiFanoutCountSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 }
 
 // ---------------------------------------------------------------------------
-// Logger construction helpers
+// Auditor construction helpers
 // ---------------------------------------------------------------------------
 
-func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lokiRoute *audit.EventRoute) error {
+func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lokiRoute *audit.EventRoute) error {
 	// Create temp file for file output.
 	tmpFile, err := os.CreateTemp(tc.FileDir, "fanout-*.log")
 	if err != nil {
@@ -245,16 +245,16 @@ func createFileAndLokiLogger(tc *AuditTestContext, hmacCfg *audit.HMACConfig, lo
 		audit.WithNamedOutput(lokiOut, lokiOpts...),
 	)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel string) error {
+func createFileAndLokiAuditorWithExclusion(tc *AuditTestContext, excludeLabel string) error {
 	tmpFile, err := os.CreateTemp(tc.FileDir, "fanout-pii-*.log")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
@@ -281,7 +281,7 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 	tc.AddCleanup(func() { _ = lokiOut.Close() })
 	tc.LokiOutputName = lokiOut.Name()
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
@@ -289,14 +289,14 @@ func createFileAndLokiLoggerWithExclusion(tc *AuditTestContext, excludeLabel str
 		audit.WithNamedOutput(lokiOut, audit.OutputExcludeLabels(excludeLabel)), // strip PII
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
+func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 	tmpFile, err := os.CreateTemp(tc.FileDir, "fanout-unreachable-*.log")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
@@ -333,7 +333,7 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 	}
 	tc.AddCleanup(func() { _ = lokiOut.Close() })
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
@@ -341,10 +341,10 @@ func createFileAndLokiLoggerUnreachable(tc *AuditTestContext) error {
 		audit.WithNamedOutput(lokiOut),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 

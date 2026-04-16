@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// ValidationMode controls how [Logger.AuditEvent] handles unknown fields
+// ValidationMode controls how [Auditor.AuditEvent] handles unknown fields
 // (fields not listed in the event's Required or Optional lists).
 type ValidationMode string
 
@@ -39,24 +39,24 @@ const (
 	DefaultQueueSize = 10_000
 
 	// MaxQueueSize is the maximum allowed async intake queue capacity.
-	// Values above this limit cause [NewLogger] to return an error
+	// Values above this limit cause [New] to return an error
 	// wrapping [ErrConfigInvalid].
 	MaxQueueSize = 1_000_000
 
-	// DefaultDrainTimeout is the default graceful shutdown deadline.
-	DefaultDrainTimeout = 5 * time.Second
+	// DefaultShutdownTimeout is the default graceful shutdown deadline.
+	DefaultShutdownTimeout = 5 * time.Second
 
-	// MaxDrainTimeout is the maximum allowed graceful shutdown deadline.
-	// Values above this limit cause [NewLogger] to return an error
-	// wrapping [ErrConfigInvalid]. Setting DrainTimeout too low on a
+	// MaxShutdownTimeout is the maximum allowed graceful shutdown deadline.
+	// Values above this limit cause [New] to return an error
+	// wrapping [ErrConfigInvalid]. Setting ShutdownTimeout too low on a
 	// high-throughput system causes events to be lost at shutdown.
-	MaxDrainTimeout = 60 * time.Second
+	MaxShutdownTimeout = 60 * time.Second
 )
 
-// Config holds tuning parameters for the audit [Logger]. The zero
-// value is a valid configuration: buffer=10,000, drain=5s,
+// Config holds tuning parameters for the audit [Auditor]. The zero
+// value is a valid configuration: buffer=10,000, shutdown=5s,
 // validation=strict, omit_empty=false. Pass individual fields via
-// [WithQueueSize], [WithDrainTimeout], [WithValidationMode], or
+// [WithQueueSize], [WithShutdownTimeout], [WithValidationMode], or
 // [WithOmitEmpty], or pass the whole struct via [WithConfig].
 type Config struct {
 	// ValidationMode controls how unknown fields are handled.
@@ -64,12 +64,12 @@ type Config struct {
 	// [ValidationPermissive]. Empty defaults to [ValidationStrict].
 	ValidationMode ValidationMode
 
-	// DrainTimeout is the maximum time [Logger.Close] waits for
-	// pending events to flush. Zero means [DefaultDrainTimeout] (5s).
-	// Values above [MaxDrainTimeout] (60s) cause [NewLogger] to
+	// ShutdownTimeout is the maximum time [Auditor.Close] waits for
+	// pending events to flush. Zero means [DefaultShutdownTimeout] (5s).
+	// Values above [MaxShutdownTimeout] (60s) cause [New] to
 	// return an error. Setting this too low on a high-throughput
 	// system will cause events to be lost at shutdown.
-	DrainTimeout time.Duration
+	ShutdownTimeout time.Duration
 
 	// version is the config schema version. Defaults to 1 via
 	// [Config.applyDefaults]. Unexported because consumers should
@@ -78,7 +78,7 @@ type Config struct {
 
 	// QueueSize is the async intake queue capacity. Zero means
 	// [DefaultQueueSize] (10,000). Values above [MaxQueueSize]
-	// (1,000,000) cause [NewLogger] to return an error.
+	// (1,000,000) cause [New] to return an error.
 	QueueSize int
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are
@@ -97,8 +97,8 @@ func (c *Config) applyDefaults() {
 	if c.QueueSize <= 0 {
 		c.QueueSize = DefaultQueueSize
 	}
-	if c.DrainTimeout <= 0 {
-		c.DrainTimeout = DefaultDrainTimeout
+	if c.ShutdownTimeout <= 0 {
+		c.ShutdownTimeout = DefaultShutdownTimeout
 	}
 	if c.ValidationMode == "" {
 		c.ValidationMode = ValidationStrict
@@ -117,9 +117,9 @@ func validateConfig(c *Config) error {
 			ErrConfigInvalid, c.QueueSize, MaxQueueSize)
 	}
 
-	if c.DrainTimeout > MaxDrainTimeout {
-		return fmt.Errorf("%w: drain_timeout %s exceeds maximum %s",
-			ErrConfigInvalid, c.DrainTimeout, MaxDrainTimeout)
+	if c.ShutdownTimeout > MaxShutdownTimeout {
+		return fmt.Errorf("%w: shutdown_timeout %s exceeds maximum %s",
+			ErrConfigInvalid, c.ShutdownTimeout, MaxShutdownTimeout)
 	}
 
 	switch c.ValidationMode {

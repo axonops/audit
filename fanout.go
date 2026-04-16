@@ -37,11 +37,11 @@ import (
 
 // outputEntry bundles an [Output] with its per-output [EventRoute] and
 // optional [Formatter] override. The route may be changed at runtime
-// via [Logger.SetOutputRoute]; access is lock-free via atomic.Pointer.
+// via [Auditor.SetOutputRoute]; access is lock-free via atomic.Pointer.
 type outputEntry struct {
 	output         Output
 	metadataWriter MetadataWriter      // cached at construction; nil if output doesn't implement
-	formatter      Formatter           // nil = use logger's default formatter
+	formatter      Formatter           // nil = use auditor's default formatter
 	excludedLabels map[string]struct{} // nil = no sensitivity exclusions
 	formatOpts     *FormatOptions      // pre-allocated; nil when no exclusions
 	hmacConfig     *HMACConfig         // nil = no HMAC for this output
@@ -51,7 +51,7 @@ type outputEntry struct {
 }
 
 // hmacState holds a pre-constructed hash.Hash and reusable buffers for
-// HMAC computation. Created once at logger construction; used
+// HMAC computation. Created once at auditor construction; used
 // exclusively by the single drain goroutine — no synchronisation needed.
 type hmacState struct {
 	mac     hash.Hash // reset+reuse per event

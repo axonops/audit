@@ -28,14 +28,14 @@ import (
 
 func TestCreateUser_EmitsAuditEvent(t *testing.T) {
 	// Use the same taxonomy YAML that production code uses.
-	logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
+	auditor, events, metrics := audittest.New(t, taxonomyYAML)
 
-	svc := NewUserService(logger)
+	svc := NewUserService(auditor)
 	err := svc.CreateUser("alice", "alice@example.com")
 	require.NoError(t, err)
 
 	// Close drains the async buffer — events are now in the recorder.
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	// Assert on captured events.
 	require.Equal(t, 1, events.Count())
@@ -49,13 +49,13 @@ func TestCreateUser_EmitsAuditEvent(t *testing.T) {
 }
 
 func TestLogin_Failure_EmitsAuthEvent(t *testing.T) {
-	logger, events, _ := audittest.NewLogger(t, taxonomyYAML)
+	auditor, events, _ := audittest.New(t, taxonomyYAML)
 
-	svc := NewUserService(logger)
+	svc := NewUserService(auditor)
 	err := svc.Login("bob", "wrong-password")
 	require.NoError(t, err) // AuditEvent itself shouldn't error
 
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	require.Equal(t, 1, events.Count())
 	evt := events.Events()[0]
@@ -65,13 +65,13 @@ func TestLogin_Failure_EmitsAuthEvent(t *testing.T) {
 }
 
 func TestLogin_Success_NoAuditEvent(t *testing.T) {
-	logger, events, _ := audittest.NewLogger(t, taxonomyYAML)
+	auditor, events, _ := audittest.New(t, taxonomyYAML)
 
-	svc := NewUserService(logger)
+	svc := NewUserService(auditor)
 	err := svc.Login("alice", "correct")
 	require.NoError(t, err)
 
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	// Successful login does not emit an audit event.
 	assert.Equal(t, 0, events.Count())
@@ -80,13 +80,13 @@ func TestLogin_Success_NoAuditEvent(t *testing.T) {
 // --- Pattern 2: Quick smoke test (permissive taxonomy, any fields accepted) ---
 
 func TestAuditEventEmitted_Quick(t *testing.T) {
-	// NewLoggerQuick creates a permissive logger — any fields accepted.
-	logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
+	// NewQuick creates a permissive auditor — any fields accepted.
+	auditor, events, _ := audittest.NewQuick(t, "user_create")
 
-	svc := NewUserService(logger)
+	svc := NewUserService(auditor)
 	_ = svc.CreateUser("charlie", "charlie@example.com")
 
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	// Just verify the event was emitted — no field validation.
 	assert.Equal(t, 1, events.Count())
@@ -96,17 +96,17 @@ func TestAuditEventEmitted_Quick(t *testing.T) {
 // --- Pattern 3: Validation error testing ---
 
 func TestValidationError_MissingRequiredField(t *testing.T) {
-	logger, _, metrics := audittest.NewLogger(t, taxonomyYAML)
+	auditor, _, metrics := audittest.New(t, taxonomyYAML)
 
 	// Emit event missing required field "actor_id" using NewEvent directly.
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome": "success",
 		// actor_id missing — validation error
 	}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required")
 
-	_ = logger.Close()
+	_ = auditor.Close()
 
 	assert.Equal(t, 1, metrics.ValidationErrors("user_create"))
 }

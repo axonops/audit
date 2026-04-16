@@ -222,7 +222,7 @@ func (e *PaymentProcessEvent) SetCardNumber(v any) *PaymentProcessEvent { ... }
 Using the builders to emit events with sensitive fields:
 
 ```go
-if err := logger.AuditEvent(NewUserCreateEvent("admin", "success").
+if err := auditor.AuditEvent(NewUserCreateEvent("admin", "success").
     SetEmail("alice@example.com").
     SetPhone("555-0100").
     SetUserName("alice_smith").
@@ -230,7 +230,7 @@ if err := logger.AuditEvent(NewUserCreateEvent("admin", "success").
     log.Printf("audit error: %v", err)
 }
 
-if err := logger.AuditEvent(NewPaymentProcessEvent("alice", "success").
+if err := auditor.AuditEvent(NewPaymentProcessEvent("alice", "success").
     SetCardNumber("4111111111111111").
     SetCardExpiry("12/28").
     SetAmount("99.99")); err != nil {
@@ -256,7 +256,7 @@ Three log files are created, each receiving the same events with
 different field subsets:
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=3
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=3
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 

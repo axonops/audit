@@ -12,8 +12,8 @@ const (
 	EventHTTPRequest = "http_request"
 )
 
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 	CategoryAccess = "access"
 )
@@ -308,7 +308,7 @@ func (e *HTTPRequestEvent) SetUserAgent(v string) *HTTPRequestEvent {
 // EventType returns the event type name.
 func (e *HTTPRequestEvent) EventType() string { return EventHTTPRequest }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *HTTPRequestEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

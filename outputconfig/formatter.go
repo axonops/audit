@@ -57,7 +57,7 @@ func extractFormatterType(raw any) string {
 }
 
 // buildFormatter constructs an [audit.Formatter] from a raw YAML value.
-// Returns nil if the value is nil or empty (use logger default).
+// Returns nil if the value is nil or empty (use auditor default).
 // Returns an error for unknown formatter types or invalid options.
 func buildFormatter(raw any) (audit.Formatter, error) {
 	if raw == nil {

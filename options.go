@@ -20,20 +20,20 @@ import (
 	"time"
 )
 
-// Option configures a [Logger] during construction via [NewLogger].
-type Option func(*Logger) error
+// Option configures a [Auditor] during construction via [New].
+type Option func(*Auditor) error
 
 // WithTaxonomy registers the event taxonomy for validation. This option
-// is required; [NewLogger] returns an error if no taxonomy is provided.
-// WithTaxonomy SHOULD be called exactly once per [NewLogger] call.
+// is required; [New] returns an error if no taxonomy is provided.
+// WithTaxonomy SHOULD be called exactly once per [New] call.
 // Calling it more than once replaces the taxonomy and resets all
 // runtime category and event overrides established by the previous call.
 //
 // WithTaxonomy makes a deep copy of t; mutations to t after this call
-// have no effect on the logger. When t was returned by
+// have no effect on the auditor. When t was returned by
 // [ParseTaxonomyYAML], redundant re-validation is skipped.
 func WithTaxonomy(t *Taxonomy) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if t == nil {
 			return fmt.Errorf("%w: taxonomy must not be nil", ErrTaxonomyInvalid)
 		}
@@ -49,19 +49,19 @@ func WithTaxonomy(t *Taxonomy) Option {
 				return err
 			}
 		}
-		l.taxonomy = cp
-		l.filter = newFilterState(cp)
+		a.taxonomy = cp
+		a.filter = newFilterState(cp)
 		return nil
 	}
 }
 
-// WithMetrics sets the metrics recorder for the logger. If m is nil,
+// WithMetrics sets the metrics recorder for the auditor. If m is nil,
 // or if WithMetrics is not called, metrics are silently discarded.
 // Implementations MUST be safe for concurrent calls from the drain
 // goroutine.
 func WithMetrics(m Metrics) Option {
-	return func(l *Logger) error {
-		l.metrics = m
+	return func(a *Auditor) error {
+		a.metrics = m
 		return nil
 	}
 }
@@ -69,14 +69,14 @@ func WithMetrics(m Metrics) Option {
 // WithAppName sets the application name emitted as a framework field
 // in every serialised event. The value must be non-empty.
 func WithAppName(name string) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if name == "" {
 			return fmt.Errorf("audit: app_name must not be empty")
 		}
 		if len(name) > 255 {
 			return fmt.Errorf("audit: app_name exceeds maximum length of 255 bytes")
 		}
-		l.appName = name
+		a.appName = name
 		return nil
 	}
 }
@@ -84,14 +84,14 @@ func WithAppName(name string) Option {
 // WithHost sets the hostname emitted as a framework field in every
 // serialised event. The value must be non-empty and at most 255 bytes.
 func WithHost(host string) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if host == "" {
 			return fmt.Errorf("audit: host must not be empty")
 		}
 		if len(host) > 255 {
 			return fmt.Errorf("audit: host exceeds maximum length of 255 bytes")
 		}
-		l.host = host
+		a.host = host
 		return nil
 	}
 }
@@ -100,52 +100,52 @@ func WithHost(host string) Option {
 // every serialised event. The value must be non-empty and at most 64
 // bytes. If not set, no timezone field is emitted.
 func WithTimezone(tz string) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if tz == "" {
 			return fmt.Errorf("audit: timezone must not be empty")
 		}
 		if len(tz) > 64 {
 			return fmt.Errorf("audit: timezone exceeds maximum length of 64 bytes")
 		}
-		l.timezone = tz
+		a.timezone = tz
 		return nil
 	}
 }
 
-// WithSynchronousDelivery configures the logger to deliver events
-// inline within [Logger.AuditEvent] instead of via the async channel
+// WithSynchronousDelivery configures the auditor to deliver events
+// inline within [Auditor.AuditEvent] instead of via the async channel
 // and drain goroutine. Events are immediately available in outputs
 // after AuditEvent returns.
 //
 // This mode is useful for testing (no Close-before-assert ceremony)
 // and for simple deployments (CLI tools, Lambda functions) where
-// async complexity is unwanted. [Logger.Close] is still safe to call
+// async complexity is unwanted. [Auditor.Close] is still safe to call
 // but is not required before reading output.
 func WithSynchronousDelivery() Option {
-	return func(l *Logger) error {
-		l.synchronous = true
+	return func(a *Auditor) error {
+		a.synchronous = true
 		return nil
 	}
 }
 
-// WithLogger sets the [log/slog.Logger] used for library diagnostics
+// WithDiagnosticLogger sets the [log/slog.Logger] used for library diagnostics
 // (lifecycle messages, buffer drops, format errors). When not set or
 // when l is nil, [slog.Default] is used. Pass
 // slog.New(slog.DiscardHandler) to silence all library output.
-func WithLogger(l *slog.Logger) Option {
-	return func(lg *Logger) error {
-		lg.logger = l
+func WithDiagnosticLogger(l *slog.Logger) Option {
+	return func(a *Auditor) error {
+		a.logger = l
 		return nil
 	}
 }
 
 // WithStandardFieldDefaults sets deployment-wide default values for
-// reserved standard fields. Defaults are applied in [Logger.AuditEvent]
+// reserved standard fields. Defaults are applied in [Auditor.AuditEvent]
 // before validation — a default satisfies required: true constraints.
 // Per-event values always override defaults (key existence check, not
 // zero value). When called multiple times, the last call wins.
 func WithStandardFieldDefaults(defaults map[string]string) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		for k := range defaults {
 			if !IsReservedStandardField(k) {
 				return fmt.Errorf("audit: standard field default key %q is not a reserved standard field", k)
@@ -156,7 +156,7 @@ func WithStandardFieldDefaults(defaults map[string]string) Option {
 		for k, v := range defaults {
 			cp[k] = v
 		}
-		l.standardFieldDefaults = cp
+		a.standardFieldDefaults = cp
 		return nil
 	}
 }
@@ -165,16 +165,16 @@ func WithStandardFieldDefaults(defaults map[string]string) Option {
 // provided, a [JSONFormatter] is created from the [Config]. Use this
 // to configure a [CEFFormatter] or a custom [Formatter] implementation.
 func WithFormatter(f Formatter) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if f == nil {
 			return fmt.Errorf("audit: formatter must not be nil")
 		}
-		l.formatter = f
+		a.formatter = f
 		return nil
 	}
 }
 
-// WithOutputs sets the output destinations for the logger. Events are
+// WithOutputs sets the output destinations for the auditor. Events are
 // fanned out to all provided outputs. Each output receives all
 // globally-enabled events (no per-output filtering). Use
 // [WithNamedOutput] to configure per-output event routes or formatters.
@@ -185,8 +185,8 @@ func WithFormatter(f Formatter) Option {
 // the same key, WithOutputs returns an error. If no outputs are
 // configured, events are validated and filtered but silently discarded.
 func WithOutputs(outputs ...Output) Option {
-	return func(l *Logger) error {
-		if len(l.entries) > 0 {
+	return func(a *Auditor) error {
+		if len(a.entries) > 0 {
 			return fmt.Errorf("audit: WithOutputs cannot be used with WithNamedOutput")
 		}
 		byName := make(map[string]*outputEntry, len(outputs))
@@ -204,9 +204,9 @@ func WithOutputs(outputs ...Output) Option {
 			entries[i] = oe
 			byName[name] = oe
 		}
-		l.entries = entries
-		l.outputsByName = byName
-		l.usedWithOutputs = true
+		a.entries = entries
+		a.outputsByName = byName
+		a.usedWithOutputs = true
 		return nil
 	}
 }
@@ -218,7 +218,7 @@ func WithOutputs(outputs ...Output) Option {
 type OutputOption func(*outputEntryBuilder)
 
 // outputEntryBuilder accumulates per-output configuration before
-// the output entry is registered on the logger.
+// the output entry is registered on the auditor.
 type outputEntryBuilder struct {
 	formatter     Formatter
 	route         *EventRoute
@@ -235,8 +235,8 @@ func OutputRoute(r *EventRoute) OutputOption {
 	}
 }
 
-// OutputFormatter overrides the logger's default formatter for this
-// output. Nil means the logger's default formatter is used.
+// OutputFormatter overrides the auditor's default formatter for this
+// output. Nil means the auditor's default formatter is used.
 func OutputFormatter(f Formatter) OutputOption {
 	return func(b *outputEntryBuilder) {
 		b.formatter = f
@@ -246,7 +246,7 @@ func OutputFormatter(f Formatter) OutputOption {
 // OutputExcludeLabels specifies sensitivity labels whose fields should
 // be stripped from events before delivery to this output. When
 // non-empty, the taxonomy MUST define a [SensitivityConfig] and every
-// label MUST be defined within it; [NewLogger] returns an error if
+// label MUST be defined within it; [New] returns an error if
 // either condition is violated. An empty call means no field stripping.
 // Framework fields are never stripped.
 func OutputExcludeLabels(labels ...string) OutputOption {
@@ -256,8 +256,8 @@ func OutputExcludeLabels(labels ...string) OutputOption {
 }
 
 // OutputHMAC configures per-output HMAC integrity. The config is
-// validated eagerly during [NewLogger] option application — invalid
-// configs (short salt, unknown algorithm) cause [NewLogger] to return
+// validated eagerly during [New] option application — invalid
+// configs (short salt, unknown algorithm) cause [New] to return
 // an error. Nil means no HMAC for this output.
 func OutputHMAC(cfg *HMACConfig) OutputOption {
 	return func(b *outputEntryBuilder) {
@@ -273,12 +273,12 @@ func OutputHMAC(cfg *HMACConfig) OutputOption {
 // [WithOutputs] was already applied, WithNamedOutput returns an error.
 //
 // Output names MUST be unique across all outputs; duplicate names
-// cause [NewLogger] to return an error. Duplicate destinations are
+// cause [New] to return an error. Duplicate destinations are
 // also detected via [DestinationKeyer]. Routes are validated against
 // the taxonomy after all options have been applied.
 func WithNamedOutput(output Output, opts ...OutputOption) Option {
-	return func(l *Logger) error {
-		if l.usedWithOutputs {
+	return func(a *Auditor) error {
+		if a.usedWithOutputs {
 			return fmt.Errorf("audit: WithNamedOutput cannot be used with WithOutputs")
 		}
 		var b outputEntryBuilder
@@ -290,24 +290,24 @@ func WithNamedOutput(output Output, opts ...OutputOption) Option {
 				return err
 			}
 		}
-		return l.addNamedOutput(output, &b)
+		return a.addNamedOutput(output, &b)
 	}
 }
 
 // addNamedOutput registers a named output with dedup checking and
 // optional route/formatter/exclude-label/HMAC configuration.
-func (l *Logger) addNamedOutput(output Output, b *outputEntryBuilder) error {
+func (a *Auditor) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	name := output.Name()
-	if l.outputsByName == nil {
-		l.outputsByName = make(map[string]*outputEntry)
+	if a.outputsByName == nil {
+		a.outputsByName = make(map[string]*outputEntry)
 	}
-	if l.destKeys == nil {
-		l.destKeys = make(map[string]string)
+	if a.destKeys == nil {
+		a.destKeys = make(map[string]string)
 	}
-	if _, dup := l.outputsByName[name]; dup {
+	if _, dup := a.outputsByName[name]; dup {
 		return fmt.Errorf("audit: duplicate output name %q", name)
 	}
-	if err := checkDestinationDup(output, name, l.destKeys); err != nil {
+	if err := checkDestinationDup(output, name, a.destKeys); err != nil {
 		return err
 	}
 	oe := &outputEntry{
@@ -323,41 +323,41 @@ func (l *Logger) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	if b.hmacConfig != nil {
 		oe.hmacConfig = b.hmacConfig
 	}
-	l.entries = append(l.entries, oe)
-	l.outputsByName[name] = oe
+	a.entries = append(a.entries, oe)
+	a.outputsByName[name] = oe
 	return nil
 }
 
-// WithQueueSize sets the async intake queue capacity for the logger.
+// WithQueueSize sets the async intake queue capacity for the auditor.
 // Zero or negative values are ignored (the default of
 // [DefaultQueueSize] applies). Values above [MaxQueueSize] cause
-// [NewLogger] to return an error wrapping [ErrConfigInvalid].
+// [New] to return an error wrapping [ErrConfigInvalid].
 func WithQueueSize(n int) Option {
-	return func(l *Logger) error {
-		l.cfg.QueueSize = n
+	return func(a *Auditor) error {
+		a.cfg.QueueSize = n
 		return nil
 	}
 }
 
-// WithDrainTimeout sets the maximum time [Logger.Close] waits for
+// WithShutdownTimeout sets the maximum time [Auditor.Close] waits for
 // pending events to flush. Zero or negative values are ignored (the
-// default of [DefaultDrainTimeout] applies). Values above
-// [MaxDrainTimeout] cause [NewLogger] to return an error wrapping
+// default of [DefaultShutdownTimeout] applies). Values above
+// [MaxShutdownTimeout] cause [New] to return an error wrapping
 // [ErrConfigInvalid].
-func WithDrainTimeout(d time.Duration) Option {
-	return func(l *Logger) error {
-		l.cfg.DrainTimeout = d
+func WithShutdownTimeout(d time.Duration) Option {
+	return func(a *Auditor) error {
+		a.cfg.ShutdownTimeout = d
 		return nil
 	}
 }
 
-// WithValidationMode sets how [Logger.AuditEvent] handles unknown
+// WithValidationMode sets how [Auditor.AuditEvent] handles unknown
 // fields. Must be one of [ValidationStrict], [ValidationWarn], or
-// [ValidationPermissive]. An invalid mode causes [NewLogger] to
+// [ValidationPermissive]. An invalid mode causes [New] to
 // return an error wrapping [ErrConfigInvalid].
 func WithValidationMode(m ValidationMode) Option {
-	return func(l *Logger) error {
-		l.cfg.ValidationMode = m
+	return func(a *Auditor) error {
+		a.cfg.ValidationMode = m
 		return nil
 	}
 }
@@ -367,20 +367,20 @@ func WithValidationMode(m ValidationMode) Option {
 // serialised. Consumers operating under compliance regimes that
 // require all registered fields SHOULD NOT use this option.
 func WithOmitEmpty() Option {
-	return func(l *Logger) error {
-		l.cfg.OmitEmpty = true
+	return func(a *Auditor) error {
+		a.cfg.OmitEmpty = true
 		return nil
 	}
 }
 
-// WithDisabled creates a no-op logger that discards all events without
-// validation or delivery. [Logger.AuditEvent] returns nil immediately.
+// WithDisabled creates a no-op auditor that discards all events without
+// validation or delivery. [Auditor.AuditEvent] returns nil immediately.
 // This is the explicit opt-out for audit logging — the default is
 // enabled, because silent audit disablement is worse than noisy audit
 // failure.
 func WithDisabled() Option {
-	return func(l *Logger) error {
-		l.disabled = true
+	return func(a *Auditor) error {
+		a.disabled = true
 		return nil
 	}
 }
@@ -393,18 +393,18 @@ func WithDisabled() Option {
 // from unset — use [WithOmitEmpty] or [WithDisabled] for explicit
 // opt-in to boolean behaviours.
 func WithConfig(cfg Config) Option {
-	return func(l *Logger) error {
+	return func(a *Auditor) error {
 		if cfg.QueueSize > 0 {
-			l.cfg.QueueSize = cfg.QueueSize
+			a.cfg.QueueSize = cfg.QueueSize
 		}
-		if cfg.DrainTimeout > 0 {
-			l.cfg.DrainTimeout = cfg.DrainTimeout
+		if cfg.ShutdownTimeout > 0 {
+			a.cfg.ShutdownTimeout = cfg.ShutdownTimeout
 		}
 		if cfg.ValidationMode != "" {
-			l.cfg.ValidationMode = cfg.ValidationMode
+			a.cfg.ValidationMode = cfg.ValidationMode
 		}
 		if cfg.OmitEmpty {
-			l.cfg.OmitEmpty = true
+			a.cfg.OmitEmpty = true
 		}
 		return nil
 	}

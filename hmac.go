@@ -125,11 +125,11 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 }
 
 // newHMACState creates a pre-constructed hmacState for drain-loop reuse.
-// Called once at logger construction per HMAC-enabled output.
+// Called once at auditor construction per HMAC-enabled output.
 func newHMACState(cfg *HMACConfig) *hmacState {
 	hashFunc := hmacHashFunc(cfg.Algorithm)
 	if hashFunc == nil {
-		return nil // unreachable: ValidateHMACConfig rejects unknown algorithms during NewLogger
+		return nil // unreachable: ValidateHMACConfig rejects unknown algorithms during New
 	}
 	mac := hmac.New(hashFunc, cfg.SaltValue)
 	return &hmacState{

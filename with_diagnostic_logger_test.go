@@ -25,39 +25,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWithLogger_CustomLogger_ReceivesMessages(t *testing.T) {
+func TestWithDiagnosticLogger_CustomLogger_ReceivesMessages(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	customLogger := slog.New(slog.NewTextHandler(&buf, nil))
 
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
-		audit.WithLogger(customLogger),
+	auditor, err := audit.New(
+		audit.WithDiagnosticLogger(customLogger),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
-	// The "logger created" and "shutdown" messages should appear in buf.
-	assert.Contains(t, buf.String(), "logger created")
+	// The "auditor created" and "shutdown" messages should appear in buf.
+	assert.Contains(t, buf.String(), "auditor created")
 	assert.Contains(t, buf.String(), "shutdown")
 }
 
-func TestWithLogger_NilLogger_UsesDefault(t *testing.T) {
+func TestWithDiagnosticLogger_NilLogger_UsesDefault(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	// nil logger should not panic — falls back to slog.Default().
-	logger, err := audit.NewLogger(
-		audit.WithLogger(nil),
+	// nil auditor should not panic — falls back to slog.Default().
+	auditor, err := audit.New(
+		audit.WithDiagnosticLogger(nil),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestWithLogger_DiscardLogger_SilencesOutput(t *testing.T) {
+func TestWithDiagnosticLogger_DiscardLogger_SilencesOutput(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	discardLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
@@ -65,13 +65,13 @@ func TestWithLogger_DiscardLogger_SilencesOutput(t *testing.T) {
 	}))
 
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
-		audit.WithLogger(discardLogger),
+	auditor, err := audit.New(
+		audit.WithDiagnosticLogger(discardLogger),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
-	assert.Empty(t, buf.String(), "discard logger should produce no output")
+	assert.Empty(t, buf.String(), "discard auditor should produce no output")
 }

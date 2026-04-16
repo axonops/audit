@@ -20,9 +20,9 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
   # --- PRI verification per severity band (including boundaries) ---
 
   Scenario Outline: Audit severity <audit_sev> produces syslog PRI <expected_pri>
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "<event_type>" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain PRI "<expected_pri>"
 
@@ -40,7 +40,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | sev0_event  | 0         | 135          |
 
   Scenario: Different events produce different syslog PRIs
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit event "sev8_event" with fields and marker "pri_high":
       | field    | value   |
       | outcome  | success |
@@ -49,7 +49,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | field    | value   |
       | outcome  | success |
       | actor_id | bob     |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "pri_high" within 10 seconds
     And the syslog server should contain marker "pri_low" within 10 seconds
     And the syslog line with marker "pri_high" should contain PRI "131"
@@ -58,9 +58,9 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
   # --- RFC 5424 message structure ---
 
   Scenario: Syslog message has valid RFC 5424 structure
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit a uniquely marked "sev5_event" event
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
     And the syslog line with the marker should contain PRI "133"
 
@@ -68,12 +68,12 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
 
   Scenario: Framework fields present in syslog JSON payload
     Given framework fields app_name "bdd-syslog" host "bdd-host" timezone "UTC"
-    And a logger with syslog output on "tcp" to "localhost:5514"
+    And an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit event "sev5_event" with fields and marker "fw_fields":
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "fw_fields" within 10 seconds
     And the syslog line with marker "fw_fields" should contain "bdd-syslog"
     And the syslog line with marker "fw_fields" should contain "bdd-host"
@@ -81,12 +81,12 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
   # --- event_category verification ---
 
   Scenario: event_category present in syslog output for categorised events
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit event "sev5_event" with fields and marker "cat_check":
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "cat_check" within 10 seconds
     And the syslog line with marker "cat_check" should contain "event_category"
     And the syslog line with marker "cat_check" should contain "write"
@@ -94,12 +94,12 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
   # --- CEF formatter with syslog ---
 
   Scenario: Syslog with CEF formatter produces CEF in MSG body
-    Given a logger with syslog output on "tcp" to "localhost:5514" using CEF formatter
+    Given an auditor with syslog output on "tcp" to "localhost:5514" using CEF formatter
     When I audit event "sev8_event" with fields and marker "cef_syslog":
       | field    | value   |
       | outcome  | failure |
       | actor_id | mallory |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "cef_syslog" within 10 seconds
     And the syslog line with marker "cef_syslog" should contain "CEF:0|"
     And the syslog line with marker "cef_syslog" should contain "BDDTest"
@@ -110,7 +110,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
 
   Scenario: Syslog output does not contain events excluded by include route
     Given a routing taxonomy
-    And a logger with syslog output on "tcp" to "localhost:5514" routed to include only "security"
+    And an auditor with syslog output on "tcp" to "localhost:5514" routed to include only "security"
     When I audit event "user_create" with fields and marker "inc_excluded":
       | field    | value   |
       | outcome  | success |
@@ -119,7 +119,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | field    | value   |
       | outcome  | failure |
       | actor_id | mallory |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "inc_included" within 10 seconds
     And the syslog server should not contain marker "inc_excluded" within 5 seconds
 
@@ -127,7 +127,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
 
   Scenario: Syslog output excludes events matching exclude route
     Given a routing taxonomy
-    And a logger with syslog output on "tcp" to "localhost:5514" routed to exclude "write"
+    And an auditor with syslog output on "tcp" to "localhost:5514" routed to exclude "write"
     When I audit event "user_create" with fields and marker "exc_excluded":
       | field    | value   |
       | outcome  | success |
@@ -136,41 +136,41 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
       | field    | value   |
       | outcome  | failure |
       | actor_id | mallory |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "exc_included" within 10 seconds
     And the syslog server should not contain marker "exc_excluded" within 5 seconds
 
   # --- HMAC integrity with syslog ---
 
   Scenario: HMAC fields present in syslog output when enabled
-    Given a logger with syslog output on "tcp" to "localhost:5514" and HMAC enabled with salt "syslog-hmac-salt16!" version "v1" hash "HMAC-SHA-256"
+    Given an auditor with syslog output on "tcp" to "localhost:5514" and HMAC enabled with salt "syslog-hmac-salt16!" version "v1" hash "HMAC-SHA-256"
     When I audit event "sev5_event" with fields and marker "hmac_present":
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "hmac_present" within 10 seconds
     And the syslog line with marker "hmac_present" should contain "_hmac"
     And the syslog line with marker "hmac_present" should contain "_hmac_v"
     And the syslog line with marker "hmac_present" should contain "v1"
 
   Scenario: HMAC fields absent in syslog output when not configured
-    Given a logger with syslog output on "tcp" to "localhost:5514"
+    Given an auditor with syslog output on "tcp" to "localhost:5514"
     When I audit event "sev5_event" with fields and marker "hmac_absent":
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "hmac_absent" within 10 seconds
     And the syslog line with marker "hmac_absent" should not contain "_hmac"
 
   Scenario: HMAC-enabled syslog output preserves all event fields
-    Given a logger with syslog output on "tcp" to "localhost:5514" and HMAC enabled with salt "syslog-hmac-full16!" version "v1" hash "HMAC-SHA-256"
+    Given an auditor with syslog output on "tcp" to "localhost:5514" and HMAC enabled with salt "syslog-hmac-full16!" version "v1" hash "HMAC-SHA-256"
     When I audit event "sev8_event" with fields and marker "hmac_full":
       | field    | value   |
       | outcome  | failure |
       | actor_id | mallory |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "hmac_full" within 10 seconds
     And the syslog line with marker "hmac_full" should contain "sev8_event"
     And the syslog line with marker "hmac_full" should contain "failure"
@@ -182,26 +182,26 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
 
   Scenario: PII field stripped from syslog output when label excluded
     Given a sensitivity test taxonomy
-    And a logger with syslog output on "tcp" to "localhost:5514" excluding labels "pii"
+    And an auditor with syslog output on "tcp" to "localhost:5514" excluding labels "pii"
     When I audit event "user_create" with fields and marker "strip_pii":
       | field    | value             |
       | outcome  | success           |
       | actor_id | alice             |
       | email    | alice@example.com |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "strip_pii" within 10 seconds
     And the syslog line with marker "strip_pii" should contain "alice"
     And the syslog line with marker "strip_pii" should not contain "alice@example.com"
 
   Scenario: Non-excluded fields preserved when PII stripped from syslog
     Given a sensitivity test taxonomy
-    And a logger with syslog output on "tcp" to "localhost:5514" excluding labels "pii"
+    And an auditor with syslog output on "tcp" to "localhost:5514" excluding labels "pii"
     When I audit event "user_create" with fields and marker "keep_fields":
       | field    | value            |
       | outcome  | success          |
       | actor_id | bob              |
       | email    | bob@example.com  |
-    And I close the logger
+    And I close the auditor
     Then the syslog server should contain marker "keep_fields" within 10 seconds
     And the syslog line with marker "keep_fields" should contain "user_create"
     And the syslog line with marker "keep_fields" should contain "bob"

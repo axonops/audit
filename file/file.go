@@ -152,8 +152,8 @@ type Output struct {
 	mu            sync.Mutex
 }
 
-// SetLogger receives the library's diagnostic logger.
-func (f *Output) SetLogger(l *slog.Logger) {
+// SetDiagnosticLogger receives the library's diagnostic logger.
+func (f *Output) SetDiagnosticLogger(l *slog.Logger) {
 	f.logger = l
 }
 
@@ -204,7 +204,7 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) { //nolint:gocyclo,cy
 		return nil, fmt.Errorf("audit: file output permissions %q: %w", cfg.Permissions, err)
 	}
 
-	// Default logger — replaced by SetLogger when the core calls it.
+	// Default logger — replaced by SetDiagnosticLogger when the core calls it.
 	logger := slog.Default()
 
 	// Warn if permissions grant group or world access to audit data.

@@ -71,7 +71,7 @@ When you audit an event, here's what happens:
 ```
 Your code                    audit core              Loki output
 ─────────                    ──────────────             ───────────
-logger.AuditEvent(event) →   validate + serialize →     WriteWithMetadata()
+auditor.AuditEvent(event) →   validate + serialize →     WriteWithMetadata()
                                                           ↓
                                                         enqueue in buffer
                                                           ↓ (non-blocking)
@@ -149,7 +149,7 @@ drop — use metrics, not log lines, for precise monitoring.
 
 ### Relationship to Core Buffer
 
-The Loki `buffer_size` is independent of the core `logger.queue_size`
+The Loki `buffer_size` is independent of the core `auditor.queue_size`
 (`Config.QueueSize`). Both default to 10,000 but they serve different
 pipeline stages. See
 [Two-Level Buffering](async-delivery.md#two-level-buffering) for the
@@ -173,7 +173,7 @@ audit generates labels from three sources:
 | Source | Labels | Set when | Example |
 |--------|--------|----------|---------|
 | **Static** | Configured in YAML | Config load | `job="audit"`, `environment="prod"` |
-| **Framework** | From logger options | Logger construction | `app_name="myservice"`, `host="prod-01"`, `pid="12345"` |
+| **Framework** | From auditor options | Auditor construction | `app_name="myservice"`, `host="prod-01"`, `pid="12345"` |
 | **Per-event** | From event metadata | Each audit event | `event_type="user_create"`, `event_category="write"`, `severity="5"` |
 
 ### The Seven Dynamic Labels
@@ -553,7 +553,7 @@ conditions is met:
 | **Count** | 100 events | `batch_size` events accumulated |
 | **Bytes** | 1 MiB | `max_batch_bytes` uncompressed bytes |
 | **Timer** | 5 seconds | `flush_interval` elapsed since last flush |
-| **Shutdown** | — | `logger.Close()` flushes remaining events |
+| **Shutdown** | — | `auditor.Close()` flushes remaining events |
 
 ### Delivery Guarantee
 
@@ -835,7 +835,7 @@ for the factory pattern and complete interface documentation.
 
 The `timezone` field is a framework field that is **always** populated
 in every audit event — either from the user's YAML configuration or
-auto-detected from the system timezone at logger construction.
+auto-detected from the system timezone at auditor construction.
 
 Timezone is included because:
 

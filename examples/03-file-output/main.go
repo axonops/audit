@@ -34,23 +34,23 @@ import (
 var taxonomyYAML []byte
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// Emit five events.
 	users := []string{"alice", "bob", "carol", "dave", "eve"}
 	for _, user := range users {
-		if auditErr := logger.AuditEvent(NewUserCreateEvent(user, "success")); auditErr != nil {
+		if auditErr := auditor.AuditEvent(NewUserCreateEvent(user, "success")); auditErr != nil {
 			log.Printf("audit error: %v", auditErr)
 		}
 	}
 
 	// Close flushes buffered events to disk.
-	if closeErr := logger.Close(); closeErr != nil {
-		log.Printf("close logger: %v", closeErr)
+	if closeErr := auditor.Close(); closeErr != nil {
+		log.Printf("close auditor: %v", closeErr)
 	}
 
 	// Read and print the file contents.

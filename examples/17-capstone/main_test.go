@@ -15,9 +15,9 @@
 // Unit tests for the CRUD API capstone example using audittest.
 //
 // These tests demonstrate how to verify audit events in a realistic
-// HTTP application using audittest.NewLogger and the full middleware
-// stack. The audit logger is wired with the production middleware,
-// so events flow through buildAuditEvent → collectFields → Logger
+// HTTP application using audittest.New and the full middleware
+// stack. The audit auditor is wired with the production middleware,
+// so events flow through buildAuditEvent → collectFields → Auditor
 // exactly as they do in the running application.
 package main
 
@@ -39,19 +39,19 @@ import (
 // on the recorder — events are async and need the drain goroutine
 // to flush.
 type testEnv struct {
-	srv    *httptest.Server
-	rec    *audittest.Recorder
-	logger interface{ Close() error }
+	srv     *httptest.Server
+	rec     *audittest.Recorder
+	auditor interface{ Close() error }
 }
 
-// Flush stops the HTTP server and closes the audit logger so all
+// Flush stops the HTTP server and closes the audit auditor so all
 // buffered events are visible in the recorder. Call this before
 // any assertions on the recorder. Safe to call multiple times.
 func (e *testEnv) Flush(t *testing.T) {
 	t.Helper()
 	e.srv.Close()
-	if closeErr := e.logger.Close(); closeErr != nil {
-		t.Errorf("logger close: %v", closeErr)
+	if closeErr := e.auditor.Close(); closeErr != nil {
+		t.Errorf("auditor close: %v", closeErr)
 	}
 }
 
@@ -71,16 +71,16 @@ func newTestServer(t *testing.T, dbSetup func(mock sqlmock.Sqlmock)) *testEnv {
 		}
 	})
 
-	logger, rec, _ := audittest.NewLogger(t, taxonomyYAML) // metrics not asserted
+	auditor, rec, _ := audittest.New(t, taxonomyYAML) // metrics not asserted
 	sessions := newSessionStore(30 * time.Minute)
 	rl := newRateLimiter(1*time.Minute, 5)
 	settings := newSettingsStore()
-	handler := newServer(logger, db, sessions, rl, settings)
+	handler := newServer(auditor, db, sessions, rl, settings)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close) // safety net — prevents server leak on early failure
 
-	return &testEnv{srv: srv, rec: rec, logger: logger}
+	return &testEnv{srv: srv, rec: rec, auditor: auditor}
 }
 
 // doRequest makes an HTTP request with optional auth and body.

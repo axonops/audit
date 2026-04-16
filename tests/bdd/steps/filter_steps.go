@@ -77,44 +77,44 @@ func registerFilterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 	})
 
 	ctx.Step(`^I enable category "([^"]*)"$`, func(category string) error {
-		tc.LastErr = tc.Logger.EnableCategory(category)
+		tc.LastErr = tc.Auditor.EnableCategory(category)
 		return nil
 	})
 
 	ctx.Step(`^I disable category "([^"]*)"$`, func(category string) error {
-		tc.LastErr = tc.Logger.DisableCategory(category)
+		tc.LastErr = tc.Auditor.DisableCategory(category)
 		return nil
 	})
 
 	ctx.Step(`^I enable event "([^"]*)"$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.EnableEvent(eventType)
+		tc.LastErr = tc.Auditor.EnableEvent(eventType)
 		return nil
 	})
 
 	ctx.Step(`^I disable event "([^"]*)"$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.DisableEvent(eventType)
+		tc.LastErr = tc.Auditor.DisableEvent(eventType)
 		return nil
 	})
 }
 
 func registerFilterWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I try to enable category "([^"]*)"$`, func(category string) error {
-		tc.LastErr = tc.Logger.EnableCategory(category)
+		tc.LastErr = tc.Auditor.EnableCategory(category)
 		return nil
 	})
 
 	ctx.Step(`^I try to disable category "([^"]*)"$`, func(category string) error {
-		tc.LastErr = tc.Logger.DisableCategory(category)
+		tc.LastErr = tc.Auditor.DisableCategory(category)
 		return nil
 	})
 
 	ctx.Step(`^I try to enable event "([^"]*)"$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.EnableEvent(eventType)
+		tc.LastErr = tc.Auditor.EnableEvent(eventType)
 		return nil
 	})
 
 	ctx.Step(`^I try to disable event "([^"]*)"$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.DisableEvent(eventType)
+		tc.LastErr = tc.Auditor.DisableEvent(eventType)
 		return nil
 	})
 }

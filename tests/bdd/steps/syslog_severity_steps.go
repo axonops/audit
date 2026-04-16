@@ -169,45 +169,45 @@ func registerSyslogSeverityGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		return nil
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" and HMAC enabled with salt "([^"]*)" version "([^"]*)" hash "([^"]*)"$`,
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" and HMAC enabled with salt "([^"]*)" version "([^"]*)" hash "([^"]*)"$`,
 		func(network, address, salt, version, hash string) error {
-			return createSyslogLoggerWithHMAC(tc, &syslog.Config{
+			return createSyslogAuditorWithHMAC(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, salt, version, hash)
 		})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" excluding labels "([^"]*)"$`,
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" excluding labels "([^"]*)"$`,
 		func(network, address, labels string) error {
 			excludeLabels := strings.Split(labels, ",")
 			for i := range excludeLabels {
 				excludeLabels[i] = strings.TrimSpace(excludeLabels[i])
 			}
-			return createSyslogLoggerWithExcludeLabels(tc, &syslog.Config{
+			return createSyslogAuditorWithExcludeLabels(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, excludeLabels)
 		})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" routed to exclude "([^"]*)"$`,
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" routed to exclude "([^"]*)"$`,
 		func(network, address, category string) error {
-			return createSyslogLoggerWithRoute(tc, &syslog.Config{
+			return createSyslogAuditorWithRoute(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, &audit.EventRoute{
 				ExcludeCategories: []string{category},
 			})
 		})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" using CEF formatter$`,
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" using CEF formatter$`,
 		func(network, address string) error {
-			return createSyslogLoggerWithFormatter(tc, &syslog.Config{
+			return createSyslogAuditorWithFormatter(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, &audit.CEFFormatter{
 				Vendor: "BDDTest", Product: "Audit", Version: "1.0",
 			})
 		})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" routed to include only "([^"]*)"$`,
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" routed to include only "([^"]*)"$`,
 		func(network, address, category string) error {
-			return createSyslogLoggerWithRoute(tc, &syslog.Config{
+			return createSyslogAuditorWithRoute(tc, &syslog.Config{
 				Network: network, Address: address,
 			}, &audit.EventRoute{
 				IncludeCategories: []string{category},
@@ -225,7 +225,7 @@ func registerSyslogSeverityWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			m := marker("BDD")
 			tc.Markers[markerName] = m
 			fields["marker"] = m
-			return tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 }
 
@@ -330,9 +330,9 @@ func assertSyslogNotContains(text string, timeout time.Duration) error {
 	return nil
 }
 
-// createSyslogLoggerWithFormatter creates a syslog logger with a
+// createSyslogAuditorWithFormatter creates a syslog auditor with a
 // per-output formatter (e.g., CEF).
-func createSyslogLoggerWithFormatter(tc *AuditTestContext, cfg *syslog.Config, formatter audit.Formatter) error {
+func createSyslogAuditorWithFormatter(tc *AuditTestContext, cfg *syslog.Config, formatter audit.Formatter) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -349,18 +349,18 @@ func createSyslogLoggerWithFormatter(tc *AuditTestContext, cfg *syslog.Config, f
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-// createSyslogLoggerWithHMAC creates a syslog logger with per-output
+// createSyslogAuditorWithHMAC creates a syslog auditor with per-output
 // HMAC integrity enabled.
-func createSyslogLoggerWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, version, hash string) error {
+func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, version, hash string) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -382,18 +382,18 @@ func createSyslogLoggerWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt, 
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-// createSyslogLoggerWithExcludeLabels creates a syslog logger with
+// createSyslogAuditorWithExcludeLabels creates a syslog auditor with
 // sensitivity label exclusions.
-func createSyslogLoggerWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Config, excludeLabels []string) error {
+func createSyslogAuditorWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Config, excludeLabels []string) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -410,12 +410,12 @@ func createSyslogLoggerWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Confi
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -434,9 +434,9 @@ func assertSyslogMarkerLineNotContains(searchMarker, text string) error {
 	return fmt.Errorf("no syslog line found with marker %q", searchMarker)
 }
 
-// createSyslogLoggerWithRoute creates a syslog logger with a per-output
+// createSyslogAuditorWithRoute creates a syslog auditor with a per-output
 // event route.
-func createSyslogLoggerWithRoute(tc *AuditTestContext, cfg *syslog.Config, route *audit.EventRoute) error {
+func createSyslogAuditorWithRoute(tc *AuditTestContext, cfg *syslog.Config, route *audit.EventRoute) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -453,11 +453,11 @@ func createSyslogLoggerWithRoute(tc *AuditTestContext, cfg *syslog.Config, route
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }

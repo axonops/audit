@@ -32,7 +32,7 @@ RFC 5424-compatible receiver).
 
 | File | Purpose |
 |------|---------|
-| [`main.go`](main.go) | Creates a logger with syslog output, starts a local TCP receiver, emits 4 events |
+| [`main.go`](main.go) | Creates an auditor with syslog output, starts a local TCP receiver, emits 4 events |
 | [`outputs.yaml`](outputs.yaml) | Syslog output YAML configuration |
 | [`taxonomy.yaml`](taxonomy.yaml) | 4 event types across 2 categories (security and write) |
 | [`audit_generated.go`](audit_generated.go) | Generated typed builders |
@@ -193,7 +193,7 @@ reconnects with bounded exponential backoff:
 - **Backoff factor:** 2× with random jitter ([0.5, 1.0) multiplier)
 - **Max attempts:** Configurable via `max_retries` (default: 10)
 
-During reconnection, the mutex is released so `logger.Close()` can
+During reconnection, the mutex is released so `auditor.Close()` can
 interrupt the backoff sleep. The event that triggered the reconnection
 is retried once on the new connection.
 

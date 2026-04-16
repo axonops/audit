@@ -50,7 +50,7 @@ func (l *lokiStub) Name() string       { return "loki-stub" }
 // TestContext holds mutable state for a single BDD scenario.
 type TestContext struct { //nolint:govet // fieldalignment: readability preferred
 	Taxonomy      *audit.Taxonomy
-	Logger        *audit.Logger
+	Auditor       *audit.Auditor
 	Options       []audit.Option
 	LoadResult    *outputconfig.LoadResult
 	LastErr       error
@@ -71,7 +71,7 @@ type TestContext struct { //nolint:govet // fieldalignment: readability preferre
 
 // Reset prepares the context for a new scenario.
 func (tc *TestContext) Reset() {
-	tc.Logger = nil
+	tc.Auditor = nil
 	tc.Options = nil
 	tc.LoadResult = nil
 	tc.LastErr = nil
@@ -98,11 +98,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 
 	ctx.After(func(goctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
-		if tc.Logger != nil {
-			// Logger.Close drains and closes its wrapped outputs.
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			// Auditor.Close drains and closes its wrapped outputs.
+			_ = tc.Auditor.Close()
 		} else if tc.LoadResult != nil {
-			// Outputs were constructed but never handed to a Logger —
+			// Outputs were constructed but never handed to an Auditor —
 			// close them directly to avoid resource leaks.
 			for _, o := range tc.LoadResult.Outputs {
 				_ = o.Output.Close()
@@ -189,52 +189,52 @@ events:
 }
 
 func registerWhenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
-	ctx.Step(`^I create a logger from the YAML config$`, func() error {
+	ctx.Step(`^I create an auditor from the YAML config$`, func() error {
 		if tc.LastErr != nil {
 			return fmt.Errorf("config load already failed: %w", tc.LastErr)
 		}
 		opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
 		opts = append(opts, tc.Options...)
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
+		tc.Auditor = auditor
 		return nil
 	})
 
-	ctx.Step(`^I try to create a logger from the YAML config$`, func() error {
+	ctx.Step(`^I try to create an auditor from the YAML config$`, func() error {
 		if tc.LastErr != nil {
 			return nil //nolint:nilerr // Load already set tc.LastErr
 		}
 		opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
 		opts = append(opts, tc.Options...)
-		logger, logErr := audit.NewLogger(opts...)
+		auditor, logErr := audit.New(opts...)
 		if logErr != nil {
 			tc.LastErr = logErr
 			return nil //nolint:nilerr // scenario asserts on tc.LastErr
 		}
-		tc.Logger = logger
+		tc.Auditor = auditor
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with fields:$`, func(eventType string, table *godog.Table) error {
-		if tc.Logger == nil {
-			return fmt.Errorf("no logger created")
+		if tc.Auditor == nil {
+			return fmt.Errorf("no auditor created")
 		}
 		fields := audit.Fields{}
 		for _, row := range table.Rows[1:] { // skip header
 			fields[row.Cells[0].Value] = row.Cells[1].Value
 		}
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
-	ctx.Step(`^I close the logger$`, func() error {
-		if tc.Logger == nil {
+	ctx.Step(`^I close the auditor$`, func() error {
+		if tc.Auditor == nil {
 			return nil
 		}
-		tc.LastErr = tc.Logger.Close()
+		tc.LastErr = tc.Auditor.Close()
 		return nil
 	})
 }

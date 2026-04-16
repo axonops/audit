@@ -32,81 +32,81 @@ func registerConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerConfigWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^I try to create a logger$`, func() error {
-		return tryCreateLogger(tc)
+	ctx.Step(`^I try to create an auditor$`, func() error {
+		return tryCreateAuditor(tc)
 	})
 
-	ctx.Step(`^I create a logger$`, func() error {
-		return tryCreateLogger(tc)
+	ctx.Step(`^I create an auditor$`, func() error {
+		return tryCreateAuditor(tc)
 	})
 
-	ctx.Step(`^I create a logger with buffer size (\d+)$`, func(bufSize int) error {
-		return tryCreateLogger(tc, audit.WithQueueSize(bufSize))
+	ctx.Step(`^I create an auditor with buffer size (\d+)$`, func(bufSize int) error {
+		return tryCreateAuditor(tc, audit.WithQueueSize(bufSize))
 	})
 
-	ctx.Step(`^I try to create a logger with buffer size (\d+)$`, func(bufSize int) error {
-		return tryCreateLogger(tc, audit.WithQueueSize(bufSize))
+	ctx.Step(`^I try to create an auditor with buffer size (\d+)$`, func(bufSize int) error {
+		return tryCreateAuditor(tc, audit.WithQueueSize(bufSize))
 	})
 
-	ctx.Step(`^I create a logger with drain timeout (\d+)$`, func(timeout int) error {
-		return tryCreateLogger(tc, audit.WithDrainTimeout(time.Duration(timeout)))
+	ctx.Step(`^I create an auditor with drain timeout (\d+)$`, func(timeout int) error {
+		return tryCreateAuditor(tc, audit.WithShutdownTimeout(time.Duration(timeout)))
 	})
 
-	ctx.Step(`^I try to create a logger with drain timeout (\d+)s$`, func(secs int) error {
-		return tryCreateLogger(tc, audit.WithDrainTimeout(time.Duration(secs)*time.Second))
+	ctx.Step(`^I try to create an auditor with drain timeout (\d+)s$`, func(secs int) error {
+		return tryCreateAuditor(tc, audit.WithShutdownTimeout(time.Duration(secs)*time.Second))
 	})
 
-	ctx.Step(`^I create a disabled logger$`, func() error {
-		return tryCreateLogger(tc, audit.WithDisabled())
+	ctx.Step(`^I create a disabled auditor$`, func() error {
+		return tryCreateAuditor(tc, audit.WithDisabled())
 	})
 
 }
 
 func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^the logger construction should fail with an error matching:$`, func(doc *godog.DocString) error {
+	ctx.Step(`^the auditor construction should fail with an error matching:$`, func(doc *godog.DocString) error {
 		return assertConstructionExactError(tc, strings.TrimSpace(doc.Content))
 	})
-	ctx.Step(`^the logger construction should fail wrapping "([^"]*)"$`, func(s string) error {
+	ctx.Step(`^the auditor construction should fail wrapping "([^"]*)"$`, func(s string) error {
 		return assertConstructionSentinel(tc, s)
 	})
-	ctx.Step(`^the logger construction should fail with an error$`, func() error {
+	ctx.Step(`^the auditor construction should fail with an error$`, func() error {
 		return assertConstructionFailed(tc)
 	})
-	ctx.Step(`^the logger construction should fail with an error containing "([^"]*)"$`, func(s string) error {
+	ctx.Step(`^the auditor construction should fail with an error containing "([^"]*)"$`, func(s string) error {
 		return assertConstructionErrorContaining(tc, s)
 	})
 
-	ctx.Step(`^the logger should be created successfully$`, func() error {
+	ctx.Step(`^the auditor should be created successfully$`, func() error {
 		if tc.LastErr != nil {
 			return fmt.Errorf("expected successful creation, got: %w", tc.LastErr)
 		}
-		if tc.Logger == nil {
-			return fmt.Errorf("logger is nil after successful creation")
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil after successful creation")
 		}
 		return nil
 	})
 
-	ctx.Step(`^the logger should handle audit calls without error$`, func() error {
-		// Disabled logger returns nil from Audit without delivering.
-		if tc.Logger == nil {
-			// No-op logger (Enabled=false) returns nil from NewLogger.
+	ctx.Step(`^the auditor should handle audit calls without error$`, func() error {
+		// Disabled auditor returns nil from Audit without delivering.
+		if tc.Auditor == nil {
+			// No-op auditor (Enabled=false) returns nil from audit.New.
 			return nil
 		}
-		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 			"outcome":  "success",
 			"actor_id": "test",
 		}))
 		if err != nil {
-			return fmt.Errorf("expected no error from disabled logger, got: %w", err)
+			return fmt.Errorf("expected no error from disabled auditor, got: %w", err)
 		}
 		return nil
 	})
 }
 
-// tryCreateLogger creates a logger with the given options and stores it
+// tryCreateAuditor creates an auditor with the given options and stores it
 // in the test context. If creation fails, the error is stored in tc.LastErr
 // without failing the step (the scenario may assert on the error).
-func tryCreateLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
+func tryCreateAuditor(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	buf := &bytes.Buffer{}
 	tc.StdoutBuf = buf
 
@@ -121,13 +121,13 @@ func tryCreateLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	}
 	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 

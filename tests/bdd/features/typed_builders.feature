@@ -12,7 +12,7 @@ Feature: Typed Event Builders
     Given a standard test taxonomy
 
   Scenario: AuditEvent delivers event to output
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit via NewEvent "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -21,26 +21,26 @@ Feature: Typed Event Builders
     And the stdout output should contain field "actor_id" with value "alice"
 
   Scenario: AuditEvent with nil event returns error
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit a nil event
     Then the last error should contain "event must not be nil"
 
   Scenario: NewEvent with missing required field returns error
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit via NewEvent "user_create" with fields:
       | field   | value   |
       | outcome | success |
     Then the last error should contain "missing required"
 
   Scenario: NewEvent with unknown event type returns error
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit via NewEvent "nonexistent_event" with fields:
       | field   | value   |
       | outcome | success |
     Then the last error should contain "unknown event type"
 
   Scenario: AuditEvent with optional fields delivered correctly
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit via NewEvent "user_create" with fields:
       | field    | value       |
       | outcome  | success     |
@@ -49,7 +49,7 @@ Feature: Typed Event Builders
     Then the stdout output should contain field "marker" with value "test-marker"
 
   Scenario: Multiple AuditEvent calls deliver multiple events
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit via NewEvent "user_create" with fields:
       | field    | value   |
       | outcome  | success |

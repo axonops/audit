@@ -14,8 +14,8 @@ const (
 	EventUserCreate = "user_create"
 )
 
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 	CategoryWrite = "write"
 )
@@ -353,7 +353,7 @@ func (e *PaymentProcessEvent) SetUserAgent(v string) *PaymentProcessEvent {
 // EventType returns the event type name.
 func (e *PaymentProcessEvent) EventType() string { return EventPaymentProcess }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *PaymentProcessEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -664,7 +664,7 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 // EventType returns the event type name.
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

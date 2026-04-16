@@ -14,8 +14,8 @@ const (
 	EventUserCreate = "user_create"
 )
 
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 	CategorySecurity = "security"
 	CategoryWrite    = "write"
@@ -306,7 +306,7 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -590,7 +590,7 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 // EventType returns the event type name.
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

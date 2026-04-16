@@ -35,7 +35,7 @@ available on every event without taxonomy declaration:
 | **File** | `file_name`, `file_path`, `file_hash`, `file_size` |
 
 These fields:
-- Are accepted by the logger in any validation mode (strict, warn, permissive)
+- Are accepted by the auditor in any validation mode (strict, warn, permissive)
 - Have generated setter methods on every builder (`.SetSourceIP()`, `.SetReason()`, etc.)
 - Map to standard ArcSight CEF extension keys for automatic SIEM integration
 - Can be made mandatory per-event by declaring them `required: true` in the taxonomy
@@ -124,14 +124,14 @@ outputs:
 ## Wiring Standard Field Defaults
 
 The `standard_fields` YAML section is handled automatically by
-`outputconfig.NewLogger` — no manual wiring needed:
+`outputconfig.New` — no manual wiring needed:
 
 ```go
-logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
 ```
 
 The facade reads the `standard_fields` map, creates a
-`WithStandardFieldDefaults` option, and passes it to `NewLogger`
+`WithStandardFieldDefaults` option, and passes it to `New`
 alongside the output registrations and config options.
 
 ## Using Standard Field Setters
@@ -143,7 +143,7 @@ regardless of whether the field appears in your taxonomy:
 // SetTargetID, SetSourceIP, SetReason are generated on every builder.
 // They are available because target_id, source_ip, reason are
 // reserved standard fields — no taxonomy declaration needed.
-err := logger.AuditEvent(
+err := auditor.AuditEvent(
     NewUserCreateEvent("alice", "success").
         SetTargetID("user-42").
         SetReason("admin request"),
@@ -154,7 +154,7 @@ Standard field defaults from `outputs.yaml` are applied automatically:
 
 ```go
 // source_ip is not set here — the default "10.0.0.1" applies.
-err := logger.AuditEvent(
+err := auditor.AuditEvent(
     NewAuthFailureEvent("unknown", "failure").
         SetReason("invalid credentials"),
 )
@@ -164,7 +164,7 @@ Per-event values override defaults:
 
 ```go
 // Explicit source_ip overrides the default.
-err := logger.AuditEvent(
+err := auditor.AuditEvent(
     NewAuthFailureEvent("bob", "failure").
         SetReason("expired token").
         SetSourceIP("192.168.1.100"),
@@ -180,7 +180,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
 --- Event with standard fields ---
 --- Event with default source_ip ---
 --- Event with explicit source_ip ---

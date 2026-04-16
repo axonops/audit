@@ -101,51 +101,51 @@ events:
 }
 
 func registerSeverityLoggerSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with stdout output routed with min_severity (\d+)$`, func(minSev int) error {
-		return createSeverityRoutedLogger(tc, &minSev, nil, nil, nil)
+	ctx.Step(`^an auditor with stdout output routed with min_severity (\d+)$`, func(minSev int) error {
+		return createSeverityRoutedAuditor(tc, &minSev, nil, nil, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed with max_severity (\d+)$`, func(maxSev int) error {
-		return createSeverityRoutedLogger(tc, nil, &maxSev, nil, nil)
+	ctx.Step(`^an auditor with stdout output routed with max_severity (\d+)$`, func(maxSev int) error {
+		return createSeverityRoutedAuditor(tc, nil, &maxSev, nil, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed with min_severity (\d+) and max_severity (\d+)$`, func(minSev, maxSev int) error {
-		return createSeverityRoutedLogger(tc, &minSev, &maxSev, nil, nil)
+	ctx.Step(`^an auditor with stdout output routed with min_severity (\d+) and max_severity (\d+)$`, func(minSev, maxSev int) error {
+		return createSeverityRoutedAuditor(tc, &minSev, &maxSev, nil, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed to include only "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
+	ctx.Step(`^an auditor with stdout output routed to include only "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
 		include := []string{cat}
-		return createSeverityRoutedLogger(tc, &minSev, nil, include, nil)
+		return createSeverityRoutedAuditor(tc, &minSev, nil, include, nil)
 	})
 
-	ctx.Step(`^a logger with stdout output routed to exclude "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
+	ctx.Step(`^an auditor with stdout output routed to exclude "([^"]*)" with min_severity (\d+)$`, func(cat string, minSev int) error {
 		exclude := []string{cat}
-		return createSeverityRoutedLogger(tc, &minSev, nil, nil, exclude)
+		return createSeverityRoutedAuditor(tc, &minSev, nil, nil, exclude)
 	})
 
-	ctx.Step(`^a logger with named stdout output "([^"]*)" receiving all events$`, func(name string) error {
+	ctx.Step(`^an auditor with named stdout output "([^"]*)" receiving all events$`, func(name string) error {
 		tc.StdoutBuf = &bytes.Buffer{}
 		stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 		if err != nil {
 			return fmt.Errorf("create stdout: %w", err)
 		}
-		logger, err := audit.NewLogger(
+		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithNamedOutput(audit.WrapOutput(stdout, name)),
 			audit.WithSynchronousDelivery(),
 		)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
+		tc.Auditor = auditor
 		return nil
 	})
 
-	// Note: "the logger should be created successfully" is registered
+	// Note: "the auditor should be created successfully" is registered
 	// in config_steps.go. Do not duplicate here.
 }
 
-func createSeverityRoutedLogger(tc *AuditTestContext, minSev, maxSev *int, includeCats, excludeCats []string) error {
+func createSeverityRoutedAuditor(tc *AuditTestContext, minSev, maxSev *int, includeCats, excludeCats []string) error {
 	tc.StdoutBuf = &bytes.Buffer{}
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: tc.StdoutBuf})
 	if err != nil {
@@ -157,31 +157,31 @@ func createSeverityRoutedLogger(tc *AuditTestContext, minSev, maxSev *int, inclu
 		IncludeCategories: includeCats,
 		ExcludeCategories: excludeCats,
 	}
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
 	)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
+	tc.Auditor = auditor
 	return nil
 }
 
 func registerSeverityValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^I try to create a logger with route min_severity (\-?\d+)$`, func(minSev int) error {
+	ctx.Step(`^I try to create an auditor with route min_severity (\-?\d+)$`, func(minSev int) error {
 		return trySeverityLoggerCreation(tc, &minSev, nil)
 	})
 
-	ctx.Step(`^I try to create a logger with route max_severity (\-?\d+)$`, func(maxSev int) error {
+	ctx.Step(`^I try to create an auditor with route max_severity (\-?\d+)$`, func(maxSev int) error {
 		return trySeverityLoggerCreation(tc, nil, &maxSev)
 	})
 
-	ctx.Step(`^I try to create a logger with route min_severity (\d+) and max_severity (\d+)$`, func(minSev, maxSev int) error {
+	ctx.Step(`^I try to create an auditor with route min_severity (\d+) and max_severity (\d+)$`, func(minSev, maxSev int) error {
 		return trySeverityLoggerCreation(tc, &minSev, &maxSev)
 	})
 
-	ctx.Step(`^the logger creation should fail with error containing "([^"]*)"$`, func(expected string) error {
+	ctx.Step(`^the auditor creation should fail with error containing "([^"]*)"$`, func(expected string) error {
 		if tc.LastErr == nil {
 			return fmt.Errorf("expected error containing %q, got nil", expected)
 		}
@@ -202,23 +202,23 @@ func trySeverityLoggerCreation(tc *AuditTestContext, minSev, maxSev *int) error 
 		MinSeverity: minSev,
 		MaxSeverity: maxSev,
 	}
-	logger, lErr := audit.NewLogger(
+	auditor, lErr := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
 	)
 	tc.LastErr = lErr
-	if logger != nil {
-		tc.Logger = logger
+	if auditor != nil {
+		tc.Auditor = auditor
 	}
 	return nil
 }
 
 func registerSeverityRuntimeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I set output "([^"]*)" route to min_severity (\d+)$`, func(name string, minSev int) error {
-		if tc.Logger == nil {
-			return fmt.Errorf("logger not created")
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor not created")
 		}
 		route := &audit.EventRoute{MinSeverity: &minSev}
-		return tc.Logger.SetOutputRoute(name, route)
+		return tc.Auditor.SetOutputRoute(name, route)
 	})
 }

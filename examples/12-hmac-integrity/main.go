@@ -35,10 +35,10 @@ var taxonomyYAML []byte
 
 func main() {
 	// 1. Parse taxonomy.
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// 4. Emit events using generated typed builders.
@@ -51,7 +51,7 @@ func main() {
 	authEvt := NewAuthFailureEvent("unknown", "failure").
 		SetReason("invalid credentials").
 		SetSourceIP("192.168.1.100")
-	if auditErr := logger.AuditEvent(authEvt); auditErr != nil {
+	if auditErr := auditor.AuditEvent(authEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
@@ -62,15 +62,15 @@ func main() {
 	fmt.Println("\n--- Write event ---")
 	userEvt := NewUserCreateEvent("admin", "success").
 		SetTargetID("user-42")
-	if auditErr := logger.AuditEvent(userEvt); auditErr != nil {
+	if auditErr := auditor.AuditEvent(userEvt); auditErr != nil {
 		log.Printf("audit error: %v", auditErr)
 	}
 
 	fmt.Println("\n--- Compare the three outputs below ---")
 
-	// Close the logger to flush all events before reading files.
-	if closeErr := logger.Close(); closeErr != nil {
-		log.Printf("close logger: %v", closeErr)
+	// Close the auditor to flush all events before reading files.
+	if closeErr := auditor.Close(); closeErr != nil {
+		log.Printf("close auditor: %v", closeErr)
 	}
 
 	// Show what landed in each file.

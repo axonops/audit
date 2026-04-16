@@ -36,13 +36,13 @@ func ExampleMiddleware() {
 		},
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(taxonomy),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	// The EventBuilder transforms per-request hints into an audit event.
 	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
@@ -54,7 +54,7 @@ func ExampleMiddleware() {
 		}, false
 	}
 
-	mw := audit.Middleware(logger, builder)
+	mw := audit.Middleware(auditor, builder)
 	_ = mw // wrap your http.Handler with mw(handler)
 
 	fmt.Println("middleware created")
@@ -94,13 +94,13 @@ func ExampleMiddleware_skip() {
 		},
 	}
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(taxonomy),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	// Skip health-check endpoints to reduce noise.
 	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
@@ -113,7 +113,7 @@ func ExampleMiddleware_skip() {
 		}, false
 	}
 
-	mw := audit.Middleware(logger, builder)
+	mw := audit.Middleware(auditor, builder)
 	_ = mw
 
 	fmt.Println("skip middleware created")

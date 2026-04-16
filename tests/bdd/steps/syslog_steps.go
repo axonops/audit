@@ -49,32 +49,32 @@ func registerSyslogSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)"$`, func(network, address string) error {
-		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address})
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)"$`, func(network, address string) error {
+		return createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address})
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with app name "([^"]*)"$`, func(network, address, appName string) error {
-		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, AppName: appName})
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with app name "([^"]*)"$`, func(network, address, appName string) error {
+		return createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address, AppName: appName})
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with facility "([^"]*)"$`, func(network, address, facility string) error {
-		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Facility: facility})
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with facility "([^"]*)"$`, func(network, address, facility string) error {
+		return createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address, Facility: facility})
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with hostname "([^"]*)"$`, func(network, address, hostname string) error {
-		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with hostname "([^"]*)"$`, func(network, address, hostname string) error {
+		return createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
 	})
 
 	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)" with hostname "([^"]*)"$`, func(network, address, hostname string) error {
-		err := createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
+		err := createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address, Hostname: hostname})
 		if err != nil {
 			tc.LastErr = err
 		}
 		return nil
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with max retries (\d+)$`, func(network, address string, retries int) error {
-		return createSyslogLogger(tc, &syslog.Config{Network: network, Address: address, MaxRetries: retries})
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with max retries (\d+)$`, func(network, address string, retries int) error {
+		return createSyslogAuditor(tc, &syslog.Config{Network: network, Address: address, MaxRetries: retries})
 	})
 
 	ctx.Step(`^mock syslog metrics are configured$`, func() error {
@@ -82,24 +82,24 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		return nil
 	})
 
-	ctx.Step(`^a logger with syslog output on "([^"]*)" to "([^"]*)" with metrics and max retries (\d+)$`, func(network, address string, retries int) error {
-		return createSyslogLoggerWithMetrics(tc, &syslog.Config{
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with metrics and max retries (\d+)$`, func(network, address string, retries int) error {
+		return createSyslogAuditorWithMetrics(tc, &syslog.Config{
 			Network: network, Address: address, MaxRetries: retries,
 		})
 	})
 
-	ctx.Step(`^a logger with syslog TLS output to "([^"]*)" with CA cert$`, func(address string) error {
+	ctx.Step(`^an auditor with syslog TLS output to "([^"]*)" with CA cert$`, func(address string) error {
 		certs := certDir()
-		return createSyslogLogger(tc, &syslog.Config{
+		return createSyslogAuditor(tc, &syslog.Config{
 			Network: "tcp+tls",
 			Address: address,
 			TLSCA:   filepath.Join(certs, "ca.crt"),
 		})
 	})
 
-	ctx.Step(`^a logger with syslog mTLS output to "([^"]*)"$`, func(address string) error {
+	ctx.Step(`^an auditor with syslog mTLS output to "([^"]*)"$`, func(address string) error {
 		certs := certDir()
-		return createSyslogLogger(tc, &syslog.Config{
+		return createSyslogAuditor(tc, &syslog.Config{
 			Network: "tcp+tls",
 			Address: address,
 			TLSCA:   filepath.Join(certs, "ca.crt"),
@@ -122,7 +122,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			tc.Markers[fmt.Sprintf("multi_%d", i)] = m
 			fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 			fields["marker"] = m
-			if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+			if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 				return fmt.Errorf("audit event %d: %w", i, err)
 			}
 		}
@@ -132,7 +132,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^I audit an event with a (\d+)-byte payload$`, func(size int) error {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = strings.Repeat("x", size)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields))
 		return nil
 	})
 
@@ -201,7 +201,7 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 				"outcome": "success",
 				"reason":  marker,
 			})
-			_ = tc.Logger.AuditEvent(ev) // may return error (syslog dead), that's expected
+			_ = tc.Auditor.AuditEvent(ev) // may return error (syslog dead), that's expected
 		}
 		return nil
 	})
@@ -240,13 +240,13 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		// The first write after restart may fail and trigger reconnect.
 		// Retry a few times to allow reconnection.
 		for range 10 {
-			err := tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+			err := tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 			if err == nil {
 				return nil
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
@@ -392,8 +392,8 @@ func assertSyslogConstructionError(tc *AuditTestContext, substr string) error {
 
 // --- Internal helpers ---
 
-// createSyslogLogger creates a logger with a syslog output.
-func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
+// createSyslogAuditor creates an auditor with a syslog output.
+func createSyslogAuditor(tc *AuditTestContext, cfg *syslog.Config) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -410,17 +410,17 @@ func createSyslogLogger(tc *AuditTestContext, cfg *syslog.Config) error {
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-// createSyslogLoggerWithMetrics creates a logger with syslog output and metrics.
-func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) error {
+// createSyslogAuditorWithMetrics creates an auditor with syslog output and metrics.
+func createSyslogAuditorWithMetrics(tc *AuditTestContext, cfg *syslog.Config) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
@@ -441,12 +441,12 @@ func createSyslogLoggerWithMetrics(tc *AuditTestContext, cfg *syslog.Config) err
 	}
 	opts = append(opts, tc.Options...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return fmt.Errorf("create auditor: %w", err)
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 

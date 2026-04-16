@@ -39,9 +39,9 @@ Feature: Multi-Output Fan-Out with Loki
       """
 
   Scenario: Event delivered to file and Loki simultaneously
-    Given a logger with file and loki outputs
+    Given an auditor with file and loki outputs
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the file should contain the marker
     And the loki event payload should contain:
@@ -54,18 +54,18 @@ Feature: Multi-Output Fan-Out with Loki
       | event_category | write        |
 
   Scenario: Different routes per output with Loki receiving only security
-    Given a logger with file receiving all events and loki receiving only "security"
+    Given an auditor with file receiving all events and loki receiving only "security"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success" named "write_event"
     And I audit a uniquely marked "auth_failure" event with actor "mallory" and outcome "failure" and field "reason" = "invalid_password" named "security_event"
-    And I close the logger
+    And I close the auditor
     Then the file should contain both markers
     And querying Loki by label event_type = "auth_failure" should return the security_event marker within 10 seconds
     And the loki server should not contain marker "write_event" within 5 seconds
 
   Scenario: HMAC present on both file and Loki with same salt
-    Given a logger with file and loki outputs both HMAC-enabled with salt "fanout-hmac-salt-16!" version "v1"
+    Given an auditor with file and loki outputs both HMAC-enabled with salt "fanout-hmac-salt-16!" version "v1"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the file should contain the marker
     And the file event should contain "_hmac" field
@@ -93,9 +93,9 @@ Feature: Multi-Output Fan-Out with Loki
             email:
               labels: [pii]
       """
-    And a logger with file output keeping all fields and loki output excluding label "pii"
+    And an auditor with file output keeping all fields and loki output excluding label "pii"
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success" and field "email" = "alice@example.com"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the file should contain "alice@example.com"
     And the loki event payload should not contain field "email"
@@ -109,15 +109,15 @@ Feature: Multi-Output Fan-Out with Loki
       | event_category | write        |
 
   Scenario: Loki failure does not block file delivery
-    Given a logger with file output and loki output to unreachable server
+    Given an auditor with file output and loki output to unreachable server
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the file should contain the marker
 
   Scenario: Complete payload present in both file and Loki
-    Given a logger with file and loki outputs
+    Given an auditor with file and loki outputs
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the file should contain the marker
     And the file event should contain:
@@ -138,8 +138,8 @@ Feature: Multi-Output Fan-Out with Loki
       | event_category | write        |
 
   Scenario: Multiple events delivered to file and Loki
-    Given a logger with file and loki outputs
+    Given an auditor with file and loki outputs
     When I audit 3 uniquely marked "user_create" events with actor "alice" and outcome "success"
-    And I close the logger
+    And I close the auditor
     Then the loki fanout server should have at least 3 events within 10 seconds
     And the file should contain all 3 markers

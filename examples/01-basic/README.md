@@ -4,7 +4,7 @@
 
 # Example 01: Basic Audit Logging (Programmatic)
 
-The minimum viable audit event: create a logger, emit an event, and see
+The minimum viable audit event: create an auditor, emit an event, and see
 the JSON output. No YAML files, no code generation, no configuration —
 just Go code.
 
@@ -15,9 +15,9 @@ use audit in a real application.
 
 ## What You'll Learn
 
-- Creating a logger with two lines of setup
+- Creating an auditor with two lines of setup
 - Emitting events with `NewEventKV()` (slog-style) and `NewEvent()` (map-style)
-- How the logger delivers events asynchronously
+- How the auditor delivers events asynchronously
 - Why `Close()` matters
 
 ## Prerequisites
@@ -39,13 +39,13 @@ on the listed event types. It exists so you can experiment without
 writing YAML or worrying about field validation:
 
 ```go
-logger, err := audit.NewLogger(
+auditor, err := audit.New(
     audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
     audit.WithOutputs(audit.Stdout()),
 )
 ```
 
-`NewLogger()` takes functional options. `WithTaxonomy()` tells the logger
+`New()` takes functional options. `WithTaxonomy()` tells the auditor
 what events are valid. `WithOutputs()` tells it where to send them.
 `Stdout()` writes JSON to stdout — no file rotation, no network, no
 configuration.
@@ -60,7 +60,7 @@ Two styles, same result:
 
 **slog-style key-value pairs** (concise):
 ```go
-err := logger.AuditEvent(audit.NewEventKV("user_create",
+err := auditor.AuditEvent(audit.NewEventKV("user_create",
     "outcome", "success",
     "actor_id", "alice",
 ))
@@ -68,7 +68,7 @@ err := logger.AuditEvent(audit.NewEventKV("user_create",
 
 **Fields map** (explicit):
 ```go
-err := logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+err := auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
     "outcome":  "failure",
     "actor_id": "unknown",
 }))
@@ -85,7 +85,7 @@ precedes it in your code.
 ### Closing the Logger
 
 ```go
-defer func() { _ = logger.Close() }()
+defer func() { _ = auditor.Close() }()
 ```
 
 `Close()` waits for buffered events to flush, then shuts down the
@@ -114,7 +114,7 @@ This is deliberate — audit logging must not silently drop events. Your
 application decides how to handle back-pressure:
 
 ```go
-if err := logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+if err := auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
     if errors.Is(err, audit.ErrQueueFull) {
         // Buffer is full — outputs can't keep up.
         // Log to stderr, increment a metric, or slow down.

@@ -62,10 +62,10 @@ Feature: Loki streams for uncategorised events
   # ---------------------------------------------------------------------------
 
   Scenario: Categorised events carry event_category in both stream label and JSON payload
-    Given a logger with loki output with batch size 10
+    Given an auditor with loki output with batch size 10
     When I audit a "user_create" event with marker "cat_write"
     And I audit an "auth_failure" event with marker "cat_sec"
-    And I close the logger
+    And I close the auditor
     Then querying Loki by label "event_category" = "write" should return an event with:
       | field          | value       |
       | event_type     | user_create |
@@ -91,7 +91,7 @@ Feature: Loki streams for uncategorised events
     # The health_check event is in the taxonomy but belongs to no category.
     # Its Loki stream must not carry the event_category label — querying by
     # {event_category="anything"} will never find it.
-    Given a logger with loki output
+    Given an auditor with loki output
     When I audit a uniquely marked "health_check" event
     Then the loki server should contain the marker within 15 seconds
     And the loki stream should not have label "event_category"
@@ -100,7 +100,7 @@ Feature: Loki streams for uncategorised events
     # The JSON log line for health_check must not include the event_category
     # key. The framework only appends event_category when the event has a
     # non-empty category — uncategorised events have none.
-    Given a logger with loki output
+    Given an auditor with loki output
     When I audit a uniquely marked "health_check" event
     Then the loki server should contain the marker within 15 seconds
     And the loki event payload for the marker should not contain field "event_category"
@@ -109,10 +109,10 @@ Feature: Loki streams for uncategorised events
     # Push one categorised and one uncategorised event with distinct markers.
     # The category label selector must find only its own event — proving the
     # streams are genuinely separate.
-    Given a logger with loki output with batch size 10
+    Given an auditor with loki output with batch size 10
     When I audit a "user_create" event with marker "mixed_write"
     And I audit a "health_check" event with marker "mixed_uncat"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the named marker "mixed_write" within 15 seconds
     And the loki server should contain the named marker "mixed_uncat" within 15 seconds
     And querying Loki by label "event_category" = "write" should not return named marker "mixed_uncat" within 3 seconds
@@ -125,10 +125,10 @@ Feature: Loki streams for uncategorised events
     # Both user_create (write category) and health_check (uncategorised)
     # carry actor_id in their JSON payload. A LogQL JSON filter searching
     # by actor_id must find both, proving uncategorised events are not lost.
-    Given a logger with loki output with batch size 10
+    Given an auditor with loki output with batch size 10
     When I audit a "user_create" event with marker "actor_write"
     And I audit a "health_check" event with marker "actor_uncat"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the named marker "actor_write" within 15 seconds
     And the loki server should contain the named marker "actor_uncat" within 15 seconds
 
@@ -136,11 +136,11 @@ Feature: Loki streams for uncategorised events
     # Emit one event per category and one uncategorised. A line filter
     # that matches the shared test suite label finds all three — proving
     # event_category does not gate queryability.
-    Given a logger with loki output with batch size 10
+    Given an auditor with loki output with batch size 10
     When I audit a "user_create" event with marker "all_write"
     And I audit an "auth_failure" event with marker "all_sec"
     And I audit a "health_check" event with marker "all_uncat"
-    And I close the logger
+    And I close the auditor
     Then the loki server should contain the named marker "all_write" within 15 seconds
     And the loki server should contain the named marker "all_sec" within 15 seconds
     And the loki server should contain the named marker "all_uncat" within 15 seconds
@@ -154,11 +154,11 @@ Feature: Loki streams for uncategorised events
     # match only streams that have no event_category label — i.e., only
     # uncategorised events. This is the correct pattern for "show me
     # everything that has not been classified yet."
-    Given a logger with loki output with batch size 10
+    Given an auditor with loki output with batch size 10
     When I audit a "user_create" event with marker "neg_write"
     And I audit an "auth_failure" event with marker "neg_sec"
     And I audit a "health_check" event with marker "neg_uncat"
-    And I close the logger
+    And I close the auditor
     Then querying Loki excluding event_category labels "write,security" should return the named marker "neg_uncat" within 15 seconds
     And querying Loki excluding event_category labels "write,security" should not return the named marker "neg_write" within 3 seconds
     And querying Loki excluding event_category labels "write,security" should not return the named marker "neg_sec" within 3 seconds
@@ -170,7 +170,7 @@ Feature: Loki streams for uncategorised events
   Scenario: Uncategorised event payload is complete apart from the absent event_category field
     # Verify every field that SHOULD be present, then explicitly verify
     # that event_category is absent. This documents the full contract.
-    Given a logger with loki output
+    Given an auditor with loki output
     When I audit a uniquely marked "health_check" event
     Then the loki server should contain the marker within 15 seconds
     And the loki event payload should contain:

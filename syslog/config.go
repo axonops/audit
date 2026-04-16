@@ -98,7 +98,7 @@ type Config struct {
 
 	// Hostname overrides the hostname in the syslog RFC 5424 header.
 	// When empty, [os.Hostname] is used at construction time. Set this
-	// to match the logger-wide host value from [audit.WithHost].
+	// to match the auditor-wide host value from [audit.WithHost].
 	Hostname string
 
 	// MaxRetries is the maximum number of consecutive reconnection

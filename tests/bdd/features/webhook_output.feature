@@ -12,22 +12,22 @@ Feature: Webhook Output
   # --- Batch delivery ---
 
   Scenario: Batch delivery sends events in batches
-    Given a logger with webhook output configured for batch size 5
+    Given an auditor with webhook output configured for batch size 5
     When I audit 12 uniquely marked webhook events
     Then the webhook receiver should have at least 3 requests within 10 seconds
 
   Scenario: Single event with batch size 1 delivered immediately
-    Given a logger with webhook output configured for batch size 1
+    Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
   Scenario: Flush interval triggers delivery before batch full
-    Given a logger with webhook output configured for batch size 100 and flush interval 200ms
+    Given an auditor with webhook output configured for batch size 100 and flush interval 200ms
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
   Scenario: Timer resets after batch flush
-    Given a logger with webhook output configured for batch size 2 and flush interval 300ms
+    Given an auditor with webhook output configured for batch size 2 and flush interval 300ms
     When I audit a uniquely marked webhook "user_create" event "timer1"
     And I audit a uniquely marked webhook "user_create" event "timer2"
     Then the webhook receiver should have at least 1 event within 5 seconds
@@ -39,28 +39,28 @@ Feature: Webhook Output
 
   Scenario: Retry on 503 response with eventual delivery
     Given the webhook receiver is configured to return status 503
-    And a logger with webhook output configured for batch size 1 and max retries 3
+    And an auditor with webhook output configured for batch size 1 and max retries 3
     When I audit a uniquely marked webhook "user_create" event
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
   Scenario: Retry on 429 rate limit response
     Given the webhook receiver is configured to return status 429
-    And a logger with webhook output configured for batch size 1 and max retries 3
+    And an auditor with webhook output configured for batch size 1 and max retries 3
     When I audit a uniquely marked webhook "user_create" event
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
   Scenario: Retry on 504 gateway timeout
     Given the webhook receiver is configured to return status 504
-    And a logger with webhook output configured for batch size 1 and max retries 3
+    And an auditor with webhook output configured for batch size 1 and max retries 3
     When I audit a uniquely marked webhook "user_create" event
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
   Scenario: No retry on 400 bad request
     Given the webhook receiver is configured to return status 400
-    And a logger with webhook output configured for batch size 1 and max retries 5
+    And an auditor with webhook output configured for batch size 1 and max retries 5
     When I audit a uniquely marked webhook "user_create" event "first"
     And the webhook receiver is reconfigured to return status 200
     And I audit a uniquely marked webhook "user_create" event "sentinel"
@@ -68,7 +68,7 @@ Feature: Webhook Output
 
   Scenario: No retry on 401 unauthorized
     Given the webhook receiver is configured to return status 401
-    And a logger with webhook output configured for batch size 1 and max retries 5
+    And an auditor with webhook output configured for batch size 1 and max retries 5
     When I audit a uniquely marked webhook "user_create" event "no_retry_401"
     And the webhook receiver is reconfigured to return status 200
     And I audit a uniquely marked webhook "user_create" event "sentinel_401"
@@ -76,7 +76,7 @@ Feature: Webhook Output
 
   Scenario: No retry on 403 forbidden
     Given the webhook receiver is configured to return status 403
-    And a logger with webhook output configured for batch size 1 and max retries 5
+    And an auditor with webhook output configured for batch size 1 and max retries 5
     When I audit a uniquely marked webhook "user_create" event "no_retry_403"
     And the webhook receiver is reconfigured to return status 200
     And I audit a uniquely marked webhook "user_create" event "sentinel_403"
@@ -85,19 +85,19 @@ Feature: Webhook Output
   # --- Custom headers ---
 
   Scenario: Custom headers delivered with events
-    Given a logger with webhook output with custom header "X-Audit-Source" = "bdd-test"
+    Given an auditor with webhook output with custom header "X-Audit-Source" = "bdd-test"
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
     And the received webhook event should have header "X-Audit-Source" with value "bdd-test"
 
   Scenario: Authorization header delivered to receiver
-    Given a logger with webhook output with custom header "Authorization" = "Bearer test-token-123"
+    Given an auditor with webhook output with custom header "Authorization" = "Bearer test-token-123"
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
     And the received webhook event should have header "Authorization" with value "Bearer test-token-123"
 
   Scenario: Content-Type is application/x-ndjson
-    Given a logger with webhook output configured for batch size 1
+    Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
     And the received webhook event should have header "Content-Type" with value "application/x-ndjson"
@@ -105,9 +105,9 @@ Feature: Webhook Output
   # --- Shutdown flush ---
 
   Scenario: Pending events flushed on shutdown
-    Given a logger with webhook output configured for batch size 100 and flush interval 60s
+    Given an auditor with webhook output configured for batch size 100 and flush interval 60s
     When I audit 3 uniquely marked webhook events
-    And I close the logger
+    And I close the auditor
     Then the webhook receiver should have at least 1 event within 5 seconds
 
   # --- SSRF protection ---
@@ -120,30 +120,30 @@ Feature: Webhook Output
       """
 
   Scenario: AllowInsecureHTTP permits http URLs
-    Given a logger with webhook output to "http://localhost:8080/events" with AllowInsecureHTTP
+    Given an auditor with webhook output to "http://localhost:8080/events" with AllowInsecureHTTP
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
   Scenario: Private range blocked by default drops events
     Given a local HTTP webhook receiver
     And mock webhook metrics are configured
-    And a logger with webhook output to the local receiver without AllowPrivateRanges
+    And an auditor with webhook output to the local receiver without AllowPrivateRanges
     When I audit a uniquely marked webhook "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
 
   Scenario: AllowPrivateRanges permits private addresses
     Given a local HTTP webhook receiver
-    And a logger with webhook output to the local receiver with AllowPrivateRanges
+    And an auditor with webhook output to the local receiver with AllowPrivateRanges
     When I audit a uniquely marked webhook "user_create" event
     Then the local webhook receiver should have at least 1 event within 5 seconds
 
   Scenario: Redirect is rejected and not followed
     Given a local HTTP webhook receiver configured to redirect
     And mock webhook metrics are configured
-    And a logger with webhook output to the redirecting receiver with metrics
+    And an auditor with webhook output to the redirecting receiver with metrics
     When I audit a uniquely marked webhook "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
 
   Scenario: Embedded credentials in URL rejected with exact error
@@ -193,7 +193,7 @@ Feature: Webhook Output
   # --- Complete payload verification ---
 
   Scenario: All event fields present in webhook delivery
-    Given a logger with webhook output configured for batch size 1
+    Given an auditor with webhook output configured for batch size 1
     When I audit event "user_create" with fields:
       | field     | value         |
       | outcome   | success       |
@@ -212,21 +212,21 @@ Feature: Webhook Output
 
   Scenario: Retry on 500 internal server error
     Given the webhook receiver is configured to return status 500
-    And a logger with webhook output configured for batch size 1 and max retries 3
+    And an auditor with webhook output configured for batch size 1 and max retries 3
     When I audit a uniquely marked webhook "user_create" event
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
   Scenario: Retry on 502 bad gateway
     Given the webhook receiver is configured to return status 502
-    And a logger with webhook output configured for batch size 1 and max retries 3
+    And an auditor with webhook output configured for batch size 1 and max retries 3
     When I audit a uniquely marked webhook "user_create" event
     And the webhook receiver is reconfigured to return status 200
     Then the webhook receiver should have at least 1 event within 10 seconds
 
   Scenario: No retry on 404 not found
     Given the webhook receiver is configured to return status 404
-    And a logger with webhook output configured for batch size 1 and max retries 5
+    And an auditor with webhook output configured for batch size 1 and max retries 5
     When I audit a uniquely marked webhook "user_create" event "no_retry_404"
     And the webhook receiver is reconfigured to return status 200
     And I audit a uniquely marked webhook "user_create" event "sentinel_404"
@@ -234,7 +234,7 @@ Feature: Webhook Output
 
   Scenario: Retries exhausted drops batch and continues
     Given the webhook receiver is configured to return status 503
-    And a logger with webhook output configured for batch size 1 and max retries 1
+    And an auditor with webhook output configured for batch size 1 and max retries 1
     When I audit a uniquely marked webhook "user_create" event "exhausted"
     And I wait 3 seconds for retries to exhaust
     And the webhook receiver is reconfigured to return status 200
@@ -244,40 +244,40 @@ Feature: Webhook Output
   # --- Buffer management ---
 
   Scenario: Buffer overflow is non-blocking
-    Given a logger with webhook output configured for batch size 100 and flush interval 60s
+    Given an auditor with webhook output configured for batch size 100 and flush interval 60s
     When I rapidly audit 200 webhook events measuring time
     Then all 200 audit calls should complete within 2 seconds
 
   Scenario: Buffer overflow records per-output RecordDrop metric
     Given a local HTTP webhook receiver
     And mock webhook metrics are configured
-    And a logger with webhook to local receiver with buffer size 1 and metrics
+    And an auditor with webhook to local receiver with buffer size 1 and metrics
     When I rapidly audit 200 webhook events measuring time
-    And I close the logger
+    And I close the auditor
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
 
   # --- Close idempotent ---
 
   Scenario: Close is idempotent
-    Given a logger with webhook output configured for batch size 1
-    When I close the logger
-    And I close the logger again
+    Given an auditor with webhook output configured for batch size 1
+    When I close the auditor
+    And I close the auditor again
     Then the second close should return no error
 
   # --- HTTPS / TLS ---
 
   Scenario: Webhook over HTTPS with custom CA validates server
     Given a local HTTPS webhook receiver
-    And a logger with webhook output to the HTTPS receiver with custom CA
+    And an auditor with webhook output to the HTTPS receiver with custom CA
     When I audit a uniquely marked webhook "user_create" event
     Then the HTTPS webhook receiver should have at least 1 event within 5 seconds
 
   Scenario: Webhook HTTPS with wrong CA drops events
     Given a local HTTPS webhook receiver
     And mock webhook metrics are configured
-    And a logger with webhook output to the HTTPS receiver with wrong CA and metrics
+    And an auditor with webhook output to the HTTPS receiver with wrong CA and metrics
     When I audit a uniquely marked webhook "user_create" event
-    And I close the logger
+    And I close the auditor
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
     And the HTTPS webhook receiver should have received 0 events
 
@@ -285,21 +285,21 @@ Feature: Webhook Output
 
   Scenario: Webhook flush records RecordWebhookFlush metric
     Given mock webhook metrics are configured
-    And a logger with webhook output and webhook metrics configured for batch size 1
+    And an auditor with webhook output and webhook metrics configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
-    And I close the logger
+    And I close the auditor
     And the webhook metrics should have recorded at least 1 flush
 
   Scenario: Nil webhook metrics does not panic
-    Given a logger with webhook output configured for batch size 1
+    Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
     Then the webhook receiver should have at least 1 event within 5 seconds
 
   # --- Lifecycle ---
 
   Scenario: Write after close returns error
-    Given a logger with webhook output configured for batch size 1
-    When I close the logger
+    Given an auditor with webhook output configured for batch size 1
+    When I close the auditor
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"

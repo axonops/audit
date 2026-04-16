@@ -48,47 +48,47 @@ import (
 var taxonomyYAML []byte
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 	defer func() {
-		if err := logger.Close(); err != nil {
-			log.Printf("close logger: %v", err)
+		if err := auditor.Close(); err != nil {
+			log.Printf("close auditor: %v", err)
 		}
 	}()
 
 	// Categorised events — these get event_category labels in Loki.
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewUserCreateEvent("alice", "success").SetResourceID("user-42"),
 	); err != nil {
 		log.Printf("audit: %v", err)
 	}
 	fmt.Println("Audited: user_create by alice")
 
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewUserCreateEvent("bob", "success").SetResourceID("user-43"),
 	); err != nil {
 		log.Printf("audit: %v", err)
 	}
 	fmt.Println("Audited: user_create by bob")
 
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewAuthFailureEvent("mallory", "failure", "invalid_password"),
 	); err != nil {
 		log.Printf("audit: %v", err)
 	}
 	fmt.Println("Audited: auth_failure by mallory")
 
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewPermissionDeniedEvent("mallory", "failure", "admin_panel"),
 	); err != nil {
 		log.Printf("audit: %v", err)
 	}
 	fmt.Println("Audited: permission_denied by mallory")
 
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewUserUpdateEvent("alice", "success").SetResourceID("user-42"),
 	); err != nil {
 		log.Printf("audit: %v", err)
@@ -97,7 +97,7 @@ func main() {
 
 	// Uncategorised events — no event_category label in Loki.
 	// Useful for operational events that don't need compliance routing.
-	if err := logger.AuditEvent(
+	if err := auditor.AuditEvent(
 		NewHealthCheckEvent("alice", "success", "database"),
 	); err != nil {
 		log.Printf("audit: %v", err)

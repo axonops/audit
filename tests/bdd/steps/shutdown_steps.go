@@ -25,7 +25,7 @@ import (
 
 // blockingMockOutput is a synchronous output whose Write blocks forever.
 // Used to verify that the drain timeout mechanism works correctly when
-// an output hangs. Close returns immediately so the logger can shut down.
+// an output hangs. Close returns immediately so the auditor can shut down.
 type blockingMockOutput struct {
 	blockCh chan struct{} // closed on cleanup to unblock Write
 }
@@ -42,25 +42,25 @@ func (b *blockingMockOutput) Close() error { return nil }
 // registerShutdownSteps registers step definitions for shutdown scenarios.
 func registerShutdownSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	// Most shutdown scenarios use steps from audit_steps.go and file_steps.go:
-	// - "I close the logger" (audit_steps)
-	// - "I close the logger again" (file_steps)
+	// - "I close the auditor" (audit_steps)
+	// - "I close the auditor again" (file_steps)
 	// - "the second close should return no error" (file_steps)
 	// - "the file should contain exactly N events" (file_steps)
-	// - "closing the logger should complete within N seconds" (file_steps)
+	// - "closing the auditor should complete within N seconds" (file_steps)
 
-	ctx.Step(`^a logger with a blocking output and drain timeout (\d+)s$`, func(timeoutSecs int) error {
+	ctx.Step(`^an auditor with a blocking output and drain timeout (\d+)s$`, func(timeoutSecs int) error {
 		blocking := &blockingMockOutput{blockCh: make(chan struct{})}
 		tc.AddCleanup(func() { close(blocking.blockCh) })
 
-		logger, err := audit.NewLogger(
+		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithOutputs(blocking),
-			audit.WithDrainTimeout(time.Duration(timeoutSecs)*time.Second),
+			audit.WithShutdownTimeout(time.Duration(timeoutSecs)*time.Second),
 		)
 		if err != nil {
-			return fmt.Errorf("create logger with blocking output: %w", err)
+			return fmt.Errorf("create auditor with blocking output: %w", err)
 		}
-		tc.Logger = logger
+		tc.Auditor = auditor
 		return nil
 	})
 }

@@ -50,15 +50,15 @@ var taxonomyYAML []byte
 
 func main() {
 	// Parse taxonomy.
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
 
 	// --- Level 1: Core Buffer Backpressure ---
 	//
-	// The core queue is set to 5 (outputs.yaml: logger.queue_size: 5).
+	// The core queue is set to 5 (outputs.yaml: auditor.queue_size: 5).
 	// We emit 20 events in a tight loop. Some AuditEvent() calls will
 	// find the channel full and return ErrQueueFull.
 	fmt.Println("--- Level 1: Core Queue (queue_size: 5) ---")
@@ -68,7 +68,7 @@ func main() {
 	for i := range 20 {
 		actor := fmt.Sprintf("user-%d", i)
 		evt := NewUserCreateEvent(actor, "success")
-		if auditErr := logger.AuditEvent(evt); auditErr != nil {
+		if auditErr := auditor.AuditEvent(evt); auditErr != nil {
 			if errors.Is(auditErr, audit.ErrQueueFull) {
 				dropped++
 			} else {
@@ -81,7 +81,7 @@ func main() {
 
 	fmt.Printf("  Delivered: %d, Dropped (ErrQueueFull): %d\n", delivered, dropped)
 	if dropped > 0 {
-		fmt.Println("  → Core queue was full. In production, increase logger.queue_size.")
+		fmt.Println("  → Core queue was full. In production, increase auditor.queue_size.")
 	}
 
 	// --- Level 2: Per-Output Buffer Drops ---
@@ -110,9 +110,9 @@ func main() {
 Two levels of buffering exist in the pipeline:
 
   Level 1: Core Intake Queue
-    AuditEvent() → channel (logger.queue_size) → drain goroutine
+    AuditEvent() → channel (auditor.queue_size) → drain goroutine
     Drop signal: ErrQueueFull returned to caller
-    Tuning: increase logger.queue_size (default 10,000)
+    Tuning: increase auditor.queue_size (default 10,000)
 
   Level 2: Per-Output Buffer (all outputs except stdout)
     Drain goroutine → output channel (output buffer_size) → writeLoop/batchLoop
@@ -127,7 +127,7 @@ See docs/async-delivery.md for the full architecture reference.
 
 	// Close flushes remaining events. The file output will have all
 	// delivered events. The webhook will have dropped most of them.
-	if closeErr := logger.Close(); closeErr != nil {
+	if closeErr := auditor.Close(); closeErr != nil {
 		log.Printf("close: %v", closeErr)
 	}
 

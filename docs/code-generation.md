@@ -20,7 +20,7 @@ constructors.
 Without code generation, emitting an audit event looks like this:
 
 ```go
-logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
     "actor_id": "alice",
     "outcom":   "success",  // typo — runtime validation catches it, but only if tested
 }))
@@ -29,7 +29,7 @@ logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 With code generation:
 
 ```go
-logger.AuditEvent(NewUserCreateEvent("alice", "success"))
+auditor.AuditEvent(NewUserCreateEvent("alice", "success"))
 // "outcom" typo is impossible — required fields are constructor parameters
 // Unknown field "NewUserCrateEvent" fails at compile time
 ```
@@ -122,7 +122,7 @@ func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent
 func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent
 func (e *UserCreateEvent) SetReason(v any) *UserCreateEvent
 
-// Implements audit.Event — pass directly to logger.AuditEvent()
+// Implements audit.Event — pass directly to auditor.AuditEvent()
 func (e *UserCreateEvent) EventType() string      // returns "user_create"
 func (e *UserCreateEvent) Fields() audit.Fields    // returns the constructed field map
 
@@ -136,7 +136,7 @@ func (e *UserCreateEvent) Description() string
 
 ```go
 // Type-safe — typos fail at compile time
-err := logger.AuditEvent(
+err := auditor.AuditEvent(
     NewUserCreateEvent("alice", "success").
         SetTargetID("user-42").
         SetReason("admin request"),

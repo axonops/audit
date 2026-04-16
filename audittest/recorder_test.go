@@ -139,17 +139,17 @@ func TestRecorder_ConcurrentWriteAndRead(t *testing.T) {
 }
 
 // TestRecorder_FullPipeline verifies the recorder works end-to-end
-// with a real audit logger.
+// with a real audit auditor.
 func TestRecorder_FullPipeline(t *testing.T) {
 	t.Parallel()
-	logger, events, metrics := audittest.NewLoggerQuick(t, "user_create")
+	auditor, events, metrics := audittest.NewQuick(t, "user_create")
 
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	require.Equal(t, 1, events.Count())
 	evt := events.Events()[0]

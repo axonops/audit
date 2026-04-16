@@ -503,13 +503,13 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
 	require.NoError(t, err)
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":      "success",
 		"actor_id":     "alice",
 		"email":        "alice@example.com",
@@ -518,7 +518,7 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 		"nickname":     "ally",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -551,20 +551,20 @@ func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 	require.NoError(t, err)
 
 	// Exclude financial only — card_number is stripped.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("financial")),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"email":       "alice@example.com",
 		"card_number": "4111111111111111",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -584,20 +584,20 @@ func TestFieldStripping_DifferentOutputs(t *testing.T) {
 	outAll := testhelper.NewMockOutput("all")
 	outNoPII := testhelper.NewMockOutput("no-pii")
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(outAll), // no exclusions
 		audit.WithNamedOutput(outNoPII, audit.OutputExcludeLabels("pii")), // exclude PII
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// "all" output gets all fields.
 	require.True(t, outAll.WaitForEvents(1, 2*time.Second))
@@ -623,19 +623,19 @@ func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// No exclude_labels → all fields delivered.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -669,19 +669,19 @@ events:
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
 	require.NoError(t, err)
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -698,7 +698,7 @@ events:
 	assert.Contains(t, evt, "severity")
 }
 
-func TestNewLogger_ExcludeLabels_NoSensitivity(t *testing.T) {
+func TestNew_ExcludeLabels_NoSensitivity(t *testing.T) {
 	t.Parallel()
 	tax, err := audit.ParseTaxonomyYAML([]byte(`
 version: 1
@@ -715,7 +715,7 @@ events:
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
 	require.NoError(t, err)
 
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
 	)
@@ -723,7 +723,7 @@ events:
 	assert.Contains(t, err.Error(), "no sensitivity config")
 }
 
-func TestNewLogger_ExcludeLabels_UndefinedLabel(t *testing.T) {
+func TestNew_ExcludeLabels_UndefinedLabel(t *testing.T) {
 	t.Parallel()
 	tax, err := audit.ParseTaxonomyYAML([]byte(`
 version: 1
@@ -745,7 +745,7 @@ events:
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
 	require.NoError(t, err)
 
-	_, err = audit.NewLogger(
+	_, err = audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("nonexistent")),
 	)
@@ -784,18 +784,18 @@ events:
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
 	require.NoError(t, err)
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -824,7 +824,7 @@ func TestFormatWithExclusion_ExclusionPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Output with exclusions — formatOpts should be pre-allocated.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
 	)
@@ -832,14 +832,14 @@ func TestFormatWithExclusion_ExclusionPath(t *testing.T) {
 
 	// Emit multiple events to verify pre-computed defs work correctly.
 	for i := range 10 {
-		err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 			"outcome":  "success",
 			"actor_id": fmt.Sprintf("user-%d", i),
 			"email":    fmt.Sprintf("user%d@example.com", i),
 		}))
 		require.NoError(t, err)
 	}
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 10)
@@ -861,19 +861,19 @@ func TestFormatWithExclusion_NoExclusionNoOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Output WITHOUT exclusions — formatOpts should be nil.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(stdout),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
 		"email":    "alice@example.com",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	events := parseJSONEvents(t, buf)
 	require.Len(t, events, 1)
@@ -890,7 +890,7 @@ func TestFormatWithExclusion_MultipleOutputsDifferentExclusions(t *testing.T) {
 	outNoPII := testhelper.NewMockOutput("no-pii")
 	outNoFinancial := testhelper.NewMockOutput("no-financial")
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(outAll),
 		audit.WithNamedOutput(outNoPII, audit.OutputExcludeLabels("pii")),
@@ -898,14 +898,14 @@ func TestFormatWithExclusion_MultipleOutputsDifferentExclusions(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":     "success",
 		"actor_id":    "alice",
 		"email":       "alice@example.com",
 		"card_number": "4111111111111111",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// "all" gets everything.
 	require.True(t, outAll.WaitForEvents(1, 2*time.Second))
@@ -939,7 +939,7 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 	require.NoError(t, err)
 
 	out := testhelper.NewMockOutput("concurrent")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputExcludeLabels("pii")),
 	)
@@ -953,7 +953,7 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range eventsPerGoroutine {
-				_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+				_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 					"outcome":  "success",
 					"actor_id": "alice",
 					"email":    "alice@example.com",
@@ -962,7 +962,7 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	total := goroutines * eventsPerGoroutine
 	require.True(t, out.WaitForEvents(total, 5*time.Second),
@@ -1111,7 +1111,7 @@ func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	}
 	outAll := testhelper.NewMockOutput("all")
 	outFiltered := testhelper.NewMockOutput("filtered")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(outAll),
 		audit.WithNamedOutput(outFiltered, audit.OutputExcludeLabels("pii")),
@@ -1119,7 +1119,7 @@ func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	fields := audit.Fields{
 		"outcome":  "success",
@@ -1130,7 +1130,7 @@ func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for range b.N {
-		_ = logger.AuditEvent(audit.NewEvent("user_create", fields))
+		_ = auditor.AuditEvent(audit.NewEvent("user_create", fields))
 	}
 }
 
@@ -1141,14 +1141,14 @@ func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels [
 		b.Fatal(err)
 	}
 	out := testhelper.NewMockOutput("bench")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	fields := audit.Fields{
 		"outcome":  "success",
@@ -1159,7 +1159,7 @@ func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels [
 	b.ResetTimer()
 	b.ReportAllocs()
 	for range b.N {
-		_ = logger.AuditEvent(audit.NewEvent("user_create", fields))
+		_ = auditor.AuditEvent(audit.NewEvent("user_create", fields))
 	}
 }
 

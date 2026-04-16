@@ -9,7 +9,7 @@ Feature: Core Audit Logging
 
   Background:
     Given a standard test taxonomy
-    And a logger with stdout output
+    And an auditor with stdout output
 
   # --- Happy paths with complete payload assertion ---
 
@@ -57,7 +57,7 @@ Feature: Core Audit Logging
 
   Scenario: Framework fields appear in JSON output
     Given framework fields app_name "myapp" host "prod-01" timezone "UTC"
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -69,7 +69,7 @@ Feature: Core Audit Logging
     And the output should contain field "pid" as a positive integer
 
   Scenario: PID is always present as a positive integer
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -78,7 +78,7 @@ Feature: Core Audit Logging
     And the output should contain field "pid" as a positive integer
 
   Scenario: PID present even without app_name or host
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -89,7 +89,7 @@ Feature: Core Audit Logging
     And the output should not contain field "host"
 
   Scenario: Timezone and PID auto-detected when not configured
-    Given a logger with stdout output
+    Given an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -101,7 +101,7 @@ Feature: Core Audit Logging
 
   Scenario: Framework fields present with OmitEmpty true
     Given framework fields app_name "myapp" host "prod-01" timezone "UTC"
-    And a logger with stdout output and OmitEmpty "true"
+    And an auditor with stdout output and OmitEmpty "true"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -117,7 +117,7 @@ Feature: Core Audit Logging
     Given standard field defaults:
       | field     | value    |
       | source_ip | 10.0.0.1 |
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -129,7 +129,7 @@ Feature: Core Audit Logging
     Given standard field defaults:
       | field     | value    |
       | source_ip | 10.0.0.1 |
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "user_create" with fields:
       | field     | value       |
       | outcome   | success     |
@@ -142,7 +142,7 @@ Feature: Core Audit Logging
     Given standard field defaults:
       | field     | value    |
       | source_ip | 10.0.0.1 |
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "user_create" with fields:
       | field     | value   |
       | outcome   | success |
@@ -156,7 +156,7 @@ Feature: Core Audit Logging
       | field     | value     |
       | source_ip | 10.0.0.1  |
       | reason    | scheduled |
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -181,7 +181,7 @@ Feature: Core Audit Logging
     And standard field defaults:
       | field     | value    |
       | source_ip | 10.0.0.1 |
-    And a logger with stdout output and validation mode "strict"
+    And an auditor with stdout output and validation mode "strict"
     When I audit event "user_create" with fields:
       | field   | value   |
       | outcome | success |
@@ -218,7 +218,7 @@ Feature: Core Audit Logging
       """
 
   Scenario: Audit after close returns ErrClosed
-    Given I close the logger
+    Given I close the auditor
     When I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
 
@@ -246,7 +246,7 @@ Feature: Core Audit Logging
         ping:
           fields: {}
       """
-    And a logger with stdout output
+    And an auditor with stdout output
     When I audit event "ping" with nil fields
     Then the event should be delivered successfully
 
@@ -271,7 +271,7 @@ Feature: Core Audit Logging
   # --- ErrQueueFull ---
 
   Scenario: Buffer full returns ErrQueueFull
-    Given a logger with stdout output and buffer size 1
+    Given an auditor with stdout output and buffer size 1
     When I fill the buffer and audit one more event
     Then the audit call should return an error wrapping "ErrQueueFull"
 
@@ -303,7 +303,7 @@ Feature: Core Audit Logging
   # --- OmitEmpty ---
 
   Scenario: OmitEmpty true omits zero-value optional fields
-    Given a logger with stdout output and OmitEmpty "true"
+    Given an auditor with stdout output and OmitEmpty "true"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -315,7 +315,7 @@ Feature: Core Audit Logging
       | actor_id   | alice       |
 
   Scenario: OmitEmpty false includes zero-value optional fields as null
-    Given a logger with stdout output and OmitEmpty "false"
+    Given an auditor with stdout output and OmitEmpty "false"
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |

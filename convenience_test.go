@@ -95,12 +95,12 @@ func TestDevTaxonomy_WarnsAtConstruction(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("ev1")),
 		audit.WithOutputs(testhelper.NewMockOutput("test")),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	assert.Contains(t, buf.String(), "DevTaxonomy",
 		"slog.Warn should mention DevTaxonomy for production warning")
@@ -115,15 +115,15 @@ func TestFileFreePath_EndToEnd(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	// DevTaxonomy auto-forces permissive validation — no explicit
 	// WithValidationMode needed.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice"))
+	err = auditor.AuditEvent(audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice"))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 	assert.Equal(t, 1, out.EventCount())
 }
 

@@ -16,7 +16,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: MinSeverity filters out events below threshold
-    Given a logger with stdout output routed with min_severity 7
+    Given an auditor with stdout output routed with min_severity 7
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -31,7 +31,7 @@ Feature: Severity-based event routing
     And all delivered events should have event_type "auth_failure"
 
   Scenario: MinSeverity equal to event severity delivers the event
-    Given a logger with stdout output routed with min_severity 8
+    Given an auditor with stdout output routed with min_severity 8
     When I audit event "auth_failure" with fields:
       | field    | value       |
       | outcome  | failure     |
@@ -44,7 +44,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: MaxSeverity filters out events above threshold
-    Given a logger with stdout output routed with max_severity 5
+    Given an auditor with stdout output routed with max_severity 5
     When I audit event "user_create" with fields:
       | field    | value     |
       | outcome  | success   |
@@ -59,7 +59,7 @@ Feature: Severity-based event routing
     And all delivered events should have event_type "user_create"
 
   Scenario: MaxSeverity equal to event severity delivers the event
-    Given a logger with stdout output routed with max_severity 4
+    Given an auditor with stdout output routed with max_severity 4
     When I audit event "user_create" with fields:
       | field    | value     |
       | outcome  | success   |
@@ -72,7 +72,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: Severity range delivers only events within the band
-    Given a logger with stdout output routed with min_severity 3 and max_severity 7
+    Given an auditor with stdout output routed with min_severity 3 and max_severity 7
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
@@ -95,7 +95,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: Severity-only route with no category or event type filters
-    Given a logger with stdout output routed with min_severity 9
+    Given an auditor with stdout output routed with min_severity 9
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
@@ -123,7 +123,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: Category include AND severity must both match
-    Given a logger with stdout output routed to include only "security" with min_severity 9
+    Given an auditor with stdout output routed to include only "security" with min_severity 9
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -132,7 +132,7 @@ Feature: Severity-based event routing
     Then the output should contain exactly 0 events
 
   Scenario: Category include AND severity both satisfied delivers
-    Given a logger with stdout output routed to include only "security" with min_severity 7
+    Given an auditor with stdout output routed to include only "security" with min_severity 7
     When I audit event "auth_failure" with fields:
       | field    | value      |
       | outcome  | failure    |
@@ -141,7 +141,7 @@ Feature: Severity-based event routing
     Then the output should contain exactly 1 event
 
   Scenario: Category exclude with severity filter
-    Given a logger with stdout output routed to exclude "read" with min_severity 3
+    Given an auditor with stdout output routed to exclude "read" with min_severity 3
     When I audit event "user_get" with fields:
       | field   | value   |
       | outcome | success |
@@ -163,21 +163,21 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: MinSeverity 0 acts as no-op floor — all events pass
-    Given a logger with stdout output routed with min_severity 0
+    Given an auditor with stdout output routed with min_severity 0
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
     Then the output should contain exactly 1 event
 
   Scenario: MaxSeverity 0 filters everything except severity 0
-    Given a logger with stdout output routed with max_severity 0
+    Given an auditor with stdout output routed with max_severity 0
     When I audit event "health_check" with fields:
       | field   | value   |
       | outcome | success |
     Then the output should contain exactly 0 events
 
   Scenario: MinSeverity 10 delivers only severity 10 events
-    Given a logger with stdout output routed with min_severity 10
+    Given an auditor with stdout output routed with min_severity 10
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -190,7 +190,7 @@ Feature: Severity-based event routing
     And all delivered events should have event_type "system_breach"
 
   Scenario: MaxSeverity 10 acts as no-op ceiling — all events pass
-    Given a logger with stdout output routed with max_severity 10
+    Given an auditor with stdout output routed with max_severity 10
     When I audit event "system_breach" with fields:
       | field    | value    |
       | outcome  | failure  |
@@ -202,7 +202,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: Nil severity filters deliver all events unchanged
-    Given a logger with stdout output routed to include only "security"
+    Given an auditor with stdout output routed to include only "security"
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |
@@ -215,7 +215,7 @@ Feature: Severity-based event routing
 
   # custom_event has event-level severity 6 in the taxonomy (below min 7).
   Scenario: Severity filter applies to uncategorised events
-    Given a logger with stdout output routed with min_severity 7
+    Given an auditor with stdout output routed with min_severity 7
     When I audit event "custom_event" with fields:
       | field   | value   |
       | outcome | success |
@@ -226,7 +226,7 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: SetOutputRoute changes severity threshold at runtime
-    Given a logger with named stdout output "alerts" receiving all events
+    Given an auditor with named stdout output "alerts" receiving all events
     When I audit event "user_create" with fields:
       | field    | value         |
       | outcome  | success       |
@@ -250,20 +250,20 @@ Feature: Severity-based event routing
   # ---------------------------------------------------------------------------
 
   Scenario: MinSeverity out of range is rejected
-    When I try to create a logger with route min_severity 11
-    Then the logger creation should fail with error containing "min_severity 11 out of range 0-10"
+    When I try to create an auditor with route min_severity 11
+    Then the auditor creation should fail with error containing "min_severity 11 out of range 0-10"
 
   Scenario: MaxSeverity out of range is rejected
-    When I try to create a logger with route max_severity -1
-    Then the logger creation should fail with error containing "max_severity -1 out of range 0-10"
+    When I try to create an auditor with route max_severity -1
+    Then the auditor creation should fail with error containing "max_severity -1 out of range 0-10"
 
   Scenario: MinSeverity greater than MaxSeverity is rejected
-    When I try to create a logger with route min_severity 8 and max_severity 3
-    Then the logger creation should fail with error containing "min_severity 8 exceeds max_severity 3"
+    When I try to create an auditor with route min_severity 8 and max_severity 3
+    Then the auditor creation should fail with error containing "min_severity 8 exceeds max_severity 3"
 
   Scenario: MinSeverity 0 is valid and accepted
-    Given a logger with stdout output routed with min_severity 0
-    Then the logger should be created successfully
+    Given an auditor with stdout output routed with min_severity 0
+    Then the auditor should be created successfully
 
   # ---------------------------------------------------------------------------
   # Multi-category interaction
@@ -275,7 +275,7 @@ Feature: Severity-based event routing
   # → rejected on ALL category passes.
   Scenario: Multi-category event uses single resolved severity for routing
     Given a multi-category severity taxonomy
-    And a logger with stdout output routed with min_severity 5
+    And an auditor with stdout output routed with min_severity 5
     When I audit event "auth_failure" with fields:
       | field    | value   |
       | outcome  | failure |

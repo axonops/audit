@@ -91,7 +91,7 @@ If you reference `type: file` in YAML without this import,
 
 ### Close Flushes to Disk
 
-For file outputs, `Close()` is especially important. The logger buffers
+For file outputs, `Close()` is especially important. The auditor buffers
 events in memory and writes them asynchronously. If you exit without
 `Close()`, events still in the buffer never reach the file.
 
@@ -104,7 +104,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: logger created queue_size=10000 drain_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 --- Contents of audit.log ---

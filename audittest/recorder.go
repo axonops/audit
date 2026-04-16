@@ -129,8 +129,8 @@ type Recorder struct {
 }
 
 // NewRecorder creates a Recorder. Use it with [audit.WithOutputs] or
-// [audit.WithNamedOutput] when composing a logger manually. For the
-// common case, use [NewLogger] or [NewLoggerQuick] instead.
+// [audit.WithNamedOutput] when composing an auditor manually. For the
+// common case, use [New] or [NewQuick] instead.
 func NewRecorder() *Recorder {
 	return &Recorder{}
 }
@@ -154,7 +154,7 @@ func (r *Recorder) Close() error { return nil }
 
 // Events returns a snapshot of all recorded events in drain order.
 // The returned slice is a copy; later Reset calls do not affect it.
-// Call after [audit.Logger.Close] to ensure all events have been processed.
+// Call after [audit.Auditor.Close] to ensure all events have been processed.
 func (r *Recorder) Events() []RecordedEvent {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -183,9 +183,9 @@ func (r *Recorder) Count() int {
 	return len(r.events)
 }
 
-// Reset clears all recorded events. The underlying logger remains
+// Reset clears all recorded events. The underlying auditor remains
 // open and functional. Use Reset between sub-tests to isolate
-// assertions without creating a new logger.
+// assertions without creating a new auditor.
 func (r *Recorder) Reset() {
 	r.mu.Lock()
 	r.events = r.events[:0]

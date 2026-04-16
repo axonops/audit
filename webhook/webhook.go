@@ -16,13 +16,13 @@ package webhook
 
 // The webhook output uses a two-buffer architecture:
 //
-//	Logger drain goroutine
+//	Auditor drain goroutine
 //	  → Output.Write(data) — non-blocking copy+enqueue
 //	    → batch goroutine reads from channel
 //	      → accumulates events, flushes on size/timer/close
 //	      → HTTP POST as NDJSON with retry
 //
-// The internal channel decouples the Logger's drain loop from HTTP
+// The internal channel decouples the Auditor's drain loop from HTTP
 // latency. If the channel is full, events are dropped (non-blocking)
 // and [audit.OutputMetrics.RecordDrop] is recorded.
 
@@ -105,8 +105,8 @@ type Output struct {
 	closed        atomic.Bool
 }
 
-// SetLogger receives the library's diagnostic logger.
-func (w *Output) SetLogger(l *slog.Logger) {
+// SetDiagnosticLogger receives the library's diagnostic logger.
+func (w *Output) SetDiagnosticLogger(l *slog.Logger) {
 	w.logger = l
 }
 

@@ -17,21 +17,21 @@
 // events for assertion, a [MetricsRecorder] that captures all metrics
 // calls, and convenience constructors that eliminate test boilerplate.
 //
-// The test logger is a fully functional [audit.Logger] — same
+// The test auditor is a fully functional [audit.Auditor] — same
 // validation, same taxonomy enforcement — but events land in memory
 // instead of being written to a file, syslog, or webhook.
 //
-// Both [NewLogger] and [NewLoggerQuick] default to synchronous
+// Both [New] and [NewQuick] default to synchronous
 // delivery: events are available in the [Recorder] immediately after
-// [audit.Logger.AuditEvent] returns. No Close-before-assert ceremony
+// [audit.Auditor.AuditEvent] returns. No Close-before-assert ceremony
 // is needed. Use [WithAsync] to opt into asynchronous delivery for
 // tests that exercise drain timeout or buffer backpressure.
 //
 // # Quick Start
 //
 //	func TestMyHandler(t *testing.T) {
-//	    logger, events, metrics := audittest.NewLogger(t, taxonomyYAML)
-//	    myHandler(logger) // code under test
+//	    auditor, events, metrics := audittest.New(t, taxonomyYAML)
+//	    myHandler(auditor) // code under test
 //
 //	    // Assert immediately — synchronous delivery means events are already available.
 //	    require.Equal(t, 1, events.Count())
@@ -42,7 +42,7 @@
 // # Table-Driven Tests
 //
 // Use [Recorder.Reset] to clear captured events between sub-tests
-// without creating a new logger:
+// without creating a new auditor:
 //
 //	for _, tc := range tests {
 //	    t.Run(tc.name, func(t *testing.T) {

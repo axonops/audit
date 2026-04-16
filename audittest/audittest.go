@@ -20,7 +20,7 @@ import (
 	"github.com/axonops/audit"
 )
 
-// Option configures the test logger created by [NewLogger].
+// Option configures the test auditor created by [New].
 type Option func(*config)
 
 type config struct {
@@ -28,7 +28,7 @@ type config struct {
 	async     bool // opt out of default synchronous delivery
 }
 
-// WithConfig applies a [audit.Config] struct to the test logger.
+// WithConfig applies a [audit.Config] struct to the test auditor.
 // Non-zero fields override the test defaults (QueueSize=100).
 func WithConfig(cfg audit.Config) Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithConfig(cfg)) }
@@ -40,43 +40,43 @@ func WithValidationMode(mode audit.ValidationMode) Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithValidationMode(mode)) }
 }
 
-// WithDisabled creates a disabled (no-op) test logger. Events are
+// WithDisabled creates a disabled (no-op) test auditor. Events are
 // accepted without error but not delivered.
 func WithDisabled() Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithDisabled()) }
 }
 
-// WithSync creates a synchronous test logger where events are
-// available in the [Recorder] immediately after [audit.Logger.AuditEvent]
+// WithSync creates a synchronous test auditor where events are
+// available in the [Recorder] immediately after [audit.Auditor.AuditEvent]
 // returns. No Close-before-assert ceremony is needed.
 //
-// Both [NewLogger] and [NewLoggerQuick] default to synchronous delivery,
+// Both [New] and [NewQuick] default to synchronous delivery,
 // so this option is only needed to re-enable sync after [WithAsync].
 func WithSync() Option {
 	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithSynchronousDelivery()) }
 }
 
-// WithAsync creates an asynchronous test logger. Events are delivered
-// by a background goroutine, so callers MUST call logger.Close()
+// WithAsync creates an asynchronous test auditor. Events are delivered
+// by a background goroutine, so callers MUST call auditor.Close()
 // before making assertions. Use this only when testing async-specific
 // behaviour such as drain timeout or buffer backpressure.
 func WithAsync() Option {
 	return func(c *config) { c.async = true }
 }
 
-// NewLogger creates a test audit logger with an in-memory [Recorder]
+// New creates a test auditor with an in-memory [Recorder]
 // and [MetricsRecorder]. The taxonomy is parsed from YAML bytes.
 //
-// The logger defaults to synchronous delivery — events are available
-// in the Recorder immediately after [audit.Logger.AuditEvent] returns,
+// The auditor defaults to synchronous delivery — events are available
+// in the Recorder immediately after [audit.Auditor.AuditEvent] returns,
 // with no Close-before-assert ceremony needed. Use [WithAsync] to opt
 // into asynchronous delivery for tests that exercise drain timeout or
 // buffer backpressure.
 //
 // QueueSize defaults to 100 (intentionally small — the in-memory
 // recorder has no I/O cost). tb.Cleanup is registered to call
-// logger.Close() as a safety net against goroutine leaks.
-func NewLogger(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
+// auditor.Close() as a safety net against goroutine leaks.
+func New(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
@@ -85,11 +85,11 @@ func NewLogger(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Logge
 	return newTestLogger(tb, tax, opts...)
 }
 
-// NewLoggerQuick creates a test audit logger with a permissive
+// NewQuick creates a test auditor with a permissive
 // taxonomy containing the named event types. No required fields, no
 // unknown field validation. Defaults to synchronous delivery — events
 // are available in the Recorder immediately without calling Close.
-func NewLoggerQuick(tb testing.TB, eventTypes ...string) (*audit.Logger, *Recorder, *MetricsRecorder) {
+func NewQuick(tb testing.TB, eventTypes ...string) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive), WithSync())
 }
@@ -97,7 +97,7 @@ func NewLoggerQuick(tb testing.TB, eventTypes ...string) (*audit.Logger, *Record
 // QuickTaxonomy builds a minimal [*audit.Taxonomy] where every listed
 // event type accepts any fields. All events are in a single enabled
 // category ("test"). The returned taxonomy does not enforce required
-// fields; pair it with [audit.ValidationPermissive] (as [NewLoggerQuick]
+// fields; pair it with [audit.ValidationPermissive] (as [NewQuick]
 // does) for fully unconstrained testing.
 func QuickTaxonomy(eventTypes ...string) *audit.Taxonomy {
 	events := make(map[string]*audit.EventDef, len(eventTypes))
@@ -113,7 +113,7 @@ func QuickTaxonomy(eventTypes ...string) *audit.Taxonomy {
 	}
 }
 
-func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.Logger, *Recorder, *MetricsRecorder) {
+func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 
 	c := &config{}
@@ -135,12 +135,12 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.L
 	}
 	auditOpts = append(auditOpts, c.extraOpts...)
 
-	logger, err := audit.NewLogger(auditOpts...)
+	auditor, err := audit.New(auditOpts...)
 	if err != nil {
-		tb.Fatalf("audittest: create logger: %v", err)
+		tb.Fatalf("audittest: create auditor: %v", err)
 	}
 
-	tb.Cleanup(func() { _ = logger.Close() })
+	tb.Cleanup(func() { _ = auditor.Close() })
 
-	return logger, rec, met
+	return auditor, rec, met
 }

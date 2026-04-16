@@ -91,23 +91,23 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
-	ctx.Step(`^a logger with stdout output$`, func() error {
-		return createStdoutLogger(tc)
+	ctx.Step(`^an auditor with stdout output$`, func() error {
+		return createStdoutAuditor(tc)
 	})
 
-	ctx.Step(`^a logger with stdout output and validation mode "([^"]*)"$`, func(mode string) error {
-		return createStdoutLogger(tc, audit.WithValidationMode(audit.ValidationMode(mode)))
+	ctx.Step(`^an auditor with stdout output and validation mode "([^"]*)"$`, func(mode string) error {
+		return createStdoutAuditor(tc, audit.WithValidationMode(audit.ValidationMode(mode)))
 	})
 
-	ctx.Step(`^a logger with stdout output and OmitEmpty "([^"]*)"$`, func(val string) error {
+	ctx.Step(`^an auditor with stdout output and OmitEmpty "([^"]*)"$`, func(val string) error {
 		if val == "true" {
-			return createStdoutLogger(tc, audit.WithOmitEmpty())
+			return createStdoutAuditor(tc, audit.WithOmitEmpty())
 		}
-		return createStdoutLogger(tc)
+		return createStdoutAuditor(tc)
 	})
 
-	ctx.Step(`^a disabled logger$`, func() error {
-		return createStdoutLogger(tc, audit.WithDisabled())
+	ctx.Step(`^a disabled auditor$`, func() error {
+		return createStdoutAuditor(tc, audit.WithDisabled())
 	})
 
 	ctx.Step(`^framework fields app_name "([^"]*)" host "([^"]*)" timezone "([^"]*)"$`, func(appName, host, tz string) error {
@@ -137,61 +137,61 @@ func registerAuditWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^I audit event "([^"]*)" with fields:$`, func(eventType string, table *godog.Table) error {
 		fields := tableToFields(table)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with required fields$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with required fields and an unknown field "([^"]*)"$`, func(eventType, extraField string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields[extraField] = "extra_value"
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit a uniquely marked "([^"]*)" event$`, func(eventType string) error {
-		if tc.Logger == nil {
-			return fmt.Errorf("logger is nil (construction may have failed: %w)", tc.LastErr)
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
 		}
 		m := marker("BDD")
 		tc.Markers["default"] = m
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
 		fields["marker"] = m
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with empty fields$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, audit.Fields{}))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, audit.Fields{}))
 		return nil
 	})
 
 	ctx.Step(`^I audit event "([^"]*)" with nil fields$`, func(eventType string) error {
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, nil))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, nil))
 		return nil
 	})
 
-	ctx.Step(`^I close the logger$`, func() error {
-		if tc.Logger == nil {
+	ctx.Step(`^I close the auditor$`, func() error {
+		if tc.Auditor == nil {
 			return nil
 		}
-		tc.LastErr = tc.Logger.Close()
+		tc.LastErr = tc.Auditor.Close()
 		return nil
 	})
 
 	ctx.Step(`^I try to audit event "([^"]*)" with required fields$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
-		tc.LastErr = tc.Logger.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
 	ctx.Step(`^I get a handle for event type "([^"]*)"$`, func(eventType string) error {
-		h, err := tc.Logger.Handle(eventType)
+		h, err := tc.Auditor.Handle(eventType)
 		if err != nil {
 			tc.LastErr = err
 			return nil //nolint:nilerr // scenario may assert on error
@@ -201,7 +201,7 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 	})
 
 	ctx.Step(`^I try to get a handle for event type "([^"]*)"$`, func(eventType string) error {
-		_, err := tc.Logger.Handle(eventType)
+		_, err := tc.Auditor.Handle(eventType)
 		tc.LastErr = err
 		return nil
 	})
@@ -215,7 +215,7 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				tc.LastErr = fmt.Errorf("%v", r)
 			}
 		}()
-		h := tc.Logger.MustHandle(eventType)
+		h := tc.Auditor.MustHandle(eventType)
 		tc.EventHandle = h
 		return nil
 	})
@@ -228,11 +228,11 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	})
 
 	ctx.Step(`^I fill the buffer and audit one more event$`, func() error {
-		// The logger has buffer size 1. The drain goroutine processes
+		// The auditor has buffer size 1. The drain goroutine processes
 		// events async, so we need to fill the buffer faster than drain.
 		// Send events in a tight loop until we get ErrQueueFull.
 		for range 1000 {
-			err := tc.Logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+			err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 				"outcome":  "success",
 				"actor_id": "overflow",
 			}))
@@ -244,8 +244,8 @@ func registerAuditWhenHandleSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return fmt.Errorf("never got ErrQueueFull after 1000 attempts")
 	})
 
-	ctx.Step(`^a logger with stdout output and buffer size (\d+)$`, func(bufSize int) error {
-		return createStdoutLogger(tc, audit.WithQueueSize(bufSize))
+	ctx.Step(`^an auditor with stdout output and buffer size (\d+)$`, func(bufSize int) error {
+		return createStdoutAuditor(tc, audit.WithQueueSize(bufSize))
 	})
 
 	ctx.Step(`^I audit via handle with fields:$`, func(table *godog.Table) error {
@@ -436,8 +436,8 @@ func registerAuditThenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 }
 
 func assertNoEvents(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	if tc.StdoutBuf != nil {
 		events, _ := parseJSONLines(tc.StdoutBuf.Bytes())
@@ -584,8 +584,8 @@ func assertNotSentinelError(tc *AuditTestContext, sentinel string) error {
 
 // --- Internal helpers ---
 
-// createStdoutLogger creates a logger with an in-memory stdout output.
-func createStdoutLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
+// createStdoutAuditor creates an auditor with an in-memory stdout output.
+func createStdoutAuditor(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	buf := &bytes.Buffer{}
 	tc.StdoutBuf = buf
 
@@ -604,34 +604,34 @@ func createStdoutLogger(tc *AuditTestContext, extraOpts ...audit.Option) error {
 	opts = append(opts, tc.Options...)
 	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		// Store the error for scenarios that expect construction failure.
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
-// createStdoutLoggerWithOpts is an alias for createStdoutLogger for
+// createStdoutAuditorWithOpts is an alias for createStdoutAuditor for
 // callers that pass additional options.
-func createStdoutLoggerWithOpts(tc *AuditTestContext, opts ...audit.Option) error {
-	return createStdoutLogger(tc, opts...)
+func createStdoutAuditorWithOpts(tc *AuditTestContext, opts ...audit.Option) error {
+	return createStdoutAuditor(tc, opts...)
 }
 
-// getStdoutEvents closes the logger (to flush the drain) and parses
-// JSON events from the stdout buffer. The logger must be closed before
+// getStdoutEvents closes the auditor (to flush the drain) and parses
+// JSON events from the stdout buffer. The auditor must be closed before
 // reading the buffer to avoid a data race with the drain goroutine.
 func getStdoutEvents(tc *AuditTestContext) ([]map[string]any, error) {
 	if tc.StdoutBuf == nil {
 		return nil, fmt.Errorf("no stdout buffer configured")
 	}
-	// Close the logger to flush all pending events. Close is
+	// Close the auditor to flush all pending events. Close is
 	// idempotent, so calling it multiple times is safe.
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	return parseJSONLines(tc.StdoutBuf.Bytes())
 }

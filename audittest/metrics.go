@@ -155,7 +155,7 @@ func (m *MetricsRecorder) BufferDrops() int {
 }
 
 // SubmittedCount returns the total number of events submitted via
-// [audit.Logger.AuditEvent], before any filtering or buffering.
+// [audit.Auditor.AuditEvent], before any filtering or buffering.
 func (m *MetricsRecorder) SubmittedCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

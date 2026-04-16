@@ -20,8 +20,8 @@ const (
 	EventUserRead = "user_read"
 )
 
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 	CategoryRead     = "read"
 	CategorySecurity = "security"
@@ -325,7 +325,7 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 // EventType returns the event type name.
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -602,7 +602,7 @@ func (e *AuthSuccessEvent) SetUserAgent(v string) *AuthSuccessEvent {
 // EventType returns the event type name.
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *AuthSuccessEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -879,7 +879,7 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 // EventType returns the event type name.
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1156,7 +1156,7 @@ func (e *UserDeleteEvent) SetUserAgent(v string) *UserDeleteEvent {
 // EventType returns the event type name.
 func (e *UserDeleteEvent) EventType() string { return EventUserDelete }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.
@@ -1438,7 +1438,7 @@ func (e *UserReadEvent) SetUserAgent(v string) *UserReadEvent {
 // EventType returns the event type name.
 func (e *UserReadEvent) EventType() string { return EventUserRead }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *UserReadEvent) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

@@ -36,29 +36,29 @@ func registerFileSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 }
 
 func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with file output at a temporary path$`, func() error {
-		return createFileLogger(tc, file.Config{})
+	ctx.Step(`^an auditor with file output at a temporary path$`, func() error {
+		return createFileAuditor(tc, file.Config{})
 	})
-	ctx.Step(`^a logger with file output with permissions "([^"]*)"$`, func(perms string) error {
-		return createFileLogger(tc, file.Config{Permissions: perms})
+	ctx.Step(`^an auditor with file output with permissions "([^"]*)"$`, func(perms string) error {
+		return createFileAuditor(tc, file.Config{Permissions: perms})
 	})
-	ctx.Step(`^a logger with file output configured for (\d+) MB max size$`, func(mb int) error {
-		return createFileLogger(tc, file.Config{MaxSizeMB: mb})
+	ctx.Step(`^an auditor with file output configured for (\d+) MB max size$`, func(mb int) error {
+		return createFileAuditor(tc, file.Config{MaxSizeMB: mb})
 	})
-	ctx.Step(`^a logger with file output configured for (\d+) MB max size with compression$`, func(mb int) error {
+	ctx.Step(`^an auditor with file output configured for (\d+) MB max size with compression$`, func(mb int) error {
 		compress := true
-		return createFileLogger(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
+		return createFileAuditor(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
 	})
-	ctx.Step(`^a logger with file output configured for (\d+) MB max size without compression$`, func(mb int) error {
+	ctx.Step(`^an auditor with file output configured for (\d+) MB max size without compression$`, func(mb int) error {
 		compress := false
-		return createFileLogger(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
+		return createFileAuditor(tc, file.Config{MaxSizeMB: mb, Compress: &compress})
 	})
-	ctx.Step(`^a logger with file output configured for (\d+) MB max size and max backups (\d+)$`, func(mb, backups int) error {
-		return createFileLogger(tc, file.Config{MaxSizeMB: mb, MaxBackups: backups})
+	ctx.Step(`^an auditor with file output configured for (\d+) MB max size and max backups (\d+)$`, func(mb, backups int) error {
+		return createFileAuditor(tc, file.Config{MaxSizeMB: mb, MaxBackups: backups})
 	})
 	ctx.Step(`^at most (\d+) files should exist in the output directory$`, func(maxFiles int) error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		dir := tc.FileDir
 		entries, err := os.ReadDir(dir)
@@ -77,23 +77,23 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return nil
 	})
 
-	ctx.Step(`^a logger with file output configured for (\d+) MB max size with file metrics$`, func(mb int) error {
+	ctx.Step(`^an auditor with file output configured for (\d+) MB max size with file metrics$`, func(mb int) error {
 		tc.FileMetrics = &MockFileMetrics{}
-		return createFileLoggerWithMetrics(tc, file.Config{MaxSizeMB: mb}, tc.FileMetrics)
+		return createFileAuditorWithMetrics(tc, file.Config{MaxSizeMB: mb}, tc.FileMetrics)
 	})
 	ctx.Step(`^mock file metrics are configured$`, func() error {
 		tc.FileMetrics = &MockFileMetrics{}
 		return nil
 	})
-	ctx.Step(`^a logger with file output at a temporary path and short drain timeout$`, func() error {
-		return createFileLoggerWithExtraOpts(tc, file.Config{}, audit.WithDrainTimeout(100*time.Millisecond))
+	ctx.Step(`^an auditor with file output at a temporary path and short drain timeout$`, func() error {
+		return createFileAuditorWithExtraOpts(tc, file.Config{}, audit.WithShutdownTimeout(100*time.Millisecond))
 	})
-	ctx.Step(`^closing the logger should complete within (\d+) seconds$`, func(maxSecs int) error {
-		if tc.Logger == nil {
-			return fmt.Errorf("no logger to close")
+	ctx.Step(`^closing the auditor should complete within (\d+) seconds$`, func(maxSecs int) error {
+		if tc.Auditor == nil {
+			return fmt.Errorf("no auditor to close")
 		}
 		done := make(chan error, 1)
-		go func() { done <- tc.Logger.Close() }()
+		go func() { done <- tc.Auditor.Close() }()
 		select {
 		case <-done:
 			return nil
@@ -101,7 +101,7 @@ func registerFileGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return fmt.Errorf("Close() did not return within %d seconds", maxSecs)
 		}
 	})
-	ctx.Step(`^a logger with no outputs$`, func() error { return createNoOutputLogger(tc) })
+	ctx.Step(`^an auditor with no outputs$`, func() error { return createNoOutputAuditor(tc) })
 
 }
 
@@ -155,16 +155,16 @@ func registerFileThenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	ctx.Step(`^the file should contain an event with event_type "([^"]*)"$`, func(et string) error { return assertFileHasEventType(tc, et) })
 	ctx.Step(`^every event in the file should be valid JSON$`, func() error { return assertFileAllValidJSON(tc) })
 	ctx.Step(`^the file should contain events$`, func() error { return assertFileHasAnyEvents(tc) })
-	ctx.Step(`^I close the logger again$`, func() error { return closeLoggerAgain(tc) })
+	ctx.Step(`^I close the auditor again$`, func() error { return closeLoggerAgain(tc) })
 	ctx.Step(`^the second close should return no error$`, func() error { return assertLastErrNil(tc) })
 	ctx.Step(`^the file should have permissions "([^"]*)"$`, func(perms string) error { return assertFilePermissions(tc, perms) })
-	ctx.Step(`^I close the logger from (\d+) goroutines concurrently$`, func(count int) error {
+	ctx.Step(`^I close the auditor from (\d+) goroutines concurrently$`, func(count int) error {
 		var wg sync.WaitGroup
 		for range count {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = tc.Logger.Close()
+				_ = tc.Auditor.Close()
 			}()
 		}
 		wg.Wait()
@@ -176,8 +176,8 @@ func registerFileThenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 	})
 
 	ctx.Step(`^a backup file with a timestamp pattern should exist in the output directory$`, func() error {
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		entries, readErr := os.ReadDir(tc.FileDir)
 		if readErr != nil {
@@ -224,15 +224,15 @@ func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 
 // --- Extracted step implementations ---
 
-func createNoOutputLogger(tc *AuditTestContext) error {
+func createNoOutputAuditor(tc *AuditTestContext) error {
 	opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
@@ -240,7 +240,7 @@ func auditNEvents(tc *AuditTestContext, count int) error {
 	for i := range count {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rapid_%d", i)
-		if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+		if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 			return fmt.Errorf("audit event %d: %w", i, err)
 		}
 	}
@@ -258,7 +258,7 @@ func auditConcurrent(tc *AuditTestContext, total, goroutines int) error {
 			for i := range perGoroutine {
 				fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 				fields["marker"] = fmt.Sprintf("g%d_e%d", gID, i)
-				if err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+				if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
 					errCh <- fmt.Errorf("goroutine %d event %d: %w", gID, i, err)
 				}
 			}
@@ -281,7 +281,7 @@ func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	for i := range count {
 		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
 		fields["marker"] = fmt.Sprintf("rot_%d_padding_data_for_size", i)
-		err := tc.Logger.AuditEvent(audit.NewEvent("user_create", fields))
+		err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields))
 		if err != nil && !errors.Is(err, audit.ErrQueueFull) {
 			return fmt.Errorf("write event %d: %w", i, err)
 		}
@@ -369,8 +369,8 @@ func assertFileHasAnyEvents(tc *AuditTestContext) error {
 }
 
 func closeLoggerAgain(tc *AuditTestContext) error {
-	if tc.Logger != nil {
-		tc.LastErr = tc.Logger.Close()
+	if tc.Auditor != nil {
+		tc.LastErr = tc.Auditor.Close()
 	}
 	return nil
 }
@@ -383,8 +383,8 @@ func assertLastErrNil(tc *AuditTestContext) error {
 }
 
 func assertFilePermissions(tc *AuditTestContext, expected string) error {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	path := tc.FilePaths["default"]
 	info, err := os.Stat(path)
@@ -470,21 +470,21 @@ func assertFileRotationCount(tc *AuditTestContext, minCount int) error {
 	return nil
 }
 
-// --- Logger construction helpers ---
+// --- Auditor construction helpers ---
 
-func createFileLogger(tc *AuditTestContext, fileCfg file.Config) error {
-	return createFileLoggerImpl(tc, fileCfg, nil)
+func createFileAuditor(tc *AuditTestContext, fileCfg file.Config) error {
+	return createFileAuditorImpl(tc, fileCfg, nil)
 }
 
-func createFileLoggerWithMetrics(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics) error {
-	return createFileLoggerImpl(tc, fileCfg, fileMetrics)
+func createFileAuditorWithMetrics(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics) error {
+	return createFileAuditorImpl(tc, fileCfg, fileMetrics)
 }
 
-func createFileLoggerWithExtraOpts(tc *AuditTestContext, fileCfg file.Config, extraOpts ...audit.Option) error {
-	return createFileLoggerImpl(tc, fileCfg, nil, extraOpts...)
+func createFileAuditorWithExtraOpts(tc *AuditTestContext, fileCfg file.Config, extraOpts ...audit.Option) error {
+	return createFileAuditorImpl(tc, fileCfg, nil, extraOpts...)
 }
 
-func createFileLoggerImpl(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics, extraOpts ...audit.Option) error {
+func createFileAuditorImpl(tc *AuditTestContext, fileCfg file.Config, fileMetrics file.Metrics, extraOpts ...audit.Option) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -511,20 +511,20 @@ func createFileLoggerImpl(tc *AuditTestContext, fileCfg file.Config, fileMetrics
 	opts = append(opts, tc.Options...)
 	opts = append(opts, extraOpts...)
 
-	logger, err := audit.NewLogger(opts...)
+	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
-	tc.Logger = logger
-	tc.AddCleanup(func() { _ = logger.Close() })
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
 }
 
 // readFileEvents reads and parses JSON events from a named file output.
 func readFileEvents(tc *AuditTestContext, name string) ([]map[string]any, error) {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	path, ok := tc.FilePaths[name]
 	if !ok {

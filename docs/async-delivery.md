@@ -83,36 +83,36 @@ outputs can write them.
 
 ### Configuration
 
-Buffer and drain settings are configured in the `logger:` section of
+Buffer and drain settings are configured in the `auditor:` section of
 your output YAML:
 
 ```yaml
-logger:
+auditor:
   queue_size: 50000          # default: 10,000, max: 1,000,000
-  drain_timeout: "30s"       # default: "5s", max: "60s"
+  shutdown_timeout: "30s"       # default: "5s", max: "60s"
 ```
 
 Or programmatically via functional options:
 
 ```go
-logger, err := audit.NewLogger(
+auditor, err := audit.New(
     audit.WithQueueSize(50_000),
-    audit.WithDrainTimeout(30 * time.Second),
+    audit.WithShutdownTimeout(30 * time.Second),
     audit.WithTaxonomy(tax),
     audit.WithOutputs(out),
 )
 ```
 
 When using `outputconfig.Load`, `result.Options` includes
-config-equivalent options (`WithQueueSize`, `WithDrainTimeout`, etc.)
-from your YAML — pass them directly to `NewLogger`.
+config-equivalent options (`WithQueueSize`, `WithShutdownTimeout`, etc.)
+from your YAML — pass them directly to `New`.
 
 | Field | Default | Max | What It Does |
 |-------|---------|-----|-------------|
 | `QueueSize` | 10,000 | 1,000,000 | Capacity of the core intake queue. When full, `AuditEvent()` returns `ErrQueueFull` and the event is lost. |
-| `DrainTimeout` | 5 seconds | 60 seconds | How long `Close()` waits for remaining events to flush before giving up. Events still in the buffer after this timeout are lost. |
+| `ShutdownTimeout` | 5 seconds | 60 seconds | How long `Close()` waits for remaining events to flush before giving up. Events still in the buffer after this timeout are lost. |
 
-**Note:** `DrainTimeout` only applies during shutdown (when you call
+**Note:** `ShutdownTimeout` only applies during shutdown (when you call
 `Close()`). During normal operation, the drain goroutine processes
 events continuously with no timeout.
 
@@ -130,7 +130,7 @@ or your outputs are too slow.
 audit has a two-level buffering architecture. Understanding it is
 essential for tuning performance and diagnosing event drops.
 
-### Level 1: Core Logger Buffer
+### Level 1: Core Auditor Buffer
 
 Every `AuditEvent()` call validates the event and enqueues it into a
 buffered Go channel. A single drain goroutine reads from this channel,
@@ -213,7 +213,7 @@ Loki is down, Loki drops events but the core queue and all other
 outputs are unaffected.
 
 **`queue_size` and `buffer_size` are different things.**
-`logger.queue_size` (or `Config.QueueSize`) is the Level 1 core
+`auditor.queue_size` (or `Config.QueueSize`) is the Level 1 core
 intake queue. `buffer_size` on any output (file, syslog, webhook,
 Loki) is that output's Level 2 channel. They are independent. Both
 default to 10,000 but they serve different purposes.
@@ -228,7 +228,7 @@ drops begin.
 ### Memory Sizing
 
 The core library uses a package-level `sync.Pool` shared across all
-`Logger` instances to reuse `auditEntry` structs, reducing GC pressure
+`Auditor` instances to reuse `auditEntry` structs, reducing GC pressure
 on the hot path. Pool entries are returned after the drain goroutine
 finishes processing each event. The channel holds pointers to
 pool-allocated structs, not copies.
@@ -264,7 +264,7 @@ memory-constrained environments.
 
 | Symptom | Diagnosis | Fix |
 |---------|-----------|-----|
-| `ErrQueueFull` from `AuditEvent()` | Core queue (Level 1) full — drain goroutine can't keep up | Increase `logger.queue_size` |
+| `ErrQueueFull` from `AuditEvent()` | Core queue (Level 1) full — drain goroutine can't keep up | Increase `auditor.queue_size` |
 | `OutputMetrics.RecordDrop()` firing | Per-output buffer (Level 2) full — destination too slow or down | Increase output `buffer_size`, decrease `flush_interval`, check destination health |
 | High event latency | Events queued too long before flushing | Decrease `flush_interval` or `batch_size` for faster delivery |
 | Excessive memory | Large buffers with large events | Decrease `buffer_size` on outputs you can afford to drop from |
@@ -286,10 +286,10 @@ has its own at-least-once retry semantics for HTTP delivery — see
 
 ## 🛑 Graceful Shutdown
 
-`Logger.Close()` MUST be called when the logger is no longer needed:
+`Auditor.Close()` MUST be called when the auditor is no longer needed:
 
 1. Signals the drain goroutine to stop accepting new events
-2. Flushes pending events from the buffer (up to `DrainTimeout`)
+2. Flushes pending events from the buffer (up to `ShutdownTimeout`)
 3. Closes all outputs in parallel
 4. Returns any close errors
 
@@ -303,7 +303,7 @@ is called before the process exits:
 
 ```go
 func main() {
-    logger, err := audit.NewLogger(opts...)
+    auditor, err := audit.New(opts...)
     if err != nil {
         log.Fatal(err)
     }
@@ -327,8 +327,8 @@ func main() {
     defer cancel()
     srv.Shutdown(ctx)
 
-    // 2. Close the logger — flushes all pending audit events.
-    if err := logger.Close(); err != nil {
+    // 2. Close the auditor — flushes all pending audit events.
+    if err := auditor.Close(); err != nil {
         log.Printf("audit close: %v", err)
     }
 
@@ -337,18 +337,18 @@ func main() {
 ```
 
 **Key ordering:** Stop the HTTP server first (so no new audit events
-are generated), then close the logger (so all pending events flush).
+are generated), then close the auditor (so all pending events flush).
 
 For simpler applications without an HTTP server, `defer` works:
 
 ```go
 func main() {
-    logger, err := audit.NewLogger(opts...)
+    auditor, err := audit.New(opts...)
     if err != nil {
         log.Fatal(err)
     }
     defer func() {
-        if err := logger.Close(); err != nil {
+        if err := auditor.Close(); err != nil {
             log.Printf("audit close: %v", err)
         }
     }()

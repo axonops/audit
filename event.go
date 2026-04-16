@@ -95,31 +95,31 @@ func NewEventKV(eventType string, keysAndValues ...any) Event {
 }
 
 // EventHandle is a pre-validated reference to a registered event type.
-// It carries the event type name and a reference to the owning [Logger],
+// It carries the event type name and a reference to the owning [Auditor],
 // enabling audit calls without repeated string lookup. Use generated
-// builders for static event types; use [Logger.Handle] or
-// [Logger.MustHandle] for dynamically-determined event types (e.g.
+// builders for static event types; use [Auditor.Handle] or
+// [Auditor.MustHandle] for dynamically-determined event types (e.g.
 // event type names from configuration or a database).
 type EventHandle struct {
-	logger *Logger
-	name   string
+	auditor *Auditor
+	name    string
 }
 
 // Audit emits an audit event using this handle's bound event type.
 // This method bypasses [NewEvent] to avoid a per-event heap allocation
 // from interface escape, calling the internal audit path directly.
 func (e *EventHandle) Audit(fields Fields) error {
-	return e.logger.auditInternal(e.name, fields)
+	return e.auditor.auditInternal(e.name, fields)
 }
 
 // AuditEvent emits an [Event] (typically a generated builder) using
-// the logger bound to this handle. Unlike [EventHandle.Audit], the
+// the auditor bound to this handle. Unlike [EventHandle.Audit], the
 // event type is taken from evt.EventType(), not from the handle's
-// bound type — the handle provides the logger binding only. This
+// bound type — the handle provides the auditor binding only. This
 // method accepts any [Event] implementation, making it composable
 // with code-generated typed builders.
 func (e *EventHandle) AuditEvent(evt Event) error {
-	return e.logger.AuditEvent(evt)
+	return e.auditor.AuditEvent(evt)
 }
 
 // EventType returns the event type name this handle represents.

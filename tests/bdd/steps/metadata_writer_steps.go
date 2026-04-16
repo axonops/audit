@@ -79,7 +79,7 @@ func registerMetadataWriterSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 }
 
 func registerMetadataWriterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
-	ctx.Step(`^a logger with a MetadataWriter output$`, func() error {
+	ctx.Step(`^an auditor with a MetadataWriter output$`, func() error {
 		mock := &MetadataWriterMock{name: "bdd-metadata-writer"}
 		tc.MetadataMock = mock
 
@@ -89,21 +89,21 @@ func registerMetadataWriterGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		}
 		opts = append(opts, tc.Options...)
 
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("create logger: %w", err)
+			return fmt.Errorf("create auditor: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 
 }
 
-// flushAndGetMeta closes the logger and returns the captured metadata.
+// flushAndGetMeta closes the auditor and returns the captured metadata.
 func flushAndGetMeta(tc *AuditTestContext) (audit.EventMetadata, error) {
-	if tc.Logger != nil {
-		_ = tc.Logger.Close()
+	if tc.Auditor != nil {
+		_ = tc.Auditor.Close()
 	}
 	meta, called := tc.MetadataMock.getMeta()
 	if !called {

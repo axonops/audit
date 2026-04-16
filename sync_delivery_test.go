@@ -27,30 +27,30 @@ import (
 func TestSyncLogger_EventAvailableImmediately(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
 	require.NoError(t, err)
 
 	// No Close() called — events should be available immediately.
-	assert.Equal(t, 1, out.EventCount(), "sync logger should deliver events immediately")
+	assert.Equal(t, 1, out.EventCount(), "sync auditor should deliver events immediately")
 
 	// Close is still safe.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 func TestSyncLogger_CloseIsSafe(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -58,36 +58,36 @@ func TestSyncLogger_CloseIsSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	// Close without any events — should not panic.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 
 	// Double close — should not panic.
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 func TestSyncLogger_ValidationStillRuns(t *testing.T) {
 	t.Parallel()
 	out := testhelper.NewMockOutput("test")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = logger.Close() })
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	// Missing required field should still be rejected.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 }
 
-func TestNewLoggerQuick_DefaultsToSync(t *testing.T) {
+func TestNewQuick_DefaultsToSync(t *testing.T) {
 	t.Parallel()
-	logger, events, _ := audittest.NewLoggerQuick(t, "user_create")
+	auditor, events, _ := audittest.NewQuick(t, "user_create")
 
-	err := logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "ok"}))
+	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "ok"}))
 	require.NoError(t, err)
 
 	// No Close — events available immediately because Quick defaults to sync.
-	assert.Equal(t, 1, events.Count(), "NewLoggerQuick should use synchronous delivery")
+	assert.Equal(t, 1, events.Count(), "NewQuick should use synchronous delivery")
 }

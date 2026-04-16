@@ -35,8 +35,8 @@ const (
 {{- end }}
 )
 {{ end }}{{ if .HasCategories }}
-// Category constants — use with Logger.EnableCategory and
-// Logger.DisableCategory.
+// Category constants — use with Auditor.EnableCategory and
+// Auditor.DisableCategory.
 const (
 {{- range .Categories }}
 	{{ .Name }} = {{ .QuotedValue }}
@@ -135,7 +135,7 @@ func (e *{{ $b.StructName }}) {{ .SetterName }}(v {{ .GoType }}) *{{ $b.StructNa
 // EventType returns the event type name.
 func (e *{{ $b.StructName }}) EventType() string { return {{ $b.EventConst }} }
 
-// Fields returns the event fields for [audit.Logger.AuditEvent].
+// Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *{{ $b.StructName }}) Fields() audit.Fields { return e.fields }
 
 // Description returns the taxonomy description.

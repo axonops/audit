@@ -17,32 +17,32 @@ package audit
 import "slices"
 
 // QueueLen returns the number of events currently queued in the async
-// intake queue. Returns 0 for disabled or synchronous loggers.
-func (l *Logger) QueueLen() int {
-	if l.ch == nil {
+// intake queue. Returns 0 for disabled or synchronous auditors.
+func (a *Auditor) QueueLen() int {
+	if a.ch == nil {
 		return 0
 	}
-	return len(l.ch)
+	return len(a.ch)
 }
 
 // QueueCap returns the configured async intake queue capacity. Returns
-// 0 for disabled or synchronous loggers.
-func (l *Logger) QueueCap() int {
-	if l.ch == nil {
+// 0 for disabled or synchronous auditors.
+func (a *Auditor) QueueCap() int {
+	if a.ch == nil {
 		return 0
 	}
-	return cap(l.ch)
+	return cap(a.ch)
 }
 
 // OutputNames returns a sorted list of all configured output names.
-// Safe for concurrent use. Returns nil for disabled loggers with no
+// Safe for concurrent use. Returns nil for disabled auditors with no
 // outputs.
-func (l *Logger) OutputNames() []string {
-	if len(l.entries) == 0 {
+func (a *Auditor) OutputNames() []string {
+	if len(a.entries) == 0 {
 		return nil
 	}
-	names := make([]string, len(l.entries))
-	for i, oe := range l.entries {
+	names := make([]string, len(a.entries))
+	for i, oe := range a.entries {
 		names[i] = oe.output.Name()
 	}
 	slices.Sort(names)
@@ -51,17 +51,17 @@ func (l *Logger) OutputNames() []string {
 
 // IsCategoryEnabled reports whether events in the named category
 // would be delivered. This accounts for both category-level state
-// and per-event overrides. Returns false for disabled loggers or
+// and per-event overrides. Returns false for disabled auditors or
 // unknown categories.
-func (l *Logger) IsCategoryEnabled(category string) bool {
-	if l.disabled || l.taxonomy == nil || l.filter == nil {
+func (a *Auditor) IsCategoryEnabled(category string) bool {
+	if a.disabled || a.taxonomy == nil || a.filter == nil {
 		return false
 	}
-	if _, ok := l.taxonomy.Categories[category]; !ok {
+	if _, ok := a.taxonomy.Categories[category]; !ok {
 		return false
 	}
 	// Check category state via the filter's atomic map.
-	if enabled, ok := l.filter.enabledCategories.Load(category); ok {
+	if enabled, ok := a.filter.enabledCategories.Load(category); ok {
 		return enabled
 	}
 	return true // default-enabled
@@ -69,23 +69,23 @@ func (l *Logger) IsCategoryEnabled(category string) bool {
 
 // IsEventEnabled reports whether the named event type would be
 // delivered. This accounts for category state, per-event overrides,
-// and the global filter. Returns false for disabled loggers or
+// and the global filter. Returns false for disabled auditors or
 // unknown event types.
-func (l *Logger) IsEventEnabled(eventType string) bool {
-	if l.disabled || l.taxonomy == nil || l.filter == nil {
+func (a *Auditor) IsEventEnabled(eventType string) bool {
+	if a.disabled || a.taxonomy == nil || a.filter == nil {
 		return false
 	}
-	return l.filter.isEnabled(eventType, l.taxonomy)
+	return a.filter.isEnabled(eventType, a.taxonomy)
 }
 
-// IsDisabled reports whether the logger is a no-op (created with
+// IsDisabled reports whether the auditor is a no-op (created with
 // [WithDisabled]).
-func (l *Logger) IsDisabled() bool {
-	return l.disabled
+func (a *Auditor) IsDisabled() bool {
+	return a.disabled
 }
 
-// IsSynchronous reports whether the logger delivers events inline
-// within [Logger.AuditEvent] (created with [WithSynchronousDelivery]).
-func (l *Logger) IsSynchronous() bool {
-	return l.synchronous
+// IsSynchronous reports whether the auditor delivers events inline
+// within [Auditor.AuditEvent] (created with [WithSynchronousDelivery]).
+func (a *Auditor) IsSynchronous() bool {
+	return a.synchronous
 }

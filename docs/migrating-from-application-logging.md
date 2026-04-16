@@ -23,7 +23,7 @@ audit and your application logger run independently:
 slog.Info("handling request", "method", r.Method, "path", r.URL.Path)
 
 // Audit logger (audit)
-logger.AuditEvent(audit.NewEventKV("user_create",
+auditor.AuditEvent(audit.NewEventKV("user_create",
     "outcome", "success",
     "actor_id", userID,
     "target_id", newUser.ID,
@@ -37,10 +37,10 @@ different formats.
 
 | slog/zap Pattern | audit Equivalent |
 |------------------|---------------------|
-| `slog.Info("user created", ...)` | `logger.AuditEvent(NewUserCreateEvent(...))` |
+| `slog.Info("user created", ...)` | `auditor.AuditEvent(NewUserCreateEvent(...))` |
 | `zap.String("user_id", id)` | `.SetActorID(id)` on the generated builder |
 | `logger.With("request_id", rid)` | `.SetRequestID(rid)` on the event |
-| `slog.Error("auth failed", ...)` | `logger.AuditEvent(NewAuthFailureEvent(...))` |
+| `slog.Error("auth failed", ...)` | `auditor.AuditEvent(NewAuthFailureEvent(...))` |
 
 ## When to Audit vs When to Log
 
@@ -62,7 +62,7 @@ different formats.
 
 audit uses `log/slog` for its own diagnostic messages (startup,
 shutdown, buffer drops). By default these go to `slog.Default()`.
-Redirect them with `WithLogger`:
+Redirect them with `WithDiagnosticLogger`:
 
 ```go
 // Send audit library diagnostics to a specific logger
@@ -70,8 +70,8 @@ auditDiag := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
     Level: slog.LevelWarn, // only warnings and errors
 }))
 
-logger, err := audit.NewLogger(
-    audit.WithLogger(auditDiag),
+auditor, err := audit.New(
+    audit.WithDiagnosticLogger(auditDiag),
     // ... other options
 )
 ```

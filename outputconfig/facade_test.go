@@ -47,118 +47,118 @@ outputs:
     type: stdout
 `)
 
-func TestNewLogger_BasicEndToEnd(t *testing.T) {
+func TestNew_BasicEndToEnd(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
+	require.NotNil(t, auditor)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
+func TestNew_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
 	// User option WithDisabled should take precedence over config.
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil,
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil,
 		audit.WithDisabled(),
 	)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
+	require.NotNil(t, auditor)
 
-	// Disabled logger returns nil without delivering.
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
+	// Disabled auditor returns nil without delivering.
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
 	assert.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_EmptyPath_StdoutDevLogger(t *testing.T) {
+func TestNew_EmptyPath_StdoutDevLogger(t *testing.T) {
 	t.Parallel()
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "", nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "", nil)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
+	require.NotNil(t, auditor)
 
-	err = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
+	err = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_FileNotFound(t *testing.T) {
+func TestNew_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml", nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml", nil)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, os.ErrNotExist), "should wrap os.ErrNotExist, got: %v", err)
 	assert.Contains(t, err.Error(), "nonexistent")
 }
 
-func TestNewLogger_InvalidTaxonomy(t *testing.T) {
+func TestNew_InvalidTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.NewLogger(context.Background(), []byte("not: valid: taxonomy"), path, nil)
+	_, err := outputconfig.New(context.Background(), []byte("not: valid: taxonomy"), path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
 
-func TestNewLogger_InvalidOutputConfig(t *testing.T) {
+func TestNew_InvalidOutputConfig(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", []byte("not: [valid: config"))
 
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load")
 }
 
-func TestNewLogger_EmptyTaxonomy(t *testing.T) {
+func TestNew_EmptyTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.NewLogger(context.Background(), nil, path, nil)
+	_, err := outputconfig.New(context.Background(), nil, path, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
 
-func TestNewLogger_Close_FlushesEvents(t *testing.T) {
+func TestNew_Close_FlushesEvents(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path, nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
 	require.NoError(t, err)
 
 	// Send events then close — should not panic or error.
 	for range 10 {
-		_ = logger.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
+		_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"}))
 	}
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_NotRegularFile(t *testing.T) {
+func TestNew_NotRegularFile(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
 	// Directories are not regular files.
-	_, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, dir, nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, dir, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
 }
 
-func TestNewLogger_WithLoadOptions(t *testing.T) {
+func TestNew_WithLoadOptions(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	logger, err := outputconfig.NewLogger(context.Background(), facadeTaxonomyYAML, path,
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path,
 		[]outputconfig.LoadOption{outputconfig.WithCoreMetrics(nil)},
 	)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
-	require.NoError(t, logger.Close())
+	require.NotNil(t, auditor)
+	require.NoError(t, auditor.Close())
 }
 
 // writeTempFile creates a temporary file with the given content and

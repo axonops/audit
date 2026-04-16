@@ -77,7 +77,7 @@ flowchart LR
     G -->|4xx| J[Drop batch]
 ```
 
-1. `AuditEvent()` enqueues the event in the logger's internal buffer
+1. `AuditEvent()` enqueues the event in the auditor's internal buffer
 2. The drain goroutine serialises the event and sends it to the
    webhook's buffer channel
 3. The batch loop accumulates events until a flush trigger fires
@@ -136,7 +136,7 @@ drop — use metrics, not log lines, for precise monitoring.
 ### Relationship to Core Buffer
 
 The webhook `buffer_size` is independent of the core
-`logger.queue_size` (`Config.QueueSize`). Both default to 10,000
+`auditor.queue_size` (`Config.QueueSize`). Both default to 10,000
 but they serve different pipeline stages. See
 [Two-Level Buffering](async-delivery.md#two-level-buffering) for the
 full architecture diagram and memory sizing guidance.
@@ -270,7 +270,7 @@ A batch is flushed when ANY of these conditions is met:
 |---------|--------|---------|
 | Event count reaches `batch_size` | `batch_size` | 100 |
 | Timer reaches `flush_interval` | `flush_interval` | 5s |
-| `logger.Close()` called | — | Final flush |
+| `auditor.Close()` called | — | Final flush |
 
 The timer resets after every flush, whether triggered by count or timer.
 

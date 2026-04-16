@@ -85,7 +85,7 @@ The drain goroutine is the sole writer — `StdoutOutput.Write()` is
 called sequentially from the drain loop, not concurrently. The mutex
 guards against concurrent `Close()` calls.
 
-**Important:** You MUST call `logger.Close()` before your program
+**Important:** You MUST call `auditor.Close()` before your program
 exits. Close drains the internal buffer and flushes all pending events.
 Without it, events still in the buffer are lost silently.
 
@@ -230,7 +230,7 @@ go run . 2>/dev/null | grep '"event_type":"auth_login"'
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `stdout does not accept configuration` | Added a `stdout:` block in YAML | Remove the type-specific block; stdout takes no config |
-| Events not appearing | Logger not closed before program exits | You MUST call `logger.Close()` to flush the drain buffer |
+| Events not appearing | Auditor not closed before program exits | You MUST call `auditor.Close()` to flush the drain buffer |
 | Events interleaved with log output | `log.Printf` writes to stderr by default, but some setups redirect both | Use `2>/dev/null` when piping, or configure log output to a file |
 | JSON not parseable by jq | Multiple outputs writing to stdout, or log messages mixed in | Ensure only one stdout output; redirect log to stderr or file |
 

@@ -44,25 +44,25 @@
 // # Quick Start
 //
 // Define your events in a YAML taxonomy, configure outputs in a second YAML
-// file, and create a logger with a single call:
+// file, and create an auditor with a single call:
 //
 //	//go:embed taxonomy.yaml
 //	var taxonomyYAML []byte
 //
-//	logger, err := outputconfig.NewLogger(ctx, taxonomyYAML, "outputs.yaml", nil)
+//	auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-//	defer func() { _ = logger.Close() }()
+//	defer func() { _ = auditor.Close() }()
 //
-//	err = logger.AuditEvent(audit.NewEventKV("user_create",
+//	err = auditor.AuditEvent(audit.NewEventKV("user_create",
 //	    "outcome", "success",
 //	    "actor_id", "alice",
 //	))
 //
 // For exploration without YAML files, use [DevTaxonomy] and [Stdout]:
 //
-//	logger, err := audit.NewLogger(
+//	auditor, err := audit.New(
 //	    audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
 //	    audit.WithOutputs(audit.Stdout()),
 //	)
@@ -72,16 +72,16 @@
 //
 // # Core API
 //
-//   - [Logger] — core audit logger; created via [NewLogger]
-//   - [Config] — logger configuration (buffer size, drain timeout, validation mode)
-//   - [Option] — functional option for [NewLogger]: [WithTaxonomy], [WithOutputs], [WithFormatter], [WithMetrics]
+//   - [Auditor] — core type; created via [New]
+//   - [Config] — auditor configuration (buffer size, shutdown timeout, validation mode)
+//   - [Option] — functional option for [New]: [WithTaxonomy], [WithOutputs], [WithFormatter], [WithMetrics]
 //
 // # Events
 //
-//   - [Event] — interface for typed audit events; pass to [Logger.AuditEvent]
+//   - [Event] — interface for typed audit events; pass to [Auditor.AuditEvent]
 //   - [NewEvent] — creates an event for dynamic use without code generation
 //   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
-//   - [EventHandle] — pre-validated handle for zero-allocation audit calls; see [Logger.MustHandle]
+//   - [EventHandle] — pre-validated handle for zero-allocation audit calls; see [Auditor.MustHandle]
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
 // # Outputs
@@ -131,7 +131,7 @@
 //
 // # Error Discrimination
 //
-// Validation errors returned by [Logger.AuditEvent] wrap [ErrValidation]
+// Validation errors returned by [Auditor.AuditEvent] wrap [ErrValidation]
 // as a parent sentinel. Specific sub-sentinels identify the failure:
 //
 //   - [ErrUnknownEventType] — event type not in taxonomy
@@ -174,7 +174,7 @@
 //
 // The framework does not hardcode event types, field names, or categories.
 // Consumers register their entire audit taxonomy at bootstrap via
-// [WithTaxonomy]. The framework then validates every [Logger.AuditEvent] call
+// [WithTaxonomy]. The framework then validates every [Auditor.AuditEvent] call
 // against the registered definitions, catching missing required fields,
 // unknown event types, and unrecognised field names at runtime.
 //
@@ -209,15 +209,15 @@
 //
 // Events are enqueued to a buffered channel (configurable capacity, default
 // 10,000) and drained by a single background goroutine. If the buffer is
-// full, [Logger.AuditEvent] returns [ErrQueueFull] and the drop is recorded via
+// full, [Auditor.AuditEvent] returns [ErrQueueFull] and the drop is recorded via
 // the [Metrics] interface.
 //
 // # Graceful Shutdown
 //
-// [Logger.Close] MUST be called when the logger is no longer needed. Failing
+// [Auditor.Close] MUST be called when the auditor is no longer needed. Failing
 // to call Close leaks the drain goroutine and causes any buffered events to be
 // lost. Close signals the drain goroutine to stop, waits up to
-// [Config.DrainTimeout] for pending events to flush, then closes all outputs
-// in parallel. Events still in the buffer when DrainTimeout expires are lost;
+// [Config.ShutdownTimeout] for pending events to flush, then closes all outputs
+// in parallel. Events still in the buffer when ShutdownTimeout expires are lost;
 // a warning is emitted via [log/slog]. Close is idempotent via [sync.Once].
 package audit

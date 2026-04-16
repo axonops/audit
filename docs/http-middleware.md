@@ -165,7 +165,7 @@ builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string,
 }
 
 // 2. Wrap your router with the audit middleware.
-auditedRouter := audit.Middleware(logger, builder)(router)
+auditedRouter := audit.Middleware(auditor, builder)(router)
 
 // 3. Use the wrapped router as your HTTP handler.
 http.ListenAndServe(":8080", auditedRouter)
@@ -202,7 +202,7 @@ handlers. All are optional — set only what applies to your request.
 
 Middleware audit events include all configured framework fields
 (`app_name`, `host`, `timezone`, `pid`) just like any other event.
-These are set once at logger construction and appear automatically
+These are set once at auditor construction and appear automatically
 in every serialised event — no middleware configuration needed.
 
 The 31 [reserved standard fields](../examples/13-standard-fields/)

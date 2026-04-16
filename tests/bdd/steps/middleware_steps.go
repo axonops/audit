@@ -113,7 +113,7 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return createTestServer(tc, 0, false, false) // 0 = don't call WriteHeader
 	})
 
-	ctx.Step(`^an HTTP test server with nil logger middleware$`, func() error {
+	ctx.Step(`^an HTTP test server with nil auditor middleware$`, func() error {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		})
@@ -333,7 +333,7 @@ func createPanicBuilderServer(tc *AuditTestContext) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := audit.Middleware(tc.Logger, panicBuilder)
+	mw := audit.Middleware(tc.Auditor, panicBuilder)
 	tc.TestServer = httptest.NewServer(mw(handler))
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
@@ -359,7 +359,7 @@ func createTLSTestServer(tc *AuditTestContext, status int) error {
 		}
 	})
 
-	mw := audit.Middleware(tc.Logger, builder)
+	mw := audit.Middleware(tc.Auditor, builder)
 	tc.TestServer = httptest.NewTLSServer(mw(handler))
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
@@ -398,7 +398,7 @@ func createPanicHandlerServer(tc *AuditTestContext) error {
 		panic("intentional handler panic")
 	})
 
-	mw := audit.Middleware(tc.Logger, builder)
+	mw := audit.Middleware(tc.Auditor, builder)
 	tc.TestServer = httptest.NewServer(mw(handler))
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
@@ -430,7 +430,7 @@ func createTestServerWithExtra(tc *AuditTestContext) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := audit.Middleware(tc.Logger, builder)
+	mw := audit.Middleware(tc.Auditor, builder)
 	tc.TestServer = httptest.NewServer(mw(handler))
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
@@ -488,7 +488,7 @@ func createTestServer(tc *AuditTestContext, status int, setActorID, skipGET bool
 		// status=0 means don't call WriteHeader (default 200)
 	})
 
-	mw := audit.Middleware(tc.Logger, builder)
+	mw := audit.Middleware(tc.Auditor, builder)
 	tc.TestServer = httptest.NewServer(mw(handler))
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil

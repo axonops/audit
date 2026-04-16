@@ -410,7 +410,7 @@ flowchart TD
 ```
 
 During reconnection:
-- The mutex is **released** during backoff sleep, so `logger.Close()`
+- The mutex is **released** during backoff sleep, so `auditor.Close()`
   can interrupt the reconnection and shut down cleanly
 - The old `srslog.Writer` is closed before the new connection is
   dialled — this avoids conflicts with srslog's internal retry-on-write

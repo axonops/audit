@@ -230,16 +230,16 @@ are critical for compliance — auditors need to know when the system
 was running, and gaps in the audit trail need to be explainable.
 
 ```go
-// Emit on startup — after the logger is created, before serving.
-logger.AuditEvent(NewAppStartupEvent("success").
+// Emit on startup — after the auditor is created, before serving.
+auditor.AuditEvent(NewAppStartupEvent("success").
     SetMessage("inventory demo started on " + addr))
 
-// Emit on shutdown — after stopping HTTP, before logger.Close().
-logger.AuditEvent(NewAppShutdownEvent("success").
+// Emit on shutdown — after stopping HTTP, before auditor.Close().
+auditor.AuditEvent(NewAppShutdownEvent("success").
     SetMessage("graceful shutdown initiated"))
 ```
 
-The shutdown event only reaches outputs because `logger.Close()`
+The shutdown event only reaches outputs because `auditor.Close()`
 drains the buffer before returning. If you skip `Close()`, the
 shutdown event is lost — along with any other buffered events.
 
@@ -251,7 +251,7 @@ Auth and audit middleware are composed as HTTP handler layers:
 
 ```go
 authed := authMiddleware()(mux)
-audited := audit.Middleware(logger, buildAuditEvent)(authed)
+audited := audit.Middleware(auditor, buildAuditEvent)(authed)
 ```
 
 When authentication fails, the auth middleware sets
@@ -259,33 +259,33 @@ When authentication fails, the auth middleware sets
 middleware automatically emits the failure event. When authentication
 succeeds, it sets `Hints.ActorID` so the audit event records who made
 the request. Neither the auth middleware nor the handlers need a direct
-reference to the audit logger.
+reference to the auditor.
 
 ### Graceful Shutdown
 
 The shutdown sequence matters:
 
 1. **Stop the HTTP server** — no new requests, no new audit events
-2. **Close the audit logger** — flushes all buffered events to outputs
+2. **Close the auditor** — flushes all buffered events to outputs
 3. **Exit**
 
-Without `logger.Close()`, buffered events are lost and the drain
+Without `auditor.Close()`, buffered events are lost and the drain
 goroutine leaks. See `main.go` for the signal handling pattern.
 
 ## Testing Audit Events
 
 The `main_test.go` file demonstrates how to test audit events in a
-real application using `audittest.NewLogger`. This is the pattern you
+real application using `audittest.New`. This is the pattern you
 should follow in your own tests.
 
 ### Test setup
 
 ```go
 func newTestServer(t *testing.T, dbSetup func(mock sqlmock.Sqlmock)) *testEnv {
-    logger, rec, _ := audittest.NewLogger(t, taxonomyYAML)
-    handler := newServer(logger, db, sessions, rl, settings)
+    auditor, rec, _ := audittest.New(t, taxonomyYAML)
+    handler := newServer(auditor, db, sessions, rl, settings)
     srv := httptest.NewServer(handler)
-    return &testEnv{srv: srv, rec: rec, logger: logger}
+    return &testEnv{srv: srv, rec: rec, auditor: auditor}
 }
 ```
 
@@ -301,7 +301,7 @@ func TestAuthFailure_InvalidAPIKey(t *testing.T) {
     env := newTestServer(t, nil)
     doRequest(t, env.srv.URL, "GET", "/items", "bad-key", nil)
 
-    // NewLogger defaults to synchronous delivery — events are
+    // New defaults to synchronous delivery — events are
     // available immediately without calling Close.
     require.Equal(t, 1, env.rec.Count())
     evt := env.rec.Events()[0]
@@ -311,7 +311,7 @@ func TestAuthFailure_InvalidAPIKey(t *testing.T) {
 ```
 
 Key points:
-- **No `Close()` needed before assertions** — `audittest.NewLogger`
+- **No `Close()` needed before assertions** — `audittest.New`
   defaults to synchronous delivery since #425
 - **Same validation as production** — missing required fields are
   rejected, unknown event types fail
@@ -339,7 +339,7 @@ go test -v -race ./examples/17-capstone/...
 ```
 
 See [Example 04 — Testing](../04-testing/) for the fundamentals of
-`audittest.NewLogger` and `audittest.NewLoggerQuick`.
+`audittest.New` and `audittest.NewQuick`.
 
 ## Running Without Docker
 

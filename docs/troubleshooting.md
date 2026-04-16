@@ -21,8 +21,8 @@ This is the most common problem. Work through this checklist:
 
 | Check | How to Verify | Fix |
 |-------|--------------|-----|
-| **`logger.Close()` not called** | Events are async — they sit in the buffer until the drain goroutine processes them. If your program exits without calling `Close()`, buffered events are lost. | Call `logger.Close()` before exit. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
-| **Logger disabled** | A disabled logger silently discards all events. | Remove `WithDisabled()` from your `NewLogger` call, or set `logger: { enabled: true }` in your outputs YAML. |
+| **`auditor.Close()` not called** | Events are async — they sit in the buffer until the drain goroutine processes them. If your program exits without calling `Close()`, buffered events are lost. | Call `auditor.Close()` before exit. See [Graceful Shutdown](async-delivery.md#-graceful-shutdown). |
+| **Auditor disabled** | A disabled logger silently discards all events. | Remove `WithDisabled()` from your `New` call, or set `auditor: { enabled: true }` in your outputs YAML. |
 | **Category disabled at runtime** | If `DisableCategory()` was called, events in that category are silently discarded. | Check your code for `DisableCategory()` calls. All categories are enabled by default. |
 | **Per-output route filtering** | An output with `route: include_categories: [security]` only receives security events — write events are silently filtered. | Check your output YAML `route:` block. Remove the route to receive all events. See [Event Routing](event-routing.md). |
 | **Output disabled in YAML** | `enabled: false` on an output silently disables it. | Check your output YAML for `enabled: false`. |
@@ -46,7 +46,7 @@ faster than the drain goroutine can process them.
 
 | Cause | Fix |
 |-------|-----|
-| **Burst of events** | Increase `queue_size` in your outputs YAML `logger:` section, or use `WithQueueSize()` (default: 10,000, max: 1,000,000) |
+| **Burst of events** | Increase `queue_size` in your outputs YAML `auditor:` section, or use `WithQueueSize()` (default: 10,000, max: 1,000,000) |
 | **Output error loop** | If an output is failing on every write, the drain goroutine spends time on error handling. Check `RecordOutputError` metrics. |
 
 All non-stdout outputs now have their own internal async buffers, so
@@ -68,14 +68,14 @@ INFO audit: shutdown started
 WARN audit: drain timeout expired, N events lost
 ```
 
-`Logger.Close()` waited up to `DrainTimeout` (default: 5 seconds)
+`Auditor.Close()` waited up to `ShutdownTimeout` (default: 5 seconds)
 but couldn't flush all buffered events in time.
 
 | Cause | Fix |
 |-------|-----|
-| **Too many buffered events** | Reduce event volume before shutdown, or increase `Config.DrainTimeout` (max: 60s) |
+| **Too many buffered events** | Reduce event volume before shutdown, or increase `Config.ShutdownTimeout` (max: 60s) |
 | **Slow output during shutdown** | A syslog server or webhook endpoint is slow to accept the final batch. Check connectivity. |
-| **`DrainTimeout` too short** | Increase `Config.DrainTimeout` for high-volume applications |
+| **`ShutdownTimeout` too short** | Increase `Config.ShutdownTimeout` for high-volume applications |
 
 > ⚠️ Events lost to drain timeout are gone permanently. This is the
 > at-most-once delivery guarantee. Monitor this via your metrics.
@@ -110,7 +110,7 @@ audit: output "siem": dial tcp syslog.example.com:6514: connection refused
 ```
 
 The syslog output dials the server immediately at startup. If the
-server is unreachable, `NewLogger()` (or `outputconfig.Load()`) fails.
+server is unreachable, `New()` (or `outputconfig.Load()`) fails.
 
 | Cause | Fix |
 |-------|-----|
@@ -183,9 +183,9 @@ goroutine will cause test failures.
 
 | Cause | Fix |
 |-------|-----|
-| **`logger.Close()` not called** | The drain goroutine runs until `Close()` is called. Always call `Close()` in tests. |
+| **`auditor.Close()` not called** | The drain goroutine runs until `Close()` is called. Always call `Close()` in tests. |
 | **`Close()` called too late** | `goleak` checks at test end. If `Close()` is deferred but another deferred function runs first, the goroutine may still be active. Put `Close()` as the first defer or use `t.Cleanup()`. |
-| **Using `audittest.NewLogger`** | The `audittest` constructors register `t.Cleanup(logger.Close)` automatically — but you MUST call `logger.Close()` explicitly before assertions. The cleanup is a safety net, not a substitute. See [Testing](testing.md#️-close-before-assert--critical). |
+| **Using `audittest.New`** | The `audittest` constructors register `t.Cleanup(auditor.Close)` automatically — but you MUST call `auditor.Close()` explicitly before assertions. The cleanup is a safety net, not a substitute. See [Testing](testing.md#️-close-before-assert--critical). |
 
 ---
 

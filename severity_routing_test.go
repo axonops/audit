@@ -367,24 +367,24 @@ func TestSetRoute_CopiesMinSeverityPointer(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	out := testhelper.NewMockOutput("copy-min")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
 	// Set a severity route via the public API.
 	original := intPtr(5)
 	route := &audit.EventRoute{MinSeverity: original}
-	require.NoError(t, logger.SetOutputRoute("copy-min", route))
+	require.NoError(t, auditor.SetOutputRoute("copy-min", route))
 
 	// Mutate the original pointer after SetOutputRoute returns.
 	*original = 99
 
 	// The stored route must reflect the value at the time of the call (5),
 	// not the mutated value (99).
-	stored, err := logger.OutputRoute("copy-min")
+	stored, err := auditor.OutputRoute("copy-min")
 	require.NoError(t, err)
 	require.NotNil(t, stored.MinSeverity,
 		"stored route must have a non-nil MinSeverity")
@@ -399,21 +399,21 @@ func TestSetRoute_CopiesMaxSeverityPointer(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	out := testhelper.NewMockOutput("copy-max")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
 	original := intPtr(8)
 	route := &audit.EventRoute{MaxSeverity: original}
-	require.NoError(t, logger.SetOutputRoute("copy-max", route))
+	require.NoError(t, auditor.SetOutputRoute("copy-max", route))
 
 	// Mutate after the call.
 	*original = 1
 
-	stored, err := logger.OutputRoute("copy-max")
+	stored, err := auditor.OutputRoute("copy-max")
 	require.NoError(t, err)
 	require.NotNil(t, stored.MaxSeverity,
 		"stored route must have a non-nil MaxSeverity")
@@ -430,21 +430,21 @@ func TestGetRoute_ReturnsIndependentSeverityPointers(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	out := testhelper.NewMockOutput("get-copy")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(4)})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
 	// First retrieval: mutate the returned copy.
-	first, err := logger.OutputRoute("get-copy")
+	first, err := auditor.OutputRoute("get-copy")
 	require.NoError(t, err)
 	require.NotNil(t, first.MinSeverity)
 	*first.MinSeverity = 77 // mutate the copy
 
 	// Second retrieval: must still reflect the original value (4).
-	second, err := logger.OutputRoute("get-copy")
+	second, err := auditor.OutputRoute("get-copy")
 	require.NoError(t, err)
 	require.NotNil(t, second.MinSeverity,
 		"second OutputRoute call must return a non-nil MinSeverity")
@@ -461,21 +461,21 @@ func TestSetRoute_NilSeverityPointersPreserved(t *testing.T) {
 	tax := testhelper.TestTaxonomy()
 
 	out := testhelper.NewMockOutput("nil-sev")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
 	// Set a route that has no severity constraints.
 	route := &audit.EventRoute{
 		IncludeCategories: []string{"write"},
 		// MinSeverity and MaxSeverity intentionally nil.
 	}
-	require.NoError(t, logger.SetOutputRoute("nil-sev", route))
+	require.NoError(t, auditor.SetOutputRoute("nil-sev", route))
 
-	stored, err := logger.OutputRoute("nil-sev")
+	stored, err := auditor.OutputRoute("nil-sev")
 	require.NoError(t, err)
 	assert.Nil(t, stored.MinSeverity,
 		"nil MinSeverity must remain nil after setRoute/getRoute round-trip")
@@ -677,18 +677,18 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 	require.NoError(t, err)
 
 	out := testhelper.NewMockOutput("sev-filter")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(7)})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("critical_event", audit.Fields{"outcome": "failure"})))
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("medium_event", audit.Fields{"outcome": "success"})))
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("low_event", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("critical_event", audit.Fields{"outcome": "failure"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("medium_event", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("low_event", audit.Fields{"outcome": "success"})))
 
-	// t.Cleanup calls logger.Close() which flushes the drain buffer.
+	// t.Cleanup calls auditor.Close() which flushes the drain buffer.
 	// Wait for events to be processed.
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
@@ -732,23 +732,23 @@ events:
 	require.NoError(t, err)
 
 	out := testhelper.NewMockOutput("force-enabled")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		// Output route: MinSeverity 5 — only events with severity >= 5 delivered.
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{MinSeverity: intPtr(5)})),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
 
 	// Force-enable the restricted event globally so it passes the global filter.
-	require.NoError(t, logger.EnableEvent("restricted_event"))
+	require.NoError(t, auditor.EnableEvent("restricted_event"))
 
 	// Emit restricted_event (severity 2 < min 5 on the output route).
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("restricted_event", audit.Fields{"outcome": "ok"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("restricted_event", audit.Fields{"outcome": "ok"})))
 	// Emit normal_event (severity 7 >= min 5 on the output route).
-	require.NoError(t, logger.AuditEvent(audit.NewEvent("normal_event", audit.Fields{"outcome": "ok"})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("normal_event", audit.Fields{"outcome": "ok"})))
 
-	// t.Cleanup calls logger.Close() which flushes the drain buffer.
+	// t.Cleanup calls auditor.Close() which flushes the drain buffer.
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
 	// restricted_event is globally enabled but its severity (2) is below the
@@ -875,7 +875,7 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	out := testhelper.NewMockOutput("concurrent_sev")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
@@ -889,7 +889,7 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for range 200 {
-			_ = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
+			_ = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{"outcome": "failure"}))
 		}
 	}()
 
@@ -898,15 +898,15 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 		defer wg.Done()
 		for range 100 {
 			minSev := 5
-			_ = logger.SetOutputRoute("concurrent_sev", &audit.EventRoute{
+			_ = auditor.SetOutputRoute("concurrent_sev", &audit.EventRoute{
 				MinSeverity: &minSev,
 			})
-			_ = logger.ClearOutputRoute("concurrent_sev")
+			_ = auditor.ClearOutputRoute("concurrent_sev")
 		}
 	}()
 
 	wg.Wait()
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 	// Events may or may not be filtered depending on timing —
 	// the test verifies no data race, not a specific count.
 	assert.True(t, out.EventCount() > 0, "at least some events should arrive")

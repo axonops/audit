@@ -138,7 +138,7 @@ func (jf *JSONFormatter) writeDuration(enc *jsonEncoder, fields Fields) {
 	}
 }
 
-// SetFrameworkFields stores logger-wide framework metadata for
+// SetFrameworkFields stores auditor-wide framework metadata for
 // emission in every JSON event. Called once at construction time.
 func (jf *JSONFormatter) SetFrameworkFields(appName, host, timezone string, pid int) {
 	jf.appName = appName

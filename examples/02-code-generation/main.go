@@ -35,16 +35,16 @@ import (
 var taxonomyYAML []byte
 
 func main() {
-	// Single-call facade: parse taxonomy, load outputs, create logger.
-	logger, err := outputconfig.NewLogger(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	// Single-call facade: parse taxonomy, load outputs, create auditor.
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		log.Fatalf("create auditor: %v", err)
 	}
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	// All event types, field names, and categories are generated constants.
 	// A typo like "NewUserCrateEvent" would fail at compile time.
-	if auditErr := logger.AuditEvent(
+	if auditErr := auditor.AuditEvent(
 		NewUserCreateEvent("alice", "success").
 			SetTargetID("user-42"),
 	); auditErr != nil {

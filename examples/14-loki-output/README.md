@@ -30,7 +30,7 @@ docker run -d --name loki -p 3100:3100 grafana/loki:3.0.0
 
 | File | Purpose |
 |------|---------|
-| [`main.go`](main.go) | Creates a logger with a Loki output and audits 5 events |
+| [`main.go`](main.go) | Creates an auditor with a Loki output and audits 5 events |
 | [`outputs.yaml`](outputs.yaml) | YAML configuration for the Loki output |
 | [`taxonomy.yaml`](taxonomy.yaml) | Event type definitions with required fields |
 | [`README.md`](README.md) | This file |
@@ -72,7 +72,7 @@ When you run this example, here's what happens:
    2 categories (`write` and `security`), each with required fields
 2. **Loki output created** — `outputs.yaml` configures the Loki push
    URL, stream labels, batching, and compression
-3. **Events audited** — 5 events are sent through the logger. Each
+3. **Events audited** — 5 events are sent through the auditor. Each
    event is validated against the taxonomy, serialised as JSON, and
    enqueued in the Loki output's internal buffer
 4. **Batch flushed** — the batch loop groups events by their stream
@@ -123,7 +123,7 @@ The labels come from three sources:
 | Source | Labels | Set when |
 |--------|--------|----------|
 | **Static** (config) | `job="audit-example"`, `environment="development"` | Config load time |
-| **Framework** (logger) | `app_name="audit-example"`, `host="dev-machine"`, `pid="12345"` | Logger construction |
+| **Framework** (logger) | `app_name="audit-example"`, `host="dev-machine"`, `pid="12345"` | Auditor construction |
 | **Per-event** (metadata) | `event_type`, `event_category`, `severity` | Each audit event |
 
 ### PID — Why It Matters for Auditing

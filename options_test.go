@@ -27,34 +27,34 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// NewLogger default config (#388 AC-1)
+// New default config (#388 AC-1)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_NoConfigOptions_UsesDefaults(t *testing.T) {
+func TestNew_NoConfigOptions_UsesDefaults(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	out := testhelper.NewMockOutput("defaults")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	// Emit an event to verify the logger works with defaults.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	// Emit an event to verify the auditor works with defaults.
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
-	assert.Equal(t, 1, out.EventCount(), "default logger should deliver events")
+	require.NoError(t, auditor.Close())
+	assert.Equal(t, 1, out.EventCount(), "default auditor should deliver events")
 }
 
 // ---------------------------------------------------------------------------
-// NewLogger without taxonomy (#388 AC-2)
+// New without taxonomy (#388 AC-2)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithoutTaxonomy_ReturnsError(t *testing.T) {
-	_, err := audit.NewLogger()
+func TestNew_WithoutTaxonomy_ReturnsError(t *testing.T) {
+	_, err := audit.New()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy is required")
 }
@@ -63,60 +63,60 @@ func TestNewLogger_WithoutTaxonomy_ReturnsError(t *testing.T) {
 // WithDisabled (#388 AC-3)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithDisabled_CreatesNoOpLogger(t *testing.T) {
+func TestNew_WithDisabled_CreatesNoOpLogger(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	out := testhelper.NewMockOutput("disabled")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
-	require.NotNil(t, logger)
+	require.NotNil(t, auditor)
 
-	// Disabled logger returns nil without delivering.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	// Disabled auditor returns nil without delivering.
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
 	assert.NoError(t, err)
-	require.NoError(t, logger.Close())
-	assert.Equal(t, 0, out.EventCount(), "disabled logger must not deliver events")
+	require.NoError(t, auditor.Close())
+	assert.Equal(t, 0, out.EventCount(), "disabled auditor must not deliver events")
 }
 
-func TestNewLogger_WithDisabled_NoTaxonomy(t *testing.T) {
+func TestNew_WithDisabled_NoTaxonomy(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	logger, err := audit.NewLogger(audit.WithDisabled())
-	require.NoError(t, err, "disabled logger must not require a taxonomy")
-	require.NotNil(t, logger)
-	assert.True(t, logger.IsDisabled())
+	auditor, err := audit.New(audit.WithDisabled())
+	require.NoError(t, err, "disabled auditor must not require a taxonomy")
+	require.NotNil(t, auditor)
+	assert.True(t, auditor.IsDisabled())
 
 	// AuditEvent silently discards.
-	err = logger.AuditEvent(audit.NewEvent("anything", audit.Fields{"k": "v"}))
+	err = auditor.AuditEvent(audit.NewEvent("anything", audit.Fields{"k": "v"}))
 	assert.NoError(t, err)
 
 	// Close is safe.
-	assert.NoError(t, logger.Close())
+	assert.NoError(t, auditor.Close())
 }
 
-func TestDisabledLogger_EnableCategory_ReturnsErrDisabled(t *testing.T) {
-	logger, err := audit.NewLogger(audit.WithDisabled())
+func TestDisabledAuditor_EnableCategory_ReturnsErrDisabled(t *testing.T) {
+	auditor, err := audit.New(audit.WithDisabled())
 	require.NoError(t, err)
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
-	assert.ErrorIs(t, logger.EnableCategory("foo"), audit.ErrDisabled)
-	assert.ErrorIs(t, logger.DisableCategory("foo"), audit.ErrDisabled)
-	assert.ErrorIs(t, logger.EnableEvent("foo"), audit.ErrDisabled)
-	assert.ErrorIs(t, logger.DisableEvent("foo"), audit.ErrDisabled)
-	assert.ErrorIs(t, logger.SetOutputRoute("foo", nil), audit.ErrDisabled)
+	assert.ErrorIs(t, auditor.EnableCategory("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, auditor.DisableCategory("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, auditor.EnableEvent("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, auditor.DisableEvent("foo"), audit.ErrDisabled)
+	assert.ErrorIs(t, auditor.SetOutputRoute("foo", nil), audit.ErrDisabled)
 }
 
-func TestDisabledLogger_Handle_ReturnsValidHandle(t *testing.T) {
-	logger, err := audit.NewLogger(audit.WithDisabled())
+func TestDisabledAuditor_Handle_ReturnsValidHandle(t *testing.T) {
+	auditor, err := audit.New(audit.WithDisabled())
 	require.NoError(t, err)
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
-	handle, handleErr := logger.Handle("anything")
+	handle, handleErr := auditor.Handle("anything")
 	require.NoError(t, handleErr)
 	require.NotNil(t, handle)
 	assert.Equal(t, "anything", handle.EventType())
@@ -125,13 +125,13 @@ func TestDisabledLogger_Handle_ReturnsValidHandle(t *testing.T) {
 	assert.NoError(t, handle.Audit(audit.Fields{"k": "v"}))
 }
 
-func TestDisabledLogger_MustHandle_DoesNotPanic(t *testing.T) {
-	logger, err := audit.NewLogger(audit.WithDisabled())
+func TestDisabledAuditor_MustHandle_DoesNotPanic(t *testing.T) {
+	auditor, err := audit.New(audit.WithDisabled())
 	require.NoError(t, err)
-	defer func() { _ = logger.Close() }()
+	defer func() { _ = auditor.Close() }()
 
 	assert.NotPanics(t, func() {
-		h := logger.MustHandle("anything")
+		h := auditor.MustHandle("anything")
 		assert.NotNil(t, h)
 	})
 }
@@ -140,18 +140,18 @@ func TestDisabledLogger_MustHandle_DoesNotPanic(t *testing.T) {
 // WithQueueSize (#388 AC-4)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithQueueSize_SetsCustomSize(t *testing.T) {
+func TestNew_WithQueueSize_SetsCustomSize(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithQueueSize(50000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_WithQueueSize_RejectsOverMax(t *testing.T) {
-	_, err := audit.NewLogger(
+func TestNew_WithQueueSize_RejectsOverMax(t *testing.T) {
+	_, err := audit.New(
 		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
@@ -161,22 +161,22 @@ func TestNewLogger_WithQueueSize_RejectsOverMax(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// WithDrainTimeout (#388 AC-5)
+// WithShutdownTimeout (#388 AC-5)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithDrainTimeout_SetsCustomTimeout(t *testing.T) {
+func TestNew_WithShutdownTimeout_SetsCustomTimeout(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	logger, err := audit.NewLogger(
-		audit.WithDrainTimeout(30*time.Second),
+	auditor, err := audit.New(
+		audit.WithShutdownTimeout(30*time.Second),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_WithDrainTimeout_RejectsOverMax(t *testing.T) {
-	_, err := audit.NewLogger(
-		audit.WithDrainTimeout(audit.MaxDrainTimeout+1),
+func TestNew_WithShutdownTimeout_RejectsOverMax(t *testing.T) {
+	_, err := audit.New(
+		audit.WithShutdownTimeout(audit.MaxShutdownTimeout+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.Error(t, err)
@@ -188,10 +188,10 @@ func TestNewLogger_WithDrainTimeout_RejectsOverMax(t *testing.T) {
 // WithValidationMode (#388 AC-6)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithValidationMode_SetsMode(t *testing.T) {
+func TestNew_WithValidationMode_SetsMode(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	out := testhelper.NewMockOutput("permissive")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithOutputs(out),
@@ -199,23 +199,23 @@ func TestNewLogger_WithValidationMode_SetsMode(t *testing.T) {
 	require.NoError(t, err)
 
 	// Unknown fields accepted in permissive mode.
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"bogus":    "value",
 	}))
 	assert.NoError(t, err, "permissive mode should accept unknown fields")
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 // ---------------------------------------------------------------------------
 // WithOmitEmpty (#388 AC-7)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
+func TestNew_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	out := testhelper.NewMockOutput("omit-empty")
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithOmitEmpty(),
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -223,13 +223,13 @@ func TestNewLogger_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 		"empty":    "",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 	require.Equal(t, 1, out.EventCount())
 
 	ev := out.GetEvent(0)
@@ -241,27 +241,27 @@ func TestNewLogger_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 // WithConfig (#388 AC-8, AC-9)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_WithConfig_AppliesStructFields(t *testing.T) {
+func TestNew_WithConfig_AppliesStructFields(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithConfig(audit.Config{QueueSize: 50000}),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
-func TestNewLogger_WithConfig_IndividualOptionOverrides(t *testing.T) {
+func TestNew_WithConfig_IndividualOptionOverrides(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	// WithConfig sets QueueSize=100, then WithQueueSize(200) overrides.
 	// Last option wins.
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithConfig(audit.Config{QueueSize: 100}),
 		audit.WithQueueSize(200),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 	)
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 }
 
 // ---------------------------------------------------------------------------
@@ -325,18 +325,18 @@ func TestSuppressEventCategory_True_SuppressesCategory(t *testing.T) {
 		Categories:            map[string]*audit.CategoryDef{"security": {Events: []string{"auth_failure"}}},
 		Events:                map[string]*audit.EventDef{"auth_failure": {Required: []string{"outcome", "actor_id"}}},
 	}
-	logger, err := audit.NewLogger(
+	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
 
-	err = logger.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
 		"actor_id": "bob",
 	}))
 	require.NoError(t, err)
-	require.NoError(t, logger.Close())
+	require.NoError(t, auditor.Close())
 	require.Equal(t, 1, out.EventCount())
 
 	ev := out.GetEvent(0)
@@ -348,7 +348,7 @@ func TestSuppressEventCategory_True_SuppressesCategory(t *testing.T) {
 // Concurrent construction (#388 AC-16 subset)
 // ---------------------------------------------------------------------------
 
-func TestNewLogger_ConcurrentConstruction_NoRace(t *testing.T) {
+func TestNew_ConcurrentConstruction_NoRace(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	var wg sync.WaitGroup
@@ -360,14 +360,14 @@ func TestNewLogger_ConcurrentConstruction_NoRace(t *testing.T) {
 			// on internal precomputation (precomputeTaxonomy mutates
 			// EventDef slices/maps).
 			tax := testhelper.ValidTaxonomy()
-			logger, err := audit.NewLogger(
+			auditor, err := audit.New(
 				audit.WithTaxonomy(tax),
 			)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 				return
 			}
-			_ = logger.Close()
+			_ = auditor.Close()
 		}()
 	}
 	wg.Wait()
@@ -377,18 +377,18 @@ func TestNewLogger_ConcurrentConstruction_NoRace(t *testing.T) {
 // Benchmark: NewLogger construction (#388)
 // ---------------------------------------------------------------------------
 
-func BenchmarkNewLogger_Construction(b *testing.B) {
+func BenchmarkNew_Construction(b *testing.B) {
 	tax := testhelper.ValidTaxonomy()
 	out := testhelper.NewMockOutput("bench")
 
 	for b.Loop() {
-		logger, err := audit.NewLogger(
+		auditor, err := audit.New(
 			audit.WithTaxonomy(tax),
 			audit.WithOutputs(out),
 		)
 		if err != nil {
 			b.Fatal(err)
 		}
-		_ = logger.Close()
+		_ = auditor.Close()
 	}
 }

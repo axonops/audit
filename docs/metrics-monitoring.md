@@ -40,7 +40,7 @@ type Metrics interface {
 ### Wiring Metrics
 
 ```go
-logger, err := audit.NewLogger(
+auditor, err := audit.New(
     audit.WithTaxonomy(tax),
     audit.WithMetrics(myPrometheusMetrics),
     audit.WithOutputs(fileOutput),
@@ -204,9 +204,9 @@ versions will be absorbed by the embedded no-op.
 The `audittest.MetricsRecorder` captures all metrics calls in memory:
 
 ```go
-logger, _, metrics := audittest.NewLogger(t, taxonomyYAML)
+auditor, _, metrics := audittest.New(t, taxonomyYAML)
 // ... emit events ...
-logger.Close()
+auditor.Close()
 
 assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
 assert.Equal(t, 0, metrics.BufferDrops())

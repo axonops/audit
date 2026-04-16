@@ -20,18 +20,18 @@ import (
 	"time"
 )
 
-func (l *Logger) drainLoop(ctx context.Context) {
-	defer close(l.drainDone)
-	defer l.logger.Debug("audit: drain loop exiting")
-	l.logger.Debug("audit: drain loop started")
+func (a *Auditor) drainLoop(ctx context.Context) {
+	defer close(a.drainDone)
+	defer a.logger.Debug("audit: drain loop exiting")
+	a.logger.Debug("audit: drain loop started")
 	for {
 		select {
-		case entry := <-l.ch:
+		case entry := <-a.ch:
 			if entry != nil {
-				l.processEntry(entry)
+				a.processEntry(entry)
 			}
 		case <-ctx.Done():
-			l.drainRemaining()
+			a.drainRemaining()
 			return
 		}
 	}
@@ -39,12 +39,12 @@ func (l *Logger) drainLoop(ctx context.Context) {
 
 // drainRemaining flushes any events left in the channel after the
 // context is cancelled.
-func (l *Logger) drainRemaining() {
+func (a *Auditor) drainRemaining() {
 	for {
 		select {
-		case entry := <-l.ch:
+		case entry := <-a.ch:
 			if entry != nil {
-				l.processEntry(entry)
+				a.processEntry(entry)
 			}
 		default:
 			return
@@ -55,11 +55,11 @@ func (l *Logger) drainRemaining() {
 // processEntry fans out an audit entry to all matching outputs. Events
 // are serialised once per unique Formatter; per-output routes are
 // checked before delivery. Output failures are isolated.
-func (l *Logger) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyclop // queue depth sampling adds 1 to baseline complexity
+func (a *Auditor) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyclop // queue depth sampling adds 1 to baseline complexity
 	// Sample queue depth every 64 events for metrics gauges.
-	l.drainCount++
-	if l.metrics != nil && l.drainCount%64 == 0 {
-		l.metrics.RecordQueueDepth(len(l.ch), cap(l.ch))
+	a.drainCount++
+	if a.metrics != nil && a.drainCount%64 == 0 {
+		a.metrics.RecordQueueDepth(len(a.ch), cap(a.ch))
 	}
 
 	// Defers execute LIFO. The pool return must happen after the
@@ -72,22 +72,22 @@ func (l *Logger) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyc
 	}()
 	defer func() {
 		if r := recover(); r != nil {
-			l.logger.Error("audit: panic in processEntry",
+			a.logger.Error("audit: panic in processEntry",
 				"event_type", entry.eventType,
 				"panic", r)
-			if l.metrics != nil {
-				l.metrics.RecordSerializationError(entry.eventType)
+			if a.metrics != nil {
+				a.metrics.RecordSerializationError(entry.eventType)
 			}
 		}
 	}()
 
 	ts := time.Now()
-	def := l.taxonomy.Events[entry.eventType]
+	def := a.taxonomy.Events[entry.eventType]
 
 	if len(def.Categories) == 0 {
 		// Uncategorised event: single pass, no category context.
 		var fc formatCache
-		l.deliverToOutputs(entry, "", ts, def, &fc)
+		a.deliverToOutputs(entry, "", ts, def, &fc)
 		return
 	}
 
@@ -95,8 +95,8 @@ func (l *Logger) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyc
 	// If EnableEvent was called, iterate ALL categories.
 	// The atomic flag guards the sync.Map lookup on the hot path.
 	eventForceEnabled := false
-	if l.filter.hasEventOverrides.Load() {
-		if override, ok := l.filter.eventOverrides.Load(entry.eventType); ok && override {
+	if a.filter.hasEventOverrides.Load() {
+		if override, ok := a.filter.eventOverrides.Load(entry.eventType); ok && override {
 			eventForceEnabled = true
 		}
 	}
@@ -107,17 +107,17 @@ func (l *Logger) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cyc
 	var fc formatCache
 
 	for _, category := range def.Categories {
-		if !eventForceEnabled && !l.filter.isCategoryEnabled(category) {
+		if !eventForceEnabled && !a.filter.isCategoryEnabled(category) {
 			continue
 		}
-		l.deliverToOutputs(entry, category, ts, def, &fc)
+		a.deliverToOutputs(entry, category, ts, def, &fc)
 	}
 }
 
 // deliverToOutputs fans out a single event to all matching outputs
 // for a given category. An empty category means the event is
 // uncategorised.
-func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
+func (a *Auditor) deliverToOutputs(entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache) {
 	severity := def.ResolvedSeverity()
 	meta := EventMetadata{
 		EventType: entry.eventType,
@@ -126,8 +126,8 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 		Timestamp: ts,
 	}
 
-	for _, oe := range l.entries {
-		l.deliverToOutput(oe, entry, category, ts, def, fc, meta)
+	for _, oe := range a.entries {
+		a.deliverToOutput(oe, entry, category, ts, def, fc, meta)
 	}
 }
 
@@ -136,12 +136,12 @@ func (l *Logger) deliverToOutputs(entry *auditEntry, category string, ts time.Ti
 // does not prevent delivery to subsequent outputs. This is critical
 // for the fan-out guarantee: a buggy output must not take down the
 // entire delivery pipeline.
-func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache, meta EventMetadata) { //nolint:gocyclo,gocognit,cyclop // per-output delivery with panic recovery
+func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category string, ts time.Time, def *EventDef, fc *formatCache, meta EventMetadata) { //nolint:gocyclo,gocognit,cyclop // per-output delivery with panic recovery
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			l.logger.Error("audit: panic in output write",
+			a.logger.Error("audit: panic in output write",
 				"output", oe.output.Name(),
 				"event_type", entry.eventType,
 				"panic", r,
@@ -149,32 +149,32 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 			// Always record the panic in core metrics, even for
 			// DeliveryReporter outputs — the output clearly did not
 			// self-report if it panicked.
-			if l.metrics != nil {
-				l.metrics.RecordOutputError(oe.output.Name())
+			if a.metrics != nil {
+				a.metrics.RecordOutputError(oe.output.Name())
 			}
 		}
 	}()
 
 	if !oe.matchesEvent(entry.eventType, category, meta.Severity) {
-		if l.metrics != nil {
-			l.metrics.RecordOutputFiltered(oe.output.Name())
+		if a.metrics != nil {
+			a.metrics.RecordOutputFiltered(oe.output.Name())
 		}
 		return
 	}
 
 	var data []byte
 	if oe.formatOpts != nil && def.FieldLabels != nil {
-		data = l.formatWithExclusion(oe, entry, ts, def)
+		data = a.formatWithExclusion(oe, entry, ts, def)
 	} else {
-		data = l.formatCached(oe, entry, ts, def, fc)
+		data = a.formatCached(oe, entry, ts, def, fc)
 	}
 	if data == nil {
 		return
 	}
 
 	// Append event_category if enabled and the event has a category.
-	if category != "" && !l.taxonomy.SuppressEventCategory {
-		data = appendEventCategory(data, oe.effectiveFormatter(l.formatter), category)
+	if category != "" && !a.taxonomy.SuppressEventCategory {
+		data = appendEventCategory(data, oe.effectiveFormatter(a.formatter), category)
 	}
 
 	// Compute and append HMAC if configured for this output.
@@ -182,7 +182,7 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 	// (after field stripping + event_category).
 	if oe.hmac != nil {
 		hmacHex := oe.hmac.computeHMACFast(data)
-		fmtr := oe.effectiveFormatter(l.formatter)
+		fmtr := oe.effectiveFormatter(a.formatter)
 		data = AppendPostField(data, fmtr, PostField{
 			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
 		})
@@ -197,14 +197,14 @@ func (l *Logger) deliverToOutput(oe *outputEntry, entry *auditEntry, category st
 	} else {
 		writeErr = oe.output.Write(data)
 	}
-	l.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
+	a.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
 }
 
 // prepareOutputEntries caches interface assertions and pre-constructs
 // per-output state (MetadataWriter, DeliveryReporter, FormatOptions,
 // HMAC). Called once at construction time after all options are applied.
-func (l *Logger) prepareOutputEntries() {
-	for _, oe := range l.entries {
+func (a *Auditor) prepareOutputEntries() {
+	for _, oe := range a.entries {
 		if mw, ok := oe.output.(MetadataWriter); ok {
 			oe.metadataWriter = mw
 		}
@@ -222,22 +222,22 @@ func (l *Logger) prepareOutputEntries() {
 	}
 }
 
-// propagateFrameworkFields propagates logger-wide framework
+// propagateFrameworkFields propagates auditor-wide framework
 // metadata to all formatters that implement [FrameworkFieldSetter]
 // and all outputs that implement [FrameworkFieldReceiver].
-func (l *Logger) propagateFrameworkFields() {
+func (a *Auditor) propagateFrameworkFields() {
 	set := func(f Formatter) {
 		if setter, ok := f.(FrameworkFieldSetter); ok {
-			setter.SetFrameworkFields(l.appName, l.host, l.timezone, l.pid)
+			setter.SetFrameworkFields(a.appName, a.host, a.timezone, a.pid)
 		}
 	}
-	set(l.formatter)
-	for _, oe := range l.entries {
+	set(a.formatter)
+	for _, oe := range a.entries {
 		if oe.formatter != nil {
 			set(oe.formatter)
 		}
 		if recv, ok := oe.output.(FrameworkFieldReceiver); ok {
-			recv.SetFrameworkFields(l.appName, l.host, l.timezone, l.pid)
+			recv.SetFrameworkFields(a.appName, a.host, a.timezone, a.pid)
 		}
 	}
 }
@@ -245,17 +245,17 @@ func (l *Logger) propagateFrameworkFields() {
 // formatWithExclusion serialises an event with sensitivity-labelled
 // fields excluded. It bypasses the format cache because different
 // outputs may exclude different label sets.
-func (l *Logger) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
+func (a *Auditor) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef) []byte {
 	// Safe: drain loop is single-goroutine. FieldLabels is read-only
 	// after taxonomy registration; we assign the pointer per-event
 	// to avoid allocating a new FormatOptions on every call.
 	oe.formatOpts.FieldLabels = def.FieldLabels
-	f := oe.effectiveFormatter(l.formatter)
+	f := oe.effectiveFormatter(a.formatter)
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, oe.formatOpts)
 	if err != nil {
-		l.logger.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
-		if l.metrics != nil {
-			l.metrics.RecordSerializationError(entry.eventType)
+		a.logger.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
+		if a.metrics != nil {
+			a.metrics.RecordSerializationError(entry.eventType)
 		}
 		return nil
 	}
@@ -309,18 +309,18 @@ func (c *formatCache) put(f Formatter, data []byte) {
 // formatCached returns the serialised bytes for the output's formatter,
 // using the cache to avoid redundant serialisation. Returns nil if
 // serialisation failed.
-func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache *formatCache) []byte {
-	f := oe.effectiveFormatter(l.formatter)
+func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache *formatCache) []byte {
+	f := oe.effectiveFormatter(a.formatter)
 	if data, ok := cache.get(f); ok {
 		return data // may be nil if serialisation failed
 	}
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, nil)
 	if err != nil {
-		l.logger.Error("audit: serialisation failed",
+		a.logger.Error("audit: serialisation failed",
 			"event_type", entry.eventType,
 			"error", err)
-		if l.metrics != nil {
-			l.metrics.RecordSerializationError(entry.eventType)
+		if a.metrics != nil {
+			a.metrics.RecordSerializationError(entry.eventType)
 		}
 		cache.put(f, nil) // mark as failed
 		return nil
@@ -333,19 +333,19 @@ func (l *Logger) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, 
 // the plain Write and MetadataWriter paths. Called once per output per
 // event with the result of the write call. No closures, no interface
 // dispatch — all parameters are concrete values.
-func (l *Logger) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
+func (a *Auditor) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
 	if writeErr != nil {
-		l.logger.Error("audit: output write failed",
+		a.logger.Error("audit: output write failed",
 			"output", outputName,
 			"event_type", eventType,
 			"error", writeErr)
-		if l.metrics != nil && !selfReports {
-			l.metrics.RecordOutputError(outputName)
-			l.metrics.RecordEvent(outputName, "error")
+		if a.metrics != nil && !selfReports {
+			a.metrics.RecordOutputError(outputName)
+			a.metrics.RecordEvent(outputName, "error")
 		}
 		return
 	}
-	if l.metrics != nil && !selfReports {
-		l.metrics.RecordEvent(outputName, "success")
+	if a.metrics != nil && !selfReports {
+		a.metrics.RecordEvent(outputName, "success")
 	}
 }

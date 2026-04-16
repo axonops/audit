@@ -158,19 +158,19 @@ all events.
 
 ## 🔄 Runtime Route Changes
 
-Routes can be modified at runtime without restarting the logger:
+Routes can be modified at runtime without restarting the auditor:
 
 ```go
 // Restrict an output to security events only.
-err := logger.SetOutputRoute("siem", &audit.EventRoute{
+err := auditor.SetOutputRoute("siem", &audit.EventRoute{
     IncludeCategories: []string{"security"},
 })
 
 // Remove the route — output receives all events again.
-err = logger.ClearOutputRoute("siem")
+err = auditor.ClearOutputRoute("siem")
 
 // Query the current route.
-route, err := logger.OutputRoute("siem")
+route, err := auditor.OutputRoute("siem")
 ```
 
 The output name must match the key used in your output YAML

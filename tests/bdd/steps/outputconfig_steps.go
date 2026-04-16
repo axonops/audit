@@ -94,17 +94,17 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		return nil
 	})
 
-	ctx.Step(`^I create a logger from the loaded config$`, func() error {
+	ctx.Step(`^I create an auditor from the loaded config$`, func() error {
 		if loadResult == nil {
 			return fmt.Errorf("no load result available — load the outputs config first")
 		}
 		opts := append([]audit.Option{audit.WithTaxonomy(tc.Taxonomy)}, loadResult.Options...)
-		logger, err := audit.NewLogger(opts...)
+		auditor, err := audit.New(opts...)
 		if err != nil {
-			return fmt.Errorf("failed to create logger from loaded config: %w", err)
+			return fmt.Errorf("failed to create auditor from loaded config: %w", err)
 		}
-		tc.Logger = logger
-		tc.AddCleanup(func() { _ = logger.Close() })
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
 	})
 

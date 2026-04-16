@@ -36,8 +36,8 @@ import (
 // AuditTestContext holds all mutable state for a single BDD scenario.
 // A fresh context is created for every scenario in BeforeScenario.
 type AuditTestContext struct { //nolint:govet // fieldalignment: readability preferred over packing
-	// Logger state.
-	Logger      *audit.Logger
+	// Auditor state.
+	Auditor     *audit.Auditor
 	EventHandle *audit.EventHandle
 	LastErr     error
 	Taxonomy    *audit.Taxonomy
@@ -108,7 +108,7 @@ func (tc *AuditTestContext) Cleanup() {
 
 // Reset prepares the context for a new scenario.
 func (tc *AuditTestContext) Reset() {
-	tc.Logger = nil
+	tc.Auditor = nil
 	tc.EventHandle = nil
 	tc.LastErr = nil
 	tc.Taxonomy = nil
@@ -165,9 +165,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 
 	ctx.After(func(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
-		// Close logger if not already closed.
-		if tc.Logger != nil {
-			_ = tc.Logger.Close()
+		// Close auditor if not already closed.
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
 		}
 		tc.Cleanup()
 		return ctx, nil

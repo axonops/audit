@@ -20,7 +20,7 @@ import (
 )
 
 // Fields is the map type for audit event fields. Consumers pass
-// field values as Fields to [Logger.AuditEvent] and generated event
+// field values as Fields to [Auditor.AuditEvent] and generated event
 // builders.
 //
 // Fields is a defined type (not an alias) so it can carry convenience
@@ -126,7 +126,7 @@ type EventDef struct {
 	Severity *int
 
 	// Required lists field names that must be present in every
-	// [Logger.AuditEvent] call for this event type. Missing required
+	// [Auditor.AuditEvent] call for this event type. Missing required
 	// fields always produce an error regardless of validation mode.
 	Required []string
 
@@ -212,7 +212,7 @@ type Taxonomy struct {
 	validated bool
 
 	// dev is set by [DevTaxonomy] to signal that this is a permissive
-	// development taxonomy. [NewLogger] emits a slog.Warn when this
+	// development taxonomy. [New] emits a slog.Warn when this
 	// flag is true.
 	dev bool
 }
@@ -223,7 +223,7 @@ type Taxonomy struct {
 //
 // DevTaxonomy is for prototyping and testing only. It accepts any
 // event type with any fields and MUST NOT be used in production.
-// [NewLogger] emits a [log/slog] warning when a DevTaxonomy is used.
+// [New] emits a [log/slog] warning when a DevTaxonomy is used.
 func DevTaxonomy(eventTypes ...string) *Taxonomy {
 	events := make(map[string]*EventDef, len(eventTypes))
 	for _, et := range eventTypes {

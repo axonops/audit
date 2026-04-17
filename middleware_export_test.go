@@ -16,6 +16,7 @@ package audit
 
 import (
 	"bufio"
+	"log/slog"
 	"net"
 	"net/http"
 )
@@ -27,7 +28,21 @@ func ClientIP(r *http.Request) string { return clientIP(r) }
 func TransportSecurity(r *http.Request) string { return transportSecurity(r) }
 
 // NewRequestID exports newRequestID for testing.
-func NewRequestID() string { return newRequestID() }
+func NewRequestID() string { return newRequestID(nil) }
+
+// NewRequestIDWithLogger exports newRequestID with a specific logger
+// for tests that need to capture the crypto/rand-failure warning path.
+func NewRequestIDWithLogger(logger *slog.Logger) string { return newRequestID(logger) }
+
+// SetRandRead swaps the package-level randRead seam used by
+// newRequestID. Returns a restore function that reinstates the
+// original. For test use only — callers are responsible for
+// ensuring serial execution as randRead is process-global.
+func SetRandRead(r func([]byte) (int, error)) (restore func()) {
+	original := randRead
+	randRead = r
+	return func() { randRead = original }
+}
 
 // ValidRequestID exports validRequestID for testing.
 func ValidRequestID(id string) bool { return validRequestID(id) }

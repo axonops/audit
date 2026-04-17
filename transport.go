@@ -76,16 +76,28 @@ func transportSecurity(r *http.Request) string {
 	return "tls"
 }
 
+// randRead is the crypto/rand.Read indirection used by newRequestID.
+// Tests override this to exercise the failure path; production code
+// never swaps it. Defined here (not in a *_test.go helper) because
+// export_test files cannot introduce new package-level variables.
+var randRead = rand.Read
+
 // newRequestID generates a v4 UUID using crypto/rand. The format
-// follows RFC 4122: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx.
-func newRequestID() string {
+// follows RFC 4122: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx. The
+// logger argument receives the crypto/rand-failure fallback warning;
+// pass the auditor's diagnostic logger so the warning routes to the
+// consumer's configured handler.
+func newRequestID(logger *slog.Logger) string {
 	var uuid [16]byte
 	// crypto/rand.Read always returns len(p) bytes on supported
 	// platforms; the only realistic failure is a broken OS RNG.
-	if _, err := rand.Read(uuid[:]); err != nil {
+	if _, err := randRead(uuid[:]); err != nil {
 		// Fallback: return a zero UUID rather than panicking in a
 		// library. This should never happen on any supported OS.
-		slog.Warn("audit: crypto/rand failed, using zero UUID", "error", err)
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("audit: crypto/rand failed, using zero UUID", "error", err)
 		return "00000000-0000-4000-8000-000000000000"
 	}
 	// Set version (4) and variant (RFC 4122).

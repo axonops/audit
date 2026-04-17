@@ -172,7 +172,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 
 	reqID := r.Header.Get("X-Request-Id")
 	if !validRequestID(reqID) {
-		reqID = newRequestID()
+		reqID = newRequestID(auditor.logger)
 	}
 
 	rw := &responseWriter{ResponseWriter: w}

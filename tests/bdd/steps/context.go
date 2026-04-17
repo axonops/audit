@@ -44,10 +44,11 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	Options     []audit.Option
 
 	// Output capture.
-	StdoutBuf *bytes.Buffer     // in-memory output for non-Docker scenarios
-	FilePaths map[string]string // logical name -> temp file path
-	FileDir   string            // temp directory (cleaned up after scenario)
-	Markers   map[string]string // logical name -> unique marker string
+	StdoutBuf         *bytes.Buffer     // in-memory output for non-Docker scenarios
+	FilePaths         map[string]string // logical name -> temp file path
+	FileDir           string            // temp directory (cleaned up after scenario)
+	Markers           map[string]string // logical name -> unique marker string
+	SymlinkTargetPath string            // file.Output symlink-safety scenarios — real path behind the symlink
 
 	// Docker infrastructure.
 	WebhookURL    string // "http://localhost:8080"

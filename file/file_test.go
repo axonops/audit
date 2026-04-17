@@ -636,9 +636,19 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte("test\n")))
-	// Close drains buffer — the symlink error is logged but the write
-	// is attempted in the background goroutine.
+	// Close drains the buffer. The symlink error is logged by the
+	// diagnostic logger but is not returned to Write's caller (async
+	// delivery path). Close itself must still succeed — the writer's
+	// Close handles the already-rejected state cleanly.
 	require.NoError(t, out.Close())
+
+	// Behavioural assertion: if safeOpen correctly rejected the symlink,
+	// the target file remains empty. If the library had followed the
+	// symlink, the target would contain "test\n".
+	info, statErr := os.Stat(target)
+	require.NoError(t, statErr)
+	require.Equal(t, int64(0), info.Size(),
+		"symlink target should be empty — library must reject symlink writes")
 }
 
 func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {

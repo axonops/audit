@@ -72,14 +72,14 @@ Feature: Syslog Output
     When I try to create a syslog output with TLS cert but no key
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog tls_cert and tls_key must both be set or both empty
+      audit: config validation failed: syslog tls_cert and tls_key must both be set or both empty
       """
 
   Scenario: TLS key without cert is rejected with exact error
     When I try to create a syslog output with TLS key but no cert
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog tls_cert and tls_key must both be set or both empty
+      audit: config validation failed: syslog tls_cert and tls_key must both be set or both empty
       """
 
   # --- Config validation ---
@@ -88,21 +88,21 @@ Feature: Syslog Output
     When I try to create a syslog output with empty address
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog address must not be empty
+      audit: config validation failed: syslog address must not be empty
       """
 
   Scenario: Invalid network type is rejected with exact error
     When I try to create a syslog output on "invalid" to "localhost:5514"
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog network "invalid" must be tcp, udp, or tcp+tls
+      audit: config validation failed: syslog network "invalid" must be tcp, udp, or tcp+tls
       """
 
   Scenario: Invalid facility is rejected with exact error
     When I try to create a syslog output with facility "bogus"
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog facility "bogus": audit: unknown syslog facility "bogus"
+      audit: syslog facility "bogus": audit: config validation failed: unknown syslog facility "bogus"
       """
 
   # --- Hostname configuration (#237) ---

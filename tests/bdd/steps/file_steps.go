@@ -111,7 +111,8 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return auditConcurrent(tc, total, goroutines)
 	})
 	ctx.Step(`^I write enough events to exceed (\d+) MB$`, func(mb int) error { return writeEventsExceeding(tc, mb) })
-	ctx.Step(`^I try to create a file output with a symlink path$`, func() error { return trySymlinkFileOutput(tc) })
+	ctx.Step(`^I write a single event to a file output configured with a symlink path$`,
+		func() error { return writeToSymlinkFileOutput(tc) })
 	ctx.Step(`^I try to create a file output with empty path$`, func() error { return tryFileOutputWithPath(tc, "") })
 	ctx.Step(`^I try to create a file output with MaxSizeMB (\d+)$`, func(mb int) error {
 		out, err := file.New(file.Config{Path: "/tmp/test.log", MaxSizeMB: mb}, nil)
@@ -220,6 +221,7 @@ func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 	ctx.Step(`^no \.gz files should exist in the output directory$`, func() error { return assertNoGzFiles(tc) })
 	ctx.Step(`^the file event should have field "([^"]*)" present$`, func(field string) error { return assertFileEventFieldPresent(tc, field) })
 	ctx.Step(`^the file metrics should have recorded at least (\d+) rotations?$`, func(n int) error { return assertFileRotationCount(tc, n) })
+	ctx.Step(`^the symlink target file should remain empty$`, func() error { return assertSymlinkTargetEmpty(tc) })
 }
 
 // --- Extracted step implementations ---
@@ -289,7 +291,15 @@ func writeEventsExceeding(tc *AuditTestContext, mb int) error {
 	return nil
 }
 
-func trySymlinkFileOutput(tc *AuditTestContext) error {
+// writeToSymlinkFileOutput creates a real target file, a symlink pointing
+// to it, then writes one event via a file.Output configured with the
+// symlink path. file.Output.Write is async, so Close() drains the buffer
+// and forces the actual write attempt, which is rejected by the rotate
+// package's safeOpen (O_NOFOLLOW on Unix, Lstat on other platforms).
+//
+// Stashes the symlink-target path in tc for the assertSymlinkTargetEmpty
+// Then step to verify the library did not write THROUGH the symlink.
+func writeToSymlinkFileOutput(tc *AuditTestContext) error {
 	dir, err := tc.EnsureFileDir()
 	if err != nil {
 		return err
@@ -302,25 +312,39 @@ func trySymlinkFileOutput(tc *AuditTestContext) error {
 	if linkErr := os.Symlink(realPath, linkPath); linkErr != nil {
 		return fmt.Errorf("create symlink: %w", linkErr)
 	}
-	// file.New may succeed (lazy open), but the symlink is rejected
-	// at write time by the rotate package's safeOpen. Create the
-	// output and attempt a write to trigger the rejection.
+	tc.SymlinkTargetPath = realPath
+
 	out, err := file.New(file.Config{Path: linkPath}, nil)
 	if err != nil {
-		tc.LastErr = err
-		return nil //nolint:nilerr // construction rejected it
+		return fmt.Errorf("file.New unexpectedly failed at construction: %w", err)
 	}
-	tc.AddCleanup(func() { _ = out.Close() })
-	// Try writing — the symlink should be rejected by safeOpen.
-	writeErr := out.Write([]byte(`{"test":"symlink"}\n`))
-	_ = out.Close()
-	if writeErr != nil {
-		tc.LastErr = writeErr
-		return nil //nolint:nilerr // write rejected the symlink
+	if writeErr := out.Write([]byte(`{"test":"symlink"}` + "\n")); writeErr != nil {
+		return fmt.Errorf("file.Output.Write unexpectedly returned error: %w", writeErr)
 	}
-	// If neither construction nor write rejected it, that's unexpected
-	// but we store nil error so the Then step can report failure.
-	tc.LastErr = nil
+	// Close drains the async write buffer, forcing the rejection to
+	// happen before the Then step inspects the target file.
+	if closeErr := out.Close(); closeErr != nil {
+		return fmt.Errorf("file.Output.Close: %w", closeErr)
+	}
+	return nil
+}
+
+// assertSymlinkTargetEmpty verifies the symlink target file was not
+// written to. If safeOpen's protection worked, the target stays at zero
+// bytes; if the library followed the symlink, the target would contain
+// the event payload.
+func assertSymlinkTargetEmpty(tc *AuditTestContext) error {
+	if tc.SymlinkTargetPath == "" {
+		return fmt.Errorf("SymlinkTargetPath not set — did the When step run?")
+	}
+	info, err := os.Stat(tc.SymlinkTargetPath)
+	if err != nil {
+		return fmt.Errorf("stat symlink target %q: %w", tc.SymlinkTargetPath, err)
+	}
+	if info.Size() != 0 {
+		return fmt.Errorf("symlink target %q has %d bytes — library followed the symlink (security regression)",
+			tc.SymlinkTargetPath, info.Size())
+	}
 	return nil
 }
 

@@ -5,6 +5,7 @@
 - [How Go Module Publishing Works](#how-go-module-publishing-works)
 - [For Maintainers: Cutting a Release](#for-maintainers-cutting-a-release)
 - [For Maintainers: Verification Tools](#for-maintainers-verification-tools)
+- [For Maintainers: CI Health](#for-maintainers-ci-health)
 - [For Contributors](#for-contributors)
 - [For Consumers](#for-consumers)
 
@@ -280,6 +281,77 @@ from `pkg.go.dev` — use it as a quick sanity check, not a gate.
 7 modules at the specified version, compiles a program that imports all of
 them, and installs `audit-gen`. This is the closest local equivalent to
 "does this release actually work for a consumer."
+
+---
+
+## For Maintainers: CI Health
+
+CI is only useful if it reports real failures as failures. Defence in depth:
+the test layer must fail loudly, AND every workflow step must propagate that
+failure out of the shell pipeline into the job result.
+
+### The pipefail bug class
+
+GitHub Actions `run:` blocks execute bash without `set -o pipefail` by default.
+When a step uses a pipeline like `make test | tee output.txt`, the pipeline's
+exit status is `tee`'s (always 0), not `make`'s. A failing test suite can
+therefore exit the step with status 0 and the job is marked `success` even
+though the tests failed.
+
+Issue #622 fixed this for the BDD step in `ci.yml`; the rule applies to every
+workflow step that uses a pipeline. Every `run:` block that contains `|` must
+either:
+
+- Set `set -eo pipefail` at the top of the block, or
+- Not use a pipeline.
+
+### Proving the mechanism
+
+The bug class is reproducible in five seconds without touching CI:
+
+```bash
+# Without pipefail: tee's zero exit masks false's non-zero exit.
+$ bash -c 'false | tee /dev/null'; echo "outer exit: $?"
+outer exit: 0
+
+# With pipefail: false's exit propagates out of the subshell.
+$ bash -c 'set -eo pipefail; false | tee /dev/null'; echo "outer exit: $?"
+outer exit: 1
+```
+
+### Verifying CI is honest end-to-end
+
+After any change to workflow steps that run tests, verify the gate is real:
+
+1. Create a disposable branch, capturing the name once:
+
+   ```bash
+   BRANCH="verify/ci-pipefail-$(date +%Y%m%d-%H%M%S)"
+   git checkout -b "$BRANCH"
+   ```
+
+2. Introduce a deliberate test failure — smallest recipe is to add an
+   undefined step reference in a BDD feature file:
+
+   ```gherkin
+   # Append to any scenario in tests/bdd/features/core_audit.feature
+   And an intentionally undefined canary step
+   ```
+
+3. Commit, push, and open a draft PR.
+4. Confirm the relevant CI job (e.g. `BDD (core)`) reports `failure`. The
+   check row in the PR UI shows a red `X`, not a green check.
+5. Close the PR without merging and delete the branch:
+
+   ```bash
+   git push origin --delete "$BRANCH"
+   git checkout main
+   git branch -D "$BRANCH"
+   ```
+
+This verifies not just the pipefail mechanism but the entire chain from test
+exit code through step status through job status through PR check status. Run
+it when modifying any test-execution step in `.github/workflows/`.
 
 ---
 

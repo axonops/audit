@@ -116,7 +116,7 @@ Feature: Webhook Output
     When I try to create a webhook output to "http://localhost:8080/events" without AllowInsecureHTTP
     Then the webhook construction should fail with exact error:
       """
-      audit: webhook url must be https (got "http"); set AllowInsecureHTTP for testing
+      audit: config validation failed: webhook url must be https (got "http"); set AllowInsecureHTTP for testing
       """
 
   Scenario: AllowInsecureHTTP permits http URLs
@@ -150,14 +150,14 @@ Feature: Webhook Output
     When I try to create a webhook output to "https://user:pass@example.com/events"
     Then the webhook construction should fail with exact error:
       """
-      audit: webhook url must not contain credentials; use Headers for auth
+      audit: config validation failed: webhook url must not contain credentials; use Headers for auth
       """
 
   Scenario: Header CRLF injection rejected with exact error
     When I try to create a webhook output with header containing CRLF
     Then the webhook construction should fail with exact error:
       """
-      audit: webhook header value for "X-Bad" contains invalid characters
+      audit: config validation failed: webhook header value for "X-Bad" contains invalid characters
       """
 
   # --- Config validation ---
@@ -166,7 +166,7 @@ Feature: Webhook Output
     When I try to create a webhook output to ""
     Then the webhook construction should fail with exact error:
       """
-      audit: webhook url must not be empty
+      audit: config validation failed: webhook url must not be empty
       """
 
   Scenario: BatchSize exceeding maximum rejected with exact error

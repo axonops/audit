@@ -82,15 +82,15 @@ Feature: HMAC Integrity Verification
 
   Scenario: Salt too short rejected at startup
     When I try to create an auditor with HMAC salt "short" version "v1" and hash "HMAC-SHA-256"
-    Then logger creation should fail with an error containing "at least"
+    Then auditor creation should fail with an error containing "at least"
 
   Scenario: Unknown algorithm rejected at startup
     When I try to create an auditor with HMAC salt "valid-salt-sixteen-b!" version "v1" and hash "MD5"
-    Then logger creation should fail with an error containing "unknown"
+    Then auditor creation should fail with an error containing "unknown"
 
   Scenario: Missing salt version rejected at startup
     When I try to create an auditor with HMAC salt "valid-salt-sixteen-b!" version "" and hash "HMAC-SHA-256"
-    Then logger creation should fail with an error containing "version"
+    Then auditor creation should fail with an error containing "version"
 
   # --- Salt version authentication (issue #473) ---
   #

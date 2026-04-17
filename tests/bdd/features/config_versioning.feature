@@ -35,9 +35,9 @@ Feature: Auditor Configuration
       audit: config validation failed: shutdown_timeout 2m0s exceeds maximum 1m0s
       """
 
-  Scenario: Disabled config returns no-op logger
+  Scenario: Disabled config returns no-op auditor
     Given a standard test taxonomy
-    When I create a disabled logger
+    When I create a disabled auditor
     Then the auditor should handle audit calls without error
 
   Scenario: ValidationMode defaults to strict when empty

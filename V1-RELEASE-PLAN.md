@@ -50,7 +50,7 @@ Every issue follows this sequence. Do not skip steps.
 
 [GitHub issue view](https://github.com/axonops/audit/issues?q=is%3Aissue+is%3Aopen+label%3Av1.0.0+%22security%22+OR+%22fix%22)
 
-- [ ] **#473** security: include _hmac_v inside HMAC authenticated bytes — HMAC authenticity hole (code-reviewer C3, verified against `drain.go:183-192`).
+- [x] **#473** security: include _hmac_v inside HMAC authenticated bytes — HMAC authenticity hole (code-reviewer C3, verified against `drain.go:183-192`). ✅ Merged in PR #623 (2026-04-17).
 - [ ] **#474** fix: atomic.Pointer for diagnostic logger in async outputs — data race across webhook/file/syslog/loki.
 - [ ] **#475** security: strip credentials from Webhook and Loki Config.String() output — token leakage via `%v` / `%+v` debug.
 - [ ] **#476** fix: apply global tls_policy to loki and secret providers — injection currently only covers syslog/webhook.
@@ -152,7 +152,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#522** perf: parallelise govulncheck across modules via matrix.
 - [ ] **#523** security: CI check rejects tls.Config{InsecureSkipVerify:true} anywhere outside tests.
 - [ ] **#524** ci: add standalone mutation-testing workflow (ad-hoc + release-gate).
-- [ ] **#622** bug: CI BDD step masks test failures via `| tee` pipeline — failing suites pass silently (discovered during #473 work; blocks Track F #557 verification).
+- [ ] **#622** bug: CI BDD step masks test failures via `| tee` pipeline + fix 8 pre-existing undefined BDD steps — combined scope: CI pipefail fix AND BDD "logger creation" → "auditor creation" rename across 6 feature files. Absorbs the "logger creation" item from Track F #557 (see #622 scope expansion comment 2026-04-17). NEXT UP after #473 merge.
 
 **Sequencing:** #515 precedes #513 (branch protection required for PR-based release). #520 simplifies #524. #513 coordinates with #437 (Dependabot) and #493 (benchmark baseline). #516 and Track A #482 are duplicate angles — land one and close the other.
 
@@ -200,7 +200,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#554** test: convert webhook BDD "at least N" to "exactly N" for non-retry happy paths.
 - [ ] **#555** refactor: convert white-box test packages to black-box with export_test.go where needed.
 - [ ] **#556** test: migrate 334 assert.Contains error assertions to assert.ErrorIs with sentinel.
-- [ ] **#557** test: BDD hygiene pass — stale field names, post-rename language, CEF mapping, HMAC absence, middleware panic.
+- [ ] **#557** test: BDD hygiene pass — stale field names, CEF mapping, HMAC absence, middleware panic. (The "logger creation" post-rename language item was moved to Track D #622.)
 - [ ] **#558** test: add property-based tests (rapid) for webhook, loki, formatters, filter.
 - [ ] **#559** test: replace httptest.Server with real containers in BDD steps per "BDD uses real containers" rule.
 - [ ] **#560** test: remove time.Sleep synchronisation from 19 test files — closes #465.
@@ -316,4 +316,4 @@ Only after ALL of the above: tag `v1.0.0` via the CI-based release workflow (Tra
 
 GitHub is authoritative. As issues close, tick their boxes above in this file. Commit updates to this file alongside track-completion PRs so progress is visible in `git log`.
 
-Last updated: 2026-04-17 (initial creation).
+Last updated: 2026-04-17 (#473 merged via PR #623; next up is #622 with expanded scope — see Track D).

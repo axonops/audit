@@ -115,13 +115,13 @@ Feature: Multi-Output Fan-Out
     And I close the auditor
     Then the file should contain the marker
 
-  Scenario: Panic in per-output formatter does not crash logger
+  Scenario: Panic in per-output formatter does not crash auditor
     Given an auditor with file output and a panicking formatter on a second output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the file should contain the marker
 
-  Scenario: Panic in output Write does not crash logger
+  Scenario: Panic in output Write does not crash auditor
     Given an auditor with file output and a panicking output
     When I audit a uniquely marked "user_create" event
     And I close the auditor

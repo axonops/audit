@@ -1,7 +1,7 @@
 @core
 Feature: Core Audit Logging
   As a library consumer, I want to emit audit events through a configured
-  logger so that security-relevant actions are recorded to my chosen outputs.
+  auditor so that security-relevant actions are recorded to my chosen outputs.
 
   The audit pipeline validates events against a YAML taxonomy, filters by
   category, serialises to JSON or CEF, and fans out to one or more outputs.
@@ -224,8 +224,8 @@ Feature: Core Audit Logging
 
   # --- Edge cases ---
 
-  Scenario: Disabled logger discards events silently
-    Given a disabled logger
+  Scenario: Disabled auditor discards events silently
+    Given a disabled auditor
     When I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |

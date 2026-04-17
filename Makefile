@@ -21,6 +21,13 @@
 
 # --- Configuration ---
 
+# Force bash with pipefail so recipe pipelines don't silently mask failures.
+# Without this, `cmd | tee file` exits 0 even when `cmd` fails — the same
+# bug class that hid BDD failures in CI before #622. Recipes that rely on
+# `grep`'s non-zero-on-no-match (e.g. check-todos) must use `|| true`.
+SHELL      := bash
+.SHELLFLAGS := -e -o pipefail -c
+
 MODULES           := . file syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
@@ -297,7 +304,7 @@ check-replace:
 
 # Enforce TODO comments must reference a GitHub issue: TODO(#NNN)
 check-todos:
-	@ORPHANED=$$(grep -rn 'TODO' --include='*.go' | grep -v 'TODO(#[0-9]' | grep -v 'nolint' | grep -v '_test.go.*TODO'); \
+	@ORPHANED=$$({ grep -rn 'TODO' --include='*.go' || true; } | { grep -v 'TODO(#[0-9]' || true; } | { grep -v 'nolint' || true; } | { grep -v '_test.go.*TODO' || true; }); \
 	if [ -n "$$ORPHANED" ]; then \
 		echo "ERROR: orphaned TODO without issue reference:"; \
 		echo "$$ORPHANED"; \

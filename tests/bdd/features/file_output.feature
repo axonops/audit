@@ -59,9 +59,9 @@ Feature: File Output
     And I close the auditor
     Then the file should have permissions "0640"
 
-  Scenario: Symlink path is rejected at construction
-    When I try to create a file output with a symlink path
-    Then the file output construction should fail with an error
+  Scenario: Symlink path is rejected on write — symlink target stays empty
+    When I write a single event to a file output configured with a symlink path
+    Then the symlink target file should remain empty
 
   # --- Rotation ---
 

@@ -126,10 +126,14 @@ salt to use for each event.
 
 ### Verifying Events
 
-Use the exported `audit.VerifyHMAC` function:
+Use the exported `audit.VerifyHMAC` function. The canonicalisation rule
+is: strip **only** the `_hmac` field from the on-wire bytes; leave
+`_hmac_v` in place because it is authenticated by the HMAC (issue
+[#473](https://github.com/axonops/audit/issues/473)).
 
 ```go
-// payloadBytes is the raw JSON line with _hmac and _hmac_v removed.
+// payloadBytes is the raw JSON line with ONLY the _hmac field removed.
+// The _hmac_v field stays in place — it is inside the authenticated region.
 // hmacValue is the string value of the _hmac field (lowercase hex).
 // salt is []byte loaded from your key store, looked up by _hmac_v.
 ok, err := audit.VerifyHMAC(payloadBytes, hmacValue, salt, "HMAC-SHA-256")
@@ -140,6 +144,11 @@ if !ok {
     // payload has been tampered with
 }
 ```
+
+Verifiers should determine `_hmac_v` by **position** (the last field
+before `_hmac`), not by parsing — this defends against field-duplication
+attacks. See [`docs/hmac-integrity.md`](../../docs/hmac-integrity.md)
+for the full canonicalisation contract.
 
 ### Supported Algorithms
 
@@ -175,11 +184,11 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- secure-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"<hex-64-chars>","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac_v":"2026-Q1","_hmac":"<hex-64-chars>"}
 
 --- all-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac":"<same-hex>","_hmac_v":"2026-Q1"}
-{"timestamp":"...","event_type":"user_create",...,"_hmac":"<different-hex>","_hmac_v":"2026-Q1"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac_v":"2026-Q1","_hmac":"<same-hex>"}
+{"timestamp":"...","event_type":"user_create",...,"_hmac_v":"2026-Q1","_hmac":"<different-hex>"}
 ```
 
 Notice the three contrasts:

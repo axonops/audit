@@ -137,7 +137,7 @@ Every issue follows this sequence. Do not skip steps.
 
 ---
 
-## Track D — CI/CD and Release Pipeline (12 issues + 1 existing)
+## Track D — CI/CD and Release Pipeline (13 issues + 1 existing)
 
 - [ ] **#437** (existing) fix: dependency-update workflow missing outputs module and example go.mod files — covers master D-02.
 - [ ] **#513** chore: release process refactor — unified submodule tagging, CI-only, retire three-tier dance.
@@ -152,6 +152,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#522** perf: parallelise govulncheck across modules via matrix.
 - [ ] **#523** security: CI check rejects tls.Config{InsecureSkipVerify:true} anywhere outside tests.
 - [ ] **#524** ci: add standalone mutation-testing workflow (ad-hoc + release-gate).
+- [ ] **#622** bug: CI BDD step masks test failures via `| tee` pipeline — failing suites pass silently (discovered during #473 work; blocks Track F #557 verification).
 
 **Sequencing:** #515 precedes #513 (branch protection required for PR-based release). #520 simplifies #524. #513 coordinates with #437 (Dependabot) and #493 (benchmark baseline). #516 and Track A #482 are duplicate angles — land one and close the other.
 

@@ -877,12 +877,14 @@ LogQL:
 ```
 
 The HMAC is computed over the serialised payload **after** sensitivity
-label stripping but **before** `_hmac`/`_hmac_v` are appended. This
-means:
+label stripping and **after** `_hmac_v` is appended, but **before**
+`_hmac` is appended. `_hmac_v` is authenticated by the HMAC — see
+[docs/hmac-integrity.md](hmac-integrity.md) for the full
+canonicalisation contract. This means:
 
 - Events stored in Loki can be independently verified by stripping
-  the HMAC fields, recomputing the HMAC with the same salt, and
-  comparing
+  **only** the `_hmac` field (keeping `_hmac_v` in place), recomputing
+  the HMAC with the same salt, and comparing
 - If the Loki output strips PII fields (via `exclude_labels`), the
   HMAC covers the stripped payload — the HMAC will differ from a
   full-output HMAC using the same salt

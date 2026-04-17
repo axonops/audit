@@ -23,7 +23,19 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"regexp"
 )
+
+// hmacSaltVersionPattern constrains SaltVersion to a character set that
+// is safe across JSON, CEF, and syslog wire formats without any escape
+// ambiguity (issue #473). The allowed set covers typical operational
+// version identifiers ("v1", "2026-Q1", "salt_v2.1", "key-rotation-12")
+// while eliminating log-injection vectors via control characters.
+var hmacSaltVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
+
+// maxHMACSaltVersionLen bounds SaltVersion length. Longer values inflate
+// every emitted event without operational benefit.
+const maxHMACSaltVersionLen = 64
 
 // MinSaltLength is the minimum salt length in bytes for HMAC
 // computation, per NIST SP 800-224 (minimum key length: 128 bits).
@@ -108,6 +120,14 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 	}
 	if cfg.SaltVersion == "" {
 		return fmt.Errorf("%w: hmac salt version is required when hmac is enabled", ErrConfigInvalid)
+	}
+	if len(cfg.SaltVersion) > maxHMACSaltVersionLen {
+		return fmt.Errorf("%w: hmac salt version length %d exceeds maximum %d",
+			ErrConfigInvalid, len(cfg.SaltVersion), maxHMACSaltVersionLen)
+	}
+	if !hmacSaltVersionPattern.MatchString(cfg.SaltVersion) {
+		return fmt.Errorf("%w: hmac salt version %q contains characters outside the allowed set [A-Za-z0-9._:-] (required so the version can be authenticated unambiguously on the wire — see issue #473)",
+			ErrConfigInvalid, cfg.SaltVersion)
 	}
 	if len(cfg.SaltValue) == 0 {
 		return fmt.Errorf("%w: hmac salt value is required when hmac is enabled", ErrConfigInvalid)

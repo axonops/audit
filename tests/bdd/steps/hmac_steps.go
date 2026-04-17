@@ -141,28 +141,121 @@ func assertNoHMACVersionField(tc *AuditTestContext) error {
 
 func registerHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^independently recomputing HMAC-SHA-256 over the payload with salt "([^"]*)" matches the "_hmac" value$`,
-		func(salt string) error {
-			events := tc.CaptureOutput.Events()
-			if len(events) == 0 {
-				return fmt.Errorf("no events captured")
-			}
-			for _, raw := range events {
-				if err := verifyEventHMAC(raw, salt); err != nil {
-					return err
-				}
-			}
-			return nil
+		func(salt string) error { return verifyAllCapturedEvents(tc, salt) })
+
+	ctx.Step(`^auditor creation should fail with an error containing "([^"]*)"$`,
+		func(substr string) error { return assertLastErrContains(tc, substr) })
+
+	// Salt-version authentication tamper-detection steps (issue #473).
+	//
+	// Together these verify that the HMAC covers _hmac_v and the rest of
+	// the payload: tamper with a field, recompute the HMAC over the
+	// tampered bytes (stripping only _hmac), and assert the HMAC does
+	// NOT match.
+	ctx.Step(`^I tamper with the "([^"]*)" field in the captured output setting it to "([^"]*)"$`,
+		func(fieldName, newValue string) error {
+			return tamperCapturedField(tc, fieldName, newValue)
 		})
 
-	ctx.Step(`^auditor creation should fail with an error containing "([^"]*)"$`, func(substr string) error {
-		if tc.LastErr == nil {
-			return fmt.Errorf("expected error containing %q, got nil", substr)
+	ctx.Step(`^independently recomputing HMAC-SHA-256 over the tampered payload with salt "([^"]*)" does NOT match the "_hmac" value$`,
+		func(salt string) error { return assertAllCapturedEventsTampered(tc, salt) })
+}
+
+func verifyAllCapturedEvents(tc *AuditTestContext, salt string) error {
+	events := tc.CaptureOutput.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	for _, raw := range events {
+		if err := verifyEventHMAC(raw, salt); err != nil {
+			return err
 		}
-		if !strings.Contains(tc.LastErr.Error(), substr) {
-			return fmt.Errorf("error %q does not contain %q", tc.LastErr.Error(), substr)
+	}
+	return nil
+}
+
+func assertLastErrContains(tc *AuditTestContext, substr string) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected error containing %q, got nil", substr)
+	}
+	if !strings.Contains(tc.LastErr.Error(), substr) {
+		return fmt.Errorf("error %q does not contain %q", tc.LastErr.Error(), substr)
+	}
+	return nil
+}
+
+func assertAllCapturedEventsTampered(tc *AuditTestContext, salt string) error {
+	events := tc.CaptureOutput.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	for _, raw := range events {
+		if err := assertTamperedHMACMismatches(raw, salt); err != nil {
+			return err
 		}
-		return nil
-	})
+	}
+	return nil
+}
+
+// tamperCapturedField replaces the JSON value of the named field in
+// every captured event. Pre-condition: newValue must have the same
+// length as the existing value (to keep the test simple — byte offsets
+// don't shift). Verifier mismatch is the assertion target, not byte
+// equality; this is sufficient for tamper-detection scenarios.
+func tamperCapturedField(tc *AuditTestContext, fieldName, newValue string) error {
+	if tc.CaptureOutput == nil {
+		return fmt.Errorf("no capture output set")
+	}
+	events := tc.CaptureOutput.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("no events captured to tamper with")
+	}
+	for i, raw := range events {
+		s := string(raw)
+		needle := fmt.Sprintf("%q:\"", fieldName)
+		idx := strings.Index(s, needle)
+		if idx < 0 {
+			return fmt.Errorf("field %q not found in captured event %d", fieldName, i)
+		}
+		valStart := idx + len(needle)
+		end := strings.Index(s[valStart:], `"`)
+		if end < 0 {
+			return fmt.Errorf("field %q value not closed in captured event %d", fieldName, i)
+		}
+		oldValue := s[valStart : valStart+end]
+		if len(oldValue) != len(newValue) {
+			return fmt.Errorf("tamper helper requires same-length replacement for field %q: existing %q (%d) vs new %q (%d)",
+				fieldName, oldValue, len(oldValue), newValue, len(newValue))
+		}
+		tampered := s[:valStart] + newValue + s[valStart+end:]
+		tc.CaptureOutput.ReplaceEvent(i, []byte(tampered))
+	}
+	return nil
+}
+
+// assertTamperedHMACMismatches strips only _hmac from the tampered raw
+// bytes (leaving _hmac_v inside the authenticated region per issue
+// #473), recomputes HMAC-SHA-256 with the given salt, and asserts it
+// does NOT match the original _hmac value. If verification succeeds
+// on tampered bytes, the HMAC has failed to cover the tampered field.
+func assertTamperedHMACMismatches(raw []byte, salt string) error {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return fmt.Errorf("parse event JSON: %w", err)
+	}
+	hmacVal, ok := m["_hmac"].(string)
+	if !ok {
+		return fmt.Errorf("_hmac field not found or not a string")
+	}
+	payload := stripHMACField(raw)
+	verified, err := audit.VerifyHMAC(payload, hmacVal, []byte(salt), "HMAC-SHA-256")
+	if err != nil {
+		return fmt.Errorf("verify HMAC: %w", err)
+	}
+	if verified {
+		return fmt.Errorf("expected HMAC verification to FAIL on tampered payload, but it succeeded")
+	}
+	return nil
 }
 
 func assertHMACVersion(raw []byte, want string) error {
@@ -190,10 +283,10 @@ func verifyEventHMAC(raw []byte, salt string) error {
 		return fmt.Errorf("_hmac field not found or not a string")
 	}
 
-	// Reconstruct the payload WITHOUT _hmac and _hmac_v.
-	// The HMAC was computed over the JSON line before these
-	// fields were appended.
-	payload := stripHMACFields(raw)
+	// Reconstruct the authenticated payload: strip ONLY the `_hmac`
+	// field. `_hmac_v` (salt version) is inside the authenticated
+	// region per issue #473 and must remain.
+	payload := stripHMACField(raw)
 
 	verified, err := audit.VerifyHMAC(payload, hmacVal, []byte(salt), "HMAC-SHA-256")
 	if err != nil {
@@ -205,14 +298,12 @@ func verifyEventHMAC(raw []byte, salt string) error {
 	return nil
 }
 
-// stripHMACFields removes the ,"_hmac":"..." and ,"_hmac_v":"..."
-// fields from a JSON line, returning the payload as it was before
-// HMAC was appended. This reconstructs the exact bytes the HMAC was
-// computed over.
-func stripHMACFields(line []byte) []byte {
+// stripHMACField removes the `,"_hmac":"..."` field from a JSON line,
+// returning the bytes the HMAC was computed over. `_hmac_v` is left
+// intact because it is authenticated by the HMAC (issue #473).
+func stripHMACField(line []byte) []byte {
 	s := string(line)
 
-	// Remove ,"_hmac":"hexvalue"
 	hmacStart := strings.Index(s, `,"_hmac":"`)
 	if hmacStart < 0 {
 		return line
@@ -225,21 +316,7 @@ func stripHMACFields(line []byte) []byte {
 	}
 	hmacEnd = hmacValStart + hmacEnd + 1
 
-	// Remove ,"_hmac_v":"version"
-	remaining := s[hmacEnd:]
-	hmacvStart := strings.Index(remaining, `,"_hmac_v":"`)
-	if hmacvStart < 0 {
-		// Try without the comma (might be the only field).
-		return []byte(s[:hmacStart] + remaining)
-	}
-	hmacvValStart := hmacvStart + len(`,"_hmac_v":"`)
-	hmacvEnd := strings.Index(remaining[hmacvValStart:], `"`)
-	if hmacvEnd < 0 {
-		return []byte(s[:hmacStart] + remaining)
-	}
-	hmacvEnd = hmacvValStart + hmacvEnd + 1
-
-	return []byte(s[:hmacStart] + remaining[hmacvEnd:])
+	return []byte(s[:hmacStart] + s[hmacEnd:])
 }
 
 // capturedLines returns raw event lines from CaptureOutput if available,
@@ -291,6 +368,18 @@ func (o *captureOutput) Events() [][]byte {
 	return cp
 }
 
+// ReplaceEvent overwrites the i-th captured event's bytes in-place.
+// Used by tamper-detection scenarios (issue #473) that mutate captured
+// output and then recompute HMAC. Panics on out-of-range index to
+// surface test authoring errors immediately.
+func (o *captureOutput) ReplaceEvent(i int, data []byte) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	o.events[i] = cp
+}
+
 // registerHMACLabelSteps registers steps for testing HMAC with
 // sensitivity label stripping — same event, different field sets,
 // different HMACs.
@@ -322,6 +411,61 @@ func registerHMACLabelSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		func(name1, name2 string) error {
 			return assertHMACsDiffer(tc, name1, name2)
 		})
+	ctx.Step(`^output "([^"]*)" HMAC should verify with salt "([^"]*)"$`,
+		func(outputName, salt string) error {
+			return assertNamedOutputHMACVerifies(tc, outputName, salt)
+		})
+	ctx.Step(`^output "([^"]*)" HMAC should NOT verify with salt "([^"]*)"$`,
+		func(outputName, salt string) error {
+			return assertNamedOutputHMACDoesNotVerify(tc, outputName, salt)
+		})
+}
+
+func assertNamedOutputHMACVerifies(tc *AuditTestContext, outputName, salt string) error {
+	out, ok := tc.CaptureOutputs[outputName]
+	if !ok {
+		return fmt.Errorf("unknown output %q", outputName)
+	}
+	events := out.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("output %q has no events", outputName)
+	}
+	for _, raw := range events {
+		if err := verifyEventHMAC(raw, salt); err != nil {
+			return fmt.Errorf("output %q: %w", outputName, err)
+		}
+	}
+	return nil
+}
+
+func assertNamedOutputHMACDoesNotVerify(tc *AuditTestContext, outputName, salt string) error {
+	out, ok := tc.CaptureOutputs[outputName]
+	if !ok {
+		return fmt.Errorf("unknown output %q", outputName)
+	}
+	events := out.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("output %q has no events", outputName)
+	}
+	for _, raw := range events {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return fmt.Errorf("parse %q event: %w", outputName, err)
+		}
+		hmacVal, ok := m["_hmac"].(string)
+		if !ok {
+			return fmt.Errorf("output %q: _hmac missing", outputName)
+		}
+		payload := stripHMACField(raw)
+		verified, err := audit.VerifyHMAC(payload, hmacVal, []byte(salt), "HMAC-SHA-256")
+		if err != nil {
+			return fmt.Errorf("output %q: verify HMAC: %w", outputName, err)
+		}
+		if verified {
+			return fmt.Errorf("output %q: HMAC unexpectedly verified with foreign salt %q", outputName, salt)
+		}
+	}
+	return nil
 }
 
 func createDualHMACAuditor(tc *AuditTestContext, strippedName, label, fullSalt, strippedSalt string) error {

@@ -20,10 +20,43 @@ import (
 )
 
 func (a *Auditor) validateFields(eventType string, def *EventDef, fields Fields) error {
+	if err := checkLibraryReservedFields(eventType, fields); err != nil {
+		return err
+	}
 	if err := checkRequiredFields(eventType, def, fields); err != nil {
 		return err
 	}
 	return a.checkUnknownFields(eventType, def, fields)
+}
+
+// libraryReservedFields are field names the library emits on every
+// HMAC-enabled event. Consumer-supplied fields using these names would
+// collide with library output and could enable canonicalisation-
+// ambiguity attacks on HMAC verifiers (issue #473). Rejection runs
+// regardless of ValidationMode — permissive mode cannot opt out of
+// this check.
+var libraryReservedFields = map[string]struct{}{
+	"_hmac":   {},
+	"_hmac_v": {},
+}
+
+// checkLibraryReservedFields rejects events whose Fields map contains
+// library-internal reserved names. Runs in every validation mode
+// including permissive.
+func checkLibraryReservedFields(eventType string, fields Fields) error {
+	var collisions []string
+	for k := range fields {
+		if _, ok := libraryReservedFields[k]; ok {
+			collisions = append(collisions, k)
+		}
+	}
+	if len(collisions) == 0 {
+		return nil
+	}
+	slices.Sort(collisions)
+	return newValidationError(ErrReservedFieldName,
+		"audit: event %q uses library-reserved field names [%s] — these are emitted by the library and cannot be set by the consumer",
+		eventType, strings.Join(collisions, ", "))
 }
 
 // checkRequiredFields returns an error listing any missing required fields.

@@ -21,10 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `EventType` renamed to `EventHandle`, `Name()` renamed to `EventType()` (#402)
 - Module renamed from `github.com/axonops/go-audit` to `github.com/axonops/audit` (#398)
 - `audit-gen` generates typed parameters (string/int) instead of `any` for standard field setters and constructors (#394)
+- HMAC wire-format: `_hmac_v` now appears BEFORE `_hmac` on the wire and is inside the HMAC-authenticated bytes. External verifiers must strip only the `_hmac` field from the received line (keeping `_hmac_v` in place) to recompute the HMAC. See [`docs/hmac-integrity.md`](docs/hmac-integrity.md#canonicalisation-rule-for-verifiers) for the full canonicalisation contract (#473)
+- HMAC `SaltVersion` character set restricted to `[A-Za-z0-9._:-]` (length 1–64) at config-time validation — values containing spaces, control characters, CEF/JSON metacharacters, or other ambiguous bytes are rejected (#473)
+
+### Security
+
+- HMAC now authenticates the `_hmac_v` salt version identifier. Previously `_hmac_v` was appended AFTER HMAC computation, leaving it outside the authenticated region. An in-transit attacker could flip the version from `v1` to `v2` to redirect a verifier's salt lookup without detection. `_hmac_v` is now inside the authenticated bytes; any modification invalidates the HMAC tag. Pre-v1.0 consumers using external verifiers that strip both `_hmac` and `_hmac_v` must update the verifier to strip only `_hmac` (#473)
 
 ### Added
 
-- `ErrValidation`, `ErrUnknownEventType`, `ErrMissingRequiredField`, `ErrUnknownField` sentinels with `ValidationError` struct (#400)
+- `ErrValidation`, `ErrUnknownEventType`, `ErrMissingRequiredField`, `ErrUnknownField`, `ErrReservedFieldName` sentinels with `ValidationError` struct (#400, #473)
 - `outputconfig.New()` facade for single-call logger creation (#392)
 - `github.com/axonops/audit/outputs` convenience package — single blank import registers all output factories (#393)
 - `Stdout()` convenience constructor, `NewEventKV()` slog-style event creation, `DevTaxonomy()` permissive development taxonomy (#395)

@@ -168,43 +168,10 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 
 }
 
-func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit // BDD step registration
-	ctx.Step(`^I stop the syslog-ng process$`, func() error {
-		// Kill syslog-ng inside the Docker container without restarting.
-		_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
-			"sh", "-c", "kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null").CombinedOutput()
-		// Give it a moment to fully stop.
-		time.Sleep(200 * time.Millisecond)
-		// Restart at the end of the scenario to leave infra clean.
-		tc.AddCleanup(func() {
-			_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
-				"sh", "-c", "syslog-ng --no-caps -F &").CombinedOutput()
-			// Wait for it to come back.
-			deadline := time.Now().Add(10 * time.Second)
-			for time.Now().Before(deadline) {
-				conn, err := net.DialTimeout("tcp", "localhost:5514", 500*time.Millisecond)
-				if err == nil {
-					_ = conn.Close()
-					return
-				}
-				time.Sleep(200 * time.Millisecond)
-			}
-		})
-		return nil
-	})
-
-	ctx.Step(`^I audit (\d+) uniquely marked events after syslog down$`, func(n int) error {
-		for i := range n {
-			marker := fmt.Sprintf("after-syslog-down-%d", i)
-			tc.Markers[fmt.Sprintf("event-%d", i)] = marker
-			ev := audit.NewEvent("user_create", audit.Fields{
-				"outcome": "success",
-				"reason":  marker,
-			})
-			_ = tc.Auditor.AuditEvent(ev) // may return error (syslog dead), that's expected
-		}
-		return nil
-	})
+func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+	ctx.Step(`^I stop the syslog-ng process$`, func() error { return stopSyslogAndScheduleRestart(tc) })
+	ctx.Step(`^I audit (\d+) uniquely marked events after syslog down$`,
+		func(n int) error { return auditMarkedEventsAfterSyslogDown(tc, n) })
 
 	ctx.Step(`^I restart the syslog-ng process$`, func() error {
 		// Kill and restart syslog-ng inside the Docker container.
@@ -258,6 +225,52 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		return assertSyslogContains(m, time.Duration(timeout)*time.Second)
 	})
 
+}
+
+// stopSyslogAndScheduleRestart kills the syslog-ng process inside the
+// test container and schedules a cleanup that restarts it after the
+// scenario completes. The restart waits until syslog-ng accepts TCP
+// connections again so subsequent scenarios have working infrastructure.
+func stopSyslogAndScheduleRestart(tc *AuditTestContext) error {
+	_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
+		"sh", "-c", "kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null").CombinedOutput()
+	time.Sleep(200 * time.Millisecond)
+	tc.AddCleanup(func() {
+		_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
+			"sh", "-c", "syslog-ng --no-caps -F &").CombinedOutput()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			conn, err := net.DialTimeout("tcp", "localhost:5514", 500*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	})
+	return nil
+}
+
+// auditMarkedEventsAfterSyslogDown emits n valid user_create events
+// with unique markers via the auditor under test. Events include every
+// required field so the validator accepts them — otherwise they never
+// reach the fanout/drain pipeline and the file-isolation assertion
+// silently measures "zero events because validation rejected them"
+// instead of the intended "zero events because syslog blocked file".
+func auditMarkedEventsAfterSyslogDown(tc *AuditTestContext, n int) error {
+	for i := range n {
+		marker := fmt.Sprintf("after-syslog-down-%d", i)
+		tc.Markers[fmt.Sprintf("event-%d", i)] = marker
+		ev := audit.NewEvent("user_create", audit.Fields{
+			"outcome":  "success",
+			"actor_id": fmt.Sprintf("bdd-user-%d", i),
+			"reason":   marker,
+		})
+		if err := tc.Auditor.AuditEvent(ev); err != nil {
+			return fmt.Errorf("AuditEvent %d returned unexpected error: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

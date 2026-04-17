@@ -359,11 +359,16 @@ jobs:
         run: make ${{ matrix.infra-up }}
 
       - name: Run BDD tests
-        run: make ${{ matrix.target }} 2>&1 | tee /tmp/bdd-output.txt
+        shell: bash
+        run: |
+          set -eo pipefail
+          make ${{ matrix.target }} 2>&1 | tee /tmp/bdd-output.txt
 
       - name: Extract scenario count
         if: always()
+        shell: bash
         run: |
+          set -eo pipefail
           # Count executed scenarios from go test -v subtest output.
           # Each scenario becomes a "--- PASS: Test*Features/..." or "--- FAIL: Test*Features/..." line.
           # Match both TestFeatures (main suite) and TestOutputConfigFeatures (outputconfig suite).
@@ -407,7 +412,9 @@ jobs:
           path: /tmp/bdd-counts
 
       - name: Verify executed scenario totals
+        shell: bash
         run: |
+          set -eo pipefail
           expected=$(./scripts/count-bdd-scenarios.sh tests/bdd/features outputconfig/tests/bdd/features)
           echo "Expected total scenarios: $expected"
 

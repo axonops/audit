@@ -547,7 +547,7 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 		}
 		var validated yamlTLSPolicy
 		if uErr := yaml.UnmarshalWithOptions(tlsBytes, &validated, yaml.DisallowUnknownField()); uErr != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, uErr)
+			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, audit.WrapUnknownFieldError(uErr, validated))
 		}
 	}
 

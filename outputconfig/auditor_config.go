@@ -97,7 +97,7 @@ func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo
 		case "drain_timeout":
 			return result, fmt.Errorf("unknown field %q (renamed to %q in this version)", "drain_timeout", "shutdown_timeout")
 		default:
-			return result, fmt.Errorf("unknown field %q", key)
+			return result, fmt.Errorf("unknown field %q (valid: enabled, omit_empty, queue_size, shutdown_timeout, validation_mode)", key)
 		}
 	}
 	return result, nil

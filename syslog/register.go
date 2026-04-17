@@ -92,7 +92,7 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Ou
 	var yc yamlSyslogConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("audit: syslog output %q: %w", name, err)
+		return nil, fmt.Errorf("audit: syslog output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
 	cfg := &Config{

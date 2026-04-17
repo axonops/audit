@@ -83,7 +83,7 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Outp
 	var yc yamlFileConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
+		return nil, fmt.Errorf("audit: file output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
 	cfg := Config{

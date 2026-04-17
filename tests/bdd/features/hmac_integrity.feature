@@ -73,6 +73,10 @@ Feature: HMAC Integrity Verification
     And output "stripped" should not contain field "email"
     And both outputs should have "_hmac" fields
     And the "_hmac" values should differ between "full" and "stripped"
+    And output "full" HMAC should verify with salt "full-salt-sixteen-b!"
+    And output "stripped" HMAC should verify with salt "stripped-salt-16-byt"
+    And output "full" HMAC should NOT verify with salt "stripped-salt-16-byt"
+    And output "stripped" HMAC should NOT verify with salt "full-salt-sixteen-b!"
 
   # --- Validation ---
 
@@ -87,3 +91,73 @@ Feature: HMAC Integrity Verification
   Scenario: Missing salt version rejected at startup
     When I try to create an auditor with HMAC salt "valid-salt-sixteen-b!" version "" and hash "HMAC-SHA-256"
     Then logger creation should fail with an error containing "version"
+
+  # --- Salt version authentication (issue #473) ---
+  #
+  # These scenarios prove that `_hmac_v` (the salt version identifier)
+  # is authenticated by the HMAC. Before the fix, an in-transit attacker
+  # could flip the version from v1 to v2 to mislead a verifier's salt
+  # lookup without detection.
+
+  Scenario: HMAC authentication covers salt version identifier
+    Given an auditor with stdout output and HMAC enabled using salt "tamper-v-salt-16-byt" version "v1" and hash "HMAC-SHA-256"
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    And I tamper with the "_hmac_v" field in the captured output setting it to "v2"
+    Then independently recomputing HMAC-SHA-256 over the tampered payload with salt "tamper-v-salt-16-byt" does NOT match the "_hmac" value
+
+  Scenario: HMAC authentication covers consumer event fields
+    Given an auditor with stdout output and HMAC enabled using salt "tamper-f-salt-16-byt" version "v1" and hash "HMAC-SHA-256"
+    When I audit event "user_create" with fields:
+      | field    | value        |
+      | outcome  | success      |
+      | actor_id | alice-user01 |
+    And I close the auditor
+    And I tamper with the "actor_id" field in the captured output setting it to "bobby-user01"
+    Then independently recomputing HMAC-SHA-256 over the tampered payload with salt "tamper-f-salt-16-byt" does NOT match the "_hmac" value
+
+  # --- Reserved field name collision (issue #473 security-reviewer finding 6b) ---
+
+  Scenario Outline: Reserved library field name rejected at runtime
+    Given an auditor with stdout output
+    When I audit event "user_create" with fields:
+      | field    | value               |
+      | outcome  | success             |
+      | actor_id | alice               |
+      | <field>  | attacker-controlled |
+    Then the audit call should return an error containing "uses library-reserved field names"
+    And the audit call should return an error wrapping "ErrReservedFieldName"
+    And the audit call should return an error wrapping "ErrValidation"
+
+    Examples:
+      | field   |
+      | _hmac   |
+      | _hmac_v |
+
+  Scenario Outline: Reserved library field name rejected even in permissive mode
+    Given an auditor with stdout output and validation mode "permissive"
+    When I audit event "user_create" with fields:
+      | field    | value               |
+      | outcome  | success             |
+      | actor_id | alice               |
+      | <field>  | attacker-controlled |
+    Then the audit call should return an error containing "uses library-reserved field names"
+    And the audit call should return an error wrapping "ErrReservedFieldName"
+    And the audit call should return an error wrapping "ErrValidation"
+
+    Examples:
+      | field   |
+      | _hmac   |
+      | _hmac_v |
+
+  # --- SaltVersion charset validation (issue #473 security-reviewer finding 3) ---
+
+  Scenario Outline: SaltVersion with unsafe characters rejected at startup
+    When I try to create an auditor with HMAC salt "valid-salt-sixteen-b!" version "<version>" and hash "HMAC-SHA-256"
+    Then auditor creation should fail with an error containing "allowed set [A-Za-z0-9._:-]"
+
+    Examples:
+      | version    |
+      | has spaces |
+      | v=2        |
+      | v\|1       |

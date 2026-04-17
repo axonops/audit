@@ -178,16 +178,26 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 	}
 
 	// Compute and append HMAC if configured for this output.
-	// HMAC is computed over the complete payload at this point
-	// (after field stripping + event_category).
+	//
+	// Invariant: _hmac is the LAST field on the wire. Every field
+	// authenticated by HMAC is appended BEFORE computeHMACFast. Any
+	// future post-field added to the drain pipeline MUST land before
+	// this block. Appending after _hmac leaves the new field outside
+	// the authenticated region — same class of bug as issue #473.
 	if oe.hmac != nil {
-		hmacHex := oe.hmac.computeHMACFast(data)
 		fmtr := oe.effectiveFormatter(a.formatter)
-		data = AppendPostField(data, fmtr, PostField{
-			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
-		})
+		// _hmac_v (salt version identifier) is appended FIRST so it is
+		// part of the bytes the HMAC authenticates. A MITM flipping
+		// v1 → v2 would otherwise redirect the verifier to a different
+		// salt without detection (issue #473).
 		data = AppendPostField(data, fmtr, PostField{
 			JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion,
+		})
+		// HMAC covers payload + event_category + _hmac_v.
+		hmacHex := oe.hmac.computeHMACFast(data)
+		// _hmac is the tag; it is appended last and never covers itself.
+		data = AppendPostField(data, fmtr, PostField{
+			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
 		})
 	}
 

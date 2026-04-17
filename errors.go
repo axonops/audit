@@ -99,13 +99,23 @@ var (
 	// taxonomy. Always wrapped alongside [ErrValidation] via
 	// [ValidationError].
 	ErrUnknownField = errors.New("audit: unknown field")
+
+	// ErrReservedFieldName is returned by [Auditor.AuditEvent] when
+	// the event's Fields map uses a name reserved for library-emitted
+	// fields (for example `_hmac`, `_hmac_v`). These names would
+	// collide with library output and could enable canonicalisation-
+	// ambiguity attacks on HMAC verifiers (issue #473). This check runs
+	// regardless of [ValidationMode]; permissive mode cannot opt out.
+	// Always wrapped alongside [ErrValidation] via [ValidationError].
+	ErrReservedFieldName = errors.New("audit: reserved field name")
 )
 
 // ValidationError is returned by [Auditor.AuditEvent] for event
 // validation failures. It wraps both [ErrValidation] and a specific
-// sentinel ([ErrUnknownEventType], [ErrMissingRequiredField], or
-// [ErrUnknownField]). Use [errors.Is] to match broadly or narrowly,
-// and [errors.As] to access the structured error:
+// sentinel ([ErrUnknownEventType], [ErrMissingRequiredField],
+// [ErrUnknownField], or [ErrReservedFieldName]). Use [errors.Is] to
+// match broadly or narrowly, and [errors.As] to access the structured
+// error:
 //
 //	var ve *audit.ValidationError
 //	if errors.As(err, &ve) { log.Println(ve.Error()) }

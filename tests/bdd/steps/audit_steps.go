@@ -552,6 +552,7 @@ var sentinelsByName = map[string]error{
 	"ErrUnknownEventType":     audit.ErrUnknownEventType,
 	"ErrMissingRequiredField": audit.ErrMissingRequiredField,
 	"ErrUnknownField":         audit.ErrUnknownField,
+	"ErrReservedFieldName":    audit.ErrReservedFieldName,
 }
 
 func assertSentinelError(tc *AuditTestContext, sentinel string) error {

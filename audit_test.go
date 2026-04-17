@@ -3792,17 +3792,15 @@ events:
 }
 
 // TestHMAC_EndToEnd_DrainLoopVerification verifies that the HMAC produced
-// by the drain loop can be verified against the actual payload. Uses two
-// outputs sharing the same formatter: one with HMAC enabled, one without.
-// The non-HMAC output captures the exact base payload that HMAC is
-// computed over. We extract the HMAC from the HMAC output and verify it
-// against the non-HMAC output's raw bytes.
+// by the drain loop can be verified against the on-wire bytes. Emits a
+// single event to an HMAC-enabled output, then reconstructs the
+// authenticated payload by stripping only the `_hmac` field (leaving
+// `_hmac_v` in place per issue #473), and confirms the HMAC verifies.
+// This is the canonical real-world verifier pattern.
 func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 	t.Parallel()
 
 	hmacOut := testhelper.NewMockOutput("with-hmac")
-	baseOut := testhelper.NewMockOutput("without-hmac")
-
 	salt := []byte("e2e-verification-salt-value!!")
 
 	tax := &audit.Taxonomy{
@@ -3822,7 +3820,6 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 			SaltValue:   salt,
 			Algorithm:   "HMAC-SHA-256",
 		})),
-		audit.WithNamedOutput(baseOut),
 	)
 	require.NoError(t, err)
 
@@ -3833,31 +3830,33 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, hmacOut.WaitForEvents(1, 2*time.Second))
-	require.True(t, baseOut.WaitForEvents(1, 2*time.Second))
 	require.NoError(t, auditor.Close())
 
-	// Extract the HMAC from the HMAC output.
+	// Extract the HMAC from the on-wire line.
+	line := hmacOut.GetEvents()[0]
 	hmacEvent := hmacOut.GetEvent(0)
 	hmacHex, ok := hmacEvent["_hmac"].(string)
 	require.True(t, ok, "HMAC output must contain _hmac field")
 	require.NotEmpty(t, hmacHex)
 
-	// The base output's raw bytes are the exact payload HMAC was computed over.
-	basePayload := baseOut.GetEvents()[0]
+	// Reconstruct the authenticated payload: strip ONLY `_hmac` from
+	// the on-wire bytes, keeping `_hmac_v` in place because it is
+	// inside the authenticated region (issue #473).
+	canonical := stripHMACJSONField(line)
 
-	// Verify the HMAC against the base payload using the same salt.
-	verified, err := audit.VerifyHMAC(basePayload, hmacHex, salt, "HMAC-SHA-256")
+	verified, err := audit.VerifyHMAC(canonical, hmacHex, salt, "HMAC-SHA-256")
 	require.NoError(t, err)
 	assert.True(t, verified,
-		"HMAC from drain loop must verify against the base payload captured by the non-HMAC output")
+		"HMAC from drain loop must verify against the on-wire payload with only `_hmac` stripped")
 }
 
 // TestHMAC_EndToEnd_SensitivityExclusion_Verification verifies that HMAC
-// computed after sensitivity label stripping can be verified against the
-// stripped payload. Uses a dual-output setup: the HMAC output has PII
-// exclusion and HMAC enabled; a second output has the same PII exclusion
-// but no HMAC. Both receive the same stripped payload, allowing us to
-// verify the HMAC against the second output's raw bytes.
+// computed after sensitivity label stripping can be verified against
+// the stripped on-wire payload. The HMAC output has PII exclusion and
+// HMAC enabled; a second output has the same PII exclusion but no HMAC
+// — used only as a sanity check that stripping happened consistently.
+// Verification uses the strip-only-`_hmac` canonicalisation rule from
+// issue #473.
 func TestHMAC_EndToEnd_SensitivityExclusion_Verification(t *testing.T) {
 	t.Parallel()
 
@@ -3892,7 +3891,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		// Both outputs exclude PII — same payload, one with HMAC.
+		// Both outputs exclude PII. baseOut is a sanity check that
+		// stripping happened; verification uses hmacOut's own bytes.
 		audit.WithNamedOutput(hmacOut, audit.OutputExcludeLabels("pii"), audit.OutputHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
@@ -3915,7 +3915,7 @@ events:
 	require.True(t, baseOut.WaitForEvents(1, 2*time.Second))
 	require.NoError(t, auditor.Close())
 
-	// Verify email and phone are stripped from both outputs.
+	// Sanity: email and phone stripped from both outputs.
 	hmacEvent := hmacOut.GetEvent(0)
 	baseEvent := baseOut.GetEvent(0)
 	for _, out := range []map[string]interface{}{hmacEvent, baseEvent} {
@@ -3925,15 +3925,18 @@ events:
 		assert.False(t, hasPhone, "phone should be stripped (PII)")
 	}
 
-	// Extract HMAC and verify against the stripped base payload.
+	// Verify the HMAC against hmacOut's own bytes with only `_hmac`
+	// stripped — _hmac_v remains because it is inside the authenticated
+	// region per issue #473.
 	hmacHex, ok := hmacEvent["_hmac"].(string)
 	require.True(t, ok, "HMAC output must contain _hmac field")
 
-	basePayload := baseOut.GetEvents()[0]
-	verified, err := audit.VerifyHMAC(basePayload, hmacHex, salt, "HMAC-SHA-256")
+	line := hmacOut.GetEvents()[0]
+	canonical := stripHMACJSONField(line)
+	verified, err := audit.VerifyHMAC(canonical, hmacHex, salt, "HMAC-SHA-256")
 	require.NoError(t, err)
 	assert.True(t, verified,
-		"HMAC computed after PII stripping must verify against the stripped base payload")
+		"HMAC computed after PII stripping must verify against the stripped on-wire payload (minus _hmac)")
 }
 
 // ---------------------------------------------------------------------------

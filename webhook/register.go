@@ -100,7 +100,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics) (audi
 	var yc yamlWebhookConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("audit: webhook output %q: %w", name, err)
+		return nil, fmt.Errorf("audit: webhook output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
 	cfg := &Config{

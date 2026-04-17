@@ -46,7 +46,7 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 	}
 	var yr yamlRoute
 	if uErr := yaml.UnmarshalWithOptions(routeBytes, &yr, yaml.DisallowUnknownField()); uErr != nil {
-		return nil, fmt.Errorf("output %q route: %w", name, uErr)
+		return nil, fmt.Errorf("output %q route: %w", name, audit.WrapUnknownFieldError(uErr, yr))
 	}
 	route := &audit.EventRoute{
 		IncludeCategories: yr.IncludeCategories,

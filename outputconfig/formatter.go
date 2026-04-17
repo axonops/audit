@@ -73,7 +73,7 @@ func buildFormatter(raw any) (audit.Formatter, error) {
 	}
 	var cfg yamlFormatterConfig
 	if err := yaml.UnmarshalWithOptions(fmtBytes, &cfg, yaml.DisallowUnknownField()); err != nil {
-		return nil, fmt.Errorf("formatter: %w", err)
+		return nil, fmt.Errorf("formatter: %w", audit.WrapUnknownFieldError(err, cfg))
 	}
 
 	switch cfg.Type {

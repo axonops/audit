@@ -89,7 +89,7 @@ func buildHMACConfig(ctx context.Context, name string, raw any, r *resolver) (*a
 	}
 	var yc yamlHMACConfig
 	if uErr := yaml.UnmarshalWithOptions(hmacBytes, &yc, yaml.DisallowUnknownField()); uErr != nil {
-		return nil, fmt.Errorf("output %q: hmac: %w", name, uErr)
+		return nil, fmt.Errorf("output %q: hmac: %w", name, audit.WrapUnknownFieldError(uErr, yc))
 	}
 
 	cfg := &audit.HMACConfig{

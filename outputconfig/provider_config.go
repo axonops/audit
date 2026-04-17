@@ -230,7 +230,7 @@ func unmarshalProviderConfig(raw any, providerName string) (*yamlProviderConfig,
 
 	var cfg yamlProviderConfig
 	if uErr := yaml.UnmarshalWithOptions(b, &cfg, yaml.DisallowUnknownField()); uErr != nil {
-		return nil, fmt.Errorf("%w: secrets.%s: %w", ErrOutputConfigInvalid, providerName, uErr)
+		return nil, fmt.Errorf("%w: secrets.%s: %w", ErrOutputConfigInvalid, providerName, audit.WrapUnknownFieldError(uErr, cfg))
 	}
 
 	return &cfg, nil

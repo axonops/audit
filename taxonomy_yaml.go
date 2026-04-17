@@ -232,7 +232,7 @@ func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, WrapUnknownFieldError(err, yamlTaxonomy{})) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
 	}
 
 	// Reject multi-document YAML and trailing content.

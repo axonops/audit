@@ -16,6 +16,7 @@ package file_test
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -858,4 +859,53 @@ func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
 			_ = out.Write(event)
 		}
 	})
+}
+
+// TestFile_ConstructionWarningsRoutedToInjectedLogger verifies that
+// the permission-mode warning emitted during New() routes through
+// the WithDiagnosticLogger-supplied logger rather than slog.Default.
+// Closes #490.
+func TestFile_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
+	var buf strings.Builder
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	injected := slog.New(handler)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "perm-warning.log")
+
+	// Permission 0o644 grants group read + world read → triggers the
+	// "grants group/world access" warning in file.New.
+	out, err := file.New(file.Config{
+		Path:        path,
+		Permissions: "0644",
+	}, nil, file.WithDiagnosticLogger(injected))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	logged := buf.String()
+	assert.Contains(t, logged, "permissions grant group/world access",
+		"expected permission warning on injected logger, got: %q", logged)
+}
+
+// TestFile_NilDiagnosticLoggerFallsBackToDefault verifies
+// WithDiagnosticLogger(nil) does not nil-deref and falls back to
+// slog.Default for warning emission.
+func TestFile_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "perm-warning-nil.log")
+
+	out, err := file.New(file.Config{
+		Path:        path,
+		Permissions: "0644",
+	}, nil, file.WithDiagnosticLogger(nil))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, buf.String(), "permissions grant group/world access",
+		"WithDiagnosticLogger(nil) should fall back to slog.Default")
 }

@@ -17,6 +17,7 @@ package loki_test
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -787,4 +788,57 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no valid pem blocks")
 	})
+}
+
+// TestLoki_ConstructionWarningsRoutedToInjectedLogger verifies that
+// TLS-policy warnings emitted during New() route through the
+// WithDiagnosticLogger-supplied logger rather than slog.Default().
+// Closes #490.
+func TestLoki_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
+	var buf strings.Builder
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	injected := slog.New(handler)
+
+	out, err := loki.New(&loki.Config{
+		URL:                "https://loki.example.com/loki/api/v1/push",
+		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		BufferSize:         1000,
+	}, nil, loki.WithDiagnosticLogger(injected))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	logged := buf.String()
+	assert.Contains(t, logged, "weak ciphers",
+		"expected weak-ciphers warning on injected logger, got: %q", logged)
+	assert.Contains(t, logged, "output=loki",
+		"warning should carry output=loki attribute: %q", logged)
+}
+
+// TestLoki_NilDiagnosticLoggerFallsBackToDefault verifies
+// WithDiagnosticLogger(nil) does not nil-deref and falls back to
+// slog.Default for warning emission.
+func TestLoki_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	out, err := loki.New(&loki.Config{
+		URL:                "https://loki.example.com/loki/api/v1/push",
+		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		BufferSize:         1000,
+	}, nil, loki.WithDiagnosticLogger(nil))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, buf.String(), "weak ciphers",
+		"WithDiagnosticLogger(nil) should fall back to slog.Default")
 }

@@ -115,16 +115,23 @@ func (w *Output) SetDiagnosticLogger(l *slog.Logger) {
 // the background batch goroutine. The metrics parameter is optional
 // (may be nil). Per-output metrics are injected via
 // [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
-func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
+//
+// Optional [Option] arguments tune construction-time behaviour. Pass
+// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
+// the auditor's diagnostic logger is propagated post-construction) to
+// a custom logger.
+func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
+
+	o := resolveOptions(opts)
 
 	if err := validateWebhookConfig(cfg); err != nil {
 		return nil, err
 	}
 
-	tlsCfg, err := buildWebhookTLSConfig(cfg)
+	tlsCfg, err := buildWebhookTLSConfig(cfg, o.logger)
 	if err != nil {
 		return nil, fmt.Errorf("audit: webhook tls: %w", err)
 	}
@@ -168,7 +175,7 @@ func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Output{
-		logger:     slog.Default(),
+		logger:     o.logger,
 		client:     client,
 		url:        cfg.URL,
 		name:       webhookName(cfg.URL),

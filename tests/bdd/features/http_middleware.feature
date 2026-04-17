@@ -52,10 +52,10 @@ Feature: HTTP Middleware
     And I close the auditor
     Then the file should have no events
 
-  # --- Nil logger ---
+  # --- Nil auditor ---
 
-  Scenario: Nil logger passes through without error
-    Given an HTTP test server with nil logger middleware
+  Scenario: Nil auditor passes through without error
+    Given an HTTP test server with nil auditor middleware
     When I send a GET request to "/api/resource"
     Then the response status should be 200
 

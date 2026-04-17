@@ -522,7 +522,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
       """
     When I try to create an auditor with stdout output excluding labels "nonexistent"
-    Then logger creation should fail with an error containing "undefined sensitivity label"
+    Then auditor creation should fail with an error containing "undefined sensitivity label"
 
   Scenario: Exclude_labels on output but no sensitivity config → auditor construction error
     Given a taxonomy without sensitivity labels:
@@ -537,7 +537,7 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
       """
     When I try to create an auditor with stdout output excluding labels "pii"
-    Then logger creation should fail with an error containing "no sensitivity config"
+    Then auditor creation should fail with an error containing "no sensitivity config"
 
   Scenario: No fields match any labels plus exclude_labels present → no stripping
     Given a taxonomy with sensitivity labels:

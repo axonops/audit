@@ -331,14 +331,35 @@ by default, preventing
 [Server-Side Request Forgery](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery)
 attacks:
 
-| Blocked range | CIDR | Always blocked? |
-|--------------|------|-----------------|
-| Loopback | `127.0.0.0/8` | Unless `allow_private_ranges` |
-| Private (A) | `10.0.0.0/8` | Unless `allow_private_ranges` |
-| Private (B) | `172.16.0.0/12` | Unless `allow_private_ranges` |
-| Private (C) | `192.168.0.0/16` | Unless `allow_private_ranges` |
-| Link-local | `169.254.0.0/16` | **Always** (includes cloud metadata) |
-| Cloud metadata | `169.254.169.254` | **Always** (even with `allow_private_ranges`) |
+| Blocked range | CIDR / Address | Always blocked? | Reason label |
+|--------------|----------------|-----------------|--------------|
+| Loopback IPv4 | `127.0.0.0/8` | Unless `allow_private_ranges` | `loopback` |
+| Loopback IPv6 | `::1` | Unless `allow_private_ranges` | `loopback` |
+| Private (A) | `10.0.0.0/8` | Unless `allow_private_ranges` | `private` |
+| Private (B) | `172.16.0.0/12` | Unless `allow_private_ranges` | `private` |
+| Private (C) | `192.168.0.0/16` | Unless `allow_private_ranges` | `private` |
+| IPv6 ULA | `fc00::/7` | Unless `allow_private_ranges` | `private` |
+| Link-local IPv4 | `169.254.0.0/16` | **Always** (includes cloud metadata) | `link_local` |
+| Link-local IPv6 | `fe80::/10` | **Always** | `link_local` |
+| Cloud metadata IPv4 | `169.254.169.254` | **Always** (even with `allow_private_ranges`) | `cloud_metadata` |
+| Cloud metadata IPv6 (AWS) | `fd00:ec2::254` | **Always** (even with `allow_private_ranges`) | `cloud_metadata` |
+| CGNAT (RFC 6598) | `100.64.0.0/10` | **Always** | `cgnat` |
+| Deprecated site-local | `fec0::/10` | **Always** | `deprecated_site_local` |
+| Multicast IPv4 | `224.0.0.0/4` | **Always** | `multicast` |
+| Multicast IPv6 | `ff00::/8` | **Always** | `multicast` |
+| Unspecified | `0.0.0.0`, `::` | **Always** | `unspecified` |
+| IPv4-mapped IPv6 | `::ffff:a.b.c.d` | Normalised to IPv4 before classification | *(per above)* |
+
+SSRF rejections return `*audit.SSRFBlockedError` (wrapping
+`audit.ErrSSRFBlocked`). The `Reason` field matches the labels above
+— suitable for use as a Prometheus metric label:
+
+```go
+var ssrfErr *audit.SSRFBlockedError
+if errors.As(err, &ssrfErr) {
+    metricSSRFBlocked.With("reason", string(ssrfErr.Reason)).Inc()
+}
+```
 
 Additional protections:
 - **Redirects rejected** — HTTP redirects are never followed

@@ -115,6 +115,20 @@ var (
 	// [ValidationError].
 	ErrUnknownField = errors.New("audit: unknown field")
 
+	// ErrSSRFBlocked is the sentinel wrapped by every
+	// [SSRFBlockedError] produced by [CheckSSRFIP] /
+	// [CheckSSRFAddress]. Use [errors.Is] for broad discrimination
+	// and [errors.As] (against `*SSRFBlockedError`) when the
+	// specific block reason is needed for metrics or incident
+	// routing:
+	//
+	//	var ssrfErr *audit.SSRFBlockedError
+	//	if errors.As(err, &ssrfErr) {
+	//	    metricSSRFBlocked.With("reason", string(ssrfErr.Reason)).Inc()
+	//	}
+	//	if errors.Is(err, audit.ErrSSRFBlocked) { ... }
+	ErrSSRFBlocked = errors.New("audit: address blocked by SSRF protection")
+
 	// ErrReservedFieldName is returned by [Auditor.AuditEvent] when
 	// the event's Fields map uses a name reserved for library-emitted
 	// fields (for example `_hmac`, `_hmac_v`). These names would

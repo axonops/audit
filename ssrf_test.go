@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"errors"
 	"net"
 	"testing"
 
@@ -173,4 +174,157 @@ func TestNewSSRFDialControl_ReturnsFunction(t *testing.T) {
 
 	fn2 := audit.NewSSRFDialControl(audit.AllowPrivateRanges())
 	require.NotNil(t, fn2)
+}
+
+// TestCheckSSRFIP_BlocksAllKnownMetadataEndpoints is the named
+// contract test from #480 Testing Requirements. Every published
+// cloud instance metadata endpoint MUST be blocked regardless of
+// AllowPrivateRanges. IPv6 variants (AWS IMDSv2) and IPv4-mapped-
+// IPv6 aliases of the same must also be blocked.
+func TestCheckSSRFIP_BlocksAllKnownMetadataEndpoints(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		ip   string
+	}{
+		{"aws_imds_ipv4", "169.254.169.254"},
+		{"aws_imdsv2_ipv6", "fd00:ec2::254"},
+		{"aws_imds_ipv4_mapped_as_ipv6", "::ffff:169.254.169.254"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ip := net.ParseIP(tt.ip)
+			require.NotNil(t, ip, "parse %s", tt.ip)
+
+			// Must be blocked with AllowPrivateRanges OFF.
+			err1 := audit.CheckSSRFIP(ip, false)
+			require.Error(t, err1)
+
+			// MUST be blocked even when AllowPrivateRanges is ON —
+			// metadata endpoints are not subject to the
+			// private-range bypass.
+			err2 := audit.CheckSSRFIP(ip, true)
+			require.Error(t, err2,
+				"metadata address %s must be blocked even when AllowPrivateRanges is set", tt.ip)
+
+			// Typed error contract: wraps ErrSSRFBlocked and has
+			// Reason == SSRFReasonCloudMetadata.
+			assert.ErrorIs(t, err2, audit.ErrSSRFBlocked)
+			var ssrfErr *audit.SSRFBlockedError
+			require.ErrorAs(t, err2, &ssrfErr)
+			assert.Equal(t, audit.SSRFReasonCloudMetadata, ssrfErr.Reason)
+		})
+	}
+}
+
+// TestCheckSSRFAddress_IPv6MappedIPv4Private is the named contract
+// test from #480 Testing Requirements. An attacker cannot bypass the
+// private-address block by bracketing an IPv4 private address as an
+// IPv6 literal. Applies to every private-range variant.
+func TestCheckSSRFAddress_IPv6MappedIPv4Private(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		address string
+	}{
+		{"mapped_10_slash_8", "[::ffff:10.0.0.1]:443"},
+		{"mapped_172_16_slash_12", "[::ffff:172.16.0.1]:443"},
+		{"mapped_192_168_slash_16", "[::ffff:192.168.1.1]:443"},
+		{"mapped_loopback", "[::ffff:127.0.0.1]:443"},
+		{"mapped_metadata", "[::ffff:169.254.169.254]:443"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := audit.CheckSSRFAddress(tt.address, false)
+			require.Error(t, err, "%s should be blocked", tt.address)
+			assert.ErrorIs(t, err, audit.ErrSSRFBlocked)
+		})
+	}
+}
+
+// TestCheckSSRFIP_BlocksDeprecatedSiteLocalIPv6 covers the fec0::/10
+// range (RFC 3879 deprecated but still routable on some legacy
+// stacks). Go's net.IP.IsPrivate() does NOT classify this range;
+// #480 adds an explicit CIDR check.
+func TestCheckSSRFIP_BlocksDeprecatedSiteLocalIPv6(t *testing.T) {
+	t.Parallel()
+	ip := net.ParseIP("fec0::1")
+	require.NotNil(t, ip)
+
+	// ALWAYS blocked regardless of AllowPrivateRanges.
+	err := audit.CheckSSRFIP(ip, true)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrSSRFBlocked)
+
+	var ssrfErr *audit.SSRFBlockedError
+	require.ErrorAs(t, err, &ssrfErr)
+	assert.Equal(t, audit.SSRFReasonDeprecatedSiteLocal, ssrfErr.Reason)
+}
+
+// TestSSRFBlockedError_TypedAccessPattern verifies the consumer
+// discrimination contract — every block reason must be distinguishable
+// via errors.As on the typed error.
+func TestSSRFBlockedError_TypedAccessPattern(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		ip     string
+		reason audit.SSRFReason
+	}{
+		{"cloud_metadata_ipv4", "169.254.169.254", audit.SSRFReasonCloudMetadata},
+		{"cloud_metadata_ipv6", "fd00:ec2::254", audit.SSRFReasonCloudMetadata},
+		{"cgnat", "100.64.0.1", audit.SSRFReasonCGNAT},
+		{"deprecated_site_local", "fec0::1", audit.SSRFReasonDeprecatedSiteLocal},
+		{"link_local_ipv4", "169.254.0.1", audit.SSRFReasonLinkLocal},
+		{"link_local_ipv6", "fe80::1", audit.SSRFReasonLinkLocal},
+		{"multicast_ipv4", "224.1.1.1", audit.SSRFReasonMulticast},
+		{"multicast_ipv6", "ff0e::1", audit.SSRFReasonMulticast},
+		{"unspecified_ipv4", "0.0.0.0", audit.SSRFReasonUnspecified},
+		{"unspecified_ipv6", "::", audit.SSRFReasonUnspecified},
+		{"loopback_ipv4", "127.0.0.1", audit.SSRFReasonLoopback},
+		{"loopback_ipv6", "::1", audit.SSRFReasonLoopback},
+		{"private_rfc1918_10", "10.0.0.1", audit.SSRFReasonPrivate},
+		{"private_ula_ipv6", "fd12:3456::1", audit.SSRFReasonPrivate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ip := net.ParseIP(tt.ip)
+			require.NotNil(t, ip, "parse %s", tt.ip)
+			err := audit.CheckSSRFIP(ip, false)
+			require.Error(t, err, "%s must be blocked", tt.ip)
+
+			// Sentinel match via errors.Is.
+			assert.True(t, errors.Is(err, audit.ErrSSRFBlocked),
+				"must wrap ErrSSRFBlocked")
+
+			// Typed access via errors.As.
+			var ssrfErr *audit.SSRFBlockedError
+			require.ErrorAs(t, err, &ssrfErr)
+			assert.Equal(t, tt.reason, ssrfErr.Reason,
+				"wrong reason for %s", tt.ip)
+			assert.True(t, ssrfErr.IP.IsValid(),
+				"IP field must be a valid netip.Addr")
+		})
+	}
+}
+
+// TestCheckSSRFAddress_ScopedIPv6 ensures scoped addresses
+// (fe80::1%eth0) do not bypass the check. Today ParseIP returns nil
+// on zoned strings, which produces the "could not parse IP" error —
+// lock that in so a future refactor stripping zone IDs doesn't
+// silently weaken the guard.
+func TestCheckSSRFAddress_ScopedIPv6(t *testing.T) {
+	t.Parallel()
+	err := audit.CheckSSRFAddress("[fe80::1%eth0]:443", false)
+	require.Error(t, err,
+		"scoped IPv6 address must not bypass SSRF (zone ID is not stripped)")
+	// This is a parse error, not a typed SSRFBlockedError — the
+	// check fails before reason classification. Must not wrap
+	// ErrSSRFBlocked because we're rejecting on parse failure, not
+	// on block policy.
+	assert.NotErrorIs(t, err, audit.ErrSSRFBlocked,
+		"parse errors must NOT wrap ErrSSRFBlocked — they are a different failure class")
 }

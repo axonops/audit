@@ -53,7 +53,19 @@ If you believe you have found a flaw in the library's own defences
 of what we consider in scope:
 
 - A way to bypass the webhook output's SSRF protection so that
-  requests reach private networks despite the guard being enabled
+  requests reach private networks or published cloud metadata
+  endpoints despite the guard being enabled. The guard blocks the
+  IPv4 and IPv6 forms listed in [docs/webhook-output.md](docs/webhook-output.md#ssrf-protection)
+  and [docs/loki-output.md](docs/loki-output.md#ssrf-protection),
+  including IPv4-mapped IPv6 aliases. Rejections carry a typed
+  `*SSRFBlockedError` wrapping `ErrSSRFBlocked` so consumers can
+  route per-reason metrics without parsing error strings.
+  **Limitation:** operators on clouds with IPv6 instance-metadata
+  endpoints that are NOT in the block list (e.g. an unverified
+  Azure IPv6 IMDS — tracked in [#643](https://github.com/axonops/audit/issues/643))
+  MUST NOT rely solely on this guard. Additional mitigations —
+  network-level egress filtering, IMDSv2 hop-limit, workload
+  identity — remain the operator's responsibility
 - A flaw that forces a TLS connection to downgrade below the
   configured minimum version
 - The library itself leaking credentials (e.g., webhook auth headers

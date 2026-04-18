@@ -612,12 +612,35 @@ After all retries are exhausted, the batch is dropped and
 
 ### SSRF Protection
 
-Private and loopback IP ranges are **blocked by default**:
-- `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
-- `127.0.0.0/8`, `::1`
-- `169.254.0.0/16` (link-local, including cloud metadata `169.254.169.254`)
+Private, loopback, and reserved IP ranges are **blocked by default**.
+Blocks marked with ★ apply **even when `allow_private_ranges: true`**
+— set that flag only to permit RFC 1918 / loopback in private
+network deployments.
 
-Set `allow_private_ranges: true` only for private network deployments.
+| Block | Range / Address | ★ Always | Reason label |
+|-------|----------------|----------|--------------|
+| Private (RFC 1918) | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` | | `private` |
+| IPv6 ULA | `fc00::/7` | | `private` |
+| Loopback | `127.0.0.0/8`, `::1` | | `loopback` |
+| Link-local | `169.254.0.0/16`, `fe80::/10` | ★ | `link_local` |
+| Cloud metadata IPv4 | `169.254.169.254` | ★ | `cloud_metadata` |
+| Cloud metadata IPv6 (AWS IMDSv2) | `fd00:ec2::254` | ★ | `cloud_metadata` |
+| CGNAT (RFC 6598) | `100.64.0.0/10` | ★ | `cgnat` |
+| Deprecated site-local IPv6 | `fec0::/10` | ★ | `deprecated_site_local` |
+| Multicast | `224.0.0.0/4`, `ff00::/8` | ★ | `multicast` |
+| Unspecified | `0.0.0.0`, `::` | ★ | `unspecified` |
+| IPv4-mapped IPv6 | `::ffff:a.b.c.d` | Normalised to IPv4 before classification | *(per above)* |
+
+SSRF rejections return `*audit.SSRFBlockedError` (wrapping
+`audit.ErrSSRFBlocked`). Use `errors.As` to switch on `.Reason` for
+metric labelling or per-reason alerting:
+
+```go
+var ssrfErr *audit.SSRFBlockedError
+if errors.As(err, &ssrfErr) {
+    metricSSRFBlocked.With("reason", string(ssrfErr.Reason)).Inc()
+}
+```
 
 ### Redirect Blocking
 

@@ -5,16 +5,16 @@
 
 # Example 15: TLS Policy
 
-Demonstrates how to configure global and per-output TLS policy in
-audit. TLS policy controls the minimum TLS version and allowed
-cipher suites for all TLS-enabled outputs (syslog TCP+TLS, webhook
-HTTPS, loki HTTPS).
+Demonstrates how to configure per-output TLS policy in audit. TLS
+policy controls the minimum TLS version and allowed cipher suites
+for each TLS-enabled output (syslog TCP+TLS, webhook HTTPS, loki
+HTTPS) and each secret provider (vault, openbao).
 
 ## What You'll Learn
 
 1. Why audit defaults to **TLS 1.3 only** and when to change this
-2. How to set a **global TLS policy** that applies to all outputs
-3. How to **override per-output** for legacy infrastructure
+2. How to configure **per-output TLS policy** inside each output block
+3. Why there is **no root-level `tls_policy:` key**
 4. What `allow_tls12` and `allow_weak_ciphers` actually do
 5. How to configure **mTLS** (mutual TLS) with client certificates
 
@@ -31,7 +31,7 @@ that TLS policy applies to.
 | File | Purpose |
 |------|---------|
 | [`main.go`](main.go) | Loads config with TLS policy, demonstrates all 4 policy scenarios programmatically |
-| [`outputs.yaml`](outputs.yaml) | YAML config showing global tls_policy with commented production examples |
+| [`outputs.yaml`](outputs.yaml) | YAML config showing per-output tls_policy with commented production examples |
 | [`taxonomy.yaml`](taxonomy.yaml) | Simple 2-event taxonomy |
 | [`audit_generated.go`](audit_generated.go) | Generated typed builders |
 
@@ -82,8 +82,8 @@ configuration:
 - **Cipher suite selection is not configurable** in Go for TLS 1.3 —
   this prevents misconfiguration
 
-If you don't set any `tls_policy`, or set it to the zero value, you
-get TLS 1.3 only. This is the correct default for new deployments.
+If an output or provider does not set `tls_policy`, you get TLS 1.3
+only. This is the correct default for new deployments.
 
 ### The Four TLS Policy Configurations
 
@@ -97,23 +97,23 @@ get TLS 1.3 only. This is the correct default for new deployments.
 **Note:** `allow_weak_ciphers` has no effect when `allow_tls12` is
 `false`, because TLS 1.3 cipher suites are not configurable in Go.
 
-### Global vs Per-Output Policy
+### Per-Output Policy
+
+`tls_policy` is configured inside each TLS-capable block — `syslog:`
+(when `network: tcp+tls`), `webhook:` (when `https://`), `loki:`
+(when `https://`), and each secret provider (`vault:`, `openbao:`).
+Each block stands alone; there is no shared root-level default.
 
 ```yaml
-# Global policy — applies to ALL TLS-enabled outputs by default
-tls_policy:
-  allow_tls12: false
-  allow_weak_ciphers: false
-
 outputs:
-  # This output inherits the global policy (TLS 1.3 only)
+  # No tls_policy block → defaults to TLS 1.3 only.
   modern_siem:
     type: syslog
     syslog:
       network: "tcp+tls"
       address: "modern-syslog.internal:6514"
 
-  # This output OVERRIDES the global policy
+  # Per-output tls_policy for a legacy target.
   legacy_siem:
     type: syslog
     syslog:
@@ -124,10 +124,17 @@ outputs:
         allow_weak_ciphers: false   # still use only secure ciphers
 ```
 
-The per-output `tls_policy` block completely replaces the global
-policy for that output — it does not merge fields. If you set
-`tls_policy.allow_tls12: true` on an output, you must also set
-`allow_weak_ciphers` (or it defaults to `false`).
+### Why No Root-Level `tls_policy:`?
+
+Earlier versions allowed a root-level `tls_policy:` that would
+inherit into every output and provider. That was removed because it
+created a privilege-escalation surface: a permissive policy set for a
+legacy syslog target would silently downgrade the TLS posture of
+secret-provider connections carrying bootstrap credentials.
+
+Setting `tls_policy:` at the top level of `outputs.yaml` now fails
+at startup with an "unknown top-level key" error. Configure
+`tls_policy` inside each affected output or provider block instead.
 
 ### mTLS (Mutual TLS) with Client Certificates
 

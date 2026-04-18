@@ -14,12 +14,12 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
       | actor_id | alice   |
-    And I close the logger
+    And I close the auditor
     Then the audit call should have succeeded
 
   Scenario: Load file output with routing from YAML
@@ -42,7 +42,7 @@ Feature: YAML Output Configuration
             include_categories:
               - write
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -50,7 +50,7 @@ Feature: YAML Output Configuration
     And I audit event "auth_failure" with fields:
       | field   | value   |
       | outcome | failure |
-    And I close the logger
+    And I close the auditor
     Then the file "all.log" should contain "user_create"
     And the file "all.log" should contain "auth_failure"
     And the file "writes.log" should contain "user_create"
@@ -67,7 +67,7 @@ Feature: YAML Output Configuration
         broken:
           type: kafka
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "unknown output type"
     And the config load error should contain "add import"
 
@@ -84,7 +84,7 @@ Feature: YAML Output Configuration
           file:
             path: "${TOTALLY_UNDEFINED_BDD_VAR}/audit.log"
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "TOTALLY_UNDEFINED_BDD_VAR"
 
   # --- Framework fields in output config (#237) ---
@@ -99,7 +99,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "app_name is required"
 
   Scenario: Missing host in output config YAML is rejected
@@ -112,7 +112,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "host is required"
 
   Scenario: timezone optional in output config YAML
@@ -126,7 +126,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -145,7 +145,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -167,7 +167,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |
@@ -187,7 +187,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "unknown field"
 
   Scenario: standard_fields with empty value rejected
@@ -203,7 +203,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "non-empty"
 
   # --- Loki formatter validation (#304) ---
@@ -221,7 +221,7 @@ Feature: YAML Output Configuration
           formatter:
             type: cef
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "loki does not support custom formatters"
 
   Scenario: Loki output rejects CloudEvents formatter
@@ -237,7 +237,7 @@ Feature: YAML Output Configuration
           formatter:
             type: cloudevents
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "loki does not support custom formatters"
 
   Scenario: Loki output accepts explicit JSON formatter
@@ -253,7 +253,7 @@ Feature: YAML Output Configuration
           formatter:
             type: json
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should succeed
     And the loki output formatter should be JSON
 
@@ -270,9 +270,30 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I try to create a logger from the YAML config
+    When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "default_formatter has been removed"
     And the config load error should contain "set formatter on each output individually"
+
+  # --- Root-level tls_policy removed (#476) ---
+
+  Scenario: Root-level tls_policy rejected with migration hint
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      tls_policy:
+        allow_tls12: true
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create an auditor from the YAML config
+    Then the config load should fail with an error containing "tls_policy is no longer a top-level key"
+    And the config load error should contain "syslog, webhook, loki"
+    And the config load error should contain "vault, openbao"
+    And the config load error should contain "#476"
 
   # --- Syslog app_name injection (#237) ---
 
@@ -287,7 +308,7 @@ Feature: YAML Output Configuration
         console:
           type: stdout
       """
-    When I create a logger from the YAML config
+    When I create an auditor from the YAML config
     And I audit event "user_create" with fields:
       | field    | value   |
       | outcome  | success |

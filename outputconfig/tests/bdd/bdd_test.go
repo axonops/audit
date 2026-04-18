@@ -32,6 +32,7 @@ func TestOutputConfigFeatures(t *testing.T) {
 		Tags:        "~@docker",
 		Randomize:   0,
 		Concurrency: 1,
+		Strict:      true, // undefined steps fail the suite (#622 philosophy)
 		TestingT:    t,
 	}
 

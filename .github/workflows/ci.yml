@@ -145,6 +145,14 @@ jobs:
       - name: Check replace directives
         run: make check-replace
 
+      # BDD Strict-mode guard — MUST run before any test matrix so a
+      # regression fails loudly and early, not buried inside a later
+      # test job. There is NO circumstance under which BDD runners may
+      # disable Strict mode — see memory feedback_bdd_strict_mode.md
+      # and CONTRIBUTING.md "BDD Strict mode" section.
+      - name: Verify BDD Strict mode is enabled everywhere
+        run: make check-bdd-strict
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

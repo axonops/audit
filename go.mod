@@ -3,11 +3,11 @@ module github.com/axonops/audit
 go 1.26.2
 
 require (
-	github.com/axonops/audit/file v0.1.1
-	github.com/axonops/audit/loki v0.1.1
-	github.com/axonops/audit/outputconfig v0.1.1
-	github.com/axonops/audit/syslog v0.1.1
-	github.com/axonops/audit/webhook v0.1.1
+	github.com/axonops/audit/file v0.1.11
+	github.com/axonops/audit/loki v0.1.11
+	github.com/axonops/audit/outputconfig v0.1.11
+	github.com/axonops/audit/syslog v0.1.11
+	github.com/axonops/audit/webhook v0.1.11
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
 	github.com/rgooding/go-syncmap v1.0.1
@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	github.com/axonops/audit/secrets v0.1.1 // indirect
+	github.com/axonops/audit/secrets v0.1.11 // indirect
 	github.com/axonops/srslog v1.0.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect

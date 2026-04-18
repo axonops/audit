@@ -55,3 +55,10 @@ type DropLimiterForTest struct {
 func (w *DropLimiterForTest) Record(interval time.Duration, warnFn func(dropped int64)) {
 	w.D.record(interval, warnFn)
 }
+
+// PendingCount returns the number of drops accumulated since the
+// last emitted warning. Used by conservation tests (#492) to prove
+// total drops across all windows equals total records.
+func (w *DropLimiterForTest) PendingCount() int64 {
+	return w.D.count.Load()
+}

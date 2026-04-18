@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Documentation
 
+- Document the window-boundary counting semantics of `dropLimiter.record`. The lock-free two-atomic design (lastWarn + count) allows a drop's `count.Add(1)` that races with a winning goroutine's `count.Swap(0)` to be reported in the NEXT window rather than the one whose boundary just closed. Total drops across all windows are conserved; per-window counts are slightly smeared under concurrent bursts. Callers needing a monotonic SLA-grade drop total should use `OutputMetrics.RecordDrop` (pure `atomic.Add`, no windowing). Adds `TestDropLimiter_TotalConservedAcrossWindows` which proves conservation under 64 goroutines × 2000 records (#492)
 - Document the required placement of `audit.Middleware` relative to panic-recovery middleware. `Middleware` MUST be placed OUTSIDE any panic-recovery middleware; reversing the order silently breaks the re-raise contract. `Middleware` godoc gained a new `# Placement` section with correct / wrong examples, `docs/http-middleware.md` gained a `Placement: Audit Must Wrap Panic Recovery` section with framework-specific examples (chi, Gin), and two BDD scenarios in `tests/bdd/features/http_middleware.feature` document the observable behaviour of both placements (#491)
 
 ### Fixed

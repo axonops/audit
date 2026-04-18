@@ -77,6 +77,60 @@ should be reported as regular GitHub issues, not security reports:
 - Issues in test infrastructure or CI/CD pipelines
 - Feature requests
 
+## Credential Safety in Log Output
+
+The library never writes credentials to the diagnostic logger under
+normal operation. For defence in depth, the output modules also guard
+the common debug pattern of passing a Config value to `fmt.Printf`,
+`slog.Debug`, or any other reflection-based formatter:
+
+- **Webhook** (`webhook.Config`): `String`, `GoString`, and `Format`
+  drop the URL path, query, and fragment — only `scheme://host` is
+  printed. Headers are included with values replaced by `[REDACTED]`
+  when the header name (case-insensitive substring) contains `auth`,
+  `key`, `secret`, or `token`. Non-matching header names print their
+  value verbatim so operators can see non-sensitive trace headers.
+- **Loki** (`loki.Config`): `String` and `Format` drop the URL path,
+  query, and fragment. `BasicAuth` prints as `BasicAuth{REDACTED}` for
+  both `%v` and `%#v`. `BearerToken` and `TenantID` are never printed;
+  only the presence of bearer authentication is surfaced (`auth=bearer_token`).
+  Custom headers are not printed at all.
+- **Syslog** (`syslog.Config`): `String`, `GoString`, and `Format`
+  print only `network`, `address`, `tls` (none/tls/mtls marker), and
+  `facility`. TLS certificate and key file paths, custom hostname, and
+  app name are omitted from the stringer output even though they are
+  not secrets — they simply are not useful for debug-log
+  disambiguation.
+- **Secret references** (`secrets.Ref`): `String` emits
+  `ref+SCHEME://[REDACTED]#KEY` — the value is never logged, only the
+  scheme and key are surfaced for debugging.
+- **OpenBao / HashiCorp Vault configs** (`openbao.Config`,
+  `vault.Config`): `String`, `GoString`, and `Format` strip the
+  Address URL to scheme+host, print `token=[REDACTED]` (or `unset`
+  when empty), and surface the presence of `Namespace` and TLS client
+  cert without the values themselves.
+- **File output** (`file.Config`): no credential fields. No stringer
+  is required; consumer logging of the Config reveals only path,
+  permissions, and rotation settings — all non-sensitive.
+
+In-transit error leakage is closed too: HTTP retry-loop errors from
+webhook and Loki outputs pass through a `sanitiseClientError` helper
+that replaces the URL in any `*url.Error` returned by
+`http.Client.Do` with the sanitised scheme+host form. Path tokens
+(Slack, Splunk HEC) and query-string credentials no longer appear in
+diagnostic log lines produced by failed retries or connection errors.
+
+The `ErrDuplicateDestination` error returned from `WithOutputs` /
+`WithNamedOutput` no longer includes the raw destination key, because
+that key is URL-path-bearing for webhook and Loki outputs. The error
+message names the two conflicting outputs only — enough to identify
+the misconfiguration without surfacing token material.
+
+The `fmt.Formatter` interface is implemented on every Config type to
+intercept `%+v` (struct-tag reflection) which would otherwise bypass a
+`String` method. Consumers who print individual fields directly
+(`slog.Info("url", cfg.URL)`) bypass these safeguards; do not do this.
+
 ## Software Bill of Materials (SBOM)
 
 Every release includes SBOMs in two formats, published as assets in

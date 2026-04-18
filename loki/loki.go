@@ -127,11 +127,10 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		return nil, err
 	}
 	// Log TLS policy warnings via the injected logger (falls back to
-	// slog.Default when no option supplied).
-	u, _ := url.Parse(cfg.URL) // already validated
-	host := u.Scheme + "://" + u.Host
+	// slog.Default when no option supplied). Sanitised URL mirrors
+	// Config.String — path/query/fragment dropped.
 	for _, w := range warnings {
-		resolved.logger.Warn(w, "output", "loki", "url", host)
+		resolved.logger.Warn(w, "output", "loki", "url", sanitizeURLForLog(cfg.URL))
 	}
 
 	var ssrfOpts []audit.SSRFOption

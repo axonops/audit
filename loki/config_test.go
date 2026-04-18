@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -607,8 +608,13 @@ func TestConfigString_Redaction(t *testing.T) {
 		cfg := &loki.Config{URL: "https://loki.example.com/loki/api/v1/push", BatchSize: 50}
 		s := cfg.String()
 
-		assert.Contains(t, s, "https://loki.example.com/loki/api/v1/push",
-			"String() must include the URL")
+		// URL is sanitised to scheme+host — path/query/fragment dropped
+		// to keep token placements (tenant in path, bearer in query)
+		// out of debug logs. See TestLokiConfig_String_RedactsURLQueryAndFragment.
+		assert.Contains(t, s, "https://loki.example.com",
+			"String() must include the sanitised URL")
+		assert.NotContains(t, s, "/loki/api/v1/push",
+			"path must be stripped from sanitised URL")
 		assert.Contains(t, s, "none",
 			"String() must show auth=none when no credentials are set")
 	})
@@ -790,6 +796,93 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no valid pem blocks")
 	})
+}
+
+// TestLokiConfig_String_RedactsURLQueryAndFragment verifies that
+// common Loki token placements — tenant IDs in path, bearer tokens
+// or tenant_id query strings, URL fragments — are dropped by
+// Config.String(). Closes #475 AC #2.
+func TestLokiConfig_String_RedactsURLQueryAndFragment(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		url        string
+		mustAppear string
+		mustNot    []string
+	}{
+		{
+			name: "tenant_id query and auth query",
+			url:  "https://loki.example.com/loki/api/v1/push?tenant_id=leak-tenant&auth_key=leak-auth-XYZ",
+			mustNot: []string{
+				"leak-tenant", "leak-auth-XYZ",
+				"tenant_id", "auth_key",
+			},
+			// NOTE: "auth=" appears in the output as the auth-type
+			// marker ("auth=none"), so we cannot assert its absence
+			// — that's a legitimate part of the String format.
+			mustAppear: "https://loki.example.com",
+		},
+		{
+			name:       "tenant in path",
+			url:        "https://loki.example.com/tenants/LEAK-TENANT/push",
+			mustNot:    []string{"LEAK-TENANT", "/tenants", "/push"},
+			mustAppear: "https://loki.example.com",
+		},
+		{
+			name:       "fragment",
+			url:        "https://loki.example.com/push#session=LEAK-FRAG",
+			mustNot:    []string{"LEAK-FRAG", "session=", "#"},
+			mustAppear: "https://loki.example.com",
+		},
+		{
+			name:       "invalid URL falls back to placeholder",
+			url:        "::://not-a-url",
+			mustNot:    []string{"not-a-url"},
+			mustAppear: "<invalid-url>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := loki.Config{URL: tt.url}
+			s := cfg.String()
+			for _, forbidden := range tt.mustNot {
+				assert.NotContains(t, s, forbidden,
+					"String() leaked %q from URL %q", forbidden, tt.url)
+			}
+			assert.Contains(t, s, tt.mustAppear,
+				"String() must include the sanitised form")
+		})
+	}
+}
+
+// TestLokiSanitiseClientError_RedactsURLInUrlError verifies that an
+// *url.Error from http.Client.Do has its URL stripped to scheme+host
+// before being logged. Closes #475 H1.
+func TestLokiSanitiseClientError_RedactsURLInUrlError(t *testing.T) {
+	t.Parallel()
+	in := &url.Error{
+		Op:  "Post",
+		URL: "https://loki.example.com/tenants/LEAK-TENANT/push?token=LEAK",
+		Err: fmt.Errorf("connection refused"),
+	}
+	out := loki.SanitiseClientError(in)
+	msg := out.Error()
+	assert.Contains(t, msg, "Post")
+	assert.Contains(t, msg, "connection refused")
+	assert.Contains(t, msg, "https://loki.example.com")
+	assert.NotContains(t, msg, "LEAK-TENANT")
+	assert.NotContains(t, msg, "LEAK", "query-string token must be stripped")
+	assert.NotContains(t, msg, "/tenants", "path must be stripped")
+}
+
+// TestLokiSanitiseClientError_PassesThroughNonUrlErrors verifies that
+// plain errors not wrapping *url.Error are unchanged.
+func TestLokiSanitiseClientError_PassesThroughNonUrlErrors(t *testing.T) {
+	t.Parallel()
+	plain := fmt.Errorf("plain error, no URL")
+	got := loki.SanitiseClientError(plain)
+	assert.Equal(t, plain, got)
 }
 
 // TestLoki_ConstructionWarningsRoutedToInjectedLogger verifies that

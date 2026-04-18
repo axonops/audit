@@ -59,7 +59,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#479** security: document and minimise secret memory retention across secret resolution and outputs.
 - [ ] **#480** security: extend SSRF block list to cover AWS IPv6 IMDS and IPv6-mapped IPv4 edge cases.
 - [ ] **#481** test: add fuzz targets for ParseTaxonomyYAML, outputconfig.Load, ParseRef, ExpandEnvString.
-- [ ] **#482** security: sign release artifacts with Cosign keyless OIDC.
+- [x] ~~**#482** security: sign release artifacts with Cosign keyless OIDC.~~ **Closed as won't-do (2026-04-18)** — GitHub `attest-build-provenance` action already present in release.yml + goreleaser.yml; same Sigstore/Fulcio/Rekor primitives as Cosign keyless, just different verifier CLI. Reopen only if a consumer specifically needs `.sig`/`.pem` assets (e.g. Cosign Policy Controller).
 - [ ] **#483** security: validate HMAC verification inputs before constant-time compare.
 - [ ] **#484** security: cap response body drain on 3xx redirects in webhook and loki.
 - [ ] **#485** security: enforce ResponseHeaderTimeout minimum floor in webhook and loki.

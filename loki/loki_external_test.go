@@ -78,6 +78,44 @@ func TestLoki_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 	goleak.VerifyNone(t)
 }
 
+// TestLokiClient_ResponseHeaderTimeoutHasFloor verifies that the
+// transport's ResponseHeaderTimeout is never less than 1 second. Loki
+// Config validation enforces MinTimeout=1s so the smallest permitted
+// input is 1s — for which half (500 ms) falls below the 1s floor and
+// the floor must kick in. Exercises the floor added for #485.
+func TestLokiClient_ResponseHeaderTimeoutHasFloor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{"min_allowed_1s_floors_to_1s", 1 * time.Second, 1 * time.Second},
+		{"sub_floor_1500ms_floors_to_1s", 1500 * time.Millisecond, 1 * time.Second},
+		{"exactly_2s_at_floor", 2 * time.Second, 1 * time.Second},
+		{"20s_uses_half_10s", 20 * time.Second, 10 * time.Second},
+		{"5min_uses_half_2m30s", 5 * time.Minute, 2*time.Minute + 30*time.Second},
+		// The defensive cases below exercise values that validation
+		// rejects, proving the helper itself is robust even if
+		// validation is bypassed or reordered in a future refactor.
+		{"tiny_1ms_floors_to_1s", 1 * time.Millisecond, 1 * time.Second},
+		{"zero_floors_to_1s", 0, 1 * time.Second},
+		{"negative_floors_to_1s", -5 * time.Second, 1 * time.Second},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := loki.ResponseHeaderTimeout(tc.timeout)
+			assert.Equal(t, tc.want, got,
+				"ResponseHeaderTimeout(%v) = %v; want %v", tc.timeout, got, tc.want)
+		})
+	}
+
+	assert.Equal(t, 1*time.Second, loki.MinResponseHeaderTimeout,
+		"floor constant must be 1 second for #485 contract")
+}
+
 // TestClient_RedirectBodyDrainCapped_Loki verifies that a non-redirect
 // 3xx response (HTTP 300 Multiple Choices) with a 10 MiB body has its
 // client-side body drain capped at 4 KiB. Our CheckRedirect blocks

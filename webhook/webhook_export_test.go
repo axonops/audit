@@ -23,3 +23,11 @@ var BuildNDJSON = buildNDJSON
 // SanitiseClientError is exported for testing only — exercises the
 // error-URL redaction path used in the retry loop's log sites (#475).
 var SanitiseClientError = sanitiseClientError
+
+// ResponseHeaderTimeout is exported for testing only — exercises the
+// minimum-floor computation used for the HTTP transport (#485).
+var ResponseHeaderTimeout = responseHeaderTimeout
+
+// MinResponseHeaderTimeout is exported for testing only — lets tests
+// assert that the floor constant matches the documented value (#485).
+const MinResponseHeaderTimeout = minResponseHeaderTimeout

@@ -2790,6 +2790,57 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 		"warning should carry output=syslog attribute: %q", logged)
 }
 
+// TestSyslog_SetDiagnosticLoggerUnderEventLoad drives SetDiagnosticLogger
+// and Write concurrently to prove the logger field is safe under the
+// race detector. Closes #474 AC #3.
+//
+// Uses a local TCP listener to accept the syslog connection so New
+// succeeds. The listener just drains bytes — we do not validate
+// delivery, only that the logger field survives concurrent access.
+func TestSyslog_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				_, _ = io.Copy(io.Discard, c)
+			}(conn)
+		}
+	}()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp",
+		Address:  listener.Addr().String(),
+		Facility: "local0",
+		AppName:  "race-test",
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	var wg sync.WaitGroup
+	const iters = 100
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range iters {
+			out.SetDiagnosticLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range iters {
+			_ = out.Write([]byte(`{"event":"race"}`))
+		}
+	}()
+	wg.Wait()
+}
+
 // TestSyslog_NilDiagnosticLoggerFallsBackToDefault verifies
 // WithDiagnosticLogger(nil) does not nil-deref and falls back to
 // slog.Default for warning emission.

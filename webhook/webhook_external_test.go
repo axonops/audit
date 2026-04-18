@@ -1569,6 +1569,47 @@ func TestWebhook_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 		"warning should carry output=webhook attribute: %q", logged)
 }
 
+// TestWebhook_SetDiagnosticLoggerUnderEventLoad drives SetDiagnosticLogger
+// and Write concurrently to prove the logger field is safe under the
+// race detector. Closes #474 AC #3.
+func TestWebhook_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(func() { srv.Close() })
+
+	out, err := webhook.New(&webhook.Config{
+		URL:                srv.URL,
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      10 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		BufferSize:         100,
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	// 100 concurrent SetDiagnosticLogger calls against a hot Write path.
+	// Run under -race; any unsynchronised read/write will fail here.
+	var wg sync.WaitGroup
+	const iters = 100
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range iters {
+			out.SetDiagnosticLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range iters {
+			_ = out.Write([]byte(`{"event":"race"}`))
+		}
+	}()
+	wg.Wait()
+}
+
 // TestWebhook_NilDiagnosticLoggerFallsBackToDefault verifies that
 // WithDiagnosticLogger(nil) does not nil-deref and falls back to
 // slog.Default for warning emission.

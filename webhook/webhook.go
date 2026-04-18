@@ -87,8 +87,8 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 type Output struct {
 	metrics       audit.Metrics
 	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
+	logger        atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
 	client        *http.Client
-	logger        *slog.Logger
 	cancel        context.CancelFunc
 	done          chan struct{}
 	closeCh       chan struct{} // signals batchLoop to drain and exit
@@ -106,8 +106,15 @@ type Output struct {
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
+//
+// Safe for concurrent use with the background batch goroutine and any
+// active [Output.Write] caller — the logger field is an
+// [atomic.Pointer] so readers always see a fully-published value.
 func (w *Output) SetDiagnosticLogger(l *slog.Logger) {
-	w.logger = l
+	if l == nil {
+		l = slog.Default()
+	}
+	w.logger.Store(l)
 }
 
 // New creates a new [Output] from the given config.
@@ -175,7 +182,6 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Output{
-		logger:     o.logger,
 		client:     client,
 		url:        cfg.URL,
 		name:       webhookName(cfg.URL),
@@ -190,6 +196,9 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		flushIvl:   cfg.FlushInterval,
 		timeout:    cfg.Timeout,
 	}
+	// Publish the initial logger BEFORE starting the batch goroutine
+	// so the goroutine's first read observes a non-nil pointer.
+	w.logger.Store(o.logger)
 
 	go w.batchLoop(ctx)
 	return w, nil
@@ -212,7 +221,7 @@ func (w *Output) Write(data []byte) error {
 		return nil
 	default:
 		w.drops.record(dropWarnInterval, func(dropped int64) {
-			w.logger.Warn("audit: output webhook: event dropped (buffer full)",
+			w.logger.Load().Warn("audit: output webhook: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
@@ -254,7 +263,7 @@ func (w *Output) Close() error {
 	select {
 	case <-w.done:
 	case <-timer.C:
-		w.logger.Error("audit: webhook batch goroutine did not exit",
+		w.logger.Load().Error("audit: webhook batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 

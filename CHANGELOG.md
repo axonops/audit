@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - HMAC `SaltVersion` character set restricted to `[A-Za-z0-9._:-]` (length 1–64) at config-time validation — values containing spaces, control characters, CEF/JSON metacharacters, or other ambiguous bytes are rejected (#473)
 - `OutputFactory` signature grew a `*slog.Logger` parameter: `func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger) (Output, error)`. Custom factories must add the parameter (nil is valid; treated as `slog.Default`). The logger is plumbed from `outputconfig.WithDiagnosticLogger` / `audit.WithDiagnosticLogger` so construction-time warnings reach the consumer's handler (#490)
 
+### Fixed
+
+- Data race on the diagnostic logger field in `webhook`, `file`, `syslog`, `loki` outputs. `SetDiagnosticLogger` performed a plain field assignment while background goroutines concurrently read the same field. Race detector now passes `-count=100` across all four outputs. The field is `atomic.Pointer[slog.Logger]`; writers use `Store`, readers use `Load`. No API-shape change; no functional behaviour change (#474)
+
 ### Security
 
 - HMAC now authenticates the `_hmac_v` salt version identifier. Previously `_hmac_v` was appended AFTER HMAC computation, leaving it outside the authenticated region. An in-transit attacker could flip the version from `v1` to `v2` to redirect a verifier's salt lookup without detection. `_hmac_v` is now inside the authenticated bytes; any modification invalidates the HMAC tag. Pre-v1.0 consumers using external verifiers that strip both `_hmac` and `_hmac_v` must update the verifier to strip only `_hmac` (#473)

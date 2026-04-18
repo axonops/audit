@@ -458,6 +458,71 @@ func newHMACPipelineTestAuditor(t *testing.T, name, saltVersion string, salt []b
 	return auditor, out
 }
 
+// TestComputeHMACFast_IncludesSaltVersionInPayload is the named
+// contract test from #473 Testing Requirements. It proves the salt
+// version identifier is part of the byte stream fed into
+// [hmacState.computeHMACFast] (i.e. it is an input to the HMAC
+// function, not metadata appended afterward).
+//
+// This is the positive/constructive companion to
+// [TestVerifyHMAC_TamperingHmacVersion_Detected] — that test proves
+// tampering is detected; this test proves the data flow that makes
+// detection possible. Two runs of the same event differ only in
+// SaltVersion; if SaltVersion reached the HMAC function, the two
+// resulting `_hmac` values MUST differ. If SaltVersion were appended
+// after the HMAC call (the pre-#473 bug), the two hashes would be
+// identical. The assertion is a direct positive contract on the
+// implementation — it fails closed if the bug regresses.
+//
+// It also independently re-computes the HMAC externally over the
+// on-wire bytes minus `_hmac` and verifies it matches the embedded
+// value, proving the wire payload (which visibly contains the salt
+// version) is what was hashed.
+func TestComputeHMACFast_IncludesSaltVersionInPayload(t *testing.T) {
+	t.Parallel()
+	salt := []byte("salt-version-in-payload-32b!!!")
+
+	// Run the pipeline twice with SaltVersion v1 and v2 — same length
+	// so the JSON keys/framework-field ordering is byte-identical
+	// except for the version character.
+	runOnce := func(saltVersion string) ([]byte, string) {
+		auditor, out := newHMACPipelineTestAuditor(t, "salt-in-payload-"+saltVersion, saltVersion, salt)
+		require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+			"outcome": "failure", "actor_id": "alice",
+		})))
+		require.True(t, out.WaitForEvents(1, 2*time.Second))
+		require.NoError(t, auditor.Close())
+		line := out.GetEvents()[0]
+		hmacHex := extractJSONStringField(t, line, "_hmac")
+		require.NotEmpty(t, hmacHex)
+		return line, hmacHex
+	}
+
+	lineV1, hmacV1 := runOnce("v1")
+	lineV2, hmacV2 := runOnce("v2")
+
+	// Sanity: both lines contain the expected _hmac_v value.
+	assert.Contains(t, string(lineV1), `"_hmac_v":"v1"`,
+		"line must embed the salt version on the wire")
+	assert.Contains(t, string(lineV2), `"_hmac_v":"v2"`)
+
+	// Primary assertion: changing only SaltVersion changes the HMAC.
+	// If the implementation regressed to appending _hmac_v AFTER the
+	// HMAC computation, both hashes would be identical.
+	assert.NotEqual(t, hmacV1, hmacV2,
+		"HMAC must differ when SaltVersion differs — proves salt version is an input to computeHMACFast (#473)")
+
+	// Secondary assertion: re-compute HMAC externally over the on-wire
+	// bytes minus the `_hmac` field. The result must match the
+	// embedded HMAC, proving the wire-visible payload (which contains
+	// _hmac_v) IS what was fed into the HMAC.
+	canonicalV1 := stripHMACJSONField(lineV1)
+	verifiedV1, err := audit.VerifyHMAC(canonicalV1, hmacV1, salt, "HMAC-SHA-256")
+	require.NoError(t, err)
+	assert.True(t, verifiedV1,
+		"HMAC over (wire bytes minus _hmac) must verify — proves the payload fed to computeHMACFast was the wire content including _hmac_v")
+}
+
 // TestHMACOutputOrdering_VBeforeHmac asserts that on-wire JSON places
 // `_hmac_v` BEFORE `_hmac`. Pre-fix the order was reversed, which left
 // `_hmac_v` outside the authenticated region. Post-fix `_hmac_v` is

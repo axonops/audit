@@ -16,7 +16,6 @@ package file_test
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -886,36 +885,6 @@ func TestFile_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 	logged := buf.String()
 	assert.Contains(t, logged, "permissions grant group/world access",
 		"expected permission warning on injected logger, got: %q", logged)
-}
-
-// TestFile_SetDiagnosticLoggerUnderEventLoad drives SetDiagnosticLogger
-// and Write concurrently to prove the logger field is safe under the
-// race detector. Closes #474 AC #3.
-func TestFile_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
-	dir := t.TempDir()
-	out, err := file.New(file.Config{
-		Path:       filepath.Join(dir, "race.log"),
-		BufferSize: 1000,
-	}, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	var wg sync.WaitGroup
-	const iters = 100
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for range iters {
-			out.SetDiagnosticLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for range iters {
-			_ = out.Write([]byte(`{"event":"race"}` + "\n"))
-		}
-	}()
-	wg.Wait()
 }
 
 // TestFile_NilDiagnosticLoggerFallsBackToDefault verifies

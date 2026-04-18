@@ -1783,7 +1783,6 @@ func TestWebhook_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	t.Cleanup(func() { srv.Close() })
 
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
@@ -1795,7 +1794,6 @@ func TestWebhook_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 		BufferSize:         100,
 	}, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
 
 	// 100 concurrent SetDiagnosticLogger calls against a hot Write path.
 	// Run under -race; any unsynchronised read/write will fail here.
@@ -1815,6 +1813,13 @@ func TestWebhook_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+
+	// Close BEFORE per-test goleak so webhook's async batch/flush
+	// goroutines AND the httptest server's accept loop have exited by
+	// the time we assert no leaks (#474).
+	require.NoError(t, out.Close())
+	srv.Close()
+	goleak.VerifyNone(t)
 }
 
 // TestWebhook_NilDiagnosticLoggerFallsBackToDefault verifies that

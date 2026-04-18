@@ -202,4 +202,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerIsolationSteps(ctx, tc)
 	registerEventMetricsSteps(ctx, tc)
 	registerOutputConfigSteps(ctx, tc)
+	registerSSRFSteps(ctx, tc)
 }

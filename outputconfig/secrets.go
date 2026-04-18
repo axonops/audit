@@ -89,8 +89,10 @@ func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath strin
 	if cached, ok := r.pathCache[pathKey]; ok {
 		val, found := cached[ref.Key]
 		if !found {
-			return "", fmt.Errorf("%w: key %q not found at cached path (field %s)",
-				secrets.ErrSecretNotFound, ref.Key, fieldPath)
+			// ref.Key is not echoed — user-controlled substring of the
+			// ref is a leakage vector when the error is logged (#486).
+			return "", fmt.Errorf("%w: key (redacted) not found at cached path (field %s)",
+				secrets.ErrSecretNotFound, fieldPath)
 		}
 		if val == "" {
 			return "", fmt.Errorf("%w: secret resolved to empty value (field %s)",
@@ -112,8 +114,10 @@ func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath strin
 	// Look up provider.
 	provider, ok := r.providers[ref.Scheme]
 	if !ok {
-		return "", fmt.Errorf("%w: scheme %q (field %s)",
-			secrets.ErrProviderNotRegistered, ref.Scheme, fieldPath)
+		// ref.Scheme is not echoed — user-controlled substring of the
+		// ref is a leakage vector when the error is logged (#486).
+		return "", fmt.Errorf("%w: (scheme redacted) (field %s)",
+			secrets.ErrProviderNotRegistered, fieldPath)
 	}
 
 	// Check context before network call.
@@ -133,8 +137,10 @@ func (r *resolver) resolve(ctx context.Context, ref secrets.Ref, fieldPath strin
 		r.pathCache[pathKey] = allKeys
 		val, found := allKeys[ref.Key]
 		if !found {
-			return "", fmt.Errorf("%w: key %q not found at path (field %s)",
-				secrets.ErrSecretNotFound, ref.Key, fieldPath)
+			// ref.Key is not echoed — user-controlled substring of the
+			// ref is a leakage vector when the error is logged (#486).
+			return "", fmt.Errorf("%w: key (redacted) not found at path (field %s)",
+				secrets.ErrSecretNotFound, fieldPath)
 		}
 		if val == "" {
 			return "", fmt.Errorf("%w: secret resolved to empty value (field %s)",

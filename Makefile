@@ -312,27 +312,59 @@ check-todos:
 	fi
 
 # Enforce godog runners use Strict mode so undefined steps fail the
-# suite. This is the contract established by #622 — CI must never
+# suite. This is the contract established by #622 — CI must NEVER
 # silently pass a scenario whose step definition doesn't exist.
-# Every file declaring a `godog.Options{` block must contain a
-# `Strict:` field (set to true). We grep for the field presence, not
-# the literal `Strict: true` so that a commented-out Strict line still
-# trips the check (cannot be disabled by accident).
+#
+# Three checks — any one failing fails the target:
+#  (1) Every file declaring `godog.Options{` must contain `Strict: true`
+#      (exact string match, space-insensitive). `Strict: false` does
+#      NOT satisfy the check. A commented-out `Strict` line does NOT
+#      satisfy the check (grep ignores leading whitespace but not //).
+#  (2) No file anywhere in the repo may contain `Strict: false` or
+#      `Strict:false`. An explicit opt-out is rejected even if the same
+#      file has `Strict: true` elsewhere — prevents tricks like a
+#      runtime override.
+#  (3) No Makefile target or shell script may pass `-godog.strict=false`
+#      or `--godog.strict=false` as a CLI flag — prevents a silent
+#      override at invocation time.
+#
+# This target runs in `make check` AND as a dedicated CI step before
+# the test matrix so a regression fails loudly and early. Under NO
+# circumstances may this target be removed, weakened, or bypassed.
+# See memory feedback_bdd_strict_mode.md and issue #622.
 check-bdd-strict:
 	@FAILING=""; \
 	for f in $$(grep -rln 'godog\.Options{' --include='*.go'); do \
-		if ! grep -q 'Strict:' "$$f"; then \
+		if ! grep -Eq '^[[:space:]]*Strict:[[:space:]]*true[[:space:]]*,' "$$f"; then \
 			FAILING="$$FAILING $$f"; \
 		fi; \
 	done; \
 	if [ -n "$$FAILING" ]; then \
-		echo "ERROR: godog runners missing Strict: true (undefined steps would silently pass):"; \
+		echo "ERROR (1/3): godog runners missing 'Strict: true' (undefined steps would silently pass):"; \
 		for f in $$FAILING; do echo "  $$f"; done; \
 		echo ""; \
-		echo "Every godog.Options{} block must set Strict: true. See #622."; \
+		echo "Every godog.Options{} block MUST set 'Strict: true'. See #622."; \
 		exit 1; \
 	fi
-	@echo "All godog runners use Strict mode."
+	@EXPLICIT_FALSE=$$(grep -rnE 'Strict:[[:space:]]*false' --include='*.go' . 2>/dev/null || true); \
+	if [ -n "$$EXPLICIT_FALSE" ]; then \
+		echo "ERROR (2/3): explicit 'Strict: false' in Go source is forbidden. Found:"; \
+		echo "$$EXPLICIT_FALSE"; \
+		echo ""; \
+		echo "BDD runners MUST fail on undefined steps. There is no legitimate"; \
+		echo "reason to disable Strict. See #622 and memory feedback_bdd_strict_mode.md."; \
+		exit 1; \
+	fi
+	@CLI_OVERRIDE=$$(grep -rnE '[-]{1,2}godog\.strict[= ]+false|[-]{1,2}godog-strict[= ]+false' --include='*.mk' --include='*.sh' --include='*.yml' --include='*.yaml' . 2>/dev/null || true); \
+	if [ -n "$$CLI_OVERRIDE" ]; then \
+		echo "ERROR (3/3): CLI-level godog strict override is forbidden. Found:"; \
+		echo "$$CLI_OVERRIDE"; \
+		echo ""; \
+		echo "Makefile targets, scripts, and CI configs MUST NOT disable Strict"; \
+		echo "via -godog.strict=false or similar flags. See #622."; \
+		exit 1; \
+	fi
+	@echo "All godog runners use Strict mode (checks 1/3, 2/3, 3/3 passed)."
 
 # --- Security ---
 

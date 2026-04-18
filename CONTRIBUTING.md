@@ -33,6 +33,34 @@ Individual modules can be tested separately: `make test-core`,
 This project does not use pre-commit hooks. Run `make check` before
 committing to execute the full quality gate locally.
 
+### BDD Strict mode — non-negotiable
+
+Every `godog.Options{}` block in every test file MUST include
+`Strict: true`. Without it, scenarios whose step definitions are
+missing pass silently — the BDD suite reports them as "undefined"
+but the test still exits zero, and CI misses the regression.
+
+This caused a months-long silent-failure window in `outputconfig`
+BDD (issues #622 and #476). To prevent recurrence:
+
+- `make check-bdd-strict` runs as part of `make check` and as a
+  dedicated **Hygiene** step in CI, executed BEFORE the test
+  matrix so a regression fails loudly and early.
+- The check rejects three patterns: (1) any `godog.Options{}`
+  block missing `Strict: true`; (2) any `Strict: false` anywhere
+  in Go source; (3) any `--godog.strict=false` flag in a Makefile,
+  shell script, or CI config.
+
+**Under no circumstances may a PR be merged that disables Strict
+mode, weakens the `check-bdd-strict` target, or removes the CI
+step.** Attempts to bypass the check with `//nolint` comments,
+build tags, or conditional shell expressions are a review-rejection
+criterion independent of the underlying change's merits.
+
+If you hit an undefined step, the fix is to define the step — not
+to disable Strict. If you need to stage a scenario before its steps
+exist, do not commit the scenario yet.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)

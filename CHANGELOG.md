@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Security
 
 - HMAC now authenticates the `_hmac_v` salt version identifier. Previously `_hmac_v` was appended AFTER HMAC computation, leaving it outside the authenticated region. An in-transit attacker could flip the version from `v1` to `v2` to redirect a verifier's salt lookup without detection. `_hmac_v` is now inside the authenticated bytes; any modification invalidates the HMAC tag. Pre-v1.0 consumers using external verifiers that strip both `_hmac` and `_hmac_v` must update the verifier to strip only `_hmac` (#473)
+- Document memory retention windows for credential-carrying fields. `HMACConfig.SaltValue`, `loki.Config.BearerToken`, `loki.BasicAuth.Password`, `webhook.Config.Headers`, and `loki.Config.TenantID` retain resolved plaintext for the auditor's lifetime; Go strings cannot be zeroed. The library best-effort zeroes provider `[]byte` token storage in `Provider.Close()` and drops HTTP header map entries after each request, but these are narrowings of the retention window, not zeroing guarantees. `outputconfig.Load()` now explicitly clears the short-lived resolver caches before return as defence-in-depth. Full model + operator rotation strategy: [`SECURITY.md` §Secrets and Memory Retention](SECURITY.md#secrets-and-memory-retention) and [`docs/secrets.md` §Memory Retention and Rotation Strategy](docs/secrets.md#memory-retention-and-rotation-strategy) (#479)
 
 ### Added
 

@@ -619,6 +619,36 @@ func reload(ctx context.Context, yamlData []byte, taxonomy *audit.Taxonomy) (*au
 Trigger the reload on SIGHUP or via an admin endpoint. Close the old
 logger before replacing it -- `Close` drains buffered events.
 
+## Memory Retention and Rotation Strategy
+
+Secrets resolved from a provider flow into output-configuration
+fields that persist in process memory for the auditor's lifetime.
+Go strings are immutable and cannot be zeroed; byte slices can be
+zeroed but the library cannot do so for values that consumers may
+reference. Memory dumps, core files, and heap profiles captured
+while the auditor is running will contain resolved plaintext.
+
+**Rotation is the primary mitigation.** The auditor's lifetime is
+the upper bound on how long a compromised credential remains
+valid in process memory. Plan accordingly:
+
+| Mitigation | Effect |
+|---|---|
+| **Short-lived tokens (TTL ≤ 1 hour)** | Bounds the window in which an exfiltrated token is usable against the provider. Does not reduce the in-memory retention window of the resolved plaintext, but limits the damage if it is extracted. |
+| **Workload identity** (AWS IAM role, K8s service account, GCP workload identity) | Eliminates long-lived bootstrap credentials from the library's reach. Token is minted per-process and rotated by the platform. |
+| **Periodic auditor restart** | Frees retained plaintext at process exit. Combined with short-lived tokens, bounds the in-memory lifetime to the restart interval. |
+| **Provider-side audit logging** | Detects exfiltration even when the in-memory lifetime itself cannot be shortened. OpenBao/Vault audit logs record every token-use attempt. |
+
+The library's `Provider.Close()` zeroes the `[]byte` token storage
+best-effort — see [Token Handling](#security-model) above. HTTP
+request headers built from tokens contain string copies that
+cannot be zeroed; the library drops the header-map references
+after each request (defence-in-depth per #479).
+
+For the full memory-retention model — including the specific
+config fields that retain plaintext — see
+[SECURITY.md §Secrets and Memory Retention](../SECURITY.md#secrets-and-memory-retention).
+
 ## Security Model
 
 ### HTTPS by Default

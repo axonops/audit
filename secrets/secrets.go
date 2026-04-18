@@ -75,12 +75,28 @@ type Provider interface {
 	// Errors should wrap the appropriate sentinel:
 	//   - [ErrSecretNotFound] when the path or key does not exist
 	//   - [ErrSecretResolveFailed] for transient or auth failures
+	//
+	// Memory retention: the returned string is a Go string and
+	// cannot be zeroed. Providers SHOULD store their authentication
+	// material as `[]byte` and zero it in [Close] to reduce the
+	// retention window for bootstrap credentials, but the resolved
+	// VALUE returned from Resolve persists in memory until GC
+	// reclaims it. Callers (notably [outputconfig.Load]) embed
+	// resolved values in long-lived config structs; see SECURITY.md
+	// §Secrets and Memory Retention for the full model.
 	Resolve(ctx context.Context, ref Ref) (string, error)
 
 	// Close releases resources held by the provider (HTTP clients,
 	// connection pools). Errors are informational — the caller
 	// cannot recover from a close failure but should log it.
 	// Close is idempotent.
+	//
+	// Memory retention: implementations SHOULD zero any `[]byte`
+	// storage of authentication material (e.g. the provider token)
+	// to minimise the retention window. This is best-effort —
+	// Go strings derived from the bytes (e.g. HTTP header copies)
+	// cannot be zeroed and persist until GC. See SECURITY.md
+	// §Secrets and Memory Retention.
 	Close() error
 }
 

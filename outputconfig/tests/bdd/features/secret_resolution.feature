@@ -327,6 +327,38 @@ Feature: Secret reference resolution in output configuration
     And the mock provider call count should be 1
 
   # ---------------------------------------------------------------------------
+  # Scenario: Resolver cache does not leak across Load invocations (#479)
+  # ---------------------------------------------------------------------------
+  # Proves the resolver's in-memory caches (pathCache, refCache) do
+  # not persist across Load calls — a second Load with the same
+  # provider and same refs must re-consult the provider. This is the
+  # observable contract of the clearCaches() call in Load plus the
+  # natural fact that each Load builds a fresh resolver. Defence
+  # against a future refactor accidentally sharing state across
+  # Loads (e.g. a package-level cache).
+  Scenario: Resolver cache does not leak across Load invocations
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "salt-32-bytes-long-value!!!!!!!!"
+    And the mock provider has secret at path "secret/data/hmac" key "version" value "v1"
+    When I load the following output configuration YAML with secret providers twice:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: ref+mock://secret/data/hmac#version
+              value: ref+mock://secret/data/hmac#salt
+            hash: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the mock provider call count should be 2
+
+  # ---------------------------------------------------------------------------
   # Scenario 15: Provider timeout produces a clear error
   # ---------------------------------------------------------------------------
   Scenario: A secret provider that does not respond within the timeout produces a clear error

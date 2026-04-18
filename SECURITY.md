@@ -131,6 +131,71 @@ intercept `%+v` (struct-tag reflection) which would otherwise bypass a
 `String` method. Consumers who print individual fields directly
 (`slog.Info("url", cfg.URL)`) bypass these safeguards; do not do this.
 
+## Secrets and Memory Retention
+
+The library resolves secrets from `vault://` / `openbao://` providers
+and threads the plaintext values into output configurations. Because
+Go strings are immutable and cannot be zeroed in memory, values
+persist until the garbage collector reclaims them — which is not
+under the library's control. This section documents what the library
+does to minimise retention and what operators must do to bound it.
+
+### What the library does
+
+- **Provider token storage.** `secrets/vault` and `secrets/openbao`
+  store the auth token as `[]byte` internally (not `string`).
+  `Provider.Close()` zeroes the byte slice best-effort. This is
+  genuine zeroing; subsequent reads of the slice see `0x00`.
+- **HTTP request headers.** Building a Vault request calls
+  `req.Header.Set("X-Vault-Token", string(p.token))`, which creates
+  an immutable `string` copy of the token bytes. After the response
+  is handled, the library `Header.Del`s the entry to drop the
+  map-held reference; the underlying string persists until GC. This
+  is defence-in-depth, not zeroing.
+- **Resolver caches.** `outputconfig.Load()` builds a short-lived
+  resolver with in-memory `pathCache` / `refCache` maps to
+  deduplicate provider calls within one Load invocation. The
+  resolver is local to Load and becomes GC-unreachable at return.
+  A deferred `clear()` call drops map-held references before Load
+  unwinds to narrow the window before GC.
+
+### What the library cannot do
+
+Resolved plaintext values land in the following output-config fields
+and **persist for the auditor's lifetime** as Go strings / byte
+slices:
+
+- `loki.Config.BearerToken`, `loki.Config.TenantID`
+- `loki.BasicAuth.Password`
+- `webhook.Config.Headers` (e.g. `Authorization` values)
+- `HMACConfig.SaltValue` (`[]byte` — the library cannot zero this
+  because consumers may hold references)
+
+Zeroing these is impossible from inside the library: the strings are
+immutable, the byte slices are consumer-reachable, and Go's GC does
+not expose a "scrub on free" hook. Memory dumps, core files, and
+heap profiles captured while the auditor is running will contain
+these values.
+
+### Operational mitigation
+
+- Use **short-lived tokens** (TTL ≤ 1 hour where the provider
+  supports it).
+- Use **workload identity** (AWS IAM roles, Kubernetes service
+  accounts, GCP workload identity) where available, so bootstrap
+  credentials never touch the library.
+- **Restart the auditor** periodically to bound the in-memory
+  lifetime of resolved values. A credential exfiltrated from a
+  running process remains valid only until the next rotation +
+  restart cycle.
+- **Do not** build custom diagnostic logging that echoes
+  `outputconfig.LoadResult` or raw `Config` structs after
+  resolution — the library redacts via `String()` / `GoString()` /
+  `%+v`, but ad-hoc reflection will surface the plaintext.
+
+Operator guidance with rotation patterns: see
+[docs/secrets.md](docs/secrets.md#memory-retention-and-rotation-strategy).
+
 ## Software Bill of Materials (SBOM)
 
 Every release includes SBOMs in two formats, published as assets in

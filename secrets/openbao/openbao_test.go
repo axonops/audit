@@ -349,6 +349,134 @@ func TestClose_ZerosToken(t *testing.T) {
 	require.NoError(t, p.Close())
 }
 
+// TestOpenBaoClose_ZerosTokenSlice mirrors [TestVaultClose_ZeroesTokenSlice]
+// for openbao parity (#479). Asserts every byte of the internal
+// token slice is 0x00 after Close.
+func TestOpenBaoClose_ZerosTokenSlice(t *testing.T) {
+	t.Parallel()
+	const secretToken = "super-secret-openbao-token-v1"
+	p, err := openbao.New(&openbao.Config{
+		Address: "https://vault.example.com",
+		Token:   secretToken,
+	})
+	require.NoError(t, err)
+
+	before := openbao.TokenBytesForTest(p)
+	require.Equal(t, []byte(secretToken), before)
+
+	require.NoError(t, p.Close())
+
+	after := openbao.TokenBytesForTest(p)
+	require.Len(t, after, len(secretToken))
+	for i, b := range after {
+		assert.Equal(t, byte(0), b,
+			"token byte %d must be zero after Close, got %#x", i, b)
+	}
+}
+
+// TestOpenBaoResolve_ClearsHeaderAfterDo mirrors
+// [TestVaultResolve_ClearsHeaderAfterDo] for openbao parity (#479).
+// Asserts the request's X-Vault-Token and X-Vault-Namespace header
+// entries are deleted after client.Do returns.
+func TestOpenBaoResolve_ClearsHeaderAfterDo(t *testing.T) {
+	t.Parallel()
+	const testToken = "bearer-in-transit-openbao"
+	const testNamespace = "tenants/def"
+
+	backend := kvV2Handler(map[string]any{"k": "v"}, testToken)
+	srv := newTestServer(t, backend)
+
+	var captured *http.Request
+	capturingRT := &captureRoundTripperOpenBao{
+		inner: srv.Client().Transport,
+		onRoundTrip: func(req *http.Request) {
+			assert.Equal(t, testToken, req.Header.Get("X-Vault-Token"),
+				"token must be present when the request hits the transport")
+			assert.Equal(t, testNamespace, req.Header.Get("X-Vault-Namespace"))
+			captured = req
+		},
+	}
+
+	p, err := openbao.NewWithHTTPClient(
+		&openbao.Config{
+			Address:            srv.URL,
+			Token:              testToken,
+			Namespace:          testNamespace,
+			AllowPrivateRanges: true,
+		},
+		&http.Client{Transport: capturingRT},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(),
+		secrets.Ref{Scheme: "openbao", Path: "secret/data/x", Key: "k"})
+	require.NoError(t, err)
+
+	require.NotNil(t, captured)
+	assert.Empty(t, captured.Header.Get("X-Vault-Token"),
+		"X-Vault-Token must be cleared from the request header after Do (#479)")
+	assert.Empty(t, captured.Header.Get("X-Vault-Namespace"),
+		"X-Vault-Namespace must be cleared from the request header after Do (#479)")
+}
+
+type captureRoundTripperOpenBao struct {
+	inner       http.RoundTripper
+	onRoundTrip func(req *http.Request)
+}
+
+func (c *captureRoundTripperOpenBao) RoundTrip(req *http.Request) (*http.Response, error) {
+	if c.onRoundTrip != nil {
+		c.onRoundTrip(req)
+	}
+	return c.inner.RoundTrip(req)
+}
+
+// TestOpenBaoResolve_ClearsHeaderAfterDoError mirrors
+// [TestVaultResolve_ClearsHeaderAfterDoError] for openbao parity
+// (#479). The deferred header-clear must run on error paths too.
+func TestOpenBaoResolve_ClearsHeaderAfterDoError(t *testing.T) {
+	t.Parallel()
+	const testToken = "bearer-on-error-openbao"
+	const testNamespace = "tenants/err"
+
+	var captured *http.Request
+	errRT := &captureRoundTripperOpenBao{
+		inner: errRoundTripperOpenBao{},
+		onRoundTrip: func(req *http.Request) {
+			captured = req
+		},
+	}
+
+	p, err := openbao.NewWithHTTPClient(
+		&openbao.Config{
+			Address:            "https://openbao.example.com",
+			Token:              testToken,
+			Namespace:          testNamespace,
+			AllowPrivateRanges: true,
+		},
+		&http.Client{Transport: errRT},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(),
+		secrets.Ref{Scheme: "openbao", Path: "secret/data/x", Key: "k"})
+	require.Error(t, err)
+
+	require.NotNil(t, captured)
+	assert.Empty(t, captured.Header.Get("X-Vault-Token"),
+		"X-Vault-Token must be cleared even when Do returns an error (#479)")
+	assert.Empty(t, captured.Header.Get("X-Vault-Namespace"),
+		"X-Vault-Namespace must be cleared even when Do returns an error (#479)")
+}
+
+type errRoundTripperOpenBao struct{}
+
+func (errRoundTripperOpenBao) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("simulated transport error")
+}
+
 // ---------------------------------------------------------------------------
 // Namespace header
 // ---------------------------------------------------------------------------

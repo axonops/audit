@@ -2816,6 +2816,49 @@ func TestDropLimiter_SubsequentDropsSuppressed(t *testing.T) {
 	assert.Equal(t, 1, triggered, "drops within interval must not trigger")
 }
 
+// TestDropLimiter_TotalConservedAcrossWindows guards the conservation
+// invariant documented on dropLimiter.record: every Record call must
+// be accounted for either in a warnFn callback or in the pending
+// counter — no drop is ever uncounted, even under concurrent bursts
+// that straddle a window boundary (#492).
+//
+// The test launches G goroutines each calling Record N times with a
+// very short interval so multiple windows fire. It captures the
+// sum of all warnFn-reported counts and adds the residual pending
+// count; that total must equal G*N exactly.
+func TestDropLimiter_TotalConservedAcrossWindows(t *testing.T) {
+	t.Parallel()
+
+	const (
+		goroutines     = 64
+		recordsPerG    = 2000
+		windowInterval = 1 * time.Microsecond // fire many windows across the run
+	)
+
+	dl := &audit.DropLimiterForTest{}
+	var reported atomic.Int64 // sum of all warnFn(dropped) values
+	warn := func(dropped int64) { reported.Add(dropped) }
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range recordsPerG {
+				dl.Record(windowInterval, warn)
+			}
+		}()
+	}
+	wg.Wait()
+
+	pending := dl.PendingCount()
+	total := reported.Load() + pending
+	want := int64(goroutines * recordsPerG)
+	assert.Equalf(t, want, total,
+		"conservation violated: %d reported + %d pending != %d total records",
+		reported.Load(), pending, want)
+}
+
 func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
 	tax := &audit.Taxonomy{
 		Version: 1,

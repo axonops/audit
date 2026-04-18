@@ -18,6 +18,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +36,7 @@ func init() {
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a
 	// minimal output.
-	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return &lokiStub{}, nil
 	})
 }

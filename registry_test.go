@@ -29,7 +29,7 @@ import (
 func TestRegisterOutputFactory_Success(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	factory := func(name string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	factory := func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return testhelper.NewMockOutput(name), nil
 	}
 	audit.RegisterOutputFactory("test", factory)
@@ -41,10 +41,10 @@ func TestRegisterOutputFactory_Success(t *testing.T) {
 func TestRegisterOutputFactory_Overwrite(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	first := func(name string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	first := func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return testhelper.NewMockOutput("first"), nil
 	}
-	second := func(name string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	second := func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return testhelper.NewMockOutput("second"), nil
 	}
 
@@ -55,7 +55,7 @@ func TestRegisterOutputFactory_Overwrite(t *testing.T) {
 	require.NotNil(t, got)
 
 	// Verify the second factory is the one registered.
-	out, err := got("check", nil, nil)
+	out, err := got("check", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "second", out.Name())
 }
@@ -70,7 +70,7 @@ func TestLookupOutputFactory_NotRegistered_ReturnsNil(t *testing.T) {
 func TestRegisteredOutputTypes_Sorted(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	dummy := func(string, []byte, audit.Metrics) (audit.Output, error) { return nil, nil }
+	dummy := func(string, []byte, audit.Metrics, *slog.Logger) (audit.Output, error) { return nil, nil }
 	audit.RegisterOutputFactory("webhook", dummy)
 	audit.RegisterOutputFactory("file", dummy)
 	audit.RegisterOutputFactory("syslog", dummy)
@@ -83,7 +83,7 @@ func TestRegisterOutputFactory_EmptyName_Panics(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
 	assert.Panics(t, func() {
-		audit.RegisterOutputFactory("", func(string, []byte, audit.Metrics) (audit.Output, error) {
+		audit.RegisterOutputFactory("", func(string, []byte, audit.Metrics, *slog.Logger) (audit.Output, error) {
 			return nil, nil
 		})
 	})

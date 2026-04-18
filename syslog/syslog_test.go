@@ -2754,8 +2754,8 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
 				return
 			}
 			go func(c net.Conn) {
@@ -2800,8 +2800,8 @@ func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
 				return
 			}
 			go func(c net.Conn) {

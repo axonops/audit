@@ -17,6 +17,7 @@ package syslog
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 
 	"github.com/axonops/audit"
 	"github.com/goccy/go-yaml"
@@ -28,20 +29,21 @@ func init() {
 
 // defaultFactory creates a syslog output from YAML config. Per-output
 // metrics are auto-detected via type assertion on coreMetrics.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+// The logger is plumbed through to construction-time TLS warnings.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
 	var syslogMetrics Metrics
 	if sm, ok := coreMetrics.(Metrics); ok {
 		syslogMetrics = sm
 	}
-	return buildOutput(name, rawConfig, syslogMetrics)
+	return buildOutput(name, rawConfig, syslogMetrics, logger)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates syslog
 // outputs from YAML configuration with the provided syslog-specific
 // metrics captured in the closure. Pass nil to disable syslog metrics.
 func NewFactory(syslogMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
-		return buildOutput(name, rawConfig, syslogMetrics)
+	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+		return buildOutput(name, rawConfig, syslogMetrics, logger)
 	}
 }
 
@@ -84,7 +86,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: syslog output %q: config is required", name)
 	}
@@ -114,7 +116,7 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics) (audit.Ou
 		}
 	}
 
-	out, err := New(cfg, syslogMetrics)
+	out, err := New(cfg, syslogMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: syslog output %q: %w", name, err)
 	}

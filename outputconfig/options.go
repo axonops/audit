@@ -15,6 +15,7 @@
 package outputconfig
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/axonops/audit"
@@ -33,6 +34,7 @@ type loadOptions struct {
 	coreMetrics          audit.Metrics
 	outputMetricsFactory audit.OutputMetricsFactory
 	factories            map[string]audit.OutputFactory
+	diagnosticLogger     *slog.Logger
 	providers            []secrets.Provider
 	secretTimeout        time.Duration
 	secretTimeoutSet     bool // true when WithSecretTimeout was called explicitly
@@ -95,6 +97,22 @@ func WithFactory(typeName string, factory audit.OutputFactory) LoadOption {
 			o.factories = make(map[string]audit.OutputFactory)
 		}
 		o.factories[typeName] = factory
+	}
+}
+
+// WithDiagnosticLogger sets the diagnostic logger that is threaded
+// through to every output constructed by [Load]. The logger reaches
+// each output's [OutputFactory] via its logger parameter, so
+// construction-time warnings (TLS policy, file permission mode) route
+// to the consumer's configured handler rather than [slog.Default].
+//
+// Pair this with [audit.WithDiagnosticLogger] on the [audit.Auditor]
+// so that construction-time AND runtime warnings route through the
+// same handler. Passing nil is valid and equivalent to not calling
+// this option — factories fall back to [slog.Default].
+func WithDiagnosticLogger(l *slog.Logger) LoadOption {
+	return func(o *loadOptions) {
+		o.diagnosticLogger = l
 	}
 }
 

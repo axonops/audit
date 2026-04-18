@@ -17,6 +17,7 @@ package loki
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/axonops/audit"
@@ -30,8 +31,9 @@ func init() {
 // defaultFactory creates a Loki output from YAML config. Core metrics
 // are forwarded for delivery reporting. Per-output metrics are
 // injected via OutputMetricsReceiver after construction.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics)
+// The logger is plumbed through to construction-time TLS warnings.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+	return buildOutput(name, rawConfig, coreMetrics, logger)
 }
 
 // yamlLokiConfig is the YAML-specific representation of Loki output
@@ -105,7 +107,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
 	}
@@ -167,7 +169,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics) (audi
 		}
 	}
 
-	output, err := New(cfg, coreMetrics)
+	output, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
 	}

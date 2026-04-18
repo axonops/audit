@@ -17,6 +17,7 @@ package outputconfig_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,7 +153,7 @@ func (l *lokiStubOutput) Close() error       { return nil }
 func (l *lokiStubOutput) Name() string       { return "loki-stub" }
 
 func init() {
-	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return &lokiStubOutput{}, nil
 	})
 }
@@ -830,7 +831,7 @@ func (s *spyOutput) Name() string       { return "spy" }
 
 func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -842,7 +843,7 @@ func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 
 func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -854,7 +855,7 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 
 func TestLoad_ClosesEarlierOutputsWhenLaterFails(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -1552,7 +1553,7 @@ func TestLoad_GlobalTLSPolicy_InjectedViaFactory(t *testing.T) {
 	// Register a test factory under the "webhook" type name so
 	// the injection logic recognises it as TLS-capable.
 	var captured atomic.Value
-	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -1587,7 +1588,7 @@ outputs:
 func TestLoad_GlobalTLSPolicy_PerOutputOverride(t *testing.T) {
 	t.Parallel()
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2228,7 +2229,7 @@ func TestLoad_TimezoneAtMaxLength_Accepted(t *testing.T) {
 // registration and must run exclusively with other syslog factory tests.
 func TestLoad_InjectStringField_SyslogHostnameNotOverridden(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2271,7 +2272,7 @@ outputs:
 // registration and must run exclusively with other syslog factory tests.
 func TestLoad_InjectStringField_SyslogHostnameInjected(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2313,7 +2314,7 @@ outputs:
 // does not override it.
 func TestLoad_InjectStringField_SyslogAppNameNotOverridden(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2354,7 +2355,7 @@ outputs:
 // registration and must run exclusively with other webhook factory tests.
 func TestLoad_InjectStringField_NonSyslogOutputNoInjection(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
+	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2546,7 +2547,7 @@ func TestLoad_WithFactory(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  custom:\n    type: test-custom\n")
-	customFactory := func(name string, _ []byte, _ audit.Metrics) (audit.Output, error) {
+	customFactory := func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		so, soErr := audit.NewStdoutOutput(audit.StdoutConfig{})
 		if soErr != nil {
 			return nil, soErr

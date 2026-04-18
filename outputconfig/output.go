@@ -17,6 +17,7 @@ package outputconfig
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/axonops/audit"
@@ -35,7 +36,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -60,7 +61,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		return nil, fmtErr
 	}
 
-	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics, factories)
+	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics, factories, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +256,7 @@ type yamlTLSPolicy struct {
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {
 	// Per-call factory overrides take precedence over global registry.
 	factory := factories[f.typeName]
 	if factory == nil {
@@ -290,7 +291,7 @@ func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName
 			return nil, fmt.Errorf("output %q: marshal %q config: %w", name, f.typeName, err)
 		}
 	}
-	output, err := factory(name, rawConfig, coreMetrics)
+	output, err := factory(name, rawConfig, coreMetrics, logger)
 	if err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}

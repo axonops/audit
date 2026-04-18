@@ -17,6 +17,7 @@ package file
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 
 	"github.com/axonops/audit"
 	"github.com/goccy/go-yaml"
@@ -28,20 +29,22 @@ func init() {
 
 // defaultFactory creates a file output from YAML config. Per-output
 // metrics are auto-detected via type assertion on coreMetrics.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+// The logger is plumbed through to construction-time permission-mode
+// warnings.
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
 	var fileMetrics Metrics
 	if fm, ok := coreMetrics.(Metrics); ok {
 		fileMetrics = fm
 	}
-	return buildOutput(name, rawConfig, fileMetrics)
+	return buildOutput(name, rawConfig, fileMetrics, logger)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates file outputs
 // from YAML configuration with the provided file-specific metrics
 // captured in the closure. Pass nil to disable file metrics.
 func NewFactory(fileMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, _ audit.Metrics) (audit.Output, error) {
-		return buildOutput(name, rawConfig, fileMetrics)
+	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+		return buildOutput(name, rawConfig, fileMetrics, logger)
 	}
 }
 
@@ -75,7 +78,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, fileMetrics Metrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: file output %q: config is required", name)
 	}
@@ -96,7 +99,7 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics) (audit.Outp
 		BufferSize:  intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 	}
 
-	out, err := New(cfg, fileMetrics)
+	out, err := New(cfg, fileMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
 	}

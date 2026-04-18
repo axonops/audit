@@ -283,7 +283,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, lo.coreMetrics, lo.factories, secretResolver)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, lo.coreMetrics, lo.factories, lo.diagnosticLogger, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)

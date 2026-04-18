@@ -38,7 +38,7 @@ func TestFileFactory_ValidConfig(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	out, err := factory("compliance_file", yaml, nil)
+	out, err := factory("compliance_file", yaml, nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -52,7 +52,7 @@ func TestFileFactory_InvalidConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_file", yaml, nil)
+	_, err := factory("bad_file", yaml, nil, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "bad_file")
 }
@@ -63,7 +63,7 @@ func TestFileFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("test", yaml, nil)
+	_, err := factory("test", yaml, nil, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown_field")
 }
@@ -72,7 +72,7 @@ func TestFileFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("empty", nil, nil)
+	_, err := factory("empty", nil, nil, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "config is required")
 }
@@ -85,7 +85,7 @@ func TestFileNewFactory_WithMetrics(t *testing.T) {
 	metrics := &mockFileMetrics{}
 	factory := file.NewFactory(metrics)
 
-	out, err := factory("with_metrics", yaml, nil)
+	out, err := factory("with_metrics", yaml, nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -99,7 +99,7 @@ func TestFileNewFactory_NilMetrics(t *testing.T) {
 
 	factory := file.NewFactory(nil)
 
-	out, err := factory("nil_metrics", yaml, nil)
+	out, err := factory("nil_metrics", yaml, nil, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

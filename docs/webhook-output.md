@@ -362,7 +362,11 @@ if errors.As(err, &ssrfErr) {
 ```
 
 Additional protections:
-- **Redirects rejected** — HTTP redirects are never followed
+- **Redirects rejected** — HTTP redirects are never followed (301/302/303/307/308 block)
+- **3xx body drain capped** — for any 3xx response that reaches the
+  response-drain path, the body is drained at most **4 KiB**. Without
+  this cap an attacker-controlled endpoint could force up to
+  `maxResponseDrain` (1 MiB) of traffic per retry (issue #484).
 - **Keep-alives disabled** — prevents DNS rebinding attacks
 - **Credentials in URL rejected** — `https://user:pass@host` returns
   an error; use `headers` instead

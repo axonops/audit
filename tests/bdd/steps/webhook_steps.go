@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -101,11 +102,18 @@ func (r *tlsWebhookReceiver) caFile() (string, error) {
 
 // localWebhookReceiver is a plain HTTP server that captures events,
 // used for SSRF and redirect tests that don't need Docker.
-type localWebhookReceiver struct {
+type localWebhookReceiver struct { //nolint:govet // fieldalignment: readability preferred
 	server   *httptest.Server
 	events   []json.RawMessage
 	redirect bool
-	mu       sync.Mutex
+	// large3xxBodySize, when >0, makes the receiver reply to POST /events
+	// with HTTP 300 and a body of that size (streamed in 4 KiB chunks).
+	// Used to exercise the client-side 3xx drain cap (#484).
+	large3xxBodySize int64
+	bytesSent        atomic.Int64
+	handlerDone      chan struct{}
+	doneOnce         sync.Once
+	mu               sync.Mutex
 }
 
 func newLocalWebhookReceiver(redirect bool) *localWebhookReceiver {
@@ -114,6 +122,10 @@ func newLocalWebhookReceiver(redirect bool) *localWebhookReceiver {
 	mux.HandleFunc("POST /events", func(w http.ResponseWriter, req *http.Request) {
 		if r.redirect {
 			http.Redirect(w, req, "/other", http.StatusMovedPermanently)
+			return
+		}
+		if r.large3xxBodySize > 0 {
+			r.handleLarge3xx(w)
 			return
 		}
 		body, err := io.ReadAll(req.Body)
@@ -133,6 +145,45 @@ func newLocalWebhookReceiver(redirect bool) *localWebhookReceiver {
 	})
 	r.server = httptest.NewServer(mux)
 	return r
+}
+
+// handleLarge3xx writes an HTTP 300 Multiple Choices response with a
+// body of r.large3xxBodySize bytes, flushing every 4 KiB so TCP
+// backpressure is observable as soon as the client stops reading.
+// Total bytes successfully written are recorded in r.bytesSent so the
+// BDD scenario can assert the client capped the drain. Uses chunked
+// transfer (no Content-Length) so a client that closes after reading
+// its cap does not produce "superfluous WriteHeader" log noise.
+// sync.Once guarantees handlerDone is closed exactly once even if a
+// future scenario permits the client to retry the request.
+func (r *localWebhookReceiver) handleLarge3xx(w http.ResponseWriter) {
+	defer func() {
+		if r.handlerDone != nil {
+			r.doneOnce.Do(func() { close(r.handlerDone) })
+		}
+	}()
+	chunk := make([]byte, 4096)
+	for i := range chunk {
+		chunk[i] = 'X'
+	}
+	w.WriteHeader(http.StatusMultipleChoices) // 300 — no stdlib redirect-follow
+	flusher, _ := w.(http.Flusher)
+	remaining := r.large3xxBodySize
+	for remaining > 0 {
+		toWrite := int64(len(chunk))
+		if toWrite > remaining {
+			toWrite = remaining
+		}
+		n, err := w.Write(chunk[:toWrite])
+		r.bytesSent.Add(int64(n))
+		if err != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		remaining -= int64(n)
+	}
 }
 
 func (r *localWebhookReceiver) eventCount() int {
@@ -267,6 +318,67 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		r := newLocalWebhookReceiver(true)
 		tc.LocalReceiver = r
 		tc.AddCleanup(func() { r.close() })
+		return nil
+	})
+
+	ctx.Step(`^a local HTTP webhook receiver returning 3xx with a (\d+) MiB body$`, func(bodyMiB int) error {
+		r := newLocalWebhookReceiver(false)
+		r.large3xxBodySize = int64(bodyMiB) << 20
+		r.handlerDone = make(chan struct{})
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.close() })
+		return nil
+	})
+
+	ctx.Step(`^an auditor with webhook output to the 3xx receiver$`, func() error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		cfg := &webhook.Config{
+			URL:                r.server.URL + "/events",
+			AllowInsecureHTTP:  true,
+			AllowPrivateRanges: true,
+			BatchSize:          1,
+			FlushInterval:      100 * time.Millisecond,
+			Timeout:            5 * time.Second,
+			MaxRetries:         1,
+		}
+		out, err := webhook.New(cfg, nil)
+		if err != nil {
+			return fmt.Errorf("create webhook output: %w", err)
+		}
+		tc.AddCleanup(func() { _ = out.Close() })
+		opts := []audit.Option{
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithOutputs(out),
+		}
+		auditor, err := audit.New(opts...)
+		if err != nil {
+			return fmt.Errorf("create auditor: %w", err)
+		}
+		tc.Auditor = auditor
+		tc.AddCleanup(func() { _ = auditor.Close() })
+		return nil
+	})
+
+	ctx.Step(`^the webhook receiver should have transmitted less than (\d+) MiB of body$`, func(limitMiB int) error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		// Wait for the handler goroutine to return (client closed
+		// connection, subsequent Write returned an error, loop exited).
+		select {
+		case <-r.handlerDone:
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("handler did not terminate within 10s")
+		}
+		sent := r.bytesSent.Load()
+		limit := int64(limitMiB) << 20
+		if sent >= limit {
+			return fmt.Errorf("server transmitted %d bytes; expected < %d (cap ineffective)", sent, limit)
+		}
 		return nil
 	})
 

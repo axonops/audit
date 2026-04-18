@@ -74,6 +74,15 @@ type frameworkFields struct {
 //
 // Events are buffered and flushed in batches based on count, byte
 // size, or time interval — whichever threshold is reached first.
+//
+// # Redirects Not Supported
+//
+// Redirects (301/302/303/307/308 with a Location header) are always
+// rejected by [net/http.Client.CheckRedirect] — following a redirect
+// would reopen the SSRF surface. For any other 3xx response reaching
+// the response-drain path, the body is drained at most 4 KiB so an
+// attacker-controlled endpoint cannot force up to maxResponseBody
+// (64 KiB) of traffic per retry. See issue #484.
 type Output struct { //nolint:govet // fieldalignment: readability preferred
 	cfg           *Config
 	metrics       audit.Metrics                       // core pipeline metrics (optional)

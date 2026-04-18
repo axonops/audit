@@ -648,6 +648,12 @@ HTTP redirects are **never followed**. This prevents SSRF via open
 redirects where an attacker controls the Loki URL and redirects to
 an internal service.
 
+For any 3xx response that still reaches the response-drain path (such
+as a non-redirect `300 Multiple Choices`), the body is drained **at
+most 4 KiB**. Without this cap an attacker-controlled endpoint could
+force up to `maxResponseBody` (64 KiB) of traffic per retry
+(issue #484).
+
 ### Credential Redaction
 
 `Config.String()`, `fmt.Sprintf("%+v", cfg)`, and `fmt.Sprintf("%#v", cfg)`

@@ -101,6 +101,14 @@ func registerMiddlewareGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		return createPanicHandlerServer(tc)
 	})
 
+	ctx.Step(`^an HTTP test server with audit outside recovery middleware and panicking handler$`, func() error {
+		return createPanicHandlerServerAuditOutside(tc)
+	})
+
+	ctx.Step(`^an HTTP test server with audit inside recovery middleware and panicking handler$`, func() error {
+		return createPanicHandlerServerAuditInside(tc)
+	})
+
 	ctx.Step(`^I send a GET request to "([^"]*)" expecting panic$`, func(path string) error {
 		// The middleware recovers the panic, so the HTTP response will be
 		// written (500 status). httptest.Server handles panics by closing
@@ -400,6 +408,72 @@ func createPanicHandlerServer(tc *AuditTestContext) error {
 
 	mw := audit.Middleware(tc.Auditor, builder)
 	tc.TestServer = httptest.NewServer(mw(handler))
+	tc.AddCleanup(func() { tc.TestServer.Close() })
+	return nil
+}
+
+// panicRecoveryMiddleware is a minimal demo recovery middleware used
+// by the #491 placement BDD scenarios. It recovers a panic from the
+// wrapped handler, writes a 500 response, and returns without
+// re-raising — mirroring the shape of real-world recovery middleware
+// such as chi's middleware.Recoverer or gin.Recovery().
+func panicRecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// createPanicHandlerServerAuditOutside wires the CORRECT placement for
+// #491: audit middleware wraps the recovery middleware, which wraps
+// the panicking handler. The recovery catches the panic and writes
+// 500; the audit middleware sees the 500 status code captured by the
+// responseWriter and records the event. No re-raise occurs.
+func createPanicHandlerServerAuditOutside(tc *AuditTestContext) error {
+	builder := func(_ *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "api_request", audit.Fields{
+			"outcome":     "failure",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+		}, false
+	}
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("intentional handler panic — #491 audit-outside scenario")
+	})
+	// Audit outermost, recovery inside.
+	chain := audit.Middleware(tc.Auditor, builder)(panicRecoveryMiddleware(handler))
+	tc.TestServer = httptest.NewServer(chain)
+	tc.AddCleanup(func() { tc.TestServer.Close() })
+	return nil
+}
+
+// createPanicHandlerServerAuditInside wires the DISCOURAGED placement
+// for #491: the recovery middleware wraps the audit middleware, which
+// wraps the panicking handler. The audit middleware's internal
+// recovery records the event and re-raises; the outer recovery then
+// catches the re-raise. The event IS still recorded, but status
+// reporting is fragile and depends on the outer recovery's behaviour.
+// Documented as discouraged in docs/http-middleware.md §Placement.
+func createPanicHandlerServerAuditInside(tc *AuditTestContext) error {
+	builder := func(_ *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "api_request", audit.Fields{
+			"outcome":     "failure",
+			"method":      transport.Method,
+			"path":        transport.Path,
+			"status_code": transport.StatusCode,
+		}, false
+	}
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("intentional handler panic — #491 audit-inside scenario")
+	})
+	// Recovery outermost, audit inside — discouraged form.
+	chain := panicRecoveryMiddleware(audit.Middleware(tc.Auditor, builder)(handler))
+	tc.TestServer = httptest.NewServer(chain)
 	tc.AddCleanup(func() { tc.TestServer.Close() })
 	return nil
 }

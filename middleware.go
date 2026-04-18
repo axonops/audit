@@ -149,6 +149,54 @@ func HintsFromContext(ctx context.Context) *Hints {
 // programming error: there is no recoverable behaviour when the
 // event-building callback is absent. Pass a nil *[Auditor] instead
 // to disable auditing without removing the middleware.
+//
+// # Placement
+//
+// Middleware SHOULD be placed OUTSIDE any panic-recovery middleware
+// in the chain — i.e. the audit middleware wraps the recovery
+// middleware, not the other way round. The rule matters because
+// Middleware always catches panics internally (to record an audit
+// event before the request goroutine unwinds) and then re-raises so
+// that a downstream recovery middleware can render the final
+// response.
+//
+// Correct (audit outermost, recovery inside):
+//
+//	handler := audit.Middleware(auditor, builder)(     // OUTER
+//	    recoveryMiddleware(                            // INNER — catches panic first
+//	        yourHandler,
+//	    ),
+//	)
+//
+// Flow on a panic: yourHandler panics, the inner recovery middleware
+// catches it and writes its chosen response (typically 500), the
+// handler returns normally. Middleware sees the already-recorded
+// status code on the response writer and records the audit event.
+// No re-raise is emitted because invokeHandler observed a clean
+// return. The status code in the audit event matches the status the
+// recovery middleware actually wrote.
+//
+// Wrong (recovery outermost — fragile, not recommended):
+//
+//	handler := recoveryMiddleware(                     // OUTER — catches re-raise
+//	    audit.Middleware(auditor, builder)(            // INNER — records event, re-raises
+//	        yourHandler,
+//	    ),
+//	)
+//
+// Flow on a panic: yourHandler panics, Middleware's internal
+// recover() catches it, sets the response-writer status to 500,
+// records the audit event, and re-raises. The outer recovery
+// middleware then catches the re-raised panic and writes its own
+// response. The audit event IS emitted, but with two downsides: the
+// status code in the event is always 500 (set internally by
+// Middleware before the re-raise), independent of what the outer
+// recovery actually renders; and some recovery frameworks mishandle
+// a second recover pass for unknown panic values, producing a
+// crashed request goroutine with inconsistent logging.
+//
+// See docs/http-middleware.md for the detailed rationale and
+// framework-specific wiring examples (#491).
 func Middleware(auditor *Auditor, builder EventBuilder) func(http.Handler) http.Handler {
 	if auditor == nil {
 		return func(next http.Handler) http.Handler { return next }

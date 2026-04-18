@@ -151,6 +151,38 @@ Feature: HTTP Middleware
     And I close the auditor
     Then the file should contain events
 
+  # --- #491 — placement relative to panic-recovery middleware ---
+
+  Scenario: Middleware placed outside panic recovery records event then re-panics
+    # CORRECT placement: audit middleware wraps a downstream recovery
+    # middleware, which in turn wraps the handler. The handler panics;
+    # the recovery middleware catches and renders 500; the audit
+    # middleware observes the 500 and records the audit event. This is
+    # the documented pattern — see docs/http-middleware.md §Placement.
+    Given an HTTP test server with audit outside recovery middleware and panicking handler
+    When I send a GET request to "/api/panic" expecting panic
+    And I close the auditor
+    Then the response status should be 500
+    And the file event should have field "status_code" with value "500"
+    And the file event should have field "path" with value "/api/panic"
+
+  Scenario: Middleware placed inside panic recovery — known-wrong pattern
+    # DISCOURAGED placement — recorded here to document the observable
+    # outcome. The outer recovery middleware runs LAST, so the panic
+    # travels out from the handler through audit (which re-raises
+    # after recording) and into the outer recovery. Some recovery
+    # middlewares double-recover safely; others swallow the re-raise
+    # with inconsistent status reporting. The audit event IS still
+    # recorded via the audit middleware's own internal recovery — but
+    # this placement couples audit's error reporting to whichever
+    # recovery middleware sits outside it. See
+    # docs/http-middleware.md §Placement for why this is fragile.
+    Given an HTTP test server with audit inside recovery middleware and panicking handler
+    When I send a GET request to "/api/panic" expecting panic
+    And I close the auditor
+    Then the file should contain events
+    And the file event should have field "path" with value "/api/panic"
+
   Scenario: Builder panic is recovered and logged
     Given an HTTP test server with panicking builder and audit middleware
     When I send a GET request to "/api/resource"

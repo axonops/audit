@@ -8,6 +8,7 @@
 - [Skipping Requests](#skipping-requests)
 - [Adding Custom Fields](#adding-custom-fields)
 - [Wiring It Up](#wiring-it-up)
+- [Placement: Audit Must Wrap Panic Recovery](#placement-audit-must-wrap-panic-recovery)
 - [Available Hint Fields](#available-hint-fields)
 
 ## 🔍 What Does This Do?
@@ -197,6 +198,130 @@ handlers. All are optional — set only what applies to your request.
 > **`Extra` is your escape hatch.** The predefined fields above cover
 > common patterns, but `Extra` lets you add any field your taxonomy
 > defines. You are not limited to the predefined set.
+
+## Placement: Audit Must Wrap Panic Recovery
+
+The audit middleware **SHOULD be placed outside any panic-recovery
+middleware** — i.e. the audit middleware is the outer wrapper and the
+recovery middleware is inside it, closer to your handlers. The rule
+matters because the audit middleware always catches panics internally
+(to record an audit event before the request goroutine unwinds) and
+then re-raises so that a downstream recovery middleware can render
+the final response.
+
+### Why
+
+The audit middleware records a handler panic either way — it has its
+own internal `recover()` and always emits the event. The difference
+between the two placements is **where the authoritative response
+status comes from** and **how many times the panic is caught**:
+
+- **Audit outside recovery (recommended):** the inner recovery
+  catches the panic, writes its chosen response (typically 500), and
+  returns normally. The audit middleware sees the written status
+  directly from the response writer and records it. One recovery,
+  one clean flow.
+- **Recovery outside audit (discouraged):** the audit middleware's
+  internal recover catches the panic, sets the response-writer
+  status to 500, records the event, and **re-raises**. The outer
+  recovery then catches the re-raised panic. The audit event IS
+  still emitted, but the status code in the event is always the
+  library-internal 500 (independent of what the outer recovery
+  renders), and some recovery frameworks mishandle a second
+  `recover()` pass on unknown panic values.
+
+### Correct: audit outermost, recovery inside
+
+```go
+handler := audit.Middleware(auditor, builder)(     // OUTER
+    recoveryMiddleware(                            // INNER — catches panic first
+        yourHandler,
+    ),
+)
+```
+
+Flow on a panic:
+
+1. `yourHandler` panics.
+2. `recoveryMiddleware` recovers, writes its chosen response, returns.
+3. `audit.Middleware` sees the response-writer status, records the
+   audit event with that status. No re-raise.
+
+### Wrong: recovery outermost
+
+```go
+handler := recoveryMiddleware(                     // OUTER — catches re-raise
+    audit.Middleware(auditor, builder)(            // INNER — records event, re-raises
+        yourHandler,
+    ),
+)
+```
+
+Flow on a panic:
+
+1. `yourHandler` panics.
+2. `audit.Middleware`'s internal recovery catches it, sets the
+   response status to 500 on the response writer, records the audit
+   event, **re-raises** the panic value.
+3. `recoveryMiddleware` catches the re-raise and writes its own
+   response — which may differ from the 500 the audit event reports.
+4. Some recovery frameworks re-panic on unknown values during a
+   second recover pass, crashing the request goroutine with
+   inconsistent logging.
+
+The event is still recorded, so auditing is not silently lost — but
+the status code in the audit event no longer matches the response
+the client sees, and double-recovery may crash depending on the
+framework. Fix the chain.
+
+### Framework integration
+
+Most Go web frameworks install recovery middleware by default. Audit
+middleware belongs **outside** those. Framework-specific wiring:
+
+```go
+// chi — middleware order is literal in the Use() sequence.
+r := chi.NewRouter()
+r.Use(audit.Middleware(auditor, builder))  // FIRST — outermost
+r.Use(middleware.Recoverer)                // SECOND — inside audit
+r.Get("/users", handler)
+
+// Gin — gin.Default() pre-installs Recovery as the FIRST middleware.
+// You cannot place audit outside a Recovery registered via Default(),
+// so start with gin.New() and add Recovery explicitly.
+g := gin.New()                              // no pre-installed Recovery
+g.Use(ginAuditAdapter(auditor, builder))    // OUTER
+g.Use(gin.Recovery())                        // INNER
+g.Run()
+
+// Echo
+e := echo.New()
+e.Use(echoAuditAdapter(auditor, builder))  // OUTER
+e.Use(middleware.Recover())                 // INNER
+
+// Fiber
+app := fiber.New()                          // Fiber does not install Recovery by default
+app.Use(fiberAuditAdapter(auditor, builder))  // OUTER
+app.Use(recover.New())                         // INNER
+```
+
+If your framework does not let you reorder the default recovery
+middleware, wrap the entire framework handler with audit at the
+`http.Server.Handler` boundary — the framework sits entirely inside
+the audit wrapper:
+
+```go
+framework := chi.NewRouter() // or gin.Default(), echo.New(), etc.
+framework.Use(middleware.Recoverer)
+framework.Get("/users", handler)
+
+srv := &http.Server{
+    Addr:    ":8080",
+    // Audit wraps the framework as a whole — recovery inside is fine.
+    Handler: audit.Middleware(auditor, builder)(framework),
+}
+srv.ListenAndServe()
+```
 
 ## Framework Fields in Middleware Events
 

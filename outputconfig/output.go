@@ -235,8 +235,9 @@ func injectStringField(m map[string]any, key, value string) {
 }
 
 // yamlTLSPolicy is the YAML shape of a TLS policy block. It is used
-// by per-provider and per-output config parsing (see
-// [provider_config.go] and each output module's register.go). Root-
+// by per-provider config parsing in provider_config.go. Each output
+// module (syslog, webhook, loki) declares its own local yamlTLSPolicy
+// type in its register.go; they are not coupled to this one. Root-
 // level tls_policy: was removed in #476.
 type yamlTLSPolicy struct {
 	AllowTLS12       bool `yaml:"allow_tls12"`

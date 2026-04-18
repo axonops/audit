@@ -7,7 +7,7 @@
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare coverage \
-       tidy tidy-check verify check-replace check-todos \
+       tidy tidy-check verify check-replace check-todos check-bdd-strict \
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
@@ -311,6 +311,29 @@ check-todos:
 		exit 1; \
 	fi
 
+# Enforce godog runners use Strict mode so undefined steps fail the
+# suite. This is the contract established by #622 — CI must never
+# silently pass a scenario whose step definition doesn't exist.
+# Every file declaring a `godog.Options{` block must contain a
+# `Strict:` field (set to true). We grep for the field presence, not
+# the literal `Strict: true` so that a commented-out Strict line still
+# trips the check (cannot be disabled by accident).
+check-bdd-strict:
+	@FAILING=""; \
+	for f in $$(grep -rln 'godog\.Options{' --include='*.go'); do \
+		if ! grep -q 'Strict:' "$$f"; then \
+			FAILING="$$FAILING $$f"; \
+		fi; \
+	done; \
+	if [ -n "$$FAILING" ]; then \
+		echo "ERROR: godog runners missing Strict: true (undefined steps would silently pass):"; \
+		for f in $$FAILING; do echo "  $$f"; done; \
+		echo ""; \
+		echo "Every godog.Options{} block must set Strict: true. See #622."; \
+		exit 1; \
+	fi
+	@echo "All godog runners use Strict mode."
+
 # --- Security ---
 
 security:
@@ -326,7 +349,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos release-check security
+check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-bdd-strict release-check security
 	@echo ""
 	@echo "All checks passed."
 

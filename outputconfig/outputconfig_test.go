@@ -1511,8 +1511,18 @@ outputs:
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "tls_policy",
-		"error must name the offending key so operators can find it")
+	// Full migration hint — matches the local precedent of
+	// default_formatter and logger renames. The hint is NOT a
+	// backwards-compat shim: the Load still fails closed, but the
+	// error text directs the operator to the new configuration site.
+	assert.Contains(t, err.Error(), "tls_policy is no longer a top-level key",
+		"error must explicitly state the removal")
+	assert.Contains(t, err.Error(), "syslog, webhook, loki",
+		"error must name the output types that accept per-output tls_policy")
+	assert.Contains(t, err.Error(), "vault, openbao",
+		"error must name the providers that accept per-provider tls_policy")
+	assert.Contains(t, err.Error(), "#476",
+		"error must cite the governing issue for context")
 }
 
 // TestLoad_PerOutputTLSPolicy_Syslog verifies that syslog's per-output

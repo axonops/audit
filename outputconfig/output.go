@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/axonops/audit"
-	"github.com/goccy/go-yaml"
 )
 
 type outputFields struct { //nolint:govet // fieldalignment: readability preferred
@@ -263,7 +262,10 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost strin
 	var rawConfig []byte
 	if f.typeConfigRaw != nil {
 		var err error
-		rawConfig, err = yaml.Marshal(f.typeConfigRaw)
+		// safeMarshal (not yaml.Marshal) because typeConfigRaw is a
+		// post-envsubst / post-secrets-resolution tree: every string
+		// leaf must survive the round-trip as a string (#487).
+		rawConfig, err = safeMarshal(f.typeConfigRaw)
 		if err != nil {
 			return nil, fmt.Errorf("output %q: marshal %q config: %w", name, f.typeName, err)
 		}

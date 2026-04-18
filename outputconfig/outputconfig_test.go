@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	goyaml "github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -2281,6 +2282,121 @@ outputs:
 
 	for _, o := range result.Outputs {
 		_ = o.Output.Close()
+	}
+}
+
+// TestOutputConfig_EnvSubstitutionPreservesStringSemantics verifies
+// that a string value populated by environment-variable substitution
+// flows to the receiving factory as the literal string the env var
+// contained — even when the value is a YAML magic literal that a
+// naive re-marshal would coerce to a different Go type (#487).
+//
+// The test captures the raw YAML bytes that outputconfig passes to
+// the webhook factory. The factory-facing YAML MUST quote every
+// magic-value string; a plain yaml.Marshal of the post-expansion map
+// emits `.inf` and `.NaN` unquoted (turning them into float64 on
+// re-parse) and is not sufficient.
+//
+// Not parallel — the test replaces the global "webhook" factory.
+func TestOutputConfig_EnvSubstitutionPreservesStringSemantics(t *testing.T) {
+	// Every class from the issue, plus the .inf / .NaN floats that the
+	// initial vulnerability-assessment pass surfaced.
+	env := map[string]string{
+		"MAGIC_ON":    "on",
+		"MAGIC_OFF":   "off",
+		"MAGIC_YES":   "yes",
+		"MAGIC_NO":    "no",
+		"MAGIC_TRUE":  "true",
+		"MAGIC_FALSE": "false",
+		"MAGIC_NULL":  "null",
+		"MAGIC_TILDE": "~",
+		"MAGIC_INF":   ".inf",
+		"MAGIC_NAN":   ".NaN",
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+
+	var captured atomic.Value
+	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
+		captured.Store(string(rawConfig))
+		// Decode into a headers-carrying struct so we can also assert
+		// at the Go-value layer that every header lands as a string.
+		type cfg struct { //nolint:govet // fieldalignment: readability preferred in test-local struct
+			URL     string            `yaml:"url"`
+			Headers map[string]string `yaml:"headers"`
+		}
+		var c cfg
+		if err := goyaml.Unmarshal(rawConfig, &c); err != nil {
+			return nil, err
+		}
+		return &testOutput{name: name}, nil
+	})
+
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+outputs:
+  hook:
+    type: webhook
+    webhook:
+      url: "https://example.com/e"
+      allow_private_ranges: true
+      headers:
+        X-Magic-On: ${MAGIC_ON}
+        X-Magic-Off: ${MAGIC_OFF}
+        X-Magic-Yes: ${MAGIC_YES}
+        X-Magic-No: ${MAGIC_NO}
+        X-Magic-True: ${MAGIC_TRUE}
+        X-Magic-False: ${MAGIC_FALSE}
+        X-Magic-Null: ${MAGIC_NULL}
+        X-Magic-Tilde: ${MAGIC_TILDE}
+        X-Magic-Inf: ${MAGIC_INF}
+        X-Magic-Nan: ${MAGIC_NAN}
+        X-Magic-Empty: "${MISSING:-}"
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(context.Background(), data, tax)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	raw, _ := captured.Load().(string)
+	require.NotEmpty(t, raw, "webhook factory must have been called with a non-empty raw config")
+
+	// Decode the captured bytes the same way a real factory would and
+	// assert each header value equals the original env-var literal.
+	type cfg struct { //nolint:govet // fieldalignment: readability preferred in test-local struct
+		URL     string            `yaml:"url"`
+		Headers map[string]string `yaml:"headers"`
+	}
+	var c cfg
+	require.NoError(t, goyaml.Unmarshal([]byte(raw), &c))
+
+	// Map from header name to expected literal.
+	wantHeaders := map[string]string{
+		"X-Magic-On":    env["MAGIC_ON"],
+		"X-Magic-Off":   env["MAGIC_OFF"],
+		"X-Magic-Yes":   env["MAGIC_YES"],
+		"X-Magic-No":    env["MAGIC_NO"],
+		"X-Magic-True":  env["MAGIC_TRUE"],
+		"X-Magic-False": env["MAGIC_FALSE"],
+		"X-Magic-Null":  env["MAGIC_NULL"],
+		"X-Magic-Tilde": env["MAGIC_TILDE"],
+		"X-Magic-Inf":   env["MAGIC_INF"],
+		"X-Magic-Nan":   env["MAGIC_NAN"],
+		"X-Magic-Empty": "",
+	}
+	for hdr, want := range wantHeaders {
+		got, ok := c.Headers[hdr]
+		require.Truef(t, ok, "header %q missing from factory-facing config", hdr)
+		assert.Equalf(t, want, got,
+			"header %q: factory saw %q, want %q — envsubst value re-interpreted by YAML round-trip (#487)",
+			hdr, got, want)
 	}
 }
 

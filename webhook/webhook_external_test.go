@@ -15,6 +15,7 @@
 package webhook_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -1846,4 +1847,72 @@ func TestWebhook_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "TLS",
 		"WithDiagnosticLogger(nil) should fall back to slog.Default")
+}
+
+// TestClient_RedirectBodyDrainCapped_Webhook verifies that a non-redirect
+// 3xx response (HTTP 300 Multiple Choices) with a 10 MiB body has its
+// client-side body drain capped at 4 KiB. Our CheckRedirect blocks
+// 301/302/303/307/308 inside the stdlib (which already slurps ≤ 2 KiB),
+// but any other 3xx status reaches our doPost defer-drain unmodified —
+// without the cap the client would read up to maxResponseDrain (1 MiB)
+// per retry from an attacker-controlled endpoint. See #484.
+func TestClient_RedirectBodyDrainCapped_Webhook(t *testing.T) {
+	const (
+		bodySize = 10 << 20 // 10 MiB
+		// Kernel TCP send buffers on Linux can grow to ~2 MiB via autotuning,
+		// plus whatever the server flushed before the client closed the
+		// connection. 4 MiB is comfortably below the 10 MiB body and proves
+		// the cap prevented a full drain.
+		maxExpected = 4 << 20
+	)
+
+	var bytesWritten atomic.Int64
+	chunk := bytes.Repeat([]byte("X"), 4096)
+
+	handlerDone := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		defer close(handlerDone)
+		// Chunked transfer (no Content-Length) avoids "superfluous
+		// WriteHeader" log noise when the client closes after the cap.
+		w.WriteHeader(http.StatusMultipleChoices) // 300 — no redirect-follow
+		flusher, _ := w.(http.Flusher)
+		remaining := bodySize
+		for remaining > 0 {
+			toWrite := len(chunk)
+			if toWrite > remaining {
+				toWrite = remaining
+			}
+			n, err := w.Write(chunk[:toWrite])
+			bytesWritten.Add(int64(n))
+			if err != nil {
+				return // client closed
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			remaining -= n
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	out := newTestWebhookOutput(t, srv.URL, func(cfg *webhook.Config) {
+		cfg.BatchSize = 1
+		cfg.MaxRetries = 1 // 3xx is treated as client error (non-retryable)
+	})
+
+	require.NoError(t, out.Write([]byte(`{"event":"drain_cap"}`+"\n")))
+	require.NoError(t, out.Close())
+
+	// Wait for the server handler to return (so bytesWritten has settled)
+	// — it exits quickly once the client closes the connection after
+	// reading its capped 4 KiB.
+	select {
+	case <-handlerDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server handler did not terminate within 10s")
+	}
+
+	written := bytesWritten.Load()
+	assert.Less(t, written, int64(maxExpected),
+		"server wrote %d bytes; client should have capped drain at 4 KiB", written)
 }

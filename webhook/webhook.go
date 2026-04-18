@@ -78,6 +78,15 @@ var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 // addresses. Redirects are rejected entirely. Keep-alives are disabled
 // to force fresh DNS resolution per request, preventing DNS rebinding.
 //
+// # Redirects Not Supported
+//
+// Redirects (301/302/303/307/308 with a Location header) are always
+// rejected by [net/http.Client.CheckRedirect] — following a redirect
+// would reopen the SSRF surface. For any other 3xx response reaching
+// the response-drain path, the body is drained at most 4 KiB so an
+// attacker-controlled endpoint cannot force up to maxResponseDrain
+// (1 MiB) of traffic per retry. See issue #484.
+//
 // # At-Least-Once Semantics
 //
 // Retries may cause duplicate delivery if the server processes a batch

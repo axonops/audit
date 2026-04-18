@@ -110,6 +110,31 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 	w.recordDrop(len(batch))
 }
 
+// drainAndClose consumes up to a cap worth of the response body and
+// closes it. The cap is tight on 3xx responses because our
+// CheckRedirect hook rejects redirects — the body is only useful for
+// diagnostic logging and an attacker-controlled endpoint returning a
+// 3xx with a large body would otherwise consume maxResponseDrain per
+// retry (#484). 2xx/4xx/5xx responses keep the larger 1 MiB budget
+// because their bodies may carry useful diagnostic information.
+// Tolerates a nil resp as defence-in-depth against future refactors
+// that might register the defer before the client.Do error check.
+func drainAndClose(resp *http.Response) {
+	const (
+		maxResponseDrain = 1 << 20 // 1 MiB on 2xx/4xx/5xx
+		maxRedirectDrain = 4 << 10 // 4 KiB on 3xx
+	)
+	if resp == nil {
+		return
+	}
+	drainCap := int64(maxResponseDrain)
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		drainCap = maxRedirectDrain
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainCap))
+	_ = resp.Body.Close()
+}
+
 // doPost sends a single HTTP POST. Returns (retryable, error).
 // nil error means success (2xx). Redirect rejections and 4xx are
 // non-retryable. 5xx, 429, and network errors are retryable.
@@ -137,12 +162,7 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 		// Network errors are retryable.
 		return true, fmt.Errorf("audit: webhook request failed: %w", err)
 	}
-	defer func() {
-		// Always consume response body to prevent connection leaks.
-		const maxResponseDrain = 1 << 20 // 1 MiB
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseDrain))
-		_ = resp.Body.Close()
-	}()
+	defer drainAndClose(resp)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return false, nil // success
@@ -152,7 +172,8 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 		return true, fmt.Errorf("audit: webhook server error %d", resp.StatusCode)
 	}
 
-	// 4xx (not 429) — client error, not retryable.
+	// 4xx (not 429), and any 3xx that bypassed redirect-follow
+	// (no Location header, 300, 304, ...) — client error, not retryable.
 	return false, fmt.Errorf("audit: webhook client error %d", resp.StatusCode)
 }
 

@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,11 +31,18 @@ import (
 
 // localLokiReceiver is an httptest.Server that simulates Loki for
 // retry, SSRF, and metrics BDD scenarios.
-type localLokiReceiver struct {
+type localLokiReceiver struct { //nolint:govet // fieldalignment: readability preferred
 	server    *httptest.Server
 	status    atomic.Int32
 	pushCount atomic.Int32
 	redirect  bool
+	// large3xxBodySize, when >0, makes the receiver reply with HTTP 300
+	// and a body of that many bytes (streamed in 4 KiB chunks). Used to
+	// exercise the client-side 3xx drain cap (#484).
+	large3xxBodySize int64
+	bytesSent        atomic.Int64
+	handlerDone      chan struct{}
+	doneOnce         sync.Once
 }
 
 func newLocalLokiReceiver(status int) *localLokiReceiver {
@@ -45,6 +53,10 @@ func newLocalLokiReceiver(status int) *localLokiReceiver {
 			http.Redirect(w, req, "http://evil.example.com/", http.StatusFound)
 			return
 		}
+		if r.large3xxBodySize > 0 {
+			r.handleLarge3xx(w, req)
+			return
+		}
 		// Drain body to prevent connection leak.
 		_, _ = io.Copy(io.Discard, req.Body)
 		_ = req.Body.Close()
@@ -52,6 +64,47 @@ func newLocalLokiReceiver(status int) *localLokiReceiver {
 		w.WriteHeader(int(r.status.Load()))
 	}))
 	return r
+}
+
+// handleLarge3xx writes an HTTP 300 Multiple Choices response with a
+// body of r.large3xxBodySize bytes, flushing every 4 KiB. Bytes
+// successfully written are tracked so the BDD scenario can assert the
+// client-side drain cap took effect. Uses chunked transfer (no
+// Content-Length) so a client that closes after reading its cap does
+// not produce "superfluous WriteHeader" log noise. sync.Once
+// guarantees handlerDone is closed exactly once even if a future
+// scenario permits the client to retry the request.
+func (r *localLokiReceiver) handleLarge3xx(w http.ResponseWriter, req *http.Request) {
+	defer func() {
+		if r.handlerDone != nil {
+			r.doneOnce.Do(func() { close(r.handlerDone) })
+		}
+	}()
+	_, _ = io.Copy(io.Discard, req.Body)
+	_ = req.Body.Close()
+	r.pushCount.Add(1)
+	chunk := make([]byte, 4096)
+	for i := range chunk {
+		chunk[i] = 'X'
+	}
+	w.WriteHeader(http.StatusMultipleChoices) // 300 — no stdlib redirect-follow
+	flusher, _ := w.(http.Flusher)
+	remaining := r.large3xxBodySize
+	for remaining > 0 {
+		toWrite := int64(len(chunk))
+		if toWrite > remaining {
+			toWrite = remaining
+		}
+		n, err := w.Write(chunk[:toWrite])
+		r.bytesSent.Add(int64(n))
+		if err != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		remaining -= int64(n)
+	}
 }
 
 func newRedirectLokiReceiver() *localLokiReceiver {
@@ -92,6 +145,45 @@ func registerLokiReceiverSetupSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		r := newRedirectLokiReceiver()
 		tc.LocalReceiver = r
 		tc.AddCleanup(func() { r.server.Close() })
+		return nil
+	})
+
+	ctx.Step(`^a local Loki receiver returning 3xx with a (\d+) MiB body$`, func(bodyMiB int) error {
+		r := newLocalLokiReceiver(http.StatusMultipleChoices)
+		r.large3xxBodySize = int64(bodyMiB) << 20
+		r.handlerDone = make(chan struct{})
+		tc.LocalReceiver = r
+		tc.AddCleanup(func() { r.server.Close() })
+		return nil
+	})
+
+	ctx.Step(`^an auditor with loki output to the 3xx Loki receiver$`, func() error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
+			BatchSize:  1,
+			MaxRetries: 1,
+			Compress:   true,
+		})
+	})
+
+	ctx.Step(`^the loki receiver should have transmitted less than (\d+) MiB of body$`, func(limitMiB int) error {
+		r, ok := tc.LocalReceiver.(*localLokiReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local Loki receiver configured")
+		}
+		select {
+		case <-r.handlerDone:
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("handler did not terminate within 10s")
+		}
+		sent := r.bytesSent.Load()
+		limit := int64(limitMiB) << 20
+		if sent >= limit {
+			return fmt.Errorf("server transmitted %d bytes; expected < %d (cap ineffective)", sent, limit)
+		}
 		return nil
 	})
 

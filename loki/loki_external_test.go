@@ -15,12 +15,17 @@
 package loki_test
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
@@ -71,4 +76,73 @@ func TestLoki_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 	// exited by the time we assert no leaks.
 	require.NoError(t, out.Close())
 	goleak.VerifyNone(t)
+}
+
+// TestClient_RedirectBodyDrainCapped_Loki verifies that a non-redirect
+// 3xx response (HTTP 300 Multiple Choices) with a 10 MiB body has its
+// client-side body drain capped at 4 KiB. Our CheckRedirect blocks
+// 301/302/303/307/308 inside the stdlib (which already slurps ≤ 2 KiB),
+// but any other 3xx status reaches our doPost defer-drain unmodified —
+// without the cap the client would read up to maxResponseBody (64 KiB)
+// per retry from an attacker-controlled endpoint. See #484.
+func TestClient_RedirectBodyDrainCapped_Loki(t *testing.T) {
+	const (
+		bodySize    = 10 << 20 // 10 MiB
+		maxExpected = 4 << 20  // 4 MiB — generous slack for TCP buffers
+	)
+
+	var bytesWritten atomic.Int64
+	chunk := bytes.Repeat([]byte("X"), 4096)
+
+	handlerDone := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		defer close(handlerDone)
+		// Chunked transfer (no Content-Length) avoids "superfluous
+		// WriteHeader" log noise when the client closes after the cap.
+		w.WriteHeader(http.StatusMultipleChoices) // 300 — no redirect-follow
+		flusher, _ := w.(http.Flusher)
+		remaining := bodySize
+		for remaining > 0 {
+			toWrite := len(chunk)
+			if toWrite > remaining {
+				toWrite = remaining
+			}
+			n, err := w.Write(chunk[:toWrite])
+			bytesWritten.Add(int64(n))
+			if err != nil {
+				return // client closed
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			remaining -= n
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &loki.Config{
+		URL:                srv.URL + "/loki/api/v1/push",
+		AllowInsecureHTTP:  true,
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      100 * time.Millisecond,
+		Timeout:            5 * time.Second,
+		MaxRetries:         1, // 3xx is treated as client error (non-retryable)
+		BufferSize:         100,
+	}
+	out, err := loki.New(cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"drain_cap"}`)))
+	require.NoError(t, out.Close())
+
+	select {
+	case <-handlerDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("server handler did not terminate within 10s")
+	}
+
+	written := bytesWritten.Load()
+	assert.Less(t, written, int64(maxExpected),
+		"server wrote %d bytes; client should have capped drain at 4 KiB", written)
 }

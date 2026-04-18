@@ -146,6 +146,17 @@ Feature: Webhook Output
     And I close the auditor
     Then the webhook metrics should have recorded at least 1 drop within 5 seconds
 
+  Scenario: Webhook caps drain on 3xx response with large body
+    # Issue #484 — an attacker-controlled endpoint returning 3xx with a
+    # large body could otherwise force the client to drain up to 1 MiB
+    # per retry. A non-redirect 3xx (300 Multiple Choices) reaches our
+    # drain path unmodified; the cap limits the client read to 4 KiB.
+    Given a local HTTP webhook receiver returning 3xx with a 10 MiB body
+    And an auditor with webhook output to the 3xx receiver
+    When I audit a uniquely marked webhook "user_create" event
+    And I close the auditor
+    Then the webhook receiver should have transmitted less than 4 MiB of body
+
   Scenario: Embedded credentials in URL rejected with exact error
     When I try to create a webhook output to "https://user:pass@example.com/events"
     Then the webhook construction should fail with exact error:

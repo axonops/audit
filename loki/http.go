@@ -127,6 +127,31 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 	o.recordDrop(batchSize)
 }
 
+// drainAndClose consumes up to a cap worth of the response body and
+// closes it. The cap is tight on 3xx responses because CheckRedirect
+// rejects redirects — the body is only useful for diagnostic logging
+// and an attacker-controlled endpoint returning a 3xx with a large
+// body would otherwise consume maxResponseBody per retry (#484).
+// 2xx/4xx/5xx responses keep the larger 64 KiB budget because their
+// bodies may carry useful diagnostic information. Tolerates a nil
+// resp as defence-in-depth against future refactors that might
+// register the defer before the client.Do error check.
+func drainAndClose(resp *http.Response) {
+	const (
+		maxResponseDrain = maxResponseBody // 64 KiB on 2xx/4xx/5xx
+		maxRedirectDrain = 4 << 10         // 4 KiB on 3xx
+	)
+	if resp == nil {
+		return
+	}
+	drainCap := int64(maxResponseDrain)
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		drainCap = maxRedirectDrain
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainCap))
+	_ = resp.Body.Close()
+}
+
 // doPost sends a single HTTP POST to the Loki push API. Returns
 // (retryable, error). A nil error means success (2xx). Redirect
 // rejections and 4xx (except 429) are non-retryable. 5xx, 429, and
@@ -149,10 +174,7 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retr
 		}
 		return true, 0, fmt.Errorf("audit: loki request failed: %w", err)
 	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBody))
-		_ = resp.Body.Close()
-	}()
+	defer drainAndClose(resp)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return false, resp.StatusCode, nil // success
@@ -167,7 +189,8 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retr
 		return true, resp.StatusCode, fmt.Errorf("audit: loki server error %d", resp.StatusCode)
 	}
 
-	// 4xx (not 429) — client error, not retryable.
+	// 4xx (not 429), and any 3xx that bypassed redirect-follow
+	// (no Location header, 300, 304, ...) — client error, not retryable.
 	return false, resp.StatusCode, fmt.Errorf("audit: loki client error %d", resp.StatusCode)
 }
 

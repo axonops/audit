@@ -19,3 +19,7 @@ var WebhookBackoff = webhookBackoff
 
 // BuildNDJSON is exported for testing only.
 var BuildNDJSON = buildNDJSON
+
+// SanitiseClientError is exported for testing only — exercises the
+// error-URL redaction path used in the retry loop's log sites (#475).
+var SanitiseClientError = sanitiseClientError

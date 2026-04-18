@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -406,10 +407,10 @@ func (s *webhookTestServer) requestCount() int {
 
 // newTestWebhookOutput creates a webhook output for testing with
 // AllowInsecureHTTP and AllowPrivateRanges (httptest uses http://127.0.0.1).
-func newTestWebhookOutput(t *testing.T, url string, opts ...func(*webhook.Config)) *webhook.Output {
+func newTestWebhookOutput(t *testing.T, rawURL string, opts ...func(*webhook.Config)) *webhook.Output {
 	t.Helper()
 	cfg := &webhook.Config{
-		URL:                url,
+		URL:                rawURL,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
 		BatchSize:          10,
@@ -1493,7 +1494,7 @@ func TestNewWebhookOutput_TLSCA_IsDirectory(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Config.String() credential redaction tests (#325)
+// Config.String() credential redaction tests (#325, #475)
 // ---------------------------------------------------------------------------
 
 func TestWebhookConfig_String_RedactsHeaders(t *testing.T) {
@@ -1505,8 +1506,15 @@ func TestWebhookConfig_String_RedactsHeaders(t *testing.T) {
 	}
 	s := cfg.String()
 	assert.Contains(t, s, "WebhookConfig{")
-	assert.Contains(t, s, "https://example.com/hook")
-	assert.Contains(t, s, "headers=1")
+	// URL is sanitised to scheme+host — path is dropped to keep
+	// common token placements (Slack /services/.../<TOKEN>) out of
+	// log output.
+	assert.Contains(t, s, "https://example.com")
+	assert.NotContains(t, s, "/hook", "path must be stripped from sanitised URL")
+	// Header names are preserved so operators can see what's configured;
+	// sensitive values are replaced with [REDACTED].
+	assert.Contains(t, s, "Authorization")
+	assert.Contains(t, s, "[REDACTED]")
 	assert.NotContains(t, s, "super-secret-token")
 	assert.NotContains(t, s, "Bearer")
 }
@@ -1514,7 +1522,8 @@ func TestWebhookConfig_String_RedactsHeaders(t *testing.T) {
 func TestWebhookConfig_String_NoHeaders(t *testing.T) {
 	cfg := webhook.Config{URL: "https://example.com/hook"}
 	s := cfg.String()
-	assert.Contains(t, s, "headers=0")
+	assert.Contains(t, s, "headers=map[]",
+		"empty headers should appear as map[] (deterministic sorted form)")
 }
 
 func TestWebhookConfig_GoString_RedactsHeaders(t *testing.T) {
@@ -1529,11 +1538,209 @@ func TestWebhookConfig_GoString_RedactsHeaders(t *testing.T) {
 
 func TestWebhookConfig_Format_RedactsHeaders(t *testing.T) {
 	cfg := webhook.Config{
-		URL:     "https://example.com/hook",
+		URL:     "https://example.com/hook?api_key=leak-me",
 		Headers: map[string]string{"Authorization": "Splunk my-hec-token"},
 	}
 	out := fmt.Sprintf("%+v", cfg)
 	assert.NotContains(t, out, "my-hec-token", "Format must not leak header values via %%+v")
+	assert.NotContains(t, out, "leak-me", "Format must not leak URL query values via %%+v")
+	assert.NotContains(t, out, "api_key", "Format must not leak URL query keys via %%+v")
+}
+
+// TestWebhookConfig_String_RedactsURLQueryAndFragment verifies that
+// common token placements in URL path, query, and fragment are dropped
+// by Config.String(). Closes #475 AC #1.
+func TestWebhookConfig_String_RedactsURLQueryAndFragment(t *testing.T) {
+	tests := []struct {
+		name       string
+		url        string
+		mustAppear string   // the sanitised URL that should appear
+		mustNot    []string // substrings that must NOT appear
+	}{
+		{
+			name:       "Slack path token",
+			url:        "https://hooks.slack.com/services/T0A1B2/B0C1D2/XYZ-slack-secret",
+			mustNot:    []string{"XYZ-slack-secret", "T0A1B2", "B0C1D2", "/services"},
+			mustAppear: "https://hooks.slack.com",
+		},
+		{
+			name:       "Datadog query API key",
+			url:        "https://http-intake.logs.datadoghq.com/v1/input?dd-api-key=DD_APIKEY_123",
+			mustNot:    []string{"DD_APIKEY_123", "dd-api-key", "/v1/input"},
+			mustAppear: "https://http-intake.logs.datadoghq.com",
+		},
+		{
+			name:       "Splunk HEC path token",
+			url:        "https://splunk.example.com/services/collector/raw/TOKEN-SECRET",
+			mustNot:    []string{"TOKEN-SECRET", "collector", "/services"},
+			mustAppear: "https://splunk.example.com",
+		},
+		{
+			name:       "Fragment with session",
+			url:        "https://x.example.com/hook#session=sec-frag-leak",
+			mustNot:    []string{"sec-frag-leak", "session=", "#"},
+			mustAppear: "https://x.example.com",
+		},
+		{
+			name:       "Invalid URL falls back to placeholder",
+			url:        "::://not-a-url",
+			mustNot:    []string{"not-a-url"},
+			mustAppear: "<invalid-url>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := webhook.Config{URL: tt.url}
+			s := cfg.String()
+			for _, forbidden := range tt.mustNot {
+				assert.NotContains(t, s, forbidden,
+					"String() leaked %q from URL %q", forbidden, tt.url)
+			}
+			assert.Contains(t, s, tt.mustAppear,
+				"String() must include the sanitised form")
+		})
+	}
+}
+
+// TestWebhookConfig_String_RedactsCredentialHeaders verifies that
+// header values are [REDACTED] when the header NAME matches the
+// credential-pattern set (case-insensitive substring: auth, key,
+// secret, token, cookie, password, credential, signature, hmac,
+// session). Closes #475 AC #3 and AC #4.
+func TestWebhookConfig_String_RedactsCredentialHeaders(t *testing.T) {
+	cfg := webhook.Config{
+		URL: "https://example.com",
+		Headers: map[string]string{
+			"Authorization":   "Bearer ABC-AUTH-LEAK",
+			"X-API-Key":       "XYZ-KEY-LEAK",
+			"X-Auth-Token":    "ATK-TRIPLE-LEAK",
+			"Secret-Value":    "SEC-LEAK",
+			"AUTHORIZATION":   "UPPERCASE-LEAK",
+			"authorization":   "LOWERCASE-LEAK",
+			"Cookie":          "SESSION=COOKIE-LEAK",
+			"X-Hub-Signature": "sha256=SIG-LEAK",
+			"X-Hmac":          "HMAC-LEAK",
+			"X-Password":      "PASS-LEAK",
+			"X-Credential":    "CRED-LEAK",
+			"X-Session-Id":    "SESS-LEAK",
+		},
+	}
+	s := cfg.String()
+	for _, leak := range []string{
+		"ABC-AUTH-LEAK",
+		"XYZ-KEY-LEAK",
+		"ATK-TRIPLE-LEAK",
+		"SEC-LEAK",
+		"UPPERCASE-LEAK",
+		"LOWERCASE-LEAK",
+		"COOKIE-LEAK",
+		"SIG-LEAK",
+		"HMAC-LEAK",
+		"PASS-LEAK",
+		"CRED-LEAK",
+		"SESS-LEAK",
+	} {
+		assert.NotContains(t, s, leak,
+			"sensitive header value leaked in String(): %q", leak)
+	}
+	// Every matching header should produce exactly one [REDACTED] marker,
+	// and the header name is preserved.
+	assert.Contains(t, s, "[REDACTED]")
+	assert.Contains(t, s, "Authorization")
+	assert.Contains(t, s, "Cookie")
+	assert.Contains(t, s, "X-Hub-Signature")
+}
+
+// TestSanitiseClientError_RedactsURLInUrlError verifies that an
+// *url.Error from http.Client.Do has its URL stripped to scheme+host
+// before being logged. Closes #475 H1.
+func TestSanitiseClientError_RedactsURLInUrlError(t *testing.T) {
+	tests := []struct {
+		name       string
+		inputURL   string
+		wantKept   string
+		wantLeaked []string
+	}{
+		{
+			name:       "Slack path token",
+			inputURL:   "https://hooks.slack.com/services/T0A1B2/B0C1D2/XYZ-slack-secret",
+			wantKept:   "https://hooks.slack.com",
+			wantLeaked: []string{"XYZ-slack-secret", "T0A1B2", "/services"},
+		},
+		{
+			name:       "Datadog query key",
+			inputURL:   "https://http-intake.logs.datadoghq.com/v1/input?dd-api-key=DD_LEAK",
+			wantKept:   "https://http-intake.logs.datadoghq.com",
+			wantLeaked: []string{"DD_LEAK", "dd-api-key", "/v1/input"},
+		},
+		{
+			name:       "Splunk HEC path token",
+			inputURL:   "https://splunk.example.com/services/collector/raw/HEC-LEAK",
+			wantKept:   "https://splunk.example.com",
+			wantLeaked: []string{"HEC-LEAK", "collector"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inner := fmt.Errorf("connection refused")
+			in := &url.Error{Op: "Post", URL: tt.inputURL, Err: inner}
+			out := webhook.SanitiseClientError(in)
+
+			msg := out.Error()
+			assert.Contains(t, msg, "Post", "Op must survive")
+			assert.Contains(t, msg, "connection refused", "inner err must survive")
+			assert.Contains(t, msg, tt.wantKept)
+			for _, leak := range tt.wantLeaked {
+				assert.NotContains(t, msg, leak,
+					"sanitiseClientError leaked %q", leak)
+			}
+		})
+	}
+}
+
+// TestSanitiseClientError_PassesThroughNonUrlErrors verifies that
+// plain errors not wrapping *url.Error are returned unchanged, and
+// wrapped *url.Error is still reached via errors.As and redacted.
+func TestSanitiseClientError_PassesThroughNonUrlErrors(t *testing.T) {
+	plain := fmt.Errorf("plain error, no URL")
+	got := webhook.SanitiseClientError(plain)
+	assert.Equal(t, plain, got, "non-url errors must pass through unchanged")
+
+	wrapped := fmt.Errorf("outer: %w", &url.Error{
+		Op:  "Post",
+		URL: "https://hooks.slack.com/services/T/B/LEAKED",
+		Err: fmt.Errorf("timeout"),
+	})
+	gotWrapped := webhook.SanitiseClientError(wrapped)
+	assert.NotContains(t, gotWrapped.Error(), "LEAKED",
+		"wrapped url.Error must still be sanitised")
+}
+
+// TestWebhookConfig_String_PreservesNonSensitiveHeaders verifies that
+// non-credential header values appear verbatim in String() so operators
+// can see configured trace/content headers. Closes #475 AC Tests.
+func TestWebhookConfig_String_PreservesNonSensitiveHeaders(t *testing.T) {
+	cfg := webhook.Config{
+		URL: "https://example.com",
+		Headers: map[string]string{
+			"X-Request-Id":    "trace-42",
+			"Content-Type":    "application/json",
+			"User-Agent":      "audit/v1",
+			"Accept-Encoding": "gzip",
+		},
+	}
+	s := cfg.String()
+	for _, wanted := range []string{
+		"trace-42",
+		"application/json",
+		"audit/v1",
+		"gzip",
+	} {
+		assert.Contains(t, s, wanted,
+			"non-sensitive header value unexpectedly dropped from String(): %q", wanted)
+	}
+	assert.NotContains(t, s, "[REDACTED]",
+		"no [REDACTED] marker expected when all header names are non-sensitive")
 }
 
 // TestWebhook_ConstructionWarningsRoutedToInjectedLogger verifies that

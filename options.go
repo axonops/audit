@@ -433,7 +433,12 @@ func checkDestinationDup(o Output, name string, seen map[string]string) error {
 		return nil
 	}
 	if existing, dup := seen[key]; dup {
-		return fmt.Errorf("%w: outputs %q and %q share %q", ErrDuplicateDestination, existing, name, key)
+		// Deliberately omit the destination key from the error message:
+		// for webhook/loki outputs the key contains the URL path, which
+		// may carry a secret (Slack /services/<TOKEN>, Splunk HEC path).
+		// The two output names are sufficient to identify the conflict
+		// (#475).
+		return fmt.Errorf("%w: outputs %q and %q share the same destination", ErrDuplicateDestination, existing, name)
 	}
 	seen[key] = name
 	return nil

@@ -773,3 +773,52 @@ func generateTestCertAndKey(t *testing.T, certPath, keyPath string) {
 	defer func() { _ = kf.Close() }()
 	require.NoError(t, pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 }
+
+// TestConfig_String_RedactsCredentials verifies vault.Config String,
+// GoString, and Format never leak the Token, and strip the Address to
+// scheme+host. Closes #475 vault coverage.
+func TestConfig_String_RedactsCredentials(t *testing.T) {
+	t.Parallel()
+	cfg := vault.Config{
+		Address:   "https://vault.example.com/v1/secret/data/path?query=LEAK-QUERY",
+		Token:     "LEAK-TOKEN-VALUE",
+		Namespace: "my-ns",
+	}
+	// Each formatter exercises a different fmt code path:
+	// %v hits String via Format, %+v same, %#v via GoString.
+	outs := []string{
+		cfg.String(),
+		cfg.GoString(),
+	}
+	// Use format strings via a local rather than hardcoded verbs so
+	// gocritic doesn't flag redundantSprint when the literal equals cfg.String().
+	for _, verb := range []string{"%v", "%+v", "%#v"} {
+		outs = append(outs, fmt.Sprintf(verb, cfg))
+	}
+	for _, out := range outs {
+		assert.NotContains(t, out, "LEAK-TOKEN-VALUE",
+			"Token must never appear in any format verb")
+		assert.NotContains(t, out, "LEAK-QUERY",
+			"URL query must be stripped")
+		assert.NotContains(t, out, "/v1/secret",
+			"URL path must be stripped")
+		assert.NotContains(t, out, "my-ns",
+			"Namespace value must not leak (only its presence)")
+		assert.Contains(t, out, "https://vault.example.com",
+			"scheme+host must appear")
+		assert.Contains(t, out, "[REDACTED]",
+			"token presence must be indicated")
+	}
+}
+
+// TestConfig_String_TokenUnsetShowsUnsetMarker verifies that an empty
+// Token prints "unset" rather than "[REDACTED]".
+func TestConfig_String_TokenUnsetShowsUnsetMarker(t *testing.T) {
+	t.Parallel()
+	cfg := vault.Config{
+		Address: "https://vault.example.com",
+	}
+	out := cfg.String()
+	assert.Contains(t, out, "token=unset")
+	assert.NotContains(t, out, "[REDACTED]")
+}

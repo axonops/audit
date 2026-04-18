@@ -23,9 +23,30 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
+
+// sanitiseClientError returns a copy of err with any embedded
+// [*url.Error] stripped of its URL — the URL is replaced with the
+// sanitised scheme+host form to prevent path/query/fragment tokens
+// (tenant IDs, bearer tokens) from leaking into diagnostic logs.
+// Non-*url.Error values pass through unchanged.
+//
+// Mirror of webhook.sanitiseClientError — intentional duplication
+// per #542 to keep sub-modules self-contained.
+func sanitiseClientError(err error) error {
+	var uerr *url.Error
+	if !errors.As(err, &uerr) {
+		return err
+	}
+	return &url.Error{
+		Op:  uerr.Op,
+		URL: sanitizeURLForLog(uerr.URL),
+		Err: uerr.Err,
+	}
+}
 
 // Backoff constants for retry logic. Hardcoded to match the webhook
 // output pattern — MaxRetries is the user's control surface.
@@ -85,7 +106,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 
 		if !retryable {
 			logger.Error("audit: loki non-retryable error",
-				"error", err,
+				"error", sanitiseClientError(err),
 				"batch_size", batchSize)
 			o.recordError()
 			o.recordDrop(batchSize)
@@ -96,7 +117,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		logger.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
-			"error", err)
+			"error", sanitiseClientError(err))
 	}
 
 	// All retries exhausted.

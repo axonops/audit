@@ -23,8 +23,33 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"time"
 )
+
+// sanitiseClientError returns a copy of err with any embedded
+// [*url.Error] stripped of its URL — the URL is replaced with the
+// sanitised scheme+host form to prevent path/query/fragment tokens
+// (Slack, Datadog, Splunk) from leaking into diagnostic logs.
+// Non-*url.Error values pass through unchanged.
+//
+// This is the transport-level counterpart of [Config.String]'s
+// sanitisation: Config.String handles direct logging of the Config
+// value; this handles indirect logging via errors returned from
+// http.Client.Do.
+func sanitiseClientError(err error) error {
+	var uerr *url.Error
+	if !errors.As(err, &uerr) {
+		return err
+	}
+	// Reconstruct *url.Error with the URL replaced. Preserve Op and
+	// the underlying Err so observability is unchanged.
+	return &url.Error{
+		Op:  uerr.Op,
+		URL: sanitizeURLForLog(uerr.URL),
+		Err: uerr.Err,
+	}
+}
 
 // doPostWithRetry attempts HTTP POST with exponential backoff retry.
 func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint:gocognit // retry loop with metrics recording
@@ -57,7 +82,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 
 		if !retryable {
 			logger.Error("audit: output webhook: non-retryable error",
-				"error", err,
+				"error", sanitiseClientError(err),
 				"batch_size", len(batch))
 			if omp := w.outputMetrics.Load(); omp != nil {
 				(*omp).RecordError()
@@ -69,7 +94,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 		logger.Warn("audit: output webhook: retrying",
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
-			"error", err)
+			"error", sanitiseClientError(err))
 		if omp := w.outputMetrics.Load(); omp != nil {
 			(*omp).RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
 		}

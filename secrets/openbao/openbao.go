@@ -84,6 +84,50 @@ type Config struct { //nolint:govet // readability over alignment
 	AllowInsecureHTTP bool
 }
 
+// String returns a credential-free representation of the config,
+// suitable for debug logging via %v or %+v. Token is never printed;
+// Address path/query/fragment are stripped; presence of TLS client
+// cert and namespace is surfaced without the values (#475).
+func (c Config) String() string {
+	tokenState := "unset"
+	if c.Token != "" {
+		tokenState = "[REDACTED]"
+	}
+	namespaceState := "unset"
+	if c.Namespace != "" {
+		namespaceState = "set"
+	}
+	tlsMode := "none"
+	if c.TLSCert != "" {
+		tlsMode = "mtls"
+	} else if c.TLSCA != "" {
+		tlsMode = "tls"
+	}
+	return fmt.Sprintf("openbao.Config{address=%q, token=%s, namespace=%s, tls=%s}",
+		sanitizeAddressForLog(c.Address), tokenState, namespaceState, tlsMode)
+}
+
+// GoString returns the same redacted representation as [Config.String].
+// Prevents credential leakage when a Config is formatted via %#v.
+func (c Config) GoString() string { return c.String() } //nolint:gocritic // hugeParam: value receiver required by fmt.GoStringer
+
+// Format writes the redacted representation to the formatter.
+// Prevents credential leakage via %+v and all other format verbs.
+func (c Config) Format(f fmt.State, _ rune) { //nolint:gocritic // hugeParam: value receiver required by fmt.Formatter
+	_, _ = fmt.Fprint(f, c.String())
+}
+
+// sanitizeAddressForLog returns the scheme+host portion of the
+// configured Address URL, dropping path/query/fragment. Returns
+// "<invalid-url>" for unparseable input.
+func sanitizeAddressForLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "<invalid-url>"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // Provider resolves secret references from an OpenBao KV v2 engine.
 // Construction validates the address and builds an SSRF-safe HTTP
 // client but performs no network I/O. The first [Resolve] call

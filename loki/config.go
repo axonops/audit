@@ -217,6 +217,12 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 
 // String returns a safe representation of the config without credentials.
 // Value receiver ensures both Config and *Config are protected.
+//
+// URL is sanitised to scheme+host only — path, query, and fragment are
+// dropped. Common Loki token placements include tenant IDs in the path
+// (`/tenants/<TENANT>/push`) and bearer tokens in query strings —
+// stripping everything beyond the host keeps these out of debug logs.
+// Network traffic itself is unaffected; this is a debug-log safety net.
 func (c Config) String() string {
 	auth := "none"
 	if c.BasicAuth != nil {
@@ -225,7 +231,24 @@ func (c Config) String() string {
 		auth = "bearer_token"
 	}
 	return fmt.Sprintf("LokiConfig{url=%q, auth=%s, compress=%t, batch_size=%d}",
-		c.URL, auth, c.Compress, c.BatchSize)
+		sanitizeURLForLog(c.URL), auth, c.Compress, c.BatchSize)
+}
+
+// sanitizeURLForLog returns the scheme+host portion of a URL, dropping
+// path, query, and fragment. Used in [Config.String] and the TLS
+// warning log site to keep secrets (bearer tokens in query strings,
+// tenant IDs in path segments) out of diagnostic output.
+//
+// Returns "<invalid-url>" when raw cannot be parsed, so
+// [Config.String] remains safe to call on unvalidated configs.
+//
+// Duplicated in webhook/config.go — intentional per #542.
+func sanitizeURLForLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "<invalid-url>"
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // Format implements [fmt.Formatter] to prevent credential leakage via

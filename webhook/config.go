@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,9 +64,18 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 
 	// Headers are custom HTTP headers added to every request.
 	// Common use: "Authorization: Bearer <token>" or
-	// "Authorization: Splunk <token>". Header values containing
-	// "auth", "key", "secret", or "token" (case-insensitive) are
-	// redacted in log output. Header names must not contain CRLF.
+	// "Authorization: Splunk <token>".
+	//
+	// Header NAMES whose lower-case form contains any of "auth",
+	// "key", "secret", or "token" have their VALUES replaced with
+	// "[REDACTED]" in [Config.String], [Config.GoString], and
+	// [Config.Format] output — a defence-in-depth safety net against
+	// `fmt.Sprintf("%+v", cfg)` and `slog.Debug("cfg", cfg)` leakage.
+	// Header names themselves are NOT redacted — they appear in full
+	// so that operators can identify which headers are configured.
+	//
+	// Header names must not contain CRLF. Values are sent verbatim in
+	// the HTTP request regardless of redaction in debug output.
 	Headers map[string]string
 
 	// TLSCA is the path to a custom CA certificate for the webhook
@@ -125,12 +135,18 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 }
 
 // String returns a human-readable representation of the config with
-// sensitive header values redacted. This prevents credential leakage
-// when configs are accidentally logged via %v or %+v.
+// credentials redacted. This prevents credential leakage when configs
+// are accidentally logged via %v or %+v.
+//
+// URL is sanitised to scheme+host only — path, query, and fragment are
+// dropped (common token placements: Slack /services/.../<TOKEN>,
+// Datadog ?dd-api-key=, Splunk HEC ?token=). Header values for names
+// matching the credential-name rule described on [Config.Headers] are
+// replaced with [REDACTED]. Network traffic itself is unaffected;
+// this is a debug-log safety net, not the primary defence.
 func (c Config) String() string {
-	hdrs := len(c.Headers)
-	return fmt.Sprintf("WebhookConfig{url=%q, headers=%d, batch_size=%d, timeout=%s}",
-		c.URL, hdrs, c.BatchSize, c.Timeout)
+	return fmt.Sprintf("WebhookConfig{url=%q, headers=%s, batch_size=%d, timeout=%s}",
+		sanitizeURLForLog(c.URL), redactHeaders(c.Headers), c.BatchSize, c.Timeout)
 }
 
 // GoString returns the same redacted representation as [Config.String].
@@ -140,6 +156,95 @@ func (c Config) GoString() string { return c.String() } //nolint:gocritic // hug
 // Format writes the redacted representation to the formatter.
 // This prevents credential leakage via %+v and all other format verbs.
 func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) } //nolint:gocritic // hugeParam: value receiver required by fmt.Formatter
+
+// sanitizeURLForLog returns the scheme+host portion of a URL, dropping
+// path, query, and fragment. Used in Config.String / TLS warning log
+// sites to keep secrets (tokens in path, query-string API keys) out
+// of diagnostic output.
+//
+// Returns "<invalid-url>" when raw cannot be parsed, so
+// [Config.String] remains safe to call on unvalidated configs.
+//
+// Duplicated in loki/config.go — intentional per #542.
+func sanitizeURLForLog(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "<invalid-url>"
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// credentialHeaderPatterns is the case-insensitive substring set used
+// by [redactHeaders] to decide whether a header value is sensitive.
+// The set is deliberately broad — over-redaction is cheap, a missed
+// credential is the whole reason the mechanism exists. Patterns:
+//
+//   - auth       — Authorization, X-Auth-Token, WWW-Authenticate
+//   - key        — X-API-Key, X-Public-Key, Api-Key
+//   - secret     — X-Shared-Secret
+//   - token      — Bearer tokens, CSRF-Token
+//   - cookie     — Cookie, Set-Cookie (session tokens)
+//   - password   — basic-auth legacy carriers
+//   - credential — X-Credential, X-Credentials
+//   - signature  — GitHub X-Hub-Signature, HMAC request signing
+//   - hmac       — X-Hmac, Hmac-Request
+//   - session    — X-Session-Id, Session-Id
+var credentialHeaderPatterns = []string{
+	"auth",
+	"key",
+	"secret",
+	"token",
+	"cookie",
+	"password",
+	"credential",
+	"signature",
+	"hmac",
+	"session",
+}
+
+// redactHeaders returns a deterministic map-style string
+// representation of hdrs with credential values replaced by
+// [REDACTED]. Keys are sorted so output is byte-stable across calls.
+// Empty or nil maps return "map[]".
+func redactHeaders(hdrs map[string]string) string {
+	if len(hdrs) == 0 {
+		return "map[]"
+	}
+	names := make([]string, 0, len(hdrs))
+	for name := range hdrs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	b.WriteString("map[")
+	for i, name := range names {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(name)
+		b.WriteByte(':')
+		if isCredentialHeader(name) {
+			b.WriteString("[REDACTED]")
+		} else {
+			b.WriteString(hdrs[name])
+		}
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// isCredentialHeader reports whether a header name's lower-case form
+// contains any of the [credentialHeaderPatterns].
+func isCredentialHeader(name string) bool {
+	lower := strings.ToLower(name)
+	for _, p := range credentialHeaderPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // validateWebhookConfig checks the config for correctness, applying
 // defaults where needed.
@@ -278,9 +383,7 @@ func buildWebhookTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
 		// Log only scheme+host to avoid leaking query-parameter tokens.
-		u, _ := url.Parse(cfg.URL)
-		sanitised := u.Scheme + "://" + u.Host
-		logger.Warn(w, "output", "webhook", "url", sanitised)
+		logger.Warn(w, "output", "webhook", "url", sanitizeURLForLog(cfg.URL))
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

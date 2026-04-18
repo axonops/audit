@@ -32,10 +32,11 @@ func (fw *FailingWriter) Write(_ []byte) (int, error) {
 
 // Exported aliases for internal functions needed by black-box tests.
 var (
-	ValidateLokiConfig = validateLokiConfig
-	BuildLokiTLSConfig = buildLokiTLSConfig
-	LokiBackoff        = lokiBackoff
-	ParseRetryAfter    = parseRetryAfter
+	ValidateLokiConfig  = validateLokiConfig
+	BuildLokiTLSConfig  = buildLokiTLSConfig
+	LokiBackoff         = lokiBackoff
+	ParseRetryAfter     = parseRetryAfter
+	SanitiseClientError = sanitiseClientError // #475 — error-URL redaction
 )
 
 // TestEvent is a test-only event for building payloads.

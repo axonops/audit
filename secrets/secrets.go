@@ -289,6 +289,8 @@ func ValidatePath(path string) error {
 }
 
 // validatePath is the internal implementation of [ValidatePath].
+//
+//nolint:gocyclo,cyclop // linear chain of path-safety rules; splitting reduces readability
 func validatePath(path string) error {
 	if strings.HasPrefix(path, "/") {
 		return fmt.Errorf("%w: path must not start with \"/\"", ErrMalformedRef)
@@ -298,6 +300,18 @@ func validatePath(path string) error {
 	}
 	if strings.Contains(path, "%") {
 		return fmt.Errorf("%w: path must not contain percent-encoded characters", ErrMalformedRef)
+	}
+	// Reject C0/C1 control bytes and DEL. A null byte in the path is
+	// the classic path-truncation injection vector; tab / newline /
+	// CR corrupt downstream log lines. Rejected at parse time so no
+	// provider ever receives a path with these bytes. Surfaced by
+	// FuzzParseRef (#481).
+	for i := 0; i < len(path); i++ {
+		b := path[i]
+		if b < 0x20 || b == 0x7f {
+			return fmt.Errorf("%w: path contains control byte 0x%02x at offset %d",
+				ErrMalformedRef, b, i)
+		}
 	}
 
 	segments := strings.Split(path, "/")

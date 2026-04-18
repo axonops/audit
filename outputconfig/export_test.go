@@ -29,6 +29,11 @@ var ToStringSliceForTest = toStringSlice
 // DeepCopyValueForTest exposes deepCopyValue for black-box testing.
 var DeepCopyValueForTest = deepCopyValue
 
+// ExpandEnvStringForTest exposes expandEnvString for fuzzing via
+// FuzzExpandEnvString (#481). Keeps the production surface clean
+// while allowing the fuzz harness to run from the _test package.
+var ExpandEnvStringForTest = expandEnvString
+
 // NewResolverForTest exposes newResolver for tests that need to drive
 // the resolver directly — used by [TestClearCaches_EmptiesBothMaps]
 // to verify clearCaches() empties both maps (#479).

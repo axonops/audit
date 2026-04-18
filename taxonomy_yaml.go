@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -206,6 +207,33 @@ type yamlFieldDef struct {
 	Required bool     `yaml:"required"`
 }
 
+// sanitizeParserErrorMsg replaces C0/C1 control bytes and DEL in the
+// third-party YAML parser's error message with a Unicode replacement
+// character so downstream log consumers cannot be log-injected by an
+// adversarial consumer submitting YAML with embedded NUL / CR / LF.
+// Surfaced by [FuzzParseTaxonomyYAML] (#481).
+func sanitizeParserErrorMsg(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\t':
+			b.WriteRune(r) // preserve legitimate newlines/tabs in multi-line errors
+		case r < 0x20 || r == 0x7f:
+			b.WriteRune('\uFFFD')
+		case r >= 0x80 && r <= 0x9f:
+			b.WriteRune('\uFFFD')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // ParseTaxonomyYAML parses a YAML document into a [*Taxonomy].
 // The input MUST be a single YAML document containing a valid taxonomy
 // definition. Unknown keys are rejected.
@@ -232,7 +260,7 @@ func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 
 	var yt yamlTaxonomy
 	if err := dec.Decode(&yt); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, WrapUnknownFieldError(err, yamlTaxonomy{})) //nolint:errorlint // intentionally not wrapping yaml.v3 error to avoid leaking third-party types into the public error chain
+		return nil, fmt.Errorf("%w: %s", ErrInvalidInput, sanitizeParserErrorMsg(WrapUnknownFieldError(err, yamlTaxonomy{})))
 	}
 
 	// Reject multi-document YAML and trailing content.
@@ -240,7 +268,7 @@ func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 	if err := dec.Decode(&discard); err == nil {
 		return nil, fmt.Errorf("%w: input contains multiple YAML documents", ErrInvalidInput)
 	} else if !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%w: trailing content after YAML document: %v", ErrInvalidInput, err) //nolint:errorlint // intentionally not wrapping yaml.v3 error
+		return nil, fmt.Errorf("%w: trailing content after YAML document: %s", ErrInvalidInput, sanitizeParserErrorMsg(err))
 	}
 
 	tax := convertYAMLTaxonomy(yt)

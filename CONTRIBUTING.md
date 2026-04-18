@@ -61,6 +61,38 @@ If you hit an undefined step, the fix is to define the step — not
 to disable Strict. If you need to stage a scenario before its steps
 exist, do not commit the scenario yet.
 
+### Fuzz Testing (#481)
+
+Four untrusted-input parsers have Go fuzz targets:
+
+| Target | Fuzz function | Location |
+|---|---|---|
+| `audit.ParseTaxonomyYAML` | `FuzzParseTaxonomyYAML` | `taxonomy_yaml_fuzz_test.go` |
+| `outputconfig.Load` | `FuzzOutputConfigLoad` | `outputconfig/outputconfig_fuzz_test.go` |
+| `outputconfig.expandEnvString` | `FuzzExpandEnvString` | `outputconfig/envsubst_fuzz_test.go` |
+| `secrets.ParseRef` | `FuzzParseRef` | `secrets/secrets_fuzz_test.go` |
+
+**Regular PR CI** runs each fuzz function against its committed
+seed corpus via `go test` — no `-fuzz` flag, just seeds as regular
+sub-tests. Committed crashers live under `testdata/fuzz/FuzzXxx/`
+and protect against regressions.
+
+**Release workflow** runs `make fuzz-long` (default 5 minutes per
+target) as a blocking gate — any crasher fails the release. Crash
+inputs are uploaded as a workflow artifact for triage.
+
+**Local fuzzing** — reproduce a seeded run quickly:
+```bash
+make fuzz-short                       # seeds only, < 1s
+make fuzz-long                        # 60s per target
+make fuzz-long FUZZ_TIME=10m          # 10 minutes per target
+go test -fuzz=FuzzParseRef -fuzztime=30s ./secrets  # single target
+```
+
+If the fuzzer finds a crasher, it writes the reproducer to
+`testdata/fuzz/FuzzXxx/<hash>`. Commit that file alongside the
+fix — it becomes a permanent regression seed.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)

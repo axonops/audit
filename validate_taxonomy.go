@@ -72,10 +72,10 @@ func checkCategoryConsistency(t Taxonomy) []string {
 
 	// Validate category names — must match safe identifier pattern.
 	for cat := range t.Categories {
-		if !labelNamePattern.MatchString(cat) {
+		if !taxonomyNamePattern.MatchString(cat) {
 			errs = append(errs, fmt.Sprintf(
 				"category name %q is invalid: must match %s",
-				cat, labelNamePattern.String()))
+				cat, taxonomyNamePattern.String()))
 		}
 	}
 
@@ -311,7 +311,21 @@ func frameworkFieldNames() []string {
 	}
 }
 
-// labelNamePattern validates sensitivity label names. Labels must start
-// with a lowercase letter and contain only lowercase letters, digits,
-// and underscores.
-var labelNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+// taxonomyNamePattern validates every consumer-controlled identifier
+// that surfaces in audit events and formatters — category names,
+// sensitivity label names, event type keys, and field names. Names
+// must start with a lowercase letter and contain only lowercase
+// letters, digits, and underscores.
+//
+// Rationale: the pure-ASCII rule rejects bidi-override characters
+// (U+202E, U+2066), zero-width chars (U+200B, U+FEFF), Unicode
+// confusables (Cyrillic `а` U+0430 vs ASCII `a`), CEF metacharacters
+// (|, =, \), and all C0/C1 control bytes — any of which could mislead
+// SIEM operators or corrupt downstream log consumers.
+var taxonomyNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// maxTaxonomyNameLen caps the length of taxonomy identifiers. A name
+// of this size already wildly exceeds anything meaningful for a log
+// key; the cap is a DoS safety net (downstream map keys, CEF line
+// lengths, formatter buffers). Per #477 pre-coding security review.
+const maxTaxonomyNameLen = 128

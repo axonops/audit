@@ -39,7 +39,7 @@ func checkLabelNames(sc *SensitivityConfig) []string {
 			errs = append(errs, "sensitivity label name must not be empty")
 			continue
 		}
-		if !labelNamePattern.MatchString(name) {
+		if !taxonomyNamePattern.MatchString(name) {
 			errs = append(errs, fmt.Sprintf(
 				"sensitivity label %q does not match required pattern [a-z][a-z0-9_]*", name))
 		}

@@ -58,6 +58,26 @@ var (
 // non-retryable.
 var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
 
+// minResponseHeaderTimeout is the floor applied to the derived
+// [http.Transport.ResponseHeaderTimeout]. Half of [Config.Timeout] is
+// normally used to detect slow-to-respond servers early, but a
+// misconfigured tiny [Config.Timeout] (for example 1 ms) would
+// otherwise produce a per-stage timeout too short to complete a real
+// TLS handshake + server processing burst (#485).
+const minResponseHeaderTimeout = 1 * time.Second
+
+// responseHeaderTimeout returns the per-stage response-header timeout
+// for the HTTP transport: half of the overall client timeout, but
+// never below [minResponseHeaderTimeout]. The overall
+// [http.Client.Timeout] still enforces the caller-configured deadline.
+func responseHeaderTimeout(t time.Duration) time.Duration {
+	half := t / 2
+	if half < minResponseHeaderTimeout {
+		return minResponseHeaderTimeout
+	}
+	return half
+}
+
 // Output sends batched audit events to an HTTP endpoint with
 // retry, SSRF prevention, and graceful shutdown.
 //
@@ -162,15 +182,10 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 			Timeout: 30 * time.Second,
 			Control: audit.NewSSRFDialControl(ssrfOpts...),
 		}).DialContext,
-		TLSClientConfig:     tlsCfg,
-		DisableKeepAlives:   true, // force fresh dial per request (DNS rebinding)
-		TLSHandshakeTimeout: 10 * time.Second,
-		// Half the client timeout: detect slow-to-respond servers
-		// early, leaving room for body transfer within the overall
-		// http.Client.Timeout. Zero result for very small timeouts
-		// is harmless: http.Client.Timeout still enforces the
-		// overall deadline.
-		ResponseHeaderTimeout: cfg.Timeout / 2,
+		TLSClientConfig:       tlsCfg,
+		DisableKeepAlives:     true, // force fresh dial per request (DNS rebinding)
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: responseHeaderTimeout(cfg.Timeout),
 	}
 
 	client := &http.Client{

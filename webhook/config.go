@@ -103,6 +103,12 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// Timeout is the HTTP request timeout covering the full
 	// request/response lifecycle including body read.
 	// Zero defaults to [DefaultTimeout] (10s).
+	//
+	// The transport-level [http.Transport.ResponseHeaderTimeout] is
+	// derived as `max(Timeout/2, 1*time.Second)` — the 1-second floor
+	// prevents a misconfigured short Timeout (for example 1 ms) from
+	// producing a per-stage timeout too small to complete a real TLS
+	// handshake and server response (#485).
 	Timeout time.Duration
 
 	// BatchSize is the maximum events per HTTP request.

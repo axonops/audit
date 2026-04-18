@@ -194,7 +194,15 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 
 	// Timeout is the HTTP request timeout covering the full push
 	// request/response lifecycle. Zero defaults to [DefaultTimeout]
-	// (10s).
+	// (10s). Validation enforces [MinTimeout] (1s) and [MaxTimeout]
+	// (5m).
+	//
+	// The transport-level [http.Transport.ResponseHeaderTimeout] is
+	// derived as `max(Timeout/2, 1*time.Second)` — the 1-second floor
+	// prevents a short Timeout (at the lower bound of 1s, half would
+	// otherwise be 500 ms) from producing a per-stage timeout too
+	// small to complete a real TLS handshake and server response
+	// (#485).
 	Timeout time.Duration
 
 	// MaxRetries is the retry count for 429 and 5xx responses.

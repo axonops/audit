@@ -32,12 +32,17 @@ func (fw *FailingWriter) Write(_ []byte) (int, error) {
 
 // Exported aliases for internal functions needed by black-box tests.
 var (
-	ValidateLokiConfig  = validateLokiConfig
-	BuildLokiTLSConfig  = buildLokiTLSConfig
-	LokiBackoff         = lokiBackoff
-	ParseRetryAfter     = parseRetryAfter
-	SanitiseClientError = sanitiseClientError // #475 — error-URL redaction
+	ValidateLokiConfig    = validateLokiConfig
+	BuildLokiTLSConfig    = buildLokiTLSConfig
+	LokiBackoff           = lokiBackoff
+	ParseRetryAfter       = parseRetryAfter
+	SanitiseClientError   = sanitiseClientError   // #475 — error-URL redaction
+	ResponseHeaderTimeout = responseHeaderTimeout // #485 — ResponseHeaderTimeout floor
 )
+
+// MinResponseHeaderTimeout is exported for testing only — lets tests
+// assert that the floor constant matches the documented value (#485).
+const MinResponseHeaderTimeout = minResponseHeaderTimeout
 
 // TestEvent is a test-only event for building payloads.
 type TestEvent struct { //nolint:govet // fieldalignment: readability preferred

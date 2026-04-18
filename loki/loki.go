@@ -50,6 +50,26 @@ var (
 // to reject all redirects, preventing SSRF via open redirects.
 var errRedirectBlocked = errors.New("audit: loki redirects are not followed")
 
+// minResponseHeaderTimeout is the floor applied to the derived
+// [http.Transport.ResponseHeaderTimeout]. Half of [Config.Timeout] is
+// normally used to detect slow-to-respond servers early, but an
+// unusually small [Config.Timeout] would otherwise produce a
+// per-stage timeout too short to complete a real TLS handshake +
+// server processing burst (#485).
+const minResponseHeaderTimeout = 1 * time.Second
+
+// responseHeaderTimeout returns the per-stage response-header timeout
+// for the HTTP transport: half of the overall client timeout, but
+// never below [minResponseHeaderTimeout]. The overall
+// [http.Client.Timeout] still enforces the caller-configured deadline.
+func responseHeaderTimeout(t time.Duration) time.Duration {
+	half := t / 2
+	if half < minResponseHeaderTimeout {
+		return minResponseHeaderTimeout
+	}
+	return half
+}
+
 // lokiEntry carries a copied event and its metadata through the
 // internal buffer channel to the batch goroutine.
 type lokiEntry struct { //nolint:govet // fieldalignment: readability preferred
@@ -155,7 +175,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		TLSClientConfig:       tlsCfg,
 		DisableKeepAlives:     true, // force fresh dial per request (DNS rebinding)
 		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: cfg.Timeout / 2,
+		ResponseHeaderTimeout: responseHeaderTimeout(cfg.Timeout),
 	}
 
 	client := &http.Client{

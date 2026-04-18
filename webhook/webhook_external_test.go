@@ -1849,6 +1849,41 @@ func TestWebhook_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 		"WithDiagnosticLogger(nil) should fall back to slog.Default")
 }
 
+// TestWebhookClient_ResponseHeaderTimeoutHasFloor verifies that the
+// transport's ResponseHeaderTimeout is never less than 1 second even
+// when cfg.Timeout is absurdly small. Exercises the floor added for
+// #485 — without it a misconfigured 1 ms Timeout would produce a
+// 500 μs per-stage timeout that could not complete a real TLS
+// handshake + server response.
+func TestWebhookClient_ResponseHeaderTimeoutHasFloor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{"tiny_1ms_floors_to_1s", 1 * time.Millisecond, 1 * time.Second},
+		{"sub_floor_1500ms_floors_to_1s", 1500 * time.Millisecond, 1 * time.Second},
+		{"exactly_2s_at_floor", 2 * time.Second, 1 * time.Second},
+		{"20s_uses_half_10s", 20 * time.Second, 10 * time.Second},
+		{"5min_uses_half_2m30s", 5 * time.Minute, 2*time.Minute + 30*time.Second},
+		{"zero_floors_to_1s", 0, 1 * time.Second},
+		{"negative_floors_to_1s", -5 * time.Second, 1 * time.Second},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := webhook.ResponseHeaderTimeout(tc.timeout)
+			assert.Equal(t, tc.want, got,
+				"ResponseHeaderTimeout(%v) = %v; want %v", tc.timeout, got, tc.want)
+		})
+	}
+
+	assert.Equal(t, 1*time.Second, webhook.MinResponseHeaderTimeout,
+		"floor constant must be 1 second for #485 contract")
+}
+
 // TestClient_RedirectBodyDrainCapped_Webhook verifies that a non-redirect
 // 3xx response (HTTP 300 Multiple Choices) with a 10 MiB body has its
 // client-side body drain capped at 4 KiB. Our CheckRedirect blocks

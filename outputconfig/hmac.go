@@ -83,7 +83,8 @@ func buildHMACConfig(ctx context.Context, name string, raw any, r *resolver) (*a
 	}
 
 	// Parse with strict field checking.
-	hmacBytes, mErr := yaml.Marshal(expandedWithoutEnabled)
+	// safeMarshal (not yaml.Marshal) — see safe_marshal.go (#487).
+	hmacBytes, mErr := safeMarshal(expandedWithoutEnabled)
 	if mErr != nil {
 		return nil, fmt.Errorf("output %q: hmac: %w", name, mErr)
 	}

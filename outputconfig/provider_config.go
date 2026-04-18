@@ -223,7 +223,8 @@ func parseVaultProvider(raw any) (secrets.Provider, error) {
 // checking. This rejects unknown fields (typos) with an actionable
 // error.
 func unmarshalProviderConfig(raw any, providerName string) (*yamlProviderConfig, error) {
-	b, err := yaml.Marshal(raw)
+	// safeMarshal (not yaml.Marshal) — see safe_marshal.go (#487).
+	b, err := safeMarshal(raw)
 	if err != nil {
 		return nil, fmt.Errorf("%w: secrets.%s: %w", ErrOutputConfigInvalid, providerName, err)
 	}

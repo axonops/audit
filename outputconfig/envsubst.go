@@ -32,6 +32,14 @@ var validVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // Only string-typed leaf values are expanded — map keys are never
 // modified. No recursive expansion — a single pass.
 //
+// Expanded values flow as Go strings and MUST be re-serialised via
+// [safeMarshal] when a downstream factory re-parses them — never via
+// plain [yaml.Marshal]. A plain re-marshal of a string like ".inf",
+// ".NaN" (and historically "on"/"off"/"yes"/"no" under YAML 1.1)
+// emits the scalar unquoted, and the downstream parser re-reads it
+// as the wrong Go type, silently turning a string config value into
+// a boolean or float (#487).
+//
 // Returns the expanded value (maps and slices are modified in place
 // and returned; strings are replaced).
 func expandEnvInValue(v any, fieldPath string) (any, error) { //nolint:gocognit // recursive tree walk

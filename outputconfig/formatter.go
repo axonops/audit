@@ -67,7 +67,8 @@ func buildFormatter(raw any) (audit.Formatter, error) {
 		return nil, nil
 	}
 
-	fmtBytes, marshalErr := yaml.Marshal(raw)
+	// safeMarshal (not yaml.Marshal) — see safe_marshal.go (#487).
+	fmtBytes, marshalErr := safeMarshal(raw)
 	if marshalErr != nil {
 		return nil, fmt.Errorf("formatter: %w", marshalErr)
 	}

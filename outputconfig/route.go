@@ -40,7 +40,8 @@ func buildRoute(name string, raw any, taxonomy *audit.Taxonomy) (*audit.EventRou
 	if raw == nil {
 		return nil, nil //nolint:nilnil // nil route = receive all events
 	}
-	routeBytes, err := yaml.Marshal(raw)
+	// safeMarshal (not yaml.Marshal) — see safe_marshal.go (#487).
+	routeBytes, err := safeMarshal(raw)
 	if err != nil {
 		return nil, fmt.Errorf("output %q route: %w", name, err)
 	}

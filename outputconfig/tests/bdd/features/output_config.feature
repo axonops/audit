@@ -87,6 +87,64 @@ Feature: YAML Output Configuration
     When I try to create an auditor from the YAML config
     Then the config load should fail with an error containing "TOTALLY_UNDEFINED_BDD_VAR"
 
+  Scenario: envsubst preserves string semantics for YAML magic values
+    # #487 — env-var expanded values must flow to factories as the
+    # exact string literal the env var contained. A plain yaml.Marshal
+    # of the post-expansion map would emit ".inf", ".NaN", and (under
+    # YAML 1.1 parsers) "on"/"off" unquoted, and the downstream parser
+    # would re-read them as float / bool — silently turning a string
+    # config value into the wrong Go type. The safeMarshal helper in
+    # outputconfig/safe_marshal.go defends against this.
+    Given a test taxonomy
+    And the environment variable "BDD_MAGIC_ON" is set to "on"
+    And the environment variable "BDD_MAGIC_OFF" is set to "off"
+    And the environment variable "BDD_MAGIC_YES" is set to "yes"
+    And the environment variable "BDD_MAGIC_NO" is set to "no"
+    And the environment variable "BDD_MAGIC_TRUE" is set to "true"
+    And the environment variable "BDD_MAGIC_FALSE" is set to "false"
+    And the environment variable "BDD_MAGIC_NULL" is set to "null"
+    And the environment variable "BDD_MAGIC_TILDE" is set to "~"
+    And the environment variable "BDD_MAGIC_INF" is set to ".inf"
+    And the environment variable "BDD_MAGIC_NAN" is set to ".NaN"
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        hook:
+          type: webhook
+          webhook:
+            url: "https://example.com/e"
+            allow_private_ranges: true
+            headers:
+              X-Magic-On: ${BDD_MAGIC_ON}
+              X-Magic-Off: ${BDD_MAGIC_OFF}
+              X-Magic-Yes: ${BDD_MAGIC_YES}
+              X-Magic-No: ${BDD_MAGIC_NO}
+              X-Magic-True: ${BDD_MAGIC_TRUE}
+              X-Magic-False: ${BDD_MAGIC_FALSE}
+              X-Magic-Null: ${BDD_MAGIC_NULL}
+              X-Magic-Tilde: ${BDD_MAGIC_TILDE}
+              X-Magic-Inf: ${BDD_MAGIC_INF}
+              X-Magic-Nan: ${BDD_MAGIC_NAN}
+              X-Magic-Empty: "${UNSET_BDD_MAGIC:-}"
+      """
+    When I create an auditor from the YAML config
+    And I close the auditor
+    Then the config load should succeed
+    And the captured webhook raw config should have header "X-Magic-On" with value "on"
+    And the captured webhook raw config should have header "X-Magic-Off" with value "off"
+    And the captured webhook raw config should have header "X-Magic-Yes" with value "yes"
+    And the captured webhook raw config should have header "X-Magic-No" with value "no"
+    And the captured webhook raw config should have header "X-Magic-True" with value "true"
+    And the captured webhook raw config should have header "X-Magic-False" with value "false"
+    And the captured webhook raw config should have header "X-Magic-Null" with value "null"
+    And the captured webhook raw config should have header "X-Magic-Tilde" with value "~"
+    And the captured webhook raw config should have header "X-Magic-Inf" with value ".inf"
+    And the captured webhook raw config should have header "X-Magic-Nan" with value ".NaN"
+    And the captured webhook raw config should have header "X-Magic-Empty" with value ""
+
   # --- Framework fields in output config (#237) ---
 
   Scenario: Missing app_name in output config YAML is rejected

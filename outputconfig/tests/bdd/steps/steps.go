@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/goccy/go-yaml"
 
 	"github.com/axonops/audit"
 	_ "github.com/axonops/audit/file" // register file factory
@@ -39,6 +40,12 @@ func init() {
 	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
 		return &lokiStub{}, nil
 	})
+	// Stub webhook factory — captures raw config bytes so #487
+	// envsubst-string-semantics scenarios can inspect them.
+	audit.RegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
+		capturedWebhookRawConfig = append(capturedWebhookRawConfig[:0], rawConfig...)
+		return &webhookStub{}, nil
+	})
 }
 
 // lokiStub is a minimal output stub for Loki formatter BDD tests.
@@ -47,6 +54,22 @@ type lokiStub struct{}
 func (l *lokiStub) Write([]byte) error { return nil }
 func (l *lokiStub) Close() error       { return nil }
 func (l *lokiStub) Name() string       { return "loki-stub" }
+
+// capturedWebhookRawConfig holds the most recent raw config bytes
+// that reached the BDD "webhook" stub factory. Single-goroutine BDD
+// runner (Concurrency: 1) makes a package-level variable sufficient;
+// Reset clears it per scenario. Used by the #487 envsubst-string-
+// semantics scenario to assert header values survived the re-marshal
+// as literal strings.
+var capturedWebhookRawConfig []byte
+
+// webhookStub is a minimal output stub used by BDD scenarios that
+// need to inspect the raw config bytes reaching the factory.
+type webhookStub struct{}
+
+func (w *webhookStub) Write([]byte) error { return nil }
+func (w *webhookStub) Close() error       { return nil }
+func (w *webhookStub) Name() string       { return "webhook-stub" }
 
 // TestContext holds mutable state for a single BDD scenario.
 type TestContext struct { //nolint:govet // fieldalignment: readability preferred
@@ -87,6 +110,7 @@ func (tc *TestContext) Reset() {
 	tc.realSecretsTempDir = ""
 	tc.realProviderPendingSeeds = nil
 	tc.realProviderCleanup = nil
+	capturedWebhookRawConfig = nil
 }
 
 // InitializeScenario wires all step definitions.
@@ -267,7 +291,32 @@ func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		return assertLokiFormatterJSON(tc)
 	})
 
+	ctx.Step(`^the captured webhook raw config should have header "([^"]*)" with value "([^"]*)"$`, assertCapturedWebhookHeader)
+
 	registerFileAssertionSteps(ctx, tc)
+}
+
+// assertCapturedWebhookHeader parses the most recent raw config the BDD
+// webhook stub saw and asserts a specific header carries the expected
+// literal value (#487 — no magic-value re-interpretation).
+func assertCapturedWebhookHeader(name, want string) error {
+	if len(capturedWebhookRawConfig) == 0 {
+		return fmt.Errorf("no webhook factory invocation captured — did the scenario declare type: webhook?")
+	}
+	var cfg struct {
+		Headers map[string]string `yaml:"headers"`
+	}
+	if err := yaml.Unmarshal(capturedWebhookRawConfig, &cfg); err != nil {
+		return fmt.Errorf("unmarshal captured webhook config: %w\nraw:\n%s", err, string(capturedWebhookRawConfig))
+	}
+	got, ok := cfg.Headers[name]
+	if !ok {
+		return fmt.Errorf("header %q missing from captured webhook config\nraw:\n%s", name, string(capturedWebhookRawConfig))
+	}
+	if got != want {
+		return fmt.Errorf("header %q: factory saw %q, want %q\nraw:\n%s", name, got, want, string(capturedWebhookRawConfig))
+	}
+	return nil
 }
 
 func registerFileAssertionSteps(ctx *godog.ScenarioContext, tc *TestContext) {

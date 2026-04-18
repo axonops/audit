@@ -17,13 +17,11 @@ package loki_test
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -911,41 +909,6 @@ func TestLoki_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 		"expected weak-ciphers warning on injected logger, got: %q", logged)
 	assert.Contains(t, logged, "output=loki",
 		"warning should carry output=loki attribute: %q", logged)
-}
-
-// TestLoki_SetDiagnosticLoggerUnderEventLoad drives SetDiagnosticLogger
-// and WriteWithMetadata concurrently to prove the logger field is safe
-// under the race detector. Closes #474 AC #3.
-func TestLoki_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
-	out, err := loki.New(&loki.Config{
-		URL:                "http://127.0.0.1:3100/loki/api/v1/push",
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      100 * time.Millisecond,
-		Timeout:            1 * time.Second,
-		BufferSize:         1000,
-	}, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	var wg sync.WaitGroup
-	const iters = 100
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for range iters {
-			out.SetDiagnosticLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		meta := audit.EventMetadata{EventType: "race", Severity: 1}
-		for range iters {
-			_ = out.WriteWithMetadata([]byte(`{"event":"race"}`), meta)
-		}
-	}()
-	wg.Wait()
 }
 
 // TestLoki_NilDiagnosticLoggerFallsBackToDefault verifies

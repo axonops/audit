@@ -1540,9 +1540,12 @@ func TestWebhookConfig_Format_RedactsHeaders(t *testing.T) {
 // TLS-policy warnings emitted during New() route through the
 // WithDiagnosticLogger-supplied logger rather than slog.Default().
 // Closes #490.
+//
+// AllowTLS12 + AllowWeakCiphers triggers the "weak ciphers permitted"
+// warning inside audit.TLSPolicy.Apply — the only code path in the
+// TLS policy that emits a warning. Matches the syslog, loki, and
+// file peer tests for consistent assertion phrasing.
 func TestWebhook_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
-	// TLSPolicy with AllowTLS12=true triggers a "TLS 1.2 allowed" warning
-	// from audit.TLSPolicy.Apply. Any non-default policy with warnings works.
 	var buf strings.Builder
 	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
 	injected := slog.New(handler)
@@ -1560,8 +1563,8 @@ func TestWebhook_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	logged := buf.String()
-	assert.Contains(t, logged, "TLS",
-		"expected TLS-policy warning on injected logger, got: %q", logged)
+	assert.Contains(t, logged, "weak ciphers",
+		"expected weak-ciphers warning on injected logger, got: %q", logged)
 	assert.Contains(t, logged, "output=webhook",
 		"warning should carry output=webhook attribute: %q", logged)
 }

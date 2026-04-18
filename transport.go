@@ -80,6 +80,14 @@ func transportSecurity(r *http.Request) string {
 // Tests override this to exercise the failure path; production code
 // never swaps it. Defined here (not in a *_test.go helper) because
 // export_test files cannot introduce new package-level variables.
+//
+// Thread-safety: this is an unsynchronised package-level variable.
+// Any test that swaps it via [SetRandRead] MUST NOT use t.Parallel
+// (and neither may any test in the same binary that exercises
+// newRequestID) — the seam is a process-global and concurrent
+// read/write would race. The race detector cannot catch it because
+// all accesses go through the same var indirection. If future tests
+// need parallelism here, convert to [atomic.Pointer].
 var randRead = rand.Read
 
 // newRequestID generates a v4 UUID using crypto/rand. The format

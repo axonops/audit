@@ -17,6 +17,7 @@ package outputconfig_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -2781,4 +2782,95 @@ outputs:
 	for _, o := range result.Outputs {
 		_ = o.Output.Close()
 	}
+}
+
+// TestLoad_DiagnosticLogger_PlumbedThroughFactory verifies that
+// outputconfig.WithDiagnosticLogger threads the caller's logger all
+// the way to the registered OutputFactory's 4th argument. Closes #490.
+//
+// Uses a per-call custom factory via WithFactory so the captured
+// pointer comparison is deterministic — no init-registered factory
+// pollutes the assertion.
+func TestLoad_DiagnosticLogger_PlumbedThroughFactory(t *testing.T) {
+	t.Parallel()
+	var captured atomic.Pointer[slog.Logger]
+
+	factory := func(name string, _ []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+		captured.Store(logger)
+		return audit.WrapOutput(&lokiStubOutput{}, name), nil
+	}
+
+	want := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: t
+host: h
+outputs:
+  probe:
+    type: probe-output
+    probe-output: {}
+`)
+	result, err := outputconfig.Load(
+		context.Background(),
+		data,
+		tax,
+		outputconfig.WithFactory("probe-output", factory),
+		outputconfig.WithDiagnosticLogger(want),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	got := captured.Load()
+	require.NotNil(t, got, "factory must have been called")
+	assert.Same(t, want, got,
+		"factory must receive the exact logger passed via WithDiagnosticLogger")
+}
+
+// TestLoad_DiagnosticLogger_NilWhenUnset verifies that when the caller
+// does NOT pass WithDiagnosticLogger, the factory receives a nil logger.
+// Each output module is responsible for falling back to slog.Default
+// via its own resolveOptions — this test only pins the outputconfig
+// plumbing behaviour: "absent LoadOption = nil passed to factory".
+func TestLoad_DiagnosticLogger_NilWhenUnset(t *testing.T) {
+	t.Parallel()
+	var called atomic.Bool
+	var loggerWasNil atomic.Bool
+
+	factory := func(name string, _ []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+		called.Store(true)
+		loggerWasNil.Store(logger == nil)
+		return audit.WrapOutput(&lokiStubOutput{}, name), nil
+	}
+
+	tax := testTaxonomy(t)
+	data := []byte(`
+version: 1
+app_name: t
+host: h
+outputs:
+  probe:
+    type: probe-output-nil
+    probe-output-nil: {}
+`)
+	result, err := outputconfig.Load(
+		context.Background(),
+		data,
+		tax,
+		outputconfig.WithFactory("probe-output-nil", factory),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.Outputs {
+			_ = o.Output.Close()
+		}
+	})
+
+	require.True(t, called.Load(), "factory must have been invoked")
+	assert.True(t, loggerWasNil.Load(),
+		"without WithDiagnosticLogger, factory must receive nil logger")
 }

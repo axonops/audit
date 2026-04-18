@@ -55,7 +55,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#475** security: strip credentials from Webhook and Loki Config.String() output — token leakage via `%v` / `%+v` debug.
 - [ ] **#476** fix: apply global tls_policy to loki and secret providers — injection currently only covers syslog/webhook.
 - [ ] **#477** security: enforce character-set validation on taxonomy event types and field names — `^[a-z][a-z0-9_]*$`.
-- [ ] **#478** security: reject restricted HTTP header names in webhook output config — Host / Content-Length / Transfer-Encoding.
+- [x] ~~**#478** security: reject restricted HTTP header names in webhook output config — Host / Content-Length / Transfer-Encoding.~~ **Closed as won't-do (2026-04-18)** — library is outbound-only HTTP client; `net/http` already manages transport-level concerns; CRLF injection check on header values remains in place. Full rationale in issue close comment.
 - [ ] **#479** security: document and minimise secret memory retention across secret resolution and outputs.
 - [ ] **#480** security: extend SSRF block list to cover AWS IPv6 IMDS and IPv6-mapped IPv4 edge cases.
 - [ ] **#481** test: add fuzz targets for ParseTaxonomyYAML, outputconfig.Load, ParseRef, ExpandEnvString.

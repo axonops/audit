@@ -128,7 +128,8 @@ events:
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "label name must not be empty")
+	assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName)
+	assert.Contains(t, err.Error(), `sensitivity label name "" is invalid`)
 }
 
 func TestCheckSensitivity_InvalidLabelName(t *testing.T) {
@@ -150,7 +151,8 @@ events:
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-	assert.Contains(t, err.Error(), "does not match required pattern")
+	assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName)
+	assert.Contains(t, err.Error(), `sensitivity label name "PII-Data" is invalid`)
 }
 
 func TestCheckSensitivity_InvalidRegex(t *testing.T) {

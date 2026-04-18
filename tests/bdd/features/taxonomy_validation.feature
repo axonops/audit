@@ -519,3 +519,133 @@ Feature: Taxonomy Validation
       | source_ip | 10.0.0.1 |
     Then the event should be delivered successfully
     And the output should contain field "source_ip" with value "10.0.0.1"
+
+  # --- Name character-set and length validation (#477) ---
+  #
+  # Every consumer-controlled taxonomy identifier — category name,
+  # event type key, required/optional field name, and sensitivity
+  # label name — must match `^[a-z][a-z0-9_]*$` and be no longer than
+  # 128 bytes. The rule keeps bidi-override characters, Unicode
+  # confusables, CEF/JSON metacharacters, C0/C1 control bytes, and
+  # extremely long names out of downstream log consumers and SIEM
+  # dashboards. Violations wrap BOTH `ErrTaxonomyInvalid` and
+  # `ErrInvalidTaxonomyName` so consumers can discriminate.
+
+  Scenario: Event type name with uppercase is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - UserCreate
+      events:
+        UserCreate:
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
+    And the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "UserCreate"
+
+  Scenario: Event type name with hyphen is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user-create
+      events:
+        user-create:
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+
+  Scenario: Event type name with bidi override is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - "user\u202eadmin"
+      events:
+        "user\u202eadmin":
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+
+  Scenario: Field name with dot is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            "actor.id": {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "actor.id"
+
+  Scenario: Category name with uppercase is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        Write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "Write"
+
+  Scenario: Sensitivity label name with hyphen is rejected
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      sensitivity:
+        labels:
+          "PII-data":
+            fields: [email]
+      categories:
+        write:
+          - user_create
+      events:
+        user_create:
+          fields:
+            outcome: {required: true}
+            email: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "PII-data"
+
+  Scenario: Overlong event type name is rejected as a DoS defence
+    Given a taxonomy from YAML with a 200-byte event type name
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "exceeds maximum length 128 bytes"
+
+  Scenario: Error message quotes bidi bytes as Go escape sequences
+    Given a taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        write:
+          - "user\u202eadmin"
+      events:
+        "user\u202eadmin":
+          fields:
+            outcome: {required: true}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse error should not contain raw bidi bytes
+    And the taxonomy parse error should contain escaped "\u202e"
+
+  Scenario: Valid name at exactly 128 bytes is accepted
+    Given a taxonomy from YAML with a 128-byte event type name
+    Then the taxonomy parse should succeed

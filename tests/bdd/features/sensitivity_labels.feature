@@ -153,7 +153,8 @@ Feature: Field-Level Sensitivity Labels
             outcome: {required: true}
       """
     Then the taxonomy parse should fail wrapping "ErrTaxonomyInvalid"
-    And the taxonomy parse should fail with an error containing "label name must not be empty"
+    And the taxonomy parse should fail wrapping "ErrInvalidTaxonomyName"
+    And the taxonomy parse should fail with an error containing "sensitivity label name"
 
   Scenario: Sensitivity section present but labels empty → valid no-op
     Given a taxonomy with sensitivity labels:

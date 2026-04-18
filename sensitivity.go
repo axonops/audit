@@ -17,31 +17,44 @@ package audit
 import (
 	"fmt"
 	"regexp"
+	"slices"
 )
 
-func checkSensitivity(t Taxonomy) []string {
+// checkSensitivity validates the sensitivity configuration. It returns
+// two slices: (errs, nameErrs). errs contains all validation failures;
+// nameErrs is the subset of name-shape violations (label names
+// failing [taxonomyNamePattern] or exceeding [maxTaxonomyNameLen]).
+// [ValidateTaxonomy] wraps [ErrInvalidTaxonomyName] alongside
+// [ErrTaxonomyInvalid] when nameErrs is non-empty, so consumers can
+// discriminate name-shape violations from other taxonomy errors (#477).
+func checkSensitivity(t Taxonomy) (errs, nameErrs []string) {
 	if t.Sensitivity == nil || len(t.Sensitivity.Labels) == 0 {
-		return nil
+		return nil, nil
 	}
-	var errs []string
-	errs = append(errs, checkLabelNames(t.Sensitivity)...)
+	nameErrs = checkLabelNames(t.Sensitivity)
+	errs = append(errs, nameErrs...)
 	errs = append(errs, checkLabelPatterns(t.Sensitivity)...)
 	errs = append(errs, checkLabelProtectedFields(t.Sensitivity)...)
 	errs = append(errs, checkFieldAnnotationLabels(t)...)
-	return errs
+	return errs, nameErrs
 }
 
-// checkLabelNames validates that all label names match the required pattern.
+// checkLabelNames validates that every sensitivity label name matches
+// [taxonomyNamePattern] and fits within [maxTaxonomyNameLen]. Uses
+// [invalidTaxonomyNameMsg] so the error text is uniform across all
+// four identifier classes (category, event type, field, label).
+//
+// Iteration is sorted so error output is deterministic.
 func checkLabelNames(sc *SensitivityConfig) []string {
 	var errs []string
+	labelNames := make([]string, 0, len(sc.Labels))
 	for name := range sc.Labels {
-		if name == "" {
-			errs = append(errs, "sensitivity label name must not be empty")
-			continue
-		}
-		if !taxonomyNamePattern.MatchString(name) {
-			errs = append(errs, fmt.Sprintf(
-				"sensitivity label %q does not match required pattern [a-z][a-z0-9_]*", name))
+		labelNames = append(labelNames, name)
+	}
+	slices.Sort(labelNames)
+	for _, name := range labelNames {
+		if msg := invalidTaxonomyNameMsg("sensitivity label name", name); msg != "" {
+			errs = append(errs, msg)
 		}
 	}
 	return errs

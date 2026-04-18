@@ -347,6 +347,80 @@ func TestRun_InvalidYAML(t *testing.T) {
 	assert.Equal(t, exitYAMLError, code)
 }
 
+// TestRun_InvalidEventTypeName verifies that audit-gen rejects a
+// taxonomy whose event-type key contains any character outside the safe
+// `^[a-z][a-z0-9_]*$` pattern. Relies on [audit.ParseTaxonomyYAML]
+// invoking [audit.ValidateTaxonomy] before codegen begins, so the
+// generator fails fast with a non-zero exit status (#477). Each row
+// covers a different class of violation.
+func TestRun_InvalidEventTypeName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		evtName string
+	}{
+		{"uppercase", "UserCreate"},
+		{"hyphen", "user-create"},
+		{"bidi_override", "user\u202eadmin"},
+		{"space", "user create"},
+		{"leading_digit", "1create"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			yaml := "version: 1\ncategories:\n  write:\n    - \"" + tt.evtName + "\"\nevents:\n  \"" + tt.evtName + "\":\n    fields:\n      actor_id:\n        required: true\n"
+			input := filepath.Join(t.TempDir(), "bad.yaml")
+			require.NoError(t, os.WriteFile(input, []byte(yaml), 0o600))
+			var stderr bytes.Buffer
+			code := run([]string{
+				"-input", input,
+				"-output", "-",
+				"-package", "mypkg",
+			}, &bytes.Buffer{}, &stderr)
+			assert.Equal(t, exitYAMLError, code,
+				"codegen must reject unsafe event-type name %q", tt.evtName)
+			assert.Contains(t, strings.ToLower(stderr.String()), "invalid",
+				"stderr should explain the rejection")
+		})
+	}
+}
+
+// TestRun_InvalidFieldName verifies that audit-gen rejects a taxonomy
+// whose field name contains any character outside the safe pattern.
+// Without this check the generator could emit Go setters referencing a
+// name that [audit.ValidateTaxonomy] will reject at runtime — trapping
+// the consumer in a "generates fine, never loads" state (#477).
+func TestRun_InvalidFieldName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		fieldName string
+	}{
+		{"uppercase", "Actor_Id"},
+		{"hyphen", "actor-id"},
+		{"dot", "actor.id"},
+		{"bidi_override", "actor\u202eid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			yaml := "version: 1\ncategories:\n  write:\n    - user_create\nevents:\n  user_create:\n    fields:\n      \"" + tt.fieldName + "\":\n        required: true\n"
+			input := filepath.Join(t.TempDir(), "bad.yaml")
+			require.NoError(t, os.WriteFile(input, []byte(yaml), 0o600))
+			var stderr bytes.Buffer
+			code := run([]string{
+				"-input", input,
+				"-output", "-",
+				"-package", "mypkg",
+			}, &bytes.Buffer{}, &stderr)
+			assert.Equal(t, exitYAMLError, code,
+				"codegen must reject unsafe field name %q", tt.fieldName)
+			assert.Contains(t, strings.ToLower(stderr.String()), "invalid",
+				"stderr should explain the rejection")
+		})
+	}
+}
+
 func TestRun_VersionFlag(t *testing.T) {
 	t.Parallel()
 	var stdout bytes.Buffer

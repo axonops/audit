@@ -40,6 +40,38 @@ func registerTaxonomyGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 		tc.Taxonomy = tax
 		return nil
 	})
+
+	// Step used to exercise the 128-byte length cap (#477). A 200-byte
+	// event-type name is assembled programmatically and wrapped in the
+	// smallest valid-shape YAML that references it. Keeping the name
+	// generation in Go — rather than a literal in the feature file —
+	// keeps the scenario text readable.
+	ctx.Step(`^a taxonomy from YAML with a 200-byte event type name$`, func() error {
+		longName := strings.Repeat("a", 200)
+		yml := "version: 1\ncategories:\n  write:\n    - " + longName +
+			"\nevents:\n  " + longName + ":\n    fields:\n      outcome: {required: true}\n"
+		tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+		if err != nil {
+			tc.LastErr = err
+			return nil //nolint:nilerr // scenario asserts on tc.LastErr
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
+
+	// Step used to exercise the 128-byte boundary as an accept case.
+	ctx.Step(`^a taxonomy from YAML with a 128-byte event type name$`, func() error {
+		name := strings.Repeat("a", 128)
+		yml := "version: 1\ncategories:\n  write:\n    - " + name +
+			"\nevents:\n  " + name + ":\n    fields:\n      outcome: {required: true}\n"
+		tax, err := audit.ParseTaxonomyYAML([]byte(yml))
+		if err != nil {
+			tc.LastErr = err
+			return nil //nolint:nilerr // scenario asserts on tc.LastErr
+		}
+		tc.Taxonomy = tax
+		return nil
+	})
 }
 
 func registerTaxonomyWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -99,6 +131,34 @@ func registerTaxonomyThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	ctx.Step(`^the taxonomy should contain event type "([^"]*)"$`, func(et string) error { return assertTaxonomyHasEvent(tc, et) })
 	ctx.Step(`^the taxonomy should contain category "([^"]*)"$`, func(c string) error { return assertTaxonomyHasCategory(tc, c) })
 	ctx.Step(`^the taxonomy event "([^"]*)" should require field "([^"]*)"$`, func(et, f string) error { return assertTaxonomyEventRequires(tc, et, f) })
+
+	// Assert that the parse error does not re-render bidi or control
+	// bytes verbatim. Uses %q-style escaping so CVE-2021-42574 class
+	// terminal-output hijacking is prevented when errors are printed.
+	ctx.Step(`^the taxonomy parse error should not contain raw bidi bytes$`, func() error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected an error, got nil")
+		}
+		msg := tc.LastErr.Error()
+		for _, r := range []rune{'\u202e', '\u202d', '\u2066', '\u2067', '\u2068', '\u2069'} {
+			if strings.ContainsRune(msg, r) {
+				return fmt.Errorf("error message contains raw bidi rune %q; expected %%q escape", r)
+			}
+		}
+		return nil
+	})
+
+	// Assert that the parse error renders bidi chars as Go escape
+	// sequences. The argument is the Go escape form (e.g. "\u202e").
+	ctx.Step(`^the taxonomy parse error should contain escaped "([^"]*)"$`, func(escape string) error {
+		if tc.LastErr == nil {
+			return fmt.Errorf("expected an error, got nil")
+		}
+		if !strings.Contains(tc.LastErr.Error(), escape) {
+			return fmt.Errorf("error message does not contain escape %q; got:\n  %q", escape, tc.LastErr.Error())
+		}
+		return nil
+	})
 }
 
 func assertTaxonomyParseSentinel(tc *AuditTestContext, sentinel string) error {
@@ -113,6 +173,10 @@ func assertTaxonomyParseSentinel(tc *AuditTestContext, sentinel string) error {
 	case "ErrTaxonomyInvalid":
 		if !errors.Is(tc.LastErr, audit.ErrTaxonomyInvalid) {
 			return fmt.Errorf("expected ErrTaxonomyInvalid, got:\n  %q", tc.LastErr.Error())
+		}
+	case "ErrInvalidTaxonomyName":
+		if !errors.Is(tc.LastErr, audit.ErrInvalidTaxonomyName) {
+			return fmt.Errorf("expected ErrInvalidTaxonomyName, got:\n  %q", tc.LastErr.Error())
 		}
 	default:
 		return fmt.Errorf("unknown sentinel: %s", sentinel)

@@ -37,6 +37,22 @@ type resolver struct {
 	refCache  map[string]string            // "scheme://path#key" → value (non-batch providers)
 }
 
+// clearCaches drops map-held references to resolved secret values
+// from the resolver's caches. Called from [Load] before return so the
+// intermediate plaintext values held in [resolver.pathCache] and
+// [resolver.refCache] become GC-reachable only via any copies the
+// output configs captured — narrowing the live reference set by one
+// layer. The resolver struct itself is already local to [Load] and
+// becomes unreachable at return; this call is defence-in-depth per
+// #479, not a zeroing guarantee (Go strings cannot be zeroed).
+func (r *resolver) clearCaches() {
+	if r == nil {
+		return
+	}
+	clear(r.pathCache)
+	clear(r.refCache)
+}
+
 // newResolver builds a resolver from the providers registered via
 // [WithSecretProvider]. Returns (nil, nil) when no providers are
 // registered. Returns an error if duplicate schemes are detected.

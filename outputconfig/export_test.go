@@ -28,3 +28,41 @@ var ToStringSliceForTest = toStringSlice
 
 // DeepCopyValueForTest exposes deepCopyValue for black-box testing.
 var DeepCopyValueForTest = deepCopyValue
+
+// NewResolverForTest exposes newResolver for tests that need to drive
+// the resolver directly — used by [TestClearCaches_EmptiesBothMaps]
+// to verify clearCaches() empties both maps (#479).
+var NewResolverForTest = newResolver
+
+// ResolverCacheSizesForTest returns the current (pathCache, refCache)
+// lengths for a resolver built via [NewResolverForTest].
+func ResolverCacheSizesForTest(r any) (pathLen, refLen int) {
+	rr, ok := r.(*resolver)
+	if !ok || rr == nil {
+		return 0, 0
+	}
+	return len(rr.pathCache), len(rr.refCache)
+}
+
+// ResolverSeedCacheForTest seeds both caches with a single dummy
+// entry so the clearCaches contract can be verified with non-empty
+// starting state.
+func ResolverSeedCacheForTest(r any) {
+	rr, ok := r.(*resolver)
+	if !ok || rr == nil {
+		return
+	}
+	rr.pathCache["scheme://path"] = map[string]string{"key": "value"}
+	rr.refCache["scheme://path#key"] = "value"
+}
+
+// ResolverClearCachesForTest exposes the unexported clearCaches
+// method directly so tests exercise the contract in isolation from
+// Load (#479).
+func ResolverClearCachesForTest(r any) {
+	rr, ok := r.(*resolver)
+	if !ok {
+		return
+	}
+	rr.clearCaches()
+}

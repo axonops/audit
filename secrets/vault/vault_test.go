@@ -279,6 +279,169 @@ func TestClose_ZerosToken_Idempotent(t *testing.T) {
 	require.NoError(t, p.Close())
 }
 
+// TestVaultClose_ZerosTokenSlice is the named contract test from
+// #479 Testing Requirements. Asserts every byte of the internal
+// token slice is 0x00 after Close() returns, proving the best-effort
+// byte-slice zeroing guarantee documented in SECURITY.md §Secrets
+// and Memory Retention. The separate Go string copy created at
+// fetchPath (string(p.token) → HTTP header) cannot be zeroed and is
+// not covered by this test — see TestVaultResolve_ClearsHeaderAfterDo
+// for the request-header narrowing coverage.
+func TestVaultClose_ZerosTokenSlice(t *testing.T) {
+	t.Parallel()
+	const secretToken = "super-secret-vault-token-v1"
+	p, err := vault.New(&vault.Config{
+		Address: "https://vault.example.com",
+		Token:   secretToken,
+	})
+	require.NoError(t, err)
+
+	// Sanity: before Close the token slice contains the original
+	// bytes (rules out "New didn't store it" false positive).
+	before := vault.TokenBytesForTest(p)
+	require.Equal(t, []byte(secretToken), before,
+		"token bytes must match Config.Token before Close")
+
+	require.NoError(t, p.Close())
+
+	after := vault.TokenBytesForTest(p)
+	require.Len(t, after, len(secretToken),
+		"Close must not resize the token slice — it zeroes in place")
+	for i, b := range after {
+		assert.Equal(t, byte(0), b,
+			"token byte %d must be zero after Close, got %#x", i, b)
+	}
+}
+
+// TestVaultResolve_ClearsHeaderAfterDo asserts the request's
+// X-Vault-Token and X-Vault-Namespace header entries are deleted
+// after client.Do returns. Best-effort narrowing of the retention
+// window — the string values already exist in memory and cannot be
+// zeroed, but dropping the map entry removes one live reference
+// held by the request object (#479).
+//
+// Uses a capturing RoundTripper: the request is snapshotted during
+// RoundTrip (headers still present — they must reach the transport)
+// and inspected after Resolve returns (headers must be cleared).
+func TestVaultResolve_ClearsHeaderAfterDo(t *testing.T) {
+	t.Parallel()
+	const testToken = "bearer-in-transit-token"
+	const testNamespace = "tenants/abc"
+
+	// Inner handler verifies the token reached the server side —
+	// the clear happens AFTER Do returns, so the header must still
+	// be present during transport.
+	backend := kvV2Handler(map[string]any{"k": "v"}, testToken)
+
+	var captured *http.Request
+	capturingRT := &captureRoundTripper{
+		inner: http.DefaultTransport,
+		onRoundTrip: func(req *http.Request) {
+			// Snapshot at transport send: header MUST contain the token.
+			assert.Equal(t, testToken, req.Header.Get("X-Vault-Token"),
+				"token must be present when the request hits the transport")
+			assert.Equal(t, testNamespace, req.Header.Get("X-Vault-Namespace"))
+			captured = req
+		},
+	}
+
+	srv := newTestServer(t, backend)
+	capturingRT.inner = srv.Client().Transport // keep TLS config
+
+	p, err := vault.NewWithHTTPClient(
+		&vault.Config{
+			Address:            srv.URL,
+			Token:              testToken,
+			Namespace:          testNamespace,
+			AllowPrivateRanges: true,
+		},
+		&http.Client{Transport: capturingRT},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	_, err = p.Resolve(context.Background(),
+		secrets.Ref{Scheme: "vault", Path: "secret/data/x", Key: "k"})
+	require.NoError(t, err)
+
+	// Post-Do: the map entries must have been deleted by the defer.
+	require.NotNil(t, captured, "RoundTripper must have captured the request")
+	assert.Empty(t, captured.Header.Get("X-Vault-Token"),
+		"X-Vault-Token must be cleared from the request header after Do (#479)")
+	assert.Empty(t, captured.Header.Get("X-Vault-Namespace"),
+		"X-Vault-Namespace must be cleared from the request header after Do (#479)")
+}
+
+// captureRoundTripper wraps an inner http.RoundTripper and invokes
+// onRoundTrip just before delegating. Used by
+// TestVaultResolve_ClearsHeaderAfterDo to observe the request state
+// at the transport boundary.
+type captureRoundTripper struct {
+	inner       http.RoundTripper
+	onRoundTrip func(req *http.Request)
+}
+
+func (c *captureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if c.onRoundTrip != nil {
+		c.onRoundTrip(req)
+	}
+	return c.inner.RoundTrip(req)
+}
+
+// TestVaultResolve_ClearsHeaderAfterDoError proves the deferred
+// header-clear runs on the error path too — not just on the
+// Do-success path covered by
+// [TestVaultResolve_ClearsHeaderAfterDo]. A RoundTripper that
+// captures the request then returns an error simulates any
+// transport-level failure. The defer must still delete the
+// token/namespace entries (#479).
+func TestVaultResolve_ClearsHeaderAfterDoError(t *testing.T) {
+	t.Parallel()
+	const testToken = "bearer-on-error-token"
+	const testNamespace = "tenants/err"
+
+	var captured *http.Request
+	errRT := &captureRoundTripper{
+		inner: errRoundTripper{},
+		onRoundTrip: func(req *http.Request) {
+			captured = req
+		},
+	}
+
+	p, err := vault.NewWithHTTPClient(
+		&vault.Config{
+			Address:            "https://vault.example.com",
+			Token:              testToken,
+			Namespace:          testNamespace,
+			AllowPrivateRanges: true,
+		},
+		&http.Client{Transport: errRT},
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Close() })
+
+	// Resolve must fail because the inner RoundTripper errors,
+	// but the deferred header-clear must STILL run.
+	_, err = p.Resolve(context.Background(),
+		secrets.Ref{Scheme: "vault", Path: "secret/data/x", Key: "k"})
+	require.Error(t, err,
+		"Resolve must return an error when the transport errors")
+
+	require.NotNil(t, captured, "RoundTripper must have captured the request")
+	assert.Empty(t, captured.Header.Get("X-Vault-Token"),
+		"X-Vault-Token must be cleared even when Do returns an error (#479)")
+	assert.Empty(t, captured.Header.Get("X-Vault-Namespace"),
+		"X-Vault-Namespace must be cleared even when Do returns an error (#479)")
+}
+
+// errRoundTripper always returns a network-ish error. Paired with
+// captureRoundTripper to verify post-Do cleanup on error paths.
+type errRoundTripper struct{}
+
+func (errRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("simulated transport error")
+}
+
 func TestResolve_DifferentKeys(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t, kvV2Handler(map[string]any{

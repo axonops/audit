@@ -218,6 +218,12 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	if rErr != nil {
 		return nil, rErr
 	}
+	// Drop resolved-value references from the resolver caches on the
+	// way out. The resolver is already local to this call and becomes
+	// GC-unreachable at return; clearing the caches narrows the live
+	// reference set by one layer before GC runs. Defence-in-depth per
+	// #479 — not a zeroing guarantee.
+	defer secretResolver.clearCaches()
 
 	// Derive a context with the secret timeout applied.
 	secretCtx := ctx

@@ -160,6 +160,11 @@ func registerSecretSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	)
 
 	ctx.Step(
+		`^I load the following output configuration YAML with secret providers twice:$`,
+		tc.stepLoadYAMLWithProvidersTwice,
+	)
+
+	ctx.Step(
 		`^the config load should fail$`,
 		tc.stepAssertConfigLoadFailed,
 	)
@@ -249,6 +254,22 @@ func (tc *TestContext) stepLoadYAMLWithProviders(doc *godog.DocString) error {
 func (tc *TestContext) stepAssertConfigLoadFailed() error {
 	if tc.LastErr == nil {
 		return fmt.Errorf("expected config load to fail, but it succeeded")
+	}
+	return nil
+}
+
+// stepLoadYAMLWithProvidersTwice loads the same YAML through two
+// back-to-back Load invocations, asserting both succeed. Used by the
+// #479 BDD scenario proving that resolver caches do not persist
+// across Loads — each invocation must hit the provider fresh.
+func (tc *TestContext) stepLoadYAMLWithProvidersTwice(doc *godog.DocString) error {
+	for i := 0; i < 2; i++ {
+		if err := tc.stepLoadYAMLWithProviders(doc); err != nil {
+			return fmt.Errorf("iteration %d: %w", i+1, err)
+		}
+		if tc.LastErr != nil {
+			return fmt.Errorf("iteration %d: unexpected load error: %w", i+1, tc.LastErr)
+		}
 	}
 	return nil
 }

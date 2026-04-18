@@ -291,10 +291,25 @@ func (p *Provider) fetchPath(ctx context.Context, path string) (map[string]strin
 		// Strip stdlib error to prevent vault path leakage.
 		return nil, fmt.Errorf("%w: failed to build HTTP request", secrets.ErrSecretResolveFailed)
 	}
+	// Setting these headers converts p.token ([]byte) into an
+	// immutable Go string via string(p.token). Close() zeroes the
+	// underlying byte slice, but the string copy cannot be zeroed.
+	// We Delete the header entries after Do returns to drop the
+	// request-object reference — a best-effort narrowing of the
+	// retention window, since the string values persist until GC.
+	// See SECURITY.md §Secrets and Memory Retention (#479).
 	req.Header.Set("X-Vault-Token", string(p.token))
 	if p.ns != "" {
 		req.Header.Set("X-Vault-Namespace", p.ns)
 	}
+	defer func() {
+		// Drop the map-held references after the request completes.
+		// The string values already copied into the header map
+		// cannot be zeroed; GC reclaims them once req itself is
+		// unreachable. Best-effort defence-in-depth per #479.
+		req.Header.Del("X-Vault-Token")
+		req.Header.Del("X-Vault-Namespace")
+	}()
 
 	// Execute request. Strip *url.Error wrapper to prevent vault
 	// path leakage — url.Error.Error() embeds the full request URL.

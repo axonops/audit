@@ -351,6 +351,104 @@ func TestLoad_WithSecretProvider_ErrorNeverContainsSecretValue(t *testing.T) {
 	assert.NotContains(t, err.Error(), secretValue)
 }
 
+// TestClearCaches_EmptiesBothMaps is the direct unit test for the
+// defence-in-depth call site. Removing or breaking the `clear()`
+// calls in resolver.clearCaches() MUST fail this test — exercised
+// via the [outputconfig.ResolverClearCachesForTest] hook so the
+// contract is locked in at the line level, not just at the Load
+// level where the resolver is already local to the call (#479).
+func TestClearCaches_EmptiesBothMaps(t *testing.T) {
+	t.Parallel()
+
+	// nil receiver is a no-op — covered explicitly so the guard
+	// is not quietly removed in a refactor.
+	outputconfig.ResolverClearCachesForTest(nil)
+
+	mock := newMockProvider("mock", nil)
+	r, err := outputconfig.NewResolverForTest([]secrets.Provider{mock})
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	outputconfig.ResolverSeedCacheForTest(r)
+	pathLen, refLen := outputconfig.ResolverCacheSizesForTest(r)
+	require.Equal(t, 1, pathLen, "seed must populate pathCache")
+	require.Equal(t, 1, refLen, "seed must populate refCache")
+
+	outputconfig.ResolverClearCachesForTest(r)
+	pathLen, refLen = outputconfig.ResolverCacheSizesForTest(r)
+	assert.Equal(t, 0, pathLen, "clearCaches() must empty pathCache")
+	assert.Equal(t, 0, refLen, "clearCaches() must empty refCache")
+}
+
+// TestLoad_ClearsResolverCacheBeforeReturn is the named contract test
+// from #479 Testing Requirements. It proves the resolver's path and
+// ref caches do not persist across Load invocations — a second Load
+// with the same provider and same refs must produce fresh provider
+// calls, never hitting a stale intra-process cache.
+//
+// This is the observable companion to the defence-in-depth
+// clearCaches() call in Load: even if a future refactor accidentally
+// shares a resolver across Loads, this test fails closed.
+func TestLoad_ClearsResolverCacheBeforeReturn(t *testing.T) {
+	t.Parallel()
+	tax := testTaxonomy(t)
+	mock := newMockProvider("mock", map[string]map[string]string{
+		"secret/data/hmac": {
+			"salt":      "cached-salt-value-32-bytes!!!!!!",
+			"version":   "v1",
+			"algorithm": "HMAC-SHA-256",
+			"enabled":   "true",
+		},
+	})
+	data := yamlWithHMACRefs(
+		"ref+mock://secret/data/hmac#salt",
+		"ref+mock://secret/data/hmac#version",
+		"ref+mock://secret/data/hmac#algorithm",
+		"ref+mock://secret/data/hmac#enabled",
+	)
+
+	// First Load — BatchProvider resolves the path once.
+	result1, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.NoError(t, err)
+	callsAfterFirst := mock.calls.Load()
+	require.Equal(t, int64(1), callsAfterFirst,
+		"first Load should produce exactly one provider call (path-level cache)")
+
+	// Second Load with the SAME provider and SAME refs. If Load did
+	// not clear the resolver caches before returning (or if caches
+	// somehow survived as package state), this second Load would
+	// produce zero additional provider calls. The contract is that
+	// each Load is self-contained: a fresh resolver is built, the
+	// provider is consulted anew.
+	result2, err := outputconfig.Load(
+		context.Background(), data, tax,
+		outputconfig.WithSecretProvider(mock),
+	)
+	require.NoError(t, err)
+	callsAfterSecond := mock.calls.Load()
+	assert.Equal(t, int64(2), callsAfterSecond,
+		"second Load must produce a second provider call — resolver caches must not persist across Loads (#479)")
+
+	// Sanity: both Loads produced the same resolved values.
+	require.Len(t, result1.Outputs, 1)
+	require.Len(t, result2.Outputs, 1)
+	hmac1, hmac2 := result1.Outputs[0].HMACConfig, result2.Outputs[0].HMACConfig
+	require.NotNil(t, hmac1)
+	require.NotNil(t, hmac2)
+	assert.Equal(t, hmac1.SaltValue, hmac2.SaltValue)
+	assert.Equal(t, hmac1.SaltVersion, hmac2.SaltVersion)
+
+	for _, o := range result1.Outputs {
+		_ = o.Output.Close()
+	}
+	for _, o := range result2.Outputs {
+		_ = o.Output.Close()
+	}
+}
+
 func TestLoad_WithSecretProvider_PathLevelCache_OneCallForMultipleKeys(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)

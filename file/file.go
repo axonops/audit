@@ -138,7 +138,7 @@ const dropWarnInterval = 10 * time.Second
 // to [Output.Write] and [Output.Close].
 type Output struct {
 	writer        *rotate.Writer
-	logger        *slog.Logger
+	logger        atomic.Pointer[slog.Logger] // diagnostic logger; swapped atomically post-construction (#474)
 	outputMetrics atomic.Pointer[audit.OutputMetrics]
 	fileMetrics   atomic.Pointer[Metrics]
 	ch            chan []byte
@@ -153,8 +153,15 @@ type Output struct {
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
+//
+// Safe for concurrent use with the background write goroutine and any
+// active [Output.Write] caller — the logger field is an
+// [atomic.Pointer] so readers always see a fully-published value.
 func (f *Output) SetDiagnosticLogger(l *slog.Logger) {
-	f.logger = l
+	if l == nil {
+		l = slog.Default()
+	}
+	f.logger.Store(l)
 }
 
 // resolvePath normalises the path to an absolute form, resolving
@@ -227,11 +234,13 @@ func New(cfg Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //n
 	out := &Output{
 		path:    cfg.Path,
 		name:    "file:" + cfg.Path,
-		logger:  logger,
 		ch:      make(chan []byte, cfg.BufferSize),
 		closeCh: make(chan struct{}),
 		done:    make(chan struct{}),
 	}
+	// Publish the initial logger BEFORE any goroutine starts reading
+	// it. resolveOptions has already replaced nil with slog.Default.
+	out.logger.Store(logger)
 	if fileMetrics != nil {
 		out.fileMetrics.Store(&fileMetrics)
 	}
@@ -244,7 +253,7 @@ func New(cfg Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //n
 		MaxBackups: cfg.MaxBackups,
 		Compress:   compress,
 		OnError: func(err error) {
-			out.logger.Warn("audit: file output background error",
+			out.logger.Load().Warn("audit: file output background error",
 				"path", logPath, "error", err)
 		},
 	}
@@ -284,7 +293,7 @@ func (f *Output) Write(data []byte) error {
 		return nil
 	default:
 		f.drops.record(dropWarnInterval, func(dropped int64) {
-			f.logger.Warn("audit: output file: event dropped (buffer full)",
+			f.logger.Load().Warn("audit: output file: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(f.ch))
 		})
@@ -318,7 +327,7 @@ func (f *Output) Close() error {
 	case <-f.done:
 	case <-timer.C:
 		remaining := len(f.ch)
-		f.logger.Error("audit: output file: shutdown timeout, events lost",
+		f.logger.Load().Error("audit: output file: shutdown timeout, events lost",
 			"timeout", shutdownTimeout,
 			"events_lost", remaining)
 	}
@@ -373,12 +382,16 @@ func (f *Output) writeEvent(data []byte) {
 	if omp := f.outputMetrics.Load(); omp != nil {
 		om = *omp
 	}
+	// Cache the logger once per event so a concurrent
+	// SetDiagnosticLogger swap mid-event still logs through the
+	// pre-swap logger (benign; next event picks up the new one).
+	logger := f.logger.Load()
 
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			f.logger.Error("audit: output file: panic recovered",
+			logger.Error("audit: output file: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
 			if om != nil {
@@ -398,7 +411,7 @@ func (f *Output) writeEvent(data []byte) {
 		start = time.Now()
 	}
 	if _, err := f.writer.Write(data); err != nil {
-		f.logger.Error("audit: output file: delivery failed",
+		logger.Error("audit: output file: delivery failed",
 			"error", err)
 		if om != nil {
 			om.RecordError()

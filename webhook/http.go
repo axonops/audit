@@ -30,6 +30,11 @@ import (
 func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint:gocognit // retry loop with metrics recording
 	start := time.Now()
 	body := buildNDJSON(batch)
+	// Cache the logger pointer once per batch so repeated warn/error
+	// calls inside the retry loop pay a single atomic.Load. The field
+	// is atomic.Pointer (#474) — a concurrent SetDiagnosticLogger
+	// will only be visible on the next batch, which is fine.
+	logger := w.logger.Load()
 
 	for attempt := range w.maxRetries {
 		if attempt > 0 {
@@ -51,7 +56,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 		}
 
 		if !retryable {
-			w.logger.Error("audit: output webhook: non-retryable error",
+			logger.Error("audit: output webhook: non-retryable error",
 				"error", err,
 				"batch_size", len(batch))
 			if omp := w.outputMetrics.Load(); omp != nil {
@@ -61,7 +66,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 			return
 		}
 
-		w.logger.Warn("audit: output webhook: retrying",
+		logger.Warn("audit: output webhook: retrying",
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
 			"error", err)
@@ -71,7 +76,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 	}
 
 	// All retries exhausted.
-	w.logger.Error("audit: output webhook: retries exhausted, dropping batch",
+	logger.Error("audit: output webhook: retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
 	if omp := w.outputMetrics.Load(); omp != nil {

@@ -87,8 +87,8 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	mu            sync.Mutex
 	closed        atomic.Bool
 	fw            atomic.Pointer[frameworkFields]
-	logger        *slog.Logger
-	drops         dropLimiter // rate-limits buffer-full warnings
+	logger        atomic.Pointer[slog.Logger] // swapped atomically post-construction (#474)
+	drops         dropLimiter                 // rate-limits buffer-full warnings
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams      map[string]*lokiStream // reused across flushes
@@ -170,7 +170,6 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	o := &Output{
 		cfg:     cfg,
 		metrics: metrics,
-		logger:  resolved.logger,
 		ch:      make(chan lokiEntry, cfg.BufferSize),
 		closeCh: make(chan struct{}),
 		cancel:  cancel,
@@ -179,6 +178,8 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		name:    lokiName(cfg.URL),
 		streams: make(map[string]*lokiStream),
 	}
+	// Publish the initial logger BEFORE starting the batch goroutine.
+	o.logger.Store(resolved.logger)
 	o.compressDest = &o.compressBuf // default; overridden in tests
 
 	go o.batchLoop(ctx)
@@ -194,8 +195,15 @@ func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
+//
+// Safe for concurrent use with the background batch goroutine and any
+// active [Output.WriteWithMetadata] caller — the logger field is an
+// [atomic.Pointer] so readers always see a fully-published value.
 func (o *Output) SetDiagnosticLogger(l *slog.Logger) {
-	o.logger = l
+	if l == nil {
+		l = slog.Default()
+	}
+	o.logger.Store(l)
 }
 
 // WriteWithMetadata enqueues a serialised audit event with per-event
@@ -215,7 +223,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		return nil
 	default:
 		o.drops.record(dropWarnInterval, func(dropped int64) {
-			o.logger.Warn("audit: output loki: event dropped (buffer full)",
+			o.logger.Load().Warn("audit: output loki: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
@@ -262,7 +270,7 @@ func (o *Output) Close() error {
 	select {
 	case <-o.done:
 	case <-timer.C:
-		o.logger.Error("audit: loki batch goroutine did not exit",
+		o.logger.Load().Error("audit: loki batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -377,7 +385,7 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 
 	body, compressed, err := o.maybeCompress()
 	if err != nil {
-		o.logger.Warn("audit: loki compression failed, sending uncompressed",
+		o.logger.Load().Warn("audit: loki compression failed, sending uncompressed",
 			"error", err, "batch_size", len(batch))
 		body = o.payloadBuf.Bytes()
 		compressed = false

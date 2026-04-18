@@ -151,7 +151,7 @@ type Output struct {
 	tlsCfg        *tls.Config                         // cached for reconnection; nil for non-TLS
 	syslogMetrics atomic.Pointer[Metrics]             // extension: RecordSyslogReconnect (may be nil)
 	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	logger        *slog.Logger                        // diagnostic logger; set via SetDiagnosticLogger
+	logger        atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
 	ch            chan syslogEntry                    // async buffer
 	closeCh       chan struct{}                       // signals writeLoop to drain and exit
 	done          chan struct{}                       // closed when writeLoop exits
@@ -170,8 +170,15 @@ type Output struct {
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
+//
+// Safe for concurrent use with the background write goroutine and any
+// active [Output.Write] caller — the logger field is an
+// [atomic.Pointer] so readers always see a fully-published value.
 func (s *Output) SetDiagnosticLogger(l *slog.Logger) {
-	s.logger = l
+	if l == nil {
+		l = slog.Default()
+	}
+	s.logger.Store(l)
 }
 
 // New creates a new [Output] from the given config.
@@ -223,7 +230,6 @@ func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
 
 	s := &Output{
 		tlsCfg:   tlsCfg,
-		logger:   o.logger,
 		ch:       make(chan syslogEntry, bufSize),
 		closeCh:  make(chan struct{}),
 		done:     make(chan struct{}),
@@ -235,6 +241,9 @@ func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
 		facility: priority, // parseFacility returns facility bits only
 		maxRetry: maxRetry,
 	}
+	// Publish the initial logger BEFORE starting the write goroutine.
+	// resolveOptions already replaced nil with slog.Default.
+	s.logger.Store(o.logger)
 	if syslogMetrics != nil {
 		s.syslogMetrics.Store(&syslogMetrics)
 	}
@@ -278,7 +287,7 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 		return nil
 	default:
 		s.drops.record(dropWarnInterval, func(dropped int64) {
-			s.logger.Warn("audit: output syslog: event dropped (buffer full)",
+			s.logger.Load().Warn("audit: output syslog: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(s.ch))
 		})
@@ -312,7 +321,7 @@ func (s *Output) Close() error {
 	case <-s.done:
 	case <-timer.C:
 		remaining := len(s.ch)
-		s.logger.Error("audit: output syslog: shutdown timeout, events lost",
+		s.logger.Load().Error("audit: output syslog: shutdown timeout, events lost",
 			"timeout", shutdownTimeout,
 			"events_lost", remaining)
 	}
@@ -413,7 +422,7 @@ func (s *Output) writeEntry(entry syslogEntry) { //nolint:gocyclo,cyclop // even
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			s.logger.Error("audit: output syslog: panic recovered",
+			s.logger.Load().Error("audit: output syslog: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
 			if om != nil {
@@ -462,7 +471,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	s.failures++
 
 	if s.failures > s.maxRetry {
-		s.logger.Error("audit: output syslog: retries exhausted, dropping event",
+		s.logger.Load().Error("audit: output syslog: retries exhausted, dropping event",
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
@@ -479,7 +488,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 
 	backoff := backoffDuration(s.failures)
-	s.logger.Warn("audit: output syslog: reconnecting",
+	s.logger.Load().Warn("audit: output syslog: reconnecting",
 		"address", s.address,
 		"attempt", s.failures,
 		"backoff", backoff)
@@ -507,7 +516,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 
 	if err := s.connect(); err != nil {
-		s.logger.Error("audit: output syslog: reconnect failed",
+		s.logger.Load().Error("audit: output syslog: reconnect failed",
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
@@ -517,14 +526,14 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		return
 	}
 
-	s.logger.Info("audit: syslog reconnected", "address", s.address)
+	s.logger.Load().Info("audit: syslog reconnected", "address", s.address)
 	if sm != nil {
 		sm.RecordSyslogReconnect(s.address, true)
 	}
 
 	// Retry the write on the new connection.
 	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-		s.logger.Error("audit: output syslog: delivery failed after reconnect",
+		s.logger.Load().Error("audit: output syslog: delivery failed after reconnect",
 			"error", err)
 		if om != nil {
 			om.RecordError()
@@ -565,7 +574,7 @@ func (s *Output) drainOne(entry syslogEntry) {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			s.logger.Error("audit: output syslog: panic recovered during drain",
+			s.logger.Load().Error("audit: output syslog: panic recovered during drain",
 				"panic", r,
 				"stack", string(buf[:n]))
 			if om != nil {
@@ -583,7 +592,7 @@ func (s *Output) drainOne(entry syslogEntry) {
 		start = time.Now()
 	}
 	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-		s.logger.Error("audit: output syslog: delivery failed during drain",
+		s.logger.Load().Error("audit: output syslog: delivery failed during drain",
 			"error", err)
 		if om != nil {
 			om.RecordError()

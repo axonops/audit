@@ -396,6 +396,93 @@ func TestParseRef_ErrorMessages_DoNotContainFullPath(t *testing.T) {
 	assert.NotContains(t, err.Error(), "secret/very/deep/../../../etc/passwd")
 }
 
+// TestParseRef_NeverLeaksInputInErrorMessage is the comprehensive
+// non-leakage contract for ParseRef (#486). For every malformed-input
+// class, the returned error message MUST NOT contain any substring of
+// the scheme, path, or key portions of the input. A single byte of
+// user-controlled content in a diagnostic log is a leakage vector —
+// even a scheme like "leak-secret" or a path like "secret/production"
+// tells an attacker something about the deployment.
+//
+// The test is table-driven with sentinel markers embedded in each
+// component ("LEAKSCHEME", "LEAKPATH", "LEAKKEY") so the assertion
+// can be exact: the error MUST NOT contain any of the sentinels.
+func TestParseRef_NeverLeaksInputInErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		schemeMarker = "LEAKSCHEME"
+		pathMarker   = "LEAKPATH"
+		keyMarker    = "LEAKKEY"
+	)
+
+	tests := []struct {
+		name  string
+		input string
+	}{
+		// Class: missing "://" separator — whole-input case.
+		{"missing_scheme_sep", "ref+" + schemeMarker + pathMarker + "#" + keyMarker},
+
+		// Class: empty scheme ("ref+://path#key").
+		{"empty_scheme", "ref+://" + pathMarker + "#" + keyMarker},
+
+		// Class: invalid scheme (rejected by isValidScheme).
+		{"invalid_scheme_starts_with_digit", "ref+1" + schemeMarker + "://" + pathMarker + "#" + keyMarker},
+		{"invalid_scheme_starts_with_hyphen", "ref+-" + schemeMarker + "://" + pathMarker + "#" + keyMarker},
+		{"invalid_scheme_uppercase", "ref+" + schemeMarker + "Bao://" + pathMarker + "#" + keyMarker},
+		{"invalid_scheme_underscore", "ref+" + schemeMarker + "_bao://" + pathMarker + "#" + keyMarker},
+		{"invalid_scheme_special_char", "ref+" + schemeMarker + "!://" + pathMarker + "#" + keyMarker},
+
+		// Class: missing key fragment (no "#").
+		{"missing_key_fragment", "ref+env://" + pathMarker},
+
+		// Class: empty path ("ref+env://#key").
+		{"empty_path", "ref+env://#" + keyMarker},
+
+		// Class: empty key ("ref+env://path#").
+		{"empty_key_fragment", "ref+env://" + pathMarker + "#"},
+
+		// Class: key contains "#".
+		{"key_contains_hash", "ref+env://" + pathMarker + "#" + keyMarker + "#extra"},
+
+		// Class: path validation — leading "/", trailing "/",
+		// percent, traversal, empty segment, dot, control byte.
+		{"path_leading_slash", "ref+env:///" + pathMarker + "#" + keyMarker},
+		{"path_trailing_slash", "ref+env://" + pathMarker + "/#" + keyMarker},
+		{"path_percent_encoded", "ref+env://" + pathMarker + "%20x#" + keyMarker},
+		{"path_traversal_dotdot", "ref+env://" + pathMarker + "/..#" + keyMarker},
+		{"path_dot_segment", "ref+env://" + pathMarker + "/.#" + keyMarker},
+		{"path_empty_segment", "ref+env://" + pathMarker + "//x#" + keyMarker},
+		{"path_control_byte_null", "ref+env://" + pathMarker + "\x00x#" + keyMarker},
+		{"path_control_byte_newline", "ref+env://" + pathMarker + "\nx#" + keyMarker},
+		{"path_control_byte_del", "ref+env://" + pathMarker + "\x7fx#" + keyMarker},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := secrets.ParseRef(tc.input)
+			require.Error(t, err, "input %q must be rejected as malformed", tc.input)
+
+			msg := err.Error()
+			assert.NotContains(t, msg, schemeMarker,
+				"error message must not contain the scheme substring: %q", msg)
+			assert.NotContains(t, msg, pathMarker,
+				"error message must not contain the path substring: %q", msg)
+			assert.NotContains(t, msg, keyMarker,
+				"error message must not contain the key substring: %q", msg)
+
+			// Defend against a future refactor that swaps the `0x%02x`
+			// hex-literal byte formatter in validatePath for a raw
+			// `%s` (which would embed the control byte verbatim).
+			// Asserting no raw 0x00/0x0a/0x7f byte catches that
+			// regression even though the current message is safe.
+			assert.NotContains(t, msg, "\x00", "error message must not contain raw NUL byte: %q", msg)
+			assert.NotContains(t, msg, "\x0a", "error message must not contain raw LF byte: %q", msg)
+			assert.NotContains(t, msg, "\x7f", "error message must not contain raw DEL byte: %q", msg)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Property-based test
 // ---------------------------------------------------------------------------

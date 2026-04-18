@@ -155,7 +155,9 @@ func (r Ref) Valid() error {
 		return fmt.Errorf("%w: empty scheme", ErrMalformedRef)
 	}
 	if !isValidScheme(r.Scheme) {
-		return fmt.Errorf("%w: invalid scheme %q", ErrMalformedRef, r.Scheme)
+		// Scheme is not echoed — a user-controlled substring in an error
+		// message is a leak vector when the error is logged (#486).
+		return fmt.Errorf("%w: invalid scheme (redacted, must match [a-z][a-z0-9-]*)", ErrMalformedRef)
 	}
 	if r.Path == "" {
 		return fmt.Errorf("%w: empty path", ErrMalformedRef)
@@ -201,6 +203,17 @@ func (r Ref) Format(f fmt.State, _ rune) {
 // key containing "#".
 //
 // Returns (ref, nil) on success.
+//
+// # Error-message redaction
+//
+// No error returned by ParseRef echoes any substring of the input
+// (scheme, path, or key). A malformed ref may carry sensitive
+// material; a user-controlled substring in an error message is a
+// leakage vector when the error is logged or propagated through a
+// config-loader surface. Error messages are category-level ("invalid
+// scheme", "empty path", "key fragment must not contain "#"") plus
+// the class descriptor returned by [redactRef] for the whole-input
+// case (#486).
 func ParseRef(s string) (Ref, error) {
 	if !strings.HasPrefix(s, refPrefix) {
 		return Ref{}, nil
@@ -212,7 +225,8 @@ func ParseRef(s string) (Ref, error) {
 	// Find "://" separator.
 	sepIdx := strings.Index(rest, schemeSep)
 	if sepIdx < 0 {
-		return Ref{}, fmt.Errorf("%w: missing %q separator in %q", ErrMalformedRef, schemeSep, redactRef(s))
+		// redactRef returns a fixed token; the input is never echoed.
+		return Ref{}, fmt.Errorf("%w: missing %q separator in %s", ErrMalformedRef, schemeSep, redactRef(s))
 	}
 
 	scheme := rest[:sepIdx]
@@ -220,7 +234,8 @@ func ParseRef(s string) (Ref, error) {
 		return Ref{}, fmt.Errorf("%w: empty scheme", ErrMalformedRef)
 	}
 	if !isValidScheme(scheme) {
-		return Ref{}, fmt.Errorf("%w: invalid scheme %q", ErrMalformedRef, scheme)
+		// Scheme is not echoed (see godoc #486).
+		return Ref{}, fmt.Errorf("%w: invalid scheme (redacted, must match [a-z][a-z0-9-]*)", ErrMalformedRef)
 	}
 
 	// Everything after "://"
@@ -306,6 +321,12 @@ func validatePath(path string) error {
 	// CR corrupt downstream log lines. Rejected at parse time so no
 	// provider ever receives a path with these bytes. Surfaced by
 	// FuzzParseRef (#481).
+	//
+	// The byte value and offset are retained in the error message:
+	// both are diagnostic class identifiers (a 2-hex-digit literal
+	// and a bounded positional integer), not substrings of the path,
+	// so the #486 no-substring-echo rule is preserved. The precise
+	// byte/offset is necessary to diagnose fuzz-regression cases.
 	for i := 0; i < len(path); i++ {
 		b := path[i]
 		if b < 0x20 || b == 0x7f {

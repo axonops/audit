@@ -150,6 +150,22 @@ receives invalid HMAC parameters.
 
 All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconfig.Load()`, and `New`) wrap `audit.ErrConfigInvalid`. Use `errors.Is(err, audit.ErrConfigInvalid)` to detect them programmatically. Errors returned by `ComputeHMAC` and `VerifyHMAC` do not wrap this sentinel and must be handled separately.
 
+### `ErrHMACMalformed`
+
+```
+audit: hmac value malformed
+```
+
+| | |
+|---|---|
+| **When** | `VerifyHMAC` receives a structurally invalid HMAC value: empty, wrong length for the algorithm's hash size, or containing non-lowercase-hex characters. |
+| **Meaning** | The supplied signature cannot possibly be a valid HMAC for the configured algorithm — rejected BEFORE the constant-time compare, since malformed inputs are pre-authentication structural rejects and not timing-sensitive (#483). |
+| **Transient?** | No. Fix the caller to supply a well-formed signature. |
+| **What to do** | Ensure the HMAC value is lowercase hex and matches the expected length (64 chars for HMAC-SHA-256, 96 for SHA-384, 128 for SHA-512). Uppercase hex is rejected deliberately — `ComputeHMAC` always emits lowercase, so accepting uppercase would invite a "two valid encodings for one MAC" footgun. |
+| **Sentinel behaviour** | Always wrapped alongside `ErrValidation` via `errors.Join`. Consumers may test either sentinel with `errors.Is`:<br>`errors.Is(err, audit.ErrHMACMalformed)` → narrow (format-specific)<br>`errors.Is(err, audit.ErrValidation)` → any validation failure, including format |
+
+> Note: a valid-length + valid-hex signature that simply does NOT match the true HMAC returns `(false, nil)` — no error. Only structural rejects return `ErrHMACMalformed`.
+
 ---
 
 ## 📡 Loki Output Errors

@@ -53,7 +53,9 @@ jobs:
           done
 
       - name: Update dependencies per module
+        shell: bash
         run: |
+          set -eo pipefail
           MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets secrets/openbao secrets/vault"
           CORE_MODULE="github.com/axonops/audit"
           FAILED=""
@@ -81,7 +83,11 @@ jobs:
               "$CORE_MODULE/secrets" \
               "$CORE_MODULE/secrets/openbao" \
               "$CORE_MODULE/secrets/vault"; do
-              ver=$(grep "^	$dep " go.mod 2>/dev/null | awk '{print $2}')
+              # `grep` returns 1 when the dep is not present in go.mod
+              # (legitimate for sub-modules that don't reference every
+              # other module); `|| true` absorbs that expected non-zero
+              # exit so `set -eo pipefail` catches real failures.
+              ver=$(grep "^	$dep " go.mod 2>/dev/null | awk '{print $2}' || true)
               if [ -n "$ver" ]; then
                 PINNED_VERSIONS="$PINNED_VERSIONS $dep@$ver"
               fi
@@ -185,7 +191,9 @@ jobs:
       - name: Generate update summary
         id: summary
         if: steps.changes.outputs.has_changes == 'true'
+        shell: bash
         run: |
+          set -eo pipefail
           MODULES=". file syslog webhook loki outputconfig cmd/audit-gen secrets secrets/openbao secrets/vault"
           BODY=""
 
@@ -204,7 +212,12 @@ jobs:
             fi
 
             BODY="$BODY### Module: \`$MODULE_NAME\`\n\n"
-            BODY="$BODY\`\`\`diff\n$(diff -u "$mod/go.mod.before" "$mod/go.mod" | tail -n +3)\n\`\`\`\n\n"
+            # `diff -u` returns 1 when files differ (the expected case
+            # triggering this block); `|| true` absorbs that so
+            # pipefail catches only genuine failures (missing file,
+            # permission error).
+            DIFF_OUTPUT=$(diff -u "$mod/go.mod.before" "$mod/go.mod" | tail -n +3 || true)
+            BODY="$BODY\`\`\`diff\n${DIFF_OUTPUT}\n\`\`\`\n\n"
           done
 
           # Clean up .before files — they must not be committed.

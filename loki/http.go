@@ -50,6 +50,10 @@ const maxResponseBody = 64 << 10 // 64 KiB
 // buffers that are safe to use because flush() is synchronous.
 func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int, compressed bool) {
 	start := time.Now()
+	// Cache the logger pointer once per batch so repeated warn/error
+	// calls inside the retry loop pay a single atomic.Load. Matches
+	// the webhook doPostWithRetry pattern (#474).
+	logger := o.logger.Load()
 	o.retryHint = 0 // clear stale hint from previous batch
 
 	for attempt := range o.cfg.MaxRetries {
@@ -80,7 +84,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		if !retryable {
-			o.logger.Load().Error("audit: loki non-retryable error",
+			logger.Error("audit: loki non-retryable error",
 				"error", err,
 				"batch_size", batchSize)
 			o.recordError()
@@ -89,14 +93,14 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		o.recordRetry(attempt + 1)
-		o.logger.Load().Warn("audit: loki retryable error",
+		logger.Warn("audit: loki retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
 			"error", err)
 	}
 
 	// All retries exhausted.
-	o.logger.Load().Error("audit: loki retries exhausted, dropping batch",
+	logger.Error("audit: loki retries exhausted, dropping batch",
 		"batch_size", batchSize,
 		"max_retries", o.cfg.MaxRetries)
 	o.recordDrop(batchSize)

@@ -51,7 +51,7 @@ Every issue follows this sequence. Do not skip steps.
 [GitHub issue view](https://github.com/axonops/audit/issues?q=is%3Aissue+is%3Aopen+label%3Av1.0.0+%22security%22+OR+%22fix%22)
 
 - [x] **#473** security: include _hmac_v inside HMAC authenticated bytes — HMAC authenticity hole (code-reviewer C3, verified against `drain.go:183-192`). ✅ Merged in PR #623 (2026-04-17).
-- [ ] **#474** fix: atomic.Pointer for diagnostic logger in async outputs — data race across webhook/file/syslog/loki.
+- [x] **#474** fix: atomic.Pointer for diagnostic logger in async outputs — data race across webhook/file/syslog/loki. ✅ Merged in PR #629 (2026-04-18).
 - [ ] **#475** security: strip credentials from Webhook and Loki Config.String() output — token leakage via `%v` / `%+v` debug.
 - [ ] **#476** fix: apply global tls_policy to loki and secret providers — injection currently only covers syslog/webhook.
 - [ ] **#477** security: enforce character-set validation on taxonomy event types and field names — `^[a-z][a-z0-9_]*$`.
@@ -67,7 +67,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#487** security: preserve string semantics through envsubst — never re-marshal expanded values.
 - [ ] **#488** fix: panic at init if hardcoded CGNAT CIDR cannot be parsed.
 - [ ] **#489** fix: log syslog reconnect Close error at debug level.
-- [ ] **#490** refactor: thread diagnostic logger through output construction warnings (precedes #474).
+- [x] **#490** refactor: thread diagnostic logger through output construction warnings (precedes #474). ✅ Merged in PR #628 (2026-04-18).
 - [ ] **#491** docs: document middleware panic-recovery placement requirements.
 - [ ] **#492** refactor: document dropLimiter window-boundary counting semantics.
 
@@ -316,4 +316,4 @@ Only after ALL of the above: tag `v1.0.0` via the CI-based release workflow (Tra
 
 GitHub is authoritative. As issues close, tick their boxes above in this file. Commit updates to this file alongside track-completion PRs so progress is visible in `git log`.
 
-Last updated: 2026-04-17 (#473 merged via PR #623; next up is #622 with expanded scope — see Track D).
+Last updated: 2026-04-18. Progress: #473 #622 #490 #474 merged. Next: #475 (strip credentials from webhook/loki Config.String).

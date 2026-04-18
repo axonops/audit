@@ -101,6 +101,31 @@ test-secrets-vault:
 test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-secrets test-secrets-openbao test-secrets-vault
 test: test-all
 
+# --- Fuzz targets (#481) ---
+#
+# fuzz-short runs each Fuzz* function's SEED CORPUS only (no
+# `-fuzz` flag means `go test` just executes the seeds as
+# regular sub-tests). Fast (< 1s). Used by PR CI as a regression
+# tripwire against committed seeds in testdata/fuzz/FuzzXxx/.
+#
+# fuzz-long invokes the fuzzer in discovery mode with
+# `-fuzztime=${FUZZ_TIME}` per target (default 60s each). Used
+# by the release workflow. Override on the command line for
+# longer runs: `make fuzz-long FUZZ_TIME=10m`.
+
+FUZZ_TIME ?= 60s
+
+fuzz-short: ## Run fuzz seeds against every target (fast, PR-safe)
+	go test -run='^Fuzz' -count=1 .
+	cd outputconfig && go test -run='^Fuzz' -count=1 .
+	cd secrets && go test -run='^Fuzz' -count=1 .
+
+fuzz-long: ## Run each fuzz target for ${FUZZ_TIME} (default 60s). Release gate.
+	go test -run='^$$' -fuzz='^FuzzParseTaxonomyYAML$$' -fuzztime=${FUZZ_TIME} .
+	cd outputconfig && go test -run='^$$' -fuzz='^FuzzOutputConfigLoad$$' -fuzztime=${FUZZ_TIME} .
+	cd outputconfig && go test -run='^$$' -fuzz='^FuzzExpandEnvString$$' -fuzztime=${FUZZ_TIME} .
+	cd secrets && go test -run='^$$' -fuzz='^FuzzParseRef$$' -fuzztime=${FUZZ_TIME} .
+
 # Integration tests (requires Docker: make test-infra-up first)
 test-integration:
 	cd file && go test -race -v -count=1 -tags=integration ./tests/integration/...

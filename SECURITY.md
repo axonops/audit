@@ -208,6 +208,28 @@ these values.
 Operator guidance with rotation patterns: see
 [docs/secrets.md](docs/secrets.md#memory-retention-and-rotation-strategy).
 
+## Fuzz Testing Coverage
+
+Four untrusted-input parsers have Go fuzz targets that execute on
+every release:
+
+- `audit.ParseTaxonomyYAML` (taxonomy YAML parser)
+- `outputconfig.Load` (outputs YAML + env substitution + secret resolver)
+- `outputconfig.expandEnvString` (`${VAR}` / `${VAR:-default}` expander)
+- `secrets.ParseRef` (`ref+scheme://path#key` parser)
+
+Each target is fuzzed for **5 minutes** as a blocking release-gate
+step (`fuzz-long` job in `.github/workflows/release.yml`). PR CI
+runs each target's committed seed corpus via the regular
+`go test` invocation as a regression tripwire.
+
+Any crash input found during fuzzing is committed under
+`testdata/fuzz/FuzzXxx/<hash>` and becomes a permanent seed — the
+same corruption can never regress without failing CI.
+
+See [CONTRIBUTING.md — Fuzz Testing](CONTRIBUTING.md#fuzz-testing-481)
+for local reproduction commands.
+
 ## Software Bill of Materials (SBOM)
 
 Every release includes SBOMs in two formats, published as assets in

@@ -174,7 +174,10 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	var doc yaml.MapSlice
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
+		// Use %s + sanitized text to avoid echoing adversarial
+		// input bytes (NUL / CR / LF) from the YAML parser's
+		// error message into consumer log streams (#481).
+		return nil, fmt.Errorf("%w: %s", ErrOutputConfigInvalid, sanitizeParserErrorMsg(err))
 	}
 
 	// Phase 3: Reject multi-document.
@@ -182,7 +185,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	if err := dec.Decode(&discard); err == nil {
 		return nil, fmt.Errorf("%w: multiple YAML documents", ErrOutputConfigInvalid)
 	} else if !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%w: trailing content: %w", ErrOutputConfigInvalid, err)
+		return nil, fmt.Errorf("%w: trailing content: %s", ErrOutputConfigInvalid, sanitizeParserErrorMsg(err))
 	}
 
 	// Phase 3b: Extract and parse secrets: section (pre-pass).
@@ -565,7 +568,9 @@ type outputsOrderHelper struct {
 func extractOutputsOrdered(rawYAML []byte) (yaml.MapSlice, error) {
 	var helper outputsOrderHelper
 	if err := yaml.Unmarshal(rawYAML, &helper); err != nil {
-		return nil, fmt.Errorf("extract outputs: %w", err)
+		// Sanitise third-party YAML error text to prevent
+		// log-injection via adversarial input bytes (#481).
+		return nil, fmt.Errorf("extract outputs: %s", sanitizeParserErrorMsg(err))
 	}
 	return helper.Outputs, nil
 }

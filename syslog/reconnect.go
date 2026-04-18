@@ -16,9 +16,37 @@ package syslog
 
 import (
 	"crypto/rand"
+	"log/slog"
 	"math"
 	"time"
 )
+
+// closeWriterForReconnect closes the previous syslog writer before a
+// reconnect attempt. A Close error here is informational only —
+// handleWriteFailure immediately establishes a fresh transport via
+// connect(), so there is no recoverable action the caller can take
+// if Close fails (for example, the remote closed the TCP
+// half-connection or a TLS teardown errored). The error is logged at
+// debug level so operators can still observe the cause when a
+// subsequent connect keeps failing; it is deliberately not promoted
+// to warn/error and does not abort the reconnect path (#489).
+//
+// Kept as a package-level function (not a method on [*Output]) and
+// taking the Close closure explicitly so unit tests can drive the
+// error path without needing an interface seam on Output.writer —
+// which is a concrete *srslog.Writer.
+func closeWriterForReconnect(closeFn func() error, logger *slog.Logger, address string) {
+	closeErr := closeFn()
+	if closeErr == nil {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Debug("audit: output syslog: close before reconnect failed",
+		"address", address,
+		"error", closeErr)
+}
 
 // backoffDuration returns the backoff duration for the given attempt
 // number using bounded exponential backoff with jitter

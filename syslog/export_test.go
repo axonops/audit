@@ -17,6 +17,11 @@ package syslog
 // BackoffDuration is exported for testing only.
 var BackoffDuration = backoffDuration
 
+// CloseWriterForReconnect is exported for testing only — lets tests
+// drive the Close-error logging path without needing an interface
+// seam on Output.writer (which is a concrete *srslog.Writer) (#489).
+var CloseWriterForReconnect = closeWriterForReconnect
+
 // MapSeverity is exported for testing only.
 var MapSeverity = mapSeverity
 

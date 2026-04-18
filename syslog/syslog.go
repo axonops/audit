@@ -483,7 +483,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 
 	// Close the old writer before reconnecting.
 	if s.writer != nil {
-		_ = s.writer.Close()
+		closeWriterForReconnect(s.writer.Close, s.logger.Load(), s.address)
 		s.writer = nil
 	}
 

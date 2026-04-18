@@ -41,14 +41,12 @@ standard_fields:
   source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
   actor_id: "${SERVICE_ACCOUNT:-system}"
 
-# ── Global TLS Policy (optional) ──────────────────────────
-# Applies to all TLS-enabled outputs (syslog tcp+tls, webhook https)
-# that don't specify their own tls_policy. Per-output tls_policy
-# overrides this global setting.
-
-tls_policy:
-  allow_tls12: false               # default: false (TLS 1.3 only)
-  allow_weak_ciphers: false        # default: false
+# ── TLS Policy (per-output / per-provider) ────────────────
+# TLS policy is configured inside each output block (syslog,
+# webhook, loki) and each secret-provider block (vault, openbao).
+# There is no root-level tls_policy key — attempting to set one
+# fails at startup with an "unknown top-level key" error. See the
+# per-output blocks below for examples.
 
 # ── Outputs ─────────────────────────────────────────────────
 # Map of named outputs. Each output has a type, optional config,
@@ -170,8 +168,9 @@ outputs:
 | `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/13-standard-fields/#the-solution-reserved-standard-fields). |
 | `secrets` | No | Secret provider configuration. Constructs providers from YAML instead of programmatic setup. See [Secrets Configuration](#secrets-configuration). |
 | `auditor` | No | Auditor configuration. All fields optional; defaults applied if omitted. |
-| `tls_policy` | No | Global TLS policy for all TLS-enabled outputs. Per-output `tls_policy` overrides. Does NOT apply to secret providers — each provider defaults to TLS 1.3 independently. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
+
+> ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#-per-output-tls-policy) below.
 
 ## ⚙️ Logger Configuration
 
@@ -230,18 +229,48 @@ warnings routed through `slog.Default` — a subtle inconsistency if
 your application uses a non-default handler. Both options accept nil
 (equivalent to `slog.Default`).
 
-## 🔒 Global TLS Policy
+## 🔒 Per-Output TLS Policy
 
-The optional `tls_policy:` section sets the default TLS version and
-cipher suite policy for all TLS-enabled outputs (syslog with
-`network: tcp+tls`, webhook with `https://`). If an output defines its own `tls_policy`, the global `tls_policy`
-is ignored entirely for that output — fields are not merged. The
-per-output block stands alone, with any omitted fields taking their
-defaults (`false`).
+TLS policy is configured inside each TLS-capable block — `syslog:`
+(when `network: tcp+tls`), `webhook:` (when `https://`), `loki:`
+(when `https://`), and each secret provider (`vault:`, `openbao:`).
+There is no root-level `tls_policy:` key — attempting to set one
+fails at startup with an "unknown top-level key" error.
+
+Each output or provider that does not specify `tls_policy` defaults
+to **TLS 1.3 only** (no TLS 1.2, no weak ciphers). Every `tls_policy`
+block stands alone — there is no inheritance from a shared default.
+
+```yaml
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: tcp+tls
+      address: siem.example.com:6514
+      tls_policy:
+        allow_tls12: true          # required for a legacy SIEM target
+        allow_weak_ciphers: false  # keep ciphers strict even when TLS 1.2
+
+  alerts:
+    type: webhook
+    webhook:
+      url: https://alerts.example.com/webhook
+      # no tls_policy → default TLS 1.3 only, no weak ciphers
+
+secrets:
+  my_vault:
+    type: vault
+    vault:
+      address: https://vault.example.com:8200
+      tls_policy:
+        allow_tls12: false
+        allow_weak_ciphers: false
+```
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` when connecting to legacy infrastructure that does not support TLS 1.3. |
+| `allow_tls12` | `false` | Allow TLS 1.2 connections in addition to TLS 1.3. When `false` (default), only TLS 1.3 is accepted. Set `true` only when connecting to legacy infrastructure that does not support TLS 1.3. |
 | `allow_weak_ciphers` | `false` | Allow weaker cipher suites when TLS 1.2 is enabled. Has no effect when `allow_tls12` is `false`. SHOULD NOT be enabled unless required by a specific server. |
 
 > ⚠️ **Security:** The default policy (TLS 1.3 only, no weak ciphers)
@@ -249,7 +278,7 @@ defaults (`false`).
 > connecting to infrastructure that cannot be upgraded.
 
 Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
-or `network: udp`) ignore the global TLS policy.
+or `network: udp`) have no `tls_policy` field.
 
 ## 🔐 Secrets Configuration
 
@@ -294,7 +323,7 @@ Both `openbao` and `vault` accept the same configuration fields:
 | `tls_ca` | No | `""` | Path to custom CA certificate PEM file. |
 | `tls_cert` | No | `""` | Path to client certificate for mTLS. Must be paired with `tls_key`. |
 | `tls_key` | No | `""` | Path to client private key for mTLS. Must be paired with `tls_cert`. |
-| `tls_policy` | No | TLS 1.3 only | Per-provider TLS policy. The global `tls_policy` does NOT apply to secret providers. |
+| `tls_policy` | No | TLS 1.3 only | Per-provider TLS policy. Configure inside this provider block only; there is no root-level `tls_policy`. |
 | `allow_insecure_http` | No | `false` | Permit `http://` URLs. **MUST NOT be `true` in production.** Plaintext HTTP exposes the authentication token to network observers. Use only for local development with Docker Compose. |
 | `allow_private_ranges` | No | `false` | Permit connections to RFC 1918 private addresses and loopback. Required for local development where the provider runs on `127.0.0.1` or a Docker network. Cloud metadata endpoints remain blocked. |
 

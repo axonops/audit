@@ -2513,6 +2513,13 @@ func (s *discardSyslogServer) close() {
 	s.wg.Wait()
 }
 
+// silentBenchLogger is a slog logger that discards everything —
+// suppresses buffer-full WARN emissions during benchmarks so they do
+// not pollute the benchstat-parsed bench.txt output (#493).
+func silentBenchLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 // BenchmarkSyslogOutput_Write measures the Write() enqueue hot path:
 // closed check (atomic load), data copy (make+copy), and non-blocking
 // channel send. This is the per-event cost paid by the drain goroutine
@@ -2525,7 +2532,7 @@ func BenchmarkSyslogOutput_Write(b *testing.B) {
 		Network:    "tcp",
 		Address:    srv.addr(),
 		BufferSize: 100_000, // large buffer to avoid drops
-	}, nil)
+	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2557,7 +2564,7 @@ func BenchmarkSyslogOutput_Write_Parallel(b *testing.B) {
 		Network:    "tcp",
 		Address:    srv.addr(),
 		BufferSize: 100_000,
-	}, nil)
+	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -153,6 +153,14 @@ jobs:
       - name: Verify BDD Strict mode is enabled everywhere
         run: make check-bdd-strict
 
+      # Benchmark-baseline freshness guard — reject a PR that introduces
+      # a stale benchmark name to bench-baseline.txt (renames are the
+      # classic way to silently disable benchstat column pairing and
+      # break the regression gate). See #493 and
+      # scripts/bench-baseline-check.sh for details.
+      - name: Verify bench-baseline.txt references only current names
+        run: make bench-baseline-check
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

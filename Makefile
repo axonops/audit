@@ -6,7 +6,7 @@
        lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-capstone \
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
-       build build-all bench bench-save bench-compare coverage \
+       build build-all bench bench-save bench-compare bench-baseline-check coverage \
        tidy tidy-check verify check-replace check-todos check-bdd-strict \
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
@@ -263,12 +263,15 @@ build: build-all
 
 # --- Benchmarks ---
 
+BENCH_COUNT ?= 5
+
 bench:
 	@rm -f bench.txt
 	@for mod in $(MODULES); do \
-		echo "=== bench $$mod ===" | tee -a bench.txt; \
-		(cd $$mod && go test -bench=. -benchmem -count=5 -run='^$$' ./... | tee -a $(CURDIR)/bench.txt) || exit 1; \
+		echo "=== bench $$mod ===" >> bench.txt; \
+		(cd $$mod && go test -bench=. -benchmem -count=$(BENCH_COUNT) -run='^$$' ./... >> $(CURDIR)/bench.txt) || exit 1; \
 	done
+	@echo "bench output written to bench.txt ($$(wc -l < bench.txt) lines)"
 
 bench-save: bench
 	cp bench.txt bench-baseline.txt
@@ -281,6 +284,17 @@ bench-compare: bench
 		echo "No bench-baseline.txt found. Run 'make bench-save' first."; \
 		exit 1; \
 	fi
+
+# bench-baseline-check fails if bench-baseline.txt references benchmark
+# names that no longer exist in the source tree. Catches the class of
+# bug that silently breaks benchstat on rename (#493). Run as part of
+# make check to prevent stale names from landing on main.
+bench-baseline-check:
+	@if [ ! -f bench-baseline.txt ]; then \
+		echo "bench-baseline.txt missing — run 'make bench-save' to create one."; \
+		exit 1; \
+	fi
+	@bash scripts/bench-baseline-check.sh
 
 # --- Coverage ---
 
@@ -406,7 +420,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-bdd-strict release-check security
+check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-bdd-strict bench-baseline-check release-check security
 	@echo ""
 	@echo "All checks passed."
 

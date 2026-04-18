@@ -3,461 +3,305 @@ goos: linux
 goarch: amd64
 pkg: github.com/axonops/audit
 cpu: AMD Ryzen 9 7950X 16-Core Processor            
-BenchmarkAudit-32                                          	 3701876	       310.5 ns/op	     272 B/op	       1 allocs/op
-BenchmarkAudit-32                                          	 3944392	       307.6 ns/op	     271 B/op	       1 allocs/op
-BenchmarkAudit-32                                          	 4042920	       310.3 ns/op	     277 B/op	       1 allocs/op
-BenchmarkAudit-32                                          	 3766720	       301.2 ns/op	     270 B/op	       1 allocs/op
-BenchmarkAudit-32                                          	 4000935	       299.4 ns/op	     270 B/op	       1 allocs/op
-BenchmarkAuditDisabledCategory-32                          	 4667005	       242.9 ns/op	     198 B/op	       1 allocs/op
-BenchmarkAuditDisabledCategory-32                          	 4827093	       245.9 ns/op	     200 B/op	       1 allocs/op
-BenchmarkAuditDisabledCategory-32                          	 5055559	       240.9 ns/op	     199 B/op	       1 allocs/op
-BenchmarkAuditDisabledCategory-32                          	 4882023	       242.7 ns/op	     200 B/op	       1 allocs/op
-BenchmarkAuditDisabledCategory-32                          	 4526028	       244.9 ns/op	     207 B/op	       1 allocs/op
-BenchmarkAuditDisabledLogger-32                            	67117558	        17.68 ns/op	      24 B/op	       1 allocs/op
-BenchmarkAuditDisabledLogger-32                            	70654542	        17.13 ns/op	      24 B/op	       1 allocs/op
-BenchmarkAuditDisabledLogger-32                            	69370480	        19.55 ns/op	      24 B/op	       1 allocs/op
-BenchmarkAuditDisabledLogger-32                            	69395353	        18.44 ns/op	      24 B/op	       1 allocs/op
-BenchmarkAuditDisabledLogger-32                            	69585693	        19.00 ns/op	      24 B/op	       1 allocs/op
-BenchmarkAudit_RealisticFields-32                          	 1747215	       648.6 ns/op	     513 B/op	       2 allocs/op
-BenchmarkAudit_RealisticFields-32                          	 1825658	       648.3 ns/op	     516 B/op	       2 allocs/op
-BenchmarkAudit_RealisticFields-32                          	 1863784	       639.1 ns/op	     509 B/op	       2 allocs/op
-BenchmarkAudit_RealisticFields-32                          	 1813071	       649.4 ns/op	     507 B/op	       2 allocs/op
-BenchmarkAudit_RealisticFields-32                          	 1820187	       649.5 ns/op	     487 B/op	       2 allocs/op
-BenchmarkAudit_Parallel-32                                 	17822631	        66.99 ns/op	      25 B/op	       1 allocs/op
-BenchmarkAudit_Parallel-32                                 	18376407	        61.70 ns/op	      26 B/op	       1 allocs/op
-BenchmarkAudit_Parallel-32                                 	19720046	        63.99 ns/op	      27 B/op	       1 allocs/op
-BenchmarkAudit_Parallel-32                                 	19425956	        62.11 ns/op	      26 B/op	       1 allocs/op
-BenchmarkAudit_Parallel-32                                 	19461260	        61.85 ns/op	      25 B/op	       1 allocs/op
-BenchmarkAudit_PoolAmortised-32                            	 3193807	       315.3 ns/op	     261 B/op	       1 allocs/op
-BenchmarkAudit_PoolAmortised-32                            	 3804600	       307.6 ns/op	     242 B/op	       1 allocs/op
-BenchmarkAudit_PoolAmortised-32                            	 3729248	       320.8 ns/op	     244 B/op	       1 allocs/op
-BenchmarkAudit_PoolAmortised-32                            	 3602528	       326.7 ns/op	     242 B/op	       1 allocs/op
-BenchmarkAudit_PoolAmortised-32                            	 3584892	       323.9 ns/op	     243 B/op	       1 allocs/op
-BenchmarkAudit_FanOut_SharedFormatter-32                   	 3589839	       297.8 ns/op	     355 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_SharedFormatter-32                   	 4056529	       290.5 ns/op	     361 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_SharedFormatter-32                   	 4024911	       289.0 ns/op	     366 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_SharedFormatter-32                   	 4225977	       281.3 ns/op	     361 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_SharedFormatter-32                   	 4184170	       292.8 ns/op	     364 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_MixedFormatters-32                   	 3755112	       282.5 ns/op	     288 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_MixedFormatters-32                   	 3879018	       284.6 ns/op	     288 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_MixedFormatters-32                   	 4170441	       288.7 ns/op	     282 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_MixedFormatters-32                   	 3944280	       279.2 ns/op	     273 B/op	       1 allocs/op
-BenchmarkAudit_FanOut_MixedFormatters-32                   	 4273146	       277.0 ns/op	     267 B/op	       1 allocs/op
-BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3366326	       303.3 ns/op	     303 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_FilteredOutputs-32                   	 4044457	       311.7 ns/op	     312 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_FilteredOutputs-32                   	 4046838	       299.3 ns/op	     304 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3654850	       311.7 ns/op	     319 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3791145	       314.3 ns/op	     326 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_5Outputs-32                          	 3693690	       279.4 ns/op	     384 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_5Outputs-32                          	 4420554	       269.0 ns/op	     388 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_5Outputs-32                          	 4369029	       266.0 ns/op	     387 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_5Outputs-32                          	 4294047	       270.3 ns/op	     389 B/op	       2 allocs/op
-BenchmarkAudit_FanOut_5Outputs-32                          	 4275162	       274.2 ns/op	     388 B/op	       2 allocs/op
-BenchmarkAudit_EndToEnd-32                                 	 3233572	       326.9 ns/op	     259 B/op	       1 allocs/op
-BenchmarkAudit_EndToEnd-32                                 	 3780808	       326.0 ns/op	     245 B/op	       1 allocs/op
-BenchmarkAudit_EndToEnd-32                                 	 3242373	       323.7 ns/op	     261 B/op	       1 allocs/op
-BenchmarkAudit_EndToEnd-32                                 	 3144332	       320.1 ns/op	     262 B/op	       1 allocs/op
-BenchmarkAudit_EndToEnd-32                                 	 3143184	       329.0 ns/op	     262 B/op	       1 allocs/op
-BenchmarkAudit_WithHMAC-32                                 	 3532795	       298.2 ns/op	     278 B/op	       1 allocs/op
-BenchmarkAudit_WithHMAC-32                                 	 3573267	       294.3 ns/op	     276 B/op	       1 allocs/op
-BenchmarkAudit_WithHMAC-32                                 	 3658531	       296.2 ns/op	     272 B/op	       1 allocs/op
-BenchmarkAudit_WithHMAC-32                                 	 3534116	       307.2 ns/op	     279 B/op	       1 allocs/op
-BenchmarkAudit_WithHMAC-32                                 	 3933930	       311.6 ns/op	     281 B/op	       1 allocs/op
-BenchmarkStandardFieldDefaults_Applied-32                  	 2115150	       514.9 ns/op	     433 B/op	       5 allocs/op
-BenchmarkStandardFieldDefaults_Applied-32                  	 2249107	       498.5 ns/op	     423 B/op	       5 allocs/op
-BenchmarkStandardFieldDefaults_Applied-32                  	 2207949	       494.9 ns/op	     423 B/op	       5 allocs/op
-BenchmarkStandardFieldDefaults_Applied-32                  	 2297876	       508.0 ns/op	     425 B/op	       5 allocs/op
-BenchmarkStandardFieldDefaults_Applied-32                  	 2257406	       502.2 ns/op	     441 B/op	       5 allocs/op
-BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 3193016	       327.7 ns/op	     345 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2937949	       349.4 ns/op	     364 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 3371953	       341.2 ns/op	     342 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 3052663	       347.9 ns/op	     356 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 3424018	       322.2 ns/op	     333 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_MixedOutputs-32                  	 3259824	       307.7 ns/op	     389 B/op	       2 allocs/op
-BenchmarkDeliverToOutputs_MixedOutputs-32                  	 3630295	       309.7 ns/op	     381 B/op	       2 allocs/op
-BenchmarkDeliverToOutputs_MixedOutputs-32                  	 3609633	       305.4 ns/op	     368 B/op	       2 allocs/op
-BenchmarkDeliverToOutputs_MixedOutputs-32                  	 3464416	       313.6 ns/op	     374 B/op	       2 allocs/op
-BenchmarkDeliverToOutputs_MixedOutputs-32                  	 3686710	       307.9 ns/op	     376 B/op	       2 allocs/op
-BenchmarkProcessEntry_AsyncOutputs-32                      	  855998	      1727 ns/op	    1643 B/op	       8 allocs/op
-BenchmarkProcessEntry_AsyncOutputs-32                      	  609100	      1684 ns/op	    1642 B/op	       8 allocs/op
-BenchmarkProcessEntry_AsyncOutputs-32                      	  618512	      1723 ns/op	    1642 B/op	       8 allocs/op
-BenchmarkProcessEntry_AsyncOutputs-32                      	  618025	      1659 ns/op	    1642 B/op	       8 allocs/op
-BenchmarkProcessEntry_AsyncOutputs-32                      	  734803	      1596 ns/op	    1642 B/op	       8 allocs/op
-BenchmarkOutputClose_Drain/events=100-32                   	   49101	     31877 ns/op	   11900 B/op	      53 allocs/op
-BenchmarkOutputClose_Drain/events=100-32                   	   36421	     33748 ns/op	   12631 B/op	      56 allocs/op
-BenchmarkOutputClose_Drain/events=100-32                   	   32094	     36283 ns/op	   13467 B/op	      59 allocs/op
-BenchmarkOutputClose_Drain/events=100-32                   	   32744	     36533 ns/op	   13634 B/op	      60 allocs/op
-BenchmarkOutputClose_Drain/events=100-32                   	=== bench file ===
-2026/04/16 07:31:33 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-goos: linux
-goarch: amd64
-pkg: github.com/axonops/audit/file
-cpu: AMD Ryzen 9 7950X 16-Core Processor            
-BenchmarkFileOutput_Write-32             	18891844	        68.44 ns/op	2250.22 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write-32             	2026/04/16 07:31:34 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-   35749	     34809 ns/op	   13212 B/op	      58 allocs/op
-17388132	        69.29 ns/op	2222.43 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write-32             	2026/04/16 07:31:35 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-16495224	        71.75 ns/op	2146.40 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write-32             	2026/04/16 07:31:36 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-BenchmarkOutputClose_Drain/events=1000-32                  	    1668	    742005 ns/op	  565067 B/op	    2162 allocs/op
-BenchmarkOutputClose_Drain/events=1000-32                  	15979713	        71.76 ns/op	2145.95 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write-32             	2026/04/16 07:31:38 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-15519890	        72.97 ns/op	2110.32 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write_Parallel-32    	2026/04/16 07:31:39 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-2026/04/16 07:31:39 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-    1568	    767916 ns/op	  562676 B/op	    2153 allocs/op
-BenchmarkOutputClose_Drain/events=1000-32                  	12914409	        80.78 ns/op	1906.52 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write_Parallel-32    	2026/04/16 07:31:40 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-2026/04/16 07:31:40 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-13250514	        82.23 ns/op	1872.85 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write_Parallel-32    	2026/04/16 07:31:41 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-    1281	    868527 ns/op	  570464 B/op	    2182 allocs/op
-BenchmarkOutputClose_Drain/events=1000-32                  	2026/04/16 07:31:41 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-12689680	        83.25 ns/op	1849.90 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write_Parallel-32    	2026/04/16 07:31:42 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-2026/04/16 07:31:42 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-    1323	    881676 ns/op	  566228 B/op	    2166 allocs/op
-BenchmarkOutputClose_Drain/events=1000-32                  	12837540	        83.20 ns/op	1850.93 MB/s	     160 B/op	       1 allocs/op
-BenchmarkFileOutput_Write_Parallel-32    	2026/04/16 07:31:43 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-2026/04/16 07:31:44 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
-12909288	        82.04 ns/op	1877.14 MB/s	     160 B/op	       1 allocs/op
+BenchmarkAudit-32                                          	 2910813	       382.2 ns/op	     333 B/op	       2 allocs/op
+BenchmarkAudit-32                                          	 3313837	       375.1 ns/op	     324 B/op	       2 allocs/op
+BenchmarkAudit-32                                          	 3431761	       368.8 ns/op	     324 B/op	       2 allocs/op
+BenchmarkAudit-32                                          	 3353762	       376.1 ns/op	     323 B/op	       2 allocs/op
+BenchmarkAudit-32                                          	 2920641	       379.7 ns/op	     332 B/op	       2 allocs/op
+BenchmarkAuditDisabledCategory-32                          	 3870072	       285.1 ns/op	     241 B/op	       1 allocs/op
+BenchmarkAuditDisabledCategory-32                          	 4334204	       281.6 ns/op	     239 B/op	       1 allocs/op
+BenchmarkAuditDisabledCategory-32                          	 4099776	       273.8 ns/op	     221 B/op	       1 allocs/op
+BenchmarkAuditDisabledCategory-32                          	 4152346	       284.3 ns/op	     238 B/op	       1 allocs/op
+BenchmarkAuditDisabledCategory-32                          	 3674281	       289.2 ns/op	     239 B/op	       1 allocs/op
+BenchmarkAuditDisabledAuditor-32                           	65377155	        17.35 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAuditDisabledAuditor-32                           	71478133	        18.40 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAuditDisabledAuditor-32                           	69719290	        18.13 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAuditDisabledAuditor-32                           	69769920	        17.99 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAuditDisabledAuditor-32                           	71010958	        18.48 ns/op	      24 B/op	       1 allocs/op
+BenchmarkAudit_RealisticFields-32                          	 1309072	       840.6 ns/op	     679 B/op	       2 allocs/op
+BenchmarkAudit_RealisticFields-32                          	 1484810	       810.1 ns/op	     678 B/op	       2 allocs/op
+BenchmarkAudit_RealisticFields-32                          	 1417708	       816.3 ns/op	     685 B/op	       2 allocs/op
+BenchmarkAudit_RealisticFields-32                          	 1453736	       813.9 ns/op	     659 B/op	       2 allocs/op
+BenchmarkAudit_RealisticFields-32                          	 1445944	       857.7 ns/op	     678 B/op	       2 allocs/op
+BenchmarkAudit_Parallel-32                                 	16273803	        65.65 ns/op	      26 B/op	       1 allocs/op
+BenchmarkAudit_Parallel-32                                 	18833157	        61.36 ns/op	      26 B/op	       1 allocs/op
+BenchmarkAudit_Parallel-32                                 	19082073	        58.83 ns/op	      26 B/op	       1 allocs/op
+BenchmarkAudit_Parallel-32                                 	18890941	        61.96 ns/op	      25 B/op	       1 allocs/op
+BenchmarkAudit_Parallel-32                                 	20474942	        60.39 ns/op	      25 B/op	       1 allocs/op
+BenchmarkAudit_PoolAmortised-32                            	 2680264	       414.9 ns/op	     329 B/op	       2 allocs/op
+BenchmarkAudit_PoolAmortised-32                            	 3108620	       383.5 ns/op	     315 B/op	       2 allocs/op
+BenchmarkAudit_PoolAmortised-32                            	 3041263	       364.8 ns/op	     295 B/op	       2 allocs/op
+BenchmarkAudit_PoolAmortised-32                            	 2788243	       370.0 ns/op	     308 B/op	       2 allocs/op
+BenchmarkAudit_PoolAmortised-32                            	 3110782	       382.0 ns/op	     317 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_SharedFormatter-32                   	 3052322	       348.2 ns/op	     443 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_SharedFormatter-32                   	 3280003	       353.3 ns/op	     463 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_SharedFormatter-32                   	 3417829	       351.8 ns/op	     469 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_SharedFormatter-32                   	 3204902	       345.5 ns/op	     445 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_SharedFormatter-32                   	 3363442	       347.6 ns/op	     464 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_MixedFormatters-32                   	 2930444	       358.6 ns/op	     364 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_MixedFormatters-32                   	 3494905	       351.2 ns/op	     347 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_MixedFormatters-32                   	 3300489	       357.7 ns/op	     357 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_MixedFormatters-32                   	 3387100	       344.2 ns/op	     345 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_MixedFormatters-32                   	 3344827	       334.4 ns/op	     337 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_FilteredOutputs-32                   	 2859078	       375.8 ns/op	     420 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3274900	       353.8 ns/op	     406 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3340536	       377.0 ns/op	     412 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3297841	       364.5 ns/op	     409 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_FilteredOutputs-32                   	 3357788	       358.5 ns/op	     403 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_5Outputs-32                          	 2918806	       348.3 ns/op	     526 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_5Outputs-32                          	 3539095	       335.2 ns/op	     504 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_5Outputs-32                          	 3543010	       338.5 ns/op	     511 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_5Outputs-32                          	 3558546	       348.1 ns/op	     516 B/op	       2 allocs/op
+BenchmarkAudit_FanOut_5Outputs-32                          	 3470542	       337.7 ns/op	     506 B/op	       2 allocs/op
+BenchmarkAudit_EndToEnd-32                                 	 2735089	       404.1 ns/op	     327 B/op	       2 allocs/op
+BenchmarkAudit_EndToEnd-32                                 	 2722380	       390.8 ns/op	     329 B/op	       2 allocs/op
+BenchmarkAudit_EndToEnd-32                                 	 2762757	       432.2 ns/op	     342 B/op	       2 allocs/op
+BenchmarkAudit_EndToEnd-32                                 	 2733948	       409.7 ns/op	     330 B/op	       2 allocs/op
+BenchmarkAudit_EndToEnd-32                                 	 2755356	       391.5 ns/op	     320 B/op	       2 allocs/op
+BenchmarkAudit_WithHMAC-32                                 	 2950209	       369.5 ns/op	     344 B/op	       2 allocs/op
+BenchmarkAudit_WithHMAC-32                                 	 3012478	       365.2 ns/op	     342 B/op	       2 allocs/op
+BenchmarkAudit_WithHMAC-32                                 	 2863143	       369.6 ns/op	     337 B/op	       2 allocs/op
+BenchmarkAudit_WithHMAC-32                                 	 2986862	       369.2 ns/op	     342 B/op	       2 allocs/op
+BenchmarkAudit_WithHMAC-32                                 	 2990185	       367.0 ns/op	     341 B/op	       2 allocs/op
+BenchmarkStandardFieldDefaults_Applied-32                  	 1746844	       596.0 ns/op	     523 B/op	       6 allocs/op
+BenchmarkStandardFieldDefaults_Applied-32                  	 1878652	       622.2 ns/op	     530 B/op	       6 allocs/op
+BenchmarkStandardFieldDefaults_Applied-32                  	 1996288	       614.1 ns/op	     523 B/op	       6 allocs/op
+BenchmarkStandardFieldDefaults_Applied-32                  	 1891512	       614.7 ns/op	     528 B/op	       6 allocs/op
+BenchmarkStandardFieldDefaults_Applied-32                  	 1965696	       584.3 ns/op	     518 B/op	       6 allocs/op
+BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2567106	       413.4 ns/op	     423 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2687947	       413.9 ns/op	     419 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2527207	       420.4 ns/op	     429 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2631278	       414.8 ns/op	     424 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithMetadataWriter-32            	 2696293	       407.6 ns/op	     419 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MixedOutputs-32                  	 2858838	       388.8 ns/op	     459 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MixedOutputs-32                  	 2865211	       390.5 ns/op	     469 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MixedOutputs-32                  	 2905161	       388.4 ns/op	     474 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MixedOutputs-32                  	 2663041	       398.7 ns/op	     475 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MixedOutputs-32                  	 2876709	       371.9 ns/op	     456 B/op	       2 allocs/op
+BenchmarkProcessEntry_AsyncOutputs-32                      	  654436	      1832 ns/op	    1643 B/op	       8 allocs/op
+BenchmarkProcessEntry_AsyncOutputs-32                      	  728463	      1638 ns/op	    1642 B/op	       8 allocs/op
+BenchmarkProcessEntry_AsyncOutputs-32                      	  626810	      1713 ns/op	    1642 B/op	       8 allocs/op
+BenchmarkProcessEntry_AsyncOutputs-32                      	  593869	      1710 ns/op	    1642 B/op	       8 allocs/op
+BenchmarkProcessEntry_AsyncOutputs-32                      	  727152	      1623 ns/op	    1642 B/op	       8 allocs/op
+BenchmarkOutputClose_Drain/events=100-32                   	   35108	     31213 ns/op	   12689 B/op	      56 allocs/op
+BenchmarkOutputClose_Drain/events=100-32                   	   45440	     30408 ns/op	   12311 B/op	      54 allocs/op
+BenchmarkOutputClose_Drain/events=100-32                   	   36903	     32374 ns/op	   13285 B/op	      58 allocs/op
+BenchmarkOutputClose_Drain/events=100-32                   	   39033	     30638 ns/op	   12302 B/op	      54 allocs/op
+BenchmarkOutputClose_Drain/events=100-32                   	   40614	     30020 ns/op	   12154 B/op	      54 allocs/op
+BenchmarkOutputClose_Drain/events=1000-32                  	    2037	    540829 ns/op	  491417 B/op	    1884 allocs/op
+BenchmarkOutputClose_Drain/events=1000-32                  	    2107	    552059 ns/op	  486642 B/op	    1866 allocs/op
+BenchmarkOutputClose_Drain/events=1000-32                  	    2494	    524965 ns/op	  492509 B/op	    1890 allocs/op
+BenchmarkOutputClose_Drain/events=1000-32                  	    2215	    500090 ns/op	  498421 B/op	    1916 allocs/op
+BenchmarkOutputClose_Drain/events=1000-32                  	    2030	    553211 ns/op	  490706 B/op	    1880 allocs/op
+BenchmarkOutputClose_Drain/events=10000-32                 	     310	   4120519 ns/op	 3848277 B/op	   13734 allocs/op
+BenchmarkOutputClose_Drain/events=10000-32                 	     304	   3955659 ns/op	 3873028 B/op	   13819 allocs/op
+BenchmarkOutputClose_Drain/events=10000-32                 	     306	   3907813 ns/op	 3982787 B/op	   14215 allocs/op
+BenchmarkOutputClose_Drain/events=10000-32                 	     274	   4237084 ns/op	 3905281 B/op	   13933 allocs/op
+BenchmarkOutputClose_Drain/events=10000-32                 	     282	   4066553 ns/op	 3923240 B/op	   14007 allocs/op
+BenchmarkFilterCheck-32                                    	69592371	        16.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                                    	77314281	        17.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                                    	73998421	        16.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                                    	78704389	        16.28 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck-32                                    	76576206	        15.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_Parallel-32                           	1000000000	         1.011 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_Parallel-32                           	1000000000	         1.036 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_Parallel-32                           	1000000000	         1.070 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_Parallel-32                           	1000000000	         1.033 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_Parallel-32                           	1000000000	         1.032 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.055 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.130 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.043 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.037 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.043 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendPostFields_JSON-32                          	15715887	        82.82 ns/op	     160 B/op	       1 allocs/op
+BenchmarkAppendPostFields_JSON-32                          	13778289	        87.91 ns/op	     160 B/op	       1 allocs/op
+BenchmarkAppendPostFields_JSON-32                          	18275521	        87.94 ns/op	     160 B/op	       1 allocs/op
+BenchmarkAppendPostFields_JSON-32                          	13332338	        86.54 ns/op	     160 B/op	       1 allocs/op
+BenchmarkAppendPostFields_JSON-32                          	17880298	        97.56 ns/op	     160 B/op	       1 allocs/op
+BenchmarkAppendPostFields_CEF-32                           	27291555	        48.08 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAppendPostFields_CEF-32                           	16974411	        68.03 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAppendPostFields_CEF-32                           	27526839	        56.84 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAppendPostFields_CEF-32                           	27999976	        54.19 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAppendPostFields_CEF-32                           	20658331	        57.87 ns/op	     128 B/op	       1 allocs/op
+BenchmarkAppendPostFields_Disabled-32                      	911435971	         1.324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendPostFields_Disabled-32                      	921824666	         1.317 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendPostFields_Disabled-32                      	932547415	         1.314 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendPostFields_Disabled-32                      	914555829	         1.316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAppendPostFields_Disabled-32                      	919237282	         1.319 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNewEventKV-32                                     	11511649	       137.0 ns/op	     360 B/op	       3 allocs/op
+BenchmarkNewEventKV-32                                     	 8538973	       130.9 ns/op	     360 B/op	       3 allocs/op
+BenchmarkNewEventKV-32                                     	11859919	       123.9 ns/op	     360 B/op	       3 allocs/op
+BenchmarkNewEventKV-32                                     	13422945	       118.2 ns/op	     360 B/op	       3 allocs/op
+BenchmarkNewEventKV-32                                     	12694190	       108.5 ns/op	     360 B/op	       3 allocs/op
+BenchmarkMatchesRoute/empty_route-32                       	710058742	         1.696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32                       	709269360	         1.693 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32                       	700443028	         1.696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32                       	700365229	         1.694 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/empty_route-32                       	708653353	         1.686 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32                	374266747	         3.202 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32                	373998183	         3.202 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32                	373739012	         3.201 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32                	377146087	         3.210 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_categories-32                	371933919	         3.207 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32                	142213345	         8.407 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32                	142866115	         8.401 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32                	142554489	         8.423 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32                	142081318	         8.435 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/exclude_categories-32                	142359576	         8.451 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32               	291725701	         4.127 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32               	287865488	         4.146 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32               	287328097	         4.144 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32               	288340084	         4.146 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_event_types-32               	290086213	         4.128 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_20_categories-32             	177646464	         6.678 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_20_categories-32             	178185980	         6.636 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_20_categories-32             	178541612	         6.754 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_20_categories-32             	175771965	         6.709 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute/include_20_categories-32             	181657070	         6.782 ns/op	       0 B/op	       0 allocs/op
+BenchmarkJSONFormatter_Format-32                           	 3411675	       348.4 ns/op	     176 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format-32                           	 3231669	       350.4 ns/op	     176 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format-32                           	 3235117	       359.5 ns/op	     176 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format-32                           	 3417162	       348.9 ns/op	     176 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format-32                           	 3573057	       347.9 ns/op	     176 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format-32                            	 3049708	       370.7 ns/op	     160 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format-32                            	 3260096	       382.7 ns/op	     160 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format-32                            	 3217293	       370.6 ns/op	     160 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format-32                            	 3055844	       383.3 ns/op	     160 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format-32                            	 3270345	       382.0 ns/op	     160 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32                	  957732	      1230 ns/op	     640 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32                	 1000000	      1179 ns/op	     640 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32                	  955080	      1247 ns/op	     640 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32                	 1000000	      1188 ns/op	     640 B/op	       1 allocs/op
+BenchmarkJSONFormatter_Format_LargeEvent-32                	  967174	      1208 ns/op	     640 B/op	       1 allocs/op
+BenchmarkCEFFormatter_Format_LargeEvent-32                 	  957792	      1225 ns/op	     584 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format_LargeEvent-32                 	  961659	      1212 ns/op	     584 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format_LargeEvent-32                 	  994062	      1167 ns/op	     584 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format_LargeEvent-32                 	  943233	      1156 ns/op	     584 B/op	       3 allocs/op
+BenchmarkCEFFormatter_Format_LargeEvent-32                 	  977006	      1196 ns/op	     584 B/op	       3 allocs/op
+BenchmarkFormatJSON_WithConfigFields-32                    	 2562026	       434.1 ns/op	     240 B/op	       2 allocs/op
+BenchmarkFormatJSON_WithConfigFields-32                    	 2632848	       443.3 ns/op	     240 B/op	       2 allocs/op
+BenchmarkFormatJSON_WithConfigFields-32                    	 2635210	       447.3 ns/op	     240 B/op	       2 allocs/op
+BenchmarkFormatJSON_WithConfigFields-32                    	 2617615	       457.2 ns/op	     240 B/op	       2 allocs/op
+BenchmarkFormatJSON_WithConfigFields-32                    	 2770225	       423.5 ns/op	     240 B/op	       2 allocs/op
+BenchmarkFormatCEF_WithConfigFields-32                     	 2672757	       439.0 ns/op	     224 B/op	       2 allocs/op
+BenchmarkFormatCEF_WithConfigFields-32                     	 2656606	       449.2 ns/op	     224 B/op	       2 allocs/op
+BenchmarkFormatCEF_WithConfigFields-32                     	 2835530	       447.0 ns/op	     224 B/op	       2 allocs/op
+BenchmarkFormatCEF_WithConfigFields-32                     	 2894386	       412.4 ns/op	     224 B/op	       2 allocs/op
+BenchmarkFormatCEF_WithConfigFields-32                     	 2728302	       426.4 ns/op	     224 B/op	       2 allocs/op
+BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1108 ns/op	     608 B/op	       3 allocs/op
+BenchmarkFormatJSON_WithAllReservedFields-32               	  984039	      1119 ns/op	     608 B/op	       3 allocs/op
+BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1094 ns/op	     608 B/op	       3 allocs/op
+BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1136 ns/op	     608 B/op	       3 allocs/op
+BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1035 ns/op	     608 B/op	       3 allocs/op
+BenchmarkFormatCEF_WithAllReservedFields-32                	  807218	      1468 ns/op	    1033 B/op	       5 allocs/op
+BenchmarkFormatCEF_WithAllReservedFields-32                	  754222	      1470 ns/op	    1033 B/op	       5 allocs/op
+BenchmarkFormatCEF_WithAllReservedFields-32                	  803342	      1396 ns/op	    1033 B/op	       5 allocs/op
+BenchmarkFormatCEF_WithAllReservedFields-32                	  881668	      1425 ns/op	    1033 B/op	       5 allocs/op
+BenchmarkFormatCEF_WithAllReservedFields-32                	  749211	      1419 ns/op	    1033 B/op	       5 allocs/op
+BenchmarkHMAC_SHA256_SmallEvent-32                         	 2663842	       428.3 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_SmallEvent-32                         	 2600958	       475.0 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_SmallEvent-32                         	 2668659	       489.3 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_SmallEvent-32                         	 2398857	       492.9 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_SmallEvent-32                         	 2327480	       472.2 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1214 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1215 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1268 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_LargeEvent-32                         	  982364	      1288 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1247 ns/op	     640 B/op	       8 allocs/op
+BenchmarkHMAC_SHA512_SmallEvent-32                         	  961344	      1154 ns/op	    1120 B/op	       8 allocs/op
+BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1114 ns/op	    1120 B/op	       8 allocs/op
+BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1073 ns/op	    1120 B/op	       8 allocs/op
+BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1176 ns/op	    1120 B/op	       8 allocs/op
+BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1101 ns/op	    1120 B/op	       8 allocs/op
+BenchmarkMiddleware-32                                     	  975423	      1502 ns/op	    2367 B/op	      17 allocs/op
+BenchmarkMiddleware-32                                     	  777358	      1402 ns/op	    2408 B/op	      17 allocs/op
+BenchmarkMiddleware-32                                     	  762741	      1363 ns/op	    2388 B/op	      17 allocs/op
+BenchmarkMiddleware-32                                     	  864991	      1409 ns/op	    2374 B/op	      17 allocs/op
+BenchmarkMiddleware-32                                     	  873900	      1401 ns/op	    2383 B/op	      17 allocs/op
+BenchmarkNew_Construction-32                               	   40953	     31606 ns/op	   90165 B/op	     119 allocs/op
+BenchmarkNew_Construction-32                               	   30802	     34307 ns/op	   90178 B/op	     119 allocs/op
+BenchmarkNew_Construction-32                               	   45424	     31280 ns/op	   90172 B/op	     119 allocs/op
+BenchmarkNew_Construction-32                               	   48403	     25962 ns/op	   90176 B/op	     119 allocs/op
+BenchmarkNew_Construction-32                               	   41400	     30129 ns/op	   90178 B/op	     119 allocs/op
+BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3048549	       387.7 ns/op	     321 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3110184	       380.1 ns/op	     322 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_NoSensitivity-32                 	 2740897	       391.9 ns/op	     337 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_NoSensitivity-32                 	 2989987	       381.7 ns/op	     324 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3018358	       370.4 ns/op	     321 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 2938246	       379.3 ns/op	     300 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 2762635	       411.0 ns/op	     334 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 2686923	       394.7 ns/op	     313 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 2878360	       394.6 ns/op	     327 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 2861960	       396.9 ns/op	     323 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithExclusions-32                	 2559040	       392.4 ns/op	     296 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithExclusions-32                	 3055654	       375.2 ns/op	     284 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithExclusions-32                	 3004095	       391.3 ns/op	     297 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithExclusions-32                	 2722340	       386.0 ns/op	     288 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_WithExclusions-32                	 2828548	       384.1 ns/op	     279 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3145322	       409.3 ns/op	     257 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 2805080	       396.2 ns/op	     259 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3087873	       389.3 ns/op	     254 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 2983002	       392.4 ns/op	     256 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 2643777	       415.7 ns/op	     268 B/op	       2 allocs/op
+BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 2997728	       360.9 ns/op	     305 B/op	       1 allocs/op
+BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 2845878	       357.4 ns/op	     315 B/op	       1 allocs/op
+BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3073863	       354.1 ns/op	     304 B/op	       1 allocs/op
+BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3392739	       346.7 ns/op	     314 B/op	       1 allocs/op
+BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3417171	       369.5 ns/op	     316 B/op	       1 allocs/op
+BenchmarkMatchesRoute_Severity/nil_severity-32             	703132215	         1.696 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/nil_severity-32             	710182755	         1.688 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/nil_severity-32             	712606664	         1.690 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/nil_severity-32             	713784306	         1.683 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/nil_severity-32             	711416115	         1.692 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_min-32        	504250778	         2.355 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_min-32        	511802049	         2.354 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_min-32        	502361172	         2.370 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_min-32        	511260822	         2.350 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_min-32        	509278297	         2.360 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_range-32      	488121483	         2.448 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_range-32      	491006914	         2.448 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_range-32      	488483335	         2.439 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_range-32      	492572990	         2.445 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_only_range-32      	491967915	         2.436 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	376321182	         3.221 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	372495782	         3.194 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	370694038	         3.202 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	375928722	         3.188 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	375689967	         3.207 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_reject-32                          	905723530	         1.508 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_reject-32                          	811978984	         1.428 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_reject-32                          	880392985	         1.508 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_reject-32                          	899198586	         1.335 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_reject-32                          	800994946	         1.344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_accept-32                          	399043287	         3.184 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_accept-32                          	396503490	         3.183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_accept-32                          	398783068	         3.027 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_accept-32                          	394209274	         3.023 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMatchesRoute_Severity/severity_accept-32                          	399023264	         3.029 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseTaxonomyYAML-32                                              	    9411	    123152 ns/op	  140974 B/op	    2257 allocs/op
+BenchmarkParseTaxonomyYAML-32                                              	   10000	    135079 ns/op	  140974 B/op	    2257 allocs/op
+BenchmarkParseTaxonomyYAML-32                                              	    9583	    127860 ns/op	  140978 B/op	    2257 allocs/op
+BenchmarkParseTaxonomyYAML-32                                              	    8991	    129108 ns/op	  140968 B/op	    2257 allocs/op
+BenchmarkParseTaxonomyYAML-32                                              	   10000	    128219 ns/op	  140979 B/op	    2257 allocs/op
+BenchmarkNewRequestID-32                                                   	15950793	        74.30 ns/op	      64 B/op	       2 allocs/op
+BenchmarkNewRequestID-32                                                   	17116177	        78.44 ns/op	      64 B/op	       2 allocs/op
+BenchmarkNewRequestID-32                                                   	12550707	        89.54 ns/op	      64 B/op	       2 allocs/op
+BenchmarkNewRequestID-32                                                   	11697982	        90.01 ns/op	      64 B/op	       2 allocs/op
+BenchmarkNewRequestID-32                                                   	15415200	        82.22 ns/op	      64 B/op	       2 allocs/op
+BenchmarkClientIP-32                                                       	13023174	        84.26 ns/op	      48 B/op	       1 allocs/op
+BenchmarkClientIP-32                                                       	14962807	        80.55 ns/op	      48 B/op	       1 allocs/op
+BenchmarkClientIP-32                                                       	14487651	        82.98 ns/op	      48 B/op	       1 allocs/op
+BenchmarkClientIP-32                                                       	12593068	        86.95 ns/op	      48 B/op	       1 allocs/op
+BenchmarkClientIP-32                                                       	13504909	        89.53 ns/op	      48 B/op	       1 allocs/op
+BenchmarkValidRequestID-32                                                 	58272802	        20.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValidRequestID-32                                                 	57905619	        20.43 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValidRequestID-32                                                 	60486066	        19.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValidRequestID-32                                                 	78681304	        15.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValidRequestID-32                                                 	57741286	        20.19 ns/op	       0 B/op	       0 allocs/op
 PASS
-ok  	github.com/axonops/audit/file	12.095s
+ok  	github.com/axonops/audit	504.515s
 PASS
-ok  	github.com/axonops/audit/file/internal/rotate	0.004s
-=== bench syslog ===
-2026/04/16 07:31:45 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-    1359	    841928 ns/op	  568194 B/op	    2174 allocs/op
-goos: linux
-goarch: amd64
-pkg: github.com/axonops/audit/syslog
-cpu: AMD Ryzen 9 7950X 16-Core Processor            
-BenchmarkSyslogOutput_Write-32             	14965717	        86.08 ns/op	1788.95 MB/s	     176 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write-32             	2026/04/16 07:31:47 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-BenchmarkOutputClose_Drain/events=10000-32                 	     205	   5703734 ns/op	 4420749 B/op	   15778 allocs/op
-BenchmarkOutputClose_Drain/events=10000-32                 	17072678	        87.01 ns/op	1769.86 MB/s	     176 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write-32             	2026/04/16 07:31:49 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-     217	   5711228 ns/op	 4491639 B/op	   16033 allocs/op
-BenchmarkOutputClose_Drain/events=10000-32                 	18023838	        93.13 ns/op	1653.61 MB/s	     177 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write-32             	2026/04/16 07:31:51 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-     222	   5611426 ns/op	 4382027 B/op	   15644 allocs/op
-BenchmarkOutputClose_Drain/events=10000-32                 	18160304	        91.69 ns/op	1679.59 MB/s	     177 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write-32             	2026/04/16 07:31:54 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-     218	   5517748 ns/op	 4390661 B/op	   15630 allocs/op
-BenchmarkOutputClose_Drain/events=10000-32                 	17147179	        88.63 ns/op	1737.62 MB/s	     176 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write_Parallel-32    	2026/04/16 07:31:56 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:31:56 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:31:57 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:31:58 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-     222	   5499173 ns/op	 4361418 B/op	   15558 allocs/op
-BenchmarkFilterCheck-32                                    	2026/04/16 07:31:58 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:31:59 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-76244922	        17.07 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck-32                                    	2026/04/16 07:32:00 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:32:01 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-76980154	        17.29 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck-32                                    	 7263909	       140.1 ns/op	1099.01 MB/s	     181 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write_Parallel-32    	2026/04/16 07:32:02 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:32:02 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-69785424	        15.69 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck-32                                    	2026/04/16 07:32:03 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:32:04 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-77009791	        16.17 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck-32                                    	2026/04/16 07:32:04 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-2026/04/16 07:32:05 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-75329131	        16.83 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_Parallel-32                           	 3851265	       369.4 ns/op	 416.86 MB/s	     197 B/op	       1 allocs/op
-BenchmarkSyslogOutput_Write_Parallel-32    	1000000000	         1.030 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_Parallel-32                           	2026/04/16 07:32:07 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.029 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_Parallel-32                           	  145093	      8895 ns/op	  17.31 MB/s	     968 B/op	       9 allocs/op
-BenchmarkSyslogOutput_Write_Parallel-32    	2026/04/16 07:32:08 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.053 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_Parallel-32                           	  143682	      8274 ns/op	  18.61 MB/s	     975 B/op	      10 allocs/op
-BenchmarkSyslogOutput_Write_Parallel-32    	2026/04/16 07:32:10 WARN audit: output syslog: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.092 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_Parallel-32                           	  105699	      9935 ns/op	  15.50 MB/s	    1271 B/op	      13 allocs/op
-PASS
-ok  	github.com/axonops/audit/syslog	25.562s
-=== bench webhook ===
-PASS
-ok  	github.com/axonops/audit/webhook	0.018s
-=== bench loki ===
-1000000000	         1.056 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_ReadWriteContention-32                	2026/04/16 07:32:12 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.081 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_ReadWriteContention-32                	2026/04/16 07:32:13 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:39067\": readfrom tcp 127.0.0.1:42482->127.0.0.1:39067: write tcp 127.0.0.1:42482->127.0.0.1:39067: write: connection reset by peer"
-2026/04/16 07:32:13 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
-goos: linux
-goarch: amd64
-pkg: github.com/axonops/audit/loki
-cpu: AMD Ryzen 9 7950X 16-Core Processor            
-BenchmarkWriteWithMetadata-32            	 5508996	       191.3 ns/op	      75 B/op	       1 allocs/op
-BenchmarkWriteWithMetadata-32            	2026/04/16 07:32:13 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.120 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_ReadWriteContention-32                	 6832250	       180.7 ns/op	      73 B/op	       1 allocs/op
-BenchmarkWriteWithMetadata-32            	2026/04/16 07:32:15 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.050 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_ReadWriteContention-32                	 7881213	       155.2 ns/op	      73 B/op	       1 allocs/op
-BenchmarkWriteWithMetadata-32            	2026/04/16 07:32:16 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-1000000000	         1.044 ns/op	       0 B/op	       0 allocs/op
-BenchmarkFilterCheck_ReadWriteContention-32                	1000000000	         1.097 ns/op	       0 B/op	       0 allocs/op
-2026/04/16 07:32:17 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:35729\": readfrom tcp 127.0.0.1:42766->127.0.0.1:35729: write tcp 127.0.0.1:42766->127.0.0.1:35729: write: connection reset by peer"
-2026/04/16 07:32:17 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
- 8057406	       170.5 ns/op	      74 B/op	       1 allocs/op
-BenchmarkWriteWithMetadata-32            	2026/04/16 07:32:17 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-BenchmarkAppendPostFields_JSON-32                          	10099608	       117.8 ns/op	     160 B/op	       1 allocs/op
-BenchmarkAppendPostFields_JSON-32                          	2026/04/16 07:32:19 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:42561\": readfrom tcp 127.0.0.1:57826->127.0.0.1:42561: write tcp 127.0.0.1:57826->127.0.0.1:42561: write: connection reset by peer"
-2026/04/16 07:32:19 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
-15707404	        71.11 ns/op	      76 B/op	       1 allocs/op
-11348204	       106.9 ns/op	     160 B/op	       1 allocs/op
-BenchmarkAppendPostFields_JSON-32                          	BenchmarkLokiOutput_BatchBuild-32        	   11092	    108148 ns/op	  266292 B/op	     390 allocs/op
-BenchmarkLokiOutput_BatchBuild-32        	10627051	       109.5 ns/op	     160 B/op	       1 allocs/op
-BenchmarkAppendPostFields_JSON-32                          	   12081	    101312 ns/op	  266295 B/op	     390 allocs/op
-BenchmarkLokiOutput_BatchBuild-32        	   10000	    101201 ns/op	  266294 B/op	     390 allocs/op
-BenchmarkLokiOutput_BatchBuild-32        	11760962	       105.6 ns/op	     160 B/op	       1 allocs/op
-BenchmarkAppendPostFields_JSON-32                          	   10000	    107303 ns/op	  266291 B/op	     390 allocs/op
-BenchmarkLokiOutput_BatchBuild-32        	10064625	       107.3 ns/op	     160 B/op	       1 allocs/op
-   10000	    104089 ns/op	  266291 B/op	     390 allocs/op
-BenchmarkAppendPostFields_CEF-32                           	15128840	        80.33 ns/op	     128 B/op	       1 allocs/op
-BenchmarkAppendPostFields_CEF-32                           	BenchmarkLokiOutput_Gzip-32              	    3736	    299080 ns/op	 1069851 B/op	     381 allocs/op
-BenchmarkLokiOutput_Gzip-32              	24913326	        76.93 ns/op	     128 B/op	       1 allocs/op
-BenchmarkAppendPostFields_CEF-32                           	    3619	    315754 ns/op	 1069847 B/op	     381 allocs/op
-BenchmarkLokiOutput_Gzip-32              	13907876	        80.21 ns/op	     128 B/op	       1 allocs/op
-BenchmarkAppendPostFields_CEF-32                           	    4422	    322228 ns/op	 1069848 B/op	     381 allocs/op
-BenchmarkLokiOutput_Gzip-32              	16161272	        80.63 ns/op	     128 B/op	       1 allocs/op
-BenchmarkAppendPostFields_CEF-32                           	    3754	    320774 ns/op	 1069840 B/op	     381 allocs/op
-BenchmarkLokiOutput_Gzip-32              	12714477	        80.94 ns/op	     128 B/op	       1 allocs/op
-    3848	    287230 ns/op	 1069857 B/op	     381 allocs/op
-2026/04/16 07:32:30 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-BenchmarkAppendPostFields_Disabled-32                      	900521876	         1.316 ns/op	       0 B/op	       0 allocs/op
-BenchmarkAppendPostFields_Disabled-32                      	2026/04/16 07:32:31 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:34547\": readfrom tcp 127.0.0.1:35850->127.0.0.1:34547: write tcp 127.0.0.1:35850->127.0.0.1:34547: write: connection reset by peer"
-2026/04/16 07:32:31 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
-BenchmarkLokiOutput_MetadataWriter-32    	13138472	        80.67 ns/op	     182 B/op	       1 allocs/op
-BenchmarkLokiOutput_MetadataWriter-32    	2026/04/16 07:32:31 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-957426391	         1.295 ns/op	       0 B/op	       0 allocs/op
-BenchmarkAppendPostFields_Disabled-32                      	2026/04/16 07:32:33 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:43893\": readfrom tcp 127.0.0.1:42132->127.0.0.1:43893: write tcp 127.0.0.1:42132->127.0.0.1:43893: write: connection reset by peer"
-2026/04/16 07:32:33 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
-12911803	        86.13 ns/op	     182 B/op	       1 allocs/op
-BenchmarkLokiOutput_MetadataWriter-32    	2026/04/16 07:32:33 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-900007501	         1.349 ns/op	       0 B/op	       0 allocs/op
-BenchmarkAppendPostFields_Disabled-32                      	14938340	        78.58 ns/op	     181 B/op	       1 allocs/op
-BenchmarkLokiOutput_MetadataWriter-32    	2026/04/16 07:32:34 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-853057011	         1.299 ns/op	       0 B/op	       0 allocs/op
-BenchmarkAppendPostFields_Disabled-32                      	15162279	        76.70 ns/op	     181 B/op	       1 allocs/op
-BenchmarkLokiOutput_MetadataWriter-32    	2026/04/16 07:32:35 WARN audit: output loki: event dropped (buffer full) dropped=1 buffer_size=100000
-839275414	         1.309 ns/op	       0 B/op	       0 allocs/op
-2026/04/16 07:32:37 WARN audit: loki retryable error attempt=1 max_retries=1 error="audit: loki request failed: Post \"http://127.0.0.1:43225\": readfrom tcp 127.0.0.1:41330->127.0.0.1:43225: write tcp 127.0.0.1:41330->127.0.0.1:43225: write: connection reset by peer"
-2026/04/16 07:32:37 ERROR audit: loki retries exhausted, dropping batch batch_size=100000 max_retries=1
-13878278	        92.36 ns/op	     183 B/op	       1 allocs/op
-BenchmarkNewEventKV-32                                     	 5869856	       187.7 ns/op	     360 B/op	       3 allocs/op
-BenchmarkNewEventKV-32                                     	BenchmarkLokiBackoff-32                  	44501899	        27.18 ns/op	       0 B/op	       0 allocs/op
-BenchmarkLokiBackoff-32                  	 6867121	       168.7 ns/op	     360 B/op	       3 allocs/op
-BenchmarkNewEventKV-32                                     	43426467	        27.20 ns/op	       0 B/op	       0 allocs/op
-BenchmarkLokiBackoff-32                  	 7842897	       152.9 ns/op	     360 B/op	       3 allocs/op
-BenchmarkNewEventKV-32                                     	43571422	        27.52 ns/op	       0 B/op	       0 allocs/op
-BenchmarkLokiBackoff-32                  	 8972866	       126.3 ns/op	     360 B/op	       3 allocs/op
-BenchmarkNewEventKV-32                                     	43629607	        27.18 ns/op	       0 B/op	       0 allocs/op
-BenchmarkLokiBackoff-32                  	12235800	       143.9 ns/op	     360 B/op	       3 allocs/op
-BenchmarkMatchesRoute/empty_route-32                       	43542931	        26.48 ns/op	       0 B/op	       0 allocs/op
-708728426	         1.682 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/empty_route-32                       	BenchmarkParseRetryAfter-32              	326933306	         3.679 ns/op	       0 B/op	       0 allocs/op
-BenchmarkParseRetryAfter-32              	700097193	         1.692 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/empty_route-32                       	332860010	         3.698 ns/op	       0 B/op	       0 allocs/op
-BenchmarkParseRetryAfter-32              	707484634	         1.695 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/empty_route-32                       	318423595	         3.750 ns/op	       0 B/op	       0 allocs/op
-BenchmarkParseRetryAfter-32              	321591771	         3.763 ns/op	       0 B/op	       0 allocs/op
-BenchmarkParseRetryAfter-32              	712873977	         1.691 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/empty_route-32                       	334637530	         3.706 ns/op	       0 B/op	       0 allocs/op
-PASS
-ok  	github.com/axonops/audit/loki	36.919s
-=== bench outputconfig ===
-700321461	         1.692 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_categories-32                	PASS
-ok  	github.com/axonops/audit/outputconfig	0.004s
-PASS
-ok  	github.com/axonops/audit/outputconfig/tests/bdd	0.007s
-?   	github.com/axonops/audit/outputconfig/tests/bdd/steps	[no test files]
-=== bench outputs ===
-PASS
-ok  	github.com/axonops/audit/outputs	0.004s
-=== bench cmd/audit-gen ===
-PASS
-ok  	github.com/axonops/audit/cmd/audit-gen	0.005s
-=== bench secrets ===
-PASS
-ok  	github.com/axonops/audit/secrets	0.004s
-=== bench secrets/openbao ===
-PASS
-ok  	github.com/axonops/audit/secrets/openbao	0.005s
-=== bench secrets/vault ===
-PASS
-ok  	github.com/axonops/audit/secrets/vault	0.004s
-369291729	         3.267 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_categories-32                	376123004	         3.181 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_categories-32                	377295252	         3.175 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_categories-32                	379264833	         3.162 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_categories-32                	375595574	         3.176 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/exclude_categories-32                	143777227	         8.408 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/exclude_categories-32                	142204100	         8.385 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/exclude_categories-32                	143754970	         8.372 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/exclude_categories-32                	143685391	         8.356 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/exclude_categories-32                	142414446	         8.364 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_event_types-32               	292840972	         4.113 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_event_types-32               	291847896	         4.105 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_event_types-32               	293465535	         4.115 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_event_types-32               	293514440	         4.087 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_event_types-32               	291844730	         4.118 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_20_categories-32             	191883049	         6.261 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_20_categories-32             	190856362	         6.271 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_20_categories-32             	190079443	         6.218 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_20_categories-32             	188779056	         6.315 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute/include_20_categories-32             	191090559	         6.589 ns/op	       0 B/op	       0 allocs/op
-BenchmarkJSONFormatter_Format-32                           	 3266233	       355.8 ns/op	     176 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format-32                           	 3468015	       348.4 ns/op	     176 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format-32                           	 3299185	       354.3 ns/op	     176 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format-32                           	 3285037	       364.7 ns/op	     176 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format-32                           	 3533935	       346.0 ns/op	     176 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format-32                            	 3085974	       390.8 ns/op	     160 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format-32                            	 3115809	       388.0 ns/op	     160 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format-32                            	 3180114	       411.0 ns/op	     160 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format-32                            	 2867824	       389.5 ns/op	     160 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format-32                            	 2890396	       408.7 ns/op	     160 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format_LargeEvent-32                	 1000000	      1238 ns/op	     640 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format_LargeEvent-32                	  898069	      1228 ns/op	     640 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format_LargeEvent-32                	 1000000	      1220 ns/op	     640 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format_LargeEvent-32                	  948891	      1219 ns/op	     640 B/op	       1 allocs/op
-BenchmarkJSONFormatter_Format_LargeEvent-32                	 1000000	      1194 ns/op	     640 B/op	       1 allocs/op
-BenchmarkCEFFormatter_Format_LargeEvent-32                 	  927510	      1261 ns/op	     584 B/op	       3 allocs/op
-BenchmarkCEFFormatter_Format_LargeEvent-32                 	  889084	      1358 ns/op	     584 B/op	       3 allocs/op
-BenchmarkCEFFormatter_Format_LargeEvent-32                 	  860004	      1309 ns/op	     584 B/op	       3 allocs/op
-BenchmarkCEFFormatter_Format_LargeEvent-32                 	  823387	      1299 ns/op	     584 B/op	       3 allocs/op
-BenchmarkCEFFormatter_Format_LargeEvent-32                 	  917815	      1299 ns/op	     584 B/op	       3 allocs/op
-BenchmarkFormatJSON_WithConfigFields-32                    	 2550030	       478.0 ns/op	     240 B/op	       2 allocs/op
-BenchmarkFormatJSON_WithConfigFields-32                    	 2642578	       449.2 ns/op	     240 B/op	       2 allocs/op
-BenchmarkFormatJSON_WithConfigFields-32                    	 2768959	       464.7 ns/op	     240 B/op	       2 allocs/op
-BenchmarkFormatJSON_WithConfigFields-32                    	 2888348	       446.7 ns/op	     240 B/op	       2 allocs/op
-BenchmarkFormatJSON_WithConfigFields-32                    	 2854663	       434.5 ns/op	     240 B/op	       2 allocs/op
-BenchmarkFormatCEF_WithConfigFields-32                     	 2729672	       419.3 ns/op	     224 B/op	       2 allocs/op
-BenchmarkFormatCEF_WithConfigFields-32                     	 2977932	       420.8 ns/op	     224 B/op	       2 allocs/op
-BenchmarkFormatCEF_WithConfigFields-32                     	 2691601	       415.0 ns/op	     224 B/op	       2 allocs/op
-BenchmarkFormatCEF_WithConfigFields-32                     	 2954299	       408.6 ns/op	     224 B/op	       2 allocs/op
-BenchmarkFormatCEF_WithConfigFields-32                     	 3056718	       406.1 ns/op	     224 B/op	       2 allocs/op
-BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1071 ns/op	     608 B/op	       3 allocs/op
-BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1030 ns/op	     608 B/op	       3 allocs/op
-BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1032 ns/op	     608 B/op	       3 allocs/op
-BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1075 ns/op	     608 B/op	       3 allocs/op
-BenchmarkFormatJSON_WithAllReservedFields-32               	 1000000	      1016 ns/op	     608 B/op	       3 allocs/op
-BenchmarkFormatCEF_WithAllReservedFields-32                	  841023	      1498 ns/op	    1033 B/op	       5 allocs/op
-BenchmarkFormatCEF_WithAllReservedFields-32                	  833569	      1454 ns/op	    1033 B/op	       5 allocs/op
-BenchmarkFormatCEF_WithAllReservedFields-32                	  762151	      1497 ns/op	    1033 B/op	       5 allocs/op
-BenchmarkFormatCEF_WithAllReservedFields-32                	  840615	      1429 ns/op	    1033 B/op	       5 allocs/op
-BenchmarkFormatCEF_WithAllReservedFields-32                	  833605	      1376 ns/op	    1033 B/op	       5 allocs/op
-BenchmarkHMAC_SHA256_SmallEvent-32                         	 2844646	       470.9 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_SmallEvent-32                         	 2319960	       444.2 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_SmallEvent-32                         	 3064840	       390.5 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_SmallEvent-32                         	 3086730	       448.2 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_SmallEvent-32                         	 3038022	       400.7 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1188 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1284 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1222 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_LargeEvent-32                         	 1000000	      1232 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA256_LargeEvent-32                         	  876778	      1299 ns/op	     640 B/op	       8 allocs/op
-BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1060 ns/op	    1120 B/op	       8 allocs/op
-BenchmarkHMAC_SHA512_SmallEvent-32                         	  964798	      1092 ns/op	    1120 B/op	       8 allocs/op
-BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1022 ns/op	    1120 B/op	       8 allocs/op
-BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1003 ns/op	    1120 B/op	       8 allocs/op
-BenchmarkHMAC_SHA512_SmallEvent-32                         	 1000000	      1139 ns/op	    1120 B/op	       8 allocs/op
-BenchmarkMiddleware-32                                     	  957650	      1373 ns/op	    2314 B/op	      16 allocs/op
-BenchmarkMiddleware-32                                     	  921459	      1385 ns/op	    2328 B/op	      16 allocs/op
-BenchmarkMiddleware-32                                     	  889394	      1378 ns/op	    2334 B/op	      16 allocs/op
-BenchmarkMiddleware-32                                     	  793131	      1385 ns/op	    2321 B/op	      16 allocs/op
-BenchmarkMiddleware-32                                     	  822004	      1357 ns/op	    2348 B/op	      16 allocs/op
-BenchmarkNewLogger_Construction-32                         	   49771	     25695 ns/op	   89089 B/op	      90 allocs/op
-BenchmarkNewLogger_Construction-32                         	   60103	     23197 ns/op	   89089 B/op	      90 allocs/op
-BenchmarkNewLogger_Construction-32                         	   60042	     21342 ns/op	   89081 B/op	      90 allocs/op
-BenchmarkNewLogger_Construction-32                         	   41845	     28149 ns/op	   89108 B/op	      90 allocs/op
-BenchmarkNewLogger_Construction-32                         	   54135	     24015 ns/op	   89092 B/op	      90 allocs/op
-BenchmarkDeliverToOutputs_NoSensitivity-32                 	 4157823	       316.7 ns/op	     264 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3686992	       301.8 ns/op	     263 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3546096	       297.2 ns/op	     263 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3678020	       303.5 ns/op	     258 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_NoSensitivity-32                 	 3610608	       305.4 ns/op	     260 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 3611308	       299.5 ns/op	     261 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 3697126	       296.9 ns/op	     256 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 3767108	       312.4 ns/op	     259 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 3751180	       305.6 ns/op	     261 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_SensitivityNoExclusions-32       	 3840516	       296.6 ns/op	     254 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithExclusions-32                	 3487242	       317.0 ns/op	     232 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithExclusions-32                	 3447337	       308.8 ns/op	     231 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithExclusions-32                	 3907772	       296.0 ns/op	     232 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithExclusions-32                	 3435982	       292.9 ns/op	     227 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_WithExclusions-32                	 3762565	       293.2 ns/op	     231 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3964948	       305.8 ns/op	     207 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3556770	       303.5 ns/op	     212 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3410738	       299.2 ns/op	     214 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3899034	       306.6 ns/op	     207 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_AllFieldsExcluded-32             	 3610171	       327.1 ns/op	     219 B/op	       2 allocs/op
-BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 4415140	       279.9 ns/op	     251 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 4329270	       271.5 ns/op	     241 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3778674	       266.0 ns/op	     246 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3981836	       267.8 ns/op	     239 B/op	       1 allocs/op
-BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion-32    	 3842503	       288.7 ns/op	     254 B/op	       1 allocs/op
-BenchmarkMatchesRoute_Severity/nil_severity-32             	710367920	         1.675 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/nil_severity-32             	718063299	         1.680 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/nil_severity-32             	716480130	         1.674 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/nil_severity-32             	717447195	         1.677 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/nil_severity-32             	714544004	         1.676 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_min-32        	509388478	         2.356 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_min-32        	513654280	         2.335 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_min-32        	515006600	         2.351 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_min-32        	513338833	         2.343 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_min-32        	513721436	         2.334 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_range-32      	495419840	         2.442 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_range-32      	495769470	         2.432 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_range-32      	496150668	         2.432 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_range-32      	492875395	         2.435 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_only_range-32      	488660284	         2.428 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	376244690	         3.172 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	377451531	         3.181 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	370521264	         3.183 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	379168756	         3.177 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/include_categories_with_severity-32         	378651336	         3.187 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_reject-32                          	896462194	         1.319 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_reject-32                          	911407796	         1.467 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_reject-32                          	909478464	         1.400 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_reject-32                          	919513672	         1.320 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_reject-32                          	913505534	         1.482 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_accept-32                          	379153135	         3.165 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_accept-32                          	401263232	         3.151 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_accept-32                          	401505432	         3.049 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_accept-32                          	402008014	         2.989 ns/op	       0 B/op	       0 allocs/op
-BenchmarkMatchesRoute_Severity/severity_accept-32                          	400068140	         2.998 ns/op	       0 B/op	       0 allocs/op
-BenchmarkParseTaxonomyYAML-32                                              	    7322	    151614 ns/op	  140134 B/op	    2229 allocs/op
-BenchmarkParseTaxonomyYAML-32                                              	    8332	    139101 ns/op	  140114 B/op	    2229 allocs/op
-BenchmarkParseTaxonomyYAML-32                                              	   10000	    122430 ns/op	  140070 B/op	    2229 allocs/op
-BenchmarkParseTaxonomyYAML-32                                              	    7742	    134726 ns/op	  140099 B/op	    2229 allocs/op
-BenchmarkParseTaxonomyYAML-32                                              	   10000	    129492 ns/op	  140099 B/op	    2229 allocs/op
-BenchmarkNewRequestID-32                                                   	19561000	        73.26 ns/op	      48 B/op	       1 allocs/op
-BenchmarkNewRequestID-32                                                   	20006395	        78.52 ns/op	      48 B/op	       1 allocs/op
-BenchmarkNewRequestID-32                                                   	15050146	        81.63 ns/op	      48 B/op	       1 allocs/op
-BenchmarkNewRequestID-32                                                   	15068434	        72.06 ns/op	      48 B/op	       1 allocs/op
-BenchmarkNewRequestID-32                                                   	20070554	        71.00 ns/op	      48 B/op	       1 allocs/op
-BenchmarkClientIP-32                                                       	12377055	        84.69 ns/op	      48 B/op	       1 allocs/op
-BenchmarkClientIP-32                                                       	16230208	        78.03 ns/op	      48 B/op	       1 allocs/op
-BenchmarkClientIP-32                                                       	16620120	        79.96 ns/op	      48 B/op	       1 allocs/op
-BenchmarkClientIP-32                                                       	16150501	        86.04 ns/op	      48 B/op	       1 allocs/op
-BenchmarkClientIP-32                                                       	15761395	        86.29 ns/op	      48 B/op	       1 allocs/op
-BenchmarkValidRequestID-32                                                 	79788841	        14.96 ns/op	       0 B/op	       0 allocs/op
-BenchmarkValidRequestID-32                                                 	58033376	        20.36 ns/op	       0 B/op	       0 allocs/op
-BenchmarkValidRequestID-32                                                 	59230074	        20.39 ns/op	       0 B/op	       0 allocs/op
-BenchmarkValidRequestID-32                                                 	57388356	        20.31 ns/op	       0 B/op	       0 allocs/op
-BenchmarkValidRequestID-32                                                 	58526173	        17.36 ns/op	       0 B/op	       0 allocs/op
-PASS
-ok  	github.com/axonops/audit	499.878s
-PASS
-ok  	github.com/axonops/audit/audittest	0.003s
+ok  	github.com/axonops/audit/audittest	0.004s
 ?   	github.com/axonops/audit/examples/01-basic	[no test files]
 ?   	github.com/axonops/audit/examples/02-code-generation	[no test files]
 ?   	github.com/axonops/audit/examples/03-file-output	[no test files]
@@ -478,4 +322,99 @@ ok  	github.com/axonops/audit/examples/04-testing	0.004s
 ?   	github.com/axonops/audit/internal/testhelper	[no test files]
 ?   	github.com/axonops/audit/tests/bdd/steps	[no test files]
 === bench file ===
-2026/04/16 07:36:41 WARN audit: output file: event dropped (buffer full) dropped=1 buffer_size=10000
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/audit/file
+cpu: AMD Ryzen 9 7950X 16-Core Processor            
+BenchmarkFileOutput_Write-32             	19460224	        62.61 ns/op	2459.75 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write-32             	20033806	        58.69 ns/op	2623.97 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write-32             	20313476	        63.24 ns/op	2435.34 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write-32             	21007789	        59.38 ns/op	2593.54 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write-32             	20059208	        57.75 ns/op	2666.79 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_Parallel-32    	13106094	        82.28 ns/op	1871.68 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_Parallel-32    	12762747	        80.56 ns/op	1911.55 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_Parallel-32    	12596772	        83.40 ns/op	1846.56 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_Parallel-32    	12525270	        81.22 ns/op	1896.00 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_Parallel-32    	13044709	        84.20 ns/op	1828.91 MB/s	     160 B/op	       1 allocs/op
+PASS
+ok  	github.com/axonops/audit/file	12.217s
+PASS
+ok  	github.com/axonops/audit/file/internal/rotate	0.004s
+=== bench syslog ===
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/audit/syslog
+cpu: AMD Ryzen 9 7950X 16-Core Processor            
+BenchmarkSyslogOutput_Write-32             	15443408	        75.94 ns/op	2028.02 MB/s	     174 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write-32             	20549316	        78.96 ns/op	1950.37 MB/s	     174 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write-32             	20193574	        77.93 ns/op	1976.22 MB/s	     174 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write-32             	20290814	        78.32 ns/op	1966.27 MB/s	     174 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write-32             	20290429	        78.48 ns/op	1962.33 MB/s	     174 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write_Parallel-32    	 6678399	       152.0 ns/op	1013.23 MB/s	     184 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write_Parallel-32    	 7632718	       140.6 ns/op	1095.53 MB/s	     181 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write_Parallel-32    	 6638174	       151.8 ns/op	1014.41 MB/s	     183 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write_Parallel-32    	 6592336	       153.8 ns/op	1001.29 MB/s	     184 B/op	       1 allocs/op
+BenchmarkSyslogOutput_Write_Parallel-32    	 6292081	       163.3 ns/op	 942.99 MB/s	     188 B/op	       1 allocs/op
+PASS
+ok  	github.com/axonops/audit/syslog	42.807s
+=== bench webhook ===
+PASS
+ok  	github.com/axonops/audit/webhook	0.004s
+=== bench loki ===
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/audit/loki
+cpu: AMD Ryzen 9 7950X 16-Core Processor            
+BenchmarkWriteWithMetadata-32            	16858642	        60.52 ns/op	      77 B/op	       1 allocs/op
+BenchmarkWriteWithMetadata-32            	22133708	        61.11 ns/op	      77 B/op	       1 allocs/op
+BenchmarkWriteWithMetadata-32            	22076521	        61.74 ns/op	      77 B/op	       1 allocs/op
+BenchmarkWriteWithMetadata-32            	23021019	        62.36 ns/op	      77 B/op	       1 allocs/op
+BenchmarkWriteWithMetadata-32            	22286572	        58.00 ns/op	      77 B/op	       1 allocs/op
+BenchmarkLokiOutput_BatchBuild-32        	   16197	     75865 ns/op	  266139 B/op	     389 allocs/op
+BenchmarkLokiOutput_BatchBuild-32        	   16616	     73439 ns/op	  266143 B/op	     389 allocs/op
+BenchmarkLokiOutput_BatchBuild-32        	   16405	     72940 ns/op	  266143 B/op	     389 allocs/op
+BenchmarkLokiOutput_BatchBuild-32        	   15933	     74475 ns/op	  266143 B/op	     389 allocs/op
+BenchmarkLokiOutput_BatchBuild-32        	   14581	     82601 ns/op	  266139 B/op	     389 allocs/op
+BenchmarkLokiOutput_Gzip-32              	    6020	    228062 ns/op	 1069699 B/op	     380 allocs/op
+BenchmarkLokiOutput_Gzip-32              	    5001	    238489 ns/op	 1069693 B/op	     380 allocs/op
+BenchmarkLokiOutput_Gzip-32              	    5109	    226348 ns/op	 1069703 B/op	     380 allocs/op
+BenchmarkLokiOutput_Gzip-32              	    5821	    236041 ns/op	 1069698 B/op	     380 allocs/op
+BenchmarkLokiOutput_Gzip-32              	    5677	    235745 ns/op	 1069685 B/op	     380 allocs/op
+BenchmarkLokiOutput_MetadataWriter-32    	15194199	        82.89 ns/op	     182 B/op	       1 allocs/op
+BenchmarkLokiOutput_MetadataWriter-32    	14328442	        87.03 ns/op	     182 B/op	       1 allocs/op
+BenchmarkLokiOutput_MetadataWriter-32    	17422524	        77.60 ns/op	     182 B/op	       1 allocs/op
+BenchmarkLokiOutput_MetadataWriter-32    	14469541	        83.01 ns/op	     182 B/op	       1 allocs/op
+BenchmarkLokiOutput_MetadataWriter-32    	13063088	        77.33 ns/op	     182 B/op	       1 allocs/op
+BenchmarkLokiBackoff-32                  	45386128	        25.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLokiBackoff-32                  	45248499	        25.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLokiBackoff-32                  	46402567	        25.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLokiBackoff-32                  	46492854	        25.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLokiBackoff-32                  	45897759	        25.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseRetryAfter-32              	333760708	         3.601 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseRetryAfter-32              	336581978	         3.608 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseRetryAfter-32              	319933410	         3.774 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseRetryAfter-32              	306332622	         3.904 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseRetryAfter-32              	319350255	         3.664 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/axonops/audit/loki	37.966s
+=== bench outputconfig ===
+PASS
+ok  	github.com/axonops/audit/outputconfig	0.005s
+PASS
+ok  	github.com/axonops/audit/outputconfig/tests/bdd	0.007s
+?   	github.com/axonops/audit/outputconfig/tests/bdd/steps	[no test files]
+=== bench outputs ===
+PASS
+ok  	github.com/axonops/audit/outputs	0.004s
+=== bench cmd/audit-gen ===
+PASS
+ok  	github.com/axonops/audit/cmd/audit-gen	0.005s
+=== bench secrets ===
+PASS
+ok  	github.com/axonops/audit/secrets	0.004s
+=== bench secrets/openbao ===
+PASS
+ok  	github.com/axonops/audit/secrets/openbao	0.004s
+=== bench secrets/vault ===
+PASS
+ok  	github.com/axonops/audit/secrets/vault	0.004s

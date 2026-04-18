@@ -195,6 +195,41 @@ auditor:
   enabled: ${AUDIT_ENABLED:-true}
 ```
 
+## 🪵 Diagnostic Logger Propagation
+
+The `auditor:` section has no YAML field for the diagnostic logger — a
+`*slog.Logger` is a runtime value, not a YAML construct. Configure it
+programmatically when loading the output configuration:
+
+```go
+logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+result, err := outputconfig.Load(
+    ctx,
+    data,
+    taxonomy,
+    outputconfig.WithDiagnosticLogger(logger), // construction-time warnings
+)
+
+auditor, err := audit.New(
+    audit.WithTaxonomy(taxonomy),
+    audit.WithDiagnosticLogger(logger),         // runtime warnings
+    audit.WithOutputs(result.Outputs...),
+)
+```
+
+Pass the same logger to both `outputconfig.WithDiagnosticLogger` and
+`audit.WithDiagnosticLogger`. The first routes warnings emitted during
+output construction (TLS policy, file permission mode). The second
+routes warnings emitted at runtime (connection retries, buffer-full
+drops). Using the same logger ensures all library diagnostics reach
+one handler.
+
+Supplying only `audit.WithDiagnosticLogger` leaves construction-time
+warnings routed through `slog.Default` — a subtle inconsistency if
+your application uses a non-default handler. Both options accept nil
+(equivalent to `slog.Default`).
+
 ## 🔒 Global TLS Policy
 
 The optional `tls_policy:` section sets the default TLS version and

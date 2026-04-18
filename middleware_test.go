@@ -16,6 +16,7 @@ package audit_test
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -632,4 +633,47 @@ func BenchmarkMiddleware(b *testing.B) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 	}
+}
+
+// TestMiddleware_NewRequestIDWarningsRoutedToAuditorLogger verifies
+// that the crypto/rand fallback warning in newRequestID routes through
+// the caller-supplied logger rather than slog.Default. Closes #490.
+func TestMiddleware_NewRequestIDWarningsRoutedToAuditorLogger(t *testing.T) {
+	// Force crypto/rand to fail via the randRead seam.
+	restore := audit.SetRandRead(func(_ []byte) (int, error) {
+		return 0, fmt.Errorf("test: simulated crypto/rand failure")
+	})
+	t.Cleanup(restore)
+
+	var buf strings.Builder
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	injected := slog.New(handler)
+
+	id := audit.NewRequestIDWithLogger(injected)
+
+	// Zero UUID sentinel from the fallback path.
+	assert.Equal(t, "00000000-0000-4000-8000-000000000000", id,
+		"expected zero UUID when crypto/rand fails")
+
+	logged := buf.String()
+	assert.Contains(t, logged, "crypto/rand failed",
+		"expected rand-failure warning on injected logger, got: %q", logged)
+}
+
+// TestMiddleware_NewRequestIDNilLoggerFallsBackToDefault verifies
+// that passing nil does not panic and emits via slog.Default.
+func TestMiddleware_NewRequestIDNilLoggerFallsBackToDefault(t *testing.T) {
+	restore := audit.SetRandRead(func(_ []byte) (int, error) {
+		return 0, fmt.Errorf("test: simulated crypto/rand failure")
+	})
+	t.Cleanup(restore)
+
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	id := audit.NewRequestIDWithLogger(nil)
+	assert.Equal(t, "00000000-0000-4000-8000-000000000000", id)
+	assert.Contains(t, buf.String(), "crypto/rand failed")
 }

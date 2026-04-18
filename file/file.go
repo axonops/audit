@@ -182,7 +182,10 @@ func resolvePath(path string) (string, error) {
 // has no pointer fields (except Compress), so the value copy prevents
 // caller mutation without requiring an explicit defensive copy inside
 // New.
-func New(cfg Config, fileMetrics Metrics) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
+func New(cfg Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
+	o := resolveOptions(opts)
+	logger := o.logger
+
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("audit: file output path must not be empty")
 	}
@@ -203,9 +206,6 @@ func New(cfg Config, fileMetrics Metrics) (*Output, error) { //nolint:gocyclo,cy
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output permissions %q: %w", cfg.Permissions, err)
 	}
-
-	// Default logger — replaced by SetDiagnosticLogger when the core calls it.
-	logger := slog.Default()
 
 	// Warn if permissions grant group or world access to audit data.
 	if perm&0o077 != 0 {

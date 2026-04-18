@@ -106,10 +106,17 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // background batch goroutine. The metrics parameter is optional
 // (may be nil). Per-output metrics are injected via
 // [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
-func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
+//
+// Optional [Option] arguments tune construction-time behaviour. Pass
+// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
+// the auditor's diagnostic logger is propagated post-construction) to
+// a custom logger.
+func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy
+
+	resolved := resolveOptions(opts)
 
 	if err := validateLokiConfig(cfg); err != nil {
 		return nil, err
@@ -119,11 +126,12 @@ func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Log TLS policy warnings via slog (consistent with webhook/syslog).
+	// Log TLS policy warnings via the injected logger (falls back to
+	// slog.Default when no option supplied).
 	u, _ := url.Parse(cfg.URL) // already validated
 	host := u.Scheme + "://" + u.Host
 	for _, w := range warnings {
-		slog.Warn(w, "url", host)
+		resolved.logger.Warn(w, "output", "loki", "url", host)
 	}
 
 	var ssrfOpts []audit.SSRFOption
@@ -162,7 +170,7 @@ func New(cfg *Config, metrics audit.Metrics) (*Output, error) {
 	o := &Output{
 		cfg:     cfg,
 		metrics: metrics,
-		logger:  slog.Default(),
+		logger:  resolved.logger,
 		ch:      make(chan lokiEntry, cfg.BufferSize),
 		closeCh: make(chan struct{}),
 		cancel:  cancel,

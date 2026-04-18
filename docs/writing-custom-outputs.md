@@ -74,10 +74,17 @@ Register it via a factory:
 
 ```go
 func init() {
-    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
         // coreMetrics is the pipeline-level Metrics instance (may be nil).
         // Per-output metrics are injected separately via SetOutputMetrics —
         // see "Receiving Per-Output Metrics" below.
+        //
+        // logger is the auditor's diagnostic logger, threaded through
+        // outputconfig.WithDiagnosticLogger / audit.WithDiagnosticLogger.
+        // Route construction-time warnings here (TLS policy, permission
+        // mode) so they reach the consumer's configured handler rather
+        // than slog.Default. A nil logger is valid; treat it as
+        // slog.Default.
         return audit.WrapOutput(&MyOutput{name: name}, name), nil
     })
 }
@@ -465,7 +472,7 @@ forwarding for all optional interfaces:
 
 ```go
 func init() {
-    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics) (audit.Output, error) {
+    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
         inner := &MyAsyncOutput{/* ... */}
         return audit.WrapOutput(inner, name), nil
     })

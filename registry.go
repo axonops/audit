@@ -21,7 +21,7 @@ import (
 )
 
 // OutputFactory creates a named [Output] from raw YAML configuration
-// bytes and core pipeline metrics.
+// bytes, core pipeline metrics, and an optional diagnostic logger.
 //
 // name is the consumer-chosen output name from the YAML config (e.g.
 // "compliance_file"). The factory SHOULD use this to set the output's
@@ -39,7 +39,14 @@ import (
 // per-output metrics automatically. For separate per-output metrics
 // implementations, use the output's NewFactory with
 // outputconfig.WithFactory.
-type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics) (Output, error)
+//
+// logger is the auditor's diagnostic logger, plumbed through from
+// [outputconfig.WithDiagnosticLogger] or [audit.WithDiagnosticLogger]
+// so that construction-time warnings (TLS policy, file permission
+// mode) reach the consumer's configured handler. Factories SHOULD
+// pass it via the output module's WithDiagnosticLogger option. A nil
+// logger is valid and is treated as [slog.Default].
+type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger) (Output, error)
 
 // registry is a global mutable map protected by registryMu. This is an
 // intentional exception to the "no global mutable state" convention in

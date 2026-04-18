@@ -24,6 +24,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
@@ -2731,4 +2733,103 @@ func TestOutputMetrics_RecordRetry_CalledOnRetryableError(t *testing.T) {
 
 	assert.Positive(t, om.retries.Load(),
 		"RecordRetry must be called during reconnection attempt")
+}
+
+// TestSyslog_TLSWarningsRoutedToInjectedLogger verifies that
+// TLS-policy warnings emitted during New() route through the
+// WithDiagnosticLogger-supplied logger rather than slog.Default().
+// Closes #490.
+//
+// Uses a TLS policy that triggers the "weak ciphers permitted"
+// warning — the simplest path that produces a TLS.Apply warning.
+// A local TLS listener stands in for a real syslog-ng so
+// syslog.New's dial succeeds long enough for buildSyslogTLSConfig
+// to run.
+func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
+	// Start a TLS listener that accepts any connection — we don't
+	// need it to speak syslog, only to let dial succeed.
+	certs := generateTestCerts(t)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.tlsCfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				_, _ = io.Copy(io.Discard, c)
+			}(conn)
+		}
+	}()
+
+	var buf strings.Builder
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	injected := slog.New(handler)
+
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp+tls",
+		Address:  listener.Addr().String(),
+		Facility: "local0",
+		AppName:  "syslog-logger-test",
+		TLSCA:    certs.caPath,
+		TLSPolicy: &audit.TLSPolicy{
+			AllowTLS12:       true,
+			AllowWeakCiphers: true,
+		},
+	}, nil, syslog.WithDiagnosticLogger(injected))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	logged := buf.String()
+	assert.Contains(t, logged, "weak ciphers",
+		"expected weak-ciphers warning on injected logger, got: %q", logged)
+	assert.Contains(t, logged, "output=syslog",
+		"warning should carry output=syslog attribute: %q", logged)
+}
+
+// TestSyslog_NilDiagnosticLoggerFallsBackToDefault verifies
+// WithDiagnosticLogger(nil) does not nil-deref and falls back to
+// slog.Default for warning emission.
+func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
+	certs := generateTestCerts(t)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", certs.tlsCfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				_, _ = io.Copy(io.Discard, c)
+			}(conn)
+		}
+	}()
+
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	out, err := syslog.New(&syslog.Config{
+		Network:  "tcp+tls",
+		Address:  listener.Addr().String(),
+		Facility: "local0",
+		AppName:  "syslog-nil-logger-test",
+		TLSCA:    certs.caPath,
+		TLSPolicy: &audit.TLSPolicy{
+			AllowTLS12:       true,
+			AllowWeakCiphers: true,
+		},
+	}, nil, syslog.WithDiagnosticLogger(nil))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, buf.String(), "weak ciphers",
+		"WithDiagnosticLogger(nil) should fall back to slog.Default")
 }

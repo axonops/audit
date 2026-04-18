@@ -178,7 +178,14 @@ func (s *Output) SetDiagnosticLogger(l *slog.Logger) {
 // It validates the config, establishes the initial connection, and
 // starts the background writeLoop goroutine.
 // The syslogMetrics parameter is optional (may be nil).
-func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
+//
+// Optional [Option] arguments tune construction-time behaviour. Pass
+// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
+// the auditor's diagnostic logger is propagated post-construction) to
+// a custom logger.
+func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
+	o := resolveOptions(opts)
+
 	if err := validateSyslogConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -198,7 +205,7 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 
 	var tlsCfg *tls.Config
 	if cfg.Network == "tcp+tls" {
-		tlsCfg, err = buildSyslogTLSConfig(cfg)
+		tlsCfg, err = buildSyslogTLSConfig(cfg, o.logger)
 		if err != nil {
 			return nil, fmt.Errorf("audit: syslog tls config: %w", err)
 		}
@@ -216,7 +223,7 @@ func New(cfg *Config, syslogMetrics Metrics) (*Output, error) {
 
 	s := &Output{
 		tlsCfg:   tlsCfg,
-		logger:   slog.Default(),
+		logger:   o.logger,
 		ch:       make(chan syslogEntry, bufSize),
 		closeCh:  make(chan struct{}),
 		done:     make(chan struct{}),

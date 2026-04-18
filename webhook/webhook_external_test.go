@@ -25,6 +25,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -1533,4 +1534,63 @@ func TestWebhookConfig_Format_RedactsHeaders(t *testing.T) {
 	}
 	out := fmt.Sprintf("%+v", cfg)
 	assert.NotContains(t, out, "my-hec-token", "Format must not leak header values via %%+v")
+}
+
+// TestWebhook_ConstructionWarningsRoutedToInjectedLogger verifies that
+// TLS-policy warnings emitted during New() route through the
+// WithDiagnosticLogger-supplied logger rather than slog.Default().
+// Closes #490.
+//
+// AllowTLS12 + AllowWeakCiphers triggers the "weak ciphers permitted"
+// warning inside audit.TLSPolicy.Apply — the only code path in the
+// TLS policy that emits a warning. Matches the syslog, loki, and
+// file peer tests for consistent assertion phrasing.
+func TestWebhook_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
+	var buf strings.Builder
+	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
+	injected := slog.New(handler)
+
+	out, err := webhook.New(&webhook.Config{
+		URL:                "https://example.com/events",
+		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      10 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		BufferSize:         10,
+	}, nil, webhook.WithDiagnosticLogger(injected))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	logged := buf.String()
+	assert.Contains(t, logged, "weak ciphers",
+		"expected weak-ciphers warning on injected logger, got: %q", logged)
+	assert.Contains(t, logged, "output=webhook",
+		"warning should carry output=webhook attribute: %q", logged)
+}
+
+// TestWebhook_NilDiagnosticLoggerFallsBackToDefault verifies that
+// WithDiagnosticLogger(nil) does not nil-deref and falls back to
+// slog.Default for warning emission.
+func TestWebhook_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
+	// Capture slog.Default temporarily.
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	out, err := webhook.New(&webhook.Config{
+		URL:                "https://example.com/events",
+		TLSPolicy:          &audit.TLSPolicy{AllowTLS12: true, AllowWeakCiphers: true},
+		AllowPrivateRanges: true,
+		BatchSize:          1,
+		FlushInterval:      10 * time.Millisecond,
+		Timeout:            1 * time.Second,
+		BufferSize:         10,
+	}, nil, webhook.WithDiagnosticLogger(nil))
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	assert.Contains(t, buf.String(), "TLS",
+		"WithDiagnosticLogger(nil) should fall back to slog.Default")
 }

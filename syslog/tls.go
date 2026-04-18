@@ -22,10 +22,13 @@ import (
 	"os"
 )
 
-func buildSyslogTLSConfig(cfg *Config) (*tls.Config, error) {
+// buildSyslogTLSConfig constructs a TLS config from the syslog config.
+// Warnings emitted by [audit.TLSPolicy.Apply] are routed through the
+// given logger (pass [slog.Default] for caller-default behaviour).
+func buildSyslogTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
-		slog.Warn(w, "output", "syslog", "address", cfg.Address)
+		logger.Warn(w, "output", "syslog", "address", cfg.Address)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

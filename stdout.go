@@ -17,12 +17,13 @@ package audit
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sync"
 )
 
 func init() {
-	RegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ Metrics) (Output, error) {
+	RegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ Metrics, _ *slog.Logger) (Output, error) {
 		if len(rawConfig) > 0 {
 			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
 		}

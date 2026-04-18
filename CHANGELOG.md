@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `audit-gen` generates typed parameters (string/int) instead of `any` for standard field setters and constructors (#394)
 - HMAC wire-format: `_hmac_v` now appears BEFORE `_hmac` on the wire and is inside the HMAC-authenticated bytes. External verifiers must strip only the `_hmac` field from the received line (keeping `_hmac_v` in place) to recompute the HMAC. See [`docs/hmac-integrity.md`](docs/hmac-integrity.md#canonicalisation-rule-for-verifiers) for the full canonicalisation contract (#473)
 - HMAC `SaltVersion` character set restricted to `[A-Za-z0-9._:-]` (length 1–64) at config-time validation — values containing spaces, control characters, CEF/JSON metacharacters, or other ambiguous bytes are rejected (#473)
+- `OutputFactory` signature grew a `*slog.Logger` parameter: `func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger) (Output, error)`. Custom factories must add the parameter (nil is valid; treated as `slog.Default`). The logger is plumbed from `outputconfig.WithDiagnosticLogger` / `audit.WithDiagnosticLogger` so construction-time warnings reach the consumer's handler (#490)
 
 ### Security
 
@@ -40,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `RecordedEvent.StringField()`, `IntField()`, `FloatField()` accessors with JSON float64 coercion (#397)
 - `NoOpMetrics` base struct for composable Metrics implementations (#401)
 - `WithFactory` LoadOption for per-call factory overrides (#399)
+- `webhook.WithDiagnosticLogger`, `syslog.WithDiagnosticLogger`, `loki.WithDiagnosticLogger`, `file.WithDiagnosticLogger` functional options on each output module's `New()` — route construction-time TLS and permission warnings to a caller-supplied logger rather than `slog.Default` (#490)
+- `outputconfig.WithDiagnosticLogger` LoadOption — threads the auditor's diagnostic logger through every output constructed by `outputconfig.Load`. Pair with `audit.WithDiagnosticLogger` on the `Auditor` for consistent routing of both construction-time and runtime warnings (#490)
 - Runtime introspection methods: `BufferLen()`, `BufferCap()`, `OutputNames()`, `IsCategoryEnabled()`, `IsEventEnabled()`, `IsDisabled()`, `IsSynchronous()` (#404)
 - `docs/writing-custom-outputs.md` — interface hierarchy and decision tree (#397)
 - `docs/migrating-from-application-logging.md` — side-by-side coexistence guide (#397)

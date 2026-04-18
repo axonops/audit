@@ -271,13 +271,16 @@ func validateWebhookLimits(cfg *Config) error {
 // buildWebhookTLSConfig creates a TLS configuration for webhook
 // connections using the [audit.TLSPolicy] from the config (defaulting to
 // TLS 1.3 only when nil). InsecureSkipVerify is never set.
-func buildWebhookTLSConfig(cfg *Config) (*tls.Config, error) {
+//
+// Warnings emitted by [audit.TLSPolicy.Apply] are routed through the
+// given logger (pass [slog.Default] for caller-default behaviour).
+func buildWebhookTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 	for _, w := range warnings {
 		// Log only scheme+host to avoid leaking query-parameter tokens.
 		u, _ := url.Parse(cfg.URL)
 		sanitised := u.Scheme + "://" + u.Host
-		slog.Warn(w, "output", "webhook", "url", sanitised)
+		logger.Warn(w, "output", "webhook", "url", sanitised)
 	}
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {

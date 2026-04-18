@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Panic loudly at init if any hardcoded SSRF CIDR or IP literal fails to parse. Previously `cgnatBlock` / `deprecatedSiteLocalBlock` / `awsIPv6MetadataIP` init used `_, n, _ := net.ParseCIDR(...)` (or `net.ParseIP(...)` with no check); a source-level corruption or stdlib regression would have silently produced `nil`, and every subsequent SSRF check would have nil-deref panicked inside `Contains` / `Equal`. A new `mustParseCIDR` / `mustParseIP` wrapper panics with a clear `audit: SSRF init: failed to parse hardcoded CIDR ...` message at package load instead (#488)
 - Data race on the diagnostic logger field in `webhook`, `file`, `syslog`, `loki` outputs. `SetDiagnosticLogger` performed a plain field assignment while background goroutines concurrently read the same field. Race detector now passes `-count=100` across all four outputs. The field is `atomic.Pointer[slog.Logger]`; writers use `Store`, readers use `Load`. No API-shape change; no functional behaviour change (#474)
 
 ### Security

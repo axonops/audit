@@ -21,28 +21,46 @@ import (
 	"syscall"
 )
 
+// mustParseCIDR parses a hardcoded CIDR literal and panics at init if
+// the parse fails. The input strings below are package constants —
+// a parse failure indicates a corrupted source constant (or an
+// unexpected stdlib regression), not a runtime input, so failing
+// loudly at package load is safer than a silent nil-deref on every
+// SSRF check later (#488).
+func mustParseCIDR(cidr string) *net.IPNet {
+	_, n, err := net.ParseCIDR(cidr)
+	if err != nil {
+		panic("audit: SSRF init: failed to parse hardcoded CIDR " + cidr + ": " + err.Error())
+	}
+	return n
+}
+
+// mustParseIP parses a hardcoded IP literal and panics at init if the
+// parse fails. Same rationale as [mustParseCIDR] (#488).
+func mustParseIP(ip string) net.IP {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		panic("audit: SSRF init: failed to parse hardcoded IP " + ip)
+	}
+	return parsed
+}
+
 // cgnatBlock is the RFC 6598 Shared Address Space (100.64.0.0/10),
 // used by CGNAT and some cloud providers for internal routing.
 // Always blocked regardless of AllowPrivateRanges.
-var cgnatBlock = func() *net.IPNet {
-	_, n, _ := net.ParseCIDR("100.64.0.0/10")
-	return n
-}()
+var cgnatBlock = mustParseCIDR("100.64.0.0/10")
 
 // deprecatedSiteLocalBlock is RFC 3513 site-local IPv6 (fec0::/10).
 // RFC 3879 deprecated this range, but some legacy stacks still route
 // it — Go's net.IP.IsPrivate() does NOT classify it, so we block it
 // explicitly. Always blocked regardless of AllowPrivateRanges.
-var deprecatedSiteLocalBlock = func() *net.IPNet {
-	_, n, _ := net.ParseCIDR("fec0::/10")
-	return n
-}()
+var deprecatedSiteLocalBlock = mustParseCIDR("fec0::/10")
 
 // awsIPv6MetadataIP is the AWS IMDSv2 over-IPv6 endpoint, documented
 // at https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-metadata-v2-how-it-works.html.
 // An explicit Equal check is required (not relying on IsPrivate) so
 // AllowPrivateRanges cannot open a metadata-exfiltration hole.
-var awsIPv6MetadataIP = net.ParseIP("fd00:ec2::254")
+var awsIPv6MetadataIP = mustParseIP("fd00:ec2::254")
 
 // Azure IPv6 IMDS is not yet blocked: no authoritative Microsoft
 // Learn citation was identified during #480. Tracked in #643;

@@ -108,6 +108,84 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================================
+  # Job 1c: Benchmark regression comparison vs committed baseline.
+  #
+  # ADVISORY — never blocks the release. GitHub-hosted runners have
+  # variable CPU/memory performance between runs, so a hard threshold
+  # would produce false positives. The delta report is uploaded as an
+  # artifact and a summary is posted to the GitHub Actions summary page
+  # so the release reviewer can eyeball it before cutting the tag. A
+  # self-hosted runner with stable hardware is a follow-up; until then
+  # the advisory report is the best we can do. See #493.
+  # =====================================================================
+  bench-advisory:
+    name: Benchmark Regression (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [ci]
+    # continue-on-error: the job is advisory and never blocks the release.
+    # tag-tier0's needs: [ci, fuzz-long] deliberately excludes this job
+    # (see release.yml job graph). An infra failure here (benchstat
+    # missing, OOM, etc.) will surface as a red-but-non-blocking run
+    # in the Actions UI, which is the intended observability.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install benchstat
+        run: make install-benchstat
+
+      - name: Set up workspace
+        run: make workspace
+
+      - name: Run benchmarks + compare to baseline
+        shell: bash
+        env:
+          # Lower than local count=5 to keep wall-clock under 30 min on
+          # shared runners. Scoped to this step only.
+          BENCH_COUNT: "3"
+        run: |
+          set +e
+          make bench-compare > bench-compare.txt 2>&1
+          rc=$?
+          set -e
+          {
+            echo '## Benchmark regression report (advisory)'
+            echo
+            echo 'Runner variance on shared GitHub Actions hardware means'
+            echo 'the deltas below are indicative, not authoritative. A hard'
+            echo 'threshold would produce false positives. Use this report'
+            echo 'as a sanity check, not a gate. See #493.'
+            echo
+            echo '```'
+            cat bench-compare.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::bench-compare exited $rc (advisory — does not block the release)"
+          fi
+          # continue-on-error: true on the job keeps this from blocking
+          # tag-tier0 / tier1 / tier2 even if rc != 0.
+          exit "$rc"
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-delta
+          path: |
+            bench.txt
+            bench-compare.txt
+          if-no-files-found: ignore
+
+  # =====================================================================
   # Job 2: Tag Tier 0 modules (core + secrets — no internal deps).
   # These are tagged at the CI-tested commit.
   # =====================================================================

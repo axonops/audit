@@ -145,6 +145,23 @@ cannot be undone.
 - [ ] The version string is consistent across `CHANGELOG.md` and all tags you
       are about to create
 - [ ] `go.sum` files are committed and up to date — `make tidy-check` passes
+- [ ] `bench-baseline.txt` is fresh — regenerate it whenever a benchmark is
+      renamed, a hot-path change lands, or before any milestone release.
+      The release workflow runs `make bench-compare` as an advisory step
+      (see "Benchmark regression report" in the GitHub Actions summary) —
+      stale names silently break the column pairing and the report
+      becomes uninformative. Regenerate with:
+
+      ```bash
+      # On consistent hardware — GitHub-hosted runners are too noisy.
+      make bench-save
+      git add bench-baseline.txt BENCHMARKS.md
+      git commit -m "chore: refresh bench-baseline.txt ahead of vX.Y.Z"
+      ```
+
+      `make bench-baseline-check` (part of `make check`) rejects a PR
+      that introduces a benchmark name to `bench-baseline.txt` that no
+      longer exists in the source tree — catching renames at lint time.
 
 ### Creating a Release
 

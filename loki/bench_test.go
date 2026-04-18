@@ -16,6 +16,8 @@ package loki_test
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +27,14 @@ import (
 	"github.com/axonops/audit/loki"
 )
 
+// silentLokiBenchLogger returns an slog logger that discards
+// everything — suppresses buffer-full WARN / retry ERROR emissions
+// during benchmarks so they do not pollute the benchstat-parsed
+// bench.txt output (#493).
+func silentLokiBenchLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func BenchmarkWriteWithMetadata(b *testing.B) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -33,7 +43,7 @@ func BenchmarkWriteWithMetadata(b *testing.B) {
 
 	cfg := validConfigWithURL(srv.URL)
 	cfg.BufferSize = 100000 // large buffer to avoid drops during bench
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithDiagnosticLogger(silentLokiBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -136,7 +146,7 @@ func BenchmarkLokiOutput_MetadataWriter(b *testing.B) {
 	cfg.BufferSize = 100000
 	cfg.BatchSize = 1000
 	cfg.FlushInterval = 60 * time.Second // don't flush by timer during bench
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithDiagnosticLogger(silentLokiBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -16,6 +16,7 @@ package file_test
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -819,11 +820,18 @@ func TestOutputMetrics_RecordError_CalledOnNonRetryableError(t *testing.T) {
 // Benchmarks
 // ---------------------------------------------------------------------------
 
+// silentLogger is a slog logger that discards everything — suppresses
+// buffer-full WARN emissions during benchmarks so they do not pollute
+// the benchstat-parsed bench.txt output (#493).
+func silentLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func BenchmarkFileOutput_Write(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "bench.log")
 
-	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024}, nil)
+	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024}, nil, file.WithDiagnosticLogger(silentLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -844,7 +852,7 @@ func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "bench.log")
 
-	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024, BufferSize: 10000}, nil)
+	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024, BufferSize: 10000}, nil, file.WithDiagnosticLogger(silentLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}

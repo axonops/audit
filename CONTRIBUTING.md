@@ -93,6 +93,43 @@ If the fuzzer finds a crasher, it writes the reproducer to
 `testdata/fuzz/FuzzXxx/<hash>`. Commit that file alongside the
 fix — it becomes a permanent regression seed.
 
+### Benchmarks and regression detection (#493)
+
+The repo ships a committed baseline in `bench-baseline.txt` and a
+human-readable summary in `BENCHMARKS.md`. The release workflow runs
+`make bench-compare` as an advisory step (GitHub Actions runners are
+too noisy for a hard threshold) and uploads the delta report as a
+`bench-delta` artifact plus a summary in the GitHub Actions summary.
+
+**Running benchmarks locally:**
+```bash
+make bench                      # run all modules → bench.txt (count=5)
+make bench BENCH_COUNT=3        # faster, less statistical power
+make bench-compare              # bench + benchstat vs bench-baseline.txt
+make bench-save                 # bench and copy output to bench-baseline.txt
+```
+
+**Reading `make bench-compare` output.** benchstat produces a
+two-column delta report (baseline vs current). A `+5.00%` under
+`sec/op` means 5% slower; a `-2.00%` means 2% faster. The `p=...`
+column reports statistical confidence (`p < 0.05` is the usual
+threshold for a real delta). A blank column or `~` means the
+confidence interval spans zero — run with a higher `BENCH_COUNT` to
+get a clearer signal.
+
+**When to refresh `bench-baseline.txt`:**
+
+- A benchmark is renamed. `make bench-baseline-check` (part of
+  `make check`) rejects a PR that introduces a stale name.
+- A hot-path change lands that moves numbers meaningfully — say
+  after a #494–#508 style performance issue.
+- Before any milestone release (`docs/releasing.md` Pre-Release
+  Checklist calls this out explicitly).
+
+Refresh with `make bench-save` on consistent local hardware, update
+`BENCHMARKS.md` with the new headline numbers, and commit both files
+together in a `chore: refresh bench-baseline ...` commit.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)

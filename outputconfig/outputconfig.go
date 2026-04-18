@@ -283,7 +283,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.tlsPolicyRaw, top.appName, top.host, lo.coreMetrics, lo.factories, lo.diagnosticLogger, secretResolver)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.appName, top.host, lo.coreMetrics, lo.factories, lo.diagnosticLogger, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -370,7 +370,6 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 // topLevel holds parsed top-level YAML fields.
 type topLevel struct {
 	outputsRaw     yaml.MapSlice // preserves output declaration order
-	tlsPolicyRaw   any           // global tls_policy, injected into outputs that don't specify their own
 	standardFields map[string]string
 	appName        string
 	host           string
@@ -408,8 +407,6 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 				ErrOutputConfigInvalid)
 		case "auditor":
 			auditorRaw = item.Value
-		case "tls_policy":
-			result.tlsPolicyRaw = item.Value
 		case "outputs":
 			if orderedOutputs == nil {
 				if orderedErr != nil {
@@ -522,33 +519,6 @@ func parseTopLevel(ctx context.Context, doc, orderedOutputs yaml.MapSlice, order
 		result.auditorResult = lr
 	} else {
 		result.auditorResult = defaultAuditorConfigResult()
-	}
-
-	// Expand env vars and validate global TLS policy eagerly so that
-	// typos and unknown fields are caught at startup, not deferred to
-	// individual output factory invocations.
-	if result.tlsPolicyRaw != nil {
-		expanded, err := expandEnvInValue(result.tlsPolicyRaw, "tls_policy")
-		if err != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, err)
-		}
-		resolved, rErr := expandSecretsInValue(ctx, expanded, "tls_policy", r)
-		if rErr != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, rErr)
-		}
-		if vnErr := validateNoUnresolvedRefs(resolved, "tls_policy"); vnErr != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, vnErr)
-		}
-		result.tlsPolicyRaw = resolved
-		// Validate structure — reject unknown fields like typos.
-		tlsBytes, mErr := yaml.Marshal(resolved)
-		if mErr != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, mErr)
-		}
-		var validated yamlTLSPolicy
-		if uErr := yaml.UnmarshalWithOptions(tlsBytes, &validated, yaml.DisallowUnknownField()); uErr != nil {
-			return nil, fmt.Errorf("%w: tls_policy: %w", ErrOutputConfigInvalid, audit.WrapUnknownFieldError(uErr, validated))
-		}
 	}
 
 	if result.appName == "" {

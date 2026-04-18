@@ -36,7 +36,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		return nil, fmtErr
 	}
 
-	output, err := invokeFactory(name, fields, globalTLSRaw, globalAppName, globalHost, coreMetrics, factories, logger)
+	output, err := invokeFactory(name, fields, globalAppName, globalHost, coreMetrics, factories, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -204,22 +204,6 @@ func deepCopyValue(v any) any {
 	}
 }
 
-// injectGlobalTLSPolicy adds the global tls_policy to an output's
-// type-specific config map if the output does not already define one.
-// A deep copy of the global value is injected so that per-output env
-// var expansion does not mutate the shared original.
-func injectGlobalTLSPolicy(typeConfig map[string]any, globalTLS any) {
-	if typeConfig == nil || globalTLS == nil {
-		return
-	}
-	// Check if the output already has a tls_policy key.
-	if _, exists := typeConfig["tls_policy"]; exists {
-		return // per-output policy exists — do not override
-	}
-	// Inject a deep copy so mutations don't affect other outputs.
-	typeConfig["tls_policy"] = deepCopyValue(globalTLS)
-}
-
 // injectSyslogGlobals injects global app_name and hostname into a
 // syslog output's type-config map if not already set per-output.
 func injectSyslogGlobals(f *outputFields, globalAppName, globalHost string) {
@@ -250,13 +234,16 @@ func injectStringField(m map[string]any, key, value string) {
 	m[key] = value
 }
 
-// yamlTLSPolicy is used for eager validation of the global tls_policy.
+// yamlTLSPolicy is the YAML shape of a TLS policy block. It is used
+// by per-provider and per-output config parsing (see
+// [provider_config.go] and each output module's register.go). Root-
+// level tls_policy: was removed in #476.
 type yamlTLSPolicy struct {
 	AllowTLS12       bool `yaml:"allow_tls12"`
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {
 	// Per-call factory overrides take precedence over global registry.
 	factory := factories[f.typeName]
 	if factory == nil {
@@ -268,17 +255,6 @@ func invokeFactory(name string, f *outputFields, globalTLSRaw any, globalAppName
 			"add import _ \"github.com/axonops/audit/%s\" "+
 			"or import _ \"github.com/axonops/audit/outputs\" for all types",
 			name, f.typeName, strings.Join(registered, ", "), f.typeName)
-	}
-	// Inject global TLS policy for output types that support it.
-	// Only syslog and webhook parse tls_policy — injecting into other
-	// types (file, stdout) would cause unknown-field errors.
-	if f.typeConfigRaw != nil && globalTLSRaw != nil {
-		if m, ok := f.typeConfigRaw.(map[string]any); ok {
-			switch f.typeName {
-			case "syslog", "webhook":
-				injectGlobalTLSPolicy(m, globalTLSRaw)
-			}
-		}
 	}
 	// Inject global app_name and hostname into syslog config if not already set.
 	injectSyslogGlobals(f, globalAppName, globalHost)

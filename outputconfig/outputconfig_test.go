@@ -1476,71 +1476,13 @@ outputs:
 }
 
 // ---------------------------------------------------------------------------
-// Global TLS policy (#220)
+// TLS policy — per-output/per-provider only (#476)
+//
+// Root-level tls_policy: was removed in #476 (pre-v1.0). TLS policy is
+// now configured in each output's or provider's own block; root-level
+// tls_policy: is rejected as an unknown top-level key. See #632 for the
+// docs/examples migration.
 // ---------------------------------------------------------------------------
-
-func TestLoad_GlobalTLSPolicy_AcceptedAtTopLevel(t *testing.T) {
-	t.Parallel()
-	// Global tls_policy with allow_tls12. The stdout output doesn't use
-	// TLS, but the config should still parse without error.
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-tls_policy:
-  allow_tls12: true
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax)
-	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-}
-
-func TestLoad_GlobalTLSPolicy_NoGlobal(t *testing.T) {
-	t.Parallel()
-	// No global tls_policy — outputs should still work.
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax)
-	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-}
-
-func TestLoad_GlobalTLSPolicy_NotInjectedIntoFileOutput(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	// Global tls_policy should NOT be injected into file outputs
-	// (file doesn't support TLS), so this must succeed.
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-tls_policy:
-  allow_tls12: true
-outputs:
-  audit_file:
-    type: file
-    file:
-      path: "` + dir + `/audit.log"
-`)
-	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax)
-	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	for _, o := range result.Outputs {
-		_ = o.Output.Close()
-	}
-}
 
 // testOutput is a minimal audit.Output for testing factory injection.
 type testOutput struct{ name string }
@@ -1549,16 +1491,12 @@ func (o *testOutput) Write([]byte) error { return nil }
 func (o *testOutput) Close() error       { return nil }
 func (o *testOutput) Name() string       { return o.name }
 
-func TestLoad_GlobalTLSPolicy_InjectedViaFactory(t *testing.T) {
+// TestLoad_RootTLSPolicyRejected asserts that a root-level tls_policy:
+// key is rejected as an unknown top-level field — closes #476 AC #1.
+// Fail-closed: operators migrating from pre-#476 see an explicit error
+// rather than a silent ignore.
+func TestLoad_RootTLSPolicyRejected(t *testing.T) {
 	t.Parallel()
-	// Register a test factory under the "webhook" type name so
-	// the injection logic recognises it as TLS-capable.
-	var captured atomic.Value
-	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
-		captured.Store(string(rawConfig))
-		return &testOutput{name: name}, nil
-	})
-
 	data := []byte(`
 version: 1
 app_name: test
@@ -1566,27 +1504,22 @@ host: test
 tls_policy:
   allow_tls12: true
 outputs:
-  alerts:
-    type: webhook
-    webhook:
-      url: "https://example.com"
+  console:
+    type: stdout
 `)
 	tax := testTaxonomy(t)
-	result, err := outputconfig.Load(context.Background(), data, tax)
-	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-
-	raw, ok := captured.Load().(string)
-	require.True(t, ok, "factory should have been called")
-	assert.Contains(t, raw, "tls_policy")
-	assert.Contains(t, raw, "allow_tls12")
-
-	for _, o := range result.Outputs {
-		_ = o.Output.Close()
-	}
+	_, err := outputconfig.Load(context.Background(), data, tax)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "tls_policy",
+		"error must name the offending key so operators can find it")
 }
 
-func TestLoad_GlobalTLSPolicy_PerOutputOverride(t *testing.T) {
+// TestLoad_PerOutputTLSPolicy_Syslog verifies that syslog's per-output
+// tls_policy block continues to marshal through to the factory after
+// the root-level tls_policy removal (#476). Regression guard for the
+// path operators are now required to use.
+func TestLoad_PerOutputTLSPolicy_Syslog(t *testing.T) {
 	t.Parallel()
 	var captured atomic.Value
 	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
@@ -1598,8 +1531,6 @@ func TestLoad_GlobalTLSPolicy_PerOutputOverride(t *testing.T) {
 version: 1
 app_name: test
 host: test
-tls_policy:
-  allow_tls12: false
 outputs:
   siem:
     type: syslog
@@ -1615,54 +1546,13 @@ outputs:
 	require.Len(t, result.Outputs, 1)
 
 	raw, ok := captured.Load().(string)
-	require.True(t, ok)
-	// Per-output override should be present, NOT the global one.
-	assert.Contains(t, raw, "allow_tls12: true")
+	require.True(t, ok, "syslog factory must have been invoked")
+	assert.Contains(t, raw, "allow_tls12: true",
+		"per-output tls_policy must marshal through to the factory")
 
 	for _, o := range result.Outputs {
 		_ = o.Output.Close()
 	}
-}
-
-func TestLoad_GlobalTLSPolicy_UnknownField(t *testing.T) {
-	t.Parallel()
-	// The global tls_policy is validated eagerly by parseTopLevel using
-	// KnownFields(true), regardless of output type. An unknown field
-	// must be rejected at parse time.
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-tls_policy:
-  allow_tls12: true
-  bogus_field: true
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "tls_policy")
-}
-
-func TestLoad_GlobalTLSPolicy_MissingEnvVar(t *testing.T) {
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-tls_policy:
-  allow_tls12: ${TOTALLY_MISSING_TLS_VAR}
-outputs:
-  console:
-    type: stdout
-`)
-	tax := testTaxonomy(t)
-	_, err := outputconfig.Load(context.Background(), data, tax)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
-	assert.Contains(t, err.Error(), "tls_policy")
 }
 
 // ---------------------------------------------------------------------------
@@ -2760,28 +2650,6 @@ outputs:
 		"factory should receive the output type")
 	assert.Equal(t, "compliance_log", calledWith.outputName,
 		"factory should receive the output NAME, not the type")
-}
-
-func TestLoad_GlobalTLSPolicy_WithStdout(t *testing.T) {
-	// Exercises the tls_policy top-level key parsing path.
-	t.Parallel()
-	tax := testTaxonomy(t)
-	data := []byte(`
-version: 1
-app_name: test
-host: test
-tls_policy:
-  allow_tls12: true
-outputs:
-  c:
-    type: stdout
-`)
-	result, err := outputconfig.Load(context.Background(), data, tax)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	for _, o := range result.Outputs {
-		_ = o.Output.Close()
-	}
 }
 
 // TestLoad_DiagnosticLogger_PlumbedThroughFactory verifies that

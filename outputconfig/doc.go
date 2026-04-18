@@ -47,10 +47,9 @@
 //	  shutdown_timeout: "5s"           # default: "5s" (max: "60s")
 //	  validation_mode: strict       # "strict" (default), "warn", "permissive"
 //	  omit_empty: false             # default: false
-//	tls_policy:                     # optional, global TLS policy
-//	  allow_tls12: false            # default: false (TLS 1.3 only)
-//	  allow_weak_ciphers: false     # default: false
 //	outputs:                        # required, map of named outputs
+//	                                # TLS policy is configured per-output
+//	                                # (see each output type's docs).
 //	  audit_log:
 //	    type: file                  # registered output type
 //	    enabled: true               # optional, default true

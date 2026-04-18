@@ -227,6 +227,75 @@ Per-output field stripping is configured in `outputs.yaml`, not in
 the taxonomy. See [Sensitivity Labels](sensitivity-labels.md) and
 [Outputs](outputs.md) for the `exclude_labels` configuration.
 
+## 🛡️ Name Character Set and Length
+
+Every consumer-controlled taxonomy identifier — category name, event
+type key, required/optional field name, and sensitivity label name —
+must match this pattern:
+
+```
+^[a-z][a-z0-9_]*$
+```
+
+That is: start with a lowercase letter, followed by lowercase letters,
+digits, or underscores only. Names are additionally capped at **128
+bytes**.
+
+Rejected examples:
+
+| Name | Reason |
+|------|--------|
+| `UserCreate` | uppercase letter |
+| `user-create` | hyphen |
+| `user.create` | dot |
+| `user create` | space |
+| `1create` | starts with digit |
+| `_create` | starts with underscore |
+| `user\u202eadmin` | bidi override character |
+| `user` + 129 bytes | exceeds 128-byte cap |
+
+### Why this is enforced
+
+The pure-ASCII rule keeps the following out of downstream log
+consumers, SIEM dashboards, and error messages:
+
+- **Bidi override characters** (U+202E, U+2066-2069) that could
+  reorder terminal output (CVE-2021-42574 class).
+- **Unicode confusables** — Cyrillic `а` (U+0430) vs ASCII `a`, Greek
+  omicron (U+03BF) vs `o`, full-width letters (U+FF21-FF5A), etc.
+- **CEF metacharacters** (`|`, `=`, `\`, `"`) that would corrupt CEF
+  header or extension parsing.
+- **C0/C1 control bytes** (0x00-0x1F, 0x7F, 0x80-0x9F) that could
+  embed ANSI escape sequences, cursor manipulation, or NUL-injection
+  into log lines.
+- **Length DoS** — a multi-kilobyte identifier blown through every
+  log line.
+
+When a name fails either check, `ValidateTaxonomy` returns an error
+that wraps both [`ErrTaxonomyInvalid`](error-reference.md#errtaxonomyinvalid)
+and [`ErrInvalidTaxonomyName`](error-reference.md#errinvalidtaxonomyname),
+so consumers can discriminate name-shape violations from other
+taxonomy errors:
+
+```go
+tax, err := audit.ParseTaxonomyYAML(data)
+if errors.Is(err, audit.ErrInvalidTaxonomyName) {
+    // bad name — fix the YAML
+}
+if errors.Is(err, audit.ErrTaxonomyInvalid) {
+    // any taxonomy validation failure, including the above
+}
+```
+
+Error messages render the offending name through `%q`, so control
+bytes and bidi characters appear as Go escape sequences
+(`\x00`, `\u202e`) rather than as raw bytes that could hijack
+terminal output.
+
+The same rule is enforced by the `cmd/audit-gen` code generator — a
+malformed name causes codegen to fail before any Go source is written,
+preventing a "generates fine, never loads at runtime" trap.
+
 ## 🚫 Reserved Field Names
 
 The following field names are managed by the framework and cannot be

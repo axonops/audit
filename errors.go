@@ -68,6 +68,21 @@ var (
 	//	if errors.Is(err, audit.ErrTaxonomyInvalid) { ... }
 	ErrTaxonomyInvalid = errors.New("audit: taxonomy validation failed")
 
+	// ErrInvalidTaxonomyName is returned by [ValidateTaxonomy] when a
+	// category name, sensitivity label name, event type key, or field
+	// name fails the character-set or length rule. Names must match
+	// `^[a-z][a-z0-9_]*$` and be no longer than 128 bytes — enforced
+	// at load to keep bidi overrides, Unicode confusables, CEF/JSON
+	// metacharacters, and all C0/C1 control bytes out of downstream
+	// log consumers and SIEM dashboards (issue #477).
+	//
+	// Always wrapped alongside [ErrTaxonomyInvalid] via [errors.Join],
+	// so either sentinel satisfies [errors.Is]:
+	//
+	//	if errors.Is(err, audit.ErrInvalidTaxonomyName) { ... }
+	//	if errors.Is(err, audit.ErrTaxonomyInvalid)     { ... }
+	ErrInvalidTaxonomyName = errors.New("audit: invalid taxonomy name")
+
 	// ErrInvalidInput is returned by [ParseTaxonomyYAML] when the input
 	// is structurally unsuitable — empty, larger than [MaxTaxonomyInputSize],
 	// a multi-document YAML stream, or syntactically invalid. Taxonomy

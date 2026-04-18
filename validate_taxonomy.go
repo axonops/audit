@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -26,20 +27,44 @@ import (
 // reserved field names, and sensitivity label validity. Returns an error
 // wrapping [ErrTaxonomyInvalid] containing all problems found, with
 // deterministic output. Callers MUST use [errors.Is] to test for
-// [ErrTaxonomyInvalid].
+// [ErrTaxonomyInvalid]. When any consumer-controlled identifier (category
+// name, event type key, field name, or sensitivity label name) violates
+// [taxonomyNamePattern] or exceeds [maxTaxonomyNameLen], the returned
+// error additionally wraps [ErrInvalidTaxonomyName].
 func ValidateTaxonomy(t Taxonomy) error {
 	var errs []string
+	var nameErrs []string
+
 	errs = append(errs, checkTaxonomyVersion(t)...)
+
+	catNameErrs := checkCategoryNames(t)
+	nameErrs = append(nameErrs, catNameErrs...)
+	errs = append(errs, catNameErrs...)
 	errs = append(errs, checkCategoryConsistency(t)...)
+
+	evtFieldNameErrs := checkEventAndFieldNames(t)
+	nameErrs = append(nameErrs, evtFieldNameErrs...)
+	errs = append(errs, evtFieldNameErrs...)
+
 	errs = append(errs, checkSeverityRanges(t)...)
 	errs = append(errs, checkFieldOverlap(t)...)
 	errs = append(errs, checkReservedFieldNames(t)...)
 	errs = append(errs, checkReservedStandardFields(t)...)
-	errs = append(errs, checkSensitivity(t)...)
+
+	sensErrs, sensNameErrs := checkSensitivity(t)
+	nameErrs = append(nameErrs, sensNameErrs...)
+	errs = append(errs, sensErrs...)
 
 	if len(errs) > 0 {
 		slices.Sort(errs)
-		return fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
+		joined := fmt.Errorf("%w:\n- %s", ErrTaxonomyInvalid, strings.Join(errs, "\n- "))
+		if len(nameErrs) > 0 {
+			// Wrap ErrInvalidTaxonomyName alongside ErrTaxonomyInvalid so
+			// consumers can discriminate name-shape violations from other
+			// taxonomy errors (#477).
+			return errors.Join(joined, ErrInvalidTaxonomyName)
+		}
+		return joined
 	}
 	return nil
 }
@@ -62,21 +87,36 @@ func checkTaxonomyVersion(t Taxonomy) []string {
 	return nil
 }
 
+// checkCategoryNames validates that every category map key matches
+// [taxonomyNamePattern] and fits within [maxTaxonomyNameLen]. Returned
+// errors are wrapped alongside [ErrInvalidTaxonomyName] by
+// [ValidateTaxonomy] so consumers can discriminate name-shape
+// violations from other taxonomy errors (#477).
+//
+// Iteration is sorted so error output is deterministic.
+func checkCategoryNames(t Taxonomy) []string {
+	var errs []string
+	catNames := make([]string, 0, len(t.Categories))
+	for cat := range t.Categories {
+		catNames = append(catNames, cat)
+	}
+	slices.Sort(catNames)
+	for _, cat := range catNames {
+		if msg := invalidTaxonomyNameMsg("category name", cat); msg != "" {
+			errs = append(errs, msg)
+		}
+	}
+	return errs
+}
+
 // checkCategoryConsistency validates categories and their members.
-// Events MAY appear in multiple categories.
+// Events MAY appear in multiple categories. Name-shape checks are
+// delegated to [checkCategoryNames] so the name-error sentinel can be
+// wrapped independently.
 func checkCategoryConsistency(t Taxonomy) []string {
 	var errs []string
 	if len(t.Categories) == 0 {
 		errs = append(errs, "taxonomy must define at least one category")
-	}
-
-	// Validate category names — must match safe identifier pattern.
-	for cat := range t.Categories {
-		if !labelNamePattern.MatchString(cat) {
-			errs = append(errs, fmt.Sprintf(
-				"category name %q is invalid: must match %s",
-				cat, labelNamePattern.String()))
-		}
 	}
 
 	// Every event listed in Categories must exist in Events map.
@@ -94,6 +134,70 @@ func checkCategoryConsistency(t Taxonomy) []string {
 		}
 	}
 	return errs
+}
+
+// checkEventAndFieldNames validates that every event type key and every
+// required/optional field name matches [taxonomyNamePattern] and fits
+// within [maxTaxonomyNameLen]. Rejection protects downstream log
+// consumers from bidi overrides, Unicode confusables, CEF/JSON
+// metacharacters, and all C0/C1 control bytes (#477).
+//
+// Iteration is sorted so error output is deterministic — the caller's
+// `slices.Sort(errs)` would order them anyway, but sorting here keeps
+// the errors-per-event grouped in the sorted output.
+func checkEventAndFieldNames(t Taxonomy) []string {
+	var errs []string
+	eventNames := make([]string, 0, len(t.Events))
+	for name := range t.Events {
+		eventNames = append(eventNames, name)
+	}
+	slices.Sort(eventNames)
+
+	for _, name := range eventNames {
+		if msg := invalidTaxonomyNameMsg("event type name", name); msg != "" {
+			errs = append(errs, msg)
+		}
+		def := t.Events[name]
+		// Field names from Required + Optional. Sort each slice copy so
+		// the error output is stable even when the underlying slice is
+		// unsorted (programmatic construction can produce any order).
+		fieldNames := make([]string, 0, len(def.Required)+len(def.Optional))
+		fieldNames = append(fieldNames, def.Required...)
+		fieldNames = append(fieldNames, def.Optional...)
+		slices.Sort(fieldNames)
+		for _, fname := range fieldNames {
+			if msg := invalidTaxonomyNameMsg(
+				fmt.Sprintf("event %q field name", name),
+				fname,
+			); msg != "" {
+				errs = append(errs, msg)
+			}
+		}
+	}
+	return errs
+}
+
+// invalidTaxonomyNameMsg returns an empty string when name is valid,
+// or a human-readable message describing the violation otherwise.
+// `position` describes what sort of name this is (e.g., "event type
+// name", `event "user_create" field name`).
+//
+// %q is used to quote the name so control bytes and bidi characters
+// appear as Go escape sequences (\x00, \u202e) in the error text
+// rather than being rendered literally — prevents a malicious name
+// from reordering terminal output when the error is printed.
+func invalidTaxonomyNameMsg(position, name string) string {
+	if len(name) > maxTaxonomyNameLen {
+		return fmt.Sprintf(
+			"%s %q exceeds maximum length %d bytes (got %d)",
+			position, name, maxTaxonomyNameLen, len(name))
+	}
+	if !taxonomyNamePattern.MatchString(name) {
+		return fmt.Sprintf(
+			"%s %q is invalid: must match %s",
+			position, name, taxonomyNamePattern.String())
+	}
+	return ""
 }
 
 // checkSeverityRanges validates that severity values are in range 0-10.
@@ -311,7 +415,21 @@ func frameworkFieldNames() []string {
 	}
 }
 
-// labelNamePattern validates sensitivity label names. Labels must start
-// with a lowercase letter and contain only lowercase letters, digits,
-// and underscores.
-var labelNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+// taxonomyNamePattern validates every consumer-controlled identifier
+// that surfaces in audit events and formatters — category names,
+// sensitivity label names, event type keys, and field names. Names
+// must start with a lowercase letter and contain only lowercase
+// letters, digits, and underscores.
+//
+// Rationale: the pure-ASCII rule rejects bidi-override characters
+// (U+202E, U+2066), zero-width chars (U+200B, U+FEFF), Unicode
+// confusables (Cyrillic `а` U+0430 vs ASCII `a`), CEF metacharacters
+// (|, =, \), and all C0/C1 control bytes — any of which could mislead
+// SIEM operators or corrupt downstream log consumers.
+var taxonomyNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// maxTaxonomyNameLen caps the length of taxonomy identifiers. A name
+// of this size already wildly exceeds anything meaningful for a log
+// key; the cap is a DoS safety net (downstream map keys, CEF line
+// lengths, formatter buffers). Per #477 pre-coding security review.
+const maxTaxonomyNameLen = 128

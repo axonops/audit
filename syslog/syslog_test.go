@@ -15,12 +15,14 @@
 package syslog_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -2832,4 +2834,82 @@ func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "weak ciphers",
 		"WithDiagnosticLogger(nil) should fall back to slog.Default")
+}
+
+// TestSyslogReconnect_CloseErrorLoggedAtDebug asserts that when the
+// reconnect path closes the previous writer and Close returns an
+// error, the error is captured at slog.LevelDebug with the expected
+// attributes — the reconnect path continues unaffected (#489). Prior
+// behaviour was `_ = s.writer.Close()`, which silently dropped a
+// diagnostic signal operators could use to track down persistent
+// reconnect failures.
+//
+// Uses the JSON handler and decodes into a map so the level / message
+// / attribute assertions do not depend on text-handler formatting.
+func TestSyslogReconnect_CloseErrorLoggedAtDebug(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	injectedErr := errors.New("tls: teardown after peer reset")
+	closeFn := func() error { return injectedErr }
+
+	// Drive the helper directly — we do not need a live writer to
+	// exercise the log path, only a closeFn that returns the error.
+	syslog.CloseWriterForReconnect(closeFn, logger, "tcp!example.test:6514")
+
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &record),
+		"log output must be a single JSON record: %q", buf.String())
+
+	assert.Equal(t, "DEBUG", record["level"],
+		"close error must be at debug level: %v", record["level"])
+	assert.Equal(t, "audit: output syslog: close before reconnect failed", record["msg"],
+		"log message text missing: %v", record["msg"])
+	assert.Equal(t, "tcp!example.test:6514", record["address"],
+		"log must carry the address attribute: %v", record["address"])
+	assert.Equal(t, "tls: teardown after peer reset", record["error"],
+		"log must carry the underlying error: %v", record["error"])
+}
+
+// TestSyslogReconnect_CloseSuccess_NoLog verifies the happy path
+// emits no log line — avoids log noise on every successful reconnect.
+func TestSyslogReconnect_CloseSuccess_NoLog(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	syslog.CloseWriterForReconnect(func() error { return nil }, logger, "tcp!example.test:6514")
+
+	assert.Empty(t, buf.String(),
+		"successful Close must not emit any log line; got: %q", buf.String())
+}
+
+// TestSyslogReconnect_NilLoggerFallsBackToDefault verifies the
+// helper does not nil-deref when invoked with a nil logger — the
+// fallback path is used by the construction-time paths where the
+// logger has not yet been installed.
+//
+// Not parallel: mutates the process-wide slog.Default. Running in
+// parallel with any other test that reads slog.Default would race.
+func TestSyslogReconnect_NilLoggerFallsBackToDefault(t *testing.T) { //nolint:paralleltest // mutates slog.Default
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	syslog.CloseWriterForReconnect(
+		func() error { return errors.New("nil-logger injected error") },
+		nil,
+		"tcp!example.test:6514",
+	)
+
+	assert.Contains(t, buf.String(), "nil-logger injected error",
+		"nil logger must fall back to slog.Default: %q", buf.String())
 }

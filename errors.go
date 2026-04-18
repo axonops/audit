@@ -115,6 +115,20 @@ var (
 	// [ValidationError].
 	ErrUnknownField = errors.New("audit: unknown field")
 
+	// ErrHMACMalformed is returned by [VerifyHMAC] when the
+	// supplied HMAC value is structurally invalid — empty, the
+	// wrong length for the algorithm's hash size, or contains
+	// non-hex characters. Validation runs BEFORE the constant-time
+	// compare, since malformed inputs are pre-authentication
+	// structural rejects and not timing-sensitive.
+	//
+	// Always paired with [ErrValidation] via [errors.Join] so
+	// consumers can discriminate:
+	//
+	//	if errors.Is(err, audit.ErrHMACMalformed) { ... }
+	//	if errors.Is(err, audit.ErrValidation)     { ... }
+	ErrHMACMalformed = errors.New("audit: hmac value malformed")
+
 	// ErrSSRFBlocked is the sentinel wrapped by every
 	// [SSRFBlockedError] produced by [CheckSSRFIP] /
 	// [CheckSSRFAddress]. Use [errors.Is] for broad discrimination

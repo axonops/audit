@@ -89,6 +89,93 @@ func TestVerifyHMAC_WrongSalt(t *testing.T) {
 	assert.False(t, ok, "wrong salt should fail verification")
 }
 
+// TestVerifyHMAC_RejectsMalformedEarly_NotTimingSensitive is the
+// named contract test from #483 Testing Requirements. Proves
+// structurally invalid HMAC values are rejected with
+// [ErrHMACMalformed] + [ErrValidation] BEFORE the constant-time
+// compare, since malformed inputs are pre-authentication
+// structural rejects and not timing-sensitive.
+func TestVerifyHMAC_RejectsMalformedEarly_NotTimingSensitive(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"event_type":"test"}`)
+	salt := []byte("well-formed-salt-value-16b")
+	const algo = "HMAC-SHA-256"
+
+	tests := []struct {
+		name      string
+		hmacValue string
+		reason    string
+	}{
+		{"empty", "", "empty hmac value"},
+		{"too_short", "abc", "wrong length (3 instead of 64)"},
+		{"too_short_by_one", strings.Repeat("a", 63), "one byte short"},
+		{"too_long_by_one", strings.Repeat("a", 65), "one byte long"},
+		{"wrong_length_sha512_digest", strings.Repeat("a", 128), "SHA-512 digest length for a SHA-256 check"},
+		{"non_hex_uppercase", strings.Repeat("A", 64), "uppercase hex is rejected (ComputeHMAC emits lowercase)"},
+		{"non_hex_invalid_chars", "zxy" + strings.Repeat("0", 61), "non-hex prefix"},
+		{"non_hex_mid", strings.Repeat("0", 30) + "g" + strings.Repeat("0", 33), "non-hex byte in the middle"},
+		{"non_hex_trailing_null", strings.Repeat("0", 63) + "\x00", "null byte at end"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ok, err := audit.VerifyHMAC(payload, tt.hmacValue, salt, algo)
+			assert.False(t, ok,
+				"malformed hmac must not verify (%s)", tt.reason)
+			require.Error(t, err,
+				"malformed hmac must return an error (%s)", tt.reason)
+			assert.ErrorIs(t, err, audit.ErrHMACMalformed,
+				"%s should wrap ErrHMACMalformed", tt.reason)
+			assert.ErrorIs(t, err, audit.ErrValidation,
+				"%s should also wrap ErrValidation", tt.reason)
+		})
+	}
+}
+
+// TestVerifyHMAC_ValidInputs_ReachesConstantTimeCompare is the
+// named companion to the malformed-rejection test. A valid-length
+// + valid-hex input that happens to NOT match the true HMAC must
+// NOT return an error — it returns (false, nil). This preserves
+// the timing contract: wrong-but-well-formed inputs hit
+// hmac.Equal and take the same time as a correct compare.
+func TestVerifyHMAC_ValidInputs_ReachesConstantTimeCompare(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"event_type":"test"}`)
+	salt := []byte("well-formed-salt-value-16b")
+	const algo = "HMAC-SHA-256"
+
+	t.Run("correct_hmac_verifies_true", func(t *testing.T) {
+		t.Parallel()
+		correct, err := audit.ComputeHMAC(payload, salt, algo)
+		require.NoError(t, err)
+		ok, err := audit.VerifyHMAC(payload, correct, salt, algo)
+		require.NoError(t, err)
+		assert.True(t, ok, "correct HMAC must verify")
+	})
+
+	t.Run("wrong_but_well_formed_returns_false_nil", func(t *testing.T) {
+		t.Parallel()
+		// All-zeros hex string of SHA-256 length — valid format,
+		// not a match. MUST return (false, nil), NOT an error.
+		wrongButValid := strings.Repeat("0", 64)
+		ok, err := audit.VerifyHMAC(payload, wrongButValid, salt, algo)
+		require.NoError(t, err,
+			"wrong-but-well-formed hmac must NOT return an error — that would leak which inputs reached hmac.Equal")
+		assert.False(t, ok, "wrong hmac must not verify")
+	})
+
+	t.Run("sha512_valid_length_and_hex", func(t *testing.T) {
+		t.Parallel()
+		const sha512Algo = "HMAC-SHA-512"
+		correct, err := audit.ComputeHMAC(payload, salt, sha512Algo)
+		require.NoError(t, err)
+		require.Len(t, correct, 128, "sanity: SHA-512 hex is 128 chars")
+		ok, err := audit.VerifyHMAC(payload, correct, salt, sha512Algo)
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+}
+
 func TestComputeHMAC_EmptyPayload(t *testing.T) {
 	t.Parallel()
 	_, err := audit.ComputeHMAC(nil, []byte("salt-value-16bytes"), "HMAC-SHA-256")

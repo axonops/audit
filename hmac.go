@@ -190,13 +190,43 @@ func ComputeHMAC(payload, salt []byte, algorithm string) (string, error) {
 }
 
 // VerifyHMAC verifies that the HMAC value matches the payload.
-// The hmacValue is expected to be lowercase hex-encoded (as produced
-// by [ComputeHMAC]). Returns (true, nil) if valid, (false, nil) if
-// invalid, or (false, err) for parameter errors.
+// The hmacValue MUST be lowercase hex-encoded (as produced by
+// [ComputeHMAC]); uppercase hex is rejected to avoid the
+// two-valid-encodings footgun.
+//
+// Returns (true, nil) for a valid match, (false, nil) for a valid-
+// format-but-wrong-digest, (false, err) for parameter or input
+// errors. Structural rejects (empty, wrong length, non-hex) wrap
+// both [ErrValidation] and [ErrHMACMalformed] and happen BEFORE
+// the constant-time compare — malformed inputs are pre-
+// authentication and not timing-sensitive (#483).
 func VerifyHMAC(payload []byte, hmacValue string, salt []byte, algorithm string) (bool, error) {
+	// Compute the expected HMAC first — ComputeHMAC validates the
+	// payload, salt, and algorithm and produces the hex length we
+	// need to compare hmacValue against.
 	computed, err := ComputeHMAC(payload, salt, algorithm)
 	if err != nil {
 		return false, err
 	}
+
+	// Structural validation of hmacValue — length + hex charset.
+	// These run BEFORE hmac.Equal because malformed inputs are
+	// not secrets and do not need timing-safe handling.
+	if len(hmacValue) != len(computed) {
+		return false, errors.Join(ErrValidation, fmt.Errorf(
+			"%w: hmac value length %d does not match expected %d for algorithm %q",
+			ErrHMACMalformed, len(hmacValue), len(computed), algorithm))
+	}
+	for i := 0; i < len(hmacValue); i++ {
+		c := hmacValue[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false, errors.Join(ErrValidation, fmt.Errorf(
+				"%w: hmac value contains non-lowercase-hex byte 0x%02x at offset %d",
+				ErrHMACMalformed, c, i))
+		}
+	}
+
+	// Happy path — constant-time compare on equally-sized,
+	// validated inputs.
 	return hmac.Equal([]byte(computed), []byte(hmacValue)), nil
 }

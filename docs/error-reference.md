@@ -285,6 +285,28 @@ audit: taxonomy validation failed
 | **Transient?** | No — permanent. Fix the taxonomy definition. |
 | **What to do** | The error message lists all validation failures (one per line). Common causes: category references an event type not defined in `events`, event has a field in both required and optional, severity out of range (0-10), version not 1, reserved standard field declared as bare optional (use `required: true` or add labels), framework field declared as user field. Fix each listed issue in your taxonomy YAML. |
 
+### `ErrInvalidTaxonomyName`
+
+```
+audit: invalid taxonomy name
+```
+
+| | |
+|---|---|
+| **When** | A category name, event type key, required/optional field name, or sensitivity label name fails the character-set or length rule. |
+| **Meaning** | The offending name contains a character outside `[a-z][a-z0-9_]*` or exceeds 128 bytes. Protects downstream log consumers from bidi overrides, Unicode confusables, CEF/JSON metacharacters, and C0/C1 control bytes (issue #477). |
+| **Transient?** | No — permanent. Fix the taxonomy definition. |
+| **What to do** | Rename the identifier to use only lowercase letters, digits, and underscores, starting with a letter, and keep it under 128 bytes. See [Taxonomy Validation — Name Character Set and Length](taxonomy-validation.md#️-name-character-set-and-length) for the full rule and rationale. |
+| **Sentinel behaviour** | Always wrapped alongside `ErrTaxonomyInvalid` via `errors.Join`. Consumers may test either sentinel with `errors.Is`:<br>`errors.Is(err, audit.ErrInvalidTaxonomyName)` → narrow (name-shape only)<br>`errors.Is(err, audit.ErrTaxonomyInvalid)` → any taxonomy error, including name-shape |
+
+Example error message (with bidi bytes rendered as Go escapes):
+
+```
+audit: taxonomy validation failed:
+- event type name "user\u202eadmin" is invalid: must match ^[a-z][a-z0-9_]*$
+audit: invalid taxonomy name
+```
+
 ### New validation errors (#237)
 
 ```

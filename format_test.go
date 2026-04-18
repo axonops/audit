@@ -673,6 +673,88 @@ func TestCEFEscapeExtValue(t *testing.T) {
 	}
 }
 
+// TestCEFFormatter_DoesNotPerformRuntimeKeyValidation locks in that
+// the PER-EVENT CEF extension-key validation was removed as part of
+// #477. Validation still happens — but exactly once per formatter,
+// at construction time (see [audit.CEFFormatter.fieldMapping] →
+// resolveOnce). The hot path is validation-free.
+//
+// This test drives Format repeatedly with a valid FieldMapping and
+// asserts no error. The matching negative test
+// [TestCEFFormatter_RejectsInvalidFieldMappingAtConstruction] proves
+// the construction-time check catches unsafe keys, so the hot path
+// never has to. Between these two tests, the contract is pinned.
+func TestCEFFormatter_DoesNotPerformRuntimeKeyValidation(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "AxonOps",
+		Product: "Test",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"outcome": "custom_outcome",
+		},
+	}
+	def := &audit.EventDef{Required: []string{"outcome"}}
+	for i := 0; i < 100; i++ {
+		result, err := f.Format(time.Now(), "user_create",
+			audit.Fields{"outcome": "success"}, def, nil)
+		require.NoError(t, err,
+			"valid FieldMapping must not produce per-event errors (iter %d)", i)
+		assert.Contains(t, string(result), "custom_outcome=success")
+	}
+}
+
+// TestCEFFormatter_RejectsInvalidFieldMappingAtConstruction verifies
+// that a FieldMapping value containing characters outside the CEF
+// extension-key character class fails at the first Format call via
+// the construction-time (resolveOnce) validator. Catching this at
+// construction prevents a log-injection class: CEF extension keys
+// are written unescaped by writeExtField, so a key containing space,
+// `=`, `|`, or newline would let a misconfigured mapping inject
+// synthetic extension pairs or terminate the event early, which
+// downstream SIEMs mis-parse as spoofed audit events (#477).
+func TestCEFFormatter_RejectsInvalidFieldMappingAtConstruction(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		bad  string
+	}{
+		{"space", "has space"},
+		{"equals", "has=equals"},
+		{"pipe", "has|pipe"},
+		{"newline", "has\nnewline"},
+		{"dot", "has.dot"},
+		{"empty", ""},
+	}
+	def := &audit.EventDef{Required: []string{"outcome"}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &audit.CEFFormatter{
+				Vendor:       "V",
+				Product:      "P",
+				Version:      "1",
+				FieldMapping: map[string]string{"outcome": tc.bad},
+			}
+			_, err := f.Format(time.Now(), "ev",
+				audit.Fields{"outcome": "ok"}, def, nil)
+			require.Error(t, err,
+				"invalid extension key %q must be rejected at construction", tc.bad)
+			assert.Contains(t, err.Error(), "invalid extension key")
+			// A second call must return the SAME error (resolveErr is
+			// captured once, not re-computed).
+			_, err2 := f.Format(time.Now(), "ev",
+				audit.Fields{"outcome": "ok"}, def, nil)
+			require.Error(t, err2)
+			assert.Equal(t, err.Error(), err2.Error(),
+				"construction-time error must be stable across calls")
+		})
+	}
+}
+
+// TestCEFExtKeyValidation exercises the validateExtKey helper
+// directly, giving concrete confidence in the character classes
+// accepted and rejected by the construction-time mapping validator.
 func TestCEFExtKeyValidation(t *testing.T) {
 	tests := []struct {
 		key   string
@@ -1224,24 +1306,6 @@ func TestCEFFormatter_NullByteStripped(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "\x00", "null bytes must be stripped")
-}
-
-func TestCEFFormatter_InvalidExtKeyRejected(t *testing.T) {
-	f := &audit.CEFFormatter{
-		Vendor:  "V",
-		Product: "P",
-		Version: "1",
-		FieldMapping: map[string]string{
-			"outcome": "bad key",
-		},
-	}
-	_, err := f.Format(testTime, "ev", audit.Fields{
-		"outcome": "ok",
-	}, &audit.EventDef{
-		Required: []string{"outcome"},
-	}, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid extension key")
 }
 
 func TestCEFFormatter_Format_DuplicateExtKey(t *testing.T) {

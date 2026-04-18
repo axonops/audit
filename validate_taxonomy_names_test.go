@@ -89,25 +89,57 @@ func TestValidateTaxonomy_RejectsUnsafeEventTypeNames(t *testing.T) {
 	}
 }
 
-// TestValidateTaxonomy_RejectsUnsafeRequiredFieldNames verifies that
-// unsafe character classes in a required-field name are rejected.
-func TestValidateTaxonomy_RejectsUnsafeRequiredFieldNames(t *testing.T) {
+// TestValidateTaxonomy_RejectsUnsafeFieldNames verifies that every
+// unsafe character class is rejected when used as a field name — both
+// in the Required slot and in the Optional slot (named exactly per
+// #477 acceptance criteria). Each row exercises the full table of
+// violations against both field positions so a regression in one
+// code path cannot mask a regression in the other.
+func TestValidateTaxonomy_RejectsUnsafeFieldNames(t *testing.T) {
 	t.Parallel()
-	for _, tc := range unsafeNameCases {
-		t.Run(tc.name, func(t *testing.T) {
+	positions := []struct {
+		mkEvent func(bad string) *audit.EventDef
+		name    string
+	}{
+		{
+			name: "required",
+			mkEvent: func(bad string) *audit.EventDef {
+				return &audit.EventDef{Required: []string{bad}}
+			},
+		},
+		{
+			name: "optional",
+			mkEvent: func(bad string) *audit.EventDef {
+				return &audit.EventDef{
+					Required: []string{"actor_id"},
+					Optional: []string{bad},
+				}
+			},
+		},
+	}
+	for _, pos := range positions {
+		t.Run(pos.name, func(t *testing.T) {
 			t.Parallel()
-			tax := audit.Taxonomy{
-				Version:    1,
-				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"user_create"}}},
-				Events: map[string]*audit.EventDef{
-					"user_create": {Required: []string{tc.bad}},
-				},
+			for _, tc := range unsafeNameCases {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
+					tax := audit.Taxonomy{
+						Version: 1,
+						Categories: map[string]*audit.CategoryDef{
+							"write": {Events: []string{"user_create"}},
+						},
+						Events: map[string]*audit.EventDef{
+							"user_create": pos.mkEvent(tc.bad),
+						},
+					}
+					err := audit.ValidateTaxonomy(tax)
+					require.Error(t, err)
+					assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName,
+						"unsafe %s field name %q must wrap ErrInvalidTaxonomyName",
+						pos.name, tc.bad)
+					assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
+				})
 			}
-			err := audit.ValidateTaxonomy(tax)
-			require.Error(t, err)
-			assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName,
-				"unsafe required field name %q must wrap ErrInvalidTaxonomyName", tc.bad)
-			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 		})
 	}
 }
@@ -202,32 +234,6 @@ func TestValidateTaxonomy_RejectsOverlongSensitivityLabelName(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName)
 	assert.Contains(t, err.Error(), "exceeds maximum length 128 bytes")
-}
-
-// TestValidateTaxonomy_RejectsUnsafeOptionalFieldNames verifies that
-// unsafe character classes in an optional-field name are rejected.
-func TestValidateTaxonomy_RejectsUnsafeOptionalFieldNames(t *testing.T) {
-	t.Parallel()
-	for _, tc := range unsafeNameCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			tax := audit.Taxonomy{
-				Version:    1,
-				Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"user_create"}}},
-				Events: map[string]*audit.EventDef{
-					"user_create": {
-						Required: []string{"actor_id"},
-						Optional: []string{tc.bad},
-					},
-				},
-			}
-			err := audit.ValidateTaxonomy(tax)
-			require.Error(t, err)
-			assert.ErrorIs(t, err, audit.ErrInvalidTaxonomyName,
-				"unsafe optional field name %q must wrap ErrInvalidTaxonomyName", tc.bad)
-			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
-		})
-	}
 }
 
 // TestValidateTaxonomy_AcceptsAllValidNames verifies that the validator

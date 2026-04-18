@@ -17,6 +17,7 @@ package audit
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -137,6 +138,13 @@ type CEFFormatter struct {
 	FieldMapping    map[string]string
 	resolvedMapping map[string]string
 
+	// resolveErr captures any error produced by [fieldMapping]'s
+	// construction-time validation (e.g. an unsafe CEF extension key
+	// in consumer-supplied FieldMapping). Surfaced from every call to
+	// Format so the problem fails fast rather than silently emitting
+	// corrupt CEF lines. See #477.
+	resolveErr error
+
 	// Vendor is the CEF header vendor field (e.g. "AxonOps"). If empty,
 	// the vendor position in the header is blank but the pipe
 	// delimiters are preserved. SHOULD be non-empty for
@@ -197,6 +205,13 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 	severity := cf.severity(eventType, def)
 	description := cf.description(eventType, def)
 	mapping := cf.fieldMapping()
+	// Construction-time validation failure (e.g. unsafe extension
+	// key in FieldMapping) is surfaced here so every Format call
+	// fails fast rather than emitting corrupt CEF that downstream
+	// SIEMs mis-parse as spoofed events (#477).
+	if cf.resolveErr != nil {
+		return nil, cf.resolveErr
+	}
 
 	buf, ok := cefBufPool.Get().(*bytes.Buffer)
 	if !ok {
@@ -273,6 +288,12 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 // extension key collides with a reserved framework key are silently
 // skipped.
 func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fields Fields, def *EventDef, mapping map[string]string, reserved map[string]struct{}, opts *FormatOptions) error {
+	// Per-event extension-key validation was removed as part of #477.
+	// The taxonomy validator (ValidateTaxonomy) already rejects any
+	// event-type key or field name that does not match the safe
+	// identifier pattern at load time, so consumer-controlled names
+	// reaching this point are known-safe. Custom FieldMapping entries
+	// are consumer code and are trusted.
 	allKeys := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
 		if isFrameworkField(k, fields) {
@@ -292,9 +313,6 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 		// per-event log flooding.
 		if _, dup := reserved[extKey]; dup {
 			continue
-		}
-		if err := validateExtKey(extKey); err != nil {
-			return fmt.Errorf("audit: cef: field %q maps to invalid extension key %q: %w", k, extKey, err)
 		}
 		writeExtField(buf, extStart, extKey, formatFieldValue(v))
 	}
@@ -324,19 +342,48 @@ func (cf *CEFFormatter) description(eventType string, def *EventDef) string {
 
 // fieldMapping returns the resolved field mapping, merging consumer
 // overrides with defaults. The result is computed once and cached.
+//
+// Every resolved extension key is validated once here (O(1) startup
+// cost) against the CEF key character class `[a-zA-Z0-9_]+`. Keys
+// containing space, `=`, `|`, newline, or other characters would be
+// written verbatim into the CEF extension section by [writeExtField]
+// and could be mis-parsed by downstream SIEMs as spoofed extension
+// pairs, a new event delimiter, or a truncated event. Catching the
+// misconfiguration at construction time keeps the per-event hot path
+// validation-free while preventing the log-injection class (#477).
+//
+// The first validation failure is captured in [cf.resolveErr] and
+// surfaced from every [Format] call.
 func (cf *CEFFormatter) fieldMapping() map[string]string {
 	cf.resolveOnce.Do(func() {
 		defaults := defaultCEFFieldMappingEntries()
+		var merged map[string]string
 		if cf.FieldMapping == nil {
-			cf.resolvedMapping = defaults
-			return
+			merged = defaults
+		} else {
+			merged = make(map[string]string, len(defaults)+len(cf.FieldMapping))
+			for k, v := range defaults {
+				merged[k] = v
+			}
+			for k, v := range cf.FieldMapping {
+				merged[k] = v
+			}
 		}
-		merged := make(map[string]string, len(defaults)+len(cf.FieldMapping))
-		for k, v := range defaults {
-			merged[k] = v
+		// Validate every resolved extension key. Sort the audit keys
+		// so the first error reported is deterministic.
+		auditKeys := make([]string, 0, len(merged))
+		for k := range merged {
+			auditKeys = append(auditKeys, k)
 		}
-		for k, v := range cf.FieldMapping {
-			merged[k] = v
+		slices.Sort(auditKeys)
+		for _, auditKey := range auditKeys {
+			extKey := merged[auditKey]
+			if err := validateExtKey(extKey); err != nil {
+				cf.resolveErr = fmt.Errorf(
+					"audit: cef: field %q maps to invalid extension key %q: %w",
+					auditKey, extKey, err)
+				return
+			}
 		}
 		cf.resolvedMapping = merged
 	})
@@ -448,7 +495,9 @@ func cefEscapeExtValue(s string) string {
 }
 
 // validateExtKey returns an error if the key is not a valid CEF
-// extension key name (must match [a-zA-Z0-9_]+).
+// extension key name (must match `[a-zA-Z0-9_]+`). Called once per
+// CEFFormatter from [fieldMapping]'s resolveOnce — never on the
+// per-event hot path (#477).
 func validateExtKey(key string) error {
 	if key == "" {
 		return fmt.Errorf("must match [a-zA-Z0-9_]+")

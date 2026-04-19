@@ -158,11 +158,29 @@ err := auditor.AuditEvent(
 
 ## ⚡ Performance
 
-Generated builders allocate one `audit.Fields` map per event
-(~1 allocation). This is the cost of type safety — the library
-validates the event against the taxonomy just like untyped events.
+Generated builders satisfy the [`FieldsDonor`] extension interface via
+the unexported `donateFields()` sentinel method. When an event reaches
+[`Auditor.AuditEvent`] and is recognised as a donor, the auditor takes
+ownership of the builder's `Fields` map — no defensive copy. Combined
+with the W2 zero-copy drain pipeline (#497), this puts generated
+builders on a path that achieves zero allocations per event on the
+drain side after pool warm-up.
+
+**Single-use rule:** generated builders are single-use per
+`AuditEvent` call. Re-using the same builder for a second
+`AuditEvent` is undefined behaviour — the auditor mutates the donated
+`Fields` map (merging standard-field defaults) before serialisation.
+Build a fresh builder per event.
+
+For the full performance model, fast-path / slow-path comparison, and
+benchmark methodology see [`docs/performance.md`](performance.md).
+
+[`FieldsDonor`]: https://pkg.go.dev/github.com/axonops/audit#FieldsDonor
+[`Auditor.AuditEvent`]: https://pkg.go.dev/github.com/axonops/audit#Auditor.AuditEvent
 
 ## 📚 Further Reading
 
 - [Progressive Example: Code Generation](../examples/02-code-generation/) — complete working example
 - [Taxonomy Validation](taxonomy-validation.md) — YAML schema reference
+- [Performance: Fast Path and Slow Path](performance.md) — drain pipeline allocation model
+- [ADR 0001: Fields Ownership Contract](adr/0001-fields-ownership-contract.md) — `FieldsDonor` design rationale

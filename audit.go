@@ -249,12 +249,29 @@ func (a *Auditor) AuditEvent(evt Event) error {
 	if evt == nil {
 		return fmt.Errorf("audit: event must not be nil")
 	}
-	return a.auditInternal(evt.EventType(), evt.Fields())
+	// Fast-path detection: generated builders from cmd/audit-gen emit
+	// the unexported donateFields() sentinel to opt into the zero-extra-
+	// alloc path. The auditor takes ownership of the donated Fields map
+	// (no defensive copy) and merges standard-field defaults in place.
+	// Consumer-defined Event types and NewEvent stay on the slow path.
+	// See docs/adr/0001-fields-ownership-contract.md (#497).
+	_, donated := evt.(FieldsDonor)
+	return a.auditInternalDonated(evt.EventType(), evt.Fields(), donated)
 }
 
 // auditInternal is the shared validation-and-enqueue path used by
-// both [Auditor.AuditEvent] and internal callers.
+// both [Auditor.AuditEvent] and internal callers. Always treats the
+// caller's Fields map as untrusted and defensively copies it.
 func (a *Auditor) auditInternal(eventType string, fields Fields) error {
+	return a.auditInternalDonated(eventType, fields, false)
+}
+
+// auditInternalDonated is the unified internal path that branches
+// between the donor fast-path and the defensive-copy slow-path based
+// on the donated flag. When donated is true, the caller's Fields map
+// is taken as-is (no clone); standard-field defaults are merged in
+// place via [mergeDefaultsInPlace].
+func (a *Auditor) auditInternalDonated(eventType string, fields Fields, donated bool) error {
 	if a.disabled {
 		return nil
 	}
@@ -266,7 +283,7 @@ func (a *Auditor) auditInternal(eventType string, fields Fields) error {
 		a.metrics.RecordSubmitted()
 	}
 
-	_, copied, err := a.validateEvent(eventType, fields)
+	_, copied, err := a.validateEvent(eventType, fields, donated)
 	if err != nil {
 		return err
 	}
@@ -284,6 +301,7 @@ func (a *Auditor) auditInternal(eventType string, fields Fields) error {
 	}
 	entry.eventType = eventType
 	entry.fields = copied
+	entry.donated = donated
 
 	if a.synchronous {
 		a.deliverSync(entry)
@@ -292,9 +310,11 @@ func (a *Auditor) auditInternal(eventType string, fields Fields) error {
 	return a.enqueue(entry)
 }
 
-// validateEvent checks the event type exists, copies fields with defaults,
-// and validates field constraints. Returns the definition and copied fields.
-func (a *Auditor) validateEvent(eventType string, fields Fields) (*EventDef, Fields, error) {
+// validateEvent checks the event type exists, merges standard-field
+// defaults (in place for donated, via copy for the slow path), and
+// validates field constraints. Returns the definition and the fields
+// the drain pipeline will see.
+func (a *Auditor) validateEvent(eventType string, fields Fields, donated bool) (*EventDef, Fields, error) {
 	def, ok := a.taxonomy.Events[eventType]
 	if !ok {
 		if a.metrics != nil {
@@ -303,16 +323,39 @@ func (a *Auditor) validateEvent(eventType string, fields Fields) (*EventDef, Fie
 		return nil, nil, newValidationError(ErrUnknownEventType, "audit: unknown event type %q", eventType)
 	}
 
-	copied := a.copyFieldsWithDefaults(fields)
+	var merged Fields
+	if donated {
+		// Donor contract: caller guarantees no mutation / no retention
+		// after AuditEvent returns. We mutate in place, no clone.
+		a.mergeDefaultsInPlace(fields)
+		merged = fields
+	} else {
+		merged = a.copyFieldsWithDefaults(fields)
+	}
 
-	if err := a.validateFields(eventType, def, copied); err != nil {
+	if err := a.validateFields(eventType, def, merged); err != nil {
 		if a.metrics != nil {
 			a.metrics.RecordValidationError(eventType)
 		}
 		return nil, nil, err
 	}
 
-	return def, copied, nil
+	return def, merged, nil
+}
+
+// mergeDefaultsInPlace writes standard-field defaults into fields iff
+// the key is not already present. Used only on the donor fast path
+// (see [FieldsDonor]); the defensive-copy slow path uses
+// [Auditor.copyFieldsWithDefaults] which allocates a fresh map.
+func (a *Auditor) mergeDefaultsInPlace(fields Fields) {
+	if len(a.standardFieldDefaults) == 0 {
+		return
+	}
+	for k, v := range a.standardFieldDefaults {
+		if _, ok := fields[k]; !ok {
+			fields[k] = v
+		}
+	}
 }
 
 // deliverSync processes an event inline within AuditEvent for
@@ -343,10 +386,15 @@ func (a *Auditor) enqueue(entry *auditEntry) error {
 		if a.metrics != nil {
 			a.metrics.RecordBufferDrop()
 		}
-		// Return dropped entry and fields map to pools.
-		returnFieldsToPool(entry.fields)
+		// Return dropped entry and fields map to pools. Skip pool-
+		// return when fields was donated by a [FieldsDonor] — the
+		// map belongs to the caller, not our fieldsPool (#497).
+		if !entry.donated {
+			returnFieldsToPool(entry.fields)
+		}
 		entry.eventType = ""
 		entry.fields = nil
+		entry.donated = false
 		auditEntryPool.Put(entry)
 		return ErrQueueFull
 	}

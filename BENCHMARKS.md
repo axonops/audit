@@ -16,38 +16,45 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 
 ## Current Baseline
 
-**Date:** 2026-04-18
-**Commit:** 2a8625c (post-Track-A; branch feature/493-benchmark-baseline-ci)
+**Date:** 2026-04-19
+**Commit:** feature/497-fieldsdonor-fast-path (post-W2 zero-copy drain)
 **Go:** 1.26+
 **CPU:** AMD Ryzen 9 7950X 16-Core (32 threads)
 **OS:** Linux 6.14.0
 **Samples:** `count=5` per benchmark; benchstat confidence requires ≥6 so the current report is indicative (`± ∞`). Compare rather than read absolutes.
 
+> **#497 W2 zero-copy drain landed in this baseline.** Most Audit-path
+> benchmarks dropped from 2 → 1 allocs/op with byte-allocation
+> reductions of 40–55 %. The donor fast path (generated builders that
+> satisfy `FieldsDonor`) reaches 0 allocs/op on the drain side end-to-
+> end. See [`docs/performance.md`](docs/performance.md) for the full
+> ownership model and methodology.
+
 ### Core Audit Path
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |
 |-----------|------:|-----:|----------:|-------|
-| Audit | 376 | 324 | 2 | 3 fields, enabled category, pooled entry |
-| Audit_RealisticFields | 816 | 678 | 2 | 10 fields, production-like |
-| Audit_Parallel | 61 | 26 | 1 | GOMAXPROCS goroutines, per-op amortised |
-| AuditDisabledCategory | 284 | 239 | 1 | Category disabled; drain skips write |
-| Audit_EndToEnd | 404 | 329 | 2 | Large buffer, amortised caller cost |
+| Audit | 378 | 182 | **1** | 3 fields; W2 dropped 1 alloc + 142 B/op (prior baseline: 2 allocs/op, 324 B/op) |
+| Audit_RealisticFields | 810 | 330 | **1** | 10 fields; W2 dropped 1 alloc + 340 B/op (prior baseline: 2 allocs/op, 670 B/op) |
+| Audit_Parallel | 64 | 24 | 1 | GOMAXPROCS goroutines, per-op amortised |
+| AuditDisabledCategory | 299 | 154 | 1 | Category disabled; drain skips write |
+| Audit_EndToEnd | 391 | 189 | **1** | W2 dropped 1 alloc + 140 B/op |
 | AuditDisabledAuditor | 18 | 24 | 1 | WithDisabled auditor — early return |
 
 ### Fan-Out (multi-output)
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |
 |-----------|------:|-----:|----------:|-------|
-| FanOut_SharedFormatter | 348 | 463 | 2 | 3 outputs, same formatter (serialise once) |
-| FanOut_MixedFormatters | 351 | 347 | 2 | 3 outputs, 2 formatters (JSON + CEF) |
-| FanOut_FilteredOutputs | 364 | 409 | 2 | 3 outputs, 1 filtered by route |
-| FanOut_5Outputs | 338 | 511 | 2 | 5 outputs, same formatter |
+| FanOut_SharedFormatter | 370 | 335 | **1** | 3 outputs, same formatter (W2: -1 alloc, -130 B/op) |
+| FanOut_MixedFormatters | 346 | 230 | **1** | 3 outputs, 2 formatters (W2: -1 alloc, -115 B/op) |
+| FanOut_FilteredOutputs | 362 | 255 | **1** | 3 outputs, 1 filtered (W2: -1 alloc, -150 B/op) |
+| FanOut_5Outputs | 344 | 385 | 1-2 | 5 outputs, same formatter (W2 typical: 1 alloc) |
 
 ### HMAC Pipeline
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |
 |-----------|------:|-----:|----------:|-------|
-| Audit_WithHMAC | 369 | 342 | 2 | Full Audit path with HMAC-SHA-256 appended |
+| Audit_WithHMAC | 358 | 172 | **1** | Full Audit path with HMAC-SHA-256 appended; W2 dropped 1 alloc + 170 B/op (50 % reduction) |
 | HMAC_SHA256_SmallEvent | 475 | 640 | 8 | Direct ComputeHMAC on small payload |
 | HMAC_SHA256_LargeEvent | 1247 | 640 | 8 | Direct ComputeHMAC on large payload |
 | HMAC_SHA512_SmallEvent | 1114 | 1120 | 8 | SHA-512 variant on small payload |
@@ -103,16 +110,16 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 
 ### Key Observations
 
-- **Audit** at 2 allocs/op — steady state for the caller-side hot path (field copy + entry acquire). Down from 4 allocs under the earlier baseline after the #473/#474 fixes and the `sync.Pool`-backed entry design.
-- **Audit_Parallel** at 1 alloc/op and ~61 ns amortised — the lock-free filter + pooled entry path scales linearly; per-op cost drops because GOMAXPROCS goroutines amortise the fixed construction work.
-- **AuditDisabledAuditor** at 18 ns — the `WithDisabled` early-return path. Effectively free when consumers wire auditing off conditionally.
-- **JSONFormatter** at 1 alloc/op — the remaining allocation is the copy-before-return required for `formatCached` safety. `CEFFormatter_Format` also lands at 1 alloc/op on the non-large variant.
-- **FilterCheck** at 0 allocs/op and ~16 ns — lock-free via `syncmap`. The parallel and read/write-contention variants measure ~1 ns amortised because the lock-free design avoids RWMutex cache-line contention entirely.
-- **MatchesRoute** at 0 allocs/op — O(n) scan, largest measured list (20 categories) still lands at ~6.7 ns.
-- **AppendPostFields_JSON** at 1 alloc/op after replacing `json.Marshal` with `writeJSONString` + pooled buffer.
-- **HMAC** direct `ComputeHMAC` at 8 allocs/op on the standalone benchmarks reflects the per-call `hmac.New` + hex-encoding cost. The `Audit_WithHMAC` full-path benchmark stays at 2 allocs/op because the hot-path reuses pre-allocated hash state (#473/hmac.go:newHMACState).
-- **Fan-out** scales well: 3 outputs with shared formatter lands at ~348 ns vs ~376 ns for 1 output (+7%). 5 outputs lands at ~338 ns (actually slightly faster on this run due to run-to-run variance; at count=5 the 95% CI is `± ∞` so treat small deltas as noise).
-- **Output-backend enqueue** hot paths (`FileOutput_Write`, `SyslogOutput_Write`, `loki.WriteWithMetadata`) all land at 1 alloc/op — the drain-loop write path is effectively channel-send + data-copy. Background goroutines handle batching, retries, and compression.
+- **Audit** at **1 alloc/op** post-W2 (#497). The single remaining allocation is the defensive map clone on the slow path (`NewEvent` / `NewEventKV`). Generated builders on the fast path reach **0 allocs/op** at the drain side.
+- **Audit_Parallel** at 1 alloc/op and ~64 ns amortised — lock-free filter + pooled entry, sub-linear scaling under contention.
+- **AuditDisabledAuditor** at 18 ns — the `WithDisabled` early-return path. Effectively free.
+- **JSONFormatter_Format** at 1 alloc/op — this benchmark exercises the public `Formatter.Format` path (which always copies before return for backward compatibility with third-party callers). The drain pipeline uses the internal `bufferedFormatter.formatBuf` path which leases the buffer and reaches 0 allocs/op end-to-end.
+- **FilterCheck** at 0 allocs/op and ~16 ns — lock-free via `syncmap`.
+- **MatchesRoute** at 0 allocs/op — O(n) scan, largest list (20 categories) at ~6.7 ns.
+- **AppendPostFields_JSON** at 1 alloc/op exercises the pre-W2 public `AppendPostFields` path. The drain now uses in-place `appendPostFieldJSONInto` which mutates a per-event scratch buffer and contributes 0 allocs/op.
+- **HMAC** direct `ComputeHMAC` at 8 allocs/op on the standalone benchmarks reflects the per-call `hmac.New` + hex-encoding cost. The `Audit_WithHMAC` full-path benchmark drops to **1 alloc/op** post-W2 (was 2) because the in-place HMAC append eliminates the scratch buffer allocation.
+- **Fan-out** scales well: 3 outputs with shared formatter lands at ~370 ns; 5 outputs at ~344 ns — effectively constant because all outputs share one formatter-buffer lease and each output pays only for post-field assembly.
+- **Output-backend enqueue** hot paths (`FileOutput_Write`, `SyslogOutput_Write`, `loki.WriteWithMetadata`) all land at 1 alloc/op — channel-send + one defensive data copy (the no-retention contract from #497 W2). Background goroutines handle batching, retries, and compression.
 
 ---
 

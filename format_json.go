@@ -30,8 +30,36 @@ import (
 // a clean slate. The pooled buffer's internal byte slice grows to the
 // typical output size and is reused across calls, eliminating repeated
 // growth allocations.
+//
+// Outlier buffers (cap > maxPooledBufCap) are dropped on Put rather
+// than re-pooled, to bound pool memory under pathological event sizes.
+// On Put, the buffer's backing array is zeroed across [0:cap] to
+// defend against future read-past-len bugs that could leak prior-event
+// content (see security review of #497).
 var jsonBufPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
+}
+
+// maxPooledBufCap caps the buffer capacity that the format buffer
+// pools will accept on Put. Larger buffers are dropped (let GC
+// reclaim) to prevent a single oversized event pinning megabytes of
+// pool memory until the next GC cycle.
+const maxPooledBufCap = 64 * 1024
+
+// putJSONBuf returns buf to [jsonBufPool] with defensive zeroing and
+// outlier rejection. Centralised so every Put site enforces the same
+// invariants.
+func putJSONBuf(buf *bytes.Buffer) {
+	if buf == nil || buf.Cap() > maxPooledBufCap {
+		return
+	}
+	// Reset first (off=0, len=0) then zero the full backing array via
+	// b[:cap(b)] so future read-past-len bugs cannot leak prior-event
+	// content. cost: ~40 ns for a 4 KiB buffer.
+	buf.Reset()
+	b := buf.Bytes()
+	clear(b[:cap(b)])
+	jsonBufPool.Put(buf)
 }
 
 // JSONFormatter serialises audit events as line-delimited JSON.
@@ -60,8 +88,25 @@ type JSONFormatter struct {
 	OmitEmpty bool
 }
 
-// Format serialises a single audit event as a JSON line.
+// Format serialises a single audit event as a JSON line. The returned
+// slice is owned by the caller (defensive copy from the pooled buffer).
+//
+// Internal callers in the drain pipeline use [JSONFormatter.formatBuf]
+// to obtain the leased buffer directly and skip the copy.
 func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
+	buf, err := jf.formatBuf(ts, eventType, fields, def, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	jf.releaseFormatBuf(buf)
+	return out, nil
+}
+
+// formatBuf serialises an event into a pool-leased *bytes.Buffer.
+// Callers MUST return the buffer via [JSONFormatter.releaseFormatBuf].
+func (jf *JSONFormatter) formatBuf(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) (*bytes.Buffer, error) {
 	buf, ok := jsonBufPool.Get().(*bytes.Buffer)
 	if !ok {
 		buf = new(bytes.Buffer)
@@ -78,47 +123,50 @@ func (jf *JSONFormatter) Format(ts time.Time, eventType string, fields Fields, d
 	jf.writeDuration(enc, fields)
 	jf.writeFrameworkFields(enc)
 
-	// Required fields (sorted). Uses pre-sorted slice when available.
-	for _, k := range sortedFieldKeys(def.sortedRequired, def.Required, fields, jf.OmitEmpty) {
+	// Required fields (sorted). Uses pre-sorted slice when available;
+	// pooled when filtering forces a copy.
+	reqKeys, reqOwned := sortedFieldKeys(def.sortedRequired, def.Required, fields, jf.OmitEmpty)
+	for _, k := range reqKeys {
 		if opts.IsExcluded(k) {
 			continue
 		}
 		enc.writeField(k, fields[k])
 	}
+	putSortedKeysSlice(reqOwned)
 
-	// Optional fields (sorted). Uses pre-sorted slice when available.
-	for _, k := range sortedFieldKeys(def.sortedOptional, def.Optional, fields, jf.OmitEmpty) {
+	// Optional fields (sorted).
+	optKeys, optOwned := sortedFieldKeys(def.sortedOptional, def.Optional, fields, jf.OmitEmpty)
+	for _, k := range optKeys {
 		if opts.IsExcluded(k) {
 			continue
 		}
 		enc.writeField(k, fields[k])
 	}
+	putSortedKeysSlice(optOwned)
 
 	// Extra fields not in required or optional (sorted).
-	for _, k := range extraFieldKeys(def, fields, jf.OmitEmpty) {
+	exKeys, exOwned := extraFieldKeys(def, fields, jf.OmitEmpty)
+	for _, k := range exKeys {
 		if opts.IsExcluded(k) {
 			continue
 		}
 		enc.writeField(k, fields[k])
 	}
+	putSortedKeysSlice(exOwned)
 
 	buf.WriteByte('}')
 	buf.WriteByte('\n')
 
 	if enc.err != nil {
-		jsonBufPool.Put(buf)
+		putJSONBuf(buf)
 		return nil, fmt.Errorf("audit: json format: %w", enc.err)
 	}
-
-	// Copy before returning the buffer to the pool. formatCached in
-	// audit.go stores Format() results in a cache spanning multiple
-	// output Write() calls — returning a slice backed by the pooled
-	// buffer would cause corruption when the buffer is reused.
-	out := make([]byte, buf.Len())
-	copy(out, buf.Bytes())
-	jsonBufPool.Put(buf)
-	return out, nil
+	return buf, nil
 }
+
+// releaseFormatBuf returns buf to [jsonBufPool], applying the same
+// outlier-rejection and zeroing rules as [putJSONBuf].
+func (*JSONFormatter) releaseFormatBuf(buf *bytes.Buffer) { putJSONBuf(buf) }
 
 func (jf *JSONFormatter) tsFormat() TimestampFormat {
 	if jf.Timestamp == "" {

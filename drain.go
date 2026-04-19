@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"runtime"
 	"time"
@@ -62,14 +63,32 @@ func (a *Auditor) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cy
 		a.metrics.RecordQueueDepth(len(a.ch), cap(a.ch))
 	}
 
+	// Format cache scoped to this processEntry call. Holds pool
+	// leases for buffered formatters and a per-event post-field
+	// scratch buffer. release() returns every lease to its pool;
+	// declared above the pool-return defer so defers run LIFO with
+	// release happening BEFORE auditEntry pool-put (#497).
+	var fc formatCache
+
 	// Defers execute LIFO. The pool return must happen after the
 	// panic recovery, so it is declared first (executes last).
 	defer func() {
-		returnFieldsToPool(entry.fields)
+		// Pool-return is suppressed for donated fields (#497): the
+		// map belongs to the [FieldsDonor] caller, not the auditor's
+		// fieldsPool. Returning a borrowed map would corrupt the
+		// donor's view and risk double-Put on the same map.
+		if !entry.donated {
+			returnFieldsToPool(entry.fields)
+		}
 		entry.eventType = ""
 		entry.fields = nil
+		entry.donated = false
 		auditEntryPool.Put(entry)
 	}()
+	// release() returns format-cache buffer leases and the post-field
+	// scratch buffer. Runs after panic recovery and before
+	// auditEntry pool-put.
+	defer fc.release()
 	defer func() {
 		if r := recover(); r != nil {
 			a.logger.Error("audit: panic in processEntry",
@@ -86,7 +105,6 @@ func (a *Auditor) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cy
 
 	if len(def.Categories) == 0 {
 		// Uncategorised event: single pass, no category context.
-		var fc formatCache
 		a.deliverToOutputs(entry, "", ts, def, &fc)
 		return
 	}
@@ -101,10 +119,9 @@ func (a *Auditor) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cy
 		}
 	}
 
-	// Format cache shared across category passes — the formatted
-	// output is identical because ResolvedSeverity is a single
-	// value per event, not per category.
-	var fc formatCache
+	// Format cache (fc above) is shared across category passes — the
+	// formatted output is identical because ResolvedSeverity is a
+	// single value per event, not per category.
 
 	for _, category := range def.Categories {
 		if !eventForceEnabled && !a.filter.isCategoryEnabled(category) {
@@ -164,6 +181,11 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 
 	var data []byte
 	if oe.formatOpts != nil && def.FieldLabels != nil {
+		// Per-output sensitivity-label exclusion: bypasses the format
+		// cache entirely (each output produces unique bytes) and does
+		// not flow through the leased-buffer fast path. Stays on the
+		// public Format path with defensive copy — see security review
+		// of #497.
 		data = a.formatWithExclusion(oe, entry, ts, def)
 	} else {
 		data = a.formatCached(oe, entry, ts, def, fc)
@@ -172,33 +194,22 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 		return
 	}
 
-	// Append event_category if enabled and the event has a category.
-	if category != "" && !a.taxonomy.SuppressEventCategory {
-		data = appendEventCategory(data, oe.effectiveFormatter(a.formatter), category)
-	}
+	fmtr := oe.effectiveFormatter(a.formatter)
+	needsCategory := category != "" && !a.taxonomy.SuppressEventCategory
+	needsHMAC := oe.hmac != nil
 
-	// Compute and append HMAC if configured for this output.
-	//
-	// Invariant: _hmac is the LAST field on the wire. Every field
-	// authenticated by HMAC is appended BEFORE computeHMACFast. Any
-	// future post-field added to the drain pipeline MUST land before
-	// this block. Appending after _hmac leaves the new field outside
-	// the authenticated region — same class of bug as issue #473.
-	if oe.hmac != nil {
-		fmtr := oe.effectiveFormatter(a.formatter)
-		// _hmac_v (salt version identifier) is appended FIRST so it is
-		// part of the bytes the HMAC authenticates. A MITM flipping
-		// v1 → v2 would otherwise redirect the verifier to a different
-		// salt without detection (issue #473).
-		data = AppendPostField(data, fmtr, PostField{
-			JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion,
-		})
-		// HMAC covers payload + event_category + _hmac_v.
-		hmacHex := oe.hmac.computeHMACFast(data)
-		// _hmac is the tag; it is appended last and never covers itself.
-		data = AppendPostField(data, fmtr, PostField{
-			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
-		})
+	// HMAC ordering invariant: the HMAC tag (_hmac) is the LAST field
+	// on the wire and is computed over every byte that precedes it,
+	// including event_category and _hmac_v. Any future post-field
+	// MUST be appended before computeHMACFast; appending after _hmac
+	// would leave the new field outside the authenticated region —
+	// same class of bug as issue #473. The buffer holding `data` MUST
+	// NOT be returned to any pool until output.Write(data) has
+	// returned; this is enforced by formatCache.release() running in
+	// processEntry's defer chain only AFTER deliverToOutputs has
+	// returned for every output and category pass (#497).
+	if needsCategory || needsHMAC {
+		data = a.assemblePostFields(fc, data, fmtr, category, oe, needsCategory, needsHMAC)
 	}
 
 	var writeErr error
@@ -208,6 +219,37 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 		writeErr = oe.output.Write(data)
 	}
 	a.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
+}
+
+// assemblePostFields builds the per-output wire bytes from the cached
+// formatter output plus event_category and HMAC fields, using the
+// per-event post-field scratch buffer owned by [formatCache]. The
+// returned slice aliases the scratch buffer and is valid only until
+// the next assemblePostFields call on the same fc.
+//
+// HMAC ordering: _hmac_v is appended before computeHMACFast so it is
+// part of the authenticated region; _hmac is appended last and never
+// covers itself.
+func (a *Auditor) assemblePostFields(fc *formatCache, base []byte, fmtr Formatter, category string, oe *outputEntry, needsCategory, needsHMAC bool) []byte {
+	pb := fc.borrowPostBuf()
+	pb.Write(base)
+	data := pb.Bytes()
+
+	if needsCategory {
+		data = appendEventCategoryInto(pb, fmtr, category)
+	}
+	if needsHMAC {
+		// _hmac_v (salt version identifier) FIRST so it is in the
+		// authenticated region (issue #473).
+		data = appendPostFieldInto(pb, fmtr, PostField{
+			JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion,
+		})
+		hmacHex := oe.hmac.computeHMACFast(data)
+		data = appendPostFieldInto(pb, fmtr, PostField{
+			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),
+		})
+	}
+	return data
 }
 
 // prepareOutputEntries caches interface assertions and pre-constructs
@@ -276,19 +318,37 @@ func (a *Auditor) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts tim
 // stack before falling back to a heap-allocated map.
 const formatCacheSize = 4
 
-// formatCacheEntry pairs a formatter with its serialised output.
-type formatCacheEntry struct {
-	f    Formatter
-	data []byte
+// formatCacheEntry pairs a formatter with its serialised output and,
+// for [bufferedFormatter] fast-path entries, the leased buffer that
+// backs the data slice. owned is non-nil only when data aliases the
+// leased buffer's bytes — releaseFormatBuf MUST be called on it
+// before the buffer goes back to its pool (#497).
+type formatCacheEntry struct { //nolint:govet // fieldalignment: readability over packing for a 3-field hot-path value
+	f     Formatter
+	data  []byte
+	owned *bytes.Buffer // pool lease; nil for non-buffered formatters or cache misses
 }
 
-// formatCache caches serialised output per unique formatter. For
-// deployments with <= 4 unique formatters (the vast majority), the
-// array is stack-allocated. Falls back to a heap map for larger counts.
+// formatCache caches serialised output per unique formatter for the
+// duration of a single [Auditor.processEntry] call. For deployments
+// with <= 4 unique formatters (the vast majority), the array is
+// stack-allocated. Falls back to a heap map for larger counts.
+//
+// The cache also owns the per-event "post-field scratch" buffer
+// (postBuf). When an output requires post-fields (event_category +
+// HMAC), the drain assembles the final wire bytes into postBuf rather
+// than mutating the cached format buffer (which is shared across
+// outputs and across category passes). postBuf is reset between
+// outputs so its backing array is amortised across the whole event.
+//
+// release returns every leased buffer to its pool. It is called from
+// [Auditor.processEntry]'s defer, after every [Output.Write] for the
+// event has returned.
 type formatCache struct {
-	m   map[Formatter][]byte // overflow; nil until needed
-	arr [formatCacheSize]formatCacheEntry
-	n   int
+	m       map[Formatter]formatCacheEntry // overflow; nil until needed
+	postBuf *bytes.Buffer                  // per-event post-field scratch; nil until first use
+	arr     [formatCacheSize]formatCacheEntry
+	n       int
 }
 
 func (c *formatCache) get(f Formatter) ([]byte, bool) {
@@ -298,32 +358,97 @@ func (c *formatCache) get(f Formatter) ([]byte, bool) {
 		}
 	}
 	if c.m != nil {
-		data, ok := c.m[f]
-		return data, ok
+		e, ok := c.m[f]
+		return e.data, ok
 	}
 	return nil, false
 }
 
-func (c *formatCache) put(f Formatter, data []byte) {
+func (c *formatCache) put(f Formatter, data []byte, owned *bytes.Buffer) {
 	if c.n < formatCacheSize {
-		c.arr[c.n] = formatCacheEntry{f: f, data: data}
+		c.arr[c.n] = formatCacheEntry{f: f, data: data, owned: owned}
 		c.n++
 		return
 	}
 	if c.m == nil {
-		c.m = make(map[Formatter][]byte)
+		c.m = make(map[Formatter]formatCacheEntry)
 	}
-	c.m[f] = data
+	c.m[f] = formatCacheEntry{f: f, data: data, owned: owned}
+}
+
+// release returns every leased buffer (format-cache entries plus
+// postBuf) to its formatter's pool. Must be called from
+// [Auditor.processEntry]'s defer chain after every Output.Write has
+// returned for the event.
+func (c *formatCache) release() {
+	for i := 0; i < c.n; i++ {
+		releaseFormatCacheEntry(c.arr[i])
+		c.arr[i] = formatCacheEntry{}
+	}
+	c.n = 0
+	for f, e := range c.m {
+		releaseFormatCacheEntry(formatCacheEntry{f: f, owned: e.owned})
+	}
+	c.m = nil
+	if c.postBuf != nil {
+		putJSONBuf(c.postBuf)
+		c.postBuf = nil
+	}
+}
+
+// releaseFormatCacheEntry returns the entry's leased buffer (if any)
+// to its formatter's pool.
+func releaseFormatCacheEntry(e formatCacheEntry) {
+	if e.owned == nil {
+		return
+	}
+	if bf, ok := e.f.(bufferedFormatter); ok {
+		bf.releaseFormatBuf(e.owned)
+	}
+}
+
+// borrowPostBuf returns the per-event post-field scratch buffer,
+// resetting it for the caller. The buffer is leased on first use and
+// reused across subsequent outputs in the same processEntry call;
+// formatCache.release returns it to the pool.
+func (c *formatCache) borrowPostBuf() *bytes.Buffer {
+	if c.postBuf == nil {
+		buf, ok := jsonBufPool.Get().(*bytes.Buffer)
+		if !ok {
+			buf = new(bytes.Buffer)
+		}
+		c.postBuf = buf
+	}
+	c.postBuf.Reset()
+	return c.postBuf
 }
 
 // formatCached returns the serialised bytes for the output's formatter,
-// using the cache to avoid redundant serialisation. Returns nil if
-// serialisation failed.
+// using the cache to avoid redundant serialisation. When the formatter
+// implements [bufferedFormatter], the cached bytes alias the leased
+// buffer and the cache.release defer returns it to the pool. Returns
+// nil if serialisation failed.
 func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time, def *EventDef, cache *formatCache) []byte {
 	f := oe.effectiveFormatter(a.formatter)
 	if data, ok := cache.get(f); ok {
 		return data // may be nil if serialisation failed
 	}
+	if bf, ok := f.(bufferedFormatter); ok {
+		buf, err := bf.formatBuf(ts, entry.eventType, entry.fields, def, nil)
+		if err != nil {
+			a.logger.Error("audit: serialisation failed",
+				"event_type", entry.eventType,
+				"error", err)
+			if a.metrics != nil {
+				a.metrics.RecordSerializationError(entry.eventType)
+			}
+			cache.put(f, nil, nil)
+			return nil
+		}
+		cache.put(f, buf.Bytes(), buf)
+		return buf.Bytes()
+	}
+	// Third-party formatter — public Format path with defensive copy.
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, nil)
 	if err != nil {
 		a.logger.Error("audit: serialisation failed",
@@ -332,10 +457,10 @@ func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time,
 		if a.metrics != nil {
 			a.metrics.RecordSerializationError(entry.eventType)
 		}
-		cache.put(f, nil) // mark as failed
+		cache.put(f, nil, nil)
 		return nil
 	}
-	cache.put(f, data)
+	cache.put(f, data, nil)
 	return data
 }
 

@@ -30,6 +30,20 @@ type Output interface {
 	// called from a single goroutine; concurrent calls from the
 	// library will not occur. Implementers MAY assume single-caller
 	// access.
+	//
+	// IMPORTANT — buffer ownership: the library MAY reuse data's
+	// underlying array after Write returns. Implementations MUST NOT
+	// retain data, or any slice that aliases its backing array, past
+	// the Write call. If the bytes are needed beyond the call (for
+	// example, to enqueue onto an asynchronous worker channel),
+	// implementations MUST copy them — for example with
+	// append([]byte(nil), data...). All first-party async outputs
+	// (file, syslog, webhook, loki) already copy on enqueue.
+	//
+	// This contract enables the library's drain pipeline to deliver
+	// pooled buffer bytes without per-event allocation (#497). Violating
+	// it causes cross-event data corruption that is silent in production
+	// and impossible to detect after the fact.
 	Write(data []byte) error
 
 	// Close flushes any buffered data and releases resources. The
@@ -105,6 +119,11 @@ type EventMetadata struct { //nolint:govet // fieldalignment: readability over s
 // returning. The library passes meta by value on the stack; retaining
 // it forces heap allocation. The caller must not assume the value
 // remains valid after return.
+//
+// IMPORTANT — buffer ownership: the same retention contract documented
+// on [Output.Write] applies to data. The library MAY reuse data's
+// underlying array after WriteWithMetadata returns; implementations
+// MUST copy the bytes before retaining them.
 type MetadataWriter interface {
 	WriteWithMetadata(data []byte, meta EventMetadata) error
 }

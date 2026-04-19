@@ -31,15 +31,6 @@ type PostField struct {
 	Value string
 }
 
-// appendEventCategory appends the event_category field to serialised
-// bytes based on the formatter type. Returns the original data
-// unchanged for unknown formatter types.
-func appendEventCategory(data []byte, formatter Formatter, category string) []byte {
-	return AppendPostField(data, formatter, PostField{
-		JSONKey: "event_category", CEFKey: "cat", Value: category,
-	})
-}
-
 // AppendPostField appends a single post-serialisation field to cached
 // bytes. This is the zero-allocation fast path for the common case of
 // appending one field (event_category, HMAC). For multiple fields, use
@@ -142,6 +133,65 @@ func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 	copy(result, buf.Bytes())
 	jsonBufPool.Put(buf)
 	return result
+}
+
+// appendEventCategoryInto appends the event_category field to a
+// *bytes.Buffer that already contains the base serialised bytes. The
+// buffer is mutated in place: the trailing terminator is rewound, the
+// field is appended, and the terminator is restored. Returns
+// buf.Bytes().
+func appendEventCategoryInto(buf *bytes.Buffer, formatter Formatter, category string) []byte {
+	return appendPostFieldInto(buf, formatter, PostField{
+		JSONKey: "event_category", CEFKey: "cat", Value: category,
+	})
+}
+
+// appendPostFieldInto appends a single post-serialisation field by
+// mutating buf in place. This is the zero-allocation drain-pipeline
+// counterpart to [AppendPostField]. The buffer must already contain
+// the base serialised bytes (e.g. via buf.Write(base)).
+func appendPostFieldInto(buf *bytes.Buffer, formatter Formatter, f PostField) []byte {
+	switch formatter.(type) {
+	case *JSONFormatter:
+		return appendPostFieldJSONInto(buf, f)
+	case *CEFFormatter:
+		return appendPostFieldCEFInto(buf, f)
+	default:
+		return buf.Bytes()
+	}
+}
+
+// appendPostFieldJSONInto rewinds the trailing }\n, appends
+// ,"key":"value", and restores the }\n. Returns buf.Bytes().
+func appendPostFieldJSONInto(buf *bytes.Buffer, f PostField) []byte {
+	b := buf.Bytes()
+	if len(b) < 2 || b[len(b)-1] != '\n' || b[len(b)-2] != '}' {
+		return b
+	}
+	buf.Truncate(buf.Len() - 2)
+	buf.WriteByte(',')
+	WriteJSONString(buf, f.JSONKey)
+	buf.WriteByte(':')
+	WriteJSONString(buf, f.Value)
+	buf.WriteByte('}')
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+// appendPostFieldCEFInto rewinds the trailing \n, appends
+// " key=value", and restores the \n. Returns buf.Bytes().
+func appendPostFieldCEFInto(buf *bytes.Buffer, f PostField) []byte {
+	b := buf.Bytes()
+	if len(b) < 1 || b[len(b)-1] != '\n' {
+		return b
+	}
+	buf.Truncate(buf.Len() - 1)
+	buf.WriteByte(' ')
+	buf.WriteString(f.CEFKey)
+	buf.WriteByte('=')
+	buf.WriteString(cefEscapeExtValue(f.Value))
+	buf.WriteByte('\n')
+	return buf.Bytes()
 }
 
 func appendPostFieldsCEF(data []byte, fields []PostField) []byte {

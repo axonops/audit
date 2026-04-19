@@ -127,9 +127,46 @@ func (e *EventHandle) EventType() string {
 	return e.name
 }
 
+// FieldsDonor is an optional extension interface that the audit
+// pipeline checks via type assertion in [Auditor.AuditEvent]. When an
+// [Event] also implements FieldsDonor, the auditor takes ownership of
+// the [Fields] map returned by [Event.Fields] — no defensive copy.
+//
+// # Contract
+//
+// Implementers MUST NOT mutate or retain the returned Fields after
+// [Event.Fields] is called by the auditor:
+//
+//   - The auditor merges standard-field defaults INTO the returned
+//     map and the formatters then read from it across multiple
+//     outputs.
+//   - Re-using the same Event instance for a second [Auditor.AuditEvent]
+//     call is undefined behaviour. The first call's defaults remain in
+//     the map; subsequent calls would observe stale state.
+//
+// # Sentinel
+//
+// The unexported [donateFields] sentinel method prevents third-party
+// implementation outside the audit-gen toolchain. Generated builders
+// emit the sentinel; consumer-defined Event types and [NewEvent]
+// stay on the defensive-copy slow path.
+//
+// See [docs/adr/0001-fields-ownership-contract.md] for the design
+// rationale and benchmarks (#497).
+type FieldsDonor interface {
+	Event
+	donateFields()
+}
+
 // auditEntry is the internal representation of an audit event as it
 // travels through the async channel. It is not exported.
 type auditEntry struct {
 	fields    Fields
 	eventType string
+	// donated is true when fields was supplied by a [FieldsDonor]
+	// (the caller's map). Pool-return must be skipped — the map
+	// belongs to the donor, not the auditor's fieldsPool. donated is
+	// false on the defensive-copy slow path; the existing pool-return
+	// behaviour applies (#497).
+	donated bool
 }

@@ -59,3 +59,32 @@ Feature: Typed Event Builders
       | outcome  | failure |
       | actor_id | unknown |
     Then the output should contain exactly 2 events
+
+  # --- #497 W2 fast-path drain pipeline: consumer-visible byte-integrity ---
+  # These scenarios exercise the drain pipeline under the conditions
+  # where #497 changed internal behaviour (shared format-cache buffer,
+  # in-place post-field assembly, pool recycling) and assert that the
+  # consumer-visible contract is preserved: every event delivered to
+  # every output carries its correct payload byte-for-byte.
+  #
+  # "Zero allocations" is an implementation contract, not a consumer
+  # contract, and is asserted at the benchmark layer
+  # (BenchmarkAudit_FastPath_PipelineOnly, _FanOut4_NoopOutputs,
+  # _WithHMAC_Noop — see BENCHMARKS.md). BDD pins the output correctness
+  # that the pool-reuse machinery MUST preserve.
+
+  Scenario: AuditEvent delivers correct field values under drain pool recycling
+    Given an auditor with stdout output
+    When I audit via NewEvent "user_create" with fields:
+      | field    | value    |
+      | outcome  | success  |
+      | actor_id | alice    |
+      | marker   | event-a  |
+    And I audit via NewEvent "user_create" with fields:
+      | field    | value   |
+      | outcome  | failure |
+      | actor_id | bob     |
+      | marker   | event-b |
+    Then the output should contain exactly 2 events
+    And the stdout output should contain field "marker" with value "event-a"
+    And the stdout output should contain field "marker" with value "event-b"

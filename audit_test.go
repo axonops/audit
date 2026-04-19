@@ -4941,3 +4941,227 @@ func TestCoreMetrics_RecordQueueDepth_SampledEveryNEvents(t *testing.T) {
 	assert.NotEmpty(t, depths,
 		"RecordQueueDepth must be called at least once after 65 events (sampled every 64)")
 }
+
+// ---------------------------------------------------------------------------
+// Fast-path / slow-path contract tests and benchmarks (#497)
+// ---------------------------------------------------------------------------
+
+// TestAudit_NewEvent_StillDefensiveCopies pins the slow-path contract:
+// a caller that mutates the audit.Fields map AFTER AuditEvent returns
+// MUST NOT see those mutations in the delivered payload. This is the
+// core reason the slow path exists; the donor fast path (see
+// FieldsDonor) explicitly opts out of this guarantee.
+//
+// Regression test for #497 AC 6. Breakage of this contract would be
+// silent in production — a consumer reusing a Fields literal across
+// calls would get their stale values delivered.
+func TestAudit_NewEvent_StillDefensiveCopies(t *testing.T) {
+	t.Parallel()
+
+	tax := &audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"user_create"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"user_create": {
+				Required: []string{"outcome", "actor_id"},
+				Optional: []string{"marker"},
+			},
+		},
+	}
+	out := testhelper.NewMockOutput("copy")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+		audit.WithSynchronousDelivery(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	caller := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"marker":   "before",
+	}
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", caller)))
+
+	// Mutate the caller's map AFTER AuditEvent returns. The pipeline
+	// must have copied — its delivered event must still carry the
+	// pre-mutation values.
+	caller["marker"] = "after"
+	caller["actor_id"] = "bob"
+	caller["outcome"] = "failure"
+
+	require.Equal(t, 1, out.EventCount())
+	ev := out.GetEvent(0)
+	assert.Equal(t, "before", ev["marker"],
+		"NewEvent slow path must defensively copy — caller mutation must not leak")
+	assert.Equal(t, "alice", ev["actor_id"],
+		"NewEvent slow path must defensively copy — caller mutation must not leak")
+	assert.Equal(t, "success", ev["outcome"],
+		"NewEvent slow path must defensively copy — caller mutation must not leak")
+}
+
+// newFastPathBenchAuditor builds an auditor wired to a NoopOutput so
+// pipeline benchmarks measure ONLY the audit path — no MockOutput
+// copy, no mutex contention, just AuditEvent → drain → format →
+// Write(noop). Shared by the BenchmarkAudit_FastPath_* family (#497).
+func newFastPathBenchAuditor(tb testing.TB, opts ...audit.Option) (*audit.Auditor, *testhelper.NoopOutput) {
+	tb.Helper()
+	tax := &audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"api_request"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"api_request": {
+				Required: []string{"outcome", "actor_id", "method", "path"},
+				Optional: []string{"subject", "schema_type", "version"},
+			},
+		},
+	}
+	out := testhelper.NewNoopOutput("noop")
+	base := []audit.Option{
+		audit.WithQueueSize(100_000),
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out),
+	}
+	auditor, err := audit.New(append(base, opts...)...)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return auditor, out
+}
+
+// BenchmarkAudit_FastPath_PipelineOnly measures the pure pipeline
+// cost: the event is constructed once outside the loop and re-used,
+// isolating the drain → format → in-place post-field → Write(noop)
+// path from caller-side allocation. Target: 0 allocs/op post-W2.
+//
+// Production callers MUST NOT re-use a builder — generated builders
+// are single-use per AuditEvent. This benchmark deliberately violates
+// that to isolate pipeline cost. See docs/performance.md.
+func BenchmarkAudit_FastPath_PipelineOnly(b *testing.B) {
+	silenceSlog(b)
+	auditor, _ := newFastPathBenchAuditor(b)
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	// FieldsDonor donor (test shim; mirrors cmd/audit-gen output) to
+	// exercise the true zero-alloc fast path.
+	evt := audit.NewFieldsDonorForTest("api_request", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"method":      "POST",
+		"path":        "/api/v1/schemas",
+		"source_ip":   "10.0.0.1",
+		"request_id":  "550e8400-e29b-41d4-a716-446655440000",
+		"user_agent":  "audit-client/1.0",
+		"subject":     "my-topic",
+		"schema_type": "avro",
+		"version":     1,
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(evt)
+	}
+}
+
+// BenchmarkAudit_FastPath_EndToEnd measures the realistic per-call
+// cost: event constructed inside the loop (the production pattern).
+// Allocs include the caller-side Fields literal + value-boxing, which
+// is the cost #660 (v1.1) addresses via typed-field builders. This
+// pins the state where W2 has reached its limit without breaking
+// format-neutrality.
+func BenchmarkAudit_FastPath_EndToEnd(b *testing.B) {
+	silenceSlog(b)
+	auditor, _ := newFastPathBenchAuditor(b)
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(audit.NewEvent("api_request", audit.Fields{
+			"outcome":     "success",
+			"actor_id":    "alice",
+			"method":      "POST",
+			"path":        "/api/v1/schemas",
+			"source_ip":   "10.0.0.1",
+			"request_id":  "550e8400-e29b-41d4-a716-446655440000",
+			"user_agent":  "audit-client/1.0",
+			"subject":     "my-topic",
+			"schema_type": "avro",
+			"version":     1,
+		}))
+	}
+}
+
+// BenchmarkAudit_FastPath_Parallel exercises the pipeline under
+// concurrency. Catches lock-contention regressions that single-
+// goroutine benchmarks cannot see. ns/op MUST NOT scale linearly with
+// GOMAXPROCS — sub-linear is acceptable, super-linear indicates
+// shared-state contention that needs investigation.
+func BenchmarkAudit_FastPath_Parallel(b *testing.B) {
+	silenceSlog(b)
+	auditor, _ := newFastPathBenchAuditor(b)
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = auditor.AuditEvent(audit.NewEvent("api_request", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "alice",
+				"method":   "POST",
+				"path":     "/api/v1/schemas",
+			}))
+		}
+	})
+}
+
+// BenchmarkAudit_FastPath_FanOut4_NoopOutputs measures the cost of
+// fanning out one event to 4 NoopOutputs sharing the same formatter.
+// The format cache should hit for outputs 2-4, so the per-output
+// marginal cost is the post-field assembly + write(noop) only.
+// Post-W2 target: 0 allocs/op.
+func BenchmarkAudit_FastPath_FanOut4_NoopOutputs(b *testing.B) {
+	silenceSlog(b)
+	tax := &audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"api_request"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"api_request": {Required: []string{"outcome", "actor_id", "method", "path"}},
+		},
+	}
+	out1 := testhelper.NewNoopOutput("noop1")
+	out2 := testhelper.NewNoopOutput("noop2")
+	out3 := testhelper.NewNoopOutput("noop3")
+	out4 := testhelper.NewNoopOutput("noop4")
+	auditor, err := audit.New(
+		audit.WithQueueSize(100_000),
+		audit.WithTaxonomy(tax),
+		audit.WithOutputs(out1, out2, out3, out4),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	evt := audit.NewEvent("api_request", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"method":   "POST",
+		"path":     "/api/v1/schemas",
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(evt)
+	}
+}

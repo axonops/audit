@@ -31,6 +31,31 @@ var (
 // test assertions. See putJSONBuf in format_json.go (#497 W2).
 const MaxPooledBufCapForTest = maxPooledBufCap
 
+// fieldsDonorForTest implements the [FieldsDonor] extension interface
+// from within package audit (the only place the unexported
+// donateFields() sentinel can be satisfied). This is the test-only
+// counterpart to an audit-gen-generated builder. Used by the
+// BenchmarkAudit_FastPath_* family to demonstrate the zero-alloc
+// drain contract from the core package's black-box tests.
+type fieldsDonorForTest struct {
+	fields    Fields
+	eventType string
+}
+
+func (e *fieldsDonorForTest) EventType() string { return e.eventType }
+func (e *fieldsDonorForTest) Fields() Fields    { return e.fields }
+func (e *fieldsDonorForTest) donateFields()     {}
+
+// NewFieldsDonorForTest creates a test-only [FieldsDonor] that
+// mirrors the shape emitted by cmd/audit-gen for generated builders.
+// Benchmarks use this to exercise the fast path from package
+// audit_test without depending on the example generators. Consumer
+// code never uses this — generated builders are the only production
+// donors.
+func NewFieldsDonorForTest(eventType string, fields Fields) Event {
+	return &fieldsDonorForTest{eventType: eventType, fields: fields}
+}
+
 // PutJSONBufClearsContents fills a fresh buffer with non-zero bytes
 // at the given capacity, applies [putJSONBuf]'s cap check and clear
 // semantics to it, and returns whether all bytes [0:cap] were zeroed.

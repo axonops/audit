@@ -52,10 +52,10 @@ func PutJSONBufClearsContents(capBytes int) bool {
 	}
 	full := buf.Bytes()[:cap(buf.Bytes())]
 
-	// Replicate putJSONBuf's behaviour WITHOUT sharing the pool.
-	if buf.Cap() > maxPooledBufCap {
-		// Rejected branch: contents untouched.
-	} else {
+	// Replicate putJSONBuf's behaviour WITHOUT sharing the pool:
+	// within-cap buffers are Reset+cleared; oversized buffers are left
+	// untouched (the cap-rejection branch in putJSONBuf).
+	if buf.Cap() <= maxPooledBufCap {
 		buf.Reset()
 		b := buf.Bytes()
 		clear(b[:cap(b)])

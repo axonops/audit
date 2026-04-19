@@ -254,6 +254,12 @@ func (cf *CEFFormatter) formatBuf(ts time.Time, eventType string, fields Fields,
 		buf = new(bytes.Buffer)
 	}
 	buf.Reset()
+	// Preflight: size the buffer for the common case (~150 B header +
+	// 20 fields × ~25 B per key=value pair). Eliminates 1–2 doubling
+	// reallocs on cold-pool events and backstops the AvailableBuffer
+	// boundary hazard for primitive Append* callers on warm buffers
+	// (#496). No-op when cap already suffices.
+	buf.Grow(768)
 
 	// Write header: CEF:0|vendor|product|version|eventType|description|severity|
 	buf.WriteString("CEF:0|")
@@ -344,7 +350,7 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 		if _, dup := reserved[extKey]; dup {
 			continue
 		}
-		writeExtField(buf, extStart, extKey, formatFieldValue(v))
+		writeExtFieldValue(buf, extStart, extKey, v)
 	}
 	putSortedKeysSlice(owned)
 	return nil
@@ -544,13 +550,142 @@ func validateExtKey(key string) error {
 // writeExtField writes a key=value pair to the buffer. extStart is the
 // buffer position where extensions begin (after the header); a space
 // separator is added before each field except the first extension.
+//
+// Uses [writeEscapedExtValueString] for the value so pre-formatted
+// string values from framework/header callers write in place without
+// allocating an intermediate escaped string (#496).
 func writeExtField(b *bytes.Buffer, extStart int, key, value string) {
 	if b.Len() > extStart {
 		b.WriteByte(' ')
 	}
 	b.WriteString(key)
 	b.WriteByte('=')
-	b.WriteString(cefEscapeExtValue(value))
+	writeEscapedExtValueString(b, value)
+}
+
+// writeExtFieldValue writes a key=value pair to the buffer, converting
+// v directly into the buffer via [appendFormatFieldValue] — no
+// intermediate string, no per-field allocation for primitives (#496).
+// Non-primitive fallback writes via [fmt.Fprintf] "%v", which still
+// allocates but preserves today's CEF output byte-for-byte.
+func writeExtFieldValue(b *bytes.Buffer, extStart int, key string, v any) {
+	if b.Len() > extStart {
+		b.WriteByte(' ')
+	}
+	b.WriteString(key)
+	b.WriteByte('=')
+	appendFormatFieldValue(b, v)
+}
+
+// writeEscapedExtValueString is the in-place analogue of
+// [cefEscapeExtValue]: single-pass byte scanner that writes the
+// escaped bytes directly into buf instead of building an intermediate
+// string. Byte-for-byte equivalent to cefEscapeExtValue — any
+// divergence would reopen the #477-class log-injection bug class.
+//
+// Escapes: '\\' -> "\\\\", '=' -> "\\=", '\n' -> "\\n" (two-char
+// literal), '\r' -> "\\r" (two-char literal). Other C0 control bytes
+// (0x00-0x1F) are stripped. All other bytes pass through unchanged.
+// Operates on bytes, not runes — CEF is byte-oriented; invalid UTF-8
+// passes through unchanged to match the legacy contract (#496).
+func writeEscapedExtValueString(buf *bytes.Buffer, s string) {
+	start := 0
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x20 {
+			switch b {
+			case '\\':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\\`)
+				start = i + 1
+			case '=':
+				buf.WriteString(s[start:i])
+				buf.WriteString(`\=`)
+				start = i + 1
+			}
+			continue
+		}
+		// C0 control character.
+		buf.WriteString(s[start:i])
+		switch b {
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\r':
+			buf.WriteString(`\r`)
+		default:
+			// Strip other control characters.
+		}
+		start = i + 1
+	}
+	if start == 0 {
+		// Fast path: no escaping needed, single WriteString of the
+		// entire input — matches cefEscapeExtValue's 0-alloc return.
+		buf.WriteString(s)
+		return
+	}
+	buf.WriteString(s[start:])
+}
+
+// appendFormatFieldValue writes the CEF extension-value representation
+// of v directly into buf. Primitives take the zero-alloc path via
+// strconv.Append* into a stack scratch (independent of buf's capacity
+// — see loki/push.go:220 precedent). Strings route through the
+// in-place escape writer. Non-primitives fall through to fmt.Fprintf
+// which allocates but preserves today's byte-for-byte output (#496).
+//
+// nil writes nothing (matches legacy formatFieldValue's empty-string
+// return, which yields "key=" with an empty value).
+//
+//nolint:gocyclo,cyclop // type switch; complexity is inherent
+func appendFormatFieldValue(buf *bytes.Buffer, v any) {
+	if v == nil {
+		return
+	}
+	// Stack scratch for numeric conversions: sized for the largest
+	// strconv.AppendX output (float64: up to 24 bytes for 'g' format;
+	// int64/uint64: up to 20 bytes). 32 gives headroom for all cases.
+	// Escape-analysis keeps this on the stack since the returned slice
+	// is immediately written into buf and discarded.
+	var scratch [32]byte
+	switch val := v.(type) {
+	case string:
+		writeEscapedExtValueString(buf, val)
+	case bool:
+		buf.Write(strconv.AppendBool(scratch[:0], val))
+	case int:
+		buf.Write(strconv.AppendInt(scratch[:0], int64(val), 10))
+	case int64:
+		buf.Write(strconv.AppendInt(scratch[:0], val, 10))
+	case int32:
+		buf.Write(strconv.AppendInt(scratch[:0], int64(val), 10))
+	case uint:
+		buf.Write(strconv.AppendUint(scratch[:0], uint64(val), 10))
+	case uint64:
+		buf.Write(strconv.AppendUint(scratch[:0], val, 10))
+	case float64:
+		buf.Write(strconv.AppendFloat(scratch[:0], val, 'g', -1, 64))
+	case float32:
+		buf.Write(strconv.AppendFloat(scratch[:0], float64(val), 'g', -1, 32))
+	case time.Duration:
+		buf.Write(strconv.AppendInt(scratch[:0], val.Milliseconds(), 10))
+	case time.Time:
+		// Reuses the in-buffer append path. RFC3339 output is in the
+		// escape-free character set, so no escape pass required.
+		buf.Write(val.AppendFormat(scratch[:0], time.RFC3339))
+	default:
+		// Non-primitive fallback (#496). Only reachable when a consumer
+		// bypasses generated builders and puts a slice/map/struct in
+		// Fields (generated setters are typed — #575 tightens the
+		// remaining "any" custom-field setters). MUST preserve the
+		// legacy byte-for-byte semantics: fmt.Sprintf("%v", val) +
+		// cefEscapeExtValue. Routing the %v output through the
+		// in-place escape writer maintains the #477-class log-injection
+		// defence for values containing "=", "\", "\n", or C0 bytes.
+		// Costs one string allocation on this path (matches legacy),
+		// which is acceptable because the path is rare and will
+		// disappear entirely once #575 types custom-field setters.
+		writeEscapedExtValueString(buf, fmt.Sprintf("%v", val))
+	}
 }
 
 // mapFieldKey maps an audit field name to a CEF extension key using
@@ -560,38 +695,4 @@ func mapFieldKey(fieldName string, mapping map[string]string) string {
 		return ext
 	}
 	return fieldName
-}
-
-// formatFieldValue converts a field value to a string for CEF
-// extension values.
-func formatFieldValue(v any) string { //nolint:gocyclo,cyclop // type switch; complexity is inherent
-	if v == nil {
-		return ""
-	}
-	switch val := v.(type) {
-	case string:
-		return val
-	case bool:
-		return strconv.FormatBool(val)
-	case int:
-		return strconv.Itoa(val)
-	case int64:
-		return strconv.FormatInt(val, 10)
-	case float64:
-		return strconv.FormatFloat(val, 'g', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(val), 'g', -1, 32)
-	case int32:
-		return strconv.FormatInt(int64(val), 10)
-	case uint:
-		return strconv.FormatUint(uint64(val), 10)
-	case uint64:
-		return strconv.FormatUint(val, 10)
-	case time.Duration:
-		return strconv.FormatInt(val.Milliseconds(), 10)
-	case time.Time:
-		return val.Format(time.RFC3339)
-	default:
-		return fmt.Sprintf("%v", val)
-	}
 }

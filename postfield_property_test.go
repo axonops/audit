@@ -16,6 +16,8 @@ package audit
 
 import (
 	"bytes"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -185,3 +187,163 @@ func generatePostFields(t *rapid.T) []PostField {
 	}
 	return fields
 }
+
+// TestWriteEscapedExtValueString_PropertyEqualsCEFEscape proves byte-for-
+// byte equivalence between the in-place writeEscapedExtValueString and
+// the legacy cefEscapeExtValue across hostile byte inputs — NUL, CRLF,
+// pipes, equals, invalid UTF-8, overlong encodings, combining bytes. A
+// divergence here reopens the #477-class log-injection bug. Uses
+// rapid.StringOf(rapid.Byte()) to generate raw byte strings (not valid-
+// UTF-8 strings), mirroring the security-reviewer ask for #496.
+func TestWriteEscapedExtValueString_PropertyEqualsCEFEscape(t *testing.T) {
+	// Adversarial seeds: verify these specific inputs regardless of what
+	// rapid's shrinker chooses. Each encodes a class of failure mode.
+	seeds := []string{
+		"",            // empty — must produce empty output
+		"\x00",        // NUL
+		"a=b",         // unescaped =
+		`\=`,          // escape + equals
+		"=\n",         // equals then newline
+		"\r\n",        // CRLF
+		`\` + "\n",    // backslash then newline
+		"\xff\xfe",    // invalid UTF-8 (BOM bytes)
+		"\xc0\x80",    // overlong-encoded NUL
+		"a\x00\nb=c",  // mixed controls + escapes
+		"hello world", // clean
+		"\\\\",        // multiple escapes
+	}
+	for _, s := range seeds {
+		want := cefEscapeExtValue(s)
+		var buf bytes.Buffer
+		writeEscapedExtValueString(&buf, s)
+		if got := buf.String(); got != want {
+			t.Fatalf("seed divergence for %q:\n  want=%q\n  got =%q", s, want, got)
+		}
+	}
+
+	rapid.Check(t, func(t *rapid.T) {
+		// Generate raw byte strings (not rapid.String() which is UTF-8 only)
+		// so invalid UTF-8 is part of the corpus.
+		bs := rapid.SliceOfN(rapid.Byte(), 0, 256).Draw(t, "rawBytes")
+		s := string(bs)
+
+		want := cefEscapeExtValue(s)
+
+		var buf bytes.Buffer
+		writeEscapedExtValueString(&buf, s)
+		got := buf.String()
+
+		if got != want {
+			t.Fatalf("rapid divergence for %q (bytes=%v):\n  want=%q\n  got =%q",
+				s, bs, want, got)
+		}
+	})
+}
+
+// TestAppendFormatFieldValue_ByteEquivalentToLegacy proves the new in-
+// place appendFormatFieldValue produces byte-identical output to the
+// legacy cefEscapeExtValue(formatFieldValue(v)) path across every
+// supported primitive type plus nil. Defends AC 3 of #496 (output bytes
+// unchanged).
+//
+//nolint:cyclop // table-driven type switch; complexity is inherent to the test fixture
+func TestAppendFormatFieldValue_ByteEquivalentToLegacy(t *testing.T) {
+	// Replicate the deleted formatFieldValue's logic locally so we can
+	// compare against it. If this helper ever drifts from the shipped
+	// appendFormatFieldValue semantics, the test fails loudly.
+	legacyFormatFieldValue := func(v any) string {
+		if v == nil {
+			return ""
+		}
+		switch val := v.(type) {
+		case string:
+			return val
+		case bool:
+			if val {
+				return "true"
+			}
+			return "false"
+		case int:
+			return fmtInt(int64(val))
+		case int64:
+			return fmtInt(val)
+		case int32:
+			return fmtInt(int64(val))
+		case uint:
+			return fmtUint(uint64(val))
+		case uint64:
+			return fmtUint(val)
+		case float64:
+			return fmtFloat(val, 64)
+		case float32:
+			return fmtFloat(float64(val), 32)
+		case time.Duration:
+			return fmtInt(val.Milliseconds())
+		case time.Time:
+			return val.Format(time.RFC3339)
+		default:
+			return fmt.Sprintf("%v", val)
+		}
+	}
+
+	cases := []struct { //nolint:govet // fieldalignment: readability over packing for a test fixture
+		name string
+		v    any
+	}{
+		{"nil", nil},
+		{"empty_string", ""},
+		{"string_clean", "hello"},
+		{"string_with_eq", "a=b"},
+		{"string_with_backslash", `a\b`},
+		{"string_with_newline", "a\nb"},
+		{"string_with_control", "a\x01b"},
+		{"bool_true", true},
+		{"bool_false", false},
+		{"int_zero", int(0)},
+		{"int_neg", int(-42)},
+		{"int64_max", int64(9223372036854775807)},
+		{"int32_neg", int32(-1)},
+		{"uint_zero", uint(0)},
+		{"uint64_max", uint64(18446744073709551615)},
+		{"float64_pi", float64(3.14159)},
+		{"float64_neg", float64(-1.5)},
+		{"float32_pi", float32(3.14)},
+		{"duration_1s", time.Second},
+		{"duration_zero", time.Duration(0)},
+		{"time_zero", time.Time{}},
+		{"time_unix", time.Unix(1700000000, 0).UTC()},
+		// Non-primitive fallback — MUST route through the escape writer
+		// so values containing CEF metacharacters cannot forge extension
+		// fragments (#496 + #477-class log-injection defence).
+		{"slice_clean", []string{"a", "b"}},
+		{"slice_with_eq", []string{"a=b", "c"}},
+		{"slice_with_newline", []string{"a\nb"}},
+		{"slice_with_backslash", []string{`a\b`}},
+		{"map_with_eq", map[string]string{"k": "v=x"}},
+		{"map_with_injection", map[string]string{"k": "v\nCEF:0|x|x|1|x|x|1|"}},
+		{"struct_with_backslash", struct{ X string }{X: `a\b`}},
+		{"struct_with_newline", struct{ X string }{X: "a\nb"}},
+		{"pointer_with_eq", &struct{ X string }{X: "a=b"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := cefEscapeExtValue(legacyFormatFieldValue(tc.v))
+
+			var buf bytes.Buffer
+			appendFormatFieldValue(&buf, tc.v)
+			got := buf.String()
+
+			if got != want {
+				t.Fatalf("v=%#v (%T):\n  want=%q\n  got =%q", tc.v, tc.v, want, got)
+			}
+		})
+	}
+}
+
+// fmtInt / fmtUint / fmtFloat mirror strconv's formatters used by the
+// legacy formatFieldValue. Kept local so this test remains immune to
+// any future strconv changes.
+func fmtInt(v int64) string                  { return strconv.FormatInt(v, 10) }
+func fmtUint(v uint64) string                { return strconv.FormatUint(v, 10) }
+func fmtFloat(v float64, bitSize int) string { return strconv.FormatFloat(v, 'g', -1, bitSize) }

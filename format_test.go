@@ -1261,11 +1261,49 @@ func TestCEFFormatter_AllocCount(t *testing.T) {
 	})
 
 	t.Logf("CEFFormatter.Format AllocsPerRun = %.0f", allocs)
-	// Measured: 5 allocs normally, 6 with -race (was 11 before #39).
-	// The race detector adds instrumentation allocs. Threshold covers both.
-	const maxCEFAllocs = 10
+	// Post-#496: 1 alloc on the drain path (the public Format's
+	// defensive copy-out). Race detector adds a couple of
+	// instrumentation allocs — threshold covers both. Tightened from
+	// <= 10 (pre-#496 slack) as the per-field allocations are
+	// eliminated (#496).
+	const maxCEFAllocs = 5
 	if allocs > maxCEFAllocs {
-		t.Errorf("CEFFormatter.Format allocations = %.0f, want <= %d (was 11 before single-buffer fix)", allocs, maxCEFAllocs)
+		t.Errorf("CEFFormatter.Format allocations = %.0f, want <= %d (#496 target: 1, +race slack)", allocs, maxCEFAllocs)
+	}
+}
+
+// TestCEFFormatter_LargeEvent_AllocCount defends the #496 zero-per-
+// field-alloc contract under a realistic 20-field event. Pre-#496 this
+// was ~3 allocs/op (defensive copy + 2 amortised strconv+escape
+// intermediates). Post-#496 it is 1 alloc/op — the defensive copy in
+// the public Format path. Race detector adds a few instrumentation
+// allocs; threshold covers that but is tight enough to catch a per-
+// field regression.
+func TestCEFFormatter_LargeEvent_AllocCount(t *testing.T) {
+	cf := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	fields, def := largeEventFixture()
+	ts := testTime
+
+	// Warm the formatter buffer pool so the first-call growth
+	// allocation doesn't skew AllocsPerRun's average.
+	_, _ = cf.Format(ts, "api_request", fields, def, nil)
+
+	allocs := testing.AllocsPerRun(500, func() {
+		_, _ = cf.Format(ts, "api_request", fields, def, nil)
+	})
+
+	t.Logf("CEFFormatter.Format (20 fields) AllocsPerRun = %.2f", allocs)
+	// Post-#496 baseline: 1 alloc (defensive copy). -race adds ~1-3
+	// instrumentation allocs; 4 is a tight cap that catches a return
+	// to per-field allocation while leaving race-detector headroom.
+	const maxCEFLargeAllocs = 4
+	if allocs > maxCEFLargeAllocs {
+		t.Errorf("CEFFormatter.Format (20 fields) allocations = %.2f, want <= %d (#496 target: 1 + race slack)",
+			allocs, maxCEFLargeAllocs)
 	}
 }
 
@@ -1807,6 +1845,123 @@ func BenchmarkCEFFormatter_Format_LargeEvent(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = f.Format(ts, "api_request", fields, def, nil)
 	}
+}
+
+// BenchmarkCEFFormatter_Format_LargeEvent_Escaping exercises the CEF
+// escape hot path — 20 fields where every string value contains at
+// least one metacharacter (backslash, equals, newline, CR). Confirms
+// the in-place writeEscapedExtValueString path remains zero-alloc
+// under adversarial content, not just escape-clean fixtures (#496).
+func BenchmarkCEFFormatter_Format_LargeEvent_Escaping(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	def := &audit.EventDef{
+		Required: []string{"outcome", "actor_id"},
+		Optional: []string{
+			"subject", "schema_type", "method", "path",
+			"source_ip", "request_id", "user_agent",
+			"reason", "message", "dest_host", "role",
+			"file_name", "file_path", "target_id",
+			"source_host", "transport", "protocol", "referrer",
+		},
+	}
+	fields := audit.Fields{
+		"outcome":     `success\n`,
+		"actor_id":    "alice=admin",
+		"subject":     "topic\\nested",
+		"schema_type": "avro=1",
+		"method":      "POST\rGET",
+		"path":        "/api/v1/schemas\n",
+		"source_ip":   "10.0.0.1=src",
+		"request_id":  "550e8400\r",
+		"user_agent":  "audit-client/1.0\\",
+		"reason":      "consumer requested=true",
+		"message":     "ok\nfine",
+		"dest_host":   "host=x",
+		"role":        "admin\\",
+		"file_name":   "report=final.pdf",
+		"file_path":   "/tmp/\nfoo",
+		"target_id":   "bob=user",
+		"source_host": "src=host",
+		"transport":   "tcp\n",
+		"protocol":    "https=1",
+		"referrer":    "https://example.com/?a=b",
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "api_request", fields, def, nil)
+	}
+}
+
+// BenchmarkCEFFormatter_Format_Numeric isolates the numeric-
+// conversion hot path: 10 integer + float fields, no strings beyond
+// the required actor_id/outcome. Measures the win from switching
+// from strconv.Itoa → string → escape → WriteString to direct
+// strconv.AppendInt-into-buffer via stack scratch (#496).
+func BenchmarkCEFFormatter_Format_Numeric(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	def := &audit.EventDef{
+		Required: []string{"outcome", "actor_id"},
+		Optional: []string{
+			"dest_port", "source_port", "file_size",
+			"latency_ms", "request_count", "retry_count",
+			"error_count", "byte_count", "total", "elapsed",
+		},
+	}
+	fields := audit.Fields{
+		"outcome":       "success",
+		"actor_id":      "alice",
+		"dest_port":     443,
+		"source_port":   54321,
+		"file_size":     int64(1048576),
+		"latency_ms":    int64(123),
+		"request_count": 42,
+		"retry_count":   3,
+		"error_count":   0,
+		"byte_count":    uint64(9999999),
+		"total":         3.14159,
+		"elapsed":       float32(2.718),
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Format(ts, "api_request", fields, def, nil)
+	}
+}
+
+// BenchmarkCEFFormatter_Format_Parallel runs the large-event path
+// under concurrency via b.RunParallel. Confirms the pool contention
+// and buf.Grow(768) preflight do not introduce lock hotspots; ns/op
+// MUST NOT scale linearly with GOMAXPROCS (sub-linear is acceptable,
+// super-linear indicates a shared-state regression).
+func BenchmarkCEFFormatter_Format_Parallel(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	fields, def := largeEventFixture()
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = f.Format(ts, "api_request", fields, def, nil)
+		}
+	})
 }
 
 func BenchmarkFormatJSON_WithConfigFields(b *testing.B) {

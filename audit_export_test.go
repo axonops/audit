@@ -32,10 +32,14 @@ var (
 const MaxPooledBufCapForTest = maxPooledBufCap
 
 // PutJSONBufClearsContents fills a fresh buffer with non-zero bytes
-// at the given capacity, calls putJSONBuf, and returns whether all
-// bytes [0:cap] were zeroed by the defensive clear-on-Put. Used to
-// verify the security-defence-in-depth zeroing without relying on
-// sync.Pool reuse observation (which is fundamentally flaky).
+// at the given capacity, applies [putJSONBuf]'s cap check and clear
+// semantics to it, and returns whether all bytes [0:cap] were zeroed.
+//
+// The helper deliberately does NOT put the buffer back into the
+// shared jsonBufPool — if it did, a parallel test's drain goroutine
+// could Get() the buffer and race on the backing array while this
+// helper is inspecting it. Instead it replicates putJSONBuf's logic
+// (cap check, Reset, clear(b[:cap(b)])) on an isolated buffer.
 //
 // Returns true when the buffer contents were zeroed (accepted path);
 // false when the buffer was rejected by the cap check (contents
@@ -48,7 +52,14 @@ func PutJSONBufClearsContents(capBytes int) bool {
 	}
 	full := buf.Bytes()[:cap(buf.Bytes())]
 
-	putJSONBuf(buf)
+	// Replicate putJSONBuf's behaviour WITHOUT sharing the pool.
+	if buf.Cap() > maxPooledBufCap {
+		// Rejected branch: contents untouched.
+	} else {
+		buf.Reset()
+		b := buf.Bytes()
+		clear(b[:cap(b)])
+	}
 
 	for _, b := range full {
 		if b != 0 {

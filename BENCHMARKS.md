@@ -80,8 +80,11 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 |-----------|------:|-----:|----------:|-------|
 | JSONFormatter_Format | 349 | 176 | 1 | 4 fields, buffer pooled, writeJSONString |
 | JSONFormatter_Format_LargeEvent | 1208 | 640 | 1 | 20 fields |
-| CEFFormatter_Format | 382 | 160 | 1 | 4 fields, buffer pooled, single-pass escape |
-| CEFFormatter_Format_LargeEvent | 1196 | 584 | 4 | 20 fields |
+| CEFFormatter_Format | 380 | 160 | 1 | 4 fields, buffer pooled, single-pass escape |
+| CEFFormatter_Format_LargeEvent | 1170 | 577 | **1** | 20 fields; #496 dropped 3 → 1 allocs/op via in-place appendFormatFieldValue + writeEscapedExtValueString |
+| CEFFormatter_Format_LargeEvent_Escaping | 2120 | 1518 | 4 | 20 fields, every value carries a CEF metacharacter; informational — additional allocs reflect the per-event `reserved` map + extra-field routing (out of #496 scope) |
+| CEFFormatter_Format_Numeric | 1284 | 747 | 4 | 10 numeric fields (int/int64/uint64/float64/float32); informational — same extra-field routing story as _Escaping |
+| CEFFormatter_Format_Parallel | 250 | 576 | 1 | 20 fields @ GOMAXPROCS; sub-linear scaling confirmed |
 | FormatJSON_WithConfigFields | 443 | 240 | 1 | Config-field variant |
 | FormatCEF_WithConfigFields | 439 | 224 | 1 | Config-field variant |
 

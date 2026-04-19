@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,11 +81,15 @@ type lokiEntry struct { //nolint:govet // fieldalignment: readability preferred
 // frameworkFields holds auditor-wide constant metadata used for Loki
 // stream labels. Stored atomically to avoid data races between the
 // core library's SetFrameworkFields call and the batchLoop goroutine.
-type frameworkFields struct {
+type frameworkFields struct { //nolint:govet // fieldalignment: readability preferred
 	appName  string
 	host     string
 	timezone string
 	pid      int
+	// pidStr is strconv.Itoa(pid) pre-computed at SetFrameworkFields
+	// time so the per-event resolveDynamicFields path does not
+	// allocate a fresh string on every call (#494). Empty when pid==0.
+	pidStr string
 }
 
 // Output pushes audit events to a Grafana Loki instance via the HTTP
@@ -120,14 +125,18 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	drops         dropLimiter                 // rate-limits buffer-full warnings
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
-	streams      map[string]*lokiStream // reused across flushes
-	dynFields    []dynamicField         // reused dynamic field slice
-	keyBuf       bytes.Buffer           // reused stream key builder
-	payloadBuf   bytes.Buffer           // reused JSON payload buffer
-	compressBuf  bytes.Buffer           // reused gzip output buffer
-	compressDest io.Writer              // target for gzip; defaults to &compressBuf
-	gzWriter     *gzip.Writer           // reused gzip writer
-	retryHint    time.Duration          // Retry-After hint from last 429
+	streams        map[string]*lokiStream // reused across flushes
+	dynFields      []dynamicField         // reused dynamic field slice
+	keyBuf         bytes.Buffer           // reused stream key builder
+	payloadBuf     bytes.Buffer           // reused JSON payload buffer
+	compressBuf    bytes.Buffer           // reused gzip output buffer
+	compressDest   io.Writer              // target for gzip; defaults to &compressBuf
+	gzWriter       *gzip.Writer           // reused gzip writer
+	retryHint      time.Duration          // Retry-After hint from last 429
+	sortKeysBuf    []string               // reused scratch for sortedStreams keys (#494)
+	sortStreamsBuf []*lokiStream          // reused scratch for sortedStreams result (#494)
+	labelKeysBuf   []string               // reused scratch for writeLabelsJSON keys (#494)
+	intScratch     [20]byte               // scratch for strconv.AppendInt (int64 ≤ 19 digits + sign) (#494)
 }
 
 // New creates a new Loki [Output] from the given config. It validates
@@ -219,7 +228,17 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 // construction time. The data is stored atomically, safe for
 // concurrent access from the batchLoop goroutine.
 func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
-	o.fw.Store(&frameworkFields{appName: appName, host: host, timezone: timezone, pid: pid})
+	var pidStr string
+	if pid != 0 {
+		pidStr = strconv.Itoa(pid)
+	}
+	o.fw.Store(&frameworkFields{
+		appName:  appName,
+		host:     host,
+		timezone: timezone,
+		pid:      pid,
+		pidStr:   pidStr,
+	})
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.

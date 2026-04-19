@@ -1608,6 +1608,90 @@ func TestWriteJSONString_QuickCheck(t *testing.T) {
 	}
 }
 
+// TestWriteJSONBytes mirrors [TestWriteJSONString] for the []byte
+// counterpart added in #494/#495. The two implementations MUST emit
+// byte-identical output for any input — drift between them would make
+// the loki output's `audit.WriteJSONBytes(buf, e.line)` call produce
+// JSON that differs from the JSON formatter's serialised events.
+func TestWriteJSONBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty", input: ""},
+		{name: "plain_ascii", input: "hello world"},
+		{name: "quotes", input: `say "hello"`},
+		{name: "backslash", input: `back\slash`},
+		{name: "newline", input: "line1\nline2"},
+		{name: "tab", input: "col1\tcol2"},
+		{name: "carriage_return", input: "line1\rline2"},
+		{name: "null_byte", input: "null\x00byte"},
+		{name: "all_control_chars", input: "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"},
+		{name: "html_lt", input: "<script>"},
+		{name: "html_gt", input: "value>other"},
+		{name: "html_amp", input: "a&b"},
+		{name: "html_mixed", input: `<a href="x&y">`},
+		{name: "utf8_emoji", input: "hello 🎉 world"},
+		{name: "utf8_cjk", input: "日本語テスト"},
+		{name: "utf8_accented", input: "café résumé"},
+		{name: "invalid_utf8", input: "bad\xfe\xffbyte"},
+		{name: "line_separator_u2028", input: "before\u2028after"},
+		{name: "paragraph_separator_u2029", input: "before\u2029after"},
+		{name: "mixed_special", input: "line1\nline2\t\"quoted\"\\back<html>&amp;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			audit.WriteJSONBytes(&buf, []byte(tt.input))
+			got := buf.Bytes()
+
+			want, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+
+			assert.Equal(t, string(want), string(got),
+				"WriteJSONBytes output must match json.Marshal")
+		})
+	}
+}
+
+// TestWriteJSONBytes_QuickCheck is the random-input parity test —
+// across 10k random inputs, WriteJSONBytes must emit byte-identical
+// output to encoding/json.Marshal. Catches drift between the
+// hand-written byte path and the canonical Go encoder.
+func TestWriteJSONBytes_QuickCheck(t *testing.T) {
+	f := func(s string) bool {
+		var buf bytes.Buffer
+		audit.WriteJSONBytes(&buf, []byte(s))
+
+		want, err := json.Marshal(s)
+		if err != nil {
+			return false
+		}
+		return bytes.Equal(buf.Bytes(), want)
+	}
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
+		t.Errorf("WriteJSONBytes diverges from json.Marshal: %v", err)
+	}
+}
+
+// TestWriteJSONBytes_MatchesWriteJSONString proves the two
+// implementations cannot drift independently: any input that produces
+// output X via WriteJSONString must produce the same X via
+// WriteJSONBytes(string→[]byte). Random-input verification across
+// 10k samples (#494/#495).
+func TestWriteJSONBytes_MatchesWriteJSONString(t *testing.T) {
+	f := func(s string) bool {
+		var bufStr, bufBytes bytes.Buffer
+		audit.WriteJSONString(&bufStr, s)
+		audit.WriteJSONBytes(&bufBytes, []byte(s))
+		return bytes.Equal(bufStr.Bytes(), bufBytes.Bytes())
+	}
+	if err := quick.Check(f, &quick.Config{MaxCount: 10000}); err != nil {
+		t.Errorf("WriteJSONBytes and WriteJSONString diverge: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Formatter benchmarks
 // ---------------------------------------------------------------------------

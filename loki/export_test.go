@@ -121,6 +121,31 @@ func BuildTestPayload(tb testing.TB, input TestPayloadInput) []byte { //nolint:g
 	return append([]byte(nil), o.payloadBuf.Bytes()...)
 }
 
+// BenchBatch wraps a batch for use in benchmarks, hiding the internal
+// lokiEntry shape from the bench-test caller.
+type BenchBatch struct {
+	entries []lokiEntry
+}
+
+// SetupBatchBuildForBench creates an Output and pre-built batch
+// suitable for reusing across b.Loop() iterations. Callers invoke
+// [Output.RunBatchBuildForBench] inside the loop to measure the
+// allocation behaviour of the batch-build hot path without re-paying
+// the Output construction cost every iteration (#494).
+func SetupBatchBuildForBench(tb testing.TB, input TestPayloadInput) (*Output, BenchBatch) { //nolint:gocritic // hugeParam: test helper, readability preferred
+	tb.Helper()
+	o, entries := buildTestOutput(tb, input)
+	return o, BenchBatch{entries: entries}
+}
+
+// RunBatchBuildForBench runs the batch-build hot path (group → payload)
+// once against a pre-constructed Output. Invoke inside b.Loop() for
+// steady-state allocation measurement (#494).
+func (o *Output) RunBatchBuildForBench(batch BenchBatch) {
+	o.groupByStream(batch.entries)
+	o.buildPayload()
+}
+
 // BuildTestCompressedPayload is like BuildTestPayload but returns
 // gzip-compressed bytes.
 func BuildTestCompressedPayload(tb testing.TB, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred

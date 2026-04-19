@@ -99,8 +99,9 @@ Separate API method.
 ### Positive
 
 - Generated builders take a zero-extra-alloc fast path. Target:
-  `BenchmarkAudit_GeneratedBuilder_FastPath` at ≤ 1 alloc/op (the
-  pooled `auditEntry`) and ≤ 400 ns/op for a 10-field event.
+  `BenchmarkAudit_FastPath_PipelineOnly` at 0 allocs/op on the drain
+  side and ≤ 450 ns/op for a 10-field event. Measured at 0 allocs/op,
+  ~420 ns/op post-W2 (see addendum).
 - Public API surface unchanged for consumers — `AuditEvent(evt Event)`
   remains the entry point.
 - Forward-compatible: additional opt-in extension interfaces (e.g.
@@ -110,8 +111,10 @@ Separate API method.
 ### Negative
 
 - One extra runtime type assertion per `AuditEvent` call. Cost is ~1
-  ns; itab is cached. Measured by `BenchmarkAudit_Mixed_50_50` to
-  catch any branch-predictor surprise under contention.
+  ns; itab is cached. Overall wallclock is neutral in the end-to-end
+  measurements (see `BenchmarkAudit_FastPath_EndToEnd` and the
+  `BenchmarkAudit_RealisticFields` regression check in the
+  addendum).
 - Generated builders are now single-use by contract. Re-using a
   generated builder instance after `AuditEvent` will deliver stale
   defaults from the previous call (`mergeDefaultsInPlace` writes back

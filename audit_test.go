@@ -5165,3 +5165,51 @@ func BenchmarkAudit_FastPath_FanOut4_NoopOutputs(b *testing.B) {
 		_ = auditor.AuditEvent(evt)
 	}
 }
+
+// BenchmarkAudit_FastPath_WithHMAC_Noop measures the in-place HMAC
+// post-field append cost. Pre-W2 this allocated 2 byte slices per
+// output (_hmac_v + _hmac); post-W2 these are appended in place into
+// the per-event scratch buffer. Target: 0 allocs/op on the pipeline
+// side (HMAC compute contributes a small constant B/op from
+// hex.EncodeToString — pre-existing, not introduced by W2).
+func BenchmarkAudit_FastPath_WithHMAC_Noop(b *testing.B) {
+	silenceSlog(b)
+	tax := &audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"api_request"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"api_request": {Required: []string{"outcome", "actor_id", "method", "path"}},
+		},
+	}
+	out := testhelper.NewNoopOutput("noop")
+	hmacCfg := &audit.HMACConfig{
+		Enabled:     true,
+		SaltVersion: "v1",
+		SaltValue:   []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		Algorithm:   "HMAC-SHA-256",
+	}
+	auditor, err := audit.New(
+		audit.WithQueueSize(100_000),
+		audit.WithTaxonomy(tax),
+		audit.WithNamedOutput(out, audit.OutputHMAC(hmacCfg)),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	evt := audit.NewFieldsDonorForTest("api_request", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"method":   "POST",
+		"path":     "/api/v1/schemas",
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(evt)
+	}
+}

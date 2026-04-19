@@ -39,6 +39,26 @@ type lokiStreamEntry struct { //nolint:govet // fieldalignment: readability pref
 // groupByStream partitions a batch of events into Loki streams based on
 // their label values (static + dynamic + framework). The streams map is
 // stored on Output and reused across flushes (single goroutine).
+//
+// # Per-event allocation accounting (#494)
+//
+// The per-event hot path is lock-free and allocation-free in the
+// steady state:
+//
+//   - streamKey writes into the reused keyBuf and does not allocate;
+//     the map lookup `o.streams[string(keyBytes)]` uses the Go
+//     compiler's `m[string(b)]` optimisation to avoid materialising
+//     a string on every lookup.
+//   - A string is materialised only on cache miss (first event for a
+//     given stream in this flush). A typical batch of 100 events
+//     across 5 streams therefore allocates 5 keys rather than 100.
+//   - resolveDynamicFields reuses the dynFields backing array, so no
+//     per-event slice allocation.
+//
+// The per-stream-creation cost is one map allocation (streamLabels)
+// and one entries-slice allocation — unavoidable without a slab
+// allocator, and bounded by the number of distinct streams in the
+// batch, not the number of events.
 func (o *Output) groupByStream(batch []lokiEntry) {
 	clear(o.streams)
 
@@ -46,14 +66,18 @@ func (o *Output) groupByStream(batch []lokiEntry) {
 
 	for i := range batch {
 		entry := &batch[i]
-		key := o.streamKey(entry.metadata, fw)
-		s, ok := o.streams[key]
+		o.writeStreamKey(entry.metadata, fw)
+		// Go optimises `m[string(b)]` to avoid allocating the lookup
+		// key — the string is materialised only on cache miss below.
+		keyBytes := o.keyBuf.Bytes()
+		s, ok := o.streams[string(keyBytes)]
 		if !ok {
 			s = &lokiStream{
 				labels:  o.streamLabels(entry.metadata, fw),
 				entries: make([]lokiStreamEntry, 0, 8),
 			}
-			o.streams[key] = s
+			// One string allocation per distinct stream in this batch.
+			o.streams[string(keyBytes)] = s
 		}
 
 		tsNano := entry.metadata.Timestamp.UnixNano()
@@ -82,6 +106,12 @@ type dynamicField struct { //nolint:govet // fieldalignment: readability preferr
 
 // resolveDynamicFields builds the list of active dynamic label values
 // for a single event.
+//
+// Per-event allocations: none. `fw.pidStr` is pre-computed at
+// [Output.SetFrameworkFields] time (one-shot; framework fields are
+// auditor-wide constants). `strconv.Itoa(meta.Severity)` falls into
+// Go's small-integer intern table (values 0..99) which covers every
+// [audit.Severity] constant, so no heap allocation per event (#494).
 func (o *Output) resolveDynamicFields(meta audit.EventMetadata, fw *frameworkFields) []dynamicField {
 	dl := &o.cfg.Labels.Dynamic
 	fields := o.dynFields[:0] // reuse backing array
@@ -91,12 +121,8 @@ func (o *Output) resolveDynamicFields(meta audit.EventMetadata, fw *frameworkFie
 			dynamicField{"an", "app_name", dl.ExcludeAppName, fw.appName},
 			dynamicField{"h", "host", dl.ExcludeHost, fw.host},
 			dynamicField{"tz", "timezone", dl.ExcludeTimezone, fw.timezone},
-			dynamicField{"p", "pid", dl.ExcludePID, strconv.Itoa(fw.pid)},
+			dynamicField{"p", "pid", dl.ExcludePID, fw.pidStr},
 		)
-		// pid=0 means unset.
-		if fw.pid == 0 {
-			fields[len(fields)-1].value = ""
-		}
 	}
 
 	fields = append(fields,
@@ -109,10 +135,14 @@ func (o *Output) resolveDynamicFields(meta audit.EventMetadata, fw *frameworkFie
 	return fields
 }
 
-// streamKey builds a deterministic fingerprint from the label values.
-// Delimiter characters (| and =) in values are escaped to prevent
-// collisions between logically distinct label sets.
-func (o *Output) streamKey(meta audit.EventMetadata, fw *frameworkFields) string {
+// writeStreamKey builds a deterministic fingerprint from the label
+// values into o.keyBuf. Delimiter characters (| and =) in values are
+// escaped to prevent collisions between logically distinct label sets.
+// Callers read the result via o.keyBuf.Bytes() — materialising a
+// string only when actually needed (on map insert). The previous API
+// that returned a string allocated once per event; this one never
+// allocates (#494).
+func (o *Output) writeStreamKey(meta audit.EventMetadata, fw *frameworkFields) {
 	o.keyBuf.Reset()
 	for _, f := range o.resolveDynamicFields(meta, fw) {
 		if f.exclude || f.value == "" {
@@ -123,7 +153,6 @@ func (o *Output) streamKey(meta audit.EventMetadata, fw *frameworkFields) string
 		escapeKeyValue(&o.keyBuf, f.value)
 		o.keyBuf.WriteByte('|')
 	}
-	return o.keyBuf.String()
 }
 
 // escapeKeyValue writes s to buf, escaping the | and = delimiters used
@@ -178,7 +207,7 @@ func (o *Output) buildPayload() {
 
 		// Stream labels object.
 		buf.WriteString(`{"stream":{`)
-		writeLabelsJSON(buf, s.labels)
+		o.writeLabelsJSON(buf, s.labels)
 		buf.WriteString(`},"values":[`)
 
 		// Values array: [["timestamp_ns", "log_line"], ...]
@@ -187,9 +216,16 @@ func (o *Output) buildPayload() {
 				buf.WriteByte(',')
 			}
 			buf.WriteString(`["`)
-			buf.Write(strconv.AppendInt(buf.AvailableBuffer(), e.tsNano, 10))
+			// strconv.AppendInt into a fixed-size Output scratch array
+			// instead of buf.AvailableBuffer(): AvailableBuffer may
+			// return a 0-cap slice when the buffer is full, forcing
+			// append() to allocate a fresh backing array every event
+			// (#494).
+			buf.Write(strconv.AppendInt(o.intScratch[:0], e.tsNano, 10))
 			buf.WriteString(`",`)
-			audit.WriteJSONString(buf, bytesToString(e.line))
+			// WriteJSONBytes avoids the `string(e.line)` copy at
+			// 100 events-per-batch scale (#494/#495).
+			audit.WriteJSONBytes(buf, e.line)
 			buf.WriteByte(']')
 		}
 
@@ -199,28 +235,51 @@ func (o *Output) buildPayload() {
 	buf.WriteString(`]}`)
 }
 
-// sortedStreams returns the streams in deterministic label key order.
+// sortedStreams returns the streams in deterministic stream-key order.
+// The `keys` and `result` backing slices are pooled on the Output
+// struct and reused across flushes — no per-flush allocation once the
+// slices have grown to the working-set size (#494).
+//
+// Trailing positions in sortStreamsBuf are nil'd before returning so
+// that a flush whose stream count shrinks does not retain pointers to
+// the previous flush's *lokiStream values (and through them, their
+// labels map and entries slices) past their useful life. The
+// sortKeysBuf and labelKeysBuf pools hold strings — no nil-tail
+// concern there.
 func (o *Output) sortedStreams() []*lokiStream {
-	keys := make([]string, 0, len(o.streams))
+	keys := o.sortKeysBuf[:0]
 	for k := range o.streams {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	result := make([]*lokiStream, 0, len(keys))
+	o.sortKeysBuf = keys
+
+	result := o.sortStreamsBuf[:0]
 	for _, k := range keys {
 		result = append(result, o.streams[k])
 	}
+	// Nil the tail of the backing array so previously-returned (now
+	// out-of-scope) *lokiStream pointers can be GC'd if this flush's
+	// stream count is smaller than the previous (#494).
+	for i := len(result); i < cap(result); i++ {
+		result[:cap(result)][i] = nil
+	}
+	o.sortStreamsBuf = result
 	return result
 }
 
 // writeLabelsJSON writes a sorted set of label key-value pairs as JSON
-// object fields (without the enclosing braces).
-func writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
-	keys := make([]string, 0, len(labels))
+// object fields (without the enclosing braces). The `keys` backing
+// slice is pooled on the Output struct via keysBuf and reused across
+// streams within a flush and across flushes — no per-stream slice
+// allocation once grown to the working-set size (#494).
+func (o *Output) writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
+	keys := o.labelKeysBuf[:0]
 	for k := range labels {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	o.labelKeysBuf = keys
 
 	for i, k := range keys {
 		if i > 0 {
@@ -257,11 +316,4 @@ func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
 		return nil, false, fmt.Errorf("audit: loki: gzip close: %w", cErr)
 	}
 	return o.compressBuf.Bytes(), true, nil
-}
-
-// bytesToString converts a byte slice to a string. This is a simple
-// type conversion; Go 1.22+ optimises this to avoid copying in many
-// cases when the result is only used temporarily.
-func bytesToString(b []byte) string {
-	return string(b)
 }

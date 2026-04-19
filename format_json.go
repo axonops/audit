@@ -320,6 +320,63 @@ func WriteJSONString(buf *bytes.Buffer, s string) {
 	buf.WriteByte('"')
 }
 
+// WriteJSONBytes is the []byte-input counterpart to [WriteJSONString].
+// Used by output backends (notably loki) that accumulate pre-serialised
+// event lines as []byte and need to embed them as JSON string values
+// on the wire. Avoiding the `string(b)` conversion at the call site
+// eliminates one heap allocation per event on the drain hot path
+// (#494/#495).
+//
+// Behaviour is identical to WriteJSONString — the input is treated as
+// UTF-8 bytes, escaped per RFC 7159, and emitted surrounded by double
+// quotes. Multibyte sequences are preserved; ASCII control bytes and
+// the JSON metacharacters (`"`, `\`, `<`, `>`, `&`) are \uXXXX /
+// backslash-escaped.
+//
+//nolint:gocyclo,cyclop // mirrors WriteJSONString — splitting would duplicate the jump table with no benefit
+func WriteJSONBytes(buf *bytes.Buffer, b []byte) {
+	buf.WriteByte('"')
+	start := 0
+	for i := 0; i < len(b); {
+		c := b[i]
+		if c >= utf8.RuneSelf {
+			var size int
+			start, size = writeJSONMultibyteBytes(buf, b, i, start)
+			i += size
+			continue
+		}
+		if jsonSafeASCII[c] {
+			i++
+			continue
+		}
+		buf.Write(b[start:i])
+		switch c {
+		case '"':
+			buf.WriteString(`\"`)
+		case '\\':
+			buf.WriteString(`\\`)
+		case '\b':
+			buf.WriteString(`\b`)
+		case '\f':
+			buf.WriteString(`\f`)
+		case '\n':
+			buf.WriteString(`\n`)
+		case '\r':
+			buf.WriteString(`\r`)
+		case '\t':
+			buf.WriteString(`\t`)
+		default:
+			buf.WriteString(`\u00`)
+			buf.WriteByte(hexDigits[c>>4])
+			buf.WriteByte(hexDigits[c&0xf])
+		}
+		i++
+		start = i
+	}
+	buf.Write(b[start:])
+	buf.WriteByte('"')
+}
+
 // writeJSONMultibyte handles multi-byte UTF-8 sequences in
 // [WriteJSONString]. Returns the updated start position and the rune
 // size in bytes (avoiding a redundant DecodeRuneInString in the caller).
@@ -340,6 +397,28 @@ func writeJSONMultibyte(buf *bytes.Buffer, s string, i, start int) (newStart, si
 		return i + size, size
 	default:
 		return start, size // no escape needed; continue accumulating
+	}
+}
+
+// writeJSONMultibyteBytes is the []byte-input counterpart to
+// [writeJSONMultibyte] for [WriteJSONBytes].
+func writeJSONMultibyteBytes(buf *bytes.Buffer, b []byte, i, start int) (newStart, size int) {
+	r, size := utf8.DecodeRune(b[i:])
+	switch {
+	case r == utf8.RuneError && size == 1:
+		buf.Write(b[start:i])
+		buf.WriteString(`\ufffd`)
+		return i + size, size
+	case r == '\u2028':
+		buf.Write(b[start:i])
+		buf.WriteString(`\u2028`)
+		return i + size, size
+	case r == '\u2029':
+		buf.Write(b[start:i])
+		buf.WriteString(`\u2029`)
+		return i + size, size
+	default:
+		return start, size
 	}
 }
 

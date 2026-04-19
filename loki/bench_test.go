@@ -91,11 +91,56 @@ func BenchmarkLokiOutput_BatchBuild(b *testing.B) {
 		PID:     12345,
 	}
 
+	// Set up the Output ONCE outside the loop. The production drain
+	// goroutine reuses the same Output across many batches, so
+	// measuring the batch-build hot path in isolation (amortising
+	// construction) is what #494 targets (AC: ≤1 alloc/event at
+	// batch-build time, from ~4).
+	out, batch := loki.SetupBatchBuildForBench(b, input)
+	defer func() { _ = out.Close() }()
+
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for b.Loop() {
-		_ = loki.BuildTestPayload(b, input)
+		out.RunBatchBuildForBench(batch)
+	}
+}
+
+// BenchmarkLokiOutput_BatchBuild_HighCardinality exercises the batch-
+// build hot path when each event falls into its own stream. This is
+// the worst-case allocation pattern — every event forces a new
+// streamLabels map + entries slice — and is what #494 AC #4 targets.
+func BenchmarkLokiOutput_BatchBuild_HighCardinality(b *testing.B) {
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	events := make([]loki.TestEvent, 100)
+	for i := range events {
+		events[i] = loki.TestEvent{
+			Data: []byte(fmt.Sprintf(`{"actor_id":"actor-%d","outcome":"success","resource":"res-%d"}`, i, i)),
+			Meta: audit.EventMetadata{
+				EventType: fmt.Sprintf("event_type_%d", i), // distinct per event
+				Severity:  6,
+				Category:  "security",
+				Timestamp: ts.Add(time.Duration(i) * time.Millisecond),
+			},
+		}
+	}
+
+	input := loki.TestPayloadInput{
+		Events:  events,
+		AppName: "bench-app",
+		Host:    "bench-host",
+		PID:     12345,
+	}
+
+	out, batch := loki.SetupBatchBuildForBench(b, input)
+	defer func() { _ = out.Close() }()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		out.RunBatchBuildForBench(batch)
 	}
 }
 

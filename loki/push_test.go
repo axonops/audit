@@ -196,6 +196,74 @@ func TestBuildPayload_EscapeKeyValue_Backslash(t *testing.T) {
 		`static label values "a\\b" and "a|b" must produce different streams`)
 }
 
+// TestBuildPayload_NegativePID_IncludesLabel pins the SetFrameworkFields
+// contract added in #494: pid==0 means "unset" (label excluded);
+// pid!=0 (including negative values) is included verbatim. The
+// pre-computed pidStr cache MUST handle negative pid the same way as
+// positive — if a deployment passes a negative sentinel, the label
+// surfaces in the wire payload.
+func TestBuildPayload_NegativePID_IncludesLabel(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	payload := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"v":"x"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		AppName: "app",
+		Host:    "h1",
+		PID:     -42,
+	})
+
+	var p pushPayload
+	require.NoError(t, json.Unmarshal(payload, &p))
+	require.Len(t, p.Streams, 1)
+	assert.Equal(t, "-42", p.Streams[0].Stream["pid"],
+		"negative pid value must surface as a string label, not be excluded")
+}
+
+// TestBuildPayload_StreamKeyDelimiterCollision proves that two events
+// whose label values differ only by the position of the | / =
+// delimiters (or by escaped vs literal occurrences) produce DISTINCT
+// streams. The escapeKeyValue + m[string(b)] insert pattern in
+// groupByStream must preserve this invariant — a regression here
+// would silently merge streams in production. Companion to
+// TestBuildPayload_EscapeKeyValue_Backslash.
+func TestBuildPayload_StreamKeyDelimiterCollision(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+
+	// Construct two events whose CONCATENATED label values would
+	// produce identical bytes if escapeKeyValue were missing — but
+	// the | / = delimiters land in different logical positions.
+	// app_name="a|b" + host="c"  vs  app_name="a" + host="b|c"
+	payloadA := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"v":"a"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		AppName: "a|b",
+		Host:    "c",
+		PID:     1,
+	})
+	payloadB := loki.BuildTestPayload(t, loki.TestPayloadInput{
+		Events: []loki.TestEvent{
+			{Data: []byte(`{"v":"b"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: ts}},
+		},
+		AppName: "a",
+		Host:    "b|c",
+		PID:     1,
+	})
+
+	var pA, pB pushPayload
+	require.NoError(t, json.Unmarshal(payloadA, &pA))
+	require.NoError(t, json.Unmarshal(payloadB, &pB))
+	require.Len(t, pA.Streams, 1)
+	require.Len(t, pB.Streams, 1)
+	assert.NotEqual(t, pA.Streams[0].Stream, pB.Streams[0].Stream,
+		"label sets that share concatenated bytes but differ in delimiter placement must be distinct streams")
+}
+
 // ---------------------------------------------------------------------------
 // Payload format
 // ---------------------------------------------------------------------------

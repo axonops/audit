@@ -312,6 +312,18 @@ func TestAppendFormatFieldValue_ByteEquivalentToLegacy(t *testing.T) {
 		{"duration_zero", time.Duration(0)},
 		{"time_zero", time.Time{}},
 		{"time_unix", time.Unix(1700000000, 0).UTC()},
+		// Non-primitive fallback — MUST route through the escape writer
+		// so values containing CEF metacharacters cannot forge extension
+		// fragments (#496 + #477-class log-injection defence).
+		{"slice_clean", []string{"a", "b"}},
+		{"slice_with_eq", []string{"a=b", "c"}},
+		{"slice_with_newline", []string{"a\nb"}},
+		{"slice_with_backslash", []string{`a\b`}},
+		{"map_with_eq", map[string]string{"k": "v=x"}},
+		{"map_with_injection", map[string]string{"k": "v\nCEF:0|x|x|1|x|x|1|"}},
+		{"struct_with_backslash", struct{ X string }{X: `a\b`}},
+		{"struct_with_newline", struct{ X string }{X: "a\nb"}},
+		{"pointer_with_eq", &struct{ X string }{X: "a=b"}},
 	}
 
 	for _, tc := range cases {

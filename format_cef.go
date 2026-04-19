@@ -673,13 +673,18 @@ func appendFormatFieldValue(buf *bytes.Buffer, v any) {
 		// escape-free character set, so no escape pass required.
 		buf.Write(val.AppendFormat(scratch[:0], time.RFC3339))
 	default:
-		// Non-primitive fallback (#496). Non-generated-builder path
-		// only — generated builders don't emit non-primitive types
-		// for reserved fields today, and #575 will remove the
-		// remaining "any"-typed custom-field setters. fmt.Fprintf
-		// writes directly into the buffer (still allocates reflection
-		// scratch, but no intermediate string).
-		_, _ = fmt.Fprintf(buf, "%v", val)
+		// Non-primitive fallback (#496). Only reachable when a consumer
+		// bypasses generated builders and puts a slice/map/struct in
+		// Fields (generated setters are typed — #575 tightens the
+		// remaining "any" custom-field setters). MUST preserve the
+		// legacy byte-for-byte semantics: fmt.Sprintf("%v", val) +
+		// cefEscapeExtValue. Routing the %v output through the
+		// in-place escape writer maintains the #477-class log-injection
+		// defence for values containing "=", "\", "\n", or C0 bytes.
+		// Costs one string allocation on this path (matches legacy),
+		// which is acceptable because the path is rare and will
+		// disappear entirely once #575 types custom-field setters.
+		writeEscapedExtValueString(buf, fmt.Sprintf("%v", val))
 	}
 }
 

@@ -15,7 +15,48 @@
 // This file exports unexported functions for black-box testing.
 package audit
 
-import "time"
+import (
+	"bytes"
+	"errors"
+	"time"
+)
+
+// Keep "bytes" and "errors" imports non-stale for future helpers.
+var (
+	_ = bytes.NewBuffer
+	_ = errors.New
+)
+
+// MaxPooledBufCapForTest exports the [maxPooledBufCap] constant for
+// test assertions. See putJSONBuf in format_json.go (#497 W2).
+const MaxPooledBufCapForTest = maxPooledBufCap
+
+// PutJSONBufClearsContents fills a fresh buffer with non-zero bytes
+// at the given capacity, calls putJSONBuf, and returns whether all
+// bytes [0:cap] were zeroed by the defensive clear-on-Put. Used to
+// verify the security-defence-in-depth zeroing without relying on
+// sync.Pool reuse observation (which is fundamentally flaky).
+//
+// Returns true when the buffer contents were zeroed (accepted path);
+// false when the buffer was rejected by the cap check (contents
+// untouched, sentinel bytes survive).
+func PutJSONBufClearsContents(capBytes int) bool {
+	buf := new(bytes.Buffer)
+	buf.Grow(capBytes)
+	for i := 0; i < capBytes; i++ {
+		buf.WriteByte(0xA5)
+	}
+	full := buf.Bytes()[:cap(buf.Bytes())]
+
+	putJSONBuf(buf)
+
+	for _, b := range full {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
 
 // IsEnabledForTest checks whether the given event type is enabled in
 // the auditor's current filter state. Lock-free, matching the
@@ -41,9 +82,11 @@ func (w *FormatCacheForTest) Get(f Formatter) ([]byte, bool) {
 	return w.C.get(f)
 }
 
-// Put delegates to the unexported formatCache.put.
+// Put delegates to the unexported formatCache.put. The owned buffer
+// is always nil for test puts: tests construct cache entries from raw
+// []byte values, never from buffered-formatter leases.
 func (w *FormatCacheForTest) Put(f Formatter, data []byte) {
-	w.C.put(f, data)
+	w.C.put(f, data, nil)
 }
 
 // DropLimiterForTest wraps dropLimiter for testing.

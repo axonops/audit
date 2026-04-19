@@ -138,6 +138,13 @@ func (e *{{ $b.StructName }}) EventType() string { return {{ $b.EventConst }} }
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
 func (e *{{ $b.StructName }}) Fields() audit.Fields { return e.fields }
 
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *{{ $b.StructName }}) donateFields() {}
+
 // Description returns the taxonomy description.
 func (e *{{ $b.StructName }}) Description() string { return {{ printf "%q" $b.Description }} }
 

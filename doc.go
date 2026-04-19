@@ -212,6 +212,31 @@
 // full, [Auditor.AuditEvent] returns [ErrQueueFull] and the drop is recorded via
 // the [Metrics] interface.
 //
+// # Performance — Fast Path and Slow Path
+//
+// The drain pipeline has two paths with distinct allocation profiles. See
+// docs/performance.md for the full table and benchmark methodology.
+//
+//   - Fast path: events constructed via cmd/audit-gen-generated typed
+//     builders satisfy the [FieldsDonor] extension interface (unexported
+//     sentinel donateFields()), and the auditor takes ownership of the
+//     event's Fields map. The formatter writes into a pool-leased
+//     *bytes.Buffer that is shared across every output and category pass
+//     for the same event; per-output post-fields (event_category, _hmac_v,
+//     _hmac) are appended in place into a per-event scratch buffer.
+//     This path achieves zero allocations on the drain side after warm-up.
+//
+//   - Slow path: events constructed via [NewEvent] or [NewEventKV] do
+//     not implement FieldsDonor, so the auditor defensively copies the
+//     caller's Fields map. Per-event allocation cost is the map clone
+//     plus any-boxing of non-string values; the drain-side serialisation
+//     still benefits from the zero-copy buffer lease.
+//
+// Outputs receive bytes from the leased formatter buffer. Per the
+// [Output.Write] contract, implementations MUST NOT retain data past
+// the call — all first-party outputs (file, syslog, webhook, loki) copy
+// on enqueue.
+//
 // # Graceful Shutdown
 //
 // [Auditor.Close] MUST be called when the auditor is no longer needed. Failing

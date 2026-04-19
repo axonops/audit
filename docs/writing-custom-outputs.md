@@ -124,17 +124,38 @@ the same pattern:
 3. If the channel is full, the event is dropped and a metric is
    recorded — `Write` returns `nil` (not an error).
 
-### Data Copy Requirement
+### Buffer Ownership and Retention
 
-The `data []byte` argument to `Write` MUST be copied before sending
-to the channel. The same slice may be passed to multiple outputs
-during fan-out, and the library's contract does not guarantee the
-slice remains valid after `Write` returns. Always copy defensively:
+The `data []byte` argument to `Write` MUST be copied before being
+retained past the call. This is **load-bearing**: since W2 (#497) the
+library leases `data`'s backing array from a pool, zero-fills it on
+release, and reuses it for the next event. Retaining `data` (or any
+slice that aliases its backing array) without copying causes **silent
+cross-event data corruption** — the bytes a background goroutine reads
+later belong to a different event or are zero-filled. For HMAC-signed
+outputs, retained bytes additionally fail integrity verification at
+the receiver because the bytes-as-sent no longer match the bytes the
+HMAC was computed over.
+
+The same slice is passed to multiple outputs during fan-out, so
+per-output retention is unsafe even before pool recycling happens.
+
+Always copy defensively. The canonical idiom is:
 
 ```go
-cp := make([]byte, len(data))
-copy(cp, data)
+cp := append([]byte(nil), data...)
 ```
+
+(The `make([]byte, len(data)) + copy(cp, data)` pattern is equivalent;
+`append` is the established Go idiom and avoids the two-step.)
+
+A synchronous output that writes and returns is safe without copying.
+Any output that retains `data` for asynchronous delivery, batching,
+testing, or any other reason MUST copy first.
+
+See [`docs/performance.md` — The `Output.Write` retention contract](performance.md#the-outputwrite-retention-contract)
+for the W2 drain pipeline details that make this contract
+load-bearing.
 
 ### Drop-on-Full Behaviour
 

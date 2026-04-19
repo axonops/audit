@@ -15,9 +15,46 @@
 package audit
 
 import (
+	"bytes"
 	"slices"
+	"sync"
 	"time"
 )
+
+// sortedKeysPool reuses []string backing arrays for the per-event
+// key-sorting paths in sortedFieldKeys / extraFieldKeys /
+// allFieldKeysSorted. Outliers (cap > maxPooledKeysCap) are dropped
+// rather than re-pooled to avoid pinning oversized arrays.
+const maxPooledKeysCap = 64
+
+var sortedKeysPool = sync.Pool{
+	New: func() any {
+		s := make([]string, 0, 16)
+		return &s
+	},
+}
+
+// getSortedKeysSlice returns a zero-length []string from the pool.
+// The caller MUST return it via [putSortedKeysSlice] when done.
+func getSortedKeysSlice() *[]string {
+	ks, ok := sortedKeysPool.Get().(*[]string)
+	if !ok {
+		s := make([]string, 0, 16)
+		return &s
+	}
+	return ks
+}
+
+// putSortedKeysSlice returns ks to the pool. Slices with cap exceeding
+// [maxPooledKeysCap] are dropped to bound pool memory under outlier
+// events.
+func putSortedKeysSlice(ks *[]string) {
+	if ks == nil || cap(*ks) > maxPooledKeysCap {
+		return
+	}
+	*ks = (*ks)[:0]
+	sortedKeysPool.Put(ks)
+}
 
 // FormatOptions carries optional per-output context to the formatter.
 // A nil *FormatOptions means no special handling — all fields are
@@ -81,6 +118,27 @@ type Formatter interface {
 	Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error)
 }
 
+// bufferedFormatter is an internal optimisation interface: built-in
+// formatters ([JSONFormatter], [CEFFormatter]) implement it to expose
+// their pool-leased [bytes.Buffer] directly to the drain pipeline,
+// avoiding the per-event defensive copy-out that the public
+// [Formatter.Format] method must perform.
+//
+// The interface is intentionally unexported: only first-party
+// formatters can opt in. Third-party formatters continue through the
+// public [Formatter] path and are unaffected.
+//
+// The returned buffer is leased — the caller MUST return it via
+// releaseFormatBuf when finished. The pipeline tracks leases via
+// [formatCache] (which owns the formatter buffer and the per-event
+// postBuf scratch) and releases them in [Auditor.processEntry]'s
+// defer chain, after every [Output.Write] for the event has returned.
+type bufferedFormatter interface {
+	Formatter
+	formatBuf(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) (*bytes.Buffer, error)
+	releaseFormatBuf(buf *bytes.Buffer)
+}
+
 // FrameworkFieldSetter is implemented by formatters that emit
 // auditor-wide framework metadata (app_name, host, timezone, pid) in
 // serialised output. The library calls SetFrameworkFields once at
@@ -115,20 +173,25 @@ const (
 // fallback slice is sorted on the fly. When omitEmpty is false and no
 // framework fields are present, the pre-sorted slice is returned
 // directly (zero allocation).
-func sortedFieldKeys(sorted, fallback []string, fields Fields, omitEmpty bool) []string {
+//
+// owned is non-nil when the returned slice came from [sortedKeysPool];
+// the caller MUST release it via [putSortedKeysSlice]. owned is nil
+// when the returned slice is borrowed from the EventDef and MUST NOT
+// be released.
+func sortedFieldKeys(sorted, fallback []string, fields Fields, omitEmpty bool) (keys []string, owned *[]string) {
 	src := sorted
 	if src == nil {
 		src = sortedCopy(fallback)
 	}
 	if len(src) == 0 {
-		return nil
+		return nil, nil
 	}
 	// Fast path: when omitEmpty is false and no framework fields
 	// appear in the list, return it directly (zero allocation).
 	if !omitEmpty && !containsFrameworkField(src, fields) {
-		return src
+		return src, nil
 	}
-	keys := make([]string, 0, len(src))
+	owned = getSortedKeysSlice()
 	for _, k := range src {
 		if isFrameworkField(k, fields) {
 			continue
@@ -136,9 +199,9 @@ func sortedFieldKeys(sorted, fallback []string, fields Fields, omitEmpty bool) [
 		if omitEmpty && shouldOmit(k, fields) {
 			continue
 		}
-		keys = append(keys, k)
+		*owned = append(*owned, k)
 	}
-	return keys
+	return *owned, owned
 }
 
 // containsFrameworkField reports whether any key in sorted is a
@@ -177,13 +240,16 @@ func shouldOmit(k string, fields Fields) bool {
 // Required or Optional lists (i.e. extra fields from permissive mode),
 // sorted alphabetically. Uses the pre-computed knownFields set to
 // avoid per-call map allocation.
-func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
+//
+// owned is non-nil when the returned slice came from [sortedKeysPool]
+// and MUST be released by the caller via [putSortedKeysSlice]. When
+// no extra fields exist, both keys and owned are nil.
+func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) (keys []string, owned *[]string) {
 	known := effectiveKnownFields(def)
-	capHint := len(fields) - len(known)
-	if capHint < 0 {
-		capHint = 0
+	if !hasExtraFields(known, fields, omitEmpty) {
+		return nil, nil
 	}
-	extra := make([]string, 0, capHint)
+	owned = getSortedKeysSlice()
 	for k, v := range fields {
 		if _, ok := known[k]; ok {
 			continue
@@ -194,13 +260,33 @@ func extraFieldKeys(def *EventDef, fields Fields, omitEmpty bool) []string {
 		if omitEmpty && isZeroValue(v) {
 			continue
 		}
-		extra = append(extra, k)
+		*owned = append(*owned, k)
 	}
-	if len(extra) == 0 {
-		return nil
+	if len(*owned) == 0 {
+		putSortedKeysSlice(owned)
+		return nil, nil
 	}
-	slices.Sort(extra)
-	return extra
+	slices.Sort(*owned)
+	return *owned, owned
+}
+
+// hasExtraFields reports whether fields contains any key that is not
+// in known and not a framework field. When omitEmpty is true, zero-
+// valued extras are not counted.
+func hasExtraFields(known map[string]struct{}, fields Fields, omitEmpty bool) bool {
+	for k, v := range fields {
+		if _, ok := known[k]; ok {
+			continue
+		}
+		if isFrameworkField(k, fields) {
+			continue
+		}
+		if omitEmpty && isZeroValue(v) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // effectiveKnownFields returns the pre-computed knownFields set or
@@ -225,15 +311,14 @@ func effectiveKnownFields(def *EventDef) map[string]struct{} {
 // present (the common case), sortedAllKeys is returned directly
 // (zero allocation). Falls back to building the list from scratch
 // when pre-computed fields are nil.
-func allFieldKeysSorted(def *EventDef, fields Fields) []string {
-	// Fall back to building from scratch if pre-computed fields
-	// are not available (e.g. EventDef constructed outside taxonomy
-	// registration).
+//
+// owned is non-nil when the returned slice came from [sortedKeysPool]
+// and MUST be released by the caller via [putSortedKeysSlice].
+func allFieldKeysSorted(def *EventDef, fields Fields) (keys []string, owned *[]string) {
 	if def.knownFields == nil {
 		return allFieldKeysSortedSlow(def, fields)
 	}
 
-	// Check if all field keys are known (common case).
 	hasExtra := false
 	for k := range fields {
 		if _, ok := def.knownFields[k]; !ok && !isFrameworkField(k, fields) {
@@ -242,12 +327,11 @@ func allFieldKeysSorted(def *EventDef, fields Fields) []string {
 		}
 	}
 	if !hasExtra {
-		return def.sortedAllKeys
+		return def.sortedAllKeys, nil
 	}
 
-	// Slow path: extra fields present, build a combined sorted list.
-	keys := make([]string, len(def.sortedAllKeys))
-	copy(keys, def.sortedAllKeys)
+	owned = getSortedKeysSlice()
+	*owned = append(*owned, def.sortedAllKeys...)
 	for k := range fields {
 		if _, ok := def.knownFields[k]; ok {
 			continue
@@ -255,33 +339,33 @@ func allFieldKeysSorted(def *EventDef, fields Fields) []string {
 		if isFrameworkField(k, fields) {
 			continue
 		}
-		keys = append(keys, k)
+		*owned = append(*owned, k)
 	}
-	slices.Sort(keys)
-	return keys
+	slices.Sort(*owned)
+	return *owned, owned
 }
 
 // allFieldKeysSortedSlow builds the sorted key list from scratch when
 // pre-computed fields are not available.
-func allFieldKeysSortedSlow(def *EventDef, fields Fields) []string {
+func allFieldKeysSortedSlow(def *EventDef, fields Fields) (keys []string, owned *[]string) {
+	owned = getSortedKeysSlice()
 	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
-	keys := make([]string, 0, len(def.Required)+len(def.Optional)+len(fields))
 	for _, k := range def.Required {
 		seen[k] = true
-		keys = append(keys, k)
+		*owned = append(*owned, k)
 	}
 	for _, k := range def.Optional {
 		if !seen[k] {
 			seen[k] = true
-			keys = append(keys, k)
+			*owned = append(*owned, k)
 		}
 	}
 	for k := range fields {
 		if !seen[k] {
 			seen[k] = true
-			keys = append(keys, k)
+			*owned = append(*owned, k)
 		}
 	}
-	slices.Sort(keys)
-	return keys
+	slices.Sort(*owned)
+	return *owned, owned
 }

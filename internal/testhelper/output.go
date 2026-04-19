@@ -17,6 +17,7 @@ package testhelper
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/axonops/audit"
@@ -24,6 +25,41 @@ import (
 
 // Compile-time assertion: MockOutput satisfies audit.Output.
 var _ audit.Output = (*MockOutput)(nil)
+
+// Compile-time assertion: NoopOutput satisfies audit.Output.
+var _ audit.Output = (*NoopOutput)(nil)
+
+// NoopOutput is a true zero-cost output for benchmarks: it does NOT
+// copy or inspect the bytes, only increments an atomic counter. Use
+// this in pipeline benchmarks that want to measure the audit path
+// without contamination from output-side allocations or copies.
+//
+// NoopOutput honours the [audit.Output.Write] retention contract by
+// trivially not retaining anything.
+type NoopOutput struct {
+	name   string
+	writes atomic.Uint64
+}
+
+// NewNoopOutput creates a NoopOutput with the given name.
+func NewNoopOutput(name string) *NoopOutput {
+	return &NoopOutput{name: name}
+}
+
+// Write counts the call and returns nil. The data bytes are never read.
+func (n *NoopOutput) Write(_ []byte) error {
+	n.writes.Add(1)
+	return nil
+}
+
+// Close is a noop for NoopOutput.
+func (*NoopOutput) Close() error { return nil }
+
+// Name returns the configured name.
+func (n *NoopOutput) Name() string { return n.name }
+
+// Writes returns the number of Write calls observed.
+func (n *NoopOutput) Writes() uint64 { return n.writes.Load() }
 
 // MockOutput is a thread-safe in-memory output that captures written
 // events for assertion.

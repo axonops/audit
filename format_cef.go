@@ -28,12 +28,28 @@ import (
 // The New function pre-grows to 256 bytes as a starting hint; the
 // buffer grows on first use and retains capacity, so after warm-up
 // the pool holds buffers large enough for the typical ~400-byte output.
+//
+// Outlier buffers (cap > maxPooledBufCap) are dropped on Put rather
+// than re-pooled. On Put the backing array is zeroed across [0:cap]
+// to defend against future read-past-len bugs.
 var cefBufPool = sync.Pool{
 	New: func() any {
 		b := new(bytes.Buffer)
 		b.Grow(256)
 		return b
 	},
+}
+
+// putCEFBuf returns buf to [cefBufPool] with defensive zeroing and
+// outlier rejection.
+func putCEFBuf(buf *bytes.Buffer) {
+	if buf == nil || buf.Cap() > maxPooledBufCap {
+		return
+	}
+	buf.Reset()
+	b := buf.Bytes()
+	clear(b[:cap(b)])
+	cefBufPool.Put(buf)
 }
 
 // defaultCEFFieldMappingEntries returns a new map containing the
@@ -190,9 +206,29 @@ const maxCEFHeaderField = 255
 // cefSeverityStrings avoids per-event strconv.Itoa for severity (0-10).
 var cefSeverityStrings = [11]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
-// Format serialises a single audit event as a CEF line using a single
-// buffer for both header and extensions.
+// Format serialises a single audit event as a CEF line. The returned
+// slice is owned by the caller (defensive copy from the pooled buffer).
+//
+// Internal callers in the drain pipeline use [CEFFormatter.formatBuf]
+// to obtain the leased buffer directly and skip the copy.
 func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
+	buf, err := cf.formatBuf(ts, eventType, fields, def, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, buf.Len())
+	copy(out, buf.Bytes())
+	cf.releaseFormatBuf(buf)
+	return out, nil
+}
+
+// releaseFormatBuf returns buf to [cefBufPool], applying the same
+// outlier-rejection and zeroing rules as [putCEFBuf].
+func (*CEFFormatter) releaseFormatBuf(buf *bytes.Buffer) { putCEFBuf(buf) }
+
+// formatBuf serialises an event into a pool-leased *bytes.Buffer.
+// See [JSONFormatter.formatBuf] for the contract.
+func (cf *CEFFormatter) formatBuf(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) (*bytes.Buffer, error) {
 	if len(cf.Vendor) > maxCEFHeaderField {
 		return nil, fmt.Errorf("audit: cef vendor exceeds %d bytes (%d)", maxCEFHeaderField, len(cf.Vendor))
 	}
@@ -269,18 +305,12 @@ func (cf *CEFFormatter) Format(ts time.Time, eventType string, fields Fields, de
 
 	// All fields via mapping.
 	if err := cf.writeFieldExtensions(buf, extStart, fields, def, mapping, reserved, opts); err != nil {
-		cefBufPool.Put(buf)
+		putCEFBuf(buf)
 		return nil, err
 	}
 
 	buf.WriteByte('\n')
-
-	// Copy before returning the buffer to the pool. See jsonBufPool
-	// comment in format_json.go for the rationale.
-	out := make([]byte, buf.Len())
-	copy(out, buf.Bytes())
-	cefBufPool.Put(buf)
-	return out, nil
+	return buf, nil
 }
 
 // writeFieldExtensions writes all user-defined fields as CEF
@@ -294,7 +324,7 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 	// identifier pattern at load time, so consumer-controlled names
 	// reaching this point are known-safe. Custom FieldMapping entries
 	// are consumer code and are trusted.
-	allKeys := allFieldKeysSorted(def, fields)
+	allKeys, owned := allFieldKeysSorted(def, fields)
 	for _, k := range allKeys {
 		if isFrameworkField(k, fields) {
 			continue
@@ -316,6 +346,7 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 		}
 		writeExtField(buf, extStart, extKey, formatFieldValue(v))
 	}
+	putSortedKeysSlice(owned)
 	return nil
 }
 

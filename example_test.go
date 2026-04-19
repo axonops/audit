@@ -305,3 +305,29 @@ func ExampleAuditor_SetOutputRoute() {
 	fmt.Println("route set to security only")
 	// Output: route set to security only
 }
+
+// ExampleFieldsDonor demonstrates how to verify that an event satisfies
+// the [audit.FieldsDonor] extension interface — the trigger for the
+// auditor's zero-allocation fast path on the drain side. Generated
+// builders from cmd/audit-gen satisfy this interface via the unexported
+// donateFields() sentinel; no third party can satisfy it (by design).
+//
+// Events constructed via [audit.NewEvent] or [audit.NewEventKV] do NOT
+// satisfy FieldsDonor and stay on the defensive-copy slow path. This is
+// intentional — the donor contract requires a no-mutate, no-retain
+// guarantee that only the audit-gen toolchain enforces.
+//
+// For the fast-path / slow-path ownership model see
+// https://github.com/axonops/audit/blob/main/docs/performance.md.
+func ExampleFieldsDonor() {
+	evt := audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})
+
+	_, isDonor := evt.(audit.FieldsDonor)
+	fmt.Println("NewEvent is a FieldsDonor:", isDonor)
+
+	// Output:
+	// NewEvent is a FieldsDonor: false
+}

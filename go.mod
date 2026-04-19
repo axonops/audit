@@ -13,6 +13,7 @@ require (
 	github.com/rgooding/go-syncmap v1.0.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
+	pgregory.net/rapid v1.2.0
 )
 
 require (

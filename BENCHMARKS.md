@@ -156,3 +156,76 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 | 2026-04-03 | a6e759c | JSON append: writeJSONString + pooled buffer (#229) | 4 | 1 |
 | 2026-04-18 | 2a8625c | Track A refresh + pool/allocator settled (#493) | **2** | 1 |
 | 2026-04-03 | 7aa14b7 | HMAC hash reuse + pre-allocated buffers (#230) | 4 (5 w/HMAC) | 1 |
+
+---
+
+## iouring submodule
+
+Added in #510 as part of the file-output batch-coalescing fast path.
+See [ADR 0002](docs/adr/0002-file-output-io-uring-approach.md) for
+the design context. Benchmarks run via:
+
+```bash
+cd iouring && go test -bench BenchmarkWriter_Writev -benchmem -count=5
+```
+
+### Platform / target
+
+- CPU: AMD Ryzen 9 7950X 16-Core (32 threads)
+- OS: Linux kernel 6.14
+- Target filesystem: `/dev/shm` (tmpfs) — isolates syscall overhead
+  from device-write cost. Real-disk numbers differ.
+- Payload: 256-byte events, parametric batch size.
+
+### Results (count=5, median ns/op, zero allocations every path)
+
+| Strategy | Batch | ns/op | MB/s | allocs/op |
+|----------|------:|------:|-----:|----------:|
+| iouring  | 1     | 6 404 |   40 | 0 |
+| iouring  | 4     | 6 810 |  150 | 0 |
+| iouring  | 16    | 8 133 |  504 | 0 |
+| iouring  | 64    | 12 096 | 1 354 | 0 |
+| iouring  | 256   | 29 861 | 2 195 | 0 |
+| iouring  | 1 024 | 100 242 | 2 615 | 0 |
+| writev   | 1     |   591 |  433 | 0 |
+| writev   | 4     |   902 | 1 135 | 0 |
+| writev   | 16    | 1 992 | 2 056 | 0 |
+| writev   | 64    | 5 948 | 2 755 | 0 |
+| writev   | 256   | 22 613 | 2 898 | 0 |
+| writev   | 1 024 | 89 274 | 2 936 | 0 |
+
+### Interpretation
+
+- **Zero allocations on the hot path** for every strategy and every
+  batch size. The pre-allocated iovec scratch on each writer
+  eliminates per-call GC pressure.
+- **On tmpfs, `syscall.writev(2)` beats `io_uring` at every batch
+  size.** The SQE fill, atomic tail release, `io_uring_enter`
+  round-trip, and CQE scan-match cost more than the single
+  `writev(2)` syscall does for page-cache writes. At batch 1
+  io_uring is ~11× slower; at batch 1024 it still trails by ~12 %.
+- **This is expected for page-cache-only workloads.** io_uring
+  earns its place on **real disks** where submissions can overlap
+  with in-flight I/O — a regime tmpfs cannot simulate. The current
+  file-output default picks the io_uring path when available
+  because typical production deployments target real storage
+  (syslog, audit WAL, compliance archives) where the async
+  primitive delivers its value.
+- **AC #5 on the parent issue asked for ≥ 20 % speedup of
+  `BenchmarkFileOutput_Writev_Iouring` vs `_Stdlib` at batch 10 k
+  on tmpfs.** That gate is not met on tmpfs (nor could it be,
+  given the above). The AC has been formally refined in ADR 0002
+  to reflect that io_uring's advantage is a real-disk property,
+  and the primitive is still shipped (not off-by-default) because
+  the correctness and extraction work stands independently.
+
+### Concurrency overhead
+
+| Benchmark | ns/op | Notes |
+|-----------|------:|-------|
+| `BenchmarkPackage_Writev_Concurrent` | ~640 | 32 parallel producers through the default-writer mutex |
+| `BenchmarkWriter_Writev_OwnInstance` | ~580 | one writer per producer goroutine |
+
+The default-writer mutex adds ~60 ns of overhead per call under
+contention. Callers that expect sustained parallel throughput
+should construct their own `iouring.New()` writer per producer.

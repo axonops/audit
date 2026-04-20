@@ -28,7 +28,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2

@@ -15,12 +15,13 @@
 package file
 
 // SimulatePanicOnNextWrite triggers a nil-pointer panic inside
-// writeEvent by temporarily setting the writer to nil. The deferred
-// recover in writeEvent catches it. Used for panic recovery tests only.
-// Called synchronously from the test goroutine, not from writeLoop.
+// writeBatch by temporarily setting the writer to nil. The
+// deferred recover in writeBatch catches it. Used for panic
+// recovery tests only. Called synchronously from the test
+// goroutine, not from writeLoop.
 func (f *Output) SimulatePanicOnNextWrite() {
 	saved := f.writer
 	f.writer = nil
-	f.writeEvent([]byte("trigger-panic"))
+	f.writeBatch([][]byte{[]byte("trigger-panic")})
 	f.writer = saved
 }

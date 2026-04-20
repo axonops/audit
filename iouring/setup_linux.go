@@ -84,6 +84,13 @@ type ring struct {
 	// MaxIovecs. Reused across Writev calls. Keeps the hot path
 	// alloc-free.
 	iovScratch []syscall.Iovec
+
+	// userDataCounter is a monotonically increasing counter used
+	// to tag each SQE's UserData field. The kernel echoes UserData
+	// back in the matching CQE. We scan forward in the CQ for our
+	// tag so the library tolerates the kernel posting CQEs out of
+	// submission order (seen on kernels 6.x with IORING_FEAT_TASKRUN).
+	userDataCounter uint64
 }
 
 // newRing constructs a Linux ring. It:

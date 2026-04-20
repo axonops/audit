@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/axonops/audit/iouring"
 )
 
 // bufSize is the bufio.Writer buffer size. 32KB batches many small
@@ -153,6 +155,114 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		w.cfg.OnRotate(w.filename)
 	}
 	return n, err
+}
+
+// Writev writes bufs to the active log file as a single batched
+// operation, rotating if the total size would cause the file to
+// exceed [Config.MaxSize]. A single batch that itself exceeds
+// MaxSize is accepted (written then rotated on the next call) —
+// this mirrors the oversize-write semantics of [Writer.Write].
+//
+// On Linux 5.5+ with io_uring-capable kernels, Writev uses
+// io_uring for the kernel-side write; on other Unix platforms it
+// falls back to writev(2). The selection is handled entirely by
+// [iouring.Writev]. Unlike [Writer.Write], the batched path does
+// NOT go through [bufio.Writer]: the batch itself is the buffer,
+// so the #450 "flush after every write" contract becomes "flush
+// after every batch" — crashes lose at most one in-flight batch.
+//
+// Writev returns an error wrapping [os.ErrClosed] if the writer
+// has been closed.
+func (w *Writer) Writev(bufs [][]byte) (n int, err error) {
+	var rotated bool
+
+	w.mu.Lock()
+	n, rotated, err = w.writevLocked(bufs)
+	w.mu.Unlock()
+
+	if rotated && w.cfg.OnRotate != nil {
+		w.cfg.OnRotate(w.filename)
+	}
+	return n, err
+}
+
+// writevLocked performs the batched write under the mutex.
+func (w *Writer) writevLocked(bufs [][]byte) (n int, rotated bool, err error) {
+	if w.closed {
+		return 0, false, fmt.Errorf("rotate: %w", os.ErrClosed)
+	}
+
+	var writeLen int64
+	for _, b := range bufs {
+		writeLen += int64(len(b))
+	}
+	if writeLen == 0 {
+		return 0, false, nil
+	}
+
+	if w.file == nil {
+		var openRotated bool
+		openRotated, err = w.openExistingOrNew(writeLen)
+		if err != nil {
+			return 0, false, err
+		}
+		if openRotated {
+			rotated = true
+		}
+	}
+
+	if w.size+writeLen > w.cfg.MaxSize {
+		if rotateErr := w.rotate(); rotateErr != nil {
+			return 0, false, rotateErr
+		}
+		rotated = true
+	}
+
+	// Drain any bytes sitting in bufio before bypassing it with
+	// iouring.Writev — otherwise batched bytes could land on disk
+	// before earlier Write() bytes that are still in the buffer.
+	if w.bw != nil {
+		if fErr := w.bw.Flush(); fErr != nil {
+			return 0, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+		}
+	}
+
+	// Loop on short writes — writev(2) can return partial writes
+	// on pipe buffers and similar; regular-file O_APPEND on local
+	// filesystems should always complete in full.
+	fd := int(w.file.Fd())
+	written := 0
+	remaining := bufs
+	for written < int(writeLen) {
+		got, werr := iouring.Writev(fd, remaining)
+		if werr != nil {
+			w.size += int64(written)
+			return written, rotated, fmt.Errorf("rotate: writev: %w", werr)
+		}
+		if got == 0 {
+			break
+		}
+		written += got
+		remaining = advanceIovecs(remaining, got)
+	}
+	w.size += int64(written)
+	return written, rotated, nil
+}
+
+// advanceIovecs returns a [][]byte representing the portion of
+// bufs that remains unwritten after `done` bytes have been
+// written. Completed inner slices are dropped; the first
+// incomplete slice is re-sliced.
+func advanceIovecs(bufs [][]byte, done int) [][]byte {
+	for len(bufs) > 0 {
+		if done < len(bufs[0]) {
+			bufs[0] = bufs[0][done:]
+			return bufs
+		}
+		done -= len(bufs[0])
+		bufs = bufs[1:]
+	}
+	return bufs
 }
 
 // writeLocked performs the write under the mutex, returning whether

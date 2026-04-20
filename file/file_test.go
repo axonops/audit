@@ -46,7 +46,9 @@ type mockOutputMetrics struct {
 }
 
 func (m *mockOutputMetrics) RecordDrop()                        { m.drops.Add(1) }
-func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) { m.flushes.Add(1) }
+func (m *mockOutputMetrics) RecordFlush(count int, _ time.Duration) {
+	m.flushes.Add(int64(count))
+}
 func (m *mockOutputMetrics) RecordError()                       { m.errors.Add(1) }
 func (m *mockOutputMetrics) RecordRetry(_ int)                  { m.retries.Add(1) }
 func (m *mockOutputMetrics) RecordQueueDepth(_, _ int)          { m.depthCalls.Add(1) }

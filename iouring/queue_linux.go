@@ -34,6 +34,12 @@ const maxEAGAINRetries = 3
 // Returns bytes written (may be short) or an error. EINTR is
 // retried transparently; EAGAIN is retried up to maxEAGAINRetries.
 //
+// The SQE is tagged with a monotonic UserData counter and the CQ
+// is scanned for the matching completion. The kernel is permitted
+// to post CQEs in a different order than submissions (observed
+// empirically on Linux 6.x with NATIVE_WORKERS), so the library
+// must match on UserData rather than FIFO position.
+//
 // Contract: the caller guarantees no other goroutine concurrently
 // accesses this ring. Violations are caught by `-race`.
 func (r *ring) writev(fd int, bufs [][]byte) (int, error) {
@@ -65,27 +71,34 @@ func (r *ring) writev(fd int, bufs [][]byte) (int, error) {
 	}
 	nrVecs := uint32(len(iovs))
 
-	// Acquire an SQE slot. Kernel writes sqHead as it consumes
-	// submissions; an acquire-ordered load is required to observe
-	// those writes correctly.
+	// Acquire an SQE slot. Plain-looking read of sqHead is fine
+	// (kernel-written but we only need a rough value to detect SQ
+	// full); use atomic.Load for -race cleanliness.
 	head := atomic.LoadUint32(r.sqHead)
-	tail := atomic.LoadUint32(r.sqTail) // plain load of our own writes; use atomic for -race cleanliness
-	mask := *r.sqMask                   // immutable post-setup
+	tail := atomic.LoadUint32(r.sqTail)
+	mask := *r.sqMask
 	if tail-head >= r.sqEntries {
 		return 0, ErrSQFull
 	}
 	idx := tail & mask
 	sqe := &r.sqesView[idx]
 
+	// Tag this SQE with a unique UserData value so the matching
+	// CQE is identifiable. Zero is a valid counter value; use 1..N
+	// and reserve 0 for "unused".
+	r.userDataCounter++
+	tag := r.userDataCounter
+
 	// Fill the SQE with plain stores. These happen-before the
 	// atomic.StoreUint32 on sqTail below, so the kernel observes
 	// a fully-populated SQE when it sees the new tail value.
-	*sqe = ioUringSqe{} // zero first — previous iteration may have left residue
+	*sqe = ioUringSqe{}
 	sqe.OpCode = ioringOpWritev
 	sqe.Fd = int32(fd)
 	sqe.Off = ^uint64(0) // O_APPEND sentinel
 	sqe.Addr = uint64(uintptr(unsafe.Pointer(&iovs[0])))
 	sqe.Len = nrVecs
+	sqe.UserData = tag
 
 	// Release-store the new tail. Publishes the SQE to the kernel.
 	atomic.StoreUint32(r.sqTail, tail+1)
@@ -106,36 +119,54 @@ func (r *ring) writev(fd int, bufs [][]byte) (int, error) {
 			continue
 		}
 		// Pin the iovec scratch and the caller's backing arrays
-		// across the failed enter as well — the kernel may have
-		// already queued the SQE before returning an error.
+		// across the failed enter — the kernel may have already
+		// queued the SQE before returning an error.
 		runtime.KeepAlive(iovs)
 		runtime.KeepAlive(bufs)
 		return 0, fmt.Errorf("iouring: io_uring_enter: %w", err)
 	}
-
 	// Pin the iovec scratch and the caller's backing arrays across
 	// the kernel's read of the iovec memory. Required on kernels
-	// that do not advertise IORING_FEAT_SUBMIT_STABLE (absent on
-	// 5.4; present on 5.5+). See project_iouring_research.md.
+	// that do not advertise IORING_FEAT_SUBMIT_STABLE.
 	runtime.KeepAlive(iovs)
 	runtime.KeepAlive(bufs)
 
-	// Consume the CQE. cqTail is written by the kernel (release);
-	// an acquire load pairs with that release.
-	cqTail := atomic.LoadUint32(r.cqTail)
-	cqHead := atomic.LoadUint32(r.cqHead)
-	if cqHead == cqTail {
-		// Kernel returned from enter without posting a CQE — a bug.
-		return 0, fmt.Errorf("iouring: enter returned but no CQE posted (kernel bug)")
-	}
+	// Scan the CQ for the completion matching our UserData tag.
+	// Other CQEs we encounter (from earlier kernel reordering) are
+	// still valid completions, but they belong to writes that have
+	// already returned — we must discard them without losing ring
+	// slots. We call ioUringEnter with min_complete set so the
+	// kernel blocks until at least one more CQE arrives if needed.
 	cqMask := *r.cqMask
-	cqe := &r.cqesView[cqHead&cqMask]
-	res := cqe.Res
-	// Release-store the new cqHead so the kernel can reuse the slot.
-	atomic.StoreUint32(r.cqHead, cqHead+1)
-
-	if res < 0 {
-		return 0, syscall.Errno(-res)
+	for {
+		cqTail := atomic.LoadUint32(r.cqTail)
+		cqHead := atomic.LoadUint32(r.cqHead)
+		for cqHead != cqTail {
+			cqe := &r.cqesView[cqHead&cqMask]
+			if cqe.UserData == tag {
+				res := cqe.Res
+				// Release-store so the kernel can reuse the slot.
+				atomic.StoreUint32(r.cqHead, cqHead+1)
+				if res < 0 {
+					return 0, syscall.Errno(-res)
+				}
+				return int(res), nil
+			}
+			// Not ours; skip it. The CQE belongs to a prior write
+			// that the kernel posted late. Since this library is
+			// single-goroutine and every prior ring.writev either
+			// consumed its CQE or returned error (sqTail already
+			// advanced), the only CQEs we can skip are ones whose
+			// caller is no longer present. Release the slot.
+			atomic.StoreUint32(r.cqHead, cqHead+1)
+			cqHead++
+		}
+		// CQ drained without finding our tag — wait for more.
+		if _, err := ioUringEnter(r.fd, 0, 1, ioringEnterGetEvents); err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			return 0, fmt.Errorf("iouring: io_uring_enter wait: %w", err)
+		}
 	}
-	return int(res), nil
 }

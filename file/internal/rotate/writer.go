@@ -70,6 +70,30 @@ type Config struct {
 
 	// Compress enables gzip compression of rotated backup files.
 	Compress bool
+
+	// SyncOnWrite controls whether [Writer.Write] flushes the
+	// bufio buffer to the OS page cache after every call. When
+	// true (the previous default), every event is immediately
+	// visible to readers at the cost of one syscall per call.
+	// When false (the new default), bytes accumulate in the
+	// bufio buffer and are flushed by the background timer
+	// (see [Config.FlushInterval]), when the buffer fills, on
+	// rotation, on Sync, and on Close — trading a bounded
+	// data-at-risk window for measurably higher throughput on
+	// the singular [Writer.Write] path.
+	//
+	// SyncOnWrite does NOT affect the batched [Writer.Writev]
+	// path. Batched writes always commit in full to the page
+	// cache as one syscall; there is no buffer between them
+	// and the kernel.
+	SyncOnWrite bool
+
+	// FlushInterval is the cadence at which the background
+	// flush goroutine drains the bufio buffer to the page
+	// cache when [Config.SyncOnWrite] is false. Zero defaults
+	// to 100 ms. Values below 1 ms are clamped to 1 ms.
+	// Ignored when SyncOnWrite is true.
+	FlushInterval time.Duration
 }
 
 // Writer is a concurrency-safe file writer with automatic size-based
@@ -78,6 +102,8 @@ type Config struct {
 //
 // Writer is lazy — [New] validates the configuration but does not
 // create or open the file. The file is opened on the first [Writer.Write].
+//
+//nolint:govet // field order: logical grouping (construction inputs, then runtime state, then locks + flags)
 type Writer struct {
 	// now is used for testing to control time.
 	now func() time.Time
@@ -105,7 +131,21 @@ type Writer struct {
 	bw       *bufio.Writer
 	millCh   chan struct{}
 	millDone chan struct{} // closed when the mill goroutine exits
-	filename string        // absolute, cleaned path
+
+	// flushCh signals the background flush goroutine to exit.
+	// flushDone closes when the goroutine has exited so Close
+	// can wait for a clean shutdown.
+	flushCh   chan struct{}
+	flushDone chan struct{}
+	flushOnce sync.Once
+
+	// pendingFlush is set by writeLocked when it adds bytes to
+	// the bufio buffer without flushing (SyncOnWrite=false).
+	// The flush goroutine skips the Flush syscall when no bytes
+	// are pending, so an idle writer produces no wakeup traffic.
+	pendingFlush bool
+
+	filename string // absolute, cleaned path
 	dir      string
 	prefix   string // base name without extension, with trailing "-"
 	ext      string // extension including the dot
@@ -127,26 +167,12 @@ type Writer struct {
 // that the parent directory exists, but does not create or open the
 // file.
 func New(filename string, cfg Config) (*Writer, error) {
-	if filename == "" {
-		return nil, errors.New("rotate: filename must not be empty")
-	}
-
-	abs, err := filepath.Abs(filename)
+	filename, dir, err := resolveAndValidatePath(filename)
 	if err != nil {
-		return nil, fmt.Errorf("rotate: resolve path: %w", err)
+		return nil, err
 	}
-	filename = filepath.Clean(abs)
-
-	dir := filepath.Dir(filename)
-	if _, err := os.Stat(dir); err != nil {
-		return nil, fmt.Errorf("rotate: parent directory %q: %w", dir, err)
-	}
-
-	if cfg.MaxSize <= 0 {
-		return nil, errors.New("rotate: MaxSize must be > 0")
-	}
-	if cfg.Mode == 0 {
-		return nil, errors.New("rotate: Mode must be non-zero")
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
 	}
 
 	base := filepath.Base(filename)
@@ -348,6 +374,41 @@ func writevAll(fd int, bufs [][]byte, total int, writevFn func(int, [][]byte) (i
 	return written, nil
 }
 
+// resolveAndValidatePath normalises the filename to an absolute
+// path and verifies the parent directory exists.
+func resolveAndValidatePath(filename string) (cleaned, dir string, err error) {
+	if filename == "" {
+		return "", "", errors.New("rotate: filename must not be empty")
+	}
+	abs, err := filepath.Abs(filename)
+	if err != nil {
+		return "", "", fmt.Errorf("rotate: resolve path: %w", err)
+	}
+	cleaned = filepath.Clean(abs)
+	dir = filepath.Dir(cleaned)
+	if _, err := os.Stat(dir); err != nil {
+		return "", "", fmt.Errorf("rotate: parent directory %q: %w", dir, err)
+	}
+	return cleaned, dir, nil
+}
+
+// validateConfig checks required fields are set and normalises
+// optional fields to their defaults. Mutates cfg in-place.
+func validateConfig(cfg *Config) error {
+	if cfg.MaxSize <= 0 {
+		return errors.New("rotate: MaxSize must be > 0")
+	}
+	if cfg.Mode == 0 {
+		return errors.New("rotate: Mode must be non-zero")
+	}
+	if cfg.FlushInterval == 0 {
+		cfg.FlushInterval = 100 * time.Millisecond
+	} else if cfg.FlushInterval < time.Millisecond {
+		cfg.FlushInterval = time.Millisecond
+	}
+	return nil
+}
+
 // advanceIovecs returns a [][]byte representing the portion of
 // bufs that remains unwritten after `done` bytes have been
 // written. Completed inner slices are dropped; the first
@@ -397,15 +458,72 @@ func (w *Writer) writeLocked(p []byte) (n int, rotated bool, err error) {
 		return n, rotated, fmt.Errorf("rotate: write: %w", err)
 	}
 
-	// Flush buffered data to the OS page cache after every write so
-	// audit events are visible on disk immediately. This does NOT
-	// call fsync — the OS persists to stable storage on its own
-	// schedule. For a compliance audit log, prompt visibility is
-	// more important than syscall batching. (#450)
-	if fErr := w.bw.Flush(); fErr != nil {
-		return n, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+	// Flush behaviour (#461): when SyncOnWrite is true, flush
+	// immediately (the #450 prompt-visibility contract) — every
+	// event hits the OS page cache before Write returns. When
+	// SyncOnWrite is false (the default), mark the buffer dirty
+	// so the background timer goroutine drains it on the next
+	// tick. Bytes still land on the page cache within
+	// FlushInterval (default 100 ms), but the per-call syscall
+	// is eliminated.
+	if w.cfg.SyncOnWrite {
+		if fErr := w.bw.Flush(); fErr != nil {
+			return n, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+		}
+	} else {
+		w.pendingFlush = true
+		w.startFlushLoopLocked()
 	}
 	return n, rotated, nil
+}
+
+// startFlushLoopLocked starts the background flush goroutine if
+// it isn't already running. Called by writeLocked once per
+// writer. Must be called with w.mu held so the sync.Once + chan
+// allocation is visible to Close.
+func (w *Writer) startFlushLoopLocked() {
+	w.flushOnce.Do(func() {
+		// Defensive clamp: callers that bypassed New() and
+		// constructed a Writer{} directly may leave
+		// FlushInterval zero. Normalise here too so the ticker
+		// never panics.
+		interval := w.cfg.FlushInterval
+		if interval < time.Millisecond {
+			interval = 100 * time.Millisecond
+		}
+		w.flushCh = make(chan struct{})
+		w.flushDone = make(chan struct{})
+		go w.flushLoop(interval)
+	})
+}
+
+// flushLoop drains the bufio buffer every interval while there
+// are bytes pending. Exits cleanly when flushCh is closed.
+func (w *Writer) flushLoop(interval time.Duration) {
+	defer close(w.flushDone)
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			w.tickFlush()
+		case <-w.flushCh:
+			return
+		}
+	}
+}
+
+// tickFlush is one iteration of the background flush. Skips
+// the Flush syscall when no bytes are pending so an idle writer
+// produces no wakeup traffic beyond the bare timer.
+func (w *Writer) tickFlush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.pendingFlush || w.bw == nil || w.closed {
+		return
+	}
+	_ = w.bw.Flush() // errors surface on the next Write / via OnError
+	w.pendingFlush = false
 }
 
 // Close closes the active file and waits for any in-progress
@@ -417,16 +535,26 @@ func (w *Writer) Close() error {
 		return nil
 	}
 	w.closed = true
-	err := w.closeFile()
+	err := w.closeFile() // flushes pending bytes
 	millCh := w.millCh
+	flushCh := w.flushCh
+	flushDone := w.flushDone
 	iw := w.iw
 	w.iw = nil
 	w.mu.Unlock()
 
-	// Signal the mill goroutine to stop and wait for it.
+	// Signal and drain the mill goroutine.
 	if millCh != nil {
 		close(millCh)
 		<-w.millDone
+	}
+
+	// Signal and drain the background flush goroutine (#461).
+	// Safe to call with flushCh == nil when SyncOnWrite was true
+	// or the writer never wrote anything.
+	if flushCh != nil {
+		close(flushCh)
+		<-flushDone
 	}
 
 	// Release the dedicated iouring writer. No effect on the
@@ -521,6 +649,7 @@ func (w *Writer) closeFile() error {
 		}
 		w.bw = nil
 	}
+	w.pendingFlush = false
 	err := w.file.Close()
 	w.file = nil
 	w.size = 0
@@ -543,6 +672,7 @@ func (w *Writer) Sync() error {
 		if err := w.bw.Flush(); err != nil {
 			return fmt.Errorf("rotate: flush: %w", err)
 		}
+		w.pendingFlush = false
 	}
 	if err := w.file.Sync(); err != nil {
 		return fmt.Errorf("rotate: sync: %w", err)

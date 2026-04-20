@@ -93,17 +93,60 @@ flowchart LR
 The file output uses **async delivery** with an internal buffered
 channel and a background `writeLoop` goroutine. `Write()` copies
 the event data and enqueues it into the channel, returning
-immediately. The `writeLoop` goroutine reads from the channel and
-performs the actual file I/O one event at a time.
+immediately.
+
+The `writeLoop` goroutine reads from the channel and **batches**
+events into a single vectored write per iteration:
+
+1. Block on the channel for the first event.
+2. Opportunistically drain up to `maxBatch = 256` more events
+   without blocking — no artificial latency, a single pending
+   event submits as a one-iovec batch immediately.
+3. Submit all N events as one `writev(2)` syscall via the
+   [iouring submodule][iouring].
+4. The batch lands on the OS page cache when the syscall
+   returns.
+
+[iouring]: https://pkg.go.dev/github.com/axonops/audit/iouring
+
+### Durability contract
+
+On `writev(2)` return the bytes are on the **kernel page cache**.
+They are visible to concurrent reads on the same host
+immediately, and persisted to stable storage on the OS's own
+schedule (typically 5-30 s on Linux for a default ext4 mount).
+
+**Crash window**: a power loss between `writev(2)` return and
+the kernel's next page-cache writeback can lose the most recent
+batch — up to roughly 130 KiB of events at typical sizes, or
+~25 ms of throughput at 10 k events/s. For most audit workloads
+this is comfortably inside compliance SLAs, which are typically
+measured in seconds or minutes.
+
+### What about io_uring?
+
+The library ships the [iouring submodule][iouring] with both
+io_uring and writev strategies; file output uses the writev
+strategy by default. Measured benchmarks on ext4 / NVMe showed
+`writev(2)` beats `io_uring` at every batch size for the
+submit-and-wait pattern the file output uses (up to 9.4× faster
+at batch 1). See [ADR 0002][adr-0002] for the measurement
+evidence and rationale, and [BENCHMARKS.md][bench] for the full
+matrix.
+
+[adr-0002]: adr/0002-file-output-io-uring-approach.md
+[bench]: ../BENCHMARKS.md#iouring-submodule
+
+### Per-event drops
 
 If the internal buffer is full (destination too slow or disk
-stalled), the event is dropped and `OutputMetrics.RecordDrop()` is
-called. A rate-limited `slog.Warn` fires at most once per 10
-seconds. Drops in the file output's buffer do not affect other
-outputs.
+stalled), the event is dropped and `OutputMetrics.RecordDrop()`
+is called. A rate-limited `slog.Warn` fires at most once per
+10 seconds. Drops in the file output's buffer do not affect
+other outputs.
 
-See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
-the complete pipeline architecture.
+See [Two-Level Buffering](async-delivery.md#two-level-buffering)
+for the complete pipeline architecture.
 
 ## Complete Configuration Reference
 

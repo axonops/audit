@@ -28,13 +28,24 @@ import (
 
 // benchFile returns a freshly-created O_APPEND|O_WRONLY file.
 // The file is truncated-on-open so benchmarks start from a
-// predictable state. Uses /dev/shm when available to isolate
-// syscall overhead from device-write cost.
+// predictable state.
+//
+// Target selection:
+//   - IOURING_BENCH_DIR env var, when set, is used directly.
+//     Point it at a real filesystem (e.g. an ext4 mount on SSD)
+//     to measure the io_uring/writev delta under realistic I/O
+//     pressure.
+//   - Otherwise defaults to /dev/shm (tmpfs) when available to
+//     isolate syscall overhead from device-write cost.
+//   - Falls back to the test's TempDir as a last resort.
 func benchFile(tb testing.TB) *os.File {
 	tb.Helper()
-	dir := "/dev/shm"
-	if _, err := os.Stat(dir); err != nil {
-		dir = tb.TempDir()
+	dir := os.Getenv("IOURING_BENCH_DIR")
+	if dir == "" {
+		dir = "/dev/shm"
+		if _, err := os.Stat(dir); err != nil {
+			dir = tb.TempDir()
+		}
 	}
 	path := filepath.Join(dir, fmt.Sprintf("iouring-bench-%d.log", os.Getpid()))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_TRUNC, 0o600)

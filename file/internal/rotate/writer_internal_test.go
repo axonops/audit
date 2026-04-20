@@ -15,6 +15,7 @@
 package rotate
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/axonops/audit/iouring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -623,3 +625,93 @@ func TestOpenNew_BackupDestSymlink(t *testing.T) {
 	assert.True(t, info.Mode()&os.ModeSymlink != 0,
 		"symlink at base backup path should not be overwritten")
 }
+
+// TestWriter_Writev_BufioFallback exercises the Windows / no-
+// vectored-primitive fallback path. A writevFn that always
+// returns ErrUnsupported simulates the Windows build; the Writer
+// probes it at construction, flips vectoredSupported to false,
+// and routes every subsequent Writev through bufio per-buffer
+// writes. Without this fallback, file output on Windows would
+// return ErrUnsupported from every call.
+func TestWriter_Writev_BufioFallback(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := New(path, Config{
+		MaxSize: 1 << 20,
+		Mode:    0o600,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+
+	// Swap in the unsupported stub to simulate Windows behaviour.
+	// The probe's cache must also be flipped (probe already ran
+	// with the real iouring.Writev during New).
+	w.writevFn = func(int, [][]byte) (int, error) {
+		return 0, iouringErrUnsupported
+	}
+	w.vectoredSupported = false
+
+	bufs := [][]byte{
+		[]byte("alpha\n"),
+		[]byte("beta\n"),
+		[]byte("gamma\n"),
+	}
+	want := []byte("alpha\nbeta\ngamma\n")
+
+	n, err := w.Writev(bufs)
+	if err != nil {
+		t.Fatalf("Writev: %v", err)
+	}
+	if n != len(want) {
+		t.Fatalf("n = %d, want %d", n, len(want))
+	}
+	if closeErr := w.Close(); closeErr != nil {
+		t.Fatalf("Close: %v", closeErr)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+}
+
+// TestWriter_Writev_BufioFallback_EmptyBufsSkipped confirms
+// zero-length entries are skipped in the fallback path too.
+func TestWriter_Writev_BufioFallback_EmptyBufsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := New(path, Config{MaxSize: 1 << 20, Mode: 0o600})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+
+	w.writevFn = func(int, [][]byte) (int, error) { return 0, iouringErrUnsupported }
+	w.vectoredSupported = false
+
+	bufs := [][]byte{{}, []byte("a"), {}, []byte("bc"), {}}
+	n, err := w.Writev(bufs)
+	if err != nil {
+		t.Fatalf("Writev: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("n = %d, want 3", n)
+	}
+	_ = w.Close()
+	got, _ := os.ReadFile(path)
+	if !bytes.Equal(got, []byte("abc")) {
+		t.Fatalf("file = %q, want %q", got, "abc")
+	}
+}
+
+// iouringErrUnsupported is a local alias of iouring.ErrUnsupported
+// so the fallback test does not need to import the submodule
+// from an internal test file — the imports are already
+// constrained by writer.go.
+var iouringErrUnsupported = iouring.ErrUnsupported

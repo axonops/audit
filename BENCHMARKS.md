@@ -194,30 +194,57 @@ cd iouring && go test -bench BenchmarkWriter_Writev -benchmem -count=5
 | writev   | 256   | 22 613 | 2 898 | 0 |
 | writev   | 1 024 | 89 274 | 2 936 | 0 |
 
+### Results — ext4 / NVMe (real disk)
+
+Same harness, `IOURING_BENCH_DIR=/path/on/ext4 go test -bench …`.
+Ryzen 9 7950X, Samsung 990 Pro NVMe, ext4 default mount options.
+
+| Strategy | Batch | ns/op | MB/s |
+|----------|------:|------:|-----:|
+| iouring  | 1     | 6 928 |   37 |
+| iouring  | 16    | 9 132 |  458 |
+| iouring  | 64    | 16 267 | 1 007 |
+| iouring  | 256   | 38 530 | 1 701 |
+| iouring  | 1 024 | 135 583 | 1 933 |
+| writev   | 1     |   740 |  346 |
+| writev   | 16    | 2 678 | 1 509 |
+| writev   | 64    | 8 663 | 1 891 |
+| writev   | 256   | 31 447 | 2 084 |
+| writev   | 1 024 | 127 160 | 2 062 |
+
 ### Interpretation
 
-- **Zero allocations on the hot path** for every strategy and every
-  batch size. The pre-allocated iovec scratch on each writer
-  eliminates per-call GC pressure.
-- **On tmpfs, `syscall.writev(2)` beats `io_uring` at every batch
-  size.** The SQE fill, atomic tail release, `io_uring_enter`
-  round-trip, and CQE scan-match cost more than the single
-  `writev(2)` syscall does for page-cache writes. At batch 1
-  io_uring is ~11× slower; at batch 1024 it still trails by ~12 %.
-- **This is expected for page-cache-only workloads.** io_uring
-  earns its place on **real disks** where submissions can overlap
-  with in-flight I/O — a regime tmpfs cannot simulate. The current
-  file-output default picks the io_uring path when available
-  because typical production deployments target real storage
-  (syslog, audit WAL, compliance archives) where the async
-  primitive delivers its value.
+- **Zero allocations on the hot path** for every strategy and
+  every batch size. The pre-allocated iovec scratch on each
+  writer eliminates per-call GC pressure.
+- **`writev(2)` beats `io_uring` at every batch size**, on both
+  tmpfs and real disk (ext4 / NVMe). At batch 1 the gap is 9.4×
+  on ext4; at batch 1024 it narrows to ~1.07× but writev is
+  still faster. The kernel's writev path is exceptionally
+  optimised for buffered page-cache writes — a single syscall,
+  a single memcpy-to-page-cache, minimal bookkeeping. io_uring
+  adds SQE fill, atomic tail release, `io_uring_enter` round-
+  trip, and CQE scan-match on top of the same write path.
+- **Our pattern doesn't use io_uring's strengths.** The file
+  output's writeLoop is single-goroutine submit-and-wait.
+  io_uring's advantages require patterns we don't use: multiple
+  in-flight submissions overlapping with slow I/O, SQPOLL,
+  `IORING_OP_WRITE_FIXED` with registered buffers, or `O_DIRECT`
+  against genuinely slow storage. On a modern kernel + NVMe
+  SSD + buffered writev, there's nothing left for io_uring to
+  overlap with.
+- **Decision**: the file output's `rotate.Writer` constructs its
+  iouring writer with `WithStrategy(StrategyWritev)` — the
+  measured-faster path. The io_uring primitive is still shipped
+  for post-v1.0 use cases that genuinely benefit (WAL with
+  multi-writer overlap, fsync pipelining, O_DIRECT).
 - **AC #5 on the parent issue asked for ≥ 20 % speedup of
   `BenchmarkFileOutput_Writev_Iouring` vs `_Stdlib` at batch 10 k
-  on tmpfs.** That gate is not met on tmpfs (nor could it be,
-  given the above). The AC has been formally refined in ADR 0002
-  to reflect that io_uring's advantage is a real-disk property,
-  and the primitive is still shipped (not off-by-default) because
-  the correctness and extraction work stands independently.
+  on tmpfs.** The gate was unsatisfiable as written — see ADR
+  0002 for the formal refinement. The *primitive* is shipped;
+  the **end-to-end batch-coalescing pipeline is the real win**:
+  N events amortise into one `writev(2)` syscall instead of N,
+  independent of which strategy is selected.
 
 ### Concurrency overhead
 

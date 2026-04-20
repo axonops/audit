@@ -105,13 +105,43 @@ The submodule is structured as a standalone library so the
 eventual extraction to `github.com/axonops/iouring` (issue #674)
 is a copy-and-bump-require move, not a rewrite.
 
-The file output's `writeLoop` consumes the Tier-1 API:
+The file output's `writeLoop` consumes the library via its
+`rotate.Writer.Writev` integration:
 
 - Blocks for the first pending event.
 - Non-blockingly drains up to `maxBatch=256` additional events.
-- Submits one `iouring.Writev` call per batch.
+- Submits one `iouring.Writer.Writev` call per batch.
 - No artificial latency — a single pending event submits a
   one-iovec batch immediately.
+
+### Strategy choice for file-output v1.0: `StrategyWritev`
+
+The file output constructs its iouring writer with
+`iouring.WithStrategy(iouring.StrategyWritev)` rather than the
+default `StrategyAuto`. Measured evidence (see BENCHMARKS.md §
+"iouring submodule") shows that on our submit-and-wait pattern
+the kernel's `writev(2)` path beats io_uring at every batch size,
+even on ext4 / NVMe SSD:
+
+| Batch | iouring | writev | writev speedup |
+|------:|--------:|-------:|---------------:|
+|     1 |  6 928 ns |   740 ns | 9.4× |
+|    16 |  9 132 ns | 2 678 ns | 3.4× |
+|   256 | 38 530 ns | 31 447 ns | 1.22× |
+|  1024 | 135 583 ns | 127 160 ns | 1.07× |
+
+io_uring's advantages require patterns the audit file output
+does not use: multiple in-flight submissions overlapping with
+slow I/O, SQPOLL (requires CAP_SYS_NICE), `IORING_OP_WRITE_FIXED`
+with registered buffers, or `O_DIRECT` against slow storage.
+On our one-goroutine submit-and-wait pattern against a buffered
+ext4 page cache, io_uring is pure overhead.
+
+The io_uring primitive is **still shipped** — it's the right
+tool for post-v1.0 use cases where the pattern genuinely benefits
+(e.g. a WAL with multiple concurrent writers or O_DIRECT +
+fsync pipelining). For v1.0 the file output picks the measured-
+faster path.
 
 ## Consequences
 

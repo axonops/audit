@@ -64,6 +64,183 @@ func TestAppendPostFieldJSONInto_PropertyEqualsAppendPostFields(t *testing.T) {
 	})
 }
 
+// TestAppendPostField_PublicAPI covers the exported single-field
+// fast path so the public contract stays wired. The drain pipeline
+// uses the unexported *Into variants; this test protects the
+// published allocating path used by consumers who implement custom
+// formatters.
+func TestAppendPostField_PublicAPI(t *testing.T) {
+	field := PostField{JSONKey: "event_category", CEFKey: "cat", Value: "write"}
+
+	t.Run("json", func(t *testing.T) {
+		base := []byte(`{"outcome":"success"}` + "\n")
+		got := AppendPostField(base, &JSONFormatter{}, field)
+		want := []byte(`{"outcome":"success","event_category":"write"}` + "\n")
+		if !bytes.Equal(want, got) {
+			t.Fatalf("AppendPostField JSON:\nwant=%q\ngot =%q", want, got)
+		}
+	})
+
+	t.Run("cef", func(t *testing.T) {
+		base := []byte("CEF:0|v|p|1|evt|name|0|\n")
+		got := AppendPostField(base, &CEFFormatter{}, field)
+		want := []byte("CEF:0|v|p|1|evt|name|0| cat=write\n")
+		if !bytes.Equal(want, got) {
+			t.Fatalf("AppendPostField CEF:\nwant=%q\ngot =%q", want, got)
+		}
+	})
+
+	t.Run("unknown_formatter_returns_unchanged", func(t *testing.T) {
+		base := []byte(`{"outcome":"success"}` + "\n")
+		got := AppendPostField(base, noopFormatter{}, field)
+		if !bytes.Equal(base, got) {
+			t.Fatalf("unknown formatter must return data unchanged\nbase=%q\ngot =%q", base, got)
+		}
+	})
+
+	t.Run("short_input_returns_unchanged", func(t *testing.T) {
+		base := []byte("x")
+		got := AppendPostField(base, &JSONFormatter{}, field)
+		if !bytes.Equal(base, got) {
+			t.Fatalf("short input must return data unchanged\nbase=%q\ngot =%q", base, got)
+		}
+	})
+}
+
+// noopFormatter is an Event formatter that is neither *JSONFormatter
+// nor *CEFFormatter, used to exercise the AppendPostField default
+// arm that returns input unchanged.
+type noopFormatter struct{}
+
+func (noopFormatter) Format(ts time.Time, eventType string, fields Fields, def *EventDef, opts *FormatOptions) ([]byte, error) {
+	return nil, nil
+}
+
+// TestAppendPostFieldsJSONInto_PropertyEqualsSequentialInPlace is
+// the byte-equality proof for the #508 batch in-place JSON path.
+// Rapid generates random JSON-formatted bases and random PostField
+// sequences; the property asserts the batched single-call output
+// matches the sequential N-call in-place output exactly.
+//
+// Failure mode if regressed: the batch truncate/append-N/restore
+// sequence diverges from the N-call loop (e.g., wrong terminator
+// position, field reordering, or missing separator), producing
+// output that fails HMAC verification or JSON parsing.
+func TestAppendPostFieldsJSONInto_PropertyEqualsSequentialInPlace(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		base := generateValidJSONBase(t)
+		fields := generatePostFields(t)
+
+		// Reference: N sequential appendPostFieldJSONInto calls.
+		refBuf := new(bytes.Buffer)
+		refBuf.Write(base)
+		for _, f := range fields {
+			appendPostFieldJSONInto(refBuf, f)
+		}
+		want := append([]byte(nil), refBuf.Bytes()...)
+
+		// Subject: one appendPostFieldsJSONInto batch call.
+		gotBuf := new(bytes.Buffer)
+		gotBuf.Write(base)
+		got := appendPostFieldsJSONInto(gotBuf, fields)
+
+		if !bytes.Equal(want, got) {
+			t.Fatalf("batch JSON in-place output diverges from sequential in-place output\nbase  = %q\nfields= %#v\nwant  = %q\ngot   = %q",
+				base, fields, want, got)
+		}
+	})
+}
+
+// TestAppendPostFieldsCEFInto_PropertyEqualsSequentialInPlace is
+// the CEF analogue of the JSON batch property. Guards against
+// wire-format drift between the batch path and the existing
+// sequential single-field path — #508.
+func TestAppendPostFieldsCEFInto_PropertyEqualsSequentialInPlace(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		base := generateValidCEFBase(t)
+		fields := generatePostFields(t)
+
+		refBuf := new(bytes.Buffer)
+		refBuf.Write(base)
+		for _, f := range fields {
+			appendPostFieldCEFInto(refBuf, f)
+		}
+		want := append([]byte(nil), refBuf.Bytes()...)
+
+		gotBuf := new(bytes.Buffer)
+		gotBuf.Write(base)
+		got := appendPostFieldsCEFInto(gotBuf, fields)
+
+		if !bytes.Equal(want, got) {
+			t.Fatalf("batch CEF in-place output diverges from sequential in-place output\nbase  = %q\nfields= %#v\nwant  = %q\ngot   = %q",
+				base, fields, want, got)
+		}
+	})
+}
+
+// TestAppendPostFieldsInto_MalformedBase pins the all-or-none
+// guard behaviour: when the buffer lacks the expected terminator
+// (}\n for JSON, \n for CEF), the function MUST return without
+// appending any field. A partial append would produce malformed
+// wire bytes that downstream HMAC verification or parsers would
+// reject — #508 security-reviewer note on the all-or-none contract.
+func TestAppendPostFieldsInto_MalformedBase(t *testing.T) {
+	fields := []PostField{
+		{JSONKey: "event_category", CEFKey: "cat", Value: "write"},
+		{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: "v1"},
+	}
+
+	cases := []struct {
+		name      string
+		formatter Formatter
+		base      string
+	}{
+		{"json_empty", &JSONFormatter{}, ""},
+		{"json_one_byte", &JSONFormatter{}, "x"},
+		{"json_missing_newline", &JSONFormatter{}, "{}"},
+		{"json_missing_brace", &JSONFormatter{}, "]\n"},
+		{"cef_empty", &CEFFormatter{}, ""},
+		{"cef_missing_newline", &CEFFormatter{}, "CEF:0|v|p|1|e|n|0|"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			buf.WriteString(tc.base)
+			before := append([]byte(nil), buf.Bytes()...)
+
+			got := appendPostFieldsInto(buf, tc.formatter, fields)
+
+			if !bytes.Equal(before, got) {
+				t.Fatalf("malformed base must be returned unchanged\nbefore=%q\nafter =%q",
+					before, got)
+			}
+			if !bytes.Equal(before, buf.Bytes()) {
+				t.Fatalf("buffer must not be partially mutated on malformed base\nbefore=%q\nbuffer=%q",
+					before, buf.Bytes())
+			}
+		})
+	}
+}
+
+// TestAppendPostFieldsInto_EmptyFields pins the documented contract
+// that an empty fields slice returns buf.Bytes() unchanged and does
+// not touch the buffer. Defensive regression guard for #508.
+func TestAppendPostFieldsInto_EmptyFields(t *testing.T) {
+	base := []byte(`{"outcome":"success"}` + "\n")
+	buf := new(bytes.Buffer)
+	buf.Write(base)
+
+	got := appendPostFieldsInto(buf, &JSONFormatter{}, nil)
+
+	if !bytes.Equal(base, got) {
+		t.Fatalf("empty fields must return base unchanged\nwant=%q\ngot =%q", base, got)
+	}
+	if !bytes.Equal(base, buf.Bytes()) {
+		t.Fatalf("empty fields must not touch buffer\nwant=%q\nbuf =%q", base, buf.Bytes())
+	}
+}
+
 // TestAppendPostFieldCEFInto_PropertyEqualsAppendPostFields is the
 // CEF analogue of the JSON property. CEF terminates with \n only (no
 // brace), so the truncate-and-restore semantics differ — both

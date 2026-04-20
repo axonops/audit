@@ -116,6 +116,37 @@ Feature: HMAC Integrity Verification
     And I tamper with the "actor_id" field in the captured output setting it to "bobby-user01"
     Then independently recomputing HMAC-SHA-256 over the tampered payload with salt "tamper-f-salt-16-byt" does NOT match the "_hmac" value
 
+  # --- Consolidated pre-HMAC batch regression guard (issue #508) ---
+  #
+  # When both event_category and _hmac_v are present they are written
+  # in a single pre-HMAC batch (drain.go assemblePostFields). This
+  # scenario pins two invariants:
+  #
+  #   1. Both fields appear on the wire alongside _hmac.
+  #   2. event_category is INSIDE the authenticated region — tampering
+  #      with it after production breaks HMAC verification, same as
+  #      tampering with _hmac_v (#473) or any consumer field.
+  #
+  # A future refactor that accidentally emits event_category AFTER
+  # computeHMACFast would leave it unauthenticated; this scenario
+  # would fail the "tampered payload does NOT verify" check.
+
+  Scenario: HMAC authenticated region covers event_category (consolidated pre-HMAC batch)
+    Given an auditor with stdout output and HMAC enabled using salt "batch-guard-salt-16b" version "v1" and hash "HMAC-SHA-256"
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    Then the captured output should contain field "event_category" with value "write"
+    And the output should contain "_hmac_v" field with value "v1"
+    And the output should contain "_hmac" field
+    And independently recomputing HMAC-SHA-256 over the payload with salt "batch-guard-salt-16b" matches the "_hmac" value
+
+  Scenario: Tampering event_category breaks HMAC verification
+    Given an auditor with stdout output and HMAC enabled using salt "batch-tamp-salt-16by" version "v1" and hash "HMAC-SHA-256"
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    And I tamper with the "event_category" field in the captured output setting it to "other"
+    Then independently recomputing HMAC-SHA-256 over the tampered payload with salt "batch-tamp-salt-16by" does NOT match the "_hmac" value
+
   # --- Reserved field name collision (issue #473 security-reviewer finding 6b) ---
 
   Scenario Outline: Reserved library field name rejected at runtime

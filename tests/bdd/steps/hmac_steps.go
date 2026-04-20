@@ -85,6 +85,28 @@ func registerHMACPresenceSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	ctx.Step(`^the output should contain "_hmac_v" field with value "([^"]*)"$`, func(want string) error { return assertCapturedHMACVersion(tc, want) })
 	ctx.Step(`^the output should not contain "_hmac" field$`, func() error { return assertNoHMACField(tc) })
 	ctx.Step(`^the output should not contain "_hmac_v" field$`, func() error { return assertNoHMACVersionField(tc) })
+	ctx.Step(`^the captured output should contain field "([^"]*)" with value "([^"]*)"$`,
+		func(field, want string) error { return assertCapturedFieldValue(tc, field, want) })
+}
+
+// assertCapturedFieldValue asserts every captured event contains a
+// JSON field with the given name and string value. Companion to the
+// HMAC-specific assertions that also read from CaptureOutput.
+// Added for the #508 "consolidated pre-HMAC batch" regression
+// scenarios that need to pin event_category presence in captured
+// output.
+func assertCapturedFieldValue(tc *AuditTestContext, field, want string) error {
+	events := tc.CaptureOutput.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	needle := fmt.Sprintf(`%q:%q`, field, want)
+	for i, raw := range events {
+		if !strings.Contains(string(raw), needle) {
+			return fmt.Errorf("captured event %d does not contain %s (raw=%s)", i, needle, string(raw))
+		}
+	}
+	return nil
 }
 
 func assertCapturedContainsHMAC(tc *AuditTestContext) error {

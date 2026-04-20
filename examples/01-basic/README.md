@@ -82,6 +82,15 @@ This means `AuditEvent()` is fast — it doesn't block on I/O. The
 trade-off: output may appear slightly after the `fmt.Println` that
 precedes it in your code.
 
+> **For production workloads**, prefer generated typed builders
+> (see [`02-code-generation/`](../02-code-generation/)) or, when the
+> event type is only known at startup, a pre-validated
+> [`EventHandle`](https://pkg.go.dev/github.com/axonops/audit#EventHandle).
+> `NewEvent` and `NewEventKV` each pay one heap allocation per call
+> (the `basicEvent` interface escape); the other paths do not. The
+> [performance guide](../../docs/performance.md) has the full
+> breakdown.
+
 ### Closing the Logger
 
 ```go

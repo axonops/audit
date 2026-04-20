@@ -653,9 +653,13 @@ func (a *Auditor) OutputRoute(outputName string) (EventRoute, error) {
 	return oe.getRoute(), nil
 }
 
-// Handle returns an [EventHandle] for the named event type. The
-// handle enables zero-allocation audit calls. Returns
-// [ErrHandleNotFound] if the event type is not registered.
+// Handle returns an [EventHandle] for the named event type. Call
+// once at startup (for example during DI wiring), cache the returned
+// handle, and emit via [EventHandle.Audit] per event — this avoids
+// the per-call basicEvent allocation that [NewEvent] incurs via
+// interface escape. Returns [ErrHandleNotFound] if the event type is
+// not registered. For event types known at compile time, prefer
+// generated typed builders from audit-gen.
 func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
 	if a.disabled {
 		return &EventHandle{name: eventType, auditor: a}, nil

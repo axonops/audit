@@ -78,10 +78,30 @@
 //
 // # Events
 //
+// There are three emission paths, in order of recommendation:
+//
+//  1. Generated typed builders from cmd/audit-gen — compile-time
+//     field safety, built-in [FieldsDonor] sentinel for the
+//     zero-drain-side-allocations fast path. Use these whenever
+//     event types are known at compile time.
+//  2. [EventHandle] obtained via [Auditor.Handle] or
+//     [Auditor.MustHandle] — the recommended path when the event
+//     type is known at startup but not at compile time (from
+//     configuration, a database, or a plugin registry). Cache the
+//     handle at startup; per-event calls via [EventHandle.Audit]
+//     skip the basicEvent allocation that [NewEvent] pays via
+//     interface escape.
+//  3. [NewEvent] and [NewEventKV] — the map-based escape hatch for
+//     ad-hoc emission and quick exploration. Each call allocates
+//     one basicEvent on the heap (interface escape); [NewEventKV]
+//     additionally allocates the intermediate [Fields] map.
+//
+// Symbols in this group:
+//
 //   - [Event] — interface for typed audit events; pass to [Auditor.AuditEvent]
+//   - [EventHandle] — pre-validated handle for zero-caller-side-allocation audit calls; see [Auditor.Handle] and [Auditor.MustHandle]
 //   - [NewEvent] — creates an event for dynamic use without code generation
 //   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
-//   - [EventHandle] — pre-validated handle for zero-allocation audit calls; see [Auditor.MustHandle]
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors
 //
 // # Outputs
@@ -229,8 +249,13 @@
 //   - Slow path: events constructed via [NewEvent] or [NewEventKV] do
 //     not implement FieldsDonor, so the auditor defensively copies the
 //     caller's Fields map. Per-event allocation cost is the map clone
-//     plus any-boxing of non-string values; the drain-side serialisation
-//     still benefits from the zero-copy buffer lease.
+//     plus any-boxing of non-string values, plus one basicEvent on
+//     the heap from the interface escape. The drain-side serialisation
+//     still benefits from the zero-copy buffer lease. When the event
+//     type is dynamic but known at startup, [EventHandle.Audit]
+//     eliminates the basicEvent allocation (no interface escape)
+//     while still taking the same defensive-copy path for the Fields
+//     map.
 //
 // Outputs receive bytes from the leased formatter buffer. Per the
 // [Output.Write] contract, implementations MUST NOT retain data past

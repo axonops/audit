@@ -223,6 +223,25 @@ result, err := outputconfig.Load(ctx, outputsYAML, tax,
 No `RegisterOutputFactory` calls needed. Adding a new output type to
 `outputs.yaml` is a config change, not a code change.
 
+### Emission Paths
+
+This demo emits every event through generated typed builders in
+`audit_generated.go` — `NewUserLoginEvent(...)`, `NewItemCreatedEvent(...)`,
+and so on. That path is the library's zero-allocation fast path:
+the builders implement the internal `FieldsDonor` sentinel so the
+auditor takes ownership of the `Fields` map without a defensive
+copy. Compile-time field safety is a bonus.
+
+For dynamic event types — say, a plugin registry that emits event
+types discovered at runtime — use
+[`auditor.MustHandle("my_event")`](https://pkg.go.dev/github.com/axonops/audit#Auditor.MustHandle)
+at registration time, cache the `EventHandle`, and call
+`h.Audit(fields)` per event. Do not call `audit.NewEvent(...)` on a
+hot path: each call pays one heap allocation via interface escape.
+
+See [`docs/performance.md`](../../docs/performance.md) for the full
+breakdown.
+
 ### Lifecycle Events (Best Practice)
 
 Always emit audit events for application startup and shutdown. These

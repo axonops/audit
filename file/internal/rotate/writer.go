@@ -200,22 +200,9 @@ func (w *Writer) writevLocked(bufs [][]byte) (n int, rotated bool, err error) {
 		return 0, false, nil
 	}
 
-	if w.file == nil {
-		var openRotated bool
-		openRotated, err = w.openExistingOrNew(writeLen)
-		if err != nil {
-			return 0, false, err
-		}
-		if openRotated {
-			rotated = true
-		}
-	}
-
-	if w.size+writeLen > w.cfg.MaxSize {
-		if rotateErr := w.rotate(); rotateErr != nil {
-			return 0, false, rotateErr
-		}
-		rotated = true
+	rotated, err = w.prepareForWrite(writeLen)
+	if err != nil {
+		return 0, false, err
 	}
 
 	// Drain any bytes sitting in bufio before bypassing it with
@@ -227,26 +214,55 @@ func (w *Writer) writevLocked(bufs [][]byte) (n int, rotated bool, err error) {
 		}
 	}
 
-	// Loop on short writes — writev(2) can return partial writes
-	// on pipe buffers and similar; regular-file O_APPEND on local
-	// filesystems should always complete in full.
-	fd := int(w.file.Fd())
+	written, werr := writevAll(int(w.file.Fd()), bufs, int(writeLen))
+	w.size += int64(written)
+	if werr != nil {
+		return written, rotated, werr
+	}
+	return written, rotated, nil
+}
+
+// prepareForWrite opens a file if none is open yet and rotates
+// if the pending write would exceed MaxSize. Returns whether a
+// rotation occurred so the caller can fire OnRotate outside the
+// lock.
+func (w *Writer) prepareForWrite(writeLen int64) (rotated bool, err error) {
+	if w.file == nil {
+		openRotated, err := w.openExistingOrNew(writeLen)
+		if err != nil {
+			return false, err
+		}
+		rotated = openRotated
+	}
+	if w.size+writeLen > w.cfg.MaxSize {
+		if rotateErr := w.rotate(); rotateErr != nil {
+			return rotated, rotateErr
+		}
+		rotated = true
+	}
+	return rotated, nil
+}
+
+// writevAll submits bufs to fd via iouring.Writev, retrying
+// short writes by advancing the iovec remainder. Used by
+// Writer.Writev after all rotation and buffer-draining has
+// completed. Returns total bytes written and any error.
+func writevAll(fd int, bufs [][]byte, total int) (int, error) {
 	written := 0
 	remaining := bufs
-	for written < int(writeLen) {
+	for written < total {
 		got, werr := iouring.Writev(fd, remaining)
 		if werr != nil {
-			w.size += int64(written)
-			return written, rotated, fmt.Errorf("rotate: writev: %w", werr)
+			return written, fmt.Errorf("rotate: writev: %w", werr)
 		}
 		if got == 0 {
-			break
+			// No progress; avoid infinite loop.
+			return written, nil
 		}
 		written += got
 		remaining = advanceIovecs(remaining, got)
 	}
-	w.size += int64(written)
-	return written, rotated, nil
+	return written, nil
 }
 
 // advanceIovecs returns a [][]byte representing the portion of

@@ -18,9 +18,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
-
-	"github.com/rgooding/go-syncmap"
 )
 
 // EventRoute restricts which events are delivered to a specific output.
@@ -253,19 +252,46 @@ func inSet(set map[string]struct{}, fallback []string, key string) bool {
 	return slices.Contains(fallback, key)
 }
 
+// syncMapBool is a minimal generic wrapper over [sync.Map] with
+// string keys and bool values — the exact shape filterState
+// needs. Inlined here (~15 lines) rather than depending on a
+// third-party wrapper: CLAUDE.md mandates minimal dependencies,
+// and a single-purpose hot-path type shouldn't carry supply-chain
+// risk. Ref: #588.
+type syncMapBool struct {
+	m sync.Map
+}
+
+// Load returns the value stored in the map for key, and true if
+// present. Not-present returns false, false — the "val zero,
+// ok=false" shape used everywhere in sync.Map wrappers.
+func (s *syncMapBool) Load(key string) (val, ok bool) {
+	v, ok := s.m.Load(key)
+	if !ok {
+		return false, false
+	}
+	b, _ := v.(bool)
+	return b, true
+}
+
+// Store sets the value for a key.
+func (s *syncMapBool) Store(key string, value bool) {
+	s.m.Store(key, value)
+}
+
 // filterState tracks which categories and individual event types are
 // enabled. It is safe for concurrent use — reads are lock-free via
-// syncmap.SyncMap (backed by sync.Map internally).
+// syncMapBool (backed by sync.Map internally).
 type filterState struct {
 	// enabledCategories tracks the enabled state of each category.
 	// Reads are lock-free for stable keys after initial population.
-	enabledCategories syncmap.SyncMap[string, bool]
+	enabledCategories syncMapBool
 
 	// eventOverrides tracks per-event-type overrides. A true value
 	// forces the event to be enabled regardless of its category; a
 	// false value forces it disabled. Events not in this map inherit
 	// their category's state.
-	eventOverrides syncmap.SyncMap[string, bool]
+	eventOverrides syncMapBool
 
 	// hasEventOverrides is set when EnableEvent or DisableEvent is
 	// called. Guards the eventOverrides.Load on the hot path —

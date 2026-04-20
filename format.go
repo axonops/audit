@@ -25,11 +25,27 @@ import (
 // key-sorting paths in sortedFieldKeys / extraFieldKeys /
 // allFieldKeysSorted. Outliers (cap > maxPooledKeysCap) are dropped
 // rather than re-pooled to avoid pinning oversized arrays.
-const maxPooledKeysCap = 64
+//
+// The initial capacity is sized to absorb the append-then-dedupe
+// pattern used by [allFieldKeysSortedSlow], where Required +
+// Optional + fields are appended before [slices.Compact] collapses
+// duplicates. A 20-field audit event with a matching fields map
+// (the representative
+// [BenchmarkCEFFormatter_Format_LargeEvent_Escaping] fixture)
+// feeds 40 pre-dedupe entries; sizing the initial cap at
+// [maxPooledKeysCap] = 64 covers that worst case without a
+// growslice allocation. Each pooled slice header carries 64 ×
+// sizeof(string) = 1024 B on amd64 (vs 256 B at the pre-#664
+// cap=16); absolute overhead across the pool is under 40 KB at
+// steady state. See #664 for rationale and measurements.
+const (
+	initialPooledKeysCap = 64
+	maxPooledKeysCap     = 64
+)
 
 var sortedKeysPool = sync.Pool{
 	New: func() any {
-		s := make([]string, 0, 16)
+		s := make([]string, 0, initialPooledKeysCap)
 		return &s
 	},
 }
@@ -39,7 +55,7 @@ var sortedKeysPool = sync.Pool{
 func getSortedKeysSlice() *[]string {
 	ks, ok := sortedKeysPool.Get().(*[]string)
 	if !ok {
-		s := make([]string, 0, 16)
+		s := make([]string, 0, initialPooledKeysCap)
 		return &s
 	}
 	return ks
@@ -346,26 +362,28 @@ func allFieldKeysSorted(def *EventDef, fields Fields) (keys []string, owned *[]s
 }
 
 // allFieldKeysSortedSlow builds the sorted key list from scratch when
-// pre-computed fields are not available.
+// pre-computed fields are not available. Reached only by third-party
+// callers who invoke the public [Formatter.Format] with a
+// hand-constructed [EventDef] (the production [Auditor] path takes
+// the fast branch above because [Auditor.prepareOutputEntries]
+// populates knownFields / sortedAllKeys at startup).
+//
+// Dedupe is done post-sort via [slices.Compact] rather than a
+// map[string]bool tracked during append. The map costs one heap
+// allocation per call — 7.7M objects / 72 % of all allocations in
+// [BenchmarkCEFFormatter_Format_Numeric] and _Escaping, per
+// memprofile (#664). Sort + Compact is O(n log n) either way and
+// produces the identical output: sort(unique(Required ∪ Optional ∪
+// fields)). The append-then-sort-then-compact path is zero-alloc
+// after the per-event pool warm-up.
 func allFieldKeysSortedSlow(def *EventDef, fields Fields) (keys []string, owned *[]string) {
 	owned = getSortedKeysSlice()
-	seen := make(map[string]bool, len(def.Required)+len(def.Optional))
-	for _, k := range def.Required {
-		seen[k] = true
+	*owned = append(*owned, def.Required...)
+	*owned = append(*owned, def.Optional...)
+	for k := range fields {
 		*owned = append(*owned, k)
 	}
-	for _, k := range def.Optional {
-		if !seen[k] {
-			seen[k] = true
-			*owned = append(*owned, k)
-		}
-	}
-	for k := range fields {
-		if !seen[k] {
-			seen[k] = true
-			*owned = append(*owned, k)
-		}
-	}
 	slices.Sort(*owned)
+	*owned = slices.Compact(*owned)
 	return *owned, owned
 }

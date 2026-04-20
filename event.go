@@ -61,6 +61,14 @@ type basicEvent struct {
 // builders from audit-gen for compile-time field safety. This function
 // exists for consumers who construct events dynamically or do not use
 // code generation.
+//
+// Allocation note: each call allocates one basicEvent on the heap
+// because the returned [Event] interface value forces the pointer to
+// escape. For high-throughput callers whose event type is known but
+// dynamic (from configuration, a database, or a plugin), prefer
+// [EventHandle] — it pre-validates the event type once and emits
+// without the per-call basicEvent allocation. See [Auditor.Handle]
+// and [Auditor.MustHandle].
 func NewEvent(eventType string, fields Fields) Event {
 	return &basicEvent{
 		eventType: eventType,
@@ -79,6 +87,12 @@ func (e *basicEvent) Fields() Fields    { return e.fields }
 // NewEventKV panics if keysAndValues has an odd number of elements or
 // if any key is not a string. These are always programming errors, not
 // runtime conditions — the same convention as [slog.Info].
+//
+// Allocation note: NewEventKV allocates the intermediate [Fields] map
+// plus the basicEvent returned by [NewEvent] — two heap allocations
+// per call (plus any-boxing of non-string values). For high-throughput
+// callers, prefer generated typed builders (zero caller-side
+// allocations after warm-up) or [EventHandle] for dynamic event types.
 func NewEventKV(eventType string, keysAndValues ...any) Event {
 	if len(keysAndValues)%2 != 0 {
 		panic(fmt.Sprintf("audit: NewEventKV requires even number of arguments, got %d", len(keysAndValues)))
@@ -95,19 +109,33 @@ func NewEventKV(eventType string, keysAndValues ...any) Event {
 }
 
 // EventHandle is a pre-validated reference to a registered event type.
-// It carries the event type name and a reference to the owning [Auditor],
-// enabling audit calls without repeated string lookup. Use generated
-// builders for static event types; use [Auditor.Handle] or
-// [Auditor.MustHandle] for dynamically-determined event types (e.g.
-// event type names from configuration or a database).
+// It is the recommended emission path when the event type is known at
+// startup but not at compile time — for example, event type names
+// pulled from configuration, a database, or a plugin registry.
+//
+// Obtain one handle per event type at startup via [Auditor.Handle]
+// (returns an error) or [Auditor.MustHandle] (panics on unknown event
+// type), cache it, and emit via [EventHandle.Audit] on each event.
+// The handle validates the event type once at construction; per-event
+// calls go straight into the audit pipeline without re-validating the
+// name and without the basicEvent heap allocation paid by
+// [NewEvent].
+//
+// For event types known at compile time, prefer generated typed
+// builders from audit-gen — they add compile-time field safety and
+// implement [FieldsDonor] for the zero-allocation drain-side fast
+// path.
 type EventHandle struct {
 	auditor *Auditor
 	name    string
 }
 
 // Audit emits an audit event using this handle's bound event type.
-// This method bypasses [NewEvent] to avoid a per-event heap allocation
-// from interface escape, calling the internal audit path directly.
+// Zero per-event caller-side allocations (no basicEvent
+// construction, no [Event] interface escape) — the internal audit
+// path is called directly. For the zero-drain-side-allocations fast
+// path (the [FieldsDonor] contract), emit a generated typed builder
+// directly via [Auditor.AuditEvent].
 func (e *EventHandle) Audit(fields Fields) error {
 	return e.auditor.auditInternal(e.name, fields)
 }
@@ -118,6 +146,12 @@ func (e *EventHandle) Audit(fields Fields) error {
 // bound type — the handle provides the auditor binding only. This
 // method accepts any [Event] implementation, making it composable
 // with code-generated typed builders.
+//
+// Allocation note: this method takes the standard [Auditor.AuditEvent]
+// path. Allocation behaviour depends on evt: generated builders that
+// implement [FieldsDonor] reach 0 drain-side allocs per event; plain
+// [Event] values (including [NewEvent] output) pay the defensive-copy
+// cost described in [docs/performance.md].
 func (e *EventHandle) AuditEvent(evt Event) error {
 	return e.auditor.AuditEvent(evt)
 }

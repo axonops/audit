@@ -2575,6 +2575,48 @@ func BenchmarkAuditDisabledAuditor(b *testing.B) {
 	}
 }
 
+// BenchmarkAudit_ViaHandle_vs_NewEvent quantifies the caller-side
+// cost of EventHandle.Audit vs Auditor.AuditEvent(NewEvent(...)) on
+// the same auditor, taxonomy, and fields. Both sub-benchmarks hit
+// the drain slow path (defensive Fields copy; neither implements
+// FieldsDonor); the only difference is that NewEvent allocates a
+// *basicEvent that escapes through the Event interface return,
+// whereas EventHandle.Audit calls auditInternal directly without
+// wrapping. The delta is one allocation per event. NoopOutput is
+// used to exclude output-side defensive-copy noise and isolate the
+// emission-path cost — see [internal/testhelper.NoopOutput]. #498.
+func BenchmarkAudit_ViaHandle_vs_NewEvent(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewNoopOutput("bench")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.Run("NewEvent", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = auditor.AuditEvent(audit.NewEvent("schema_register", fields))
+		}
+	})
+
+	b.Run("EventHandle", func(b *testing.B) {
+		h := auditor.MustHandle("schema_register")
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = h.Audit(fields)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Additional benchmarks — caller path
 // ---------------------------------------------------------------------------

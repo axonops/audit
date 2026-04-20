@@ -74,6 +74,24 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | NewEventKV | 124 | 360 | 2 | slog-style event construction |
 | FilterCheck | 16 | 0 | 0 | isEnabled lock-free (syncmap) |
 
+### Emission-Path Comparison
+
+Same auditor, same taxonomy, same `Fields` literal — what does the
+caller-side choice cost? `NoopOutput` isolates the emission path by
+removing output-side work. See `BenchmarkAudit_ViaHandle_vs_NewEvent`.
+
+| Emission path | ns/op | B/op | allocs/op | Notes |
+|---------------|------:|-----:|----------:|-------|
+| `Auditor.AuditEvent(NewEvent(...))` | ~400 | 24 | **1** | One `basicEvent` escapes through the `Event` interface return |
+| `EventHandle.Audit(fields)` | ~369 | **0** | **0** | No interface wrapping; defensive `Fields` copy recycles from `sync.Pool` after warm-up |
+
+Observation: `EventHandle.Audit` eliminates the single remaining
+caller-side allocation on the dynamic-event-type path (−1 alloc/op,
+−24 B/op, ~8 % wall-clock). For event types known at compile time,
+generated typed builders satisfying `FieldsDonor` additionally skip
+the defensive `Fields` map copy — that is the zero-allocation
+drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutputs`.
+
 ### Formatters
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |

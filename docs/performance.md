@@ -101,6 +101,20 @@ The slow path still benefits from every other W2 optimisation: the
 formatter buffer is leased from the pool; sorted-key slices are pooled;
 per-output post-fields are appended in place into the scratch buffer.
 
+> **Dynamic event type but throughput matters?** If your event type is
+> known at startup (from configuration, a database, or a plugin
+> registry) but not at compile time, use
+> [`EventHandle.Audit(fields)`](https://pkg.go.dev/github.com/axonops/audit#EventHandle.Audit)
+> instead of `NewEvent`. Obtain the handle once via
+> [`Auditor.Handle`](https://pkg.go.dev/github.com/axonops/audit#Auditor.Handle)
+> or [`Auditor.MustHandle`](https://pkg.go.dev/github.com/axonops/audit#Auditor.MustHandle)
+> at startup and cache it. `EventHandle.Audit` bypasses the `basicEvent`
+> heap allocation that `NewEvent` incurs via interface escape — after
+> `sync.Pool` warm-up the defensive `Fields` copy is also recycled, so
+> the amortised cost is `0 allocs/op` end-to-end. See the
+> `BenchmarkAudit_ViaHandle_vs_NewEvent` numbers in
+> [`BENCHMARKS.md`](../BENCHMARKS.md#emission-path-comparison).
+
 ---
 
 ## The drain-side zero-copy pipeline

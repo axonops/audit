@@ -296,10 +296,14 @@ func (cf *CEFFormatter) formatBuf(ts time.Time, eventType string, fields Fields,
 		"act": {},
 	}
 
-	// Duration if present as time.Duration.
+	// Duration if present as time.Duration. writeExtFieldInt64 routes
+	// the int64 via strconv.AppendInt into a stack-scratch slice and
+	// writes that slice directly into the pool-leased buffer — no
+	// intermediate string allocation and no any-box (#663, follow-up
+	// to #496's per-field alloc removal).
 	if v, ok := fields["duration_ms"]; ok {
 		if d, ok := v.(time.Duration); ok {
-			writeExtField(buf, extStart, "cn1", strconv.FormatInt(d.Milliseconds(), 10))
+			writeExtFieldInt64(buf, extStart, "cn1", d.Milliseconds())
 			writeExtField(buf, extStart, "cn1Label", "durationMs")
 			reserved["cn1"] = struct{}{}
 			reserved["cn1Label"] = struct{}{}
@@ -563,11 +567,36 @@ func writeExtField(b *bytes.Buffer, extStart int, key, value string) {
 	writeEscapedExtValueString(b, value)
 }
 
+// writeExtFieldInt64 writes a key=<decimal int64> pair directly into
+// the buffer. Typed-parameter twin of [writeExtFieldValue] for the
+// int64 hot-path case — calling writeExtFieldValue(b, k, x) with
+// x int64 boxes x on the heap to satisfy the `any` parameter (one
+// alloc per call); this helper skips the box entirely. The first
+// consumer is the CEF `cn1`/duration branch in [CEFFormatter.formatBuf]
+// (#663).
+//
+// Values are emitted via strconv.AppendInt into a 32-byte stack
+// scratch (sized to hold any decimal int64 including sign). CEF
+// decimal values require no escaping, so no escape pass is needed.
+func writeExtFieldInt64(b *bytes.Buffer, extStart int, key string, v int64) {
+	if b.Len() > extStart {
+		b.WriteByte(' ')
+	}
+	b.WriteString(key)
+	b.WriteByte('=')
+	var scratch [32]byte
+	b.Write(strconv.AppendInt(scratch[:0], v, 10))
+}
+
 // writeExtFieldValue writes a key=value pair to the buffer, converting
 // v directly into the buffer via [appendFormatFieldValue] — no
 // intermediate string, no per-field allocation for primitives (#496).
 // Non-primitive fallback writes via [fmt.Fprintf] "%v", which still
 // allocates but preserves today's CEF output byte-for-byte.
+//
+// Note: passing an int/int64/uint/float value here boxes the value
+// on the heap to satisfy the `any` parameter. Use
+// [writeExtFieldInt64] for the int64 hot path to avoid that alloc.
 func writeExtFieldValue(b *bytes.Buffer, extStart int, key string, v any) {
 	if b.Len() > extStart {
 		b.WriteByte(' ')

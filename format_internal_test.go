@@ -15,6 +15,8 @@
 package audit
 
 import (
+	"bytes"
+	"math"
 	"slices"
 	"testing"
 
@@ -52,6 +54,113 @@ func TestSortedKeysPool_CapConstantsConsistent(t *testing.T) {
 	require.LessOrEqual(t, initialPooledKeysCap, maxPooledKeysCap,
 		"initialPooledKeysCap must not exceed maxPooledKeysCap; "+
 			"otherwise the pool returns every slice directly to GC")
+}
+
+// TestWriteExtFieldInt64 pins the contract of the typed int64
+// helper introduced in #663: no any-box, correct extStart leading-
+// space behaviour on both the first and subsequent extension
+// fields, and a scratch buffer sized to hold any int64 (including
+// math.MinInt64, which is 20 bytes wide including the sign).
+// AllocsPerRun locks in the zero-heap-escape property — a future
+// edit that shrank `scratch [32]byte` below 20 or introduced any
+// interface conversion would fail this test.
+func TestWriteExtFieldInt64(t *testing.T) {
+	cases := []struct {
+		name     string
+		prefix   string // bytes written into buf before the helper call
+		key      string
+		want     string
+		extStart int // extension-region start offset
+		value    int64
+	}{
+		{
+			// First extension field: extStart == buf.Len(), so no
+			// leading space.
+			name:     "first_extension_no_leading_space",
+			prefix:   "CEF:0|v|p|1|ev|n|0|",
+			extStart: len("CEF:0|v|p|1|ev|n|0|"),
+			key:      "cn1",
+			value:    1500,
+			want:     "CEF:0|v|p|1|ev|n|0|cn1=1500",
+		},
+		{
+			// Subsequent extension: extStart < buf.Len(), leading
+			// space inserted.
+			name:     "subsequent_extension_leading_space",
+			prefix:   "CEF:0|v|p|1|ev|n|0|rt=1700000000",
+			extStart: len("CEF:0|v|p|1|ev|n|0|"),
+			key:      "cn1",
+			value:    500,
+			want:     "CEF:0|v|p|1|ev|n|0|rt=1700000000 cn1=500",
+		},
+		{
+			// Zero is a valid duration (sub-millisecond event).
+			name:     "zero_value",
+			prefix:   "X|",
+			extStart: len("X|"),
+			key:      "cn1",
+			value:    0,
+			want:     "X|cn1=0",
+		},
+		{
+			// Negative int64s arise from clock skew or -1 sentinels.
+			name:     "negative_value",
+			prefix:   "X|",
+			extStart: len("X|"),
+			key:      "cn1",
+			value:    -42,
+			want:     "X|cn1=-42",
+		},
+		{
+			// math.MaxInt64 is 19 chars without sign.
+			name:     "max_int64",
+			prefix:   "X|",
+			extStart: len("X|"),
+			key:      "cn1",
+			value:    math.MaxInt64,
+			want:     "X|cn1=9223372036854775807",
+		},
+		{
+			// math.MinInt64 is 20 chars including the leading '-' —
+			// this pins the scratch buffer size. A future edit that
+			// shrunk scratch below 20 bytes would fail here.
+			name:     "min_int64",
+			prefix:   "X|",
+			extStart: len("X|"),
+			key:      "cn1",
+			value:    math.MinInt64,
+			want:     "X|cn1=-9223372036854775808",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			buf.WriteString(tc.prefix)
+			writeExtFieldInt64(buf, tc.extStart, tc.key, tc.value)
+			assert.Equal(t, tc.want, buf.String())
+		})
+	}
+}
+
+// TestWriteExtFieldInt64_ZeroAllocs pins the zero-allocation
+// property of the helper — the raison d'être for introducing it
+// over writeExtFieldValue (#663). A regression that boxes the
+// int64 via any, escapes `scratch` to the heap, or otherwise
+// introduces an allocation would fail this test.
+func TestWriteExtFieldInt64_ZeroAllocs(t *testing.T) {
+	// Pre-grow to avoid measuring buffer growth; we're measuring
+	// the helper's own allocations, not bytes.Buffer expansion.
+	buf := new(bytes.Buffer)
+	buf.Grow(64)
+	buf.WriteString("X|")
+
+	allocs := testing.AllocsPerRun(100, func() {
+		buf.Truncate(2)
+		writeExtFieldInt64(buf, 2, "cn1", 1500)
+	})
+	assert.Equal(t, 0.0, allocs,
+		"writeExtFieldInt64 must not allocate on the hot path; see #663")
 }
 
 // TestAllFieldKeysSortedSlow_EdgeCases pins the dedupe / sort

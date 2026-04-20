@@ -832,16 +832,26 @@ func TestWriter_Sync(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Write — data visible on disk without Sync/Close (#450)
+// Write — visibility semantics
+//
+// #450 originally required per-write flush so every event was
+// visible to readers without Sync/Close. #461 relaxed the
+// default to deferred flush with a background timer and added
+// SyncOnWrite to opt back in to the per-call flush contract.
+// The tests below pin BOTH modes.
 // ---------------------------------------------------------------------------
 
-func TestWriter_Write_DataVisibleWithoutSync(t *testing.T) {
+func TestWriter_Write_DataVisibleWithoutSync_SyncOnWriteTrue(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	w, err := rotate.New(path, rotate.Config{MaxSize: 1 << 20, Mode: 0o600})
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     1 << 20,
+		Mode:        0o600,
+		SyncOnWrite: true, // #450 contract
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, w.Close()) })
 
@@ -849,20 +859,25 @@ func TestWriter_Write_DataVisibleWithoutSync(t *testing.T) {
 	_, err = w.Write(event)
 	require.NoError(t, err)
 
-	// Data must be visible on disk WITHOUT calling Sync() or Close().
+	// Data must be visible on disk WITHOUT calling Sync() or Close()
+	// under the explicit SyncOnWrite=true contract.
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, string(event), string(data),
-		"event must be visible on disk immediately after Write (#450)")
+		"event must be visible on disk immediately after Write when SyncOnWrite=true (#450)")
 }
 
-func TestWriter_Write_MultipleEventsVisibleWithoutSync(t *testing.T) {
+func TestWriter_Write_MultipleEventsVisibleWithoutSync_SyncOnWriteTrue(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	w, err := rotate.New(path, rotate.Config{MaxSize: 1 << 20, Mode: 0o600})
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     1 << 20,
+		Mode:        0o600,
+		SyncOnWrite: true,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, w.Close()) })
 
@@ -877,7 +892,108 @@ func TestWriter_Write_MultipleEventsVisibleWithoutSync(t *testing.T) {
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	assert.Len(t, lines, count,
-		"all %d events must be visible on disk without Sync or Close (#450)", count)
+		"all %d events must be visible on disk without Sync/Close when SyncOnWrite=true (#450)", count)
+}
+
+// TestWriter_Write_DeferredFlush_DefaultSyncOff pins the new
+// default: writes accumulate in bufio until the background timer
+// fires or Close drains. Immediately after Write, data is NOT
+// yet visible to readers — but is after Sync() / Close() / timer.
+func TestWriter_Write_DeferredFlush_DefaultSyncOff(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	// FlushInterval set large so the timer doesn't fire during
+	// the test — we want to observe the "not yet visible" state.
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:       1 << 20,
+		Mode:          0o600,
+		FlushInterval: 10 * time.Second,
+	})
+	require.NoError(t, err)
+
+	event := []byte(`{"event_type":"auth.login"}` + "\n")
+	_, err = w.Write(event)
+	require.NoError(t, err)
+
+	// Data held in bufio; not yet on disk.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Empty(t, data,
+		"default SyncOnWrite=false must hold data in bufio; no disk visibility before Sync/Close/timer")
+
+	// Sync explicitly drains.
+	require.NoError(t, w.Sync())
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(event), string(data),
+		"Sync must drain the pending bufio buffer to disk")
+
+	require.NoError(t, w.Close())
+}
+
+// TestWriter_Write_BackgroundTimerFlushes pins the deferred-
+// flush contract: bytes must become visible within ~FlushInterval
+// without any Sync/Close call.
+func TestWriter_Write_BackgroundTimerFlushes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:       1 << 20,
+		Mode:          0o600,
+		FlushInterval: 10 * time.Millisecond, // fast for the test
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, w.Close()) })
+
+	event := []byte(`{"event_type":"timer.test"}` + "\n")
+	_, err = w.Write(event)
+	require.NoError(t, err)
+
+	// Wait up to 500 ms for the 10 ms timer to fire and drain.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		data, rerr := os.ReadFile(path)
+		require.NoError(t, rerr)
+		if len(data) > 0 {
+			assert.Equal(t, string(event), string(data))
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("background flush timer never fired within 500 ms")
+}
+
+// TestWriter_Close_DrainsPendingBytes pins that Close always
+// flushes pending bufio bytes regardless of SyncOnWrite.
+func TestWriter_Close_DrainsPendingBytes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:       1 << 20,
+		Mode:          0o600,
+		FlushInterval: 10 * time.Second, // disable background timer for this test
+	})
+	require.NoError(t, err)
+
+	event := []byte(`{"event_type":"close.test"}` + "\n")
+	_, err = w.Write(event)
+	require.NoError(t, err)
+
+	require.NoError(t, w.Close())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(event), string(data),
+		"Close must drain pending bufio bytes to disk")
 }
 
 // ---------------------------------------------------------------------------
@@ -1289,4 +1405,72 @@ func findBackups(t *testing.T, dir, prefix, suffix string) []string {
 		}
 	}
 	return result
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks for #461 — SyncOnWrite=true (old #450 behavior) vs
+// SyncOnWrite=false (new default with background timer).
+// ---------------------------------------------------------------------------
+
+// benchWriter constructs a rotate.Writer in the given sync mode.
+// Target: IOURING_BENCH_DIR env var (real disk) or /dev/shm (tmpfs)
+// or t.TempDir (whatever $TMPDIR is). Same selection as iouring
+// bench so results are comparable.
+func benchWriter(b *testing.B, syncOnWrite bool) *rotate.Writer {
+	b.Helper()
+	dir := os.Getenv("IOURING_BENCH_DIR")
+	if dir == "" {
+		if _, err := os.Stat("/dev/shm"); err == nil {
+			dir = "/dev/shm"
+		} else {
+			dir = b.TempDir()
+		}
+	}
+	path := filepath.Join(dir, fmt.Sprintf("rotate-bench-%d-%t.log", os.Getpid(), syncOnWrite))
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     1 << 30,
+		Mode:        0o600,
+		SyncOnWrite: syncOnWrite,
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() {
+		_ = w.Close()
+		_ = os.Remove(path)
+	})
+	return w
+}
+
+// BenchmarkWriter_Write_SyncOnWriteTrue measures the #450
+// per-call flush path — flush every event, syscall every event.
+func BenchmarkWriter_Write_SyncOnWriteTrue(b *testing.B) {
+	w := benchWriter(b, true)
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(event)))
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := w.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkWriter_Write_SyncOnWriteFalse measures the #461 deferred-
+// flush path — bytes into bufio, background timer drains. Expected
+// to beat the SyncOnWrite=true path by at least 10× per the #461 AC.
+func BenchmarkWriter_Write_SyncOnWriteFalse(b *testing.B) {
+	w := benchWriter(b, false)
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(event)))
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := w.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

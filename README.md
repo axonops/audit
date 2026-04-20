@@ -237,6 +237,14 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 > 💡 The core module includes `StdoutOutput` (no additional dependency)
 > and the `audittest` package for [testing](docs/testing.md).
 
+> 🚀 On Linux 5.5+ the file output automatically uses [io_uring][iouring]
+> to amortise the per-event `write(2)` syscall across batched vectored
+> writes; on other Unix platforms it falls back transparently to
+> `writev(2)`. No configuration needed. See [ADR 0002][adr-0002].
+
+[iouring]: https://pkg.go.dev/github.com/axonops/audit/iouring
+[adr-0002]: docs/adr/0002-file-output-io-uring-approach.md
+
 ---
 
 ## 🏗️ Module Structure

@@ -145,8 +145,11 @@ The file output's `writeLoop` consumes the Tier-1 API:
   I/O and a slow-device baseline** — a regime our AC #5 did not
   gate on.
 - `unsafe.Pointer` + syscall surface increases the security
-  review load. Mitigated by: confining all unsafe code to
-  `*_linux.go` files, applying the full security-reviewer
+  review load. Mitigated by: confining unsafe code to the two
+  syscall boundaries it actually needs (the Linux io_uring
+  `*_linux.go` files and a single `&iovs[0]` cast in
+  `strategy_writev_unix.go` for the SYS_WRITEV call, required
+  on every Unix), plus applying the full security-reviewer
   punch list (runtime.KeepAlive via defer, fd range validation,
   ring-poisoning on unrecoverable errors, IORING_FEAT_NODROP
   requirement, atomic CAS close gate, SINGLE_MMAP-aware munmap).

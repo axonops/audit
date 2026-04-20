@@ -314,9 +314,28 @@ func (a *Auditor) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts tim
 	return data
 }
 
-// formatCacheSize is the number of unique formatters cached on the
-// stack before falling back to a heap-allocated map.
-const formatCacheSize = 4
+// formatCacheSize is the number of unique formatters cached in the
+// fixed-size array on the [formatCache] stack frame before the
+// overflow map is allocated.
+//
+// 8 covers realistic deployments: one distinct formatter per output,
+// with typical fan-out of 4-8 outputs (stdout + file + syslog +
+// webhook + loki + secondary file + archive + stderr). Each entry is
+// ~48 bytes, so the array is 384 bytes at this size — comfortably
+// within the per-function stack budget. Escape analysis keeps `var
+// fc formatCache` stack-allocated (verified before/after the bump
+// via `go build -gcflags='-m=2'`).
+//
+// Beyond 8 formatters the linear scan in [formatCache.get] is still
+// cheaper than a map lookup (8 pointer-equality compares span ~6
+// cache lines; a map lookup hashes the interface header and walks a
+// bucket chain). The overflow map remains as a correctness safety
+// net at higher cardinality, not as the performance-optimal path.
+//
+// See #499 for the rationale behind the specific bound and the
+// benchmark evidence (BenchmarkAudit_FanOut_5DistinctFormatters and
+// BenchmarkAudit_FanOut_8DistinctFormatters — both 0 allocs/op).
+const formatCacheSize = 8
 
 // formatCacheEntry pairs a formatter with its serialised output and,
 // for [bufferedFormatter] fast-path entries, the leased buffer that
@@ -331,8 +350,9 @@ type formatCacheEntry struct { //nolint:govet // fieldalignment: readability ove
 
 // formatCache caches serialised output per unique formatter for the
 // duration of a single [Auditor.processEntry] call. For deployments
-// with <= 4 unique formatters (the vast majority), the array is
-// stack-allocated. Falls back to a heap map for larger counts.
+// with <= 8 unique formatters (see [formatCacheSize]; the vast
+// majority), the array is stack-allocated. Falls back to a heap map
+// for larger counts.
 //
 // The cache also owns the per-event "post-field scratch" buffer
 // (postBuf). When an output requires post-fields (event_category +

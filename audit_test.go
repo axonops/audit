@@ -2322,7 +2322,7 @@ func TestFormatCache_PutGet(t *testing.T) {
 		{name: "single_formatter", formatters: 1},
 		{name: "at_array_capacity", formatters: audit.FormatCacheSizeForTest},
 		{name: "overflow_to_map", formatters: audit.FormatCacheSizeForTest + 1},
-		{name: "well_beyond_capacity", formatters: 10},
+		{name: "well_beyond_capacity", formatters: audit.FormatCacheSizeForTest * 2},
 	}
 
 	for _, tt := range tests {
@@ -2356,6 +2356,39 @@ func TestFormatCache_NilData(t *testing.T) {
 	data, ok := fc.Get(f)
 	assert.True(t, ok, "nil-data entry should be found (cached failure)")
 	assert.Nil(t, data, "data should be nil for cached failure")
+}
+
+// TestFormatCache_FillsArraySlots_ZeroMapAllocs is the authoritative
+// regression guard for #499. It asserts that inserting exactly
+// [audit.FormatCacheSizeForTest] distinct formatters into a fresh
+// [formatCache] via Put does NOT trigger the overflow-map make() —
+// operationally, AllocsPerRun must be 0. The test adapts
+// automatically to the current constant, so a future bump or shrink
+// is reflected in the assertion without a code edit. If a future
+// refactor shrinks the constant (or the struct layout silently
+// pushes fc to the heap), this test fails loudly in normal
+// `go test` — benchmarks only fail via benchstat, which is not on
+// the `make check` path.
+func TestFormatCache_FillsArraySlots_ZeroMapAllocs(t *testing.T) {
+	// Pre-allocate one distinct formatter instance per cache slot.
+	// Pointer identity is what the cache keys on, so each &cacheTestFmt{}
+	// produces a distinct key regardless of field values.
+	fmts := make([]audit.Formatter, audit.FormatCacheSizeForTest)
+	for i := range fmts {
+		fmts[i] = &cacheTestFmt{id: i + 1}
+	}
+	payload := []byte("cached")
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		fc := &audit.FormatCacheForTest{}
+		for _, f := range fmts {
+			fc.Put(f, payload)
+		}
+	})
+	t.Logf("formatCache.Put × %d distinct formatters: AllocsPerRun = %.2f",
+		audit.FormatCacheSizeForTest, allocs)
+	assert.LessOrEqual(t, allocs, 0.0,
+		"filling the array slots must not allocate the overflow map (#499); any >0 indicates formatCacheSize was shrunk or the struct escaped to the heap")
 }
 
 // ---------------------------------------------------------------------------
@@ -5198,6 +5231,110 @@ func BenchmarkAudit_FastPath_WithHMAC_Noop(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	evt := audit.NewFieldsDonorForTest("api_request", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"method":   "POST",
+		"path":     "/api/v1/schemas",
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(evt)
+	}
+}
+
+// newMultiFormatterAuditor builds an auditor with a NoopOutput per
+// formatter so the fan-out benchmark measures ONLY the formatCache /
+// drain path — no output-side defensive copy or mutex contention.
+// Each formatter instance is a distinct pointer so the cache treats
+// them as distinct keys (cache keys on pointer identity, not field
+// values). Used by BenchmarkAudit_FanOut_{5,8}DistinctFormatters for
+// #499.
+func newMultiFormatterAuditor(tb testing.TB, formatters []audit.Formatter) *audit.Auditor {
+	tb.Helper()
+	tax := &audit.Taxonomy{
+		Version: 1,
+		Categories: map[string]*audit.CategoryDef{
+			"write": {Events: []string{"api_request"}},
+		},
+		Events: map[string]*audit.EventDef{
+			"api_request": {
+				Required: []string{"outcome", "actor_id", "method", "path"},
+			},
+		},
+	}
+	opts := []audit.Option{
+		audit.WithQueueSize(100_000),
+		audit.WithTaxonomy(tax),
+	}
+	for i, f := range formatters {
+		out := testhelper.NewNoopOutput(fmt.Sprintf("noop-%d", i))
+		opts = append(opts, audit.WithNamedOutput(out, audit.OutputFormatter(f)))
+	}
+	auditor, err := audit.New(opts...)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return auditor
+}
+
+// BenchmarkAudit_FanOut_5DistinctFormatters documents the transition
+// case for #499. Pre-bump (formatCacheSize=4) this path allocated a
+// `make(map[Formatter]formatCacheEntry)` on first use because the 5th
+// formatter spilled into the overflow map. Post-bump the overflow
+// map is never touched and the benchmark reports 0 allocs/op on the
+// drain side — evidence that the bump delivers its headline win on
+// realistic multi-formatter fan-out shapes (#499 AC #2).
+func BenchmarkAudit_FanOut_5DistinctFormatters(b *testing.B) {
+	silenceSlog(b)
+	fmts := []audit.Formatter{
+		&audit.JSONFormatter{},
+		&audit.JSONFormatter{OmitEmpty: true},
+		&audit.CEFFormatter{Vendor: "V1", Product: "P", Version: "1"},
+		&audit.CEFFormatter{Vendor: "V2", Product: "P", Version: "1"},
+		&audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis},
+	}
+	auditor := newMultiFormatterAuditor(b, fmts)
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	evt := audit.NewFieldsDonorForTest("api_request", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"method":   "POST",
+		"path":     "/api/v1/schemas",
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(evt)
+	}
+}
+
+// BenchmarkAudit_FanOut_8DistinctFormatters validates that a full-
+// capacity fan-out — one distinct formatter per cache slot — stays
+// zero-alloc on the drain path (#499 AC #2). 4 × JSONFormatter + 4 ×
+// CEFFormatter with different configs gives 8 distinct pointers
+// exercising both formatter types' bufferedFormatter fast paths.
+// 0 allocs/op is operational proof that the overflow map was never
+// initialised — a single map header alloc would bump this to ≥ 1.
+func BenchmarkAudit_FanOut_8DistinctFormatters(b *testing.B) {
+	silenceSlog(b)
+	fmts := []audit.Formatter{
+		&audit.JSONFormatter{},
+		&audit.JSONFormatter{OmitEmpty: true},
+		&audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis},
+		&audit.JSONFormatter{OmitEmpty: true, Timestamp: audit.TimestampUnixMillis},
+		&audit.CEFFormatter{Vendor: "V1", Product: "P", Version: "1"},
+		&audit.CEFFormatter{Vendor: "V2", Product: "P", Version: "1"},
+		&audit.CEFFormatter{Vendor: "V3", Product: "P", Version: "1"},
+		&audit.CEFFormatter{Vendor: "V4", Product: "P", Version: "1"},
+	}
+	auditor := newMultiFormatterAuditor(b, fmts)
 	b.Cleanup(func() { _ = auditor.Close() })
 
 	evt := audit.NewFieldsDonorForTest("api_request", audit.Fields{

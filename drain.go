@@ -227,23 +227,60 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 // returned slice aliases the scratch buffer and is valid only until
 // the next assemblePostFields call on the same fc.
 //
-// HMAC ordering: _hmac_v is appended before computeHMACFast so it is
-// part of the authenticated region; _hmac is appended last and never
-// covers itself.
+// # Append ordering and the HMAC authenticated region
+//
+// The HMAC tag (_hmac) is the LAST field on the wire and MUST NOT
+// cover itself. Every other post-field — currently event_category
+// and _hmac_v — MUST be inside the authenticated region so an
+// attacker cannot swap a salt version or inject a category label
+// without invalidating the HMAC. See issue #473 for the regression
+// class this invariant defends against.
+//
+// Concretely:
+//
+//  1. Collect every "inside the authenticated region" post-field
+//     into preHMAC (currently event_category and _hmac_v; order
+//     within the batch matches the intended wire order).
+//  2. Append them in ONE batch call ([appendPostFieldsInto] for
+//     n == 2, [appendPostFieldInto] for n == 1) — saves one
+//     terminator rewind / restore cycle vs two sequential calls.
+//  3. Compute the HMAC over everything written so far
+//     (oe.hmac.computeHMACFast(data)).
+//  4. Append _hmac as a SEPARATE [appendPostFieldInto] call. This
+//     call runs AFTER computeHMACFast and the value it writes is
+//     outside the authenticated region, as required.
+//
+// Any future post-field that must be authenticated MUST be added
+// to the preHMAC batch in step 1. Appending it after step 3 would
+// leave it outside the authenticated region — the same regression
+// class as #473.
 func (a *Auditor) assemblePostFields(fc *formatCache, base []byte, fmtr Formatter, category string, oe *outputEntry, needsCategory, needsHMAC bool) []byte {
 	pb := fc.borrowPostBuf()
 	pb.Write(base)
 	data := pb.Bytes()
 
+	// preHMAC holds every post-field that must fall inside the
+	// authenticated region. Stack-allocated: no per-event alloc.
+	// See #508 for the consolidation rationale and #473 for the
+	// ordering invariant this batch enforces.
+	var preHMAC [2]PostField
+	n := 0
 	if needsCategory {
-		data = appendEventCategoryInto(pb, fmtr, category)
+		preHMAC[n] = PostField{JSONKey: "event_category", CEFKey: "cat", Value: category}
+		n++
 	}
 	if needsHMAC {
-		// _hmac_v (salt version identifier) FIRST so it is in the
-		// authenticated region (issue #473).
-		data = appendPostFieldInto(pb, fmtr, PostField{
-			JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion,
-		})
+		preHMAC[n] = PostField{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion}
+		n++
+	}
+	switch n {
+	case 1:
+		data = appendPostFieldInto(pb, fmtr, preHMAC[0])
+	case 2:
+		data = appendPostFieldsInto(pb, fmtr, preHMAC[:2])
+	}
+
+	if needsHMAC {
 		hmacHex := oe.hmac.computeHMACFast(data)
 		data = appendPostFieldInto(pb, fmtr, PostField{
 			JSONKey: "_hmac", CEFKey: "_hmac", Value: string(hmacHex),

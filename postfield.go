@@ -135,17 +135,6 @@ func appendPostFieldsJSON(data []byte, fields []PostField) []byte {
 	return result
 }
 
-// appendEventCategoryInto appends the event_category field to a
-// *bytes.Buffer that already contains the base serialised bytes. The
-// buffer is mutated in place: the trailing terminator is rewound, the
-// field is appended, and the terminator is restored. Returns
-// buf.Bytes().
-func appendEventCategoryInto(buf *bytes.Buffer, formatter Formatter, category string) []byte {
-	return appendPostFieldInto(buf, formatter, PostField{
-		JSONKey: "event_category", CEFKey: "cat", Value: category,
-	})
-}
-
 // appendPostFieldInto appends a single post-serialisation field by
 // mutating buf in place. This is the zero-allocation drain-pipeline
 // counterpart to [AppendPostField]. The buffer must already contain
@@ -190,6 +179,81 @@ func appendPostFieldCEFInto(buf *bytes.Buffer, f PostField) []byte {
 	buf.WriteString(f.CEFKey)
 	buf.WriteByte('=')
 	buf.WriteString(cefEscapeExtValue(f.Value))
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+// appendPostFieldsInto is the batch in-place counterpart to
+// [appendPostFieldInto]. It rewinds the buffer terminator once,
+// appends every field in fields, and restores the terminator once —
+// saving one rewind / restore cycle per additional field over
+// N sequential [appendPostFieldInto] calls. Used by the drain
+// pipeline to emit the pre-HMAC batch (event_category + _hmac_v)
+// in a single buffer mutation; see [Auditor.assemblePostFields]
+// in drain.go.
+//
+// Contract mirrors [appendPostFieldInto]:
+//
+//   - Returns buf.Bytes() unchanged if fields is empty or the buffer
+//     lacks the expected terminator (}\n for JSON, \n for CEF). The
+//     format cache always produces well-terminated input, so the
+//     guard is defensive against future invariant violations.
+//   - All-or-none: if the terminator guard fails the function returns
+//     without appending any field. It never leaves the buffer in a
+//     partially-appended state.
+//   - Silent on unknown formatter (matches the single-field variant).
+//
+// The returned slice aliases buf.Bytes() and is valid until the next
+// mutation of buf.
+func appendPostFieldsInto(buf *bytes.Buffer, formatter Formatter, fields []PostField) []byte {
+	if len(fields) == 0 {
+		return buf.Bytes()
+	}
+	switch formatter.(type) {
+	case *JSONFormatter:
+		return appendPostFieldsJSONInto(buf, fields)
+	case *CEFFormatter:
+		return appendPostFieldsCEFInto(buf, fields)
+	default:
+		return buf.Bytes()
+	}
+}
+
+// appendPostFieldsJSONInto rewinds the trailing }\n, appends
+// ,"k1":"v1",...,"kN":"vN", and restores the }\n. Returns
+// buf.Bytes(). See [appendPostFieldsInto] for the contract.
+func appendPostFieldsJSONInto(buf *bytes.Buffer, fields []PostField) []byte {
+	b := buf.Bytes()
+	if len(b) < 2 || b[len(b)-1] != '\n' || b[len(b)-2] != '}' {
+		return b
+	}
+	buf.Truncate(buf.Len() - 2)
+	for i := range fields {
+		buf.WriteByte(',')
+		WriteJSONString(buf, fields[i].JSONKey)
+		buf.WriteByte(':')
+		WriteJSONString(buf, fields[i].Value)
+	}
+	buf.WriteByte('}')
+	buf.WriteByte('\n')
+	return buf.Bytes()
+}
+
+// appendPostFieldsCEFInto rewinds the trailing \n, appends
+// " k1=v1 k2=v2 ... kN=vN", and restores the \n. Returns
+// buf.Bytes(). See [appendPostFieldsInto] for the contract.
+func appendPostFieldsCEFInto(buf *bytes.Buffer, fields []PostField) []byte {
+	b := buf.Bytes()
+	if len(b) < 1 || b[len(b)-1] != '\n' {
+		return b
+	}
+	buf.Truncate(buf.Len() - 1)
+	for i := range fields {
+		buf.WriteByte(' ')
+		buf.WriteString(fields[i].CEFKey)
+		buf.WriteByte('=')
+		buf.WriteString(cefEscapeExtValue(fields[i].Value))
+	}
 	buf.WriteByte('\n')
 	return buf.Bytes()
 }

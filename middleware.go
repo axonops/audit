@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -41,6 +42,44 @@ const (
 // hintsKey is the unexported context key for [Hints].
 type hintsKey struct{}
 
+// transportMetadataPool reuses *TransportMetadata instances across
+// requests to eliminate the per-request heap allocation on the
+// middleware hot path (#501). Unlike [Hints], TransportMetadata is
+// constructed after the handler returns and is consumed only by the
+// synchronous [EventBuilder] callback inside [emitAuditEvent] — it
+// is never stored in a context or retained past the middleware, so
+// pool reuse is safe.
+//
+// Both [acquireTransportMetadata] and [releaseTransportMetadata]
+// zero every field so neither a missed reset nor a missed Put can
+// leak request-scoped data (ClientIP, RequestID, Path) into the
+// next request's struct.
+var transportMetadataPool = sync.Pool{
+	New: func() any { return &TransportMetadata{} },
+}
+
+// acquireTransportMetadata returns a zeroed *TransportMetadata
+// from the pool. Callers populate all fields before use.
+func acquireTransportMetadata() *TransportMetadata {
+	t, ok := transportMetadataPool.Get().(*TransportMetadata)
+	if !ok {
+		t = &TransportMetadata{}
+	}
+	*t = TransportMetadata{} // reset on Get — defence in depth.
+	return t
+}
+
+// releaseTransportMetadata zeros every field on t and returns it
+// to [transportMetadataPool]. Idempotent; callers typically invoke
+// via `defer`.
+func releaseTransportMetadata(t *TransportMetadata) {
+	if t == nil {
+		return
+	}
+	*t = TransportMetadata{}
+	transportMetadataPool.Put(t)
+}
+
 // Hints carries mutable, per-request audit metadata through the
 // request context. Handlers retrieve it with [HintsFromContext] and populate
 // domain-specific fields (actor, target, outcome). The middleware
@@ -48,7 +87,11 @@ type hintsKey struct{}
 // [EventBuilder] callback.
 //
 // Each request receives its own *Hints allocation; there is no shared
-// mutable state between concurrent requests.
+// mutable state between concurrent requests. The middleware does NOT
+// pool *Hints because consumer handlers are allowed to capture
+// r.Context() into spawned goroutines that outlive ServeHTTP and read
+// [HintsFromContext] lazily; pooling Hints would silently expose those
+// goroutines to recycled state (#501).
 type Hints struct {
 	// Extra holds arbitrary domain-specific fields. It is initialised
 	// lazily by the handler. Keys and values are passed through to
@@ -90,6 +133,13 @@ type Hints struct {
 // TransportMetadata contains HTTP transport-level fields captured
 // automatically by the middleware. These are read-only values passed
 // to the [EventBuilder] callback; handlers do not need to set them.
+//
+// TransportMetadata is pool-managed: the pointer passed to
+// [EventBuilder] is valid only for the duration of that callback.
+// Copy any field values you need to retain; do not store the pointer
+// itself, pass it to goroutines, or place it into the returned
+// [Fields] map — the pool reset will zero every field before the
+// next request sees the struct. See #501.
 type TransportMetadata struct {
 	// ClientIP is the client's IP address, extracted from the
 	// rightmost X-Forwarded-For entry, X-Real-IP, or RemoteAddr.
@@ -214,7 +264,7 @@ func Middleware(auditor *Auditor, builder EventBuilder) func(http.Handler) http.
 // serveAudit is the per-request handler logic extracted from
 // [Middleware] to keep cognitive complexity within bounds.
 func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, auditor *Auditor, builder EventBuilder) {
-	hints := &Hints{}
+	hints := &Hints{} // never pooled — see [Hints] godoc for rationale (#501).
 	ctx := context.WithValue(r.Context(), hintsKey{}, hints)
 	r = r.WithContext(ctx)
 
@@ -223,7 +273,9 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 		reqID = newRequestID(auditor.logger)
 	}
 
-	rw := &responseWriter{ResponseWriter: w}
+	rw := acquireResponseWriter(w)
+	defer releaseResponseWriter(rw)
+
 	start := time.Now()
 
 	panicked, panicVal := invokeHandler(next, rw, r)
@@ -233,16 +285,16 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 		statusCode = http.StatusOK
 	}
 
-	transport := &TransportMetadata{
-		ClientIP:          clientIP(r),
-		TransportSecurity: transportSecurity(r),
-		Method:            r.Method,
-		Path:              truncateString(r.URL.Path, maxPathLen),
-		UserAgent:         truncateString(r.UserAgent(), maxUserAgentLen),
-		RequestID:         reqID,
-		StatusCode:        statusCode,
-		Duration:          time.Since(start),
-	}
+	transport := acquireTransportMetadata()
+	defer releaseTransportMetadata(transport)
+	transport.ClientIP = clientIP(r)
+	transport.TransportSecurity = transportSecurity(r)
+	transport.Method = r.Method
+	transport.Path = truncateString(r.URL.Path, maxPathLen)
+	transport.UserAgent = truncateString(r.UserAgent(), maxUserAgentLen)
+	transport.RequestID = reqID
+	transport.StatusCode = statusCode
+	transport.Duration = time.Since(start)
 
 	emitAuditEvent(auditor, builder, hints, transport)
 

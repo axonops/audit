@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -206,6 +207,55 @@ func (rw *responseWriter) Flush() {
 	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// responseWriterPool reuses [responseWriter] instances across
+// requests to eliminate the per-request `&responseWriter{}`
+// heap allocation on the middleware hot path (#501).
+//
+// Get and Put both reset every field. Reset-on-Get is the
+// load-bearing defence-in-depth per the #501 security review:
+// an intervening panic between Get and the deferred Put (or a
+// future refactor that forgets the defer) would otherwise leave
+// a dirty struct reachable on the next Get. Reset-on-Put drops
+// the inner [http.ResponseWriter] reference so the pool does
+// not pin the connection past the handler return.
+//
+// A handler that retains a `*responseWriter` past ServeHTTP —
+// for example via [http.NewResponseController] — observes a
+// zeroed struct on its next call. That violates the
+// [http.ResponseWriter] contract (the writer is invalid after
+// the handler returns per stdlib docs); the pool simply
+// surfaces the existing violation more visibly.
+var responseWriterPool = sync.Pool{
+	New: func() any { return &responseWriter{} },
+}
+
+// acquireResponseWriter returns a pool-sourced *responseWriter
+// bound to w, with statusCode and written cleared.
+func acquireResponseWriter(w http.ResponseWriter) *responseWriter {
+	rw, ok := responseWriterPool.Get().(*responseWriter)
+	if !ok {
+		rw = &responseWriter{}
+	}
+	// Reset on Get — defence in depth against a dirty pool entry.
+	rw.ResponseWriter = w
+	rw.statusCode = 0
+	rw.written = false
+	return rw
+}
+
+// releaseResponseWriter clears every field on rw and returns it
+// to [responseWriterPool]. Idempotent; callers typically invoke
+// via `defer`.
+func releaseResponseWriter(rw *responseWriter) {
+	if rw == nil {
+		return
+	}
+	rw.ResponseWriter = nil
+	rw.statusCode = 0
+	rw.written = false
+	responseWriterPool.Put(rw)
 }
 
 // ErrHijackNotSupported is returned by the middleware's response

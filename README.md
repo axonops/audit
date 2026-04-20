@@ -237,10 +237,14 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 > 💡 The core module includes `StdoutOutput` (no additional dependency)
 > and the `audittest` package for [testing](docs/testing.md).
 
-> 🚀 On Linux 5.5+ the file output automatically uses [io_uring][iouring]
-> to amortise the per-event `write(2)` syscall across batched vectored
-> writes; on other Unix platforms it falls back transparently to
-> `writev(2)`. No configuration needed. See [ADR 0002][adr-0002].
+> 🚀 On Unix the file output uses `writev(2)` via the
+> [iouring][iouring] submodule to collapse batched events into a
+> single syscall — measured faster than `io_uring` at every batch
+> size for our submit-and-wait pattern (see [ADR 0002][adr-0002]).
+> On Windows it falls back transparently to buffered writes.
+> No configuration needed. The `io_uring` primitive ships in the
+> submodule and is available for post-v1.0 async workloads (WAL,
+> O_DIRECT) that genuinely benefit.
 
 [iouring]: https://pkg.go.dev/github.com/axonops/audit/iouring
 [adr-0002]: docs/adr/0002-file-output-io-uring-approach.md

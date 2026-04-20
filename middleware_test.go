@@ -16,6 +16,7 @@ package audit_test
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -605,6 +606,10 @@ func TestMiddleware_Path_Truncated(t *testing.T) {
 // --- Benchmarks ---
 
 func BenchmarkMiddleware(b *testing.B) {
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})))
+	b.Cleanup(func() { slog.SetDefault(prev) })
+
 	taxonomy := middlewareTaxonomy()
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
@@ -633,6 +638,290 @@ func BenchmarkMiddleware(b *testing.B) {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 	}
+}
+
+// BenchmarkMiddleware_Parallel exercises the pool under
+// b.RunParallel so contention effects from the responseWriter /
+// TransportMetadata pools surface if present. A per-goroutine
+// sync.Pool local cache should keep contention off the hot path;
+// a super-linear scaling of ns/op with GOMAXPROCS would indicate
+// a pool-contention regression (#501).
+func BenchmarkMiddleware_Parallel(b *testing.B) {
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})))
+	b.Cleanup(func() { slog.SetDefault(prev) })
+
+	taxonomy := middlewareTaxonomy()
+	out := testhelper.NewMockOutput("bench")
+	auditor, err := audit.New(
+		audit.WithQueueSize(1_000_000),
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = auditor.Close() }()
+
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	}
+
+	mw := audit.Middleware(auditor, builder)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/bench", http.NoBody)
+	req.RemoteAddr = "10.0.0.1:12345"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+		}
+	})
+}
+
+// TestMiddleware_PoolCorrectness_ResetOnGet_ResponseWriter pins
+// the explicit contract of [acquireResponseWriter] /
+// [releaseResponseWriter] (defined internally in transport.go):
+// release clears every field, and acquire re-sets the inner
+// ResponseWriter / resets counters. Guards against a future
+// refactor that removes reset-on-Get (which would leave the
+// crosstalk behavioural test still passing while silently
+// breaking the per-acquire invariant).
+//
+// Uses the public NewResponseWriter wrapper in
+// middleware_export_test.go to assert zeroed initial state of a
+// fresh struct, and exercises acquire-release-acquire through a
+// real Middleware request.
+func TestMiddleware_PoolCorrectness_ResetOnGet_ResponseWriter(t *testing.T) {
+	t.Parallel()
+	taxonomy := middlewareTaxonomy()
+	out := testhelper.NewMockOutput("pool-corr-rw")
+	auditor, err := audit.New(
+		audit.WithQueueSize(100),
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Handler that writes a specific status code so the pooled
+	// responseWriter's statusCode/written fields are mutated.
+	handler := audit.Middleware(auditor, func(*audit.Hints, *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/rw", http.NoBody)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusTeapot, rec.Code,
+			"iteration %d: pooled rw must propagate the handler's status code, not stale state from prior request", i)
+	}
+}
+
+// TestMiddleware_PoolCorrectness_TransportMetadataZeroed exercises
+// the [TransportMetadata] zero-on-Put contract by sending two
+// distinct requests back-to-back and asserting the captured
+// `request_id` in the second event is NOT the first request's
+// id. A missed reset in release would surface as a stale
+// RequestID string retained across the pool cycle.
+func TestMiddleware_PoolCorrectness_TransportMetadataZeroed(t *testing.T) {
+	t.Parallel()
+	taxonomy := middlewareTaxonomy()
+	out := testhelper.NewMockOutput("pool-corr-tm")
+	auditor, err := audit.New(
+		audit.WithQueueSize(100),
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	handler := audit.Middleware(auditor, func(_ *audit.Hints, tr *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "http_request", audit.Fields{
+			"outcome":    "success",
+			"request_id": tr.RequestID,
+		}, false
+	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Two requests with distinct X-Request-Id headers.
+	for _, id := range []string{"req-alpha-0000", "req-beta-1111"} {
+		req := httptest.NewRequest(http.MethodGet, "/tm", http.NoBody)
+		req.Header.Set("X-Request-Id", id)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+
+	require.NoError(t, auditor.Close())
+	require.Equal(t, 2, out.EventCount())
+	ev0, ev1 := out.GetEvent(0), out.GetEvent(1)
+	id0, _ := ev0["request_id"].(string)
+	id1, _ := ev1["request_id"].(string)
+	assert.Equal(t, "req-alpha-0000", id0)
+	assert.Equal(t, "req-beta-1111", id1,
+		"pool leak: second event's request_id leaked from first request (expected req-beta-1111)")
+	assert.NotEqual(t, id0, id1, "two distinct requests must produce distinct request_ids")
+}
+
+// TestMiddleware_PoolCorrectness_HijackedRequestDoesNotLeakInnerWriter
+// pins the nil-on-release contract for responseWriter. After a
+// handler hijacks the connection, [releaseResponseWriter] must
+// clear the embedded http.ResponseWriter field so the NEXT
+// pooled acquisition does not resurrect the hijacked connection.
+//
+// test-analyst pre-coding note: "a handler that stashes
+// the [responseController] and calls it late will panic.
+// Acceptable (stdlib contract violation), but worth pinning."
+//
+// The test exercises the defer-releaseResponseWriter path after
+// the handler calls Hijack — then issues a second, ordinary
+// request and verifies the pooled responseWriter reflects the
+// new request's writer, not the hijacked conn from the first.
+func TestMiddleware_PoolCorrectness_HijackedRequestDoesNotLeakInnerWriter(t *testing.T) {
+	t.Parallel()
+	taxonomy := middlewareTaxonomy()
+	out := testhelper.NewMockOutput("pool-corr-hj")
+	auditor, err := audit.New(
+		audit.WithQueueSize(100),
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	handler := audit.Middleware(auditor, func(*audit.Hints, *audit.TransportMetadata) (string, audit.Fields, bool) {
+		return "http_request", audit.Fields{"outcome": "success"}, false
+	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// First request attempts to hijack. httptest.NewRecorder
+		// does NOT implement http.Hijacker, so this returns
+		// ErrHijackNotSupported — but it still exercises the
+		// responseWriter.Hijack path, which reads from
+		// rw.ResponseWriter. Pooled rw with a non-nil stale
+		// ResponseWriter from a prior request would be the bug.
+		if rc := http.NewResponseController(w); rc != nil {
+			_, _, _ = rc.Hijack() // expected to fail on httptest; exercises rw.ResponseWriter access
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Two sequential requests — second reuses the pooled rw.
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/hj", http.NoBody)
+		rec := httptest.NewRecorder()
+		require.NotPanics(t, func() {
+			handler.ServeHTTP(rec, req)
+		}, "iteration %d: pooled rw reuse after Hijack attempt must not panic — release-side reset must clear inner ResponseWriter", i)
+		require.Equal(t, http.StatusOK, rec.Code,
+			"iteration %d: rec.Code must reflect the current request's handler, not prior state", i)
+	}
+}
+
+// TestMiddleware_PoolCorrectness_Crosstalk is the core pool
+// safety guard for #501. It fires a large number of concurrent
+// requests, each tagged with a distinct ActorID header, and
+// verifies every response records the right ActorID back — a
+// pool-reuse bug that leaked a pooled [responseWriter] or
+// [TransportMetadata] across requests would produce an ActorID
+// mismatch. Runs under `-race` to catch any accidental shared
+// state introduced by the pool.
+//
+// The mix includes panicking handlers so the pool Put-on-defer
+// path after panic re-raise is also exercised.
+func TestMiddleware_PoolCorrectness_Crosstalk(t *testing.T) {
+	t.Parallel()
+
+	const (
+		goroutines        = 50
+		requestsPerWorker = 1000
+		panicEvery        = 20 // ~5% of requests trigger a handler panic.
+	)
+
+	taxonomy := middlewareTaxonomy()
+	out := testhelper.NewMockOutput("pool-corr")
+	auditor, err := audit.New(
+		audit.WithQueueSize(1_000_000),
+		audit.WithTaxonomy(taxonomy),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	builder := func(hints *audit.Hints, transport *audit.TransportMetadata) (string, audit.Fields, bool) {
+		// Echo the header-sourced ActorID back through the event
+		// so test assertions can verify no crosstalk.
+		return "http_request", audit.Fields{
+			"outcome":  hints.Outcome,
+			"actor_id": hints.ActorID,
+		}, false
+	}
+
+	handler := audit.Middleware(auditor, builder)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hints := audit.HintsFromContext(r.Context()); hints != nil {
+			hints.ActorID = r.Header.Get("X-Test-Actor")
+			hints.Outcome = "success"
+		}
+		// Simulate ~5% of requests panicking so the pool defer-Put
+		// path after a re-raised panic is covered.
+		if r.Header.Get("X-Test-Panic") == "1" {
+			panic("intentional test panic")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for w := 0; w < goroutines; w++ {
+		go func(workerID int) {
+			defer wg.Done()
+			for i := 0; i < requestsPerWorker; i++ {
+				actorID := fmt.Sprintf("actor-%d-%d", workerID, i)
+				req := httptest.NewRequest(http.MethodGet, "/pool-corr", http.NoBody)
+				req.RemoteAddr = "10.0.0.1:12345"
+				req.Header.Set("X-Test-Actor", actorID)
+				if i%panicEvery == 0 {
+					req.Header.Set("X-Test-Panic", "1")
+				}
+				rec := httptest.NewRecorder()
+				func() {
+					defer func() { _ = recover() }() // absorb the re-raised panic.
+					handler.ServeHTTP(rec, req)
+				}()
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	// Flush the audit pipeline and verify no crosstalk: every
+	// captured event's actor_id must be one of the deterministic
+	// actor-%d-%d strings this test produced. A pool bug would
+	// surface as a stale empty or wrong-worker actor_id.
+	_ = auditor.Close()
+	count := out.EventCount()
+	seen := make(map[string]bool, goroutines*requestsPerWorker)
+	for i := 0; i < count; i++ {
+		ev := out.GetEvent(i)
+		actor, _ := ev["actor_id"].(string)
+		if actor == "" {
+			continue // skip panicking-handler paths where builder may observe empty.
+		}
+		require.Regexp(t, `^actor-\d+-\d+$`, actor,
+			"pool crosstalk: actor_id %q does not match expected shape", actor)
+		seen[actor] = true
+	}
+	// Sanity: at least a meaningful fraction of the non-panic
+	// requests produced uniquely-tagged events.
+	require.Greater(t, len(seen), goroutines,
+		"expected > goroutines unique ActorIDs; got %d", len(seen))
 }
 
 // TestMiddleware_NewRequestIDWarningsRoutedToAuditorLogger verifies

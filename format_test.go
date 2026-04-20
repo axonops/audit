@@ -1941,6 +1941,41 @@ func BenchmarkCEFFormatter_Format_Numeric(b *testing.B) {
 	}
 }
 
+// BenchmarkCEFFormatter_Format_Duration isolates the duration_ms /
+// cn1 branch at format_cef.go so regressions to that code path
+// surface as allocation growth. Fixture supplies duration_ms as a
+// [time.Duration] (the type that triggers the cn1 emit — other
+// types route through the generic extensions). #663 removed the
+// last remaining intermediate-string allocation on this branch.
+//
+// Expectation: 1 alloc/op = the defensive copy in the public
+// [CEFFormatter.Format] path. Zero allocs would require the
+// bufferedFormatter drain-side path, which this test does not
+// exercise.
+func BenchmarkCEFFormatter_Format_Duration(b *testing.B) {
+	f := &audit.CEFFormatter{
+		Vendor:  "TestVendor",
+		Product: "TestProduct",
+		Version: "1.0",
+	}
+	def := &audit.EventDef{
+		Required: []string{"outcome", "actor_id"},
+		Optional: []string{"duration_ms"},
+	}
+	fields := audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"duration_ms": 500 * time.Millisecond,
+	}
+	ts := time.Now()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_, _ = f.Format(ts, "api_request", fields, def, nil)
+	}
+}
+
 // BenchmarkCEFFormatter_Format_Parallel runs the large-event path
 // under concurrency via b.RunParallel. Confirms the pool contention
 // and buf.Grow(768) preflight do not introduce lock hotspots; ns/op

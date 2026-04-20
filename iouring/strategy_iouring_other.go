@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package file
+//go:build unix && !linux
 
-// SimulatePanicOnNextWrite triggers a nil-pointer panic inside
-// writeBatch by temporarily setting the writer to nil. The
-// deferred recover in writeBatch catches it. Used for panic
-// recovery tests only. Called synchronously from the test
-// goroutine, not from writeLoop.
-func (f *Output) SimulatePanicOnNextWrite() {
-	saved := f.writer
-	f.writer = nil
-	f.writeBatch([][]byte{[]byte("trigger-panic")})
-	f.writer = saved
+package iouring
+
+import "fmt"
+
+// tryIouring on non-Linux Unix platforms (Darwin, *BSD) always
+// returns an error wrapping [ErrUnsupported]. The writev path
+// handles every vectored-write case on those kernels.
+func tryIouring(_ uint32) (strategyImpl, error) {
+	return nil, fmt.Errorf("iouring: io_uring unavailable on non-Linux Unix: %w", ErrUnsupported)
 }
+
+// iouringSupported on non-Linux platforms reports false.
+func iouringSupported() bool { return false }

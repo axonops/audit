@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/axonops/audit/iouring"
 )
 
 // bufSize is the bufio.Writer buffer size. 32KB batches many small
@@ -78,7 +80,27 @@ type Config struct {
 // create or open the file. The file is opened on the first [Writer.Write].
 type Writer struct {
 	// now is used for testing to control time.
-	now      func() time.Time
+	now func() time.Time
+
+	// iw is the dedicated iouring writer forced to
+	// [iouring.StrategyWritev]. On ext4/NVMe benchmarks in ADR
+	// 0002 the io_uring path was measurably slower than writev(2)
+	// at every batch size (up to 9.4× slower at batch 1) because
+	// our submit-and-wait pattern does not overlap in-flight
+	// submissions — the one scenario where io_uring pays off.
+	// A future async variant can re-enable io_uring via a config
+	// knob; for v1.0, writev is the right default.
+	//
+	// On platforms without any vectored-write primitive (Windows),
+	// iw is nil and Writev falls back to per-buffer bufio writes.
+	iw *iouring.Writer
+
+	// writevFn is the vectored-write primitive invoked by
+	// [Writer.Writev]. Defaults to iw.Writev at construction;
+	// tests swap it via export_test to simulate the ErrUnsupported
+	// fallback path on every platform.
+	writevFn func(fd int, bufs [][]byte) (int, error)
+
 	file     *os.File
 	bw       *bufio.Writer
 	millCh   chan struct{}
@@ -92,6 +114,12 @@ type Writer struct {
 	mu       sync.Mutex
 	millOnce sync.Once
 	closed   bool
+
+	// vectoredSupported caches whether the platform offers any
+	// vectored-write primitive. False on Windows (no writev);
+	// [Writer.Writev] then loops over per-buffer bufio writes
+	// to honour the same #450 prompt-visibility contract.
+	vectoredSupported bool
 }
 
 // New creates a [Writer] that will write to filename with the given
@@ -125,14 +153,36 @@ func New(filename string, cfg Config) (*Writer, error) {
 	ext := filepath.Ext(base)
 	prefix := strings.TrimSuffix(base, ext) + "-"
 
-	return &Writer{
+	w := &Writer{
 		cfg:      cfg,
 		filename: filename,
 		dir:      dir,
 		prefix:   prefix,
 		ext:      ext,
 		now:      time.Now,
-	}, nil
+	}
+
+	// Construct a dedicated iouring writer forced to the writev
+	// strategy. This skips the package-level StrategyAuto (which
+	// would pick io_uring on capable kernels) because measured
+	// numbers in ADR 0002 show writev(2) outperforms io_uring at
+	// every batch size for our submit-and-wait pattern.
+	//
+	// On Windows New returns ErrUnsupported; we catch that and
+	// fall back to the bufio path, keeping audit output working
+	// everywhere.
+	iw, ierr := iouring.New(iouring.WithStrategy(iouring.StrategyWritev))
+	switch {
+	case ierr == nil:
+		w.iw = iw
+		w.writevFn = iw.Writev
+		w.vectoredSupported = true
+	case errors.Is(ierr, iouring.ErrUnsupported):
+		// No vectored primitive available — fall back to bufio.
+	default:
+		return nil, fmt.Errorf("rotate: init writev: %w", ierr)
+	}
+	return w, nil
 }
 
 // Write writes p to the active log file, rotating if the write would
@@ -153,6 +203,165 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		w.cfg.OnRotate(w.filename)
 	}
 	return n, err
+}
+
+// Writev writes bufs to the active log file as a single batched
+// operation, rotating if the total size would cause the file to
+// exceed [Config.MaxSize]. A single batch that itself exceeds
+// MaxSize is accepted (written then rotated on the next call) —
+// this mirrors the oversize-write semantics of [Writer.Write].
+//
+// On Linux 5.5+ with io_uring-capable kernels, Writev uses
+// io_uring for the kernel-side write; on other Unix platforms it
+// falls back to writev(2). The selection is handled entirely by
+// [iouring.Writev]. Unlike [Writer.Write], the batched path does
+// NOT go through [bufio.Writer]: the batch itself is the buffer,
+// so the #450 "flush after every write" contract becomes "flush
+// after every batch" — crashes lose at most one in-flight batch.
+//
+// Writev returns an error wrapping [os.ErrClosed] if the writer
+// has been closed.
+func (w *Writer) Writev(bufs [][]byte) (n int, err error) {
+	var rotated bool
+
+	w.mu.Lock()
+	n, rotated, err = w.writevLocked(bufs)
+	w.mu.Unlock()
+
+	if rotated && w.cfg.OnRotate != nil {
+		w.cfg.OnRotate(w.filename)
+	}
+	return n, err
+}
+
+// writevLocked performs the batched write under the mutex.
+func (w *Writer) writevLocked(bufs [][]byte) (n int, rotated bool, err error) {
+	if w.closed {
+		return 0, false, fmt.Errorf("rotate: %w", os.ErrClosed)
+	}
+
+	var writeLen int64
+	for _, b := range bufs {
+		writeLen += int64(len(b))
+	}
+	if writeLen == 0 {
+		return 0, false, nil
+	}
+
+	rotated, err = w.prepareForWrite(writeLen)
+	if err != nil {
+		return 0, false, err
+	}
+
+	// On platforms without a vectored-write primitive (currently
+	// Windows), fall back to a loop of per-buffer bufio writes.
+	// Each iteration uses the same flush-after-write contract as
+	// [Writer.Write], preserving the #450 prompt-visibility
+	// guarantee at the cost of one syscall per buffer.
+	if !w.vectoredSupported {
+		return w.writevViaBufio(bufs, rotated)
+	}
+
+	// Drain any bytes sitting in bufio before bypassing it with
+	// iouring.Writev — otherwise batched bytes could land on disk
+	// before earlier Write() bytes that are still in the buffer.
+	if w.bw != nil {
+		if fErr := w.bw.Flush(); fErr != nil {
+			return 0, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+		}
+	}
+
+	written, werr := writevAll(int(w.file.Fd()), bufs, int(writeLen), w.writevFn)
+	w.size += int64(written)
+	if werr != nil {
+		return written, rotated, werr
+	}
+	return written, rotated, nil
+}
+
+// writevViaBufio is the Windows / no-vectored-primitive fallback
+// path. It loops over bufs, pushing each through the bufio
+// writer and flushing. Preserves the #450 prompt-visibility
+// contract — every batch is on the kernel page cache before
+// this method returns.
+func (w *Writer) writevViaBufio(bufs [][]byte, rotated bool) (n int, _ bool, err error) {
+	total := 0
+	for _, b := range bufs {
+		if len(b) == 0 {
+			continue
+		}
+		written, werr := w.bw.Write(b)
+		total += written
+		if werr != nil {
+			w.size += int64(total)
+			return total, rotated, fmt.Errorf("rotate: write: %w", werr)
+		}
+	}
+	if fErr := w.bw.Flush(); fErr != nil {
+		w.size += int64(total)
+		return total, rotated, fmt.Errorf("rotate: flush: %w", fErr)
+	}
+	w.size += int64(total)
+	return total, rotated, nil
+}
+
+// prepareForWrite opens a file if none is open yet and rotates
+// if the pending write would exceed MaxSize. Returns whether a
+// rotation occurred so the caller can fire OnRotate outside the
+// lock.
+func (w *Writer) prepareForWrite(writeLen int64) (rotated bool, err error) {
+	if w.file == nil {
+		openRotated, err := w.openExistingOrNew(writeLen)
+		if err != nil {
+			return false, err
+		}
+		rotated = openRotated
+	}
+	if w.size+writeLen > w.cfg.MaxSize {
+		if rotateErr := w.rotate(); rotateErr != nil {
+			return rotated, rotateErr
+		}
+		rotated = true
+	}
+	return rotated, nil
+}
+
+// writevAll submits bufs to fd via writevFn, retrying short
+// writes by advancing the iovec remainder. Used by Writer.Writev
+// after rotation and buffer-draining have completed. Returns
+// total bytes written and any error.
+func writevAll(fd int, bufs [][]byte, total int, writevFn func(int, [][]byte) (int, error)) (int, error) {
+	written := 0
+	remaining := bufs
+	for written < total {
+		got, werr := writevFn(fd, remaining)
+		if werr != nil {
+			return written, fmt.Errorf("rotate: writev: %w", werr)
+		}
+		if got == 0 {
+			// No progress; avoid infinite loop.
+			return written, nil
+		}
+		written += got
+		remaining = advanceIovecs(remaining, got)
+	}
+	return written, nil
+}
+
+// advanceIovecs returns a [][]byte representing the portion of
+// bufs that remains unwritten after `done` bytes have been
+// written. Completed inner slices are dropped; the first
+// incomplete slice is re-sliced.
+func advanceIovecs(bufs [][]byte, done int) [][]byte {
+	for len(bufs) > 0 {
+		if done < len(bufs[0]) {
+			bufs[0] = bufs[0][done:]
+			return bufs
+		}
+		done -= len(bufs[0])
+		bufs = bufs[1:]
+	}
+	return bufs
 }
 
 // writeLocked performs the write under the mutex, returning whether
@@ -210,12 +419,22 @@ func (w *Writer) Close() error {
 	w.closed = true
 	err := w.closeFile()
 	millCh := w.millCh
+	iw := w.iw
+	w.iw = nil
 	w.mu.Unlock()
 
 	// Signal the mill goroutine to stop and wait for it.
 	if millCh != nil {
 		close(millCh)
 		<-w.millDone
+	}
+
+	// Release the dedicated iouring writer. No effect on the
+	// fallback-to-bufio path where iw is nil.
+	if iw != nil {
+		if ierr := iw.Close(); ierr != nil && err == nil {
+			err = fmt.Errorf("rotate: close writev: %w", ierr)
+		}
 	}
 
 	return err

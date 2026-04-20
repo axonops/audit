@@ -357,34 +357,62 @@ func (f *Output) SetOutputMetrics(m audit.OutputMetrics) {
 	}
 }
 
+// maxBatch is the upper bound on events coalesced into a single
+// Writev call. Sized to 256 per the #510 performance review: 1024
+// is UIO_MAXIOV on Linux but most audit events are 200-500 bytes
+// so 256 × 500 = 128 KiB per batch is generous without pinning
+// the writeLoop inside the kernel for too long.
+const maxBatch = 256
+
 // writeLoop is the background goroutine that reads events from the
 // channel and writes them to the rotate.Writer. It runs until closeCh
 // is closed, then drains remaining events before returning.
+//
+// The loop coalesces events opportunistically: it blocks for the
+// first event, then non-blockingly drains up to maxBatch-1 more,
+// submitting them all as a single vectored write. No artificial
+// latency — if only one event is pending, a single-iovec batch
+// is submitted immediately.
 func (f *Output) writeLoop() {
 	defer close(f.done)
 
+	batch := make([][]byte, 0, maxBatch)
 	for {
+		// Blocking pull for the first event.
 		select {
 		case data := <-f.ch:
-			f.writeEvent(data)
+			batch = append(batch[:0], data)
 		case <-f.closeCh:
 			f.drainRemaining()
 			return
 		}
+
+		// Opportunistic non-blocking drain.
+	drain:
+		for len(batch) < maxBatch {
+			select {
+			case data := <-f.ch:
+				batch = append(batch, data)
+			default:
+				break drain
+			}
+		}
+
+		f.writeBatch(batch)
 	}
 }
 
-// writeEvent writes a single event to the rotate.Writer with panic
-// recovery and metrics recording.
-func (f *Output) writeEvent(data []byte) {
-	// Load metrics once per event for consistent snapshot.
+// writeBatch writes a batch of events to the rotate.Writer as a
+// single vectored write, with panic recovery and metrics
+// recording. The whole batch shares one defer/recover — cheaper
+// than per-event recovery — because a panic in writev is either
+// per-batch (unlikely) or per-process (worse than unlikely).
+func (f *Output) writeBatch(batch [][]byte) {
+	// Load metrics and logger once per batch.
 	var om audit.OutputMetrics
 	if omp := f.outputMetrics.Load(); omp != nil {
 		om = *omp
 	}
-	// Cache the logger once per event so a concurrent
-	// SetDiagnosticLogger swap mid-event still logs through the
-	// pre-swap logger (benign; next event picks up the new one).
 	logger := f.logger.Load()
 
 	defer func() {
@@ -400,9 +428,12 @@ func (f *Output) writeEvent(data []byte) {
 		}
 	}()
 
-	// Sample queue depth every 64 events.
+	// Sample queue depth every batch. Since batching naturally
+	// amortises metric calls (N events = 1 sample), there is no
+	// need to sub-sample further — the per-batch cost is one
+	// atomic increment plus one metric call.
 	f.writeCount++
-	if om != nil && f.writeCount&63 == 0 {
+	if om != nil {
 		om.RecordQueueDepth(len(f.ch), cap(f.ch))
 	}
 
@@ -410,29 +441,40 @@ func (f *Output) writeEvent(data []byte) {
 	if om != nil {
 		start = time.Now()
 	}
-	if _, err := f.writer.Write(data); err != nil {
+	if _, err := f.writer.Writev(batch); err != nil {
 		logger.Error("audit: output file: delivery failed",
-			"error", err)
+			"error", err, "batch_size", len(batch))
 		if om != nil {
 			om.RecordError()
 		}
 		return
 	}
 	if om != nil {
-		om.RecordFlush(1, time.Since(start))
+		om.RecordFlush(len(batch), time.Since(start))
 	}
 }
 
 // drainRemaining reads all remaining events from the channel after
-// closeCh fires and writes them to the file.
+// closeCh fires and writes them to the file. Uses the same
+// batch-coalescing shape as the steady-state writeLoop so shutdown
+// amortises syscall cost too.
 func (f *Output) drainRemaining() {
+	batch := make([][]byte, 0, maxBatch)
 	for {
-		select {
-		case data := <-f.ch:
-			f.writeEvent(data)
-		default:
+		batch = batch[:0]
+	fill:
+		for len(batch) < maxBatch {
+			select {
+			case data := <-f.ch:
+				batch = append(batch, data)
+			default:
+				break fill
+			}
+		}
+		if len(batch) == 0 {
 			return
 		}
+		f.writeBatch(batch)
 	}
 }
 

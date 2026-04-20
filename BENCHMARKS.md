@@ -156,3 +156,103 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 | 2026-04-03 | a6e759c | JSON append: writeJSONString + pooled buffer (#229) | 4 | 1 |
 | 2026-04-18 | 2a8625c | Track A refresh + pool/allocator settled (#493) | **2** | 1 |
 | 2026-04-03 | 7aa14b7 | HMAC hash reuse + pre-allocated buffers (#230) | 4 (5 w/HMAC) | 1 |
+
+---
+
+## iouring submodule
+
+Added in #510 as part of the file-output batch-coalescing fast path.
+See [ADR 0002](docs/adr/0002-file-output-io-uring-approach.md) for
+the design context. Benchmarks run via:
+
+```bash
+cd iouring && go test -bench BenchmarkWriter_Writev -benchmem -count=5
+```
+
+### Platform / target
+
+- CPU: AMD Ryzen 9 7950X 16-Core (32 threads)
+- OS: Linux kernel 6.14
+- Target filesystem: `/dev/shm` (tmpfs) — isolates syscall overhead
+  from device-write cost. Real-disk numbers differ.
+- Payload: 256-byte events, parametric batch size.
+
+### Results (count=5, median ns/op, zero allocations every path)
+
+| Strategy | Batch | ns/op | MB/s | allocs/op |
+|----------|------:|------:|-----:|----------:|
+| iouring  | 1     | 6 404 |   40 | 0 |
+| iouring  | 4     | 6 810 |  150 | 0 |
+| iouring  | 16    | 8 133 |  504 | 0 |
+| iouring  | 64    | 12 096 | 1 354 | 0 |
+| iouring  | 256   | 29 861 | 2 195 | 0 |
+| iouring  | 1 024 | 100 242 | 2 615 | 0 |
+| writev   | 1     |   591 |  433 | 0 |
+| writev   | 4     |   902 | 1 135 | 0 |
+| writev   | 16    | 1 992 | 2 056 | 0 |
+| writev   | 64    | 5 948 | 2 755 | 0 |
+| writev   | 256   | 22 613 | 2 898 | 0 |
+| writev   | 1 024 | 89 274 | 2 936 | 0 |
+
+### Results — ext4 / NVMe (real disk)
+
+Same harness, `IOURING_BENCH_DIR=/path/on/ext4 go test -bench …`.
+Ryzen 9 7950X, Samsung 990 Pro NVMe, ext4 default mount options.
+
+| Strategy | Batch | ns/op | MB/s |
+|----------|------:|------:|-----:|
+| iouring  | 1     | 6 928 |   37 |
+| iouring  | 16    | 9 132 |  458 |
+| iouring  | 64    | 16 267 | 1 007 |
+| iouring  | 256   | 38 530 | 1 701 |
+| iouring  | 1 024 | 135 583 | 1 933 |
+| writev   | 1     |   740 |  346 |
+| writev   | 16    | 2 678 | 1 509 |
+| writev   | 64    | 8 663 | 1 891 |
+| writev   | 256   | 31 447 | 2 084 |
+| writev   | 1 024 | 127 160 | 2 062 |
+
+### Interpretation
+
+- **Zero allocations on the hot path** for every strategy and
+  every batch size. The pre-allocated iovec scratch on each
+  writer eliminates per-call GC pressure.
+- **`writev(2)` beats `io_uring` at every batch size**, on both
+  tmpfs and real disk (ext4 / NVMe). At batch 1 the gap is 9.4×
+  on ext4; at batch 1024 it narrows to ~1.07× but writev is
+  still faster. The kernel's writev path is exceptionally
+  optimised for buffered page-cache writes — a single syscall,
+  a single memcpy-to-page-cache, minimal bookkeeping. io_uring
+  adds SQE fill, atomic tail release, `io_uring_enter` round-
+  trip, and CQE scan-match on top of the same write path.
+- **Our pattern doesn't use io_uring's strengths.** The file
+  output's writeLoop is single-goroutine submit-and-wait.
+  io_uring's advantages require patterns we don't use: multiple
+  in-flight submissions overlapping with slow I/O, SQPOLL,
+  `IORING_OP_WRITE_FIXED` with registered buffers, or `O_DIRECT`
+  against genuinely slow storage. On a modern kernel + NVMe
+  SSD + buffered writev, there's nothing left for io_uring to
+  overlap with.
+- **Decision**: the file output's `rotate.Writer` constructs its
+  iouring writer with `WithStrategy(StrategyWritev)` — the
+  measured-faster path. The io_uring primitive is still shipped
+  for post-v1.0 use cases that genuinely benefit (WAL with
+  multi-writer overlap, fsync pipelining, O_DIRECT).
+- **AC #5 on the parent issue asked for ≥ 20 % speedup of
+  `BenchmarkFileOutput_Writev_Iouring` vs `_Stdlib` at batch 10 k
+  on tmpfs.** The gate was unsatisfiable as written — see ADR
+  0002 for the formal refinement. The *primitive* is shipped;
+  the **end-to-end batch-coalescing pipeline is the real win**:
+  N events amortise into one `writev(2)` syscall instead of N,
+  independent of which strategy is selected.
+
+### Concurrency overhead
+
+| Benchmark | ns/op | Notes |
+|-----------|------:|-------|
+| `BenchmarkPackage_Writev_Concurrent` | ~640 | 32 parallel producers through the default-writer mutex |
+| `BenchmarkWriter_Writev_OwnInstance` | ~580 | one writer per producer goroutine |
+
+The default-writer mutex adds ~60 ns of overhead per call under
+contention. Callers that expect sustained parallel throughput
+should construct their own `iouring.New()` writer per producer.

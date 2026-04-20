@@ -16,11 +16,13 @@
 
 package iouring
 
+import "fmt"
+
 // tryIouring on non-Linux Unix platforms (Darwin, *BSD) always
-// returns [ErrUnsupported]. The writev path handles every
-// vectored-write case on those kernels.
+// returns an error wrapping [ErrUnsupported]. The writev path
+// handles every vectored-write case on those kernels.
 func tryIouring(_ uint32) (strategyImpl, error) {
-	return nil, ErrUnsupported
+	return nil, fmt.Errorf("iouring: io_uring unavailable on non-Linux Unix: %w", ErrUnsupported)
 }
 
 // iouringSupported on non-Linux platforms reports false.

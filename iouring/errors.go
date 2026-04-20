@@ -17,9 +17,10 @@ package iouring
 import "errors"
 
 // MaxIovecs is the maximum number of buffers accepted by a single
-// [Writev] / [Writer.Writev] call. Matches the Linux UIO_MAXIOV
-// constant. Callers batching more buffers must split across
-// multiple calls.
+// [Writev] / [Writer.Writev] call. It matches the cross-Unix POSIX
+// minimum — Linux `UIO_MAXIOV`, Darwin/FreeBSD/NetBSD/OpenBSD
+// `IOV_MAX` — each defined as 1024. Callers batching more buffers
+// must split the batch across multiple calls.
 const MaxIovecs = 1024
 
 // Sentinel errors returned by the package. Kernel errors (for
@@ -28,19 +29,18 @@ const MaxIovecs = 1024
 // sentinels below identify library-originated conditions.
 var (
 	// ErrUnsupported is returned when no vectored-write strategy
-	// is available on the current platform. Causes include:
-	//  - Windows (no writev);
-	//  - [WithStrategy]([StrategyIouring]) on a kernel without
-	//    io_uring or without IORING_FEAT_NODROP.
+	// is available on the current platform, or when a caller
+	// explicitly requests a strategy that is unavailable here.
+	// Platform causes include:
+	//   - non-Unix platforms (Windows) — no writev primitive;
+	//   - [WithStrategy]([StrategyIouring]) on a non-Linux host;
+	//   - [WithStrategy]([StrategyIouring]) on a Linux kernel
+	//     older than 5.5 or without IORING_FEAT_NODROP.
 	ErrUnsupported = errors.New("iouring: vectored I/O not supported on this platform")
 
 	// ErrClosed is returned when an operation is attempted on a
-	// [Writer] that has already been closed.
+	// [Writer] that has already been closed. The package-level
+	// [Writev] never returns ErrClosed; it returns [ErrUnsupported]
+	// instead if the platform has no vectored-write support.
 	ErrClosed = errors.New("iouring: writer is closed")
-
-	// ErrSQFull is returned when the submission queue has no free
-	// slot. In the synchronous submit-and-wait pattern used by
-	// the default io_uring strategy this never occurs; it is
-	// exposed only for future async variants.
-	ErrSQFull = errors.New("iouring: submission queue full")
 )

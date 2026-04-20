@@ -32,8 +32,8 @@ func (s *iouringStrategy) close() error                              { return s.
 func (s *iouringStrategy) writev(fd int, bufs [][]byte) (int, error) { return s.r.writev(fd, bufs) }
 
 // tryIouring attempts to construct an io_uring strategy at the
-// given ring depth. Returns an error wrapping [ErrUnsupported] if
-// the kernel does not support io_uring or IORING_FEAT_NODROP.
+// given ring depth. Returns an error wrapping [ErrUnsupported]
+// when the kernel does not support io_uring or IORING_FEAT_NODROP.
 func tryIouring(depth uint32) (strategyImpl, error) {
 	r, err := newRing(depth)
 	if err != nil {
@@ -43,15 +43,16 @@ func tryIouring(depth uint32) (strategyImpl, error) {
 }
 
 // iouringSupported on Linux performs and caches the capability
-// probe via sync.OnceValue. Non-Linux platforms supply a stub
-// in strategy_unsupported.go that always returns false.
+// probe via [sync.OnceValue]. The probe creates a minimal 2-entry
+// ring, then closes it; the result is fixed for the process
+// lifetime.
 var iouringSupported = sync.OnceValue(func() bool {
 	var params ioUringParams
 	fd, err := ioUringSetup(2, &params)
 	if err != nil {
 		return false
 	}
-	syscall.CloseOnExec(fd)
-	defer func() { _ = syscall.Close(fd) }()
+	// Close immediately — the probe is a capability test only.
+	_ = syscall.Close(fd)
 	return params.Features&ioringFeatNoDrop != 0
 })

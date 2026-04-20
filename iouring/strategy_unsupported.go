@@ -16,10 +16,14 @@
 
 package iouring
 
-// chooseStrategy — unix-less variant. No vectored-write primitive
-// is available; every constructor path returns [ErrUnsupported].
+import "fmt"
+
+// chooseStrategy on non-Unix platforms always returns an error
+// wrapping [ErrUnsupported]. The concrete cause (Windows, Plan 9,
+// etc.) is named in the wrapped message to keep diagnostics
+// actionable.
 func chooseStrategy(_ *config) (strategyImpl, error) {
-	return nil, ErrUnsupported
+	return nil, fmt.Errorf("iouring: vectored-write unavailable on this platform: %w", ErrUnsupported)
 }
 
 // iouringSupported on non-Unix platforms always returns false.

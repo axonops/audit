@@ -18,6 +18,10 @@ package iouring
 // The concrete strategy is chosen at construction and is stable
 // for the Writer's lifetime; callers retrieve it with
 // [Writer.Strategy].
+//
+// The [Strategy.String] values are part of the public contract —
+// consumers log and alert on them, so they do not change
+// lightly.
 type Strategy int
 
 const (
@@ -25,7 +29,7 @@ const (
 	// construction. It is the default when no [WithStrategy]
 	// option is supplied. After construction, [Writer.Strategy]
 	// returns the strategy that was actually selected
-	// ([StrategyIouring] or [StrategyWritev]), never
+	// ([StrategyIouring] or [StrategyWritev]) — never
 	// StrategyAuto.
 	StrategyAuto Strategy = iota
 
@@ -38,21 +42,16 @@ const (
 	// StrategyWritev is the portable writev(2) path. Available
 	// on all Unix platforms (Linux, Darwin, the *BSDs). Passing
 	// this to [WithStrategy] forces the writev path even on
-	// io_uring-capable hosts — useful for benchmarking and
-	// testing the fallback path.
+	// io_uring-capable hosts — useful for benchmarking the
+	// fallback and for operational A/B testing.
 	StrategyWritev
-
-	// StrategyUnsupported indicates no vectored-write path is
-	// available on the current platform. [New] returns
-	// [ErrUnsupported] for this strategy; it is exposed only as
-	// the return value of [Writer.Strategy] on platforms where
-	// construction would fail.
-	StrategyUnsupported
 )
 
 // String returns a stable lowercase name for the strategy. These
-// strings are part of the library's public contract — consumers
-// log and alert on them.
+// strings are public contract — consumers log and alert on them,
+// so they do not change lightly.
+//
+// An out-of-range [Strategy] value renders as "unknown".
 func (s Strategy) String() string {
 	switch s {
 	case StrategyAuto:
@@ -61,8 +60,6 @@ func (s Strategy) String() string {
 		return "iouring"
 	case StrategyWritev:
 		return "writev"
-	case StrategyUnsupported:
-		return "unsupported"
 	default:
 		return "unknown"
 	}

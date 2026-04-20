@@ -16,15 +16,17 @@
 
 package iouring
 
+import "fmt"
+
 // chooseStrategy resolves a Writer configuration into a concrete
 // strategyImpl. It is the single point where the StrategyAuto
 // negotiation lives.
 //
 // Precedence (StrategyAuto):
-//  1. io_uring if the kernel supports it and the platform has an
-//     io_uring binding (Linux only).
+//  1. io_uring if the kernel supports it and the platform has
+//     an io_uring binding (Linux only).
 //  2. writev(2) on every Unix platform, including Linux without
-//     io_uring or with io_uring_setup failures.
+//     io_uring or with an io_uring_setup failure.
 //
 // Forced strategies skip the negotiation and fail cleanly when
 // the requested path is unavailable.
@@ -47,10 +49,7 @@ func chooseStrategy(cfg *config) (strategyImpl, error) {
 		}
 		return newWritevStrategy(), nil
 
-	case StrategyUnsupported:
-		return nil, ErrUnsupported
-
 	default:
-		return nil, errStrategyNotSupported(cfg.strategy)
+		return nil, fmt.Errorf("iouring: invalid Strategy value %d", cfg.strategy)
 	}
 }

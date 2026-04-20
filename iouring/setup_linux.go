@@ -57,17 +57,22 @@ type ring struct {
 	sqes   []byte
 
 	// Ring-index pointers. Each points into one of the mmap'd
-	// regions; reads and writes go through atomic.Load/Store
-	// wrappers for memory-ordering correctness against the kernel
-	// side of the queues.
+	// regions; sqHead / cqTail are kernel-written and must be
+	// accessed via atomic.Load; sqTail / cqHead are library-
+	// written and must be atomic.Store-released.
 	sqHead  *uint32
 	sqTail  *uint32
-	sqMask  *uint32
 	sqArray *uint32 // base of SQ index array; length = sqEntries
 
 	cqHead *uint32
 	cqTail *uint32
-	cqMask *uint32
+
+	// sqMask and cqMask are constants read once from the kernel
+	// at setup time and cached as uint32 fields. Making them
+	// plain values (not pointers) avoids a pointer-dereference on
+	// every hot-path call and documents that they are invariant.
+	sqMask uint32
+	cqMask uint32
 
 	// sqesView and cqesView are typed views over the mmap regions.
 	// sqesView is backed by the sqes mapping; cqesView is backed by
@@ -138,6 +143,8 @@ func newRing(entries uint32) (*ring, error) {
 		fd:        fd,
 		features:  params.Features,
 		sqEntries: params.SqEntries,
+		sqMask:    params.SqEntries - 1, // kernel guarantees SqEntries is a power of two
+		cqMask:    params.CqEntries - 1,
 	}
 
 	// Mmap the SQ ring region. With IORING_FEAT_SINGLE_MMAP (all
@@ -169,28 +176,30 @@ func newRing(entries uint32) (*ring, error) {
 		}
 	}
 
-	// Mmap the SQE array.
+	// Mmap the SQE array. Capture the SINGLE_MMAP sharing flag
+	// BEFORE any subsequent munmap — after sysMunmap(r.sqRing),
+	// the sameBacking check becomes invalid.
 	sqesSize := int(params.SqEntries) * int(unsafe.Sizeof(ioUringSqe{}))
+	shared := sameBacking(r.cqRing, r.sqRing)
 	r.sqes, err = sysMmapRaw(fd, ioringOffSQEs, sqesSize)
 	if err != nil {
 		_ = sysMunmap(r.sqRing)
-		if !sameBacking(r.cqRing, r.sqRing) {
+		if !shared {
 			_ = sysMunmap(r.cqRing)
 		}
 		_ = syscall.Close(fd)
 		return nil, fmt.Errorf("iouring: mmap SQEs: %w", err)
 	}
 
-	// Resolve ring-index pointers. Each is a *uint32 at a computed
-	// offset into the relevant mapping. &slice[offset] is bounds-
-	// checked and vet-safe.
+	// Resolve ring-index pointers. Each is a *uint32 at a
+	// computed offset into the relevant mapping. &slice[offset]
+	// is bounds-checked and vet-safe. sqMask / cqMask are
+	// kernel-invariant constants; read once here and cached.
 	r.sqHead = (*uint32)(unsafe.Pointer(&r.sqRing[params.SqOff.Head]))
 	r.sqTail = (*uint32)(unsafe.Pointer(&r.sqRing[params.SqOff.Tail]))
-	r.sqMask = (*uint32)(unsafe.Pointer(&r.sqRing[params.SqOff.RingMask]))
 	r.sqArray = (*uint32)(unsafe.Pointer(&r.sqRing[params.SqOff.Array]))
 	r.cqHead = (*uint32)(unsafe.Pointer(&r.cqRing[params.CqOff.Head]))
 	r.cqTail = (*uint32)(unsafe.Pointer(&r.cqRing[params.CqOff.Tail]))
-	r.cqMask = (*uint32)(unsafe.Pointer(&r.cqRing[params.CqOff.RingMask]))
 
 	// Build typed slice views over the SQE and CQE arrays.
 	r.sqesView = unsafe.Slice((*ioUringSqe)(unsafe.Pointer(&r.sqes[0])), int(params.SqEntries))
@@ -221,6 +230,11 @@ func (r *ring) close() error {
 	}
 
 	var firstErr error
+	// Capture the SINGLE_MMAP sharing flag BEFORE any munmap;
+	// after the first munmap sameBacking's input slices point
+	// into freed memory.
+	shared := sameBacking(r.cqRing, r.sqRing)
+
 	// munmap order: SQEs first, then CQ (if distinct), then SQ.
 	if r.sqes != nil {
 		if err := sysMunmap(r.sqes); err != nil && firstErr == nil {
@@ -228,7 +242,7 @@ func (r *ring) close() error {
 		}
 		r.sqes = nil
 	}
-	if r.cqRing != nil && !sameBacking(r.cqRing, r.sqRing) {
+	if r.cqRing != nil && !shared {
 		if err := sysMunmap(r.cqRing); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("iouring: munmap CQ ring: %w", err)
 		}

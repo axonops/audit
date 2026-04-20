@@ -21,32 +21,42 @@ import (
 	"sync/atomic"
 )
 
-// defaultRingDepth is the io_uring submission-queue depth used when
-// no [WithRingDepth] option is supplied. Matches the write-loop
-// batch cap of 128 with headroom; doubling or halving it is a
-// pure performance knob.
+// defaultRingDepth is the io_uring submission-queue depth used
+// when no [WithRingDepth] option is supplied. Small enough for
+// low per-construction cost; deep enough to absorb small bursts
+// without head-of-line blocking on the kernel side.
 const defaultRingDepth = 16
 
 // Writer performs vectored writes to file descriptors using the
 // best available platform strategy. [Writer.Writev] and
 // [Writer.Write] are NOT safe for concurrent use; callers must
-// serialise access. [Writer.Close] is safe to call concurrently
-// from any goroutine and is idempotent.
+// serialise access, including against [Writer.Close]. A racing
+// Writev and Close is undefined behaviour.
+//
+// [Writer.Close] is safe to call concurrently from any goroutine
+// relative to itself (Close is idempotent).
+//
+// A Writer does not take ownership of the file descriptor passed
+// to [Writer.Writev] / [Writer.Write]; the caller retains fd
+// lifecycle responsibility. The fd must remain open for the
+// duration of each call.
 //
 // For a zero-ceremony, concurrent-safe entry point, use the
-// package-level [Writev] / [Write] instead of constructing a
-// Writer.
+// package-level [Writev] instead of constructing a Writer.
 type Writer struct {
 	impl      strategyImpl
 	closeOnce sync.Once
 	closed    atomic.Bool
 }
 
-// config holds option values resolved before a strategy is chosen.
+// config holds resolved option values. Option errors are
+// captured here and surfaced from [New], so a bad option never
+// silently succeeds into an unexpected strategy.
 type config struct {
 	strategy  Strategy
 	ringDepth uint32
 	logger    *slog.Logger
+	err       error // set by an option if validation fails
 }
 
 // Option configures [New]. All options are optional; [New] with
@@ -57,32 +67,46 @@ type Option func(*config)
 // [StrategyIouring] on a host without io_uring causes [New] to
 // return an error wrapping [ErrUnsupported]. Passing
 // [StrategyWritev] forces the writev path even on io_uring-capable
-// hosts — useful for benchmarking and testing. The default is
+// hosts — useful for benchmarking and A/B testing. The default is
 // [StrategyAuto].
+//
+// Passing an out-of-range Strategy value is a programmer error;
+// [New] will return an error that does not wrap any sentinel.
 func WithStrategy(s Strategy) Option {
 	return func(c *config) { c.strategy = s }
 }
 
-// WithRingDepth sets the io_uring submission-queue depth. Must be
-// a power of two between 1 and 4096 inclusive. Ignored by
+// WithRingDepth sets the io_uring submission-queue depth. Must
+// be a power of two between 1 and 4096 inclusive. Ignored by
 // strategies other than [StrategyIouring]. Defaults to 16.
+//
+// Passing an out-of-range or non-power-of-two value is a
+// programmer error; [New] will surface the validation error
+// unwrapped.
 func WithRingDepth(n uint32) Option {
-	return func(c *config) { c.ringDepth = n }
+	return func(c *config) {
+		if n == 0 || n > 4096 || (n&(n-1)) != 0 {
+			c.err = fmt.Errorf("iouring: WithRingDepth: entries must be a power of two in [1, 4096] (got %d)", n)
+			return
+		}
+		c.ringDepth = n
+	}
 }
 
-// WithLogger configures a [slog.Logger] that receives exactly one
-// log line at construction indicating the selected strategy and
-// (if applicable) the reason. Nil — the default — disables
-// logging. Writers never log on the hot path.
+// WithLogger configures a [slog.Logger] that receives exactly
+// one log line at construction indicating the selected strategy.
+// Nil (the default) disables logging. Writers never log on the
+// hot path — the logger is used at construction only.
 func WithLogger(l *slog.Logger) Option {
 	return func(c *config) { c.logger = l }
 }
 
 // New constructs a [Writer] with the given options. The default
 // strategy is [StrategyAuto], which prefers io_uring on capable
-// Linux hosts and falls back to writev(2) on other Unix platforms.
-// On platforms without any vectored-write support (currently
-// Windows), New returns an error wrapping [ErrUnsupported].
+// Linux hosts and falls back to writev(2) on other Unix
+// platforms. On platforms without any vectored-write support
+// (currently Windows), New returns an error wrapping
+// [ErrUnsupported].
 //
 // The returned Writer MUST be released with [Writer.Close] when
 // no longer needed, regardless of which strategy it uses.
@@ -93,6 +117,9 @@ func New(opts ...Option) (*Writer, error) {
 	}
 	for _, o := range opts {
 		o(&cfg)
+	}
+	if cfg.err != nil {
+		return nil, cfg.err
 	}
 	impl, err := chooseStrategy(&cfg)
 	if err != nil {
@@ -109,43 +136,40 @@ func New(opts ...Option) (*Writer, error) {
 // See the package documentation for short-write and atomicity
 // semantics.
 //
-// Writev is NOT safe for concurrent use.
+// Writev is NOT safe for concurrent use and must not race with
+// [Writer.Close]. Zero-length elements within bufs are skipped;
+// all-empty bufs return (0, nil) without touching the kernel.
+// len(bufs) must not exceed [MaxIovecs].
 func (w *Writer) Writev(fd int, bufs [][]byte) (int, error) {
-	if w == nil || w.impl == nil || w.closed.Load() {
+	if w.closed.Load() {
 		return 0, ErrClosed
 	}
 	return w.impl.writev(fd, bufs)
 }
 
-// Write is a single-buffer convenience wrapper around [Writer.Writev].
+// Write is a single-buffer convenience wrapper around
+// [Writer.Writev].
 func (w *Writer) Write(fd int, buf []byte) (int, error) {
 	return w.Writev(fd, [][]byte{buf})
 }
 
-// Strategy reports the negotiated strategy this [Writer] is using.
-// The result is stable for the Writer's lifetime and is one of
-// [StrategyIouring] or [StrategyWritev] — never [StrategyAuto].
+// Strategy reports the negotiated strategy this [Writer] is
+// using. The result is stable for the Writer's lifetime and is
+// one of [StrategyIouring] or [StrategyWritev] — never
+// [StrategyAuto].
 func (w *Writer) Strategy() Strategy {
-	if w == nil || w.impl == nil {
-		return StrategyUnsupported
-	}
 	return w.impl.kind()
 }
 
 // Close releases any resources held by the [Writer]. Close is
-// idempotent and safe to call concurrently from any goroutine.
-// Subsequent [Writer.Writev] / [Writer.Write] calls return
-// [ErrClosed].
+// idempotent and safe to call concurrently with itself. Calling
+// Close concurrently with [Writer.Writev] / [Writer.Write] is
+// undefined behaviour; callers must serialise.
 func (w *Writer) Close() error {
-	if w == nil {
-		return nil
-	}
 	var err error
 	w.closeOnce.Do(func() {
 		w.closed.Store(true)
-		if w.impl != nil {
-			err = w.impl.close()
-		}
+		err = w.impl.close()
 	})
 	return err
 }
@@ -154,10 +178,14 @@ func (w *Writer) Close() error {
 // Package-level convenience — zero-ceremony path
 // ---------------------------------------------------------------
 
-// defaultWriter is lazily initialised on first use of the
-// package-level [Writev] / [Write]. Guarded by defaultMu for
-// concurrent-safety — the default writer itself is not concurrent-
-// safe, so we serialise access at this layer.
+// Package-level default writer.
+//
+// defaultOnce guards one-shot initialisation. defaultMu
+// serialises subsequent calls to the underlying (non-concurrent-
+// safe) Writer. Once defaultErr is set by the one-shot init it
+// is permanent for the process lifetime; callers needing a
+// recoverable path should construct their own [Writer] with
+// [New].
 var (
 	defaultOnce   sync.Once
 	defaultWriter *Writer
@@ -165,21 +193,20 @@ var (
 	defaultMu     sync.Mutex
 )
 
-// initDefault resolves the process-wide default writer. Called by
-// sync.Once so initialisation happens at most once and subsequent
-// lookups are branch-prediction-friendly.
+// initDefault resolves the process-wide default writer.
 func initDefault() {
 	defaultWriter, defaultErr = New()
 }
 
 // Writev writes bufs to fd using the process-wide default
-// [Writer]. Safe for concurrent use via an internal mutex on the
-// default writer. For the uncontended case the mutex overhead is
-// ~20ns; under heavy contention, construct a dedicated [Writer]
-// with [New] per producer goroutine.
+// [Writer]. Safe for concurrent use via an internal mutex on
+// the default writer. For the uncontended case the mutex
+// overhead is ~20 ns; under heavy contention, construct a
+// dedicated [Writer] per producer goroutine with [New].
 //
 // If the platform has no vectored-write support, Writev returns
-// [ErrUnsupported].
+// an error wrapping [ErrUnsupported]. Writev does not return
+// [ErrClosed] — the default writer is never closed.
 func Writev(fd int, bufs [][]byte) (int, error) {
 	defaultOnce.Do(initDefault)
 	if defaultErr != nil {
@@ -190,35 +217,11 @@ func Writev(fd int, bufs [][]byte) (int, error) {
 	return defaultWriter.Writev(fd, bufs)
 }
 
-// Write is a single-buffer convenience wrapper around the package-
-// level [Writev].
-func Write(fd int, buf []byte) (int, error) {
-	return Writev(fd, [][]byte{buf})
-}
-
-// DefaultStrategy reports the [Strategy] the process-wide default
-// writer chose, or [StrategyUnsupported] if the platform has no
-// vectored-write support. The first call triggers lazy
-// initialisation of the default writer; subsequent calls are O(1).
-func DefaultStrategy() Strategy {
-	defaultOnce.Do(initDefault)
-	if defaultErr != nil || defaultWriter == nil {
-		return StrategyUnsupported
-	}
-	return defaultWriter.Strategy()
-}
-
-// IouringSupported reports whether the [StrategyIouring] path is
-// available on this host. The first call performs a probe
-// syscall (~200μs) and caches the result. Callers using the
+// IouringSupported reports whether the [StrategyIouring] path
+// is available on this host. The first call performs a probe
+// syscall (~200 μs) and caches the result. Callers using the
 // default [StrategyAuto] do NOT need to call this — [New] and
 // the package-level [Writev] handle negotiation internally.
 //
 // On non-Linux platforms, IouringSupported always returns false.
 func IouringSupported() bool { return iouringSupported() }
-
-// errStrategyNotSupported is returned when a caller passes
-// WithStrategy(StrategyIouring) on a non-Linux host.
-func errStrategyNotSupported(s Strategy) error {
-	return fmt.Errorf("iouring: strategy %s not available on this platform: %w", s, ErrUnsupported)
-}

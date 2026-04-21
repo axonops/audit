@@ -19,6 +19,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -123,6 +124,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	fw            atomic.Pointer[frameworkFields]
 	logger        atomic.Pointer[slog.Logger] // swapped atomically post-construction (#474)
 	drops         dropLimiter                 // rate-limits buffer-full warnings
+	maxEventBytes int                         // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams        map[string]*lokiStream // reused across flushes
@@ -205,15 +207,16 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	o := &Output{
-		cfg:     cfg,
-		metrics: metrics,
-		ch:      make(chan lokiEntry, cfg.BufferSize),
-		closeCh: make(chan struct{}),
-		cancel:  cancel,
-		done:    make(chan struct{}),
-		client:  client,
-		name:    lokiName(cfg.URL),
-		streams: make(map[string]*lokiStream),
+		cfg:           cfg,
+		metrics:       metrics,
+		ch:            make(chan lokiEntry, cfg.BufferSize),
+		closeCh:       make(chan struct{}),
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		client:        client,
+		name:          lokiName(cfg.URL),
+		streams:       make(map[string]*lokiStream),
+		maxEventBytes: cfg.MaxEventBytes,
 	}
 	// Publish the initial logger BEFORE starting the batch goroutine.
 	o.logger.Store(resolved.logger)
@@ -255,11 +258,30 @@ func (o *Output) SetDiagnosticLogger(l *slog.Logger) {
 
 // WriteWithMetadata enqueues a serialised audit event with per-event
 // metadata for batched delivery. The data is copied before enqueuing.
-// If the internal buffer is full, the event is dropped and
+// Events exceeding MaxEventBytes are rejected with
+// audit.ErrEventTooLarge before the defensive copy (#688). If the
+// internal buffer is full, the event is dropped and
 // [audit.OutputMetrics.RecordDrop] is called. WriteWithMetadata never blocks.
 func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error {
 	if o.closed.Load() {
 		return audit.ErrOutputClosed
+	}
+
+	if len(data) > o.maxEventBytes {
+		o.drops.record(dropWarnInterval, func(dropped int64) {
+			o.logger.Load().Warn("audit: output loki: event rejected (exceeds max_event_bytes)",
+				"event_bytes", len(data),
+				"max_event_bytes", o.maxEventBytes,
+				"dropped", dropped)
+		})
+		if omp := o.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
+		}
+		if o.metrics != nil {
+			o.metrics.RecordEvent(o.Name(), "error")
+		}
+		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
+			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
 	}
 
 	cp := make([]byte, len(data))

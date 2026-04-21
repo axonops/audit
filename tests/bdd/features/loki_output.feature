@@ -331,3 +331,23 @@ Feature: Loki Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the loki metrics should have recorded at least 1 error within 5 seconds
+
+  # --- Max event size (#688) ---
+  #
+  # Oversized events are rejected at Output.Write entry with
+  # audit.ErrEventTooLarge. The auditor's drain goroutine swallows
+  # the per-output error; from the consumer's view, Audit returns
+  # nil but the event does not reach the receiver. Normal events
+  # before and after the oversized one must continue to deliver.
+
+  Scenario: Loki rejects oversized event without stalling subsequent deliveries
+    Given an auditor with loki output with max event bytes 1024
+    When I audit a uniquely marked "user_create" event with a 4096-byte payload
+    And I audit 2 loki events with a shared marker
+    And I close the auditor
+    Then the loki server should have at least 2 events within 10 seconds
+
+  Scenario: Loki delivers event within max_event_bytes cap
+    Given an auditor with loki output with max event bytes 1048576
+    When I audit a uniquely marked "user_create" event
+    Then the loki server should contain the marker within 15 seconds

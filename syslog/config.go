@@ -86,6 +86,19 @@ const (
 	// reach several MiB.
 	MaxMaxBatchBytes = 10 << 20 // 10 MiB
 
+	// DefaultMaxEventBytes is the default per-event size cap at
+	// [Output.Write] entry. Events with data longer than this are
+	// rejected with [audit.ErrEventTooLarge] (#688) — a defence
+	// against consumer-controlled memory pressure. 1 MiB matches
+	// the cap used by loki and webhook.
+	DefaultMaxEventBytes = 1 << 20 // 1 MiB
+
+	// MinMaxEventBytes is the lower bound for MaxEventBytes.
+	MinMaxEventBytes = 1 << 10 // 1 KiB
+
+	// MaxMaxEventBytes is the upper bound for MaxEventBytes.
+	MaxMaxEventBytes = 10 << 20 // 10 MiB
+
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
 
@@ -189,6 +202,23 @@ type Config struct {
 	// never dropped. Events are never split across frames; RFC 5425
 	// octet-counting framing is preserved per message.
 	MaxBatchBytes int
+
+	// MaxEventBytes is the maximum byte length accepted by
+	// [Output.Write] for a single event. Events exceeding this cap
+	// are rejected with [audit.ErrEventTooLarge] wrapping
+	// [audit.ErrValidation] and [audit.OutputMetrics.RecordDrop] is
+	// called. Zero defaults to [DefaultMaxEventBytes] (1 MiB).
+	// Values below [MinMaxEventBytes] (1 KiB) or above
+	// [MaxMaxEventBytes] (10 MiB) cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	//
+	// Introduced by #688 as a defence against consumer-controlled
+	// memory pressure: a single oversized event in a batching path
+	// can be held in the async channel, the batch slice, and the
+	// retry buffer simultaneously. A default 10 000-slot buffer
+	// carrying 10 MiB events could pin ~100 GiB before backpressure
+	// triggers.
+	MaxEventBytes int
 }
 
 // String returns a human-readable representation of the config with
@@ -275,7 +305,26 @@ func validateSyslogBatchingConfig(cfg *Config) error {
 	if err := validateFlushInterval(cfg); err != nil {
 		return err
 	}
-	return validateMaxBatchBytes(cfg)
+	if err := validateMaxBatchBytes(cfg); err != nil {
+		return err
+	}
+	return validateMaxEventBytes(cfg)
+}
+
+func validateMaxEventBytes(cfg *Config) error {
+	if cfg.MaxEventBytes < 0 {
+		return fmt.Errorf("%w: syslog max_event_bytes %d must be >= 0", audit.ErrConfigInvalid, cfg.MaxEventBytes)
+	}
+	if cfg.MaxEventBytes == 0 {
+		cfg.MaxEventBytes = DefaultMaxEventBytes
+	}
+	if cfg.MaxEventBytes < MinMaxEventBytes {
+		return fmt.Errorf("%w: syslog max_event_bytes %d below minimum %d", audit.ErrConfigInvalid, cfg.MaxEventBytes, MinMaxEventBytes)
+	}
+	if cfg.MaxEventBytes > MaxMaxEventBytes {
+		return fmt.Errorf("%w: syslog max_event_bytes %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.MaxEventBytes, MaxMaxEventBytes)
+	}
+	return nil
 }
 
 func validateBatchSize(cfg *Config) error {

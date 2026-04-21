@@ -256,3 +256,26 @@ Feature: Syslog Output
     Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 100 and flush interval "10s" and max batch bytes 1024
     When I audit a uniquely marked event with a 2048-byte payload
     Then the syslog server should contain the marker within 5 seconds
+
+  # --- Max event size (#688) ---
+  #
+  # Oversized events are rejected at Output.Write entry with
+  # audit.ErrEventTooLarge. The auditor's drain goroutine swallows
+  # the per-output error; from the consumer's view, Audit returns
+  # nil but the event does not reach the receiver. Normal events
+  # before and after the oversized one must continue to deliver.
+
+  Scenario: Syslog rejects oversized event without stalling subsequent deliveries
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with max event bytes 1024
+    When I audit a uniquely marked "user_create" event "sl_before"
+    And I audit a uniquely marked event with a 4096-byte payload
+    And I audit a uniquely marked "user_create" event "sl_after"
+    And I close the auditor
+    Then the syslog server should contain the "sl_before" marker within 10 seconds
+    And the syslog server should contain the "sl_after" marker within 10 seconds
+
+  Scenario: Syslog delivers event within max_event_bytes cap
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with max event bytes 1048576
+    When I audit a uniquely marked "user_create" event
+    And I close the auditor
+    Then the syslog server should contain the marker within 10 seconds

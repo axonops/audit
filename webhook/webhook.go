@@ -131,6 +131,7 @@ type Output struct {
 	mu            sync.Mutex
 	batchSize     int
 	maxBatchBytes int
+	maxEventBytes int
 	maxRetries    int
 	closed        atomic.Bool
 }
@@ -218,6 +219,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		done:          make(chan struct{}),
 		batchSize:     cfg.BatchSize,
 		maxBatchBytes: cfg.MaxBatchBytes,
+		maxEventBytes: cfg.MaxEventBytes,
 		maxRetries:    cfg.MaxRetries,
 		flushIvl:      cfg.FlushInterval,
 		timeout:       cfg.Timeout,
@@ -230,13 +232,32 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	return w, nil
 }
 
-// Write enqueues a serialised audit event for batched delivery. The
-// data is copied before enqueuing. If the internal buffer is full,
-// the event is dropped and [audit.OutputMetrics.RecordDrop] is called.
+// Write enqueues a serialised audit event for batched delivery.
+// Events exceeding MaxEventBytes are rejected with
+// audit.ErrEventTooLarge before the defensive copy (#688). The data
+// is copied before enqueuing. If the internal buffer is full, the
+// event is dropped and [audit.OutputMetrics.RecordDrop] is called.
 // Write never blocks the caller.
 func (w *Output) Write(data []byte) error {
 	if w.closed.Load() {
 		return audit.ErrOutputClosed
+	}
+
+	if len(data) > w.maxEventBytes {
+		w.drops.record(dropWarnInterval, func(dropped int64) {
+			w.logger.Load().Warn("audit: output webhook: event rejected (exceeds max_event_bytes)",
+				"event_bytes", len(data),
+				"max_event_bytes", w.maxEventBytes,
+				"dropped", dropped)
+		})
+		if omp := w.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
+		}
+		if w.metrics != nil {
+			w.metrics.RecordEvent(w.Name(), "error")
+		}
+		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
+			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
 	}
 
 	cp := make([]byte, len(data))

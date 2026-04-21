@@ -93,6 +93,7 @@ outputs:
       batch_size: 100              # events per flush (default: 100; set 1 to disable)
       flush_interval: "5s"         # max time between flushes (default: 5s)
       max_batch_bytes: 1048576     # 1 MiB; oversized single events flush alone
+      max_event_bytes: 1048576     # 1 MiB per-event size cap; oversized events rejected (#688)
       # tls_policy:                # TLS version policy
       #   allow_tls12: false       # allow TLS 1.2 (default: TLS 1.3 only)
       #   allow_weak_ciphers: false # allow weaker ciphers with TLS 1.2
@@ -113,6 +114,7 @@ outputs:
       batch_size: 50               # events per batch (default: 100)
       flush_interval: "5s"         # time-based flush (default: "5s")
       max_batch_bytes: 1048576     # 1 MiB byte-threshold flush; oversized events flush alone (#687)
+      max_event_bytes: 1048576     # 1 MiB per-event size cap; oversized events rejected (#688)
       timeout: "10s"               # HTTP request timeout (default: "10s")
       max_retries: 3               # retry attempts (default: 3)
       # buffer_size: 10000        # internal buffer; events dropped when full

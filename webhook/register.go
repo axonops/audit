@@ -50,6 +50,7 @@ type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability pr
 	Timeout            yamlDuration      `yaml:"timeout"`
 	BatchSize          *int              `yaml:"batch_size"`
 	MaxBatchBytes      *int              `yaml:"max_batch_bytes"`
+	MaxEventBytes      *int              `yaml:"max_event_bytes"`
 	BufferSize         *int              `yaml:"buffer_size"`
 	MaxRetries         *int              `yaml:"max_retries"`
 	AllowInsecureHTTP  bool              `yaml:"allow_insecure_http"`
@@ -116,6 +117,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		Timeout:            time.Duration(yc.Timeout),
 		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
 		MaxBatchBytes:      intPtrOrDefault(yc.MaxBatchBytes, DefaultMaxBatchBytes),
+		MaxEventBytes:      intPtrOrDefault(yc.MaxEventBytes, DefaultMaxEventBytes),
 		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 		MaxRetries:         intPtrOrDefault(yc.MaxRetries, DefaultMaxRetries),
 		AllowInsecureHTTP:  yc.AllowInsecureHTTP,

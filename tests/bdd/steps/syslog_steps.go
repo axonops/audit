@@ -97,6 +97,17 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		})
 	})
 
+	// Max event size (#688).
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with max event bytes (\d+)$`,
+		func(network, address string, maxEventBytes int) error {
+			return createSyslogAuditor(tc, &syslog.Config{
+				Network:       network,
+				Address:       address,
+				MaxEventBytes: maxEventBytes,
+				FlushInterval: 5 * time.Millisecond,
+			})
+		})
+
 	// Batching (#599). Three Given variants cover the AC scenarios:
 	//   - batch size + flush interval only
 	//   - batch size + flush interval + max batch bytes
@@ -158,6 +169,21 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 				return fmt.Errorf("audit event %d: %w", i, err)
 			}
 		}
+		return nil
+	})
+
+	// Named-event / named-marker steps (#688) — mirror the webhook
+	// convention so MaxEventBytes scenarios can sequence 3 events
+	// (normal, oversized, normal) and assert per-marker delivery.
+	ctx.Step(`^I audit a uniquely marked "([^"]*)" event "([^"]*)"$`, func(eventType, name string) error {
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
+		}
+		m := marker("SL")
+		tc.Markers[name] = m
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = m
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		return nil
 	})
 
@@ -370,6 +396,17 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the syslog server should contain the marker within (\d+) seconds$`, func(t int) error { return assertSyslogDefaultMarker(tc, t) })
 	ctx.Step(`^the syslog server should contain "([^"]*)" within (\d+) seconds$`, func(text string, t int) error { return assertSyslogContains(text, time.Duration(t)*time.Second) })
+	// Named-marker assertion (#688). Looks up tc.Markers[name] and
+	// asserts the syslog log contains it. Used by the oversized-
+	// event-doesn't-stall scenario to verify before/after delivery.
+	ctx.Step(`^the syslog server should contain the "([^"]*)" marker within (\d+) seconds$`,
+		func(name string, t int) error {
+			m, ok := tc.Markers[name]
+			if !ok {
+				return fmt.Errorf("no marker %q set", name)
+			}
+			return assertSyslogContains(m, time.Duration(t)*time.Second)
+		})
 	ctx.Step(`^the syslog server should contain all (\d+) markers within (\d+) seconds$`, func(c, t int) error { return assertSyslogAllMarkers(tc, c, t) })
 	ctx.Step(`^the syslog line with the marker should contain "([^"]*)"$`, func(text string) error { return assertSyslogMarkerLineContains(tc, text) })
 	ctx.Step(`^the syslog line with the marker should contain the current year$`, func() error { return assertSyslogMarkerLineContains(tc, time.Now().Format("2006")) })

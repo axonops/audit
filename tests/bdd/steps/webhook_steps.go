@@ -218,6 +218,16 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		})
 	})
 
+	// Max event size (#688).
+	ctx.Step(`^an auditor with webhook output configured for max event bytes (\d+)$`,
+		func(maxEventBytes int) error {
+			return createWebhookAuditor(tc, &webhook.Config{
+				BatchSize:     1,
+				FlushInterval: 50 * time.Millisecond,
+				MaxEventBytes: maxEventBytes,
+			})
+		})
+
 	// Byte-threshold batching (#687). Three-knob Given — mirrors the
 	// pattern used by Loki and syslog BDD scenarios.
 	ctx.Step(`^an auditor with webhook output configured for batch size (\d+) and flush interval (\d+)s and max batch bytes (\d+)$`,

@@ -297,6 +297,44 @@ outputs.
 See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
 the complete pipeline architecture.
 
+## Max Event Size
+
+**Since #688**, `Write()` enforces a per-event byte size cap at the
+entry point. Events whose serialised byte length exceeds
+`max_event_bytes` (default 1 MiB) are **rejected**: `Write()`
+returns an error wrapping `audit.ErrEventTooLarge` and
+`audit.ErrValidation`, and `OutputMetrics.RecordDrop()` is called.
+
+```go
+if errors.Is(err, audit.ErrEventTooLarge) {
+    // The event was too large for this output's MaxEventBytes.
+}
+```
+
+### Why
+
+A buggy or malicious consumer passing a 10 MiB event into a default
+10 000-slot buffer can pin ~100 GiB of memory before backpressure
+triggers. Batching concentrates the blast radius: a single oversized
+event flushes alone AND the preceding batch may still be held for
+retry.
+
+### Range and defaults
+
+- **Default**: 1 MiB
+- **Range**: 1 KiB – 10 MiB
+- Values outside the range cause `New()` to return `audit.ErrConfigInvalid`.
+
+Set `max_event_bytes: <N>` (YAML) or `Config.MaxEventBytes` (Go) to
+tighten the cap for a stricter threat model, or loosen it (up to the
+10 MiB ceiling) if legitimate events exceed 1 MiB.
+
+### Interaction with other outputs
+
+Same knob name, default, and semantics as `loki.Config.MaxEventBytes`
+and `webhook.Config.MaxEventBytes` — operators running a mixed
+deployment see one consistent setting.
+
 ## Batching
 
 **Since #599**, the `writeLoop` accumulates events into a batch before
@@ -381,6 +419,7 @@ than holding `Close()` hostage through a full retry cycle.
 | `facility` | string | `"local0"` | Syslog facility name (see [Facility Values](#facility-values)) |
 | `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency. **In container environments** (Docker, Kubernetes), `os.Hostname()` typically returns the container ID — set this explicitly to the pod name or service name for meaningful SIEM correlation. |
 | `buffer_size` | int | `10000` | Internal async buffer capacity (1–100,000). Events dropped when full |
+| `max_event_bytes` | int | `1048576` (1 MiB) | Per-event size cap at Write entry. Events exceeding this are rejected with `audit.ErrEventTooLarge` — also satisfies `errors.Is(err, audit.ErrValidation)` (1 KiB–10 MiB). See [Max Event Size](#max-event-size) |
 | `batch_size` | int | `100` | Events per flush (1–10,000). Set to `1` to disable batching. See [Batching](#batching) |
 | `flush_interval` | duration | `"5s"` | Max time between flushes (1ms–1h). See [Batching](#batching) |
 | `max_batch_bytes` | int | `1048576` (1 MiB) | Max accumulated bytes before flush (1 KiB–10 MiB). Oversized single events flush alone. See [Batching](#batching) |

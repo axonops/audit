@@ -177,7 +177,7 @@ bearer_token: tok-should-not-coexist
 
 // TestLokiFactory_GzipDefaultTrue verifies that omitting the "gzip" field
 // from the YAML config results in compression being enabled. This is the
-// documented default (Compress: true) and must be preserved by the factory.
+// documented default (Gzip: true) and must be preserved by the factory.
 // The config passes validation and reaches the "not yet implemented" gate.
 func TestLokiFactory_GzipDefaultTrue(t *testing.T) {
 	t.Parallel()

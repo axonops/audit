@@ -465,10 +465,10 @@ func TestCompressDecompress_RoundTrip(t *testing.T) {
 		Events: []loki.TestEvent{
 			{Data: []byte(`{"test":"roundtrip"}`), Meta: audit.EventMetadata{EventType: "test", Severity: 1, Timestamp: time.Now()}},
 		},
-		Compress: true,
-		AppName:  "app",
-		Host:     "h1",
-		PID:      1,
+		Gzip:    true,
+		AppName: "app",
+		Host:    "h1",
+		PID:     1,
 	})
 
 	// Decompress and verify valid JSON.
@@ -560,7 +560,7 @@ func TestMaybeCompress_GzipError_ReturnsError(t *testing.T) {
 		StaticLabels: map[string]string{"env": "test"},
 		AppName:      "test",
 		Host:         "localhost",
-		Compress:     true,
+		Gzip:         true,
 	}
 	o := loki.PreparePayloadForTest(t, input)
 	defer func() { _ = o.Close() }()

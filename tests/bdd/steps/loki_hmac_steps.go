@@ -374,7 +374,7 @@ func defaultLokiTestConfig(tc *AuditTestContext) *loki.Config {
 		Timeout:            5e9,
 		MaxRetries:         1,
 		BufferSize:         1000,
-		Compress:           true,
+		Gzip:               true,
 		Labels: loki.LabelConfig{
 			Static: map[string]string{"test_suite": "bdd"},
 		},

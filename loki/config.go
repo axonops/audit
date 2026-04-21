@@ -233,10 +233,12 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 	// Zero defaults to [DefaultMaxRetries] (3).
 	MaxRetries int
 
-	// Compress enables gzip compression of push requests. The YAML
-	// factory defaults to true when the gzip key is omitted; the Go
-	// zero value is false for programmatic construction.
-	Compress bool
+	// Gzip enables gzip compression of push requests (the only
+	// compression algorithm Loki accepts). The YAML key is
+	// `gzip`. The YAML factory defaults to true when the key is
+	// omitted; the Go zero value is false for programmatic
+	// construction.
+	Gzip bool
 
 	// AllowInsecureHTTP permits http:// URLs. MUST NOT be true in
 	// production.
@@ -262,8 +264,8 @@ func (c Config) String() string {
 	} else if c.BearerToken != "" {
 		auth = "bearer_token"
 	}
-	return fmt.Sprintf("LokiConfig{url=%q, auth=%s, compress=%t, batch_size=%d}",
-		sanitizeURLForLog(c.URL), auth, c.Compress, c.BatchSize)
+	return fmt.Sprintf("LokiConfig{url=%q, auth=%s, gzip=%t, batch_size=%d}",
+		sanitizeURLForLog(c.URL), auth, c.Gzip, c.BatchSize)
 }
 
 // sanitizeURLForLog returns the scheme+host portion of a URL, dropping

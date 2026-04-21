@@ -252,7 +252,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			FlushInterval:      200 * time.Millisecond,
-			Compress:           true,
+			Gzip:               true,
 			BufferSize:         bufSize,
 		}, nil)
 		if err != nil {

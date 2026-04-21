@@ -33,7 +33,7 @@ func ExampleNew() {
 		Timeout:            10 * time.Second,
 		MaxRetries:         3,
 		BufferSize:         10000,
-		Compress:           true,
+		Gzip:               true,
 		Labels: loki.LabelConfig{
 			Static: map[string]string{
 				"job":         "audit",

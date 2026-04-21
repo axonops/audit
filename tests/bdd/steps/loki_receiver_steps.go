@@ -165,7 +165,7 @@ func registerLokiReceiverSetupSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize:  1,
 			MaxRetries: 1,
-			Compress:   true,
+			Gzip:       true,
 		})
 	})
 
@@ -216,7 +216,7 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			MaxRetries: retries,
 			BatchSize:  1,
-			Compress:   true,
+			Gzip:       true,
 		})
 	})
 
@@ -228,7 +228,7 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		cfg := &loki.Config{
 			MaxRetries: retries,
 			BatchSize:  1,
-			Compress:   true,
+			Gzip:       true,
 		}
 		cfg.URL = r.server.URL + "/loki/api/v1/push"
 		cfg.AllowInsecureHTTP = true
@@ -265,7 +265,7 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			MaxRetries:         1,
-			Compress:           true,
+			Gzip:               true,
 		}
 		return createLokiAuditorFromConfig(tc, cfg)
 	})
@@ -286,7 +286,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 			FlushInterval:      200 * time.Millisecond,
 			Timeout:            5 * time.Second,
 			BufferSize:         100,
-			Compress:           true,
+			Gzip:               true,
 		}
 		return createLokiAuditorFromConfig(tc, cfg)
 	})
@@ -298,7 +298,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		}
 		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize: 1,
-			Compress:  true,
+			Gzip:      true,
 		})
 	})
 
@@ -309,7 +309,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		}
 		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize: 1,
-			Compress:  true,
+			Gzip:      true,
 		})
 	})
 
@@ -321,7 +321,7 @@ func registerLokiReceiverLoggerSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTe
 		return createLokiAuditorWithReceiver(tc, r, &loki.Config{
 			BatchSize:  1,
 			MaxRetries: 1,
-			Compress:   true,
+			Gzip:       true,
 		})
 	})
 }

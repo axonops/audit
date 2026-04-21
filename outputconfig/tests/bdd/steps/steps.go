@@ -37,12 +37,12 @@ func init() {
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a
 	// minimal output.
-	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
+	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return &lokiStub{}, nil
 	})
 	// Stub webhook factory — captures raw config bytes so #487
 	// envsubst-string-semantics scenarios can inspect them.
-	audit.RegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger) (audit.Output, error) {
+	audit.RegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		capturedWebhookRawConfig = append(capturedWebhookRawConfig[:0], rawConfig...)
 		return &webhookStub{}, nil
 	})

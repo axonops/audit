@@ -114,7 +114,7 @@ Example (annotated):
 | `VERSION` | `1` | Always RFC 5424 version 1 |
 | `TIMESTAMP` | `2026-04-05T12:00:00.123456789+02:00` | RFC 3339 with nanosecond precision |
 | `HOSTNAME` | `prod-web-01` | From `Config.Hostname` or `os.Hostname()` |
-| `APP-NAME` | `my-app` | From `Config.AppName` (default: `"audit"`) |
+| `APP-NAME` | `my-app` | From `Config.AppName`, else top-level `app_name` (cascade), else default `"audit"`. See [APP-NAME Cascade](#app-name-cascade). |
 | `PROCID` | `45678` | Process ID at construction time |
 | `MSGID` | `my-app` | Same as APP-NAME |
 | `SD` | `-` | No structured data elements |
@@ -243,6 +243,53 @@ followed by a space:
 
 This allows the receiver to unambiguously parse message boundaries,
 even when messages contain newlines.
+
+## APP-NAME Cascade
+
+Two YAML keys share the name `app_name`:
+
+- **Top-level** `app_name:` — the framework field set on every audit
+  event and used as the default for per-output contexts.
+- **Per-output** `outputs.<name>.syslog.app_name:` — the literal
+  RFC 5424 APP-NAME header field for the outgoing syslog message.
+
+These are distinct concepts (event-level vs protocol-header) but
+in most deployments operators want them to match. To avoid duplicate
+configuration, the syslog output follows this cascade at construction:
+
+1. **Per-output** `outputs.<name>.syslog.app_name` wins if set.
+2. Otherwise **top-level** `app_name` cascades in automatically.
+3. Otherwise the literal default `"audit"` is used.
+
+```yaml
+version: 1
+app_name: billing-service    # framework event field + syslog APP-NAME default
+host: billing-prod-eu-1
+outputs:
+  siem:
+    type: syslog
+    syslog:
+      network: tcp
+      address: "siem.corp:514"
+      # app_name omitted → RFC 5424 APP-NAME = "billing-service"
+
+  soc-override:
+    type: syslog
+    syslog:
+      network: tcp
+      address: "soc.corp:514"
+      app_name: "billing-audit"   # per-output override wins for this destination
+```
+
+Use the override when one audit process fans out to multiple syslog
+destinations that each need a different APP-NAME (a SOC SIEM keyed
+on `"billing-audit"` while the primary SIEM keys on the framework
+name). When every destination wants the same APP-NAME, set only the
+top-level `app_name` and the cascade fills every syslog header in.
+
+The cascade is implemented at output-factory time — the first
+connection already uses the resolved APP-NAME. No reconnect or
+post-construction update is needed.
 
 ## Transport Options
 
@@ -415,7 +462,7 @@ than holding `Close()` hostage through a full retry cycle.
 |-------|------|---------|-------------|
 | `network` | string | `"tcp"` | Transport: `"tcp"`, `"udp"`, or `"tcp+tls"` |
 | `address` | string | *(required)* | Syslog server in `host:port` format |
-| `app_name` | string | `"audit"` | RFC 5424 APP-NAME header field |
+| `app_name` | string | top-level `app_name`, else `"audit"` | RFC 5424 APP-NAME header field. When omitted, cascades from the top-level `app_name` (see [APP-NAME Cascade](#app-name-cascade)). |
 | `facility` | string | `"local0"` | Syslog facility name (see [Facility Values](#facility-values)) |
 | `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency. **In container environments** (Docker, Kubernetes), `os.Hostname()` typically returns the container ID — set this explicitly to the pod name or service name for meaningful SIEM correlation. |
 | `buffer_size` | int | `10000` | Internal async buffer capacity (1–100,000). Events dropped when full |

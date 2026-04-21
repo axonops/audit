@@ -50,7 +50,7 @@ func TestLokiFactory_EmptyConfig(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	_, err := factory("my_loki", nil, nil, nil)
+	_, err := factory("my_loki", nil, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config is required",
 		"empty config should produce 'config is required' error, got: %q", err.Error())
@@ -66,7 +66,7 @@ func TestLokiFactory_UnknownField(t *testing.T) {
 	require.NotNil(t, factory)
 
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nunknown_field: oops\n")
-	_, err := factory("strict_loki", rawYAML, nil, nil)
+	_, err := factory("strict_loki", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown_field",
 		"strict YAML decode should name the unexpected field, got: %q", err.Error())
@@ -129,7 +129,7 @@ func TestLokiFactory_DurationParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			out, err := factory("dur_test", []byte(tt.yaml), nil, nil)
+			out, err := factory("dur_test", []byte(tt.yaml), nil, nil, audit.FrameworkContext{})
 			if tt.wantErr {
 				require.Error(t, err, "expected a parse error for YAML: %s", tt.yaml)
 				assert.Contains(t, err.Error(), "duration",
@@ -163,7 +163,7 @@ basic_auth:
   password: secret
 bearer_token: tok-should-not-coexist
 `)
-	_, err := factory("conflict_auth", rawYAML, nil, nil)
+	_, err := factory("conflict_auth", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid,
 		"auth conflict must wrap audit.ErrConfigInvalid")
@@ -186,7 +186,7 @@ func TestLokiFactory_GzipDefaultTrue(t *testing.T) {
 	require.NotNil(t, factory)
 
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\n")
-	out, err := factory("gzip_default", rawYAML, nil, nil)
+	out, err := factory("gzip_default", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "valid config with default gzip should succeed")
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
@@ -202,7 +202,7 @@ func TestLokiFactory_GzipExplicitFalse(t *testing.T) {
 	require.NotNil(t, factory)
 
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\ngzip: false\n")
-	out, err := factory("gzip_explicit_false", rawYAML, nil, nil)
+	out, err := factory("gzip_explicit_false", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "gzip: false should be accepted")
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
@@ -227,7 +227,7 @@ labels:
   dynamic:
     actor_id: true
 `)
-	_, err := factory("bad_dynamic_label", rawYAML, nil, nil)
+	_, err := factory("bad_dynamic_label", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid,
 		"unknown dynamic label must wrap audit.ErrConfigInvalid")
@@ -263,7 +263,7 @@ func TestLokiFactory_StaticLabels_InvalidName(t *testing.T) {
 			t.Parallel()
 
 			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nlabels:\n  static:\n    " + tt.labelName + ": somevalue\n")
-			_, err := factory("invalid_label_"+tt.name, rawYAML, nil, nil)
+			_, err := factory("invalid_label_"+tt.name, rawYAML, nil, nil, audit.FrameworkContext{})
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
 				"invalid static label must wrap audit.ErrConfigInvalid")
@@ -293,7 +293,7 @@ timeout: 5s
 max_retries: 2
 buffer_size: 500
 `)
-	out, err := factory("valid", rawYAML, nil, nil)
+	out, err := factory("valid", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "valid config should produce an output")
 	require.NotNil(t, out)
 	assert.Equal(t, "valid", out.Name(),
@@ -331,7 +331,7 @@ func TestLokiFactory_ValidConfig_WithAllAuthOptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			out, err := factory("auth_test", []byte(tt.yaml), nil, nil)
+			out, err := factory("auth_test", []byte(tt.yaml), nil, nil, audit.FrameworkContext{})
 			require.NoError(t, err, "%s auth variant should produce output", tt.name)
 			require.NotNil(t, out)
 			require.NoError(t, out.Close())
@@ -358,7 +358,7 @@ func TestLokiFactory_NewFactory_NilMetrics(t *testing.T) {
 	factory := audit.LookupOutputFactory("loki")
 	require.NotNil(t, factory)
 
-	out, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil, nil)
+	out, err := factory("nil_metrics_path", []byte("url: https://loki.example.com/loki/api/v1/push\n"), nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "nil coreMetrics must not panic")
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
@@ -393,7 +393,7 @@ func TestLokiFactory_DynamicLabels_ExcludeFields(t *testing.T) {
 			t.Parallel()
 
 			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nlabels:\n  dynamic:\n    " + labelName + ": false\n")
-			out, err := factory("dyn_"+labelName, rawYAML, nil, nil)
+			out, err := factory("dyn_"+labelName, rawYAML, nil, nil, audit.FrameworkContext{})
 			require.NoError(t, err,
 				"disabling dynamic label %q should produce output", labelName)
 			require.NotNil(t, out)
@@ -418,7 +418,7 @@ labels:
     event_type: true
     severity: false
 `)
-	out, err := factory("mixed_dynamic", rawYAML, nil, nil)
+	out, err := factory("mixed_dynamic", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "mixed include/exclude dynamic labels should produce output")
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())

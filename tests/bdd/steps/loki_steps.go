@@ -177,7 +177,7 @@ func registerLokiGivenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		if factory == nil {
 			return fmt.Errorf("loki factory not registered")
 		}
-		_, err := factory("test", []byte(yamlCfg), nil, nil)
+		_, err := factory("test", []byte(yamlCfg), nil, nil, audit.FrameworkContext{})
 		tc.LastErr = err
 		return nil
 	})

@@ -407,11 +407,36 @@ check-bdd-strict:
 
 # --- Security ---
 
+# security runs govulncheck serially over every module. Used by
+# `make check` and by developers locally. CI fans this out across
+# a GitHub Actions matrix for ~10x wall-time reduction (#522);
+# see `security-one` below for the per-module target the matrix
+# invokes.
 security:
 	@for mod in $(MODULES); do \
 		echo "=== security $$mod ==="; \
 		(cd $$mod && $(GOBIN)/govulncheck ./...) || exit 1; \
 	done
+
+# security-one runs govulncheck for a single module. Invoked from
+# CI's matrix-parallelised Security Scan job (#522, master tracker
+# D-15). Not intended for local use — `make security` covers the
+# serial local workflow.
+#
+# Usage: make security-one MOD=<module-path>
+#   e.g. make security-one MOD=.
+#        make security-one MOD=secrets/vault
+security-one:
+	@if [ -z "$(MOD)" ]; then \
+		echo "security-one: MOD is required (e.g. make security-one MOD=.)"; \
+		exit 2; \
+	fi
+	@if [ ! -d "$(MOD)" ]; then \
+		echo "security-one: MOD=$(MOD) does not exist"; \
+		exit 2; \
+	fi
+	@echo "=== security $(MOD) ==="
+	@cd $(MOD) && $(GOBIN)/govulncheck ./...
 
 # --- Release ---
 

@@ -10,7 +10,6 @@ require (
 	github.com/axonops/audit/webhook v0.1.11
 	github.com/cucumber/godog v0.15.1
 	github.com/goccy/go-yaml v1.19.2
-	github.com/rgooding/go-syncmap v1.0.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/goleak v1.3.0
 	pgregory.net/rapid v1.2.0

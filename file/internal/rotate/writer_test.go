@@ -1474,3 +1474,85 @@ func BenchmarkWriter_Write_SyncOnWriteFalse(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkWriter_Write_WithRotation measures the steady-state cost
+// of the Write path when rotation fires regularly (#504 AC #1,
+// master tracker C-18). Pairs with BenchmarkWriter_Write_SyncOnWriteFalse
+// — both write the same 161 B event; only the rotation trigger
+// differs. The delta between the two captures the amortised rotation
+// cost (rename + new file + prune).
+//
+// Placement rationale: the issue AC names the benchmark
+// BenchmarkFileOutput_Write_WithRotation but the public
+// file.Config.MaxSizeMB is integer megabytes (minimum 1 ≈ 6500
+// writes per rotation = 0.015 % signal, below benchmark noise).
+// rotate.Config.MaxSize is byte-granular and is where the rotation
+// logic lives. At MaxSize=4 KiB with a 161 B event, rotation fires
+// every ~25 writes — ~4 % signal, cleanly above the typical ±2 %
+// variance. A companion BenchmarkFileOutput_Write_WithRotation in
+// the public file_test.go satisfies the AC literal.
+func BenchmarkWriter_Write_WithRotation(b *testing.B) {
+	dir := os.Getenv("IOURING_BENCH_DIR")
+	if dir == "" {
+		if _, err := os.Stat("/dev/shm"); err == nil {
+			dir = "/dev/shm"
+		} else {
+			dir = b.TempDir()
+		}
+	}
+	path := filepath.Join(dir, fmt.Sprintf("rotate-bench-withrotation-%d.log", os.Getpid()))
+	// MaxSize=4 KiB forces rotation every ~25 writes at 161 B/event.
+	// MaxBackups=2 keeps the prune path warm without letting the
+	// tmpfs / IOURING_BENCH_DIR directory balloon. Compress=false so
+	// the measurement is rotation mechanics, not gzip CPU.
+	w, err := rotate.New(path, rotate.Config{
+		MaxSize:     4096,
+		MaxBackups:  2,
+		Compress:    false,
+		Mode:        0o600,
+		SyncOnWrite: false,
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	// Backups are named "<prefix>-<ts>.log" where <prefix> is the
+	// base filename minus the extension. Build a glob that matches
+	// the active file AND every rotated/compressed backup.
+	globPrefix := strings.TrimSuffix(path, ".log") + "*"
+	b.Cleanup(func() {
+		// Glob-remove the active file and every rotated backup so
+		// /dev/shm does not leak between bench runs. Close already
+		// happened inside the benchmark body; ignore errors here.
+		matches, _ := filepath.Glob(globPrefix)
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	})
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(event)))
+	b.ResetTimer()
+	for b.Loop() {
+		if _, werr := w.Write(event); werr != nil {
+			b.Fatal(werr)
+		}
+	}
+	b.StopTimer()
+
+	// Safety net: prove rotation actually fired. Without this, a
+	// silent break in rotation logic would show as a free perf win.
+	// Close flushes pending bytes and releases file handles before
+	// the glob count.
+	if cerr := w.Close(); cerr != nil {
+		b.Fatalf("close: %v", cerr)
+	}
+	matches, gerr := filepath.Glob(globPrefix)
+	if gerr != nil {
+		b.Fatalf("glob: %v", gerr)
+	}
+	if len(matches) < 2 {
+		b.Fatalf("expected rotation to fire; found only %d file(s) matching %q", len(matches), globPrefix)
+	}
+}

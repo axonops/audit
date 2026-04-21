@@ -546,6 +546,16 @@ BenchmarkFileOutput_Write_Parallel-32    	12738493	        93.47 ns/op	1647.64 M
 BenchmarkFileOutput_Write_Parallel-32    	11926418	        92.92 ns/op	1657.28 MB/s	     160 B/op	       1 allocs/op
 BenchmarkFileOutput_Write_Parallel-32    	12629983	        91.35 ns/op	1685.77 MB/s	     160 B/op	       1 allocs/op
 BenchmarkFileOutput_Write_Parallel-32    	12334479	        93.36 ns/op	1649.51 MB/s	     160 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	38956629	        60.58 ns/op	2541.89 MB/s	     163 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	35529373	        59.80 ns/op	2575.04 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	42122985	        59.77 ns/op	2576.40 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	36739435	        61.54 ns/op	2502.58 MB/s	     163 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	39601782	        59.86 ns/op	2572.62 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	42206596	        60.96 ns/op	2526.44 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	41817706	        59.46 ns/op	2589.95 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	37063711	        61.15 ns/op	2518.25 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	36965449	        59.16 ns/op	2603.08 MB/s	     162 B/op	       1 allocs/op
+BenchmarkFileOutput_Write_WithRotation-32    	42742759	        60.84 ns/op	2531.35 MB/s	     162 B/op	       1 allocs/op
 PASS
 ok  	github.com/axonops/audit/file	20.198s
 goos: linux
@@ -562,6 +572,16 @@ BenchmarkWriter_Write_SyncOnWriteFalse-32    	22638031	        52.30 ns/op	2944.
 BenchmarkWriter_Write_SyncOnWriteFalse-32    	23890542	        51.86 ns/op	2969.67 MB/s	       0 B/op	       0 allocs/op
 BenchmarkWriter_Write_SyncOnWriteFalse-32    	23133378	        51.98 ns/op	2962.83 MB/s	       0 B/op	       0 allocs/op
 BenchmarkWriter_Write_SyncOnWriteFalse-32    	23508986	        51.92 ns/op	2965.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5898613	      1009 ns/op	 152.60 MB/s	    1635 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5889320	      1004 ns/op	 153.43 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5786274	      1019 ns/op	 151.16 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5943432	      1012 ns/op	 152.24 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5934115	      1022 ns/op	 150.71 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5980983	      1017 ns/op	 151.44 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 6081579	      1007 ns/op	 152.95 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5991352	      1008 ns/op	 152.72 MB/s	    1635 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5979892	      1022 ns/op	 150.73 MB/s	    1634 B/op	       4 allocs/op
+BenchmarkWriter_Write_WithRotation-32    	 5838405	      1015 ns/op	 151.70 MB/s	    1635 B/op	       4 allocs/op
 PASS
 ok  	github.com/axonops/audit/file/internal/rotate	12.284s
 === bench iouring ===

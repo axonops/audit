@@ -164,9 +164,12 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 |-----------|------:|-----:|----------:|-------|
 | FileOutput_Write | ~67 | 160 | 1 | Enqueue hot path, diagnostic logger silenced |
 | FileOutput_Write_Parallel | ~85 | 160 | 1 | RunParallel — channel contention |
+| FileOutput_Write_WithRotation | 60 | 162 | 1 | Public API, `MaxSizeMB: 1` + `MaxBackups: 2` + `Compress: false`. Public-API minimum triggers rotation every ~6500 writes — dilute signal, overall cost matches `FileOutput_Write`; catches `file.Output` regressions under any rotation activity (#504) |
+| rotate.Writer_Write_WithRotation | 1012 | 1635 | 4 | Internal byte-granular path, `MaxSize: 4 KiB` + `MaxBackups: 2`. Rotation fires every ~25 writes so per-rotation cost is visible. Delta vs `Writer_Write_SyncOnWriteFalse` (~52 ns) isolates rotation mechanics (rename + new file + prune). Defer gzip cost — `Compress: false`. (#504) |
 | SyslogOutput_Write | 79 | 174 | 1 | TCP write enqueue, diagnostic logger silenced |
 | loki.WriteWithMetadata | 64 | 77 | 1 | Single-event Loki enqueue |
 | loki.BatchBuild | 72µs | 260Ki | 389 | 100 events grouped into push streams |
+| loki.BatchBuild_HighCardinality | — | — | — | 100 distinct event_types; worst-case stream cardinality path. Added by #494; cross-referenced for #504 AC #1 |
 | loki.Gzip | 213µs | 1.0Mi | 380 | Gzip of realistic push payload |
 
 ### Key Observations
@@ -181,6 +184,7 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 - **HMAC** direct `ComputeHMAC` at 8 allocs/op on the standalone benchmarks reflects the per-call `hmac.New` + hex-encoding cost. The `Audit_WithHMAC` full-path benchmark drops to **1 alloc/op** post-W2 (was 2) because the in-place HMAC append eliminates the scratch buffer allocation.
 - **Fan-out** scales well: 3 outputs with shared formatter lands at ~370 ns; 5 outputs at ~344 ns — effectively constant because all outputs share one formatter-buffer lease and each output pays only for post-field assembly.
 - **Output-backend enqueue** hot paths (`FileOutput_Write`, `SyslogOutput_Write`, `loki.WriteWithMetadata`) all land at 1 alloc/op — channel-send + one defensive data copy (the no-retention contract from #497 W2). Background goroutines handle batching, retries, and compression.
+- **Rotation cost** is isolated by `rotate.Writer_Write_WithRotation` at 1012 ns/op vs `Writer_Write_SyncOnWriteFalse` at ~52 ns/op — ≈960 ns per write is amortised rotation cost across the 25-write cycle, implying ≈24 µs per actual rotation event (rename + new file + prune). `FileOutput_Write_WithRotation` at the public API surface shows the same cost diluted across ~6500 writes per rotation and thus reads like `FileOutput_Write` — it catches regressions in `file.Output → rotate.Writer` wiring, not rotation-internal regressions. (#504)
 
 ---
 

@@ -54,6 +54,22 @@ const (
 
 	// MaxMaxRetries is the upper bound for MaxRetries.
 	MaxMaxRetries = 20
+
+	// DefaultMaxBatchBytes is the default maximum accumulated batch
+	// payload size in bytes before a flush is triggered. 1 MiB
+	// matches [loki.DefaultMaxBatchBytes] and [syslog.DefaultMaxBatchBytes].
+	// Events exceeding this threshold alone trigger an immediate
+	// flush (the event is sent in its own HTTP POST; it is never
+	// dropped).
+	DefaultMaxBatchBytes = 1 << 20 // 1 MiB
+
+	// MinMaxBatchBytes is the lower bound for MaxBatchBytes.
+	MinMaxBatchBytes = 1 << 10 // 1 KiB
+
+	// MaxMaxBatchBytes is the upper bound for MaxBatchBytes. Matches
+	// the range accepted by Loki and syslog; real-world endpoints
+	// typically reject request bodies larger than a few MiB anyway.
+	MaxMaxBatchBytes = 10 << 20 // 10 MiB
 )
 
 // Config holds configuration for [Output].
@@ -115,6 +131,20 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// Zero defaults to [DefaultBatchSize] (100).
 	// Values above [MaxBatchSize] (10,000) are rejected.
 	BatchSize int
+
+	// MaxBatchBytes is the maximum accumulated payload size (sum of
+	// event byte lengths) in a single batch. When the threshold is
+	// reached, the batch flushes immediately regardless of
+	// [Config.BatchSize]. Zero defaults to [DefaultMaxBatchBytes]
+	// (1 MiB). Values below [MinMaxBatchBytes] (1 KiB) or above
+	// [MaxMaxBatchBytes] (10 MiB) cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	//
+	// A single event exceeding MaxBatchBytes is flushed alone — it
+	// is never dropped. Matches the conventions established by
+	// [loki.Config.MaxBatchBytes] and
+	// [github.com/axonops/audit/syslog.Config.MaxBatchBytes].
+	MaxBatchBytes int
 
 	// BufferSize is the internal async buffer capacity. When full,
 	// new events are dropped and [audit.OutputMetrics.RecordDrop] is called.
@@ -340,9 +370,16 @@ func applyWebhookDefaults(cfg *Config) {
 	if cfg.BufferSize == 0 {
 		cfg.BufferSize = DefaultBufferSize
 	}
+	if cfg.MaxBatchBytes == 0 {
+		cfg.MaxBatchBytes = DefaultMaxBatchBytes
+	}
 }
 
-// validateWebhookLimits checks bounds on numeric fields.
+// validateWebhookLimits checks bounds on numeric fields. Linear
+// guard sequence — each if maps 1-1 to a documented Config field
+// constraint. Extracting per-field helpers would hide the pattern.
+//
+//nolint:gocyclo,cyclop // linear guard sequence; see comment above.
 func validateWebhookLimits(cfg *Config) error {
 	if cfg.BatchSize < 1 {
 		return fmt.Errorf("%w: webhook batch_size must be at least 1 (got %d)",
@@ -371,6 +408,14 @@ func validateWebhookLimits(cfg *Config) error {
 	if cfg.FlushInterval < 0 {
 		return fmt.Errorf("%w: webhook flush_interval must not be negative (got %v)",
 			audit.ErrConfigInvalid, cfg.FlushInterval)
+	}
+	if cfg.MaxBatchBytes < MinMaxBatchBytes {
+		return fmt.Errorf("%w: webhook max_batch_bytes %d below minimum %d",
+			audit.ErrConfigInvalid, cfg.MaxBatchBytes, MinMaxBatchBytes)
+	}
+	if cfg.MaxBatchBytes > MaxMaxBatchBytes {
+		return fmt.Errorf("%w: webhook max_batch_bytes %d exceeds maximum %d",
+			audit.ErrConfigInvalid, cfg.MaxBatchBytes, MaxMaxBatchBytes)
 	}
 	if cfg.Timeout < 0 {
 		return fmt.Errorf("%w: webhook timeout must not be negative (got %v)",

@@ -130,6 +130,7 @@ type Output struct {
 	timeout       time.Duration
 	mu            sync.Mutex
 	batchSize     int
+	maxBatchBytes int
 	maxRetries    int
 	closed        atomic.Bool
 }
@@ -206,19 +207,20 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	w := &Output{
-		client:     client,
-		url:        cfg.URL,
-		name:       webhookName(cfg.URL),
-		headers:    headers,
-		metrics:    metrics,
-		ch:         make(chan []byte, cfg.BufferSize),
-		closeCh:    make(chan struct{}),
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		batchSize:  cfg.BatchSize,
-		maxRetries: cfg.MaxRetries,
-		flushIvl:   cfg.FlushInterval,
-		timeout:    cfg.Timeout,
+		client:        client,
+		url:           cfg.URL,
+		name:          webhookName(cfg.URL),
+		headers:       headers,
+		metrics:       metrics,
+		ch:            make(chan []byte, cfg.BufferSize),
+		closeCh:       make(chan struct{}),
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		batchSize:     cfg.BatchSize,
+		maxBatchBytes: cfg.MaxBatchBytes,
+		maxRetries:    cfg.MaxRetries,
+		flushIvl:      cfg.FlushInterval,
+		timeout:       cfg.Timeout,
 	}
 	// Publish the initial logger BEFORE starting the batch goroutine
 	// so the goroutine's first read observes a non-nil pointer.
@@ -338,11 +340,14 @@ func webhookName(rawURL string) string {
 }
 
 // batchLoop is the background goroutine that accumulates events and
-// flushes batches on size, timer, or shutdown.
+// flushes batches on count threshold, byte threshold, timer timeout,
+// or shutdown (#687). A single event whose data length alone exceeds
+// MaxBatchBytes is flushed alone — never dropped.
 func (w *Output) batchLoop(ctx context.Context) {
 	defer close(w.done)
 
 	batch := make([][]byte, 0, w.batchSize)
+	batchBytes := 0
 	timer := time.NewTimer(w.flushIvl)
 	defer timer.Stop()
 
@@ -350,9 +355,11 @@ func (w *Output) batchLoop(ctx context.Context) {
 		select {
 		case data := <-w.ch:
 			batch = append(batch, data)
-			if len(batch) >= w.batchSize {
+			batchBytes += len(data)
+			if len(batch) >= w.batchSize || batchBytes >= w.maxBatchBytes {
 				w.flush(ctx, batch)
 				batch = batch[:0]
+				batchBytes = 0
 				resetWebhookTimer(timer, w.flushIvl)
 			}
 
@@ -360,6 +367,7 @@ func (w *Output) batchLoop(ctx context.Context) {
 			if len(batch) > 0 {
 				w.flush(ctx, batch)
 				batch = batch[:0]
+				batchBytes = 0
 			}
 			resetWebhookTimer(timer, w.flushIvl)
 

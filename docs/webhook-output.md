@@ -101,11 +101,28 @@ Core drain goroutine ──► Write()
 Webhook batchLoop goroutine
   → reads from channel
   → accumulates into batch
-  → flushes on: batch_size (100) | flush_interval (5s) | shutdown
+  → flushes on: batch_size (100) | max_batch_bytes (1 MiB) | flush_interval (5s) | shutdown
   → joins events as NDJSON
   → HTTP POST to endpoint
   → retries on 429/5xx
 ```
+
+### Byte-threshold batching (`max_batch_bytes`)
+
+Since #687, the webhook output flushes when accumulated event bytes
+cross `max_batch_bytes` (default 1 MiB) — even if `batch_size` has
+not been reached. This matches the convention already used by Loki
+and syslog and prevents unbounded HTTP POST body sizes when events
+are large.
+
+- **Default**: 1 MiB
+- **Range**: 1 KiB – 10 MiB
+- **Oversized single events**: a single event whose byte length
+  alone exceeds `max_batch_bytes` is **flushed alone** — never
+  dropped. The HTTP POST contains exactly that one event.
+
+Operators running Loki + syslog + webhook side-by-side see the
+same knob across all three outputs.
 
 ### `buffer_size` vs `batch_size`
 
@@ -164,6 +181,7 @@ NDJSON is:
 |-------|------|---------|-------|-------------|
 | `url` | string | *(required)* | — | HTTP endpoint. MUST be `https://` unless `allow_insecure_http` is true |
 | `batch_size` | int | `100` | 1–10,000 | Maximum events per HTTP request |
+| `max_batch_bytes` | int | `1048576` (1 MiB) | 1 KiB – 10 MiB | Accumulated event-bytes flush threshold. Oversized single events flush alone; never dropped. See [Byte-threshold batching](#byte-threshold-batching-max_batch_bytes) |
 | `buffer_size` | int | `10,000` | 1–1,000,000 | Internal async buffer capacity. Events dropped when full |
 | `flush_interval` | duration | `"5s"` | — | Maximum time between batch flushes |
 | `timeout` | duration | `"10s"` | — | HTTP request timeout (full request/response lifecycle) |

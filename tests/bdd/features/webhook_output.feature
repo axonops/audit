@@ -35,6 +35,23 @@ Feature: Webhook Output
     And I audit a uniquely marked webhook "user_create" event "timer4"
     Then the webhook receiver should have at least 2 events within 5 seconds
 
+  # --- Byte-threshold batching (#687) ---
+  #
+  # The batchLoop flushes on count threshold, byte threshold,
+  # FlushInterval timeout, or Close. MaxBatchBytes prevents
+  # unbounded HTTP request bodies from verbose event payloads.
+  # See docs/webhook-output.md "Batching".
+
+  Scenario: Webhook flushes batch on byte threshold before count threshold
+    Given an auditor with webhook output configured for batch size 1000 and flush interval 10s and max batch bytes 4096
+    When I audit 5 uniquely marked webhook events with 1 KiB payloads
+    Then the webhook receiver should have at least 1 event within 5 seconds
+
+  Scenario: Webhook flushes oversized single event alone
+    Given an auditor with webhook output configured for batch size 100 and flush interval 10s and max batch bytes 1024
+    When I audit a uniquely marked webhook "user_create" event with a 2048-byte payload
+    Then the webhook receiver should have at least 1 event within 5 seconds
+
   # --- Retry logic ---
 
   Scenario: Retry on 503 response with eventual delivery

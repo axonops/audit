@@ -155,16 +155,63 @@ func TestValidateConfig_Defaults(t *testing.T) {
 	assert.Equal(t, DefaultTimeout, cfg.Timeout)
 	assert.Equal(t, DefaultMaxRetries, cfg.MaxRetries)
 	assert.Equal(t, DefaultBufferSize, cfg.BufferSize)
+	assert.Equal(t, DefaultMaxBatchBytes, cfg.MaxBatchBytes)
 }
 
 func TestValidateConfig_BoundaryValues(t *testing.T) {
 	cfg := Config{
-		URL:        "https://example.com/webhook",
-		BatchSize:  MaxBatchSize,
-		BufferSize: MaxBufferSize,
-		MaxRetries: MaxMaxRetries,
+		URL:           "https://example.com/webhook",
+		BatchSize:     MaxBatchSize,
+		BufferSize:    MaxBufferSize,
+		MaxRetries:    MaxMaxRetries,
+		MaxBatchBytes: MaxMaxBatchBytes,
 	}
 	require.NoError(t, validateWebhookConfig(&cfg))
+}
+
+// TestValidateConfig_MaxBatchBytesDefaults verifies zero-value
+// MaxBatchBytes is normalised to DefaultMaxBatchBytes (#687 AC #1).
+func TestValidateConfig_MaxBatchBytesDefaults(t *testing.T) {
+	cfg := Config{URL: "https://example.com/webhook"}
+	require.NoError(t, validateWebhookConfig(&cfg))
+	assert.Equal(t, DefaultMaxBatchBytes, cfg.MaxBatchBytes,
+		"zero MaxBatchBytes must normalise to DefaultMaxBatchBytes")
+}
+
+// TestValidateConfig_MaxBatchBytesNegative verifies a negative
+// MaxBatchBytes value is rejected with ErrConfigInvalid (#687 AC #1).
+func TestValidateConfig_MaxBatchBytesNegative(t *testing.T) {
+	cfg := Config{
+		URL:           "https://example.com/webhook",
+		MaxBatchBytes: -1,
+	}
+	err := validateWebhookConfig(&cfg)
+	require.Error(t, err)
+	require.ErrorIs(t, err, audit.ErrConfigInvalid)
+}
+
+// TestValidateConfig_MaxBatchBytesBelowMin verifies a value below
+// MinMaxBatchBytes is rejected with ErrConfigInvalid.
+func TestValidateConfig_MaxBatchBytesBelowMin(t *testing.T) {
+	cfg := Config{
+		URL:           "https://example.com/webhook",
+		MaxBatchBytes: 512, // below 1 KiB minimum
+	}
+	err := validateWebhookConfig(&cfg)
+	require.Error(t, err)
+	require.ErrorIs(t, err, audit.ErrConfigInvalid)
+}
+
+// TestValidateConfig_MaxBatchBytesOverRange verifies a value above
+// MaxMaxBatchBytes is rejected with ErrConfigInvalid.
+func TestValidateConfig_MaxBatchBytesOverRange(t *testing.T) {
+	cfg := Config{
+		URL:           "https://example.com/webhook",
+		MaxBatchBytes: MaxMaxBatchBytes + 1,
+	}
+	err := validateWebhookConfig(&cfg)
+	require.Error(t, err)
+	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
 
 func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {

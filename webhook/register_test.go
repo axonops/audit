@@ -41,6 +41,32 @@ func TestWebhookFactory_ValidConfig(t *testing.T) {
 	assert.Equal(t, "splunk_hec", out.Name(), "name should be the YAML-configured name")
 }
 
+// TestWebhookFactory_MaxBatchBytesKey verifies the new
+// `max_batch_bytes` YAML key is parsed and applied (#687 AC #6).
+func TestWebhookFactory_MaxBatchBytesKey(t *testing.T) {
+	yaml := []byte("url: https://example.com/events\nbatch_size: 100\nflush_interval: 5s\nmax_batch_bytes: 524288\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("sized", yaml, nil, nil)
+	require.NoError(t, err, "max_batch_bytes key must parse cleanly")
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestWebhookFactory_MaxBatchBytesInvalid verifies a negative
+// max_batch_bytes value is rejected via validation.
+func TestWebhookFactory_MaxBatchBytesInvalid(t *testing.T) {
+	yaml := []byte("url: https://example.com/events\nmax_batch_bytes: -1\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	_, err := factory("bad_bytes", yaml, nil, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, audit.ErrConfigInvalid)
+}
+
 func TestWebhookFactory_InvalidConfig_EmptyURL(t *testing.T) {
 	yaml := []byte("url: \"\"\n")
 

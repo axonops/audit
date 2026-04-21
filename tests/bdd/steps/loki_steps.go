@@ -55,22 +55,22 @@ func registerLokiGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^an auditor with loki output$`, func() error {
-		return createLokiAuditor(tc, &loki.Config{Compress: true})
+		return createLokiAuditor(tc, &loki.Config{Gzip: true})
 	})
 
 	ctx.Step(`^an auditor with loki output to tenant "([^"]*)"$`, func(tenant string) error {
-		return createLokiAuditor(tc, &loki.Config{TenantID: tenant, Compress: true})
+		return createLokiAuditor(tc, &loki.Config{TenantID: tenant, Gzip: true})
 	})
 
 	ctx.Step(`^an auditor with loki output with static label "([^"]*)" = "([^"]*)"$`, func(name, value string) error {
 		return createLokiAuditor(tc, &loki.Config{
-			Compress: true,
-			Labels:   loki.LabelConfig{Static: map[string]string{name: value}},
+			Gzip:   true,
+			Labels: loki.LabelConfig{Static: map[string]string{name: value}},
 		})
 	})
 
 	ctx.Step(`^an auditor with loki output with batch size (\d+)$`, func(size int) error {
-		return createLokiAuditor(tc, &loki.Config{BatchSize: size, Compress: true})
+		return createLokiAuditor(tc, &loki.Config{BatchSize: size, Gzip: true})
 	})
 
 	// Max event size (#688).
@@ -80,7 +80,7 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 				BatchSize:     1,
 				FlushInterval: 100 * time.Millisecond,
 				MaxEventBytes: maxEventBytes,
-				Compress:      true,
+				Gzip:          true,
 			})
 		})
 
@@ -88,7 +88,7 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 		return createLokiAuditor(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(ms) * time.Millisecond,
-			Compress:      true,
+			Gzip:          true,
 		})
 	})
 
@@ -96,12 +96,12 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 		return createLokiAuditor(tc, &loki.Config{
 			BatchSize:     size,
 			FlushInterval: time.Duration(s) * time.Second,
-			Compress:      true,
+			Gzip:          true,
 		})
 	})
 
 	ctx.Step(`^an auditor with loki output excluding dynamic label "([^"]*)"$`, func(label string) error {
-		cfg := &loki.Config{Compress: true}
+		cfg := &loki.Config{Gzip: true}
 		switch label {
 		case "severity":
 			cfg.Labels.Dynamic.ExcludeSeverity = true
@@ -122,12 +122,12 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 	})
 
 	ctx.Step(`^an auditor with loki output with gzip enabled$`, func() error {
-		return createLokiAuditor(tc, &loki.Config{Compress: true})
+		return createLokiAuditor(tc, &loki.Config{Gzip: true})
 	})
 
 	ctx.Step(`^an auditor with loki output with gzip disabled$`, func() error {
 		cfg := &loki.Config{}
-		cfg.Compress = false
+		cfg.Gzip = false
 		return createLokiAuditor(tc, cfg)
 	})
 }
@@ -476,7 +476,7 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 	if cfg.TenantID == "" {
 		cfg.TenantID = defaultLokiTenant
 	}
-	// Do NOT set cfg.Compress here — let each step control it.
+	// Do NOT set cfg.Gzip here — let each step control it.
 	// The default zero value (false) is overridden by individual steps.
 
 	if cfg.Labels.Static == nil {

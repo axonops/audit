@@ -163,11 +163,11 @@ func BenchmarkLokiOutput_Gzip(b *testing.B) {
 	}
 
 	input := loki.TestPayloadInput{
-		Events:   events,
-		Compress: true,
-		AppName:  "bench-app",
-		Host:     "bench-host",
-		PID:      12345,
+		Events:  events,
+		Gzip:    true,
+		AppName: "bench-app",
+		Host:    "bench-host",
+		PID:     12345,
 	}
 
 	b.ReportAllocs()

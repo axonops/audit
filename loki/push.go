@@ -291,7 +291,7 @@ func (o *Output) writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
 	}
 }
 
-// maybeCompress applies gzip compression if cfg.Compress is true.
+// maybeCompress applies gzip compression if cfg.Gzip is true.
 // Returns the payload bytes, whether they are compressed, and any
 // compression error. On error the caller should fall back to the
 // uncompressed payload in payloadBuf.
@@ -300,7 +300,7 @@ func (o *Output) writeLabelsJSON(buf *bytes.Buffer, labels map[string]string) {
 // (bytes.Buffer.Write always returns nil error). The error handling
 // is defensive — a safety net for correctness.
 func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
-	if !o.cfg.Compress {
+	if !o.cfg.Gzip {
 		return o.payloadBuf.Bytes(), false, nil
 	}
 	o.compressBuf.Reset()

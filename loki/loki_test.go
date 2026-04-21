@@ -60,7 +60,7 @@ func validConfigWithURL(url string) *loki.Config {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         1000,
-		Compress:           true,
+		Gzip:               true,
 	}
 }
 

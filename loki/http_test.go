@@ -310,7 +310,7 @@ func TestHTTP_ContentType_JSON(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := validConfigWithURL(srv.URL)
-	cfg.Compress = false
+	cfg.Gzip = false
 
 	out, err := loki.New(cfg, nil)
 	require.NoError(t, err)
@@ -333,7 +333,7 @@ func TestHTTP_ContentEncoding_Gzip(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := validConfigWithURL(srv.URL)
-	cfg.Compress = true
+	cfg.Gzip = true
 
 	out, err := loki.New(cfg, nil)
 	require.NoError(t, err)
@@ -355,7 +355,7 @@ func TestHTTP_CompressedBody_ValidJSON(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := validConfigWithURL(srv.URL)
-	cfg.Compress = true
+	cfg.Gzip = true
 
 	out, err := loki.New(cfg, nil)
 	require.NoError(t, err)

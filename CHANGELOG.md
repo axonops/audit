@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- `loki.Config.Compress` Go field renamed to `loki.Config.Gzip` to align with the YAML key `gzip` (#584). YAML key unchanged — operator configs are unaffected. Programmatic consumers constructing `loki.Config` in Go must rename the field: `loki.Config{Compress: true}` becomes `loki.Config{Gzip: true}`. Rationale: Loki's server only accepts gzip (`Content-Encoding: gzip`), so the bool is algorithm-specific, not a generic toggle; naming the algorithm matches the Vector / Fluent Bit / promtail idiom. No aliases kept.
 - Per-output `OutputOption` constructors renamed to follow the package's `WithX` convention (#576). `OutputRoute` → `WithRoute`, `OutputFormatter` → `WithOutputFormatter` (kept `Output` prefix because the auditor-level `WithFormatter` already exists), `OutputExcludeLabels` → `WithExcludeLabels`, `OutputHMAC` → `WithHMAC`. Call-site update is mechanical: `audit.WithNamedOutput(out, audit.OutputRoute(r), audit.OutputHMAC(h))` becomes `audit.WithNamedOutput(out, audit.WithRoute(r), audit.WithHMAC(h))`. No aliases kept.
 - `New` signature changed from `New(Config, ...Option)` to `New(...Option)` — Config fields expressed as Options (#388)
 - `Config.Version` unexported, `Config.Enabled` removed — use `WithDisabled()` (#388)

@@ -57,7 +57,7 @@ type TestPayloadInput struct { //nolint:govet // fieldalignment: readability pre
 	AppName          string
 	Host             string
 	PID              int
-	Compress         bool
+	Gzip             bool
 	ExcludeEventType bool
 	ExcludeSeverity  bool
 }
@@ -73,7 +73,7 @@ func buildTestConfig(input TestPayloadInput) *Config { //nolint:gocritic // huge
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         1000,
-		Compress:           input.Compress,
+		Gzip:               input.Gzip,
 	}
 	if input.StaticLabels != nil {
 		cfg.Labels.Static = input.StaticLabels

@@ -324,7 +324,7 @@ func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 		Timeout:            1e9, // 1 second timeout
 		MaxRetries:         1,
 		BufferSize:         100,
-		Compress:           false,
+		Gzip:               false,
 	}
 
 	lokiOut, err := loki.New(lokiCfg, nil)

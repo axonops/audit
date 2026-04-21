@@ -83,7 +83,7 @@ func newLokiOutput(t *testing.T, opts ...func(*loki.Config)) *loki.Output {
 		Timeout:            10 * time.Second,
 		MaxRetries:         3,
 		BufferSize:         1000,
-		Compress:           true,
+		Gzip:               true,
 		TenantID:           testTenant,
 	}
 	for _, opt := range opts {
@@ -494,7 +494,7 @@ func TestLoki_GzipCompression(t *testing.T) {
 	// Gzip enabled (default in newLokiOutput).
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "gzip_test"}
-		c.Compress = true
+		c.Gzip = true
 	})
 	out.SetFrameworkFields("gzapp", "gz-host", "UTC", 1)
 
@@ -517,7 +517,7 @@ func TestLoki_GzipCompression(t *testing.T) {
 func TestLoki_UncompressedDelivery(t *testing.T) {
 	out := newLokiOutput(t, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "nogzip_test"}
-		c.Compress = false
+		c.Gzip = false
 	})
 	out.SetFrameworkFields("noapp", "no-host", "UTC", 1)
 

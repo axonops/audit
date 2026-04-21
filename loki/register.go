@@ -56,7 +56,7 @@ type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability prefe
 	BufferSize *int              `yaml:"buffer_size"`
 	Timeout    yamlDuration      `yaml:"timeout"`
 	MaxRetries *int              `yaml:"max_retries"`
-	Compress   *bool             `yaml:"gzip"` // YAML key is "gzip" for user clarity; maps to Compress
+	Gzip       *bool             `yaml:"gzip"`
 	AllowHTTP  bool              `yaml:"allow_insecure_http"`
 	AllowPriv  bool              `yaml:"allow_private_ranges"`
 }
@@ -155,10 +155,10 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 	}
 
 	// Gzip: default true, explicit false overrides.
-	if yc.Compress != nil {
-		cfg.Compress = *yc.Compress
+	if yc.Gzip != nil {
+		cfg.Gzip = *yc.Gzip
 	} else {
-		cfg.Compress = true
+		cfg.Gzip = true
 	}
 
 	// Labels.

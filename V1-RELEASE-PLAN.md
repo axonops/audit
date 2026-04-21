@@ -114,7 +114,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
 - [ ] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_v / _hmacVersion.
 - [ ] **#583** refactor: rename syslog.app_name YAML to procid or syslog_app_name; default APP-NAME from top-level app_name.
-- [ ] **#584** refactor: align Loki gzip YAML key and Go Compress field.
+- [x] **#584** refactor: align Loki gzip YAML key and Go Compress field.
 - [ ] **#585** refactor: examples use outputs convenience package instead of individual blank imports.
 - [ ] **#586** refactor: replace Metrics.RecordEvent stringly-typed status with EventStatus enum.
 - [ ] **#587** perf: WrapOutput conditionally implements MetadataWriter based on inner capability.

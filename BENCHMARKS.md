@@ -67,6 +67,46 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 | AppendPostFields_CEF | 57 | 128 | 1 | cefEscapeExtValue direct write |
 | AppendPostFields_Disabled | 1.3 | 0 | 0 | nil fields fast path |
 
+### Hot-Path Isolation Benchmarks
+
+Added by #502 to give each critical function its own standalone
+baseline. Previously regressions in these helpers were only
+visible through the aggregate `BenchmarkAudit` number.
+
+| Benchmark | ns/op | B/op | allocs/op | Notes |
+|-----------|------:|-----:|----------:|-------|
+| ValidateFields_Success          |  71 |   0 | 0 | Happy path — all required present, no unknowns |
+| ValidateFields_MissingRequired  | 256 | 144 | 4 | Early-error path; allocations from error formatting |
+| CheckUnknownFields_Strict       | 412 | 240 | 7 | Strict mode: unknown fields become errors |
+| CheckUnknownFields_Permissive   |   2 |   0 | 0 | Permissive (default): early-return guard |
+| CopyFieldsWithDefaults/Fields_3 | 189 | 336 | 2 | 3 fields — dominant caller-side alloc |
+| CopyFieldsWithDefaults/Fields_10 | 481 | 954 | 5 | 10 fields — realistic audit event |
+| CopyFieldsWithDefaults/Fields_20 | 1 054 | 2 140 | 7 | 20 fields — heavy event |
+| ProcessEntry_Drain              | 1 029 | 386 | 2 | Synchronous drain with one mock output |
+| ComputeHMACFast                 | 155 |   0 | 0 | Pre-allocated drain-loop HMAC path (zero-alloc by construction) |
+
+### Parallelism Scaling
+
+Added by #503. Characterises the contention curve on the
+filter state `sync.Map` as producer count grows. Near-linear
+scaling up to physical-core count, then amortises as
+`sync.Map`'s read-dominant path absorbs contention.
+
+| N    | ns/op | B/op | allocs/op |
+|-----:|------:|-----:|----------:|
+|   1  |  73   |  27  | 1 |
+|  10  |  57   |  24  | 1 |
+|  50  |  57   |  24  | 1 |
+| 100  |  48   |  24  | 1 |
+| 200  |  55   |  24  | 1 |
+
+The ns/op number represents per-op wall-clock under the given
+`GOMAXPROCS × N` producer load. Values below the N=1 baseline
+reflect per-call amortisation under parallelism — the auditor's
+hot path is dominated by memory allocation, not lock contention
+(which is the expected result from `sync.Map`'s lock-free read
+path). Run via `go test -bench BenchmarkAudit_Parallelism`.
+
 ### Caller-Side Helpers
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |

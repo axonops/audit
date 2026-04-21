@@ -1232,7 +1232,7 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
 		})),
 	)
@@ -1264,7 +1264,7 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
 			ExcludeCategories: []string{"security"},
 		})),
 	)
@@ -2031,7 +2031,7 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
+		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -2061,7 +2061,7 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
+		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -2776,9 +2776,9 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out1),                                // default JSON
-		audit.WithNamedOutput(out2, audit.OutputFormatter(cefFmt)), // CEF
-		audit.WithNamedOutput(out3),                                // default JSON (shared)
+		audit.WithNamedOutput(out1),                                    // default JSON
+		audit.WithNamedOutput(out2, audit.WithOutputFormatter(cefFmt)), // CEF
+		audit.WithNamedOutput(out3),                                    // default JSON (shared)
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2811,10 +2811,10 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out1), // receives all events
-		audit.WithNamedOutput(out2, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(out2, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
 		})), // receives only write events
-		audit.WithNamedOutput(out3, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(out3, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
 		})), // receives only security events — filters schema_register
 	)
@@ -3006,7 +3006,7 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("benchmark-salt-value-32-bytes!!!"),
@@ -3722,7 +3722,7 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("test-salt-sixteen-bytes!"),
@@ -3777,7 +3777,7 @@ func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "2026-Q1",
 			SaltValue:   []byte("version-test-salt-16b!"),
@@ -3866,9 +3866,9 @@ events:
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		// "full" output: no label exclusions — gets all fields including email.
-		audit.WithNamedOutput(fullOut, audit.OutputHMAC(fullHMACCfg)),
+		audit.WithNamedOutput(fullOut, audit.WithHMAC(fullHMACCfg)),
 		// "stripped" output: excludes PII — email is removed before HMAC.
-		audit.WithNamedOutput(strippedOut, audit.OutputExcludeLabels("pii"), audit.OutputHMAC(strippedHMACCfg)),
+		audit.WithNamedOutput(strippedOut, audit.WithExcludeLabels("pii"), audit.WithHMAC(strippedHMACCfg)),
 	)
 	require.NoError(t, err)
 
@@ -3932,7 +3932,7 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(hmacOut, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(hmacOut, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
@@ -4011,13 +4011,13 @@ events:
 		audit.WithTaxonomy(tax),
 		// Both outputs exclude PII. baseOut is a sanity check that
 		// stripping happened; verification uses hmacOut's own bytes.
-		audit.WithNamedOutput(hmacOut, audit.OutputExcludeLabels("pii"), audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(hmacOut, audit.WithExcludeLabels("pii"), audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
 			Algorithm:   "HMAC-SHA-256",
 		})),
-		audit.WithNamedOutput(baseOut, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(baseOut, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -4442,7 +4442,7 @@ func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithNamedOutput(out, audit.OutputRoute(&audit.EventRoute{})),
+		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -4485,7 +4485,7 @@ func TestMetadataWriter_WithHMAC_ReceivesHMACData(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   []byte("hmac-test-salt-value!"),
@@ -4546,7 +4546,7 @@ events:
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		// Exclude PII — email must not appear in the data received by WriteWithMetadata.
-		audit.WithNamedOutput(out, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(out, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -4836,7 +4836,7 @@ events:
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		// Excluding "pii" triggers formatWithExclusion (FormatOptions non-nil).
-		audit.WithNamedOutput(out, audit.OutputFormatter(&exclusionErrorFormatter{}), audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(out, audit.WithOutputFormatter(&exclusionErrorFormatter{}), audit.WithExcludeLabels("pii")),
 		audit.WithMetrics(metrics),
 	)
 	require.NoError(t, err)
@@ -5268,7 +5268,7 @@ func BenchmarkAudit_FastPath_WithHMAC_Noop(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputHMAC(hmacCfg)),
+		audit.WithNamedOutput(out, audit.WithHMAC(hmacCfg)),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -5315,7 +5315,7 @@ func newMultiFormatterAuditor(tb testing.TB, formatters []audit.Formatter) *audi
 	}
 	for i, f := range formatters {
 		out := testhelper.NewNoopOutput(fmt.Sprintf("noop-%d", i))
-		opts = append(opts, audit.WithNamedOutput(out, audit.OutputFormatter(f)))
+		opts = append(opts, audit.WithNamedOutput(out, audit.WithOutputFormatter(f)))
 	}
 	auditor, err := audit.New(opts...)
 	if err != nil {

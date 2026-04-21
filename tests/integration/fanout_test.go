@@ -239,7 +239,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
 		audit.WithNamedOutput(fileOut), // all events
-		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
 		})), // security only
 	)
@@ -378,8 +378,8 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithNamedOutput(fileOut),                                   // JSON (default)
-		audit.WithNamedOutput(webhookOut, audit.OutputFormatter(cefFmt)), // CEF
+		audit.WithNamedOutput(fileOut),                                       // JSON (default)
+		audit.WithNamedOutput(webhookOut, audit.WithOutputFormatter(cefFmt)), // CEF
 	)
 	require.NoError(t, err)
 

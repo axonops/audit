@@ -106,7 +106,7 @@ Every issue follows this sequence. Do not skip steps.
 ## Track B — API Shape (27 issues)
 
 - [ ] **#575** feat: code generator — typed custom fields, auditIntPtr prefix, explicit setter flag, Fields() contract doc.
-- [ ] **#576** refactor: rename OutputRoute/OutputFormatter/OutputExcludeLabels/OutputHMAC to WithX convention.
+- [x] **#576** refactor: rename OutputRoute/OutputFormatter/OutputExcludeLabels/OutputHMAC to WithX convention.
 - [ ] **#577** refactor: collapse outputconfig.LoadResult, fix outputconfig.New variadic, fix outputconfig/doc.go stale example.
 - [ ] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
 - [ ] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.

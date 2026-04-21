@@ -236,7 +236,7 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(fileOut),
-			audit.WithNamedOutput(whOut, audit.OutputRoute(&audit.EventRoute{ExcludeCategories: []string{excludeCat}})),
+			audit.WithNamedOutput(whOut, audit.WithRoute(&audit.EventRoute{ExcludeCategories: []string{excludeCat}})),
 		}
 
 		auditor, err := audit.New(opts...)

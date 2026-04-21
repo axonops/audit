@@ -159,7 +159,7 @@ func createSeverityRoutedAuditor(tc *AuditTestContext, minSev, maxSev *int, incl
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
+		audit.WithNamedOutput(stdout, audit.WithRoute(route)),
 	)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -204,7 +204,7 @@ func trySeverityLoggerCreation(tc *AuditTestContext, minSev, maxSev *int) error 
 	}
 	auditor, lErr := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, audit.OutputRoute(route)),
+		audit.WithNamedOutput(stdout, audit.WithRoute(route)),
 	)
 	tc.LastErr = lErr
 	if auditor != nil {

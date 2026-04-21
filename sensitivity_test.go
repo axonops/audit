@@ -507,7 +507,7 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -555,7 +555,7 @@ func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 	// Exclude financial only — card_number is stripped.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("financial")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("financial")),
 	)
 	require.NoError(t, err)
 
@@ -588,8 +588,8 @@ func TestFieldStripping_DifferentOutputs(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(outAll), // no exclusions
-		audit.WithNamedOutput(outNoPII, audit.OutputExcludeLabels("pii")), // exclude PII
+		audit.WithNamedOutput(outAll),                                   // no exclusions
+		audit.WithNamedOutput(outNoPII, audit.WithExcludeLabels("pii")), // exclude PII
 	)
 	require.NoError(t, err)
 
@@ -673,7 +673,7 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -719,7 +719,7 @@ events:
 
 	_, err = audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no sensitivity config")
@@ -749,7 +749,7 @@ events:
 
 	_, err = audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("nonexistent")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("nonexistent")),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "undefined sensitivity label")
@@ -788,7 +788,7 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -828,7 +828,7 @@ func TestFormatWithExclusion_ExclusionPath(t *testing.T) {
 	// Output with exclusions — formatOpts should be pre-allocated.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -895,8 +895,8 @@ func TestFormatWithExclusion_MultipleOutputsDifferentExclusions(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(outAll),
-		audit.WithNamedOutput(outNoPII, audit.OutputExcludeLabels("pii")),
-		audit.WithNamedOutput(outNoFinancial, audit.OutputExcludeLabels("financial")),
+		audit.WithNamedOutput(outNoPII, audit.WithExcludeLabels("pii")),
+		audit.WithNamedOutput(outNoFinancial, audit.WithExcludeLabels("financial")),
 	)
 	require.NoError(t, err)
 
@@ -943,7 +943,7 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 	out := testhelper.NewMockOutput("concurrent")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(out, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
 
@@ -1116,7 +1116,7 @@ func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(outAll),
-		audit.WithNamedOutput(outFiltered, audit.OutputExcludeLabels("pii")),
+		audit.WithNamedOutput(outFiltered, audit.WithExcludeLabels("pii")),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -1145,7 +1145,7 @@ func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels [
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputExcludeLabels(excludeLabels...)),
+		audit.WithNamedOutput(out, audit.WithExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {
 		b.Fatal(err)

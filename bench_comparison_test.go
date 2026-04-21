@@ -292,7 +292,7 @@ func benchAudit10FieldsSyncWithHMAC(b *testing.B) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),
-		audit.WithNamedOutput(out, audit.OutputHMAC(hmacCfg)),
+		audit.WithNamedOutput(out, audit.WithHMAC(hmacCfg)),
 		audit.WithSynchronousDelivery(),
 	)
 	require.NoError(b, err)

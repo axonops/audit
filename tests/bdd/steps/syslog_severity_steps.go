@@ -345,7 +345,7 @@ func createSyslogAuditorWithFormatter(tc *AuditTestContext, cfg *syslog.Config, 
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, audit.OutputFormatter(formatter)),
+		audit.WithNamedOutput(out, audit.WithOutputFormatter(formatter)),
 	}
 	opts = append(opts, tc.Options...)
 
@@ -373,7 +373,7 @@ func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt,
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: version,
 			SaltValue:   []byte(salt),
@@ -406,7 +406,7 @@ func createSyslogAuditorWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Conf
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, audit.OutputExcludeLabels(excludeLabels...)),
+		audit.WithNamedOutput(out, audit.WithExcludeLabels(excludeLabels...)),
 	}
 	opts = append(opts, tc.Options...)
 
@@ -449,7 +449,7 @@ func createSyslogAuditorWithRoute(tc *AuditTestContext, cfg *syslog.Config, rout
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(out, audit.OutputRoute(route)),
+		audit.WithNamedOutput(out, audit.WithRoute(route)),
 	}
 	opts = append(opts, tc.Options...)
 

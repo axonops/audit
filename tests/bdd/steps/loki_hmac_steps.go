@@ -261,13 +261,13 @@ func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string,
 		audit.WithHost("bdd-host"),
 	}
 
-	lokiOpts := []audit.OutputOption{audit.OutputHMAC(hmacCfg)}
+	lokiOpts := []audit.OutputOption{audit.WithHMAC(hmacCfg)}
 	if excludeLabels != nil {
-		lokiOpts = append(lokiOpts, audit.OutputExcludeLabels(excludeLabels...))
+		lokiOpts = append(lokiOpts, audit.WithExcludeLabels(excludeLabels...))
 		// Also add a capture output with no exclusions for comparison.
 		capture := newCaptureOutput("capture-full")
 		tc.CaptureOutput = capture
-		opts = append(opts, audit.WithNamedOutput(capture, audit.OutputHMAC(&audit.HMACConfig{
+		opts = append(opts, audit.WithNamedOutput(capture, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v-capture",
 			SaltValue:   []byte("capture-comparison16"),
@@ -304,13 +304,13 @@ func createLokiAuditorWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVer
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: lokiVersion,
 			SaltValue:   []byte(lokiSalt),
 			Algorithm:   "HMAC-SHA-256",
 		})),
-		audit.WithNamedOutput(capture, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(capture, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v-capture",
 			SaltValue:   []byte("capture-salt-beta16!"),

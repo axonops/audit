@@ -534,7 +534,7 @@ func newHMACPipelineTestAuditor(t *testing.T, name, saltVersion string, salt []b
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: saltVersion,
 			SaltValue:   salt,
@@ -792,7 +792,7 @@ func TestVerifyHMAC_CEF_TamperingHmacVersion_Detected(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
@@ -966,7 +966,7 @@ func TestVerifyHMAC_CEF_TamperingActorId_Detected(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,
@@ -1025,7 +1025,7 @@ func TestHMAC_CEF_OnWireBytesMatchHashedBytes(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
-		audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled:     true,
 			SaltVersion: "v1",
 			SaltValue:   salt,

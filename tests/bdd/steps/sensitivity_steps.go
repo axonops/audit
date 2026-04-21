@@ -72,7 +72,7 @@ func createSensitivityAuditor(tc *AuditTestContext, excludeLabels []string) erro
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(stdout, audit.OutputExcludeLabels(excludeLabels...)),
+		audit.WithNamedOutput(stdout, audit.WithExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

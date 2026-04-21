@@ -212,8 +212,8 @@ func WithOutputs(outputs ...Output) Option {
 }
 
 // OutputOption configures a single output registered via
-// [WithNamedOutput]. Use [OutputRoute], [OutputFormatter],
-// [OutputExcludeLabels], and [OutputHMAC] to customise per-output
+// [WithNamedOutput]. Use [WithRoute], [WithOutputFormatter],
+// [WithExcludeLabels], and [WithHMAC] to customise per-output
 // behaviour.
 type OutputOption func(*outputEntryBuilder)
 
@@ -226,48 +226,52 @@ type outputEntryBuilder struct {
 	excludeLabels []string
 }
 
-// OutputRoute sets the per-output event route. The route restricts
+// WithRoute sets the per-output event route. The route restricts
 // which events are delivered to this output. Nil means all
 // globally-enabled events are delivered.
-func OutputRoute(r *EventRoute) OutputOption {
+func WithRoute(r *EventRoute) OutputOption {
 	return func(b *outputEntryBuilder) {
 		b.route = r
 	}
 }
 
-// OutputFormatter overrides the auditor's default formatter for this
-// output. Nil means the auditor's default formatter is used.
-func OutputFormatter(f Formatter) OutputOption {
+// WithOutputFormatter overrides the auditor's default formatter for
+// this output. Nil means the auditor's default formatter is used.
+//
+// The "Output" prefix disambiguates from the auditor-level
+// [WithFormatter] option; the two options set different defaults
+// (auditor-wide vs per-output).
+func WithOutputFormatter(f Formatter) OutputOption {
 	return func(b *outputEntryBuilder) {
 		b.formatter = f
 	}
 }
 
-// OutputExcludeLabels specifies sensitivity labels whose fields should
+// WithExcludeLabels specifies sensitivity labels whose fields should
 // be stripped from events before delivery to this output. When
 // non-empty, the taxonomy MUST define a [SensitivityConfig] and every
 // label MUST be defined within it; [New] returns an error if
 // either condition is violated. An empty call means no field stripping.
 // Framework fields are never stripped.
-func OutputExcludeLabels(labels ...string) OutputOption {
+func WithExcludeLabels(labels ...string) OutputOption {
 	return func(b *outputEntryBuilder) {
 		b.excludeLabels = labels
 	}
 }
 
-// OutputHMAC configures per-output HMAC integrity. The config is
+// WithHMAC configures per-output HMAC integrity. The config is
 // validated eagerly during [New] option application — invalid
 // configs (short salt, unknown algorithm) cause [New] to return
 // an error. Nil means no HMAC for this output.
-func OutputHMAC(cfg *HMACConfig) OutputOption {
+func WithHMAC(cfg *HMACConfig) OutputOption {
 	return func(b *outputEntryBuilder) {
 		b.hmacConfig = cfg
 	}
 }
 
 // WithNamedOutput adds a single named output with optional per-output
-// configuration. Use [OutputRoute], [OutputFormatter],
-// [OutputExcludeLabels], and [OutputHMAC] to customise behaviour.
+// configuration. Use [WithRoute], [WithOutputFormatter],
+// [WithExcludeLabels], and [WithHMAC] to customise behaviour.
 //
 // WithNamedOutput MUST NOT be combined with [WithOutputs]; if
 // [WithOutputs] was already applied, WithNamedOutput returns an error.

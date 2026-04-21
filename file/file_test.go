@@ -871,6 +871,51 @@ func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
 	})
 }
 
+// BenchmarkFileOutput_Write_WithRotation satisfies #504 AC #1
+// (master tracker C-18) at the public file.Output API surface. The
+// public file.Config.MaxSizeMB is integer megabytes (minimum 1), so
+// at the 161 B event size rotation fires only every ~6500 writes —
+// too coarse for per-rotation signal measurement. The fine-grained
+// rotation-cost baseline lives in
+// file/internal/rotate/writer_test.go::BenchmarkWriter_Write_WithRotation
+// where MaxSize is byte-granular. This benchmark documents the
+// public-API path under *some* rotation activity so regressions in
+// the file.Output → rotate.Writer → Write → flush chain that only
+// surface after a rotate have a baseline to regress against.
+//
+// The delta vs BenchmarkFileOutput_Write is dominated by the
+// channel-send + bufio + diagnostic-logger path, not rotation
+// (rotation contributes ~0.015 % of iterations). A regression in
+// either path shows here; use BenchmarkWriter_Write_WithRotation to
+// isolate rotation-specific regressions.
+func BenchmarkFileOutput_Write_WithRotation(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, "bench.log")
+
+	compressOff := false
+	out, err := file.New(file.Config{
+		Path:       path,
+		MaxSizeMB:  1, // public-API minimum; see godoc above
+		MaxBackups: 2, // exercise the prune path without dir bloat
+		Compress:   &compressOff,
+	}, nil, file.WithDiagnosticLogger(silentLogger()))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+
+	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.SetBytes(int64(len(event)))
+	for b.Loop() {
+		if err := out.Write(event); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // TestFile_ConstructionWarningsRoutedToInjectedLogger verifies that
 // the permission-mode warning emitted during New() routes through
 // the WithDiagnosticLogger-supplied logger rather than slog.Default.

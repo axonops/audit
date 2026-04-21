@@ -1,0 +1,76 @@
+# Benchmark fixture for BenchmarkOutputConfigLoad (#504).
+#
+# Models a realistic multi-output deployment without pulling in
+# non-file output modules (keeps outputconfig's go.mod clean).
+# Exercises: YAML parse, envsubst (${AUDIT_TEST_DIR}), route
+# parsing (include_categories, include_event_types, min_severity),
+# HMAC config parse, formatter override, sensitivity labels,
+# auditor and standard-fields blocks. Four outputs so the factory
+# dispatch loop runs non-trivially.
+version: 1
+app_name: "audit-bench"
+host: "${AUDIT_TEST_HOST:-bench-host}"
+timezone: "UTC"
+
+auditor:
+  queue_size: 10000
+  shutdown_timeout: "5s"
+
+standard_fields:
+  source_host: "${AUDIT_TEST_HOST:-bench-host}"
+  source_ip: "127.0.0.1"
+
+outputs:
+  console:
+    type: stdout
+
+  audit_archive:
+    type: file
+    file:
+      path: "${AUDIT_TEST_DIR}/audit-archive.log"
+      permissions: "0600"
+      max_size_mb: 100
+      max_backups: 5
+      max_age_days: 90
+    formatter:
+      type: json
+      omit_empty: true
+    hmac:
+      enabled: "true"
+      salt:
+        version: "v1"
+        value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      hash: "HMAC-SHA-256"
+
+  security_log:
+    type: file
+    file:
+      path: "${AUDIT_TEST_DIR}/security.log"
+      # Group-readable so operators in the audit group can tail
+      # this file. Exercises the permission-warning code path in
+      # file.New; silenced via WithDiagnosticLogger in the bench.
+      permissions: "0640"
+      max_size_mb: 50
+      max_backups: 3
+    route:
+      include_categories:
+        - security
+        - compliance
+      min_severity: 6
+    exclude_labels:
+      - pii
+      - financial
+
+  writes_log:
+    type: file
+    file:
+      path: "${AUDIT_TEST_DIR}/writes.log"
+      permissions: "0600"
+      max_size_mb: 200
+    route:
+      include_categories:
+        - write
+      include_event_types:
+        - user_create
+        - user_update
+        - user_delete

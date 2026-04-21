@@ -724,8 +724,22 @@ BenchmarkParseRetryAfter-32                          	337085409	         3.609 n
 PASS
 ok  	github.com/axonops/audit/loki	43.757s
 === bench outputconfig ===
+goos: linux
+goarch: amd64
+pkg: github.com/axonops/audit/outputconfig
+cpu: AMD Ryzen 9 7950X 16-Core Processor
+BenchmarkOutputConfigLoad-32    	    5046	    482519 ns/op	 1232892 B/op	    8250 allocs/op
+BenchmarkOutputConfigLoad-32    	    3766	    621743 ns/op	 1231303 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4400	    485292 ns/op	 1231319 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4251	    485645 ns/op	 1231344 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4330	    485065 ns/op	 1231322 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4930	    486517 ns/op	 1231298 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4209	    518562 ns/op	 1231259 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4298	    487637 ns/op	 1231343 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4128	    492299 ns/op	 1231205 B/op	    8247 allocs/op
+BenchmarkOutputConfigLoad-32    	    4221	    487442 ns/op	 1231250 B/op	    8247 allocs/op
 PASS
-ok  	github.com/axonops/audit/outputconfig	0.004s
+ok  	github.com/axonops/audit/outputconfig	23.031s
 PASS
 ok  	github.com/axonops/audit/outputconfig/tests/bdd	0.007s
 ?   	github.com/axonops/audit/outputconfig/tests/bdd/steps	[no test files]

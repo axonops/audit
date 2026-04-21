@@ -171,6 +171,7 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 | loki.BatchBuild | 72µs | 260Ki | 389 | 100 events grouped into push streams |
 | loki.BatchBuild_HighCardinality | — | — | — | 100 distinct event_types; worst-case stream cardinality path. Added by #494; cross-referenced for #504 AC #1 |
 | loki.Gzip | 213µs | 1.0Mi | 380 | Gzip of realistic push payload |
+| outputconfig.Load | ~485µs | 1.23Mi | 8171 | 4-output fixture (stdout + 3 file variants with routing, HMAC, envsubst); startup-cost baseline — one Load per process boot in most deployments (#504) |
 
 ### Key Observations
 
@@ -185,6 +186,7 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 - **Fan-out** scales well: 3 outputs with shared formatter lands at ~370 ns; 5 outputs at ~344 ns — effectively constant because all outputs share one formatter-buffer lease and each output pays only for post-field assembly.
 - **Output-backend enqueue** hot paths (`FileOutput_Write`, `SyslogOutput_Write`, `loki.WriteWithMetadata`) all land at 1 alloc/op — channel-send + one defensive data copy (the no-retention contract from #497 W2). Background goroutines handle batching, retries, and compression.
 - **Rotation cost** is isolated by `rotate.Writer_Write_WithRotation` at 1012 ns/op vs `Writer_Write_SyncOnWriteFalse` at ~52 ns/op — ≈960 ns per write is amortised rotation cost across the 25-write cycle, implying ≈24 µs per actual rotation event (rename + new file + prune). `FileOutput_Write_WithRotation` at the public API surface shows the same cost diluted across ~6500 writes per rotation and thus reads like `FileOutput_Write` — it catches regressions in `file.Output → rotate.Writer` wiring, not rotation-internal regressions. (#504)
+- **`outputconfig.Load`** baselines at ≈485 µs per call with ~8,171 allocs/op against a 4-output fixture (YAML parse + envsubst + validate + factory dispatch + HMAC state setup + file-handle creation × 3). This is a **startup cost**, charged once per process boot for most deployments. Consumers that reload config dynamically should budget accordingly; absolute ns/op matters less than regression detection on the allocation count. (#504)
 
 ---
 

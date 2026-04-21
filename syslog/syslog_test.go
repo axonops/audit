@@ -377,8 +377,9 @@ func TestNewSyslogOutput_TCP(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -387,8 +388,9 @@ func TestNewSyslogOutput_TCP(t *testing.T) {
 func TestNewSyslogOutput_UDP(t *testing.T) {
 	// UDP doesn't need a running server to construct.
 	out, err := syslog.New(&syslog.Config{
-		Network: "udp",
-		Address: "127.0.0.1:9514",
+		Network:       "udp",
+		Address:       "127.0.0.1:9514",
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -401,60 +403,72 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 		cfg     syslog.Config
 	}{
 		{
-			name:    "missing address",
-			cfg:     syslog.Config{Network: "tcp"},
+			name: "missing address",
+			cfg: syslog.Config{Network: "tcp",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			wantErr: "must not be empty",
 		},
 		{
-			name:    "invalid network",
-			cfg:     syslog.Config{Network: "http", Address: "localhost:514"},
+			name: "invalid network",
+			cfg: syslog.Config{Network: "http", Address: "localhost:514",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			wantErr: "must be tcp, udp, or tcp+tls",
 		},
 		{
-			name:    "invalid facility",
-			cfg:     syslog.Config{Network: "udp", Address: "localhost:514", Facility: "bogus"},
+			name: "invalid facility",
+			cfg: syslog.Config{Network: "udp", Address: "localhost:514", Facility: "bogus",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			wantErr: "unknown syslog facility",
 		},
 		{
 			name: "cert without key",
 			cfg: syslog.Config{
-				Network: "tcp+tls",
-				Address: "localhost:6514",
-				TLSCert: "/tmp/cert.pem",
+				Network:       "tcp+tls",
+				Address:       "localhost:6514",
+				TLSCert:       "/tmp/cert.pem",
+				FlushInterval: 5 * time.Millisecond,
 			},
 			wantErr: "tls_cert and tls_key must both be set",
 		},
 		{
 			name: "key without cert",
 			cfg: syslog.Config{
-				Network: "tcp+tls",
-				Address: "localhost:6514",
-				TLSKey:  "/tmp/key.pem",
+				Network:       "tcp+tls",
+				Address:       "localhost:6514",
+				TLSKey:        "/tmp/key.pem",
+				FlushInterval: 5 * time.Millisecond,
 			},
 			wantErr: "tls_cert and tls_key must both be set",
 		},
 		{
 			name: "nonexistent cert file",
 			cfg: syslog.Config{
-				Network: "tcp+tls",
-				Address: "localhost:6514",
-				TLSCert: "/nonexistent/cert.pem",
-				TLSKey:  "/nonexistent/key.pem",
+				Network:       "tcp+tls",
+				Address:       "localhost:6514",
+				TLSCert:       "/nonexistent/cert.pem",
+				TLSKey:        "/nonexistent/key.pem",
+				FlushInterval: 5 * time.Millisecond,
 			},
 			wantErr: "tls file",
 		},
 		{
 			name: "nonexistent CA file",
 			cfg: syslog.Config{
-				Network: "tcp+tls",
-				Address: "localhost:6514",
-				TLSCA:   "/nonexistent/ca.pem",
+				Network:       "tcp+tls",
+				Address:       "localhost:6514",
+				TLSCA:         "/nonexistent/ca.pem",
+				FlushInterval: 5 * time.Millisecond,
 			},
 			wantErr: "tls file",
 		},
 		{
-			name:    "max_retries exceeds maximum",
-			cfg:     syslog.Config{Network: "udp", Address: "localhost:514", MaxRetries: 1000},
+			name: "max_retries exceeds maximum",
+			cfg: syslog.Config{Network: "udp", Address: "localhost:514", MaxRetries: 1000,
+				FlushInterval: 5 * time.Millisecond,
+			},
 			wantErr: "max_retries 1000 exceeds maximum 20",
 		},
 	}
@@ -479,9 +493,10 @@ func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
 	_ = tmpFile.Close()
 
 	_, err = syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: "localhost:6514",
-		TLSCA:   tmpFile.Name(),
+		Network:       "tcp+tls",
+		Address:       "localhost:6514",
+		TLSCA:         tmpFile.Name(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse")
@@ -496,8 +511,9 @@ func TestSyslogOutput_Write(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -519,9 +535,10 @@ func TestSyslogOutput_Hostname_Override(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:  "tcp",
-		Address:  srv.addr(),
-		Hostname: "custom-host",
+		Network:       "tcp",
+		Address:       srv.addr(),
+		Hostname:      "custom-host",
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -542,7 +559,8 @@ func TestSyslogOutput_Hostname_DefaultFallback(t *testing.T) {
 	out, err := syslog.New(&syslog.Config{
 		Network: "tcp",
 		Address: srv.addr(),
-		// Hostname intentionally omitted — should fall back to os.Hostname.
+		// Hostname intentionally omitted — should fall back to os.Hostname.,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -576,9 +594,10 @@ func TestSyslogOutput_Hostname_Validation_Invalid(t *testing.T) {
 			// Invalid hostnames are rejected during config validation
 			// before any connection attempt — no server needed.
 			_, err := syslog.New(&syslog.Config{
-				Network:  "tcp",
-				Address:  "localhost:1",
-				Hostname: tc.hostname,
+				Network:       "tcp",
+				Address:       "localhost:1",
+				Hostname:      tc.hostname,
+				FlushInterval: 5 * time.Millisecond,
 			}, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
@@ -595,9 +614,10 @@ func TestSyslogOutput_Hostname_Validation_Valid(t *testing.T) {
 
 	for _, hostname := range []string{"!", "~", "prod-01.example.com"} {
 		out, err := syslog.New(&syslog.Config{
-			Network:  "tcp",
-			Address:  srv.addr(),
-			Hostname: hostname,
+			Network:       "tcp",
+			Address:       srv.addr(),
+			Hostname:      hostname,
+			FlushInterval: 5 * time.Millisecond,
 		}, nil)
 		require.NoError(t, err, "valid hostname %q should not cause an error", hostname)
 		_ = out.Close()
@@ -609,8 +629,9 @@ func TestSyslogOutput_WriteMultiple(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -630,8 +651,9 @@ func TestSyslogOutput_CloseIdempotent(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -644,8 +666,9 @@ func TestSyslogOutput_WriteAfterClose(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -663,9 +686,10 @@ func TestSyslogOutput_Write_NonBlocking(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 100,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    100,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -691,9 +715,10 @@ func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 1,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -719,9 +744,10 @@ func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 1000,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    1000,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -752,8 +778,9 @@ func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -769,8 +796,9 @@ func TestSyslogOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -785,8 +813,9 @@ func TestSyslogOutput_CopySafety(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -818,9 +847,10 @@ func TestSyslogOutput_WriteDuringClose_NoPanic(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 10,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    10,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -848,8 +878,9 @@ func TestSyslogOutput_Name(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -863,8 +894,9 @@ func TestSyslogOutput_DestinationKey(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -878,8 +910,9 @@ func TestSyslogOutput_ImplementsOutput(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -904,9 +937,10 @@ func TestParseFacility_AllStandard(t *testing.T) {
 			srv := newMockSyslogServer(t)
 			defer srv.close()
 			out, err := syslog.New(&syslog.Config{
-				Network:  "tcp",
-				Address:  srv.addr(),
-				Facility: f,
+				Network:       "tcp",
+				Address:       srv.addr(),
+				Facility:      f,
+				FlushInterval: 5 * time.Millisecond,
 			}, nil)
 			require.NoError(t, err, "facility %q should be valid", f)
 			require.NoError(t, out.Close())
@@ -916,9 +950,10 @@ func TestParseFacility_AllStandard(t *testing.T) {
 
 func TestParseFacility_Unknown(t *testing.T) {
 	_, err := syslog.New(&syslog.Config{
-		Network:  "udp",
-		Address:  "localhost:514",
-		Facility: "nonexistent",
+		Network:       "udp",
+		Address:       "localhost:514",
+		Facility:      "nonexistent",
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown syslog facility")
@@ -1035,9 +1070,10 @@ func TestSyslogOutput_TLS(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: srv.addr(),
-		TLSCA:   certs.caPath,
+		Network:       "tcp+tls",
+		Address:       srv.addr(),
+		TLSCA:         certs.caPath,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1058,11 +1094,12 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: srv.addr(),
-		TLSCert: certs.clientCert,
-		TLSKey:  certs.clientKey,
-		TLSCA:   certs.caPath,
+		Network:       "tcp+tls",
+		Address:       srv.addr(),
+		TLSCert:       certs.clientCert,
+		TLSKey:        certs.clientKey,
+		TLSCA:         certs.caPath,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1087,10 +1124,11 @@ func TestSyslogOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:   "tcp+tls",
-		Address:   srv.addr(),
-		TLSCA:     certs.caPath,
-		TLSPolicy: nil, // explicitly nil
+		Network:       "tcp+tls",
+		Address:       srv.addr(),
+		TLSCA:         certs.caPath,
+		TLSPolicy:     nil, // explicitly nil,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event":"nil_policy"}`)))
@@ -1116,6 +1154,7 @@ func TestSyslogOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 		TLSPolicy: &audit.TLSPolicy{
 			AllowTLS12: true,
 		},
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event":"tls12_policy"}`)))
@@ -1136,9 +1175,10 @@ func TestSyslogOutput_WriteFailure_HandledInBackground(t *testing.T) {
 	addr := srv.addr()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 1, // minimal retries to keep test fast
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    1, // minimal retries to keep test fast,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1192,9 +1232,10 @@ func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
 	addr := srv.addr()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 1,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil) // nil Metrics
 	require.NoError(t, err)
 
@@ -1224,9 +1265,10 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServ
 
 	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 2, // allow 2 reconnection attempts
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    2, // allow 2 reconnection attempts,
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 
@@ -1277,9 +1319,10 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing
 
 	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 10, // enough headroom for reconnect
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    10, // enough headroom for reconnect,
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 
@@ -1439,9 +1482,10 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 
 	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 5,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    5,
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 
@@ -1452,15 +1496,17 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	srv.SetHostile()
 
 	// Drive writes — reconnect Dial succeeds (listener up) but retry
-	// write fails (hostile RST).
+	// write fails (hostile RST). Window must accommodate batching
+	// flush interval + first-attempt backoff (100 ms base) —
+	// increased from the pre-batching 200 ms window to 1 s (#599).
 	var reconnectSuccess bool
-	for range 20 {
+	for range 40 {
 		_ = out.Write([]byte(`{"n":2}`))
 		if m.getSyslogReconnectCount(addr, true) > 0 {
 			reconnectSuccess = true
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(25 * time.Millisecond)
 	}
 
 	_ = out.Close()
@@ -1480,8 +1526,9 @@ func TestSyslogOutput_SyslogMetrics_InterfaceAssertion(t *testing.T) {
 
 	var m syslog.Metrics = &syslogOnlyMetrics{}
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -1535,8 +1582,9 @@ func TestSyslogOutput_WriteNil(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -1552,8 +1600,9 @@ func TestSyslogOutput_WriteEmpty(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -1571,8 +1620,9 @@ func TestSyslogOutput_RapidFireTCP(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1607,8 +1657,9 @@ func TestSyslogOutput_ConcurrentWrites(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1638,8 +1689,9 @@ func TestSyslogOutput_WriteUDP(t *testing.T) {
 	addr := conn.LocalAddr().String()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "udp",
-		Address: addr,
+		Network:       "udp",
+		Address:       addr,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1666,8 +1718,9 @@ func TestSyslogOutput_WriteUDP_NoOctetCountFraming(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "udp",
-		Address: conn.LocalAddr().String(),
+		Network:       "udp",
+		Address:       conn.LocalAddr().String(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -1692,8 +1745,9 @@ func TestSyslogOutput_WriteUDP_LargePayload(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "udp",
-		Address: conn.LocalAddr().String(),
+		Network:       "udp",
+		Address:       conn.LocalAddr().String(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
@@ -1734,9 +1788,10 @@ func TestSyslogOutput_CloseDuringBackoff_DoesNotHang(t *testing.T) {
 	// 100ms * 2^0 + 100ms * 2^1 + ... ≈ several seconds before giving
 	// up, and the test would exceed its deadline.
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 20,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    20,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1805,9 +1860,10 @@ func TestNewSyslogOutput_TLSConfig_InvalidCAPEM(t *testing.T) {
 	require.NoError(t, os.WriteFile(badCAPath, []byte("not a certificate\n"), 0o600))
 
 	_, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: "localhost:6514",
-		TLSCA:   badCAPath,
+		Network:       "tcp+tls",
+		Address:       "localhost:6514",
+		TLSCA:         badCAPath,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ca certificate",
@@ -1824,10 +1880,11 @@ func TestNewSyslogOutput_TLSCert_IsDirectory(t *testing.T) {
 	dir := t.TempDir()
 
 	_, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: "localhost:6514",
-		TLSCert: dir, // a directory, not a file
-		TLSKey:  dir,
+		Network:       "tcp+tls",
+		Address:       "localhost:6514",
+		TLSCert:       dir, // a directory, not a file
+		TLSKey:        dir,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "directory",
@@ -1845,8 +1902,9 @@ func TestNewSyslogOutput_DefaultNetwork(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "", // empty — should default to "tcp"
-		Address: srv.addr(),
+		Network:       "", // empty — should default to "tcp"
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1867,7 +1925,8 @@ func TestNewSyslogOutput_TCP_ConnectFailure(t *testing.T) {
 		Network: "tcp",
 		// Port 1 is privileged and not typically in use; on Linux this
 		// causes a synchronous ECONNREFUSED rather than a timeout.
-		Address: "127.0.0.1:1",
+		Address:       "127.0.0.1:1",
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dial",
@@ -1889,10 +1948,11 @@ func TestNewSyslogOutput_TLSConfig_InvalidClientCert(t *testing.T) {
 	require.NoError(t, os.WriteFile(badKey, []byte("not a key\n"), 0o600))
 
 	_, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: "localhost:6514",
-		TLSCert: badCert,
-		TLSKey:  badKey,
+		Network:       "tcp+tls",
+		Address:       "localhost:6514",
+		TLSCert:       badCert,
+		TLSKey:        badKey,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tls config",
@@ -1928,9 +1988,10 @@ func TestNewSyslogOutput_TLSConfig_UnreadableCAFile(t *testing.T) {
 	})
 
 	_, err := syslog.New(&syslog.Config{
-		Network: "tcp+tls",
-		Address: "localhost:6514",
-		TLSCA:   caPath,
+		Network:       "tcp+tls",
+		Address:       "localhost:6514",
+		TLSCA:         caPath,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ca certificate",
@@ -1961,9 +2022,10 @@ func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T
 	addr := srv.addr()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 20, // max allowed; high so we never exhaust retries before Close fires
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    20, // max allowed; high so we never exhaust retries before Close fires,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2019,9 +2081,10 @@ func TestSyslogOutput_CloseInterruptsBackoff(t *testing.T) {
 	addr := srv.addr()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 10, // high retries — Close must interrupt, not wait
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    10, // high retries — Close must interrupt, not wait,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2064,9 +2127,10 @@ func TestSyslogOutput_MaxRetriesExceeded_DropsEvent(t *testing.T) {
 
 	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 1,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 
@@ -2114,8 +2178,9 @@ func TestSyslogOutput_Close_WriterCloseError(t *testing.T) {
 	srv := newMockSyslogServer(t)
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2184,8 +2249,9 @@ func TestSyslogOutput_WriteWithMetadata_SeverityMapping(t *testing.T) {
 
 	// Facility defaults to local0 (16), so PRI = 128 + syslogSeverity.
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -2228,8 +2294,9 @@ func TestSyslogOutput_WriteWithMetadata_ImplementsInterface(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -2246,8 +2313,9 @@ func TestSyslogOutput_WriteWithMetadata_AfterClose(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network: "tcp",
-		Address: srv.addr(),
+		Network:       "tcp",
+		Address:       srv.addr(),
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -2265,12 +2333,13 @@ func TestSyslogOutput_WriteWithMetadata_AfterClose(t *testing.T) {
 func TestSyslogConfig_String_Format(t *testing.T) {
 	t.Parallel()
 	cfg := syslog.Config{
-		Network:  "tcp+tls",
-		Address:  "siem:6514",
-		TLSCA:    "/secret/ca.pem",
-		TLSCert:  "/secret/cert.pem",
-		TLSKey:   "/secret/key.pem",
-		Facility: "local0",
+		Network:       "tcp+tls",
+		Address:       "siem:6514",
+		TLSCA:         "/secret/ca.pem",
+		TLSCert:       "/secret/cert.pem",
+		TLSKey:        "/secret/key.pem",
+		Facility:      "local0",
+		FlushInterval: 5 * time.Millisecond,
 	}
 	s := cfg.String()
 	assert.Contains(t, s, "SyslogConfig{")
@@ -2293,17 +2362,23 @@ func TestSyslogConfig_String_TLSModes(t *testing.T) {
 	}{
 		{
 			name: "no TLS",
-			cfg:  syslog.Config{Network: "tcp", Address: "host:514"},
+			cfg: syslog.Config{Network: "tcp", Address: "host:514",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			want: "tls=none",
 		},
 		{
 			name: "CA only (TLS)",
-			cfg:  syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCA: "/ca.pem"},
+			cfg: syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCA: "/ca.pem",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			want: "tls=tls",
 		},
 		{
 			name: "cert+key (mTLS)",
-			cfg:  syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCert: "/c.pem", TLSKey: "/k.pem"},
+			cfg: syslog.Config{Network: "tcp+tls", Address: "host:6514", TLSCert: "/c.pem", TLSKey: "/k.pem",
+				FlushInterval: 5 * time.Millisecond,
+			},
 			want: "tls=mtls",
 		},
 	}
@@ -2318,11 +2393,12 @@ func TestSyslogConfig_String_TLSModes(t *testing.T) {
 func TestSyslogConfig_GoString_RedactsTLSPaths(t *testing.T) {
 	t.Parallel()
 	cfg := syslog.Config{
-		Network: "tcp",
-		Address: "localhost:514",
-		TLSCert: "/etc/audit/tls/client.crt",
-		TLSKey:  "/etc/audit/tls/client.key",
-		TLSCA:   "/etc/audit/tls/ca.crt",
+		Network:       "tcp",
+		Address:       "localhost:514",
+		TLSCert:       "/etc/audit/tls/client.crt",
+		TLSKey:        "/etc/audit/tls/client.key",
+		TLSCA:         "/etc/audit/tls/ca.crt",
+		FlushInterval: 5 * time.Millisecond,
 	}
 	out := fmt.Sprintf("%#v", cfg)
 	assert.NotContains(t, out, "/etc/audit/tls/client.key", "GoString must not leak TLS key path")
@@ -2333,9 +2409,10 @@ func TestSyslogConfig_GoString_RedactsTLSPaths(t *testing.T) {
 func TestSyslogConfig_Format_RedactsTLSPaths(t *testing.T) {
 	t.Parallel()
 	cfg := syslog.Config{
-		Network: "tcp",
-		Address: "localhost:514",
-		TLSKey:  "/secret/path/server.key",
+		Network:       "tcp",
+		Address:       "localhost:514",
+		TLSKey:        "/secret/path/server.key",
+		FlushInterval: 5 * time.Millisecond,
 	}
 	out := fmt.Sprintf("%+v", cfg)
 	assert.NotContains(t, out, "/secret/path/server.key", "Format must not leak TLS key path via %%+v")
@@ -2350,10 +2427,11 @@ func TestSyslogOutput_OutputMetrics_RecordFlush(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		Facility:   "local0",
-		BufferSize: 10_000,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		Facility:      "local0",
+		BufferSize:    10_000,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2375,10 +2453,11 @@ func TestSyslogOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		Facility:   "local0",
-		BufferSize: 10_000,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		Facility:      "local0",
+		BufferSize:    10_000,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2408,11 +2487,12 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		Facility:   "local0",
-		BufferSize: 100,
-		MaxRetries: 1,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		Facility:      "local0",
+		BufferSize:    100,
+		MaxRetries:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -2529,9 +2609,10 @@ func BenchmarkSyslogOutput_Write(b *testing.B) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 100_000, // large buffer to avoid drops
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    100_000, // large buffer to avoid drops,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
@@ -2561,9 +2642,10 @@ func BenchmarkSyslogOutput_Write_Parallel(b *testing.B) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 100_000,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    100_000,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
@@ -2602,9 +2684,10 @@ func TestSyslogOutput_ReconnectInBackground_Success(t *testing.T) {
 	go srv1.accept()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 10,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    10,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2650,9 +2733,10 @@ func TestSyslogOutput_ReconnectInBackground_Exhausted(t *testing.T) {
 
 	m := newMockMetrics()
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    addr,
-		MaxRetries: 1,
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, m)
 	require.NoError(t, err)
 
@@ -2680,9 +2764,10 @@ func TestOutputMetrics_RecordDrop_CalledOnBufferFull(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 1,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2704,9 +2789,10 @@ func TestOutputMetrics_RecordFlush_CalledOnSuccessfulWrite(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 10_000,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    10_000,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 
@@ -2725,10 +2811,11 @@ func TestOutputMetrics_RecordRetry_CalledOnRetryableError(t *testing.T) {
 	defer srv.close()
 
 	out, err := syslog.New(&syslog.Config{
-		Network:    "tcp",
-		Address:    srv.addr(),
-		BufferSize: 100,
-		MaxRetries: 1,
+		Network:       "tcp",
+		Address:       srv.addr(),
+		BufferSize:    100,
+		MaxRetries:    1,
+		FlushInterval: 5 * time.Millisecond,
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
@@ -2788,6 +2875,7 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 			AllowTLS12:       true,
 			AllowWeakCiphers: true,
 		},
+		FlushInterval: 5 * time.Millisecond,
 	}, nil, syslog.WithDiagnosticLogger(injected))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
@@ -2835,6 +2923,7 @@ func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 			AllowTLS12:       true,
 			AllowWeakCiphers: true,
 		},
+		FlushInterval: 5 * time.Millisecond,
 	}, nil, syslog.WithDiagnosticLogger(nil))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())

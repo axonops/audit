@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/axonops/audit"
 	"github.com/goccy/go-yaml"
@@ -57,17 +58,20 @@ type yamlTLSPolicy struct {
 // output configuration. Maps snake_case YAML fields to the Go
 // Config struct.
 type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability preferred
-	Network    string         `yaml:"network"`
-	Address    string         `yaml:"address"`
-	AppName    string         `yaml:"app_name"`
-	Facility   string         `yaml:"facility"`
-	TLSCert    string         `yaml:"tls_cert"`
-	TLSKey     string         `yaml:"tls_key"`
-	TLSCA      string         `yaml:"tls_ca"`
-	TLSPolicy  *yamlTLSPolicy `yaml:"tls_policy"`
-	Hostname   string         `yaml:"hostname"`
-	MaxRetries int            `yaml:"max_retries"`
-	BufferSize *int           `yaml:"buffer_size"`
+	Network       string         `yaml:"network"`
+	Address       string         `yaml:"address"`
+	AppName       string         `yaml:"app_name"`
+	Facility      string         `yaml:"facility"`
+	TLSCert       string         `yaml:"tls_cert"`
+	TLSKey        string         `yaml:"tls_key"`
+	TLSCA         string         `yaml:"tls_ca"`
+	TLSPolicy     *yamlTLSPolicy `yaml:"tls_policy"`
+	Hostname      string         `yaml:"hostname"`
+	MaxRetries    int            `yaml:"max_retries"`
+	BufferSize    *int           `yaml:"buffer_size"`
+	BatchSize     *int           `yaml:"batch_size"`
+	FlushInterval string         `yaml:"flush_interval"`
+	MaxBatchBytes *int           `yaml:"max_batch_bytes"`
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
@@ -98,16 +102,25 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics, logger *s
 	}
 
 	cfg := &Config{
-		Network:    yc.Network,
-		Address:    yc.Address,
-		AppName:    yc.AppName,
-		Facility:   yc.Facility,
-		TLSCert:    yc.TLSCert,
-		TLSKey:     yc.TLSKey,
-		TLSCA:      yc.TLSCA,
-		Hostname:   yc.Hostname,
-		MaxRetries: yc.MaxRetries,
-		BufferSize: intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		Network:       yc.Network,
+		Address:       yc.Address,
+		AppName:       yc.AppName,
+		Facility:      yc.Facility,
+		TLSCert:       yc.TLSCert,
+		TLSKey:        yc.TLSKey,
+		TLSCA:         yc.TLSCA,
+		Hostname:      yc.Hostname,
+		MaxRetries:    yc.MaxRetries,
+		BufferSize:    intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
+		BatchSize:     intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
+		MaxBatchBytes: intPtrOrDefault(yc.MaxBatchBytes, DefaultMaxBatchBytes),
+	}
+	if yc.FlushInterval != "" {
+		d, err := time.ParseDuration(yc.FlushInterval)
+		if err != nil {
+			return nil, fmt.Errorf("audit: syslog output %q: flush_interval %q: %w", name, yc.FlushInterval, audit.ErrConfigInvalid)
+		}
+		cfg.FlushInterval = d
 	}
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{

@@ -97,6 +97,38 @@ func registerSyslogGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		})
 	})
 
+	// Batching (#599). Three Given variants cover the AC scenarios:
+	//   - batch size + flush interval only
+	//   - batch size + flush interval + max batch bytes
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with batch size (\d+) and flush interval "([^"]*)"$`,
+		func(network, address string, batchSize int, flushInterval string) error {
+			d, err := time.ParseDuration(flushInterval)
+			if err != nil {
+				return fmt.Errorf("parse flush interval %q: %w", flushInterval, err)
+			}
+			return createSyslogAuditor(tc, &syslog.Config{
+				Network:       network,
+				Address:       address,
+				BatchSize:     batchSize,
+				FlushInterval: d,
+			})
+		})
+
+	ctx.Step(`^an auditor with syslog output on "([^"]*)" to "([^"]*)" with batch size (\d+) and flush interval "([^"]*)" and max batch bytes (\d+)$`,
+		func(network, address string, batchSize int, flushInterval string, maxBatchBytes int) error {
+			d, err := time.ParseDuration(flushInterval)
+			if err != nil {
+				return fmt.Errorf("parse flush interval %q: %w", flushInterval, err)
+			}
+			return createSyslogAuditor(tc, &syslog.Config{
+				Network:       network,
+				Address:       address,
+				BatchSize:     batchSize,
+				FlushInterval: d,
+				MaxBatchBytes: maxBatchBytes,
+			})
+		})
+
 	ctx.Step(`^an auditor with syslog mTLS output to "([^"]*)"$`, func(address string) error {
 		certs := certDir()
 		return createSyslogAuditor(tc, &syslog.Config{
@@ -134,6 +166,19 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 		fields["marker"] = strings.Repeat("x", size)
 		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields))
 		return nil
+	})
+
+	// Oversized marker for the batching oversized-event scenario.
+	// Uses a unique marker so the assertion can find this specific
+	// event on the syslog server.
+	ctx.Step(`^I audit a uniquely marked event with a (\d+)-byte payload$`, func(size int) error {
+		m := marker("OVERSIZED")
+		tc.Markers["default"] = m
+		fields := defaultRequiredFields(tc.Taxonomy, "user_create")
+		// Prefix the marker so it is searchable; the padding makes
+		// the total payload cross MaxBatchBytes in the scenario.
+		fields["marker"] = m + strings.Repeat("x", size)
+		return tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields))
 	})
 
 	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)" with invalid CA$`, func(network, address string) error {
@@ -333,6 +378,29 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return assertSyslogConstructionExactError(tc, strings.TrimSpace(doc.Content))
 	})
 	ctx.Step(`^the syslog construction should fail with an error containing "([^"]*)"$`, func(s string) error { return assertSyslogConstructionError(tc, s) })
+	// Batching framing assertion (#599 AC #4d). Each audited event
+	// in a batch must arrive as a distinct RFC 5424 message, not
+	// concatenated bytes. syslog-ng writes one log line per
+	// received syslog message, so each marker should appear in
+	// exactly ONE line. If the library broke framing by
+	// concatenating, markers would collide in a single line.
+	ctx.Step(`^each of the (\d+) delivered messages should be a distinct RFC 5424 frame$`,
+		func(count int) error {
+			logText := readSyslogLogFromDocker()
+			for i := range count {
+				key := fmt.Sprintf("multi_%d", i)
+				m, ok := tc.Markers[key]
+				if !ok {
+					return fmt.Errorf("expected marker %s not recorded", key)
+				}
+				occurrences := strings.Count(logText, m)
+				if occurrences != 1 {
+					return fmt.Errorf("marker %q appeared %d times (expected exactly 1 — concatenated batch?)", m, occurrences)
+				}
+			}
+			return nil
+		})
+
 	ctx.Step(`^the syslog metrics should have recorded at least (\d+) reconnect$`, func(minCount int) error {
 		if tc.SyslogMetrics == nil {
 			return fmt.Errorf("no syslog metrics configured")

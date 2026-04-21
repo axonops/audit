@@ -286,8 +286,8 @@ channel and a background `writeLoop` goroutine. `Write()` /
 `WriteWithMetadata()` copies the event data, maps the audit severity
 to an RFC 5424 PRIORITY value, and enqueues the entry into the
 channel, returning immediately. The `writeLoop` goroutine reads from
-the channel and performs the actual syslog write with reconnection
-handling.
+the channel, accumulates events into a batch, and periodically
+flushes to the syslog server with reconnection handling.
 
 If the internal buffer is full (syslog server unreachable, backoff
 in progress), the event is dropped and `OutputMetrics.RecordDrop()`
@@ -296,6 +296,80 @@ outputs.
 
 See [Two-Level Buffering](async-delivery.md#two-level-buffering) for
 the complete pipeline architecture.
+
+## Batching
+
+**Since #599**, the `writeLoop` accumulates events into a batch before
+flushing to the syslog server, matching the convention already used
+by the Loki and webhook outputs. Three triggers cause a flush:
+
+| Trigger | Default | YAML knob |
+|---|---|---|
+| **Count threshold** — batch reaches N events | 100 | `batch_size` |
+| **Time threshold** — FlushInterval elapses since last flush | 5 s | `flush_interval` |
+| **Byte threshold** — accumulated event bytes reach MaxBatchBytes | 1 MiB | `max_batch_bytes` |
+
+A fourth implicit trigger fires on `Close()`: any pending batch is
+drained without waiting for the timer.
+
+### What batching buys
+
+Per-event calls to `srslog.Writer.WriteWithPriority` are unchanged
+— each event remains an independently framed RFC 5425 syslog message
+within a batch. The win is scheduling overhead: at 10 k events/s, the
+writeLoop wakes once per 100 events (`BatchSize: 100`) instead of
+once per event, and the kernel's TCP send buffer stays warm across
+successive writes.
+
+### Per-message framing is preserved
+
+RFC 5425 octet-counting framing is per-message, not per-batch. The
+batching layer issues N `WriteWithPriority` calls for a batch of N
+events — the receiver observes N distinct length-prefixed messages.
+Consumers and SIEM receivers should not observe any wire-format
+change relative to the pre-batching behaviour.
+
+### Oversized single events
+
+If a single event's byte length exceeds `max_batch_bytes`, the event
+is flushed alone — **never dropped**. This matches the Loki
+convention and ensures audit events are never silently discarded.
+Real-world syslog receivers (syslog-ng, rsyslog) typically reject
+individual messages over 64 KiB — that's a receiver-side limit this
+library cannot enforce.
+
+### Latency vs throughput trade-off
+
+With the default `flush_interval: 5s`, a single-event-per-5s audit
+trickle can wait up to 5 s before reaching the syslog server.
+Consumers needing lower latency have two options:
+
+```yaml
+# Option 1: disable batching — every event flushes immediately.
+#   Matches pre-#599 per-event write semantics.
+syslog:
+  batch_size: 1
+
+# Option 2: shorten the flush interval.
+syslog:
+  flush_interval: 100ms
+```
+
+### Failure handling inside a batch
+
+If the srslog write fails mid-batch, the existing reconnect +
+backoff path (see [Reconnection](#reconnection)) handles the failing
+entry. Subsequent entries in the same batch are retried on the new
+connection after reconnect succeeds, or dropped after `max_retries`
+exhaustion. Batching does not change the retry semantics — it only
+changes *when* events enter the retry loop.
+
+### Graceful shutdown
+
+On `Close()`, the writeLoop drains any pending batch and flushes to
+the syslog server using a no-reconnect fast path. A broken
+connection at shutdown means remaining events are dropped rather
+than holding `Close()` hostage through a full retry cycle.
 
 ## Complete Configuration Reference
 
@@ -307,6 +381,9 @@ the complete pipeline architecture.
 | `facility` | string | `"local0"` | Syslog facility name (see [Facility Values](#facility-values)) |
 | `hostname` | string | `os.Hostname()` | Override RFC 5424 HOSTNAME (PRINTUSASCII, max 255 bytes). Set to match the top-level `host` value for consistency. **In container environments** (Docker, Kubernetes), `os.Hostname()` typically returns the container ID — set this explicitly to the pod name or service name for meaningful SIEM correlation. |
 | `buffer_size` | int | `10000` | Internal async buffer capacity (1–100,000). Events dropped when full |
+| `batch_size` | int | `100` | Events per flush (1–10,000). Set to `1` to disable batching. See [Batching](#batching) |
+| `flush_interval` | duration | `"5s"` | Max time between flushes (1ms–1h). See [Batching](#batching) |
+| `max_batch_bytes` | int | `1048576` (1 MiB) | Max accumulated bytes before flush (1 KiB–10 MiB). Oversized single events flush alone. See [Batching](#batching) |
 | `max_retries` | int | `10` | Maximum consecutive reconnection attempts. Range: 0-20 (0 defaults to 10, values > 20 rejected) |
 | `tls_ca` | string | *(none)* | Path to CA certificate for server verification |
 | `tls_cert` | string | *(none)* | Path to client certificate for mTLS |

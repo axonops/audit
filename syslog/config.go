@@ -48,6 +48,44 @@ const (
 	// buffer capacity.
 	MaxOutputBufferSize = 100_000
 
+	// DefaultBatchSize is the default number of events accumulated
+	// before a flush is triggered. Matches [loki.DefaultBatchSize].
+	DefaultBatchSize = 100
+
+	// MaxBatchSize is the upper bound for BatchSize. Values above
+	// this cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	MaxBatchSize = 10_000
+
+	// DefaultFlushInterval is the default maximum time between
+	// flushes. Matches [loki.DefaultFlushInterval].
+	DefaultFlushInterval = 5 * time.Second
+
+	// MinFlushInterval is the lower bound for FlushInterval. Values
+	// below this cause [New] to return an error — a sub-millisecond
+	// interval would busy-spin the writeLoop.
+	MinFlushInterval = 1 * time.Millisecond
+
+	// MaxFlushInterval is the upper bound for FlushInterval.
+	MaxFlushInterval = 1 * time.Hour
+
+	// DefaultMaxBatchBytes is the default maximum accumulated batch
+	// size in bytes before a flush is triggered. 1 MiB matches
+	// [loki.DefaultMaxBatchBytes]. Events exceeding this threshold
+	// alone trigger an immediate flush (the event is sent in its own
+	// batch; it is never dropped).
+	DefaultMaxBatchBytes = 1 << 20 // 1 MiB
+
+	// MinMaxBatchBytes is the lower bound for MaxBatchBytes.
+	MinMaxBatchBytes = 1 << 10 // 1 KiB
+
+	// MaxMaxBatchBytes is the upper bound for MaxBatchBytes. Capped
+	// at 10 MiB to match [loki.MaxMaxBatchBytes]; real-world syslog
+	// receivers (syslog-ng, rsyslog) typically reject single messages
+	// over 64 KiB, but batches of many smaller messages can legitimately
+	// reach several MiB.
+	MaxMaxBatchBytes = 10 << 20 // 10 MiB
+
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
 
@@ -112,6 +150,45 @@ type Config struct {
 	// above [MaxOutputBufferSize] (100,000) cause [New] to return an
 	// error wrapping [audit.ErrConfigInvalid].
 	BufferSize int
+
+	// BatchSize is the number of events accumulated in the write
+	// loop before triggering a flush to the syslog server. Zero
+	// defaults to [DefaultBatchSize] (100). Values above
+	// [MaxBatchSize] (10,000) cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid]. Set to 1 to disable
+	// batching (every event flushes immediately — effectively
+	// restoring pre-#599 per-event write behaviour).
+	//
+	// Matches the conventions established by [loki.Config.BatchSize]
+	// and [github.com/axonops/audit/webhook.Config.BatchSize] so an
+	// operator tuning multi-output deployments sees the same knob
+	// across all batching outputs.
+	BatchSize int
+
+	// FlushInterval is the maximum time between flushes, regardless
+	// of whether the batch has reached [Config.BatchSize]. Zero
+	// defaults to [DefaultFlushInterval] (5 s). Values below
+	// [MinFlushInterval] (1 ms) or above [MaxFlushInterval] (1 h)
+	// cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	//
+	// With the 5 s default, a single-event-per-5s audit trickle can
+	// see up to 5 s of delivery latency. Consumers needing lower
+	// latency should lower FlushInterval or set [Config.BatchSize]
+	// to 1.
+	FlushInterval time.Duration
+
+	// MaxBatchBytes is the maximum accumulated payload size (sum of
+	// event data lengths) before a flush is triggered, independent
+	// of [Config.BatchSize]. Zero defaults to [DefaultMaxBatchBytes]
+	// (1 MiB). Values below [MinMaxBatchBytes] (1 KiB) or above
+	// [MaxMaxBatchBytes] (10 MiB) cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid].
+	//
+	// A single event exceeding MaxBatchBytes is flushed alone — it is
+	// never dropped. Events are never split across frames; RFC 5425
+	// octet-counting framing is preserved per message.
+	MaxBatchBytes int
 }
 
 // String returns a human-readable representation of the config with
@@ -140,6 +217,13 @@ func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) }
 // TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
 // RFC 5424 structured syslog messages with the pre-serialised audit
 
+// validateSyslogConfig is a top-level linear validator: each if /
+// switch maps 1-1 to a documented Config field constraint. Extracting
+// helpers per group (network, facility, retries, buffer) would hide
+// what is already an easy-to-read sequence of guard clauses, so the
+// cyclop threshold is relaxed here.
+//
+//nolint:cyclop // linear guard sequence; see comment above.
 func validateSyslogConfig(cfg *Config) error {
 	if cfg.Address == "" {
 		return fmt.Errorf("%w: syslog address must not be empty", audit.ErrConfigInvalid)
@@ -170,11 +254,73 @@ func validateSyslogConfig(cfg *Config) error {
 		return fmt.Errorf("%w: syslog buffer_size %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.BufferSize, MaxOutputBufferSize)
 	}
 
+	if err := validateSyslogBatchingConfig(cfg); err != nil {
+		return err
+	}
+
 	if err := validateSyslogHostname(cfg.Hostname); err != nil {
 		return err
 	}
 
 	return validateSyslogTLSFiles(cfg)
+}
+
+// validateSyslogBatchingConfig normalises zero values to defaults and
+// rejects out-of-range batching knobs (#599). Mutates cfg in place
+// so constructors read the resolved values.
+func validateSyslogBatchingConfig(cfg *Config) error {
+	if err := validateBatchSize(cfg); err != nil {
+		return err
+	}
+	if err := validateFlushInterval(cfg); err != nil {
+		return err
+	}
+	return validateMaxBatchBytes(cfg)
+}
+
+func validateBatchSize(cfg *Config) error {
+	if cfg.BatchSize < 0 {
+		return fmt.Errorf("%w: syslog batch_size %d must be >= 0", audit.ErrConfigInvalid, cfg.BatchSize)
+	}
+	if cfg.BatchSize == 0 {
+		cfg.BatchSize = DefaultBatchSize
+	}
+	if cfg.BatchSize > MaxBatchSize {
+		return fmt.Errorf("%w: syslog batch_size %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.BatchSize, MaxBatchSize)
+	}
+	return nil
+}
+
+func validateFlushInterval(cfg *Config) error {
+	if cfg.FlushInterval < 0 {
+		return fmt.Errorf("%w: syslog flush_interval %s must be >= 0", audit.ErrConfigInvalid, cfg.FlushInterval)
+	}
+	if cfg.FlushInterval == 0 {
+		cfg.FlushInterval = DefaultFlushInterval
+	}
+	if cfg.FlushInterval < MinFlushInterval {
+		return fmt.Errorf("%w: syslog flush_interval %s below minimum %s", audit.ErrConfigInvalid, cfg.FlushInterval, MinFlushInterval)
+	}
+	if cfg.FlushInterval > MaxFlushInterval {
+		return fmt.Errorf("%w: syslog flush_interval %s exceeds maximum %s", audit.ErrConfigInvalid, cfg.FlushInterval, MaxFlushInterval)
+	}
+	return nil
+}
+
+func validateMaxBatchBytes(cfg *Config) error {
+	if cfg.MaxBatchBytes < 0 {
+		return fmt.Errorf("%w: syslog max_batch_bytes %d must be >= 0", audit.ErrConfigInvalid, cfg.MaxBatchBytes)
+	}
+	if cfg.MaxBatchBytes == 0 {
+		cfg.MaxBatchBytes = DefaultMaxBatchBytes
+	}
+	if cfg.MaxBatchBytes < MinMaxBatchBytes {
+		return fmt.Errorf("%w: syslog max_batch_bytes %d below minimum %d", audit.ErrConfigInvalid, cfg.MaxBatchBytes, MinMaxBatchBytes)
+	}
+	if cfg.MaxBatchBytes > MaxMaxBatchBytes {
+		return fmt.Errorf("%w: syslog max_batch_bytes %d exceeds maximum %d", audit.ErrConfigInvalid, cfg.MaxBatchBytes, MaxMaxBatchBytes)
+	}
+	return nil
 }
 
 // validateSyslogHostname checks that the hostname conforms to RFC 5424

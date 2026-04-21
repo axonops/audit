@@ -96,6 +96,41 @@ func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
 	}
 }
 
+// TestSyslogFactory_BatchingKeys exercises the new YAML keys added
+// by #599: batch_size, flush_interval, max_batch_bytes. Must accept
+// them without error and the factory must not fail on any of them.
+func TestSyslogFactory_BatchingKeys(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	rawYAML := []byte("network: tcp\n" +
+		"address: " + srv.addr() + "\n" +
+		"batch_size: 50\n" +
+		"flush_interval: 250ms\n" +
+		"max_batch_bytes: 524288\n")
+
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("batched", rawYAML, nil, nil)
+	require.NoError(t, err, "batching keys must parse cleanly")
+	require.NotNil(t, out)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestSyslogFactory_FlushIntervalInvalid verifies that a malformed
+// flush_interval string returns ErrConfigInvalid, not a nil-deref.
+func TestSyslogFactory_FlushIntervalInvalid(t *testing.T) {
+	rawYAML := []byte("network: tcp\naddress: localhost:514\nflush_interval: not-a-duration\n")
+
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	_, err := factory("bad_flush", rawYAML, nil, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, audit.ErrConfigInvalid)
+}
+
 func TestSyslogFactory_InsecureSkipVerify_Rejected(t *testing.T) {
 	rawYAML := []byte("network: tcp\naddress: localhost:514\ninsecure_skip_verify: true\n")
 

@@ -222,3 +222,37 @@ Feature: Syslog Output
     Then the syslog server should contain "syslog_all" within 10 seconds
     And the syslog line with "syslog_all" should contain "user_create"
     And the syslog line with "syslog_all" should contain "alice"
+
+  # --- Batching (#599) ---
+  #
+  # The writeLoop accumulates events and flushes on count threshold,
+  # byte threshold, timer timeout, or Close. Each batch triggers one
+  # srslog call per entry so RFC 5425 octet-counting framing is
+  # preserved per message. See docs/syslog-output.md "Batching".
+
+  Scenario: Syslog batches events at batch_size threshold
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 10 and flush interval "10s"
+    When I audit 10 uniquely marked events
+    Then the syslog server should contain all 10 markers within 5 seconds
+
+  Scenario: Syslog flushes on flush_interval timeout
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 1000 and flush interval "500ms"
+    When I audit 3 uniquely marked events
+    Then the syslog server should contain all 3 markers within 5 seconds
+
+  Scenario: Syslog flushes partial batch on Close
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 1000 and flush interval "10s"
+    When I audit 4 uniquely marked events
+    And I close the auditor
+    Then the syslog server should contain all 4 markers within 10 seconds
+
+  Scenario: Syslog preserves RFC 5424 frame delimiters across batch
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 5 and flush interval "10s"
+    When I audit 5 uniquely marked events
+    Then the syslog server should contain all 5 markers within 5 seconds
+    And each of the 5 delivered messages should be a distinct RFC 5424 frame
+
+  Scenario: Syslog flushes oversized single event alone
+    Given an auditor with syslog output on "tcp" to "localhost:5514" with batch size 100 and flush interval "10s" and max batch bytes 1024
+    When I audit a uniquely marked event with a 2048-byte payload
+    Then the syslog server should contain the marker within 5 seconds

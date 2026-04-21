@@ -167,6 +167,12 @@ type Output struct {
 	facility      srslog.Priority // facility bits only (no severity)
 	failures      int             // consecutive failure count (writeLoop-only)
 	maxRetry      int
+	// Batching knobs — resolved from Config at construction time
+	// (#599). See syslog.Config.BatchSize / .FlushInterval /
+	// .MaxBatchBytes for the user-facing contract.
+	batchSize     int
+	flushInterval time.Duration
+	maxBatchBytes int
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -229,17 +235,20 @@ func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
 	}
 
 	s := &Output{
-		tlsCfg:   tlsCfg,
-		ch:       make(chan syslogEntry, bufSize),
-		closeCh:  make(chan struct{}),
-		done:     make(chan struct{}),
-		name:     "syslog:" + cfg.Address,
-		address:  cfg.Address,
-		network:  cfg.Network,
-		appName:  cfg.AppName,
-		hostname: hostname,
-		facility: priority, // parseFacility returns facility bits only
-		maxRetry: maxRetry,
+		tlsCfg:        tlsCfg,
+		ch:            make(chan syslogEntry, bufSize),
+		closeCh:       make(chan struct{}),
+		done:          make(chan struct{}),
+		name:          "syslog:" + cfg.Address,
+		address:       cfg.Address,
+		network:       cfg.Network,
+		appName:       cfg.AppName,
+		hostname:      hostname,
+		facility:      priority, // parseFacility returns facility bits only
+		maxRetry:      maxRetry,
+		batchSize:     cfg.BatchSize,     // resolved to default by validateSyslogBatchingConfig
+		flushInterval: cfg.FlushInterval, // resolved to default by validateSyslogBatchingConfig
+		maxBatchBytes: cfg.MaxBatchBytes, // resolved to default by validateSyslogBatchingConfig
 	}
 	// Publish the initial logger BEFORE starting the write goroutine.
 	// resolveOptions already replaced nil with slog.Default.
@@ -389,20 +398,131 @@ func (s *Output) connect() error {
 }
 
 // writeLoop is the background goroutine that reads events from the
-// channel and writes them to the syslog server. It runs until closeCh
-// is closed, then drains remaining events before returning.
+// channel, accumulates them into batches, and flushes to the syslog
+// server (#599). Three triggers cause a flush:
+//
+//   - Count: len(batch) >= Config.BatchSize.
+//   - Byte size: batchBytes >= Config.MaxBatchBytes (inclusive).
+//   - Time: Config.FlushInterval has elapsed since the last flush.
+//
+// A single event exceeding MaxBatchBytes flushes alone — it is never
+// dropped. Empty timer ticks are no-ops (no spurious network traffic).
+//
+// RFC 5425 octet-counting framing is preserved per message: flushBatch
+// calls srslog.Writer.WriteWithPriority once per entry, so each event
+// remains an independently framed syslog message even within a batch.
+//
+// On Close, writeLoop drains any remaining channel events into the
+// pending batch and flushes once before returning.
 func (s *Output) writeLoop() {
 	defer close(s.done)
 
+	st := newBatchState(s.batchSize)
+	timer := time.NewTimer(s.flushInterval)
+	defer timer.Stop()
+
 	for {
 		select {
-		case entry := <-s.ch:
-			s.writeEntry(entry)
+		case entry, ok := <-s.ch:
+			if !ok {
+				s.flushAndReset(st)
+				return
+			}
+			st.append(entry)
+			if st.thresholdReached(s.batchSize, s.maxBatchBytes) {
+				s.flushAndReset(st)
+				resetSyslogTimer(timer, s.flushInterval)
+			}
+		case <-timer.C:
+			s.flushAndReset(st)
+			resetSyslogTimer(timer, s.flushInterval)
 		case <-s.closeCh:
-			s.drainRemaining()
+			s.handleShutdownDrain(st.batch)
 			return
 		}
 	}
+}
+
+// batchState wraps the writeLoop's mutable batch slice plus the
+// accumulated byte count. Encapsulated so writeLoop's top-level body
+// stays below gocognit's cyclomatic threshold.
+type batchState struct {
+	batch      []syslogEntry
+	batchBytes int
+}
+
+func newBatchState(batchSize int) *batchState {
+	return &batchState{
+		batch: make([]syslogEntry, 0, batchSize),
+	}
+}
+
+func (st *batchState) append(entry syslogEntry) {
+	st.batch = append(st.batch, entry)
+	st.batchBytes += len(entry.data)
+}
+
+func (st *batchState) thresholdReached(batchSize, maxBytes int) bool {
+	return len(st.batch) >= batchSize || st.batchBytes >= maxBytes
+}
+
+// flushAndReset flushes any pending entries and returns the batch
+// slice to a fresh zero-length, refreshed-capacity state. Clears
+// per-slot pointers so stale event data does not pin memory until
+// the next flush overwrites the slot.
+func (s *Output) flushAndReset(st *batchState) {
+	if len(st.batch) == 0 {
+		return
+	}
+	s.flushBatch(st.batch)
+	for i := range st.batch {
+		st.batch[i].data = nil
+	}
+	st.batch = st.batch[:0]
+	st.batchBytes = 0
+	// Prevent unbounded capacity growth from one-time oversized-event
+	// outliers (performance-reviewer).
+	if cap(st.batch) > 2*s.batchSize {
+		st.batch = make([]syslogEntry, 0, s.batchSize)
+	}
+}
+
+// handleShutdownDrain flushes any pending batch plus events still in
+// the channel using the no-reconnect fast path. The normal
+// writeEntry retry path can stall for up to maxRetry ×
+// syslogMaxBackoff which would exceed the Close shutdown deadline;
+// on shutdown we accept that a broken connection means remaining
+// events are dropped rather than holding Close hostage. Contract
+// documented on [Output.Close].
+func (s *Output) handleShutdownDrain(batch []syslogEntry) {
+	s.drainBatchNoRetry(batch)
+	s.drainRemainingNoRetry()
+}
+
+// flushBatch writes every entry in batch to the syslog server via
+// srslog.Writer.WriteWithPriority, preserving per-message RFC 5425
+// octet-counting framing. Per-entry failures are handled by the
+// existing handleWriteFailure reconnect+retry path; remaining batch
+// entries continue processing after a failed entry succeeds on retry
+// or is dropped after maxRetry exhaustion.
+func (s *Output) flushBatch(batch []syslogEntry) {
+	for i := range batch {
+		s.writeEntry(batch[i])
+	}
+}
+
+// resetSyslogTimer drains any pending timer event and resets it to
+// the given duration. Mirrors the pattern in loki/loki.go to avoid
+// timer-leak and double-fire hazards. Safe to call on a stopped or
+// running timer.
+func resetSyslogTimer(t *time.Timer, d time.Duration) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+	t.Reset(d)
 }
 
 // errSyslogNotConnected is returned when the syslog writer is nil
@@ -558,10 +678,20 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 }
 
-// drainRemaining reads all remaining events from the channel after
-// closeCh fires and writes them. No reconnection during drain — if
-// the connection is broken, remaining events are dropped.
-func (s *Output) drainRemaining() {
+// drainBatchNoRetry flushes pending batch entries to the syslog
+// server during shutdown without retrying on failure. Used by the
+// writeLoop's closeCh branch so that Close does not stall on a
+// broken connection.
+func (s *Output) drainBatchNoRetry(batch []syslogEntry) {
+	for i := range batch {
+		s.drainOne(batch[i])
+	}
+}
+
+// drainRemainingNoRetry reads all remaining events from the channel
+// after closeCh fires and writes them without retry. Non-blocking;
+// returns once the channel is empty.
+func (s *Output) drainRemainingNoRetry() {
 	for {
 		select {
 		case entry := <-s.ch:

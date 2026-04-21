@@ -89,6 +89,10 @@ outputs:
       tls_cert: "/etc/audit/client-cert.pem"   # for mTLS
       tls_key: "/etc/audit/client-key.pem"     # for mTLS
       max_retries: 10              # reconnection attempts (default: 10)
+      # Batching (mirrors loki/webhook conventions — #599):
+      batch_size: 100              # events per flush (default: 100; set 1 to disable)
+      flush_interval: "5s"         # max time between flushes (default: 5s)
+      max_batch_bytes: 1048576     # 1 MiB; oversized single events flush alone
       # tls_policy:                # TLS version policy
       #   allow_tls12: false       # allow TLS 1.2 (default: TLS 1.3 only)
       #   allow_weak_ciphers: false # allow weaker ciphers with TLS 1.2

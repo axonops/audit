@@ -444,6 +444,17 @@ func (s *Output) writeEntry(entry syslogEntry) { //nolint:gocyclo,cyclop // even
 
 	// Attempt write. If the writer is nil (previous reconnect failed),
 	// treat as a write failure.
+	//
+	// Accepted trade-off (#509, master-tracker C-28): srslog.Writer
+	// takes an internal mutex on every WriteWithPriority call. That
+	// mutex is uncontended in our topology — only writeLoop (one
+	// goroutine per syslog Output) ever invokes it — so acquisition
+	// adds minimal CAS overhead per event. Benchmarks
+	// (BenchmarkSyslogOutput_Write in bench-baseline.txt) report the
+	// end-to-end enqueue cost at ~75–78 ns/op dominated by channel
+	// send, not the mutex. Forking srslog to strip the mutex would
+	// gain single-digit nanoseconds per event on a single hot path,
+	// at the cost of maintaining a divergent fork. Accepted as-is.
 	var writeErr error
 	if s.writer == nil {
 		writeErr = errSyslogNotConnected

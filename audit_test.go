@@ -5392,3 +5392,73 @@ func BenchmarkAudit_FanOut_8DistinctFormatters(b *testing.B) {
 		_ = auditor.AuditEvent(evt)
 	}
 }
+
+// BenchmarkProcessEntry_Drain measures the inline drain path
+// (synchronous delivery) with a single mock output.
+// Complements BenchmarkProcessEntry_AsyncOutputs which uses two
+// async outputs — this one isolates the serialisation and
+// single-output dispatch cost (#502).
+func BenchmarkProcessEntry_Drain(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench-drain")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithSynchronousDelivery(),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = auditor.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkAudit_Parallelism measures the Audit hot path under
+// varying parallelism (#503). Characterises contention on the
+// filter state sync.Map across producer counts. Expected curve:
+// near-linear up to the number of physical cores, then some
+// degradation beyond as sync.Map's amortised-lock-free reads
+// start to contend with atomic writes in adjacent cache lines.
+func BenchmarkAudit_Parallelism(b *testing.B) {
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+		audit.WithQueueSize(100_000),
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = auditor.Close() })
+
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "my-topic",
+	}
+
+	for _, n := range []int{1, 10, 50, 100, 200} {
+		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+			b.SetParallelism(n)
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					_ = auditor.AuditEvent(audit.NewEvent("schema_register", fields))
+				}
+			})
+		})
+	}
+}

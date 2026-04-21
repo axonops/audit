@@ -107,6 +107,24 @@ Webhook batchLoop goroutine
   → retries on 429/5xx
 ```
 
+### Max Event Size (`max_event_bytes`)
+
+**Since #688**, `Write()` rejects events whose byte length exceeds
+`max_event_bytes` (default 1 MiB) with an error wrapping
+`audit.ErrEventTooLarge` and `audit.ErrValidation`. The event is
+not enqueued; `OutputMetrics.RecordDrop()` is called; the
+diagnostic logger records the reject.
+
+```go
+if errors.Is(err, audit.ErrEventTooLarge) {
+    // The event was too large for this output's MaxEventBytes.
+}
+```
+
+This is a **defence against consumer-controlled memory pressure**
+— a buggy caller passing a 10 MiB event into a 10 000-slot buffer
+could pin ~100 GiB before backpressure. Range 1 KiB – 10 MiB.
+
 ### Byte-threshold batching (`max_batch_bytes`)
 
 Since #687, the webhook output flushes when accumulated event bytes
@@ -181,6 +199,7 @@ NDJSON is:
 |-------|------|---------|-------|-------------|
 | `url` | string | *(required)* | — | HTTP endpoint. MUST be `https://` unless `allow_insecure_http` is true |
 | `batch_size` | int | `100` | 1–10,000 | Maximum events per HTTP request |
+| `max_event_bytes` | int | `1048576` (1 MiB) | 1 KiB – 10 MiB | Per-event size cap at `Write()`. Oversized events rejected with `audit.ErrEventTooLarge` — also satisfies `errors.Is(err, audit.ErrValidation)` (#688) |
 | `max_batch_bytes` | int | `1048576` (1 MiB) | 1 KiB – 10 MiB | Accumulated event-bytes flush threshold. Oversized single events flush alone; never dropped. See [Byte-threshold batching](#byte-threshold-batching-max_batch_bytes) |
 | `buffer_size` | int | `10,000` | 1–1,000,000 | Internal async buffer capacity. Events dropped when full |
 | `flush_interval` | duration | `"5s"` | — | Maximum time between batch flushes |

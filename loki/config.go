@@ -48,6 +48,12 @@ const (
 
 	// DefaultBufferSize is the default internal event buffer capacity.
 	DefaultBufferSize = 10_000
+
+	// DefaultMaxEventBytes is the default per-event size cap at
+	// [Output.Write] entry (#688). Events whose payload byte length
+	// exceeds this are rejected with [audit.ErrEventTooLarge]. 1 MiB
+	// matches the cap used by syslog and webhook.
+	DefaultMaxEventBytes = 1 << 20 // 1 MiB
 )
 
 // Upper bounds for [Config] fields.
@@ -69,6 +75,9 @@ const (
 
 	// MaxBufferSize is the upper bound for [Config.BufferSize].
 	MaxBufferSize = 1_000_000
+
+	// MaxMaxEventBytes is the upper bound for [Config.MaxEventBytes] (10 MiB).
+	MaxMaxEventBytes = 10 << 20
 )
 
 // Lower bounds for [Config] fields.
@@ -84,6 +93,9 @@ const (
 
 	// MinBufferSize is the lower bound for [Config.BufferSize].
 	MinBufferSize = 100
+
+	// MinMaxEventBytes is the lower bound for [Config.MaxEventBytes] (1 KiB).
+	MinMaxEventBytes = 1 << 10
 )
 
 // validLabelName matches Loki's label name requirement.
@@ -181,6 +193,18 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 	// request. Zero defaults to [DefaultMaxBatchBytes] (1 MiB).
 	// Valid range: [MinMaxBatchBytes] (1 KiB) to [MaxMaxBatchBytes] (10 MiB).
 	MaxBatchBytes int
+
+	// MaxEventBytes is the maximum byte length accepted by
+	// [Output.Write] and [Output.WriteWithMetadata] for a single
+	// event. Events exceeding this cap are rejected with
+	// [audit.ErrEventTooLarge] wrapping [audit.ErrValidation] and
+	// [audit.OutputMetrics.RecordDrop] is called. Zero defaults to
+	// [DefaultMaxEventBytes] (1 MiB). Values below
+	// [MinMaxEventBytes] (1 KiB) or above [MaxMaxEventBytes]
+	// (10 MiB) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid]. Introduced by #688 as a defence
+	// against consumer-controlled memory pressure.
+	MaxEventBytes int
 
 	// FlushInterval is the maximum time between push requests when the
 	// batch has not yet reached BatchSize. The timer resets after
@@ -388,6 +412,9 @@ func applyLokiDefaults(cfg *Config) {
 	if cfg.MaxBatchBytes == 0 {
 		cfg.MaxBatchBytes = DefaultMaxBatchBytes
 	}
+	if cfg.MaxEventBytes == 0 {
+		cfg.MaxEventBytes = DefaultMaxEventBytes
+	}
 	if cfg.FlushInterval == 0 {
 		cfg.FlushInterval = DefaultFlushInterval
 	}
@@ -409,6 +436,9 @@ func validateLokiBounds(cfg *Config) error {
 		return err
 	}
 	if err := checkIntBound("max_batch_bytes", cfg.MaxBatchBytes, MinMaxBatchBytes, MaxMaxBatchBytes); err != nil {
+		return err
+	}
+	if err := checkIntBound("max_event_bytes", cfg.MaxEventBytes, MinMaxEventBytes, MaxMaxEventBytes); err != nil {
 		return err
 	}
 	if err := checkDurBound("flush_interval", cfg.FlushInterval, MinFlushInterval, MaxFlushInterval); err != nil {

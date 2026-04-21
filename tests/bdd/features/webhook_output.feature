@@ -52,6 +52,25 @@ Feature: Webhook Output
     When I audit a uniquely marked webhook "user_create" event with a 2048-byte payload
     Then the webhook receiver should have at least 1 event within 5 seconds
 
+  # --- Max event size (#688) ---
+  #
+  # Oversized events are rejected at Output.Write entry with
+  # audit.ErrEventTooLarge. The auditor's drain goroutine swallows
+  # the per-output error; the receiver only sees events that passed
+  # the cap. Normal events around the oversized one must deliver.
+
+  Scenario: Webhook rejects oversized event without stalling subsequent deliveries
+    Given an auditor with webhook output configured for max event bytes 1024
+    When I audit a uniquely marked webhook "user_create" event "wh_before"
+    And I audit a uniquely marked webhook "user_create" event with a 4096-byte payload
+    And I audit a uniquely marked webhook "user_create" event "wh_after"
+    Then the webhook receiver should have at least 2 events within 5 seconds
+
+  Scenario: Webhook delivers event within max_event_bytes cap
+    Given an auditor with webhook output configured for max event bytes 1048576
+    When I audit a uniquely marked webhook "user_create" event
+    Then the webhook receiver should have at least 1 event within 5 seconds
+
   # --- Retry logic ---
 
   Scenario: Retry on 503 response with eventual delivery

@@ -55,6 +55,22 @@ var (
 	// already been closed.
 	ErrOutputClosed = errors.New("audit: output is closed")
 
+	// ErrEventTooLarge is returned by async output [Output.Write]
+	// methods (syslog, loki, webhook) when the supplied event byte
+	// length exceeds the output's configured MaxEventBytes. Wrapped
+	// alongside [ErrValidation] so callers can discriminate via
+	// errors.Is:
+	//
+	//	if errors.Is(err, audit.ErrEventTooLarge) { ... }
+	//	if errors.Is(err, audit.ErrValidation)    { ... }
+	//
+	// Introduced by #688 as a DoS defence against consumer-controlled
+	// memory pressure — a 10 MiB event × 10 000-slot buffer could
+	// pin ~100 GiB before backpressure triggers. Default cap is
+	// 1 MiB per output; configurable via each output's MaxEventBytes
+	// Config field.
+	ErrEventTooLarge = errors.New("audit: event exceeds max_event_bytes")
+
 	// ErrDisabled is returned by methods that require a taxonomy
 	// ([Auditor.EnableCategory], [Auditor.DisableCategory],
 	// [Auditor.EnableEvent], [Auditor.DisableEvent],

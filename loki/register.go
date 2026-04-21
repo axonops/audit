@@ -51,6 +51,7 @@ type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability prefe
 	TLSPolicy  *yamlTLSPolicy    `yaml:"tls_policy"`
 	BatchSize  *int              `yaml:"batch_size"`
 	MaxBatchB  *int              `yaml:"max_batch_bytes"`
+	MaxEventB  *int              `yaml:"max_event_bytes"`
 	FlushIvl   yamlDuration      `yaml:"flush_interval"`
 	BufferSize *int              `yaml:"buffer_size"`
 	Timeout    yamlDuration      `yaml:"timeout"`
@@ -128,6 +129,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		TLSKey:             yc.TLSKey,
 		BatchSize:          intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
 		MaxBatchBytes:      intPtrOrDefault(yc.MaxBatchB, DefaultMaxBatchBytes),
+		MaxEventBytes:      intPtrOrDefault(yc.MaxEventB, DefaultMaxEventBytes),
 		FlushInterval:      time.Duration(yc.FlushIvl),
 		BufferSize:         intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 		Timeout:            time.Duration(yc.Timeout),

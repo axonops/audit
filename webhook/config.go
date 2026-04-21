@@ -70,6 +70,18 @@ const (
 	// the range accepted by Loki and syslog; real-world endpoints
 	// typically reject request bodies larger than a few MiB anyway.
 	MaxMaxBatchBytes = 10 << 20 // 10 MiB
+
+	// DefaultMaxEventBytes is the default per-event size cap at
+	// [Output.Write] entry (#688). Events with payload byte length
+	// exceeding this are rejected with [audit.ErrEventTooLarge].
+	// 1 MiB matches loki and syslog.
+	DefaultMaxEventBytes = 1 << 20 // 1 MiB
+
+	// MinMaxEventBytes is the lower bound for MaxEventBytes.
+	MinMaxEventBytes = 1 << 10 // 1 KiB
+
+	// MaxMaxEventBytes is the upper bound for MaxEventBytes.
+	MaxMaxEventBytes = 10 << 20 // 10 MiB
 )
 
 // Config holds configuration for [Output].
@@ -145,6 +157,17 @@ type Config struct { //nolint:govet // fieldalignment: pointer field TLSPolicy e
 	// [loki.Config.MaxBatchBytes] and
 	// [github.com/axonops/audit/syslog.Config.MaxBatchBytes].
 	MaxBatchBytes int
+
+	// MaxEventBytes is the maximum byte length accepted by
+	// [Output.Write] for a single event. Events exceeding this cap
+	// are rejected with [audit.ErrEventTooLarge] wrapping
+	// [audit.ErrValidation] and [audit.OutputMetrics.RecordDrop] is
+	// called. Zero defaults to [DefaultMaxEventBytes] (1 MiB).
+	// Values below [MinMaxEventBytes] (1 KiB) or above
+	// [MaxMaxEventBytes] (10 MiB) cause [New] to return an error
+	// wrapping [audit.ErrConfigInvalid]. Introduced by #688 as a
+	// defence against consumer-controlled memory pressure.
+	MaxEventBytes int
 
 	// BufferSize is the internal async buffer capacity. When full,
 	// new events are dropped and [audit.OutputMetrics.RecordDrop] is called.
@@ -373,6 +396,9 @@ func applyWebhookDefaults(cfg *Config) {
 	if cfg.MaxBatchBytes == 0 {
 		cfg.MaxBatchBytes = DefaultMaxBatchBytes
 	}
+	if cfg.MaxEventBytes == 0 {
+		cfg.MaxEventBytes = DefaultMaxEventBytes
+	}
 }
 
 // validateWebhookLimits checks bounds on numeric fields. Linear
@@ -416,6 +442,14 @@ func validateWebhookLimits(cfg *Config) error {
 	if cfg.MaxBatchBytes > MaxMaxBatchBytes {
 		return fmt.Errorf("%w: webhook max_batch_bytes %d exceeds maximum %d",
 			audit.ErrConfigInvalid, cfg.MaxBatchBytes, MaxMaxBatchBytes)
+	}
+	if cfg.MaxEventBytes < MinMaxEventBytes {
+		return fmt.Errorf("%w: webhook max_event_bytes %d below minimum %d",
+			audit.ErrConfigInvalid, cfg.MaxEventBytes, MinMaxEventBytes)
+	}
+	if cfg.MaxEventBytes > MaxMaxEventBytes {
+		return fmt.Errorf("%w: webhook max_event_bytes %d exceeds maximum %d",
+			audit.ErrConfigInvalid, cfg.MaxEventBytes, MaxMaxEventBytes)
 	}
 	if cfg.Timeout < 0 {
 		return fmt.Errorf("%w: webhook timeout must not be negative (got %v)",

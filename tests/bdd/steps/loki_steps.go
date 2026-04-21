@@ -73,6 +73,17 @@ func registerLokiGivenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditTes
 		return createLokiAuditor(tc, &loki.Config{BatchSize: size, Compress: true})
 	})
 
+	// Max event size (#688).
+	ctx.Step(`^an auditor with loki output with max event bytes (\d+)$`,
+		func(maxEventBytes int) error {
+			return createLokiAuditor(tc, &loki.Config{
+				BatchSize:     1,
+				FlushInterval: 100 * time.Millisecond,
+				MaxEventBytes: maxEventBytes,
+				Compress:      true,
+			})
+		})
+
 	ctx.Step(`^an auditor with loki output with batch size (\d+) and flush interval (\d+)ms$`, func(size, ms int) error {
 		return createLokiAuditor(tc, &loki.Config{
 			BatchSize:     size,
@@ -294,6 +305,9 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 			return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 		})
 
+	ctx.Step(`^I audit a uniquely marked "([^"]*)" event with a (\d+)-byte payload$`,
+		auditLokiSizedPayloadStep(tc))
+
 	ctx.Step(`^I audit (\d+) uniquely marked events with the same timestamp$`,
 		func(count int) error {
 			for i := range count {
@@ -311,6 +325,23 @@ func registerLokiWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestContext
 			return nil
 		})
 
+}
+
+// auditLokiSizedPayloadStep returns a handler for the #688 sized-payload
+// step. The padding is concatenated into the marker field because the
+// standard test taxonomy only declares the marker field, not a separate
+// payload field.
+func auditLokiSizedPayloadStep(tc *AuditTestContext) func(string, int) error {
+	return func(eventType string, size int) error {
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
+		}
+		m := marker("LKOS")
+		tc.Markers["default"] = m
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = m + "|" + strings.Repeat("x", size)
+		return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
+	}
 }
 
 func registerLokiWhenLifecycleSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {

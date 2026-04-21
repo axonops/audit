@@ -74,6 +74,24 @@ of what we consider in scope:
   through crafted taxonomy definitions or configuration, independent
   of the audit data a consumer passes in
 
+### Consumer-supplied event payloads (defence in depth)
+
+Consumer-controlled event data is explicitly out of scope as a
+vulnerability class — see the list below. Since v0.x the library
+nonetheless caps per-event payload size at the entry point of every
+async output (syslog, webhook, Loki) through the `max_event_bytes`
+configuration knob (default 1 MiB, range 1 KiB–10 MiB). This is
+defence in depth against a buggy or malicious caller: without the cap,
+a single oversized event queued in a 10 000-slot buffer could pin
+upward of 100 GiB before backpressure. The `Write` entry point
+rejects oversized events with `audit.ErrEventTooLarge` (wrapping
+`ErrValidation`) and increments the output's drop counter; subsequent
+events continue to deliver. The `stdout` output writes synchronously
+to `os.Stdout`; the `file` output buffers at a channel but does not
+batch or retry-hold events, so per-event bytes are not re-concentrated
+into longer-lived structures. Operators with extreme throughput
+requirements on `file` should still configure upstream ingestion caps.
+
 ### Out of scope
 
 The following are normal usage, bugs, or consumer responsibility and

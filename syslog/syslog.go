@@ -173,6 +173,9 @@ type Output struct {
 	batchSize     int
 	flushInterval time.Duration
 	maxBatchBytes int
+	// maxEventBytes is the per-event size cap enforced at Write()
+	// entry to bound consumer-controlled memory pressure (#688).
+	maxEventBytes int
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -249,6 +252,7 @@ func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
 		batchSize:     cfg.BatchSize,     // resolved to default by validateSyslogBatchingConfig
 		flushInterval: cfg.FlushInterval, // resolved to default by validateSyslogBatchingConfig
 		maxBatchBytes: cfg.MaxBatchBytes, // resolved to default by validateSyslogBatchingConfig
+		maxEventBytes: cfg.MaxEventBytes, // resolved to default by validateMaxEventBytes (#688)
 	}
 	// Publish the initial logger BEFORE starting the write goroutine.
 	// resolveOptions already replaced nil with slog.Default.
@@ -282,10 +286,26 @@ func (s *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 }
 
 // enqueue copies data and sends it to the writeLoop via the buffered
-// channel. If the channel is full, the event is dropped with metrics.
+// channel. Events exceeding MaxEventBytes are rejected with
+// audit.ErrEventTooLarge before the defensive copy (#688). If the
+// channel is full, the event is dropped with metrics.
 func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 	if s.closed.Load() {
 		return audit.ErrOutputClosed
+	}
+
+	if len(data) > s.maxEventBytes {
+		s.drops.record(dropWarnInterval, func(dropped int64) {
+			s.logger.Load().Warn("audit: output syslog: event rejected (exceeds max_event_bytes)",
+				"event_bytes", len(data),
+				"max_event_bytes", s.maxEventBytes,
+				"dropped", dropped)
+		})
+		if omp := s.outputMetrics.Load(); omp != nil {
+			(*omp).RecordDrop()
+		}
+		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
+			audit.ErrValidation, audit.ErrEventTooLarge, len(data), s.maxEventBytes)
 	}
 
 	cp := make([]byte, len(data))

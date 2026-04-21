@@ -72,6 +72,7 @@ type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability pre
 	BatchSize     *int           `yaml:"batch_size"`
 	FlushInterval string         `yaml:"flush_interval"`
 	MaxBatchBytes *int           `yaml:"max_batch_bytes"`
+	MaxEventBytes *int           `yaml:"max_event_bytes"`
 }
 
 // intPtrOrDefault returns the pointed-to value if non-nil, or the
@@ -114,6 +115,7 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics, logger *s
 		BufferSize:    intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 		BatchSize:     intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
 		MaxBatchBytes: intPtrOrDefault(yc.MaxBatchBytes, DefaultMaxBatchBytes),
+		MaxEventBytes: intPtrOrDefault(yc.MaxEventBytes, DefaultMaxEventBytes),
 	}
 	if yc.FlushInterval != "" {
 		d, err := time.ParseDuration(yc.FlushInterval)

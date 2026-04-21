@@ -358,6 +358,7 @@ outputs:
       # --- Batching ---
       batch_size: 100                     # events per push (default: 100)
       max_batch_bytes: 1048576            # bytes per push (default: 1 MiB)
+      max_event_bytes: 1048576            # per-event cap; oversized rejected with ErrEventTooLarge (#688)
       flush_interval: "5s"               # time-based flush (default: "5s")
       buffer_size: 10000                  # internal buffer (default: 10,000)
 
@@ -437,6 +438,7 @@ the Loki output.
 | `gzip` | bool | `true` | — | Gzip compress push request bodies. **Note**: the YAML key is `gzip`, not `compress`. |
 | `batch_size` | int | `100` | 1 – 10,000 | Maximum events per push request. |
 | `max_batch_bytes` | int | `1048576` | 1,024 – 10,485,760 | Maximum uncompressed payload bytes per push (1 MiB default, 10 MiB max). |
+| `max_event_bytes` | int | `1048576` | 1,024 – 10,485,760 | Per-event size cap at `Write()`. Oversized events rejected with `audit.ErrEventTooLarge` — also satisfies `errors.Is(err, audit.ErrValidation)` (#688). |
 | `flush_interval` | duration | `"5s"` | 100ms – 5m | Time between flushes when batch is not full. |
 | `timeout` | duration | `"10s"` | 1s – 5m | HTTP request timeout. |
 | `max_retries` | int | `3` | 1 – 20 | Retry attempts on 429 or 5xx responses. |

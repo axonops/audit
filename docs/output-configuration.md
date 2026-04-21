@@ -112,6 +112,7 @@ outputs:
       url: "https://ingest.example.com/audit"
       batch_size: 50               # events per batch (default: 100)
       flush_interval: "5s"         # time-based flush (default: "5s")
+      max_batch_bytes: 1048576     # 1 MiB byte-threshold flush; oversized events flush alone (#687)
       timeout: "10s"               # HTTP request timeout (default: "10s")
       max_retries: 3               # retry attempts (default: 3)
       # buffer_size: 10000        # internal buffer; events dropped when full

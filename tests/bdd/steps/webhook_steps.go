@@ -218,6 +218,17 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		})
 	})
 
+	// Byte-threshold batching (#687). Three-knob Given — mirrors the
+	// pattern used by Loki and syslog BDD scenarios.
+	ctx.Step(`^an auditor with webhook output configured for batch size (\d+) and flush interval (\d+)s and max batch bytes (\d+)$`,
+		func(batchSize, flushS, maxBatchBytes int) error {
+			return createWebhookAuditor(tc, &webhook.Config{
+				BatchSize:     batchSize,
+				FlushInterval: time.Duration(flushS) * time.Second,
+				MaxBatchBytes: maxBatchBytes,
+			})
+		})
+
 	ctx.Step(`^an auditor with webhook output configured for batch size (\d+) and max retries (\d+)$`, func(batchSize, maxRetries int) error {
 		return createWebhookAuditor(tc, &webhook.Config{
 			BatchSize:     batchSize,
@@ -492,6 +503,15 @@ func registerWebhookWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		}
 		return nil
 	})
+
+	// Sized payloads for byte-threshold batching (#687) — handlers
+	// extracted to keep registerWebhookWhenAuditSteps below the
+	// cognitive-complexity threshold.
+	ctx.Step(`^I audit (\d+) uniquely marked webhook events with (\d+) KiB payloads$`,
+		auditWebhookSizedEventsStep(tc))
+
+	ctx.Step(`^I audit a uniquely marked webhook "([^"]*)" event with a (\d+)-byte payload$`,
+		auditWebhookOversizedEventStep(tc))
 
 	ctx.Step(`^I wait (\d+) seconds for retries to exhaust$`, func(secs int) error {
 		time.Sleep(time.Duration(secs) * time.Second)
@@ -815,6 +835,46 @@ func createWebhookAuditorFromConfig(tc *AuditTestContext, cfg *webhook.Config) e
 	tc.Auditor = auditor
 	tc.AddCleanup(func() { _ = auditor.Close() })
 	return nil
+}
+
+// auditWebhookSizedEventsStep returns the handler for the
+// "I audit N uniquely marked webhook events with K KiB payloads"
+// step (#687). Padding is concatenated into the declared `marker`
+// field — the standard test taxonomy only allows known fields.
+func auditWebhookSizedEventsStep(tc *AuditTestContext) func(int, int) error {
+	return func(count, kib int) error {
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
+		}
+		padding := strings.Repeat("x", kib*1024)
+		for i := range count {
+			name := fmt.Sprintf("wh_sized_%d", i)
+			m := marker("WHSZ")
+			tc.Markers[name] = m
+			fields := defaultRequiredFields(tc.Taxonomy, "user_create")
+			fields["marker"] = m + "|" + padding
+			if err := tc.Auditor.AuditEvent(audit.NewEvent("user_create", fields)); err != nil {
+				return fmt.Errorf("webhook sized event %d: %w", i, err)
+			}
+		}
+		return nil
+	}
+}
+
+// auditWebhookOversizedEventStep returns the handler for the
+// "I audit a uniquely marked webhook EVENT event with an N-byte
+// payload" step (#687 oversized-event scenario).
+func auditWebhookOversizedEventStep(tc *AuditTestContext) func(string, int) error {
+	return func(eventType string, size int) error {
+		if tc.Auditor == nil {
+			return fmt.Errorf("auditor is nil (construction may have failed: %w)", tc.LastErr)
+		}
+		m := marker("WHOS")
+		tc.Markers["default"] = m
+		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		fields["marker"] = m + "|" + strings.Repeat("x", size)
+		return tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
+	}
 }
 
 func auditMarkedWebhookEvent(tc *AuditTestContext, eventType, name string) error {

@@ -635,6 +635,63 @@ func TestWebhookOutput_FlushInterval(t *testing.T) {
 	assert.Contains(t, string(reqs[0].Body), "timer")
 }
 
+// TestWebhookOutput_FlushesOnByteThreshold verifies that accumulated
+// event bytes crossing MaxBatchBytes triggers a flush before the count
+// threshold would (#687 AC #2).
+func TestWebhookOutput_FlushesOnByteThreshold(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	// BatchSize deliberately high so only byte threshold can trigger
+	// the flush. FlushInterval long enough that the timer does not
+	// fire before the assertion.
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
+		cfg.BatchSize = 1000
+		cfg.FlushInterval = 10 * time.Second
+		cfg.MaxBatchBytes = 4096 // 4 KiB
+	})
+
+	// Each event is ~1 KiB; 5 events = 5 KiB, crossing 4 KiB threshold.
+	event := []byte(strings.Repeat("a", 1024))
+	for i := 0; i < 5; i++ {
+		require.NoError(t, out.Write(event))
+	}
+
+	// At least one HTTP POST should arrive before the FlushInterval
+	// could otherwise fire.
+	require.True(t, srv.waitForRequests(1, 2*time.Second),
+		"byte threshold must trigger flush before count or timer")
+	require.NoError(t, out.Close())
+}
+
+// TestWebhookOutput_OversizedEventFlushesAlone verifies that a single
+// event exceeding MaxBatchBytes is flushed on its own rather than
+// dropped (#687 AC #3).
+func TestWebhookOutput_OversizedEventFlushesAlone(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
+		cfg.BatchSize = 100
+		cfg.FlushInterval = 10 * time.Second
+		cfg.MaxBatchBytes = 1 << 10 // 1 KiB
+	})
+
+	// Single event exceeding MaxBatchBytes (4 KiB > 1 KiB).
+	oversized := []byte(strings.Repeat("x", 4<<10))
+	require.NoError(t, out.Write(oversized))
+
+	require.True(t, srv.waitForRequests(1, 2*time.Second),
+		"oversized single event must trigger immediate flush, not drop")
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), 1)
+	// Event body should contain the oversized payload marker.
+	assert.Contains(t, string(reqs[0].Body), "xxxx",
+		"oversized event body must reach the server intact")
+}
+
 func TestWebhookOutput_CloseFlushesRemaining(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)

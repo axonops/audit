@@ -41,7 +41,7 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 			auditor, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
-				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+				audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 					Enabled:     true,
 					SaltVersion: version,
 					SaltValue:   []byte(salt),
@@ -63,7 +63,7 @@ func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 			_, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
-				audit.WithNamedOutput(out, audit.OutputHMAC(&audit.HMACConfig{
+				audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 					Enabled:     true,
 					SaltVersion: version,
 					SaltValue:   []byte(salt),
@@ -515,8 +515,8 @@ func createDualHMACAuditor(tc *AuditTestContext, strippedName, label, fullSalt, 
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(fullOut, audit.OutputHMAC(fullHMACCfg)),
-		audit.WithNamedOutput(strippedOut, audit.OutputExcludeLabels(label), audit.OutputHMAC(strippedHMACCfg)),
+		audit.WithNamedOutput(fullOut, audit.WithHMAC(fullHMACCfg)),
+		audit.WithNamedOutput(strippedOut, audit.WithExcludeLabels(label), audit.WithHMAC(strippedHMACCfg)),
 	)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

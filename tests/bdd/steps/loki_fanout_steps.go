@@ -235,10 +235,10 @@ func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, l
 	}
 
 	var fileOpts, lokiOpts []audit.OutputOption
-	lokiOpts = append(lokiOpts, audit.OutputRoute(lokiRoute))
+	lokiOpts = append(lokiOpts, audit.WithRoute(lokiRoute))
 	if hmacCfg != nil {
-		fileOpts = append(fileOpts, audit.OutputHMAC(hmacCfg))
-		lokiOpts = append(lokiOpts, audit.OutputHMAC(hmacCfg))
+		fileOpts = append(fileOpts, audit.WithHMAC(hmacCfg))
+		lokiOpts = append(lokiOpts, audit.WithHMAC(hmacCfg))
 	}
 	opts = append(opts,
 		audit.WithNamedOutput(fileOut, fileOpts...),
@@ -285,8 +285,8 @@ func createFileAndLokiAuditorWithExclusion(tc *AuditTestContext, excludeLabel st
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
-		audit.WithNamedOutput(fileOut),                                          // no exclusions
-		audit.WithNamedOutput(lokiOut, audit.OutputExcludeLabels(excludeLabel)), // strip PII
+		audit.WithNamedOutput(fileOut),                                        // no exclusions
+		audit.WithNamedOutput(lokiOut, audit.WithExcludeLabels(excludeLabel)), // strip PII
 	)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

@@ -187,7 +187,7 @@
 //   - [ComputeHMAC] — computes HMAC over a payload, returns lowercase hex
 //   - [VerifyHMAC] — verifies an HMAC value matches a payload
 //   - [ValidateHMACConfig] — validates HMAC configuration at startup
-//   - [OutputOption] — per-output configuration for [WithNamedOutput]: [OutputRoute], [OutputFormatter], [OutputExcludeLabels], [OutputHMAC]
+//   - [OutputOption] — per-output configuration for [WithNamedOutput]: [WithRoute], [WithOutputFormatter], [WithExcludeLabels], [WithHMAC]
 //   - [MigrateTaxonomy] — applies version migration to a [Taxonomy]
 //
 // # How Taxonomy Validation Works

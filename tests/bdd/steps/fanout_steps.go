@@ -390,7 +390,7 @@ func tryMixedRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
 			ExcludeCategories: []string{"read"},
 		})),
@@ -411,7 +411,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
 		})),
 	)
@@ -473,7 +473,7 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(f, audit.OutputRoute(&audit.EventRoute{
+		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeEventTypes: []string{"nonexistent_event"},
 		})),
 	)
@@ -539,7 +539,7 @@ func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bo
 			return fmt.Errorf("create webhook output: %w", err)
 		}
 		tc.AddCleanup(func() { _ = w.Close() })
-		opts = append(opts, audit.WithNamedOutput(w, audit.OutputFormatter(webhookFmt)))
+		opts = append(opts, audit.WithNamedOutput(w, audit.WithOutputFormatter(webhookFmt)))
 	}
 
 	auditor, err := audit.New(opts...)
@@ -662,7 +662,7 @@ func createPanicFormatterAuditor(tc *AuditTestContext) error {
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fileOut), // normal file
-		audit.WithNamedOutput(&devNullOutput{}, audit.OutputFormatter(&panicFormatter{})), // panicking formatter
+		audit.WithNamedOutput(&devNullOutput{}, audit.WithOutputFormatter(&panicFormatter{})), // panicking formatter
 	}
 
 	auditor, err := audit.New(opts...)
@@ -697,8 +697,8 @@ func createDualFileRoutedAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
-		audit.WithNamedOutput(secOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})),
-		audit.WithNamedOutput(writeOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
+		audit.WithNamedOutput(secOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})),
+		audit.WithNamedOutput(writeOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
 	}
 
 	auditor, err := audit.New(opts...)
@@ -744,8 +744,8 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(fileOut), // all events
-		audit.WithNamedOutput(syslogOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})), // security only
-		audit.WithNamedOutput(webhookOut, audit.OutputRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
+		audit.WithNamedOutput(syslogOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})), // security only
+		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
 	}
 
 	auditor, err := audit.New(opts...)
@@ -783,7 +783,7 @@ func createRoutedAuditor(tc *AuditTestContext, webhookRoute *audit.EventRoute) e
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(f),
-		audit.WithNamedOutput(w, audit.OutputRoute(webhookRoute)),
+		audit.WithNamedOutput(w, audit.WithRoute(webhookRoute)),
 	}
 
 	auditor, err := audit.New(opts...)

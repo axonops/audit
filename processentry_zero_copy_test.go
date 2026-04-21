@@ -377,8 +377,8 @@ func TestProcessEntry_MultiCategory_BufferReuseAcrossPasses(t *testing.T) {
 	cefOut := testhelper.NewMockOutput("cef")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
-		audit.WithNamedOutput(jsonOut, audit.OutputFormatter(&audit.JSONFormatter{})),
-		audit.WithNamedOutput(cefOut, audit.OutputFormatter(&audit.CEFFormatter{
+		audit.WithNamedOutput(jsonOut, audit.WithOutputFormatter(&audit.JSONFormatter{})),
+		audit.WithNamedOutput(cefOut, audit.WithOutputFormatter(&audit.CEFFormatter{
 			Vendor: "axonops", Product: "audit", Version: "1.0",
 		})),
 		audit.WithSynchronousDelivery(),
@@ -495,8 +495,8 @@ func TestProcessEntry_FormatError_CacheNilEntry_NoDoublePut(t *testing.T) {
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
 		audit.WithMetrics(metrics),
-		audit.WithNamedOutput(out1, audit.OutputFormatter(shared), audit.OutputRoute(&audit.EventRoute{})),
-		audit.WithNamedOutput(out2, audit.OutputFormatter(shared), audit.OutputRoute(&audit.EventRoute{})),
+		audit.WithNamedOutput(out1, audit.WithOutputFormatter(shared), audit.WithRoute(&audit.EventRoute{})),
+		audit.WithNamedOutput(out2, audit.WithOutputFormatter(shared), audit.WithRoute(&audit.EventRoute{})),
 		audit.WithSynchronousDelivery(),
 	)
 	require.NoError(t, err)

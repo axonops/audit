@@ -308,7 +308,7 @@ See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for mo
 | ❌ [Error Reference](docs/error-reference.md) | Every error explained with recovery guidance |
 | 🔧 [Troubleshooting](docs/troubleshooting.md) | Common problems and how to fix them |
 | 🔒 [Security Policy](SECURITY.md) | Vulnerability reporting |
-| ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline and methodology |
+| ⚡ [Benchmarks](BENCHMARKS.md) | Performance baseline, methodology, and side-by-side comparison against [`log/slog`](BENCHMARKS.md#comparison-against-logslog) |
 
 ---
 

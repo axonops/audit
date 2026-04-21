@@ -184,6 +184,170 @@ drain-side fast path, benchmarked as `BenchmarkAudit_FastPath_FanOut4_NoopOutput
 
 ---
 
+## Comparison against `log/slog`
+
+Developers evaluating this library will naturally ask **"why not
+just use `log/slog`?"** `log/slog` ships with the Go standard
+library, has a well-tuned `slog.NewJSONHandler`, and is the
+obvious choice for general-purpose structured logging. This
+section publishes a side-by-side benchmark so the ns/op delta is
+visible, not imagined, and the subsequent prose explains what
+the audit library does that `slog` does not.
+
+Benchmark source: `bench_comparison_test.go`,
+`BenchmarkSlog_JSONHandler_BaselineComparison`. Both sides
+serialise to JSON; both sides discard the output (`slog` →
+`io.Discard`, `audit` → `testhelper.NoopOutput`).
+
+### Methodology — fair comparison notes
+
+- **Synchronous delivery on both sides.** The audit library
+  defaults to async delivery (drain goroutine), so the default
+  `BenchmarkAudit` number charges caller-side enqueue cost only.
+  That is the number consumers should cite when they care about
+  caller-thread latency — but it is not directly comparable to
+  `slog.Logger.Info`, which serialises and writes inline. Every
+  audit sub-benchmark in the comparison uses
+  `audit.WithSynchronousDelivery()` so the full
+  `serialise → fan-out → post-field → HMAC → Write` pipeline
+  runs on the benchmark's critical path, exactly like `slog`.
+- **Zero drops.** Each audit sub-benchmark asserts
+  `NoopOutput.Writes() == b.N` at `b.StopTimer`. A silent drop
+  makes the ns/op a lie; synchronous delivery + the assertion
+  together make drops impossible without failing the benchmark.
+- **Sample size.** `count=10`, `benchtime=1s` on AMD Ryzen 9
+  7950X, Linux 6.14. Benchstat confidence intervals are
+  published in `bench-baseline.txt`; medians below.
+- **slog's fast path is represented.** `slog.LogAttrs` with a
+  pre-constructed `[]slog.Attr` is slog's documented fast path
+  and is shown alongside the ergonomic `logger.Info(k, v, ...)`
+  form so the comparison includes slog's best number.
+- **What is NOT shown.** The audit library's compile-time fast
+  path (`cmd/audit-gen`-generated typed builders that satisfy
+  the `FieldsDonor` interface) is not represented here, because
+  a pure-test shim cannot fairly stand in for generated code.
+  Generated builders avoid the `audit.Fields{...}` literal
+  allocation and reduce total allocations further; see
+  [`docs/performance.md`](docs/performance.md) and the
+  `BenchmarkAudit_FastPath_*` family for the fast-path numbers
+  (measured against the same fan-out / HMAC configurations).
+
+### Numbers — median of count=10
+
+| Scenario | ns/op | B/op | allocs/op |
+|----------|------:|-----:|----------:|
+| `slog/3fields` | 490 | 0 | 0 |
+| `audit/3fields_sync` | 814 | 24 | 1 |
+| `slog/10fields` | 981 | 208 | 1 |
+| `slog/10fields_LogAttrs` | 879 | 208 | 1 |
+| `audit/10fields_sync` | 1736 | 24 | 1 |
+| `audit/10fields_sync_WithHMAC` | 2178 | 88 | 2 |
+| `audit/10fields_sync_FanOut4` | 1925 | 24 | 1 |
+
+### Interpretation
+
+- **`slog` is ≈ 1.7–1.8 × faster per synchronous call** at every
+  matched payload size. This is expected: `slog.JSONHandler` does
+  less work per event than this library does. It does not
+  validate field names against a taxonomy, does not inject
+  framework fields, does not compute HMAC, does not fan out, and
+  does not route by category. The headline number is the cost of
+  everything the audit library does that slog does not — priced
+  honestly.
+- **Memory footprint flips the other way.** The audit library's
+  single remaining 24 B allocation is the `*basicEvent` wrapper
+  escaping through the `Event` interface return from `NewEvent`;
+  the pipeline scratch buffers come from `sync.Pool` and
+  contribute 0 B/op to the per-event total. slog's 208 B at 10
+  fields is a heap-allocated `[]slog.Attr` overflow once its
+  `nAttrsInline = 5` inline array is exceeded. Lower byte churn
+  translates to less GC pressure under sustained throughput —
+  real but secondary to the ns/op story.
+- **`LogAttrs` is slog's fast path, and it helps.** Pre-constructed
+  `[]slog.Attr` drops slog's 10-field call from 981 ns → 879 ns
+  (~10 %) by skipping variadic Attr pairing. The audit library has
+  an analogous compile-time fast path (generated builders) that is
+  not shown here for the reason documented in *Methodology*.
+- **HMAC costs ≈ 442 ns at 10 fields** (2178 − 1736). This is the
+  cost of tamper-evidence (`HMAC-SHA-256` over the full
+  event bytes + authenticated `_hmac_v` salt version), amortised
+  via pre-allocated state. There is no `slog` equivalent to
+  compare against.
+- **Fan-out to 4 outputs costs ≈ 63 ns per extra output**
+  (1925 − 1736 = 189 ns for 3 additional outputs, divided by 3).
+  The formatter cache (#499) means the shared-formatter outputs
+  all use one serialisation; marginal cost per output is
+  post-field assembly + one `NoopOutput.Write`. There is no slog
+  equivalent (slog handlers can chain via a custom handler, but
+  multi-output fan-out is not a first-class slog construct).
+- **Caller-side latency (the async case) is markedly lower.**
+  Under the library's default `WithSynchronousDelivery` = false,
+  the caller returns after a channel enqueue (~400 ns, measured
+  by `BenchmarkAudit`) and the ~1700 ns of serialisation happens
+  on the drain goroutine — an intentional design choice for
+  hot-path API handlers where *caller latency* matters more than
+  total CPU. This number is compared to `slog` above only with
+  synchronous delivery on both sides, for apples-to-apples; the
+  default async number is available in the `### Core Audit Path`
+  table earlier in this document.
+
+### What you give up going to `slog`
+
+The ns/op is the headline. It is not the reason to choose this
+library. `slog` is a logging library; this library is an audit
+library. The functionality delta:
+
+- **Taxonomy validation.** A typo in a field name (`actor_ID`
+  instead of `actor_id`) is silently accepted by `slog`; this
+  library rejects it at runtime (`ValidationStrict`) or logs a
+  warning (`ValidationWarn`). The `cmd/audit-gen` generator
+  further pushes validation to compile time.
+- **Required / optional fields.** `slog` has no notion of
+  required keys; a missing `actor_id` is accepted. The audit
+  library rejects the event before it enters the drain.
+- **Framework fields.** Event ID, hostname, schema version,
+  timestamp, category — all injected by the library, not the
+  caller. `slog` requires the caller to add every field.
+- **Fan-out to heterogeneous outputs.** File, syslog, webhook,
+  Loki, and custom outputs in one call, with per-output
+  filtering, formatting, and HMAC salts. `slog` handlers chain,
+  but multi-output fan-out is a bring-your-own problem.
+- **HMAC tamper-evidence.** Integrity signatures per output
+  with rotatable salts. No `slog` equivalent.
+- **Sensitivity labels.** Per-field classification and
+  per-output strip rules (drop PII from syslog but keep it in a
+  secure webhook sink, for example). No `slog` equivalent.
+- **Async, bounded-queue delivery.** Bounded channel with drop
+  rate limiting on buffer full, back-pressure metrics, graceful
+  drain on close. `slog` is synchronous by default; async
+  delivery is a bring-your-own handler.
+- **Config-driven outputs.** `outputconfig.yaml` declares sinks
+  externally, no recompile. `slog` handlers are wired in Go.
+- **Metrics.** `OutputMetrics` interface (drops, flushes,
+  errors, retries, queue depth) per output, pluggable into any
+  metrics backend.
+
+### Recommendation
+
+- Use **`log/slog`** when you want general-purpose structured
+  logging and do not need validation, fan-out, or integrity.
+- Use **`github.com/axonops/audit`** when the log records are
+  *audit* records — when it matters that every event has the
+  required fields, that the record format is stable, that
+  multiple tamper-evident sinks receive the same event, and
+  that the cost of a schema change is caught at build time by
+  `cmd/audit-gen` rather than at incident-response time by the
+  auditor. The ~1.7–2 × synchronous-call overhead is the price
+  of those guarantees.
+
+This comparison is rerun on every `make bench-compare`
+invocation. Because one side of the comparison is the Go
+standard library, an upstream slog change can show up as a
+regression on `slog/*` baseline lines — rebaseline on Go version
+bumps, not as an audit-library signal.
+
+---
+
 ## History
 
 | Date | Commit | Change | Audit allocs | JSON allocs |

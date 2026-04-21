@@ -106,6 +106,15 @@ type Auditor struct {
 	// syncMu guards processEntry calls in synchronous delivery mode.
 	// processEntry reuses per-output state (formatOpts, HMAC) that is
 	// only safe under single-goroutine access.
+	//
+	// Accepted trade-off (#509, master-tracker C-31): synchronous
+	// delivery serialises every AuditEvent call through this mutex.
+	// That is the intended behaviour — WithSynchronousDelivery exists
+	// precisely to give tests and CLI tools a deterministic "audit
+	// returned so the write completed" contract, which requires
+	// serialisation. Production consumers use the default async
+	// path where syncMu is not held and the drain goroutine owns
+	// the single-writer invariant.
 	syncMu sync.Mutex
 	// Framework fields set via WithAppName, WithHost, WithTimezone.
 	// PID is captured once at construction via os.Getpid().
@@ -540,6 +549,16 @@ func (a *Auditor) validateExcludeLabels(oe *outputEntry) error {
 	}
 	return nil
 }
+
+// Accepted trade-off (#509, master-tracker C-23): EnableCategory,
+// DisableCategory, EnableEvent, and DisableEvent all use fmt.Errorf
+// on the validation-miss path, which allocates. These are admin /
+// control-plane operations invoked during startup and occasional
+// runtime reconfiguration — not the hot path. The allocation rate
+// is negligible compared to Audit() and optimising it would obscure
+// the error-message semantics. Hot-path filter state reads
+// (filterState.isEnabled) are separately optimised and do not
+// allocate; see filter.go.
 
 // EnableCategory enables all events in the named category. The
 // category MUST exist in the registered taxonomy. Per-event overrides

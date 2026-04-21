@@ -67,6 +67,16 @@ type dropLimiter struct {
 func (d *dropLimiter) record(interval time.Duration, warnFn func(dropped int64)) {
 	d.count.Add(1)
 
+	// Accepted trade-off (#509, master-tracker C-30): time.Now() is
+	// a syscall on some kernels and adds a handful of nanoseconds per
+	// call. record() runs only on the drop path — reaching this
+	// function at all means the buffer is full and the producer is
+	// outpacing the drain, i.e. the system is already in a degraded
+	// state. Adding any optimisation here (cached clock, TSC rdtsc)
+	// would introduce cross-platform portability risk without any
+	// observable improvement on a path that runs orders of magnitude
+	// less frequently than Audit() itself.
+
 	// UnixNano uses wall clock; NTP adjustments may shift the interval
 	// by the step size, which is acceptable for a 10s diagnostic window.
 	now := time.Now().UnixNano()

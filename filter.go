@@ -336,6 +336,15 @@ func (f *filterState) isEnabled(eventType string, taxonomy *Taxonomy) bool {
 	}
 
 	// Enabled if ANY category is enabled.
+	//
+	// Accepted trade-off (#509, master-tracker C-29): linear scan
+	// over def.Categories. An event_type typically belongs to 1–3
+	// categories; `BenchmarkFilterCheck` runs at ~16 ns/op and 0
+	// allocs/op which includes this loop. A map-based early-exit
+	// would regress the common single-category case by adding a
+	// map allocation at registration time without reducing the
+	// steady-state ns/op. Re-evaluate only if production taxonomies
+	// emerge with >10 categories per event.
 	for _, cat := range def.Categories {
 		if enabled, _ := f.enabledCategories.Load(cat); enabled {
 			return true

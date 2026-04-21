@@ -906,6 +906,7 @@ func BenchmarkFileOutput_Write_WithRotation(b *testing.B) {
 
 	event := []byte(`{"timestamp":"2026-04-14T12:00:00Z","event_type":"user_create","severity":5,"app_name":"bench","host":"localhost","outcome":"success","actor_id":"alice"}` + "\n")
 
+	b.ReportAllocs()
 	b.ResetTimer()
 	b.SetBytes(int64(len(event)))
 	for b.Loop() {

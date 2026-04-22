@@ -136,6 +136,12 @@ func (e *{{ $b.StructName }}) {{ .SetterName }}(v {{ .GoType }}) *{{ $b.StructNa
 func (e *{{ $b.StructName }}) EventType() string { return {{ $b.EventConst }} }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *{{ $b.StructName }}) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -167,10 +173,12 @@ func (e *{{ $b.StructName }}) FieldInfo() {{ $b.FieldsStruct }} {
 func (e *{{ $b.StructName }}) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
 {{- range $b.Categories }}
-		{Name: {{ .ConstName }}{{ if .HasSeverity }}, Severity: intPtr({{ .Severity }}){{ end }}},
+		{Name: {{ .ConstName }}{{ if .HasSeverity }}, Severity: auditIntPtr({{ .Severity }}){{ end }}},
 {{- end }}
 	}
 }
 {{ end }}{{ if .HasSeverityInBuilders }}
-func intPtr(n int) *int { return &n }
+// auditIntPtr returns a pointer to the given int. It is generator-owned
+// helper (prefixed to avoid collision with any consumer-defined intPtr).
+func auditIntPtr(n int) *int { return &n }
 {{ end }}{{ end }}`

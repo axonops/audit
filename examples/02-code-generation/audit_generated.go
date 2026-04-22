@@ -326,6 +326,12 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -610,6 +616,12 @@ func (e *AuthSuccessEvent) SetUserAgent(v string) *AuthSuccessEvent {
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthSuccessEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -894,6 +906,12 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -1178,6 +1196,12 @@ func (e *UserDeleteEvent) SetUserAgent(v string) *UserDeleteEvent {
 func (e *UserDeleteEvent) EventType() string { return EventUserDelete }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserDeleteEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -1467,6 +1491,12 @@ func (e *UserReadEvent) SetUserAgent(v string) *UserReadEvent {
 func (e *UserReadEvent) EventType() string { return EventUserRead }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserReadEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated

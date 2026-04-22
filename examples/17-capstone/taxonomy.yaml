@@ -118,12 +118,17 @@ events:
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      quantity: { type: int }
+      unit_price: { type: float64 }
+      in_stock: { type: bool }
 
   item_update:
     description: "An inventory item was updated"
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      quantity: { type: int }
+      unit_price: { type: float64 }
 
   item_delete:
     description: "An inventory item was deleted"

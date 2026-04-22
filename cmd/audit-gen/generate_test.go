@@ -322,6 +322,25 @@ func TestRun_InvalidPackageName(t *testing.T) {
 	assert.Equal(t, exitInvalidArgs, code)
 }
 
+// TestRun_InvalidStandardSetters confirms the CLI rejects any value
+// outside `{all, explicit}` for -standard-setters with a valid-set
+// hint and the invalid-args exit code (#575 B-38).
+func TestRun_InvalidStandardSetters(t *testing.T) {
+	t.Parallel()
+	var stderr bytes.Buffer
+	code := run([]string{
+		"-input", "testdata/valid_taxonomy.yaml",
+		"-output", "-",
+		"-package", "mypkg",
+		"-standard-setters", "maybe",
+	}, &bytes.Buffer{}, &stderr)
+
+	assert.Equal(t, exitInvalidArgs, code)
+	msg := stderr.String()
+	assert.Contains(t, msg, `"maybe"`, "stderr must echo the rejected value")
+	assert.Contains(t, msg, "valid: all, explicit", "stderr must list the valid set")
+}
+
 func TestRun_NonexistentInput(t *testing.T) {
 	t.Parallel()
 	code := run([]string{
@@ -899,7 +918,7 @@ func TestToParamName(t *testing.T) {
 
 func TestGenerate_Builders_WithSeverity(t *testing.T) {
 	t.Parallel()
-	// Taxonomy with category-level severity to test intPtr generation.
+	// Taxonomy with category-level severity to test auditIntPtr generation.
 	tax, err := audit.ParseTaxonomyYAML([]byte(`
 version: 1
 categories:
@@ -924,10 +943,12 @@ events:
 	require.NoError(t, err)
 
 	src := buf.String()
-	// intPtr should be generated when severity is present.
-	assert.Contains(t, src, "func intPtr(")
-	// Categories should reference severity.
-	assert.Contains(t, src, "Severity: intPtr(8)")
+	// auditIntPtr should be generated when severity is present (B-15
+	// — prefix avoids collision with any consumer-defined intPtr).
+	assert.Contains(t, src, "func auditIntPtr(")
+	assert.NotContains(t, src, "func intPtr(", "unprefixed intPtr must not be emitted (B-15 collision hazard)")
+	// Categories should reference severity via the prefixed helper.
+	assert.Contains(t, src, "Severity: auditIntPtr(8)")
 
 	fset := token.NewFileSet()
 	_, parseErr := parser.ParseFile(fset, "sev.go", src, parser.AllErrors)
@@ -945,7 +966,8 @@ func TestGenerate_Builders_NoSeverity_NoIntPtr(t *testing.T) {
 		Builders: true,
 	})
 	require.NoError(t, err)
-	// No category has severity → intPtr should NOT be generated.
+	// No category has severity → auditIntPtr should NOT be generated.
+	assert.NotContains(t, buf.String(), "func auditIntPtr(")
 	assert.NotContains(t, buf.String(), "func intPtr(")
 }
 
@@ -1019,4 +1041,196 @@ func TestBuildLabelConstants_NamingCollision(t *testing.T) {
 	_, err := buildLabelConstantsFromConfig(sc)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "naming collision")
+}
+
+// ---------------------------------------------------------------------------
+// #575 typed custom field setters (B-01), auditIntPtr rename (B-15),
+// Fields() godoc (B-16), -standard-setters=explicit (B-38)
+// ---------------------------------------------------------------------------
+
+// TestGenerate_Builders_TypedCustomFields verifies that the generator
+// emits `Set<Name>(v T)` setters with the Go type declared in the
+// taxonomy YAML `type:` annotation for each accepted vocabulary value
+// (string, int, int64, float64, bool, time, duration) — B-01.
+func TestGenerate_Builders_TypedCustomFields(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome:    {required: true}
+      actor_id:   {required: true}
+      email:      {type: string}
+      quota:      {type: int}
+      bytes_used: {type: int64}
+      score:      {type: float64}
+      active:     {type: bool}
+      created_at: {type: time}
+      ttl:        {type: duration}
+`))
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = generate(&buf, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		Types: true, Fields: true, Builders: true,
+	})
+	require.NoError(t, err)
+
+	src := buf.String()
+	// Each declared type must produce a matching Go-typed setter.
+	assert.Contains(t, src, "SetEmail(v string)", "type: string → string setter")
+	assert.Contains(t, src, "SetQuota(v int)", "type: int → int setter")
+	assert.Contains(t, src, "SetBytesUsed(v int64)", "type: int64 → int64 setter")
+	assert.Contains(t, src, "SetScore(v float64)", "type: float64 → float64 setter")
+	assert.Contains(t, src, "SetActive(v bool)", "type: bool → bool setter")
+	assert.Contains(t, src, "SetCreatedAt(v time.Time)", "type: time → time.Time setter")
+	assert.Contains(t, src, "SetTtl(v time.Duration)", "type: duration → time.Duration setter")
+	// The any fallback must not appear for a typed custom field.
+	assert.NotContains(t, src, "SetEmail(v any)", "custom fields must never emit `any` when typed")
+
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "typed.go", src, parser.AllErrors)
+	require.NoError(t, parseErr, "generated source must parse as valid Go:\n%s", src)
+}
+
+// TestGenerate_Builders_DefaultTypeString confirms that an optional
+// custom field WITHOUT an explicit `type:` annotation emits a
+// `Set<Name>(v string)` setter — the documented default (B-01).
+func TestGenerate_Builders_DefaultTypeString(t *testing.T) {
+	t.Parallel()
+	tax, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+categories:
+  write: [user_create]
+events:
+  user_create:
+    fields:
+      outcome:  {required: true}
+      actor_id: {required: true}
+      nickname: {}
+`))
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	err = generate(&buf, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		Types: true, Fields: true, Builders: true,
+	})
+	require.NoError(t, err)
+
+	src := buf.String()
+	assert.Contains(t, src, "SetNickname(v string)",
+		"custom field with no `type:` defaults to string")
+	assert.NotContains(t, src, "SetNickname(v any)",
+		"the old `any` default is the #575 gap this issue closes")
+}
+
+// TestGenerate_Builders_FieldsGodocContract verifies the generated
+// `Fields()` method carries the no-mutation contract note (B-16).
+func TestGenerate_Builders_FieldsGodocContract(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
+	var buf bytes.Buffer
+	err := generate(&buf, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		Types: true, Builders: true,
+	})
+	require.NoError(t, err)
+	src := buf.String()
+	assert.Contains(t, src, "Callers MUST NOT mutate",
+		"Fields() godoc must state the no-mutation contract")
+	// The godoc wraps across lines — check the unique phrase that
+	// does not break mid-identifier.
+	assert.Contains(t, src, "ownership via the [audit.FieldsDonor] fast path",
+		"Fields() godoc must cite the ownership transfer contract")
+}
+
+// TestGenerate_Builders_StandardSettersExplicit verifies that
+// -standard-setters=explicit trims the generated output to only the
+// reserved standard fields that appear in the taxonomy's `fields:`
+// map — B-38.
+func TestGenerate_Builders_StandardSettersExplicit(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
+
+	var bufExplicit, bufAll bytes.Buffer
+	err := generate(&bufExplicit, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		StandardSettersMode: "explicit",
+		Types:               true, Builders: true,
+	})
+	require.NoError(t, err)
+	err = generate(&bufAll, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		StandardSettersMode: "all",
+		Types:               true, Builders: true,
+	})
+	require.NoError(t, err)
+
+	explicit := bufExplicit.String()
+	all := bufAll.String()
+
+	// Reserved fields NOT declared in the taxonomy's fields: map must
+	// be absent in explicit mode.
+	assert.NotContains(t, explicit, "SetDestPort(v int)",
+		"explicit mode omits setters for reserved fields not in the taxonomy")
+	// Same reserved field IS present in `all` mode.
+	assert.Contains(t, all, "SetDestPort(v int)",
+		"all mode retains setters for every reserved field")
+	// Explicit mode is noticeably shorter than all mode.
+	assert.Less(t, len(explicit), len(all),
+		"explicit mode must trim generator output")
+
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "explicit.go", explicit, parser.AllErrors)
+	require.NoError(t, parseErr, "explicit output must parse as valid Go")
+}
+
+// TestGenerate_Builders_StandardSettersAll_Default confirms the
+// default behaviour (-standard-setters=all) is unchanged when the
+// mode field is empty (backwards-compatible with pre-#575
+// generateOptions) — B-38.
+func TestGenerate_Builders_StandardSettersAll_Default(t *testing.T) {
+	t.Parallel()
+	tax := loadTestTaxonomy(t, filepath.Join("testdata", "valid_taxonomy.yaml"))
+	var buf bytes.Buffer
+	err := generate(&buf, *tax, generateOptions{
+		Package: "myapp", Header: "// test",
+		Types: true, Builders: true,
+		// StandardSettersMode left empty — should behave like "all".
+	})
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "SetDestPort(v int)",
+		"empty StandardSettersMode must default to all-setters behaviour")
+}
+
+// TestParseTaxonomyYAML_UnknownFieldType_Rejected verifies the
+// parse-time error when a custom field declares an unsupported type.
+// The error message MUST list the accepted set (matches #447 UX).
+func TestParseTaxonomyYAML_UnknownFieldType_Rejected(t *testing.T) {
+	t.Parallel()
+	_, err := audit.ParseTaxonomyYAML([]byte(`
+version: 1
+categories:
+  write: [user_create]
+events:
+  user_create:
+    fields:
+      outcome:  {required: true}
+      actor_id: {required: true}
+      bogus:    {type: strng}
+`))
+	require.Error(t, err)
+	msg := err.Error()
+	assert.Contains(t, msg, `unknown type "strng"`)
+	assert.Contains(t, msg, `bogus`)
+	// Valid set listed.
+	for _, ty := range []string{"string", "int", "int64", "float64", "bool", "time", "duration"} {
+		assert.Contains(t, msg, ty, "valid type %q must appear in error", ty)
+	}
 }

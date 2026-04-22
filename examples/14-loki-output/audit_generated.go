@@ -317,7 +317,20 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *AuthFailureEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *AuthFailureEvent) Description() string { return "" }
@@ -410,7 +423,7 @@ type HealthCheckEvent struct {
 }
 
 // NewHealthCheckEvent creates a EventHealthCheck event with required fields.
-func NewHealthCheckEvent(actorID string, component any, outcome string) *HealthCheckEvent {
+func NewHealthCheckEvent(actorID string, component string, outcome string) *HealthCheckEvent {
 	return &HealthCheckEvent{fields: audit.Fields{
 		FieldActorID:   actorID,
 		FieldComponent: component,
@@ -596,7 +609,20 @@ func (e *HealthCheckEvent) SetUserAgent(v string) *HealthCheckEvent {
 func (e *HealthCheckEvent) EventType() string { return EventHealthCheck }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *HealthCheckEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *HealthCheckEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *HealthCheckEvent) Description() string { return "" }
@@ -688,7 +714,7 @@ type PermissionDeniedEvent struct {
 }
 
 // NewPermissionDeniedEvent creates a EventPermissionDenied event with required fields.
-func NewPermissionDeniedEvent(actorID string, outcome string, resource any) *PermissionDeniedEvent {
+func NewPermissionDeniedEvent(actorID string, outcome string, resource string) *PermissionDeniedEvent {
 	return &PermissionDeniedEvent{fields: audit.Fields{
 		FieldActorID:  actorID,
 		FieldOutcome:  outcome,
@@ -874,7 +900,20 @@ func (e *PermissionDeniedEvent) SetUserAgent(v string) *PermissionDeniedEvent {
 func (e *PermissionDeniedEvent) EventType() string { return EventPermissionDenied }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *PermissionDeniedEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *PermissionDeniedEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *PermissionDeniedEvent) Description() string { return "" }
@@ -976,7 +1015,7 @@ func NewUserCreateEvent(actorID string, outcome string) *UserCreateEvent {
 }
 
 // SetResourceID sets the FieldResourceID field.
-func (e *UserCreateEvent) SetResourceID(v any) *UserCreateEvent {
+func (e *UserCreateEvent) SetResourceID(v string) *UserCreateEvent {
 	e.fields[FieldResourceID] = v
 	return e
 }
@@ -1159,7 +1198,20 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *UserCreateEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *UserCreateEvent) Description() string { return "" }
@@ -1261,7 +1313,7 @@ func NewUserUpdateEvent(actorID string, outcome string) *UserUpdateEvent {
 }
 
 // SetResourceID sets the FieldResourceID field.
-func (e *UserUpdateEvent) SetResourceID(v any) *UserUpdateEvent {
+func (e *UserUpdateEvent) SetResourceID(v string) *UserUpdateEvent {
 	e.fields[FieldResourceID] = v
 	return e
 }
@@ -1444,7 +1496,20 @@ func (e *UserUpdateEvent) SetUserAgent(v string) *UserUpdateEvent {
 func (e *UserUpdateEvent) EventType() string { return EventUserUpdate }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserUpdateEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *UserUpdateEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *UserUpdateEvent) Description() string { return "" }

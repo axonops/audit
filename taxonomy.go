@@ -143,6 +143,16 @@ type EventDef struct {
 	// Read-only after construction — consumers MUST NOT modify this map.
 	FieldLabels map[string]map[string]struct{}
 
+	// FieldTypes maps custom (non-reserved) field names to their Go
+	// type name as declared in the taxonomy YAML `type:` annotation
+	// (e.g., "string", "int", "int64", "float64", "bool", "time.Time",
+	// "time.Duration"). Empty or missing entry defaults to "string".
+	// Reserved standard fields are NOT in this map — their Go type
+	// is authoritative from [standardFieldGoType]. Consumed by
+	// [cmd/audit-gen] to emit typed `Set<Field>(v Type)` setters.
+	// Read-only after construction.
+	FieldTypes map[string]string
+
 	// Pre-computed fields populated by precomputeTaxonomy at
 	// registration time. These are read-only after construction
 	// and eliminate per-event allocations in validation and
@@ -428,6 +438,12 @@ func deepCopyEventDef(ev *EventDef) *EventDef {
 		cpEv.fieldAnnotations = make(map[string][]string, len(ev.fieldAnnotations))
 		for field, labels := range ev.fieldAnnotations {
 			cpEv.fieldAnnotations[field] = copyStrings(labels)
+		}
+	}
+	if ev.FieldTypes != nil {
+		cpEv.FieldTypes = make(map[string]string, len(ev.FieldTypes))
+		for k, v := range ev.FieldTypes {
+			cpEv.FieldTypes[k] = v
 		}
 	}
 	return cpEv

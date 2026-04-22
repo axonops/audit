@@ -33,14 +33,21 @@ var validKey = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // generateOptions controls which constant groups are emitted.
 type generateOptions struct {
-	Package    string
-	Header     string
-	InputFile  string
-	Types      bool
-	Fields     bool
-	Categories bool
-	Labels     bool
-	Builders   bool
+	Package   string
+	Header    string
+	InputFile string
+	// StandardSettersMode controls how reserved standard field setters
+	// are emitted on generated builders. "all" (default) emits setters
+	// for every reserved standard field on every builder. "explicit"
+	// emits setters only for reserved fields that appear in the event's
+	// taxonomy fields map — trims IDE autocomplete noise and cuts
+	// generator output by ~80 % for small event schemas (B-38).
+	StandardSettersMode string
+	Types               bool
+	Fields              bool
+	Categories          bool
+	Labels              bool
+	Builders            bool
 }
 
 // constantDef represents a single generated constant.
@@ -230,7 +237,7 @@ func buildMetadata(data *templateData, tax audit.Taxonomy, opts generateOptions)
 		len(data.CategoryEvents) > 0
 
 	if opts.Builders {
-		data.Builders = collectBuilders(tax)
+		data.Builders = collectBuilders(tax, opts)
 		data.HasBuilders = len(data.Builders) > 0
 		for i := range data.Builders {
 			for _, c := range data.Builders[i].Categories {
@@ -484,7 +491,7 @@ func toFieldConsts(fields []string) []string {
 }
 
 // collectBuilders creates typed builder definitions for each event type.
-func collectBuilders(tax audit.Taxonomy) []builderDef {
+func collectBuilders(tax audit.Taxonomy, opts generateOptions) []builderDef {
 	keys := sortedKeys(tax.Events)
 	builders := make([]builderDef, 0, len(keys))
 	for _, name := range keys {
@@ -492,13 +499,13 @@ func collectBuilders(tax audit.Taxonomy) []builderDef {
 		if def == nil {
 			continue
 		}
-		b := buildOneBuilder(name, def, tax)
+		b := buildOneBuilder(name, def, tax, opts)
 		builders = append(builders, b)
 	}
 	return builders
 }
 
-func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) builderDef {
+func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy, opts generateOptions) builderDef {
 	pascal := toPascalCase(name)
 	b := builderDef{
 		StructName:   pascal + "Event",
@@ -520,19 +527,12 @@ func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) build
 	}
 
 	// Reserved standard field setters — for fields not already in
-	// Required or Optional.
-	handled := make(map[string]struct{}, len(req)+len(opt))
-	for _, f := range req {
-		handled[f] = struct{}{}
-	}
-	for _, f := range opt {
-		handled[f] = struct{}{}
-	}
-	for _, f := range audit.ReservedStandardFieldNames() {
-		if _, ok := handled[f]; ok {
-			continue
-		}
-		b.StandardSetters = append(b.StandardSetters, makeBuilderField(f, def, tax))
+	// Required or Optional. Skipped entirely when StandardSettersMode
+	// is "explicit": in that mode, only taxonomy-declared reserved
+	// fields produce setters (via the Required/Optional loops above),
+	// trimming ~80 % of generator output for small event schemas (B-38).
+	if opts.StandardSettersMode != "explicit" {
+		b.StandardSetters = collectStandardSetters(req, opt, def, tax)
 	}
 
 	// Categories.
@@ -548,11 +548,43 @@ func buildOneBuilder(name string, def *audit.EventDef, tax audit.Taxonomy) build
 	return b
 }
 
+// collectStandardSetters returns builderFields for every reserved
+// standard field NOT already declared in the event's required/optional
+// fields map. Extracted from buildOneBuilder to keep cognitive
+// complexity under the linter threshold.
+func collectStandardSetters(req, opt []string, def *audit.EventDef, tax audit.Taxonomy) []builderField {
+	handled := make(map[string]struct{}, len(req)+len(opt))
+	for _, f := range req {
+		handled[f] = struct{}{}
+	}
+	for _, f := range opt {
+		handled[f] = struct{}{}
+	}
+	reserved := audit.ReservedStandardFieldNames()
+	out := make([]builderField, 0, len(reserved))
+	for _, f := range reserved {
+		if _, ok := handled[f]; ok {
+			continue
+		}
+		out = append(out, makeBuilderField(f, def, tax))
+	}
+	return out
+}
+
 func makeBuilderField(fieldName string, def *audit.EventDef, tax audit.Taxonomy) builderField {
 	pascal := toPascalCase(fieldName)
-	goType := "any"
-	if audit.IsReservedStandardField(fieldName) {
+	// Resolve the Go type for the setter parameter. Precedence:
+	//   1. Reserved standard fields: library-authoritative table.
+	//   2. Custom field with YAML `type:` annotation: taxonomy declared type.
+	//   3. Default: "string" (the documented default when no type is declared).
+	var goType string
+	switch {
+	case audit.IsReservedStandardField(fieldName):
 		goType = standardFieldGoType(fieldName)
+	case def != nil && def.FieldTypes[fieldName] != "":
+		goType = def.FieldTypes[fieldName]
+	default:
+		goType = "string"
 	}
 	bf := builderField{
 		GoName:     pascal,

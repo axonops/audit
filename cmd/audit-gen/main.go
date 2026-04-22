@@ -60,12 +60,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if code >= 0 {
 		return code
 	}
-	return execute(cfg, stdout, stderr)
+	return execute(&cfg, stdout, stderr)
 }
 
 // cliConfig holds parsed CLI configuration.
 type cliConfig struct {
 	input, output, pkg, header string
+	standardSetters            string // "all" | "explicit"
 	types, fields, categories  bool
 	labels, builders           bool
 }
@@ -89,6 +90,9 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		builders   = fs.Bool("builders", true, "generate typed event builder structs")
 		header     = fs.String("header", "", "file header (default: auto-generated DO NOT EDIT comment)")
 		showVer    = fs.Bool("version", false, "print version and exit")
+		stdSetters = fs.String("standard-setters", "all",
+			"reserved standard field setters: all (every builder gets every reserved setter) "+
+				"| explicit (only taxonomy-declared reserved fields produce setters)")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -111,9 +115,15 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		return cliConfig{}, exitInvalidArgs
 	}
 
+	if *stdSetters != "all" && *stdSetters != "explicit" {
+		_, _ = fmt.Fprintf(stderr, "audit-gen: -standard-setters=%q invalid (valid: all, explicit)\n", *stdSetters)
+		return cliConfig{}, exitInvalidArgs
+	}
+
 	return cliConfig{
 		input: *input, output: *output, pkg: *pkg, header: *header,
-		types: *types, fields: *fields, categories: *categories,
+		standardSetters: *stdSetters,
+		types:           *types, fields: *fields, categories: *categories,
 		labels: *labels, builders: *builders,
 	}, exitCodeContinue
 }
@@ -121,7 +131,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 // maxInputSize is the maximum taxonomy file size (matches audit.MaxTaxonomyInputSize).
 const maxInputSize = 1 << 20 // 1 MiB
 
-func execute(cfg cliConfig, stdout, stderr io.Writer) int {
+func execute(cfg *cliConfig, stdout, stderr io.Writer) int {
 	info, err := os.Stat(cfg.input)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: read input: %v\n", err)
@@ -145,14 +155,15 @@ func execute(cfg cliConfig, stdout, stderr io.Writer) int {
 	}
 
 	opts := generateOptions{
-		Package:    cfg.pkg,
-		Header:     cfg.header,
-		InputFile:  filepath.Base(cfg.input),
-		Types:      cfg.types,
-		Fields:     cfg.fields,
-		Categories: cfg.categories,
-		Labels:     cfg.labels,
-		Builders:   cfg.builders,
+		Package:             cfg.pkg,
+		Header:              cfg.header,
+		InputFile:           filepath.Base(cfg.input),
+		StandardSettersMode: cfg.standardSetters,
+		Types:               cfg.types,
+		Fields:              cfg.fields,
+		Categories:          cfg.categories,
+		Labels:              cfg.labels,
+		Builders:            cfg.builders,
 	}
 	if cfg.header != "" {
 		opts.InputFile = "" // custom header overrides auto-generated one

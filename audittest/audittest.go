@@ -26,9 +26,18 @@ import (
 type Option func(*config)
 
 type config struct {
-	extraOpts []audit.Option
-	async     bool // opt out of default synchronous delivery
-	verbose   bool // re-enable diagnostic logs (silenced by default)
+	extraOpts     []audit.Option
+	excludeLabels []excludeLabelsEntry
+	async         bool // opt out of default synchronous delivery
+	verbose       bool // re-enable diagnostic logs (silenced by default)
+}
+
+// excludeLabelsEntry records a single [WithExcludeLabels] call so the
+// labels can be applied to the recorder via [audit.WithNamedOutput]
+// inside [newTestLogger].
+type excludeLabelsEntry struct {
+	outputName string
+	labels     []string
 }
 
 // WithConfig applies a [audit.Config] struct to the test auditor.
@@ -81,6 +90,38 @@ func WithAuditOption(opt audit.Option) Option {
 // debugging auditor behaviour in tests.
 func WithVerbose() Option {
 	return func(c *config) { c.verbose = true }
+}
+
+// WithExcludeLabels applies sensitivity-label exclusion to the test
+// [Recorder], mirroring [audit.WithExcludeLabels] on a named output.
+// Fields whose taxonomy labels match any of the given labels are
+// stripped before delivery to the recorder.
+//
+// Use this to unit-test compliance workflows — e.g., verify that a
+// "pii"-labelled field does not appear in an output configured for
+// an external analytics pipeline. The taxonomy passed to [New] MUST
+// define a sensitivity section covering every label, else [audit.New]
+// returns an error and the test fails at construction.
+//
+// outputName MUST match the recorder's name — "recorder" by default,
+// or whatever was passed to [NewNamedRecorder]. The parameter is
+// explicit for symmetry with [audit.WithNamedOutput] and to leave
+// room for future multi-output audittest expansion. A mismatch causes
+// [New] / [NewQuick] to call tb.Fatalf.
+//
+// Multiple calls accumulate: WithExcludeLabels("recorder", "pii"),
+// WithExcludeLabels("recorder", "financial") strips both. Passing no
+// labels (WithExcludeLabels("recorder")) is a no-op at the strip
+// level — it still engages the named-output plumbing branch but
+// no fields are stripped. Framework fields are never stripped, per
+// [audit.WithExcludeLabels].
+func WithExcludeLabels(outputName string, labels ...string) Option {
+	return func(c *config) {
+		c.excludeLabels = append(c.excludeLabels, excludeLabelsEntry{
+			outputName: outputName,
+			labels:     labels,
+		})
+	}
 }
 
 // New creates a test auditor with an in-memory [Recorder]
@@ -146,8 +187,31 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.A
 	auditOpts := []audit.Option{
 		audit.WithQueueSize(100), // small buffer — recorder has no I/O cost
 		audit.WithTaxonomy(tax),
-		audit.WithOutputs(rec),
 		audit.WithMetrics(met),
+	}
+
+	// Wire the recorder. When any per-output option is present (e.g.
+	// WithExcludeLabels), we must use audit.WithNamedOutput — the two
+	// ways of registering outputs are mutually exclusive. Otherwise,
+	// audit.WithOutputs stays the path to preserve observable parity
+	// with callers that never touch per-output options.
+	if len(c.excludeLabels) > 0 {
+		var labels []string
+		for _, el := range c.excludeLabels {
+			if el.outputName != rec.Name() {
+				// Fatalf on a real *testing.T performs runtime.Goexit so
+				// execution halts here; tb implementations that do not
+				// Goexit will fall through. Return explicitly to avoid
+				// partial registration under those TBs.
+				tb.Fatalf("audittest: WithExcludeLabels targets output %q but the test recorder is named %q",
+					el.outputName, rec.Name())
+				return nil, rec, met
+			}
+			labels = append(labels, el.labels...)
+		}
+		auditOpts = append(auditOpts, audit.WithNamedOutput(rec, audit.WithExcludeLabels(labels...)))
+	} else {
+		auditOpts = append(auditOpts, audit.WithOutputs(rec))
 	}
 	if !c.verbose {
 		auditOpts = append(auditOpts, audit.WithDiagnosticLogger(
@@ -161,7 +225,11 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.A
 
 	auditor, err := audit.New(auditOpts...)
 	if err != nil {
+		// See the WithExcludeLabels Fatalf above — return explicitly so
+		// non-Goexit TBs do not proceed to register Cleanup against a
+		// nil auditor.
 		tb.Fatalf("audittest: create auditor: %v", err)
+		return nil, rec, met
 	}
 
 	tb.Cleanup(func() { _ = auditor.Close() })

@@ -305,3 +305,45 @@ func TestAuditEvent_EmptyEventType_WrapsErrUnknownEventType(t *testing.T) {
 	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.ErrorIs(t, err, audit.ErrValidation)
 }
+
+// TestValidationError_Unwrap_ReturnsIndependentSlice verifies that
+// [audit.ValidationError.Unwrap] returns a defensive copy — mutating
+// the returned slice does NOT affect subsequent Unwrap calls or the
+// underlying ValidationError. Before #590 Unwrap returned a shared
+// slice over the internal array, so a caller that retained and mutated
+// the result would corrupt future errors.Is / errors.As dispatches.
+func TestValidationError_Unwrap_ReturnsIndependentSlice(t *testing.T) {
+	t.Parallel()
+
+	out := testhelper.NewMockOutput("test")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Trigger a ValidationError via an unknown event type.
+	emitErr := auditor.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
+	require.Error(t, emitErr)
+
+	var vErr *audit.ValidationError
+	require.True(t, errors.As(emitErr, &vErr), "emitErr must be a *ValidationError")
+
+	// Baseline: errors.Is matches ErrValidation before any mutation.
+	require.True(t, errors.Is(vErr, audit.ErrValidation))
+
+	// Mutate the first returned slice — zero it out.
+	first := vErr.Unwrap()
+	require.Len(t, first, 2, "Unwrap should return a 2-element slice")
+	first[0] = nil
+	first[1] = nil
+
+	// Unwrap called again must still return the original sentinels —
+	// the first Unwrap returned a defensive copy, so our mutation
+	// cannot have affected the underlying error.
+	second := vErr.Unwrap()
+	assert.NotNil(t, second[0], "second Unwrap[0] must not be nil (first Unwrap returned a copy)")
+	assert.True(t, errors.Is(vErr, audit.ErrValidation),
+		"errors.Is must still match after a caller mutates a previous Unwrap result")
+}

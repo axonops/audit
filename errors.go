@@ -17,6 +17,7 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Sentinel errors returned by the audit package.
@@ -190,8 +191,14 @@ func (e *ValidationError) Error() string { return e.msg }
 // Unwrap returns the sentinel errors that this validation error wraps.
 // Always includes [ErrValidation]; also includes the specific sentinel
 // when set.
+//
+// The returned slice is a defensive copy — callers may retain or mutate
+// it without affecting the [ValidationError] or subsequent Unwrap
+// calls. The copy is a 16-byte allocation on the error-discrimination
+// path; Unwrap is only invoked by [errors.Is] / [errors.As], which are
+// off the audit hot path (#590).
 func (e *ValidationError) Unwrap() []error {
-	return e.wrapped[:]
+	return slices.Clone(e.wrapped[:])
 }
 
 // newValidationError creates a [ValidationError] with the given

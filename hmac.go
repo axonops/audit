@@ -173,6 +173,18 @@ func (s *hmacState) computeHMACFast(payload []byte) []byte {
 // ComputeHMAC computes the HMAC for the given payload and returns the
 // lowercase hex-encoded result. The algorithm must be one of the
 // supported NIST-approved values (see [SupportedHMACAlgorithms]).
+//
+// ComputeHMAC returns a non-nil error in three cases:
+//
+//   - len(payload) == 0 — the empty payload is rejected to prevent
+//     "empty event was signed" ambiguity.
+//   - len(salt) == 0 — the empty salt is rejected because an HMAC
+//     with empty key collapses to a plain hash (no authentication).
+//   - algorithm not in [SupportedHMACAlgorithms] — unknown algorithms
+//     are rejected rather than silently falling back.
+//
+// The returned string is always lowercase hex, matching what
+// [VerifyHMAC] accepts on the receiving side.
 func ComputeHMAC(payload, salt []byte, algorithm string) (string, error) {
 	if len(payload) == 0 {
 		return "", errors.New("audit: hmac payload must not be empty")

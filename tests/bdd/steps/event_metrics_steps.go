@@ -208,7 +208,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			Address:    "localhost:5514",
 			Facility:   "local0",
 			BufferSize: bufSize,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("create syslog: %w", err)
 		}

@@ -217,7 +217,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			Network: network,
 			Address: address,
 			TLSCA:   filepath.Join(certs, "invalid.crt"),
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -233,7 +233,7 @@ func registerSyslogWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 			TLSCA:   filepath.Join(certs, "ca.crt"),
 			TLSCert: filepath.Join(certs, "client.crt"),
 			// No TLSKey
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -357,7 +357,7 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			TLSCA:   filepath.Join(certs, "ca.crt"),
 			TLSKey:  filepath.Join(certs, "client.key"),
 			// No TLSCert
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -388,7 +388,7 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 			Network:  "tcp",
 			Address:  "localhost:5514",
 			Facility: facility,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}

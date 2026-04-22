@@ -517,7 +517,7 @@ func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bo
 		s, err := syslog.New(&syslog.Config{
 			Network: "tcp", Address: "localhost:5514",
 			Facility: "local0", AppName: "bdd-fanout",
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("create syslog output: %w", err)
 		}
@@ -726,7 +726,7 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 	syslogOut, err := syslog.New(&syslog.Config{
 		Network: "tcp", Address: "localhost:5514",
 		Facility: "local0", AppName: "bdd-triple",
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create syslog output: %w", err)
 	}

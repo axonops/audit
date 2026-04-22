@@ -46,7 +46,7 @@ func TestFileOutput_Rotation(t *testing.T) {
 		MaxSizeMB:  1, // 1 MB to trigger rotation quickly
 		MaxBackups: 3,
 		MaxAgeDays: 30,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Write >1MB of data to trigger at least one rotation.
@@ -82,7 +82,7 @@ func TestFileOutput_Compression(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Write >1MB to trigger rotation.
@@ -127,7 +127,7 @@ func TestFileOutput_CompressionDisabled(t *testing.T) {
 		MaxBackups: 3,
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Write >1MB to trigger rotation.
@@ -158,7 +158,7 @@ func TestFileOutput_MaxBackups(t *testing.T) {
 		MaxBackups: 2, // Keep only 2 backups
 		MaxAgeDays: 30,
 		Compress:   &compress,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Write enough data for several rotations (~5MB).
@@ -189,7 +189,7 @@ func TestFileOutput_ConcurrentWrites(t *testing.T) {
 
 	// Explicit buffer size documents intent: 50 goroutines × 100
 	// events = 5000 events; buffer must absorb the burst.
-	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

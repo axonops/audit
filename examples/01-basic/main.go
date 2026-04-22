@@ -29,9 +29,13 @@ import (
 func main() {
 	// Create an auditor with a development taxonomy and stdout output.
 	// DevTaxonomy accepts any event type with any fields — not for production.
+	stdout, err := audit.NewStdout()
+	if err != nil {
+		log.Fatalf("create stdout output: %v", err)
+	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
-		audit.WithOutputs(audit.Stdout()),
+		audit.WithOutputs(stdout),
 	)
 	if err != nil {
 		log.Fatalf("create auditor: %v", err)

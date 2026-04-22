@@ -184,12 +184,18 @@ func resolvePath(path string) (string, error) {
 // then starts a background goroutine for async event delivery.
 // The fileMetrics parameter is optional (may be nil).
 //
-// Unlike other output constructors (syslog, webhook, loki) which take
-// *Config, New takes Config by value. This is intentional: file Config
-// has no pointer fields (except Compress), so the value copy prevents
-// caller mutation without requiring an explicit defensive copy inside
-// New.
-func New(cfg Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
+// Callers MUST NOT mutate cfg.Compress via the pointer after New
+// returns — the defensive copy is shallow, so caller and Output share
+// the same *bool. Mutating other fields after New is safe; they are
+// copied by value.
+func New(cfg *Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
+	if cfg == nil {
+		return nil, fmt.Errorf("audit: file config must not be nil")
+	}
+	// Copy config so validation/defaults don't mutate the caller's struct.
+	cfgCopy := *cfg
+	cfg = &cfgCopy
+
 	o := resolveOptions(opts)
 	logger := o.logger
 
@@ -221,8 +227,8 @@ func New(cfg Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //n
 			"permissions", fmt.Sprintf("%04o", perm))
 	}
 
-	applyFileDefaults(&cfg)
-	if validErr := validateFileLimits(&cfg); validErr != nil {
+	applyFileDefaults(cfg)
+	if validErr := validateFileLimits(cfg); validErr != nil {
 		return nil, validErr
 	}
 

@@ -38,7 +38,7 @@ import (
 // goroutines.
 func TestFile_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 	dir := t.TempDir()
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:       filepath.Join(dir, "race.log"),
 		BufferSize: 1000,
 	}, nil)

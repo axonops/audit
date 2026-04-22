@@ -209,7 +209,7 @@ func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, l
 	_ = tmpFile.Close()
 	tc.FilePaths["default"] = tmpFile.Name()
 
-	fileOut, err := file.New(file.Config{
+	fileOut, err := file.New(&file.Config{
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,
@@ -262,7 +262,7 @@ func createFileAndLokiAuditorWithExclusion(tc *AuditTestContext, excludeLabel st
 	_ = tmpFile.Close()
 	tc.FilePaths["default"] = tmpFile.Name()
 
-	fileOut, err := file.New(file.Config{
+	fileOut, err := file.New(&file.Config{
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,
@@ -304,7 +304,7 @@ func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 	_ = tmpFile.Close()
 	tc.FilePaths["default"] = tmpFile.Name()
 
-	fileOut, err := file.New(file.Config{
+	fileOut, err := file.New(&file.Config{
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,

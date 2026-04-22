@@ -20,7 +20,7 @@
 //
 // Create a file output with [New]:
 //
-//	out, err := file.New(file.Config{
+//	out, err := file.New(&file.Config{
 //	    Path:       "/var/log/audit/events.log",
 //	    MaxSizeMB:  100,
 //	    MaxBackups: 5,

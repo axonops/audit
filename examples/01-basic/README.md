@@ -8,10 +8,10 @@ The minimum viable audit event: create an auditor, emit an event, and see
 the JSON output. No YAML files, no code generation, no configuration —
 just Go code.
 
-This example uses `DevTaxonomy()` and `Stdout()` so you can see how the
-library works in a playground. From the next example onwards, you'll
-define your events and outputs in YAML files instead — that's how you'd
-use audit in a real application.
+This example uses `DevTaxonomy()` and `NewStdout()` so you can see how
+the library works in a playground. From the next example onwards,
+you'll define your events and outputs in YAML files instead — that's
+how you'd use audit in a real application.
 
 ## What You'll Learn
 
@@ -39,16 +39,19 @@ on the listed event types. It exists so you can experiment without
 writing YAML or worrying about field validation:
 
 ```go
+stdout, err := audit.NewStdout()
+// handle err …
 auditor, err := audit.New(
     audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
-    audit.WithOutputs(audit.Stdout()),
+    audit.WithOutputs(stdout),
 )
 ```
 
 `New()` takes functional options. `WithTaxonomy()` tells the auditor
 what events are valid. `WithOutputs()` tells it where to send them.
-`Stdout()` writes JSON to stdout — no file rotation, no network, no
-configuration.
+`NewStdout()` constructs a JSON-to-stdout output — no file rotation,
+no network, no configuration. Pair it with `NewStderr()` or
+`NewWriter(w io.Writer)` when you need different destinations.
 
 In production, you'd define your taxonomy in a YAML file with required
 fields and severity levels, then use `audit-gen` to generate type-safe

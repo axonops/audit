@@ -26,12 +26,39 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Stdout()
+// NewStdout / NewStderr / NewWriter
 // ---------------------------------------------------------------------------
 
-func TestStdout_ReturnsWorkingOutput(t *testing.T) {
+func TestNewStdout_ReturnsWorkingOutput(t *testing.T) {
 	t.Parallel()
-	out := audit.Stdout()
+	out, err := audit.NewStdout()
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, "stdout", out.Name())
+}
+
+func TestNewStderr_ReturnsWorkingOutput(t *testing.T) {
+	t.Parallel()
+	out, err := audit.NewStderr()
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, "stdout", out.Name())
+}
+
+func TestNewWriter_WithBuffer(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	out, err := audit.NewWriter(&buf)
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	require.NoError(t, out.Write([]byte("hello\n")))
+	assert.Equal(t, "hello\n", buf.String())
+}
+
+func TestNewWriter_NilDefaultsToStdout(t *testing.T) {
+	t.Parallel()
+	out, err := audit.NewWriter(nil)
+	require.NoError(t, err)
 	require.NotNil(t, out)
 	assert.Equal(t, "stdout", out.Name())
 }

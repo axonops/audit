@@ -60,11 +60,12 @@
 //	    "actor_id", "alice",
 //	))
 //
-// For exploration without YAML files, use [DevTaxonomy] and [Stdout]:
+// For exploration without YAML files, use [DevTaxonomy] and [NewStdout]:
 //
+//	stdout, _ := audit.NewStdout()
 //	auditor, err := audit.New(
 //	    audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
-//	    audit.WithOutputs(audit.Stdout()),
+//	    audit.WithOutputs(stdout),
 //	)
 //
 // See the progressive examples in the examples/ directory for complete

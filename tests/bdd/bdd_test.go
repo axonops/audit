@@ -30,8 +30,18 @@ import (
 	"github.com/cucumber/godog/colors"
 	"go.uber.org/goleak"
 
+	"github.com/axonops/audit"
 	"github.com/axonops/audit/tests/bdd/steps"
 )
+
+// init registers the stdout output factory via the public API. The
+// core `audit` package's stdout init() was dropped in #578 to
+// eliminate hidden global mutation; blank-importing `audit/outputs`
+// from core tests would create a cross-module cycle (audit <->
+// outputs), so we register via the public API here instead.
+func init() {
+	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+}
 
 func TestFeatures(t *testing.T) {
 	defer goleak.VerifyNone(t,

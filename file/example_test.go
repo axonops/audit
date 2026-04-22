@@ -31,7 +31,7 @@ func ExampleNew() {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:        filepath.Join(dir, "audit.log"),
 		MaxSizeMB:   100,
 		MaxBackups:  5,

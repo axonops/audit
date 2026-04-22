@@ -54,7 +54,7 @@ func TestFileOutput_Property_ConservationInvariant(t *testing.T) {
 		// Buffer larger than the maximum N so no event is ever dropped
 		// due to backpressure. This isolates the conservation property
 		// from the drop policy.
-		out, err := file.New(file.Config{
+		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: 1000, // >> max N of 500
 		}, nil)
@@ -124,7 +124,7 @@ func TestFileOutput_Property_CopySafety(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "audit.log")
 
-		out, err := file.New(file.Config{Path: path}, nil)
+		out, err := file.New(&file.Config{Path: path}, nil)
 		require.NoError(rt, err)
 
 		// Capture the original content before Write copies and enqueues it.
@@ -170,7 +170,7 @@ func TestFileOutput_Property_DropConservation(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "audit.log")
 
-		out, err := file.New(file.Config{
+		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: bufSize,
 		}, nil)
@@ -207,7 +207,7 @@ func TestFileOutput_Property_ContentIntegrity(t *testing.T) {
 
 		// Large buffer guarantees no drops, so every submitted event
 		// must appear in the file.
-		out, err := file.New(file.Config{
+		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: 10_000,
 		}, nil)

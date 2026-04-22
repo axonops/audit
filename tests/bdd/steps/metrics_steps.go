@@ -86,7 +86,7 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 		path := filepath.Join(dir, "metrics.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}

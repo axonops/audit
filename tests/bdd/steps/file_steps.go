@@ -115,7 +115,7 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		func() error { return writeToSymlinkFileOutput(tc) })
 	ctx.Step(`^I try to create a file output with empty path$`, func() error { return tryFileOutputWithPath(tc, "") })
 	ctx.Step(`^I try to create a file output with MaxSizeMB (\d+)$`, func(mb int) error {
-		out, err := file.New(file.Config{Path: "/tmp/test.log", MaxSizeMB: mb}, nil)
+		out, err := file.New(&file.Config{Path: "/tmp/test.log", MaxSizeMB: mb}, nil)
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -124,7 +124,7 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 	ctx.Step(`^I try to create a file output at "([^"]*)"$`, func(path string) error { return tryFileOutputWithPath(tc, path) })
 	ctx.Step(`^I try to create a file output with MaxBackups (\d+)$`, func(mb int) error {
-		out, err := file.New(file.Config{Path: "/tmp/test.log", MaxBackups: mb}, nil)
+		out, err := file.New(&file.Config{Path: "/tmp/test.log", MaxBackups: mb}, nil)
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -136,7 +136,7 @@ func registerFileWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		if dirErr != nil {
 			return dirErr
 		}
-		out, err := file.New(file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms}, nil)
+		out, err := file.New(&file.Config{Path: filepath.Join(dir, "test.log"), Permissions: perms}, nil)
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -314,7 +314,7 @@ func writeToSymlinkFileOutput(tc *AuditTestContext) error {
 	}
 	tc.SymlinkTargetPath = realPath
 
-	out, err := file.New(file.Config{Path: linkPath}, nil)
+	out, err := file.New(&file.Config{Path: linkPath}, nil)
 	if err != nil {
 		return fmt.Errorf("file.New unexpectedly failed at construction: %w", err)
 	}
@@ -349,7 +349,7 @@ func assertSymlinkTargetEmpty(tc *AuditTestContext) error {
 }
 
 func tryFileOutputWithPath(tc *AuditTestContext, path string) error {
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	if out != nil {
 		tc.AddCleanup(func() { _ = out.Close() })
 	}
@@ -518,7 +518,7 @@ func createFileAuditorImpl(tc *AuditTestContext, fileCfg file.Config, fileMetric
 	}
 	tc.FilePaths["default"] = fileCfg.Path
 
-	fileOut, err := file.New(fileCfg, fileMetrics)
+	fileOut, err := file.New(&fileCfg, fileMetrics)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

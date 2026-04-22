@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"syscall"
 )
 
@@ -170,8 +171,14 @@ func (e *SSRFBlockedError) Error() string { return e.msg }
 // Unwrap returns [ErrSSRFBlocked] so [errors.Is] matches the
 // sentinel. Returns a slice to match the [errors.Join] contract and
 // to mirror [ValidationError]'s shape for consistency.
+//
+// The returned slice is a defensive copy — callers may retain or mutate
+// it without affecting the [SSRFBlockedError] or subsequent Unwrap
+// calls. The copy is a 16-byte allocation on the error-discrimination
+// path; Unwrap is only invoked by [errors.Is] / [errors.As], which are
+// off the audit hot path (#590).
 func (e *SSRFBlockedError) Unwrap() []error {
-	return e.wrapped[:]
+	return slices.Clone(e.wrapped[:])
 }
 
 // newSSRFBlockedError constructs an [SSRFBlockedError] with the given

@@ -328,3 +328,39 @@ func TestCheckSSRFAddress_ScopedIPv6(t *testing.T) {
 	assert.NotErrorIs(t, err, audit.ErrSSRFBlocked,
 		"parse errors must NOT wrap ErrSSRFBlocked — they are a different failure class")
 }
+
+// TestSSRFBlockedError_Unwrap_ReturnsIndependentSlice verifies that
+// [audit.SSRFBlockedError.Unwrap] returns a defensive copy — mutating
+// the returned slice does NOT affect subsequent Unwrap calls or the
+// underlying SSRFBlockedError. Before #590 Unwrap returned a shared
+// slice over the internal array, so a caller that retained and mutated
+// the result would corrupt future errors.Is / errors.As dispatches.
+func TestSSRFBlockedError_Unwrap_ReturnsIndependentSlice(t *testing.T) {
+	t.Parallel()
+
+	// Trigger an SSRF rejection — loopback is unconditionally blocked.
+	err := audit.CheckSSRFIP(net.ParseIP("127.0.0.1"), false)
+	require.Error(t, err)
+
+	var sErr *audit.SSRFBlockedError
+	require.True(t, errors.As(err, &sErr), "err must be a *SSRFBlockedError")
+
+	// Baseline: errors.Is matches ErrSSRFBlocked before any mutation.
+	require.True(t, errors.Is(sErr, audit.ErrSSRFBlocked))
+
+	// Mutate the first returned slice — zero it out.
+	first := sErr.Unwrap()
+	require.NotEmpty(t, first, "Unwrap must return at least one element")
+	for i := range first {
+		first[i] = nil
+	}
+
+	// Unwrap called again must still return the original sentinel —
+	// the first Unwrap returned a defensive copy, so our mutation
+	// cannot have affected the underlying error.
+	second := sErr.Unwrap()
+	require.NotEmpty(t, second, "second Unwrap must return at least one element")
+	assert.NotNil(t, second[0], "second Unwrap[0] must not be nil (first Unwrap returned a copy)")
+	assert.True(t, errors.Is(sErr, audit.ErrSSRFBlocked),
+		"errors.Is must still match after a caller mutates a previous Unwrap result")
+}

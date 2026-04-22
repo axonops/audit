@@ -149,10 +149,12 @@ func TestQuickTaxonomy(t *testing.T) {
 	assert.Contains(t, tax.Categories, "test")
 }
 
-func TestNew_WithConfig(t *testing.T) {
+func TestNew_WithQueueSize(t *testing.T) {
+	// #579: audit.Config + audit.WithConfig removed. Consumers compose
+	// individual audit.Option values via audittest.WithAuditOption.
 	t.Parallel()
 	auditor, events, _ := audittest.New(t, testTaxonomyYAML,
-		audittest.WithConfig(audit.Config{QueueSize: 50}),
+		audittest.WithAuditOption(audit.WithQueueSize(50)),
 	)
 
 	err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{

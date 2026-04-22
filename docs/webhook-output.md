@@ -171,7 +171,7 @@ drop — use metrics, not log lines, for precise monitoring.
 ### Relationship to Core Buffer
 
 The webhook `buffer_size` is independent of the core
-`auditor.queue_size` (`Config.QueueSize`). Both default to 10,000
+`auditor.queue_size` (`WithQueueSize`). Both default to 10,000
 but they serve different pipeline stages. See
 [Two-Level Buffering](async-delivery.md#two-level-buffering) for the
 full architecture diagram and memory sizing guidance.

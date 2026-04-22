@@ -237,43 +237,11 @@ func TestNew_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 	assert.False(t, hasEmpty, "empty string field should be omitted with WithOmitEmpty")
 }
 
-// ---------------------------------------------------------------------------
-// WithConfig (#388 AC-8, AC-9)
-// ---------------------------------------------------------------------------
-
-func TestNew_WithConfig_AppliesStructFields(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	auditor, err := audit.New(
-		audit.WithConfig(audit.Config{QueueSize: 50000}),
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.NoError(t, err)
-	require.NoError(t, auditor.Close())
-}
-
-func TestNew_WithConfig_IndividualOptionOverrides(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	// WithConfig sets QueueSize=100, then WithQueueSize(200) overrides.
-	// Last option wins.
-	auditor, err := audit.New(
-		audit.WithConfig(audit.Config{QueueSize: 100}),
-		audit.WithQueueSize(200),
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-	)
-	require.NoError(t, err)
-	require.NoError(t, auditor.Close())
-}
-
-// ---------------------------------------------------------------------------
-// Config.version unexported (#388 AC-10)
-// ---------------------------------------------------------------------------
-
-func TestConfig_VersionUnexported(t *testing.T) {
-	// This test verifies that Config{} compiles without Version.
-	// If Version were exported, this would be a different test.
-	cfg := audit.Config{QueueSize: 100}
-	assert.Equal(t, 100, cfg.QueueSize)
-}
+// Note: `WithConfig` and the `Config` struct were removed in #579
+// (see docs/adr/0003-config-pattern.md). Functional options
+// (`WithQueueSize`, `WithShutdownTimeout`, `WithValidationMode`,
+// `WithOmitEmpty`) are the sole configuration mechanism; their
+// individual tests appear earlier in this file.
 
 // ---------------------------------------------------------------------------
 // Fields defined type (#388 AC-12, AC-13, AC-14)

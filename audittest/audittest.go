@@ -40,12 +40,6 @@ type excludeLabelsEntry struct {
 	labels     []string
 }
 
-// WithConfig applies a [audit.Config] struct to the test auditor.
-// Non-zero fields override the test defaults (QueueSize=100).
-func WithConfig(cfg audit.Config) Option {
-	return func(c *config) { c.extraOpts = append(c.extraOpts, audit.WithConfig(cfg)) }
-}
-
 // WithValidationMode sets the taxonomy validation mode.
 // Default is [audit.ValidationStrict].
 func WithValidationMode(mode audit.ValidationMode) Option {

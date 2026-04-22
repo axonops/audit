@@ -74,8 +74,9 @@
 // # Core API
 //
 //   - [Auditor] — core type; created via [New]
-//   - [Config] — auditor configuration (buffer size, shutdown timeout, validation mode)
-//   - [Option] — functional option for [New]: [WithTaxonomy], [WithOutputs], [WithFormatter], [WithMetrics]
+//   - [Option] — functional option for [New]: [WithTaxonomy], [WithOutputs],
+//     [WithFormatter], [WithMetrics], [WithQueueSize], [WithShutdownTimeout],
+//     [WithValidationMode], [WithOmitEmpty]
 //
 // # Events
 //
@@ -267,8 +268,9 @@
 //
 // [Auditor.Close] MUST be called when the auditor is no longer needed. Failing
 // to call Close leaks the drain goroutine and causes any buffered events to be
-// lost. Close signals the drain goroutine to stop, waits up to
-// [Config.ShutdownTimeout] for pending events to flush, then closes all outputs
-// in parallel. Events still in the buffer when ShutdownTimeout expires are lost;
-// a warning is emitted via [log/slog]. Close is idempotent via [sync.Once].
+// lost. Close signals the drain goroutine to stop, waits up to the configured
+// [WithShutdownTimeout] for pending events to flush, then closes all outputs
+// in parallel. Events still in the buffer when the shutdown timeout expires
+// are lost; a warning is emitted via [log/slog]. Close is idempotent via
+// [sync.Once].
 package audit

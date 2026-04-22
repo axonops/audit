@@ -162,8 +162,9 @@ func WithStandardFieldDefaults(defaults map[string]string) Option {
 }
 
 // WithFormatter sets the event serialisation formatter. If not
-// provided, a [JSONFormatter] is created from the [Config]. Use this
-// to configure a [CEFFormatter] or a custom [Formatter] implementation.
+// provided, a [JSONFormatter] with default settings is used. Use
+// this to configure a [CEFFormatter] or a custom [Formatter]
+// implementation.
 func WithFormatter(f Formatter) Option {
 	return func(a *Auditor) error {
 		if f == nil {
@@ -385,31 +386,6 @@ func WithOmitEmpty() Option {
 func WithDisabled() Option {
 	return func(a *Auditor) error {
 		a.disabled = true
-		return nil
-	}
-}
-
-// WithConfig applies configuration from a [Config] struct. Non-zero
-// fields override the corresponding defaults. When combined with
-// individual With* options, the last option applied wins.
-//
-// Boolean fields at their zero value (false) are indistinguishable
-// from unset — use [WithOmitEmpty] or [WithDisabled] for explicit
-// opt-in to boolean behaviours.
-func WithConfig(cfg Config) Option {
-	return func(a *Auditor) error {
-		if cfg.QueueSize > 0 {
-			a.cfg.QueueSize = cfg.QueueSize
-		}
-		if cfg.ShutdownTimeout > 0 {
-			a.cfg.ShutdownTimeout = cfg.ShutdownTimeout
-		}
-		if cfg.ValidationMode != "" {
-			a.cfg.ValidationMode = cfg.ValidationMode
-		}
-		if cfg.OmitEmpty {
-			a.cfg.OmitEmpty = true
-		}
 		return nil
 	}
 }

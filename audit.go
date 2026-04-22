@@ -84,7 +84,7 @@ type Auditor struct {
 	// entries and outputsByName are immutable after construction.
 	entries       []*outputEntry
 	outputsByName map[string]*outputEntry
-	cfg           Config
+	cfg           config
 	closeOnce     sync.Once
 	closed        atomic.Bool
 	// destKeys tracks destination keys during construction to detect
@@ -136,10 +136,9 @@ type Auditor struct {
 // A taxonomy MUST be provided via [WithTaxonomy] unless [WithDisabled]
 // is applied; New returns an error if none is supplied.
 //
-// The zero-value [Config] is valid: buffer=10,000, shutdown=5s,
-// validation=strict. Pass tuning options like [WithQueueSize] or
-// [WithShutdownTimeout] to override defaults, or [WithConfig] to apply
-// a struct.
+// Defaults are: queue=10,000, shutdown=5s, validation=strict. Pass
+// tuning options like [WithQueueSize], [WithShutdownTimeout],
+// [WithValidationMode], or [WithOmitEmpty] to override.
 //
 // When [WithDisabled] is applied, New returns a valid no-op
 // auditor without requiring a taxonomy. All [Auditor.AuditEvent] calls
@@ -156,11 +155,7 @@ func New(opts ...Option) (*Auditor, error) {
 	}
 
 	// validateConfig calls applyDefaults internally, then validates.
-	// migrateConfig runs after defaults so version is always set.
 	if err := validateConfig(&a.cfg); err != nil {
-		return nil, err
-	}
-	if err := migrateConfig(&a.cfg); err != nil {
 		return nil, err
 	}
 
@@ -413,9 +408,9 @@ func (a *Auditor) enqueue(entry *auditEntry) error {
 // auditor is no longer needed; failing to call Close leaks the drain
 // goroutine and loses all buffered events.
 //
-// Close signals the drain goroutine to stop, waits up to
-// [Config.ShutdownTimeout] for pending events to flush, then closes all
-// outputs in parallel.
+// Close signals the drain goroutine to stop, waits up to the
+// configured [WithShutdownTimeout] (default 5s) for pending events
+// to flush, then closes all outputs in parallel.
 //
 // Close is idempotent -- subsequent calls return nil (or the same
 // error if an output failed to close on the first call).
@@ -701,13 +696,36 @@ func (a *Auditor) MustHandle(eventType string) *EventHandle {
 	return h
 }
 
+// maxPooledFieldsLen caps the length of a Fields map that may be
+// returned to [fieldsPool]. Maps longer than this are dropped and
+// released to the garbage collector instead of being put back — a
+// single giant event must not poison the pool for every subsequent
+// caller. Matches the 64-entry cap pattern used elsewhere for pool
+// hygiene (#579 B-26).
+const maxPooledFieldsLen = 64
+
+// fieldsPoolDrops counts how many [Fields] maps were dropped by
+// [returnFieldsToPool] because their length exceeded
+// [maxPooledFieldsLen]. Read-only in production — incremented
+// atomically on each drop for observability via the
+// `FieldsPoolDropsForTest` test hook (export_test.go).
+var fieldsPoolDrops atomic.Uint64
+
 // returnFieldsToPool clears a Fields map and returns it to the pool.
-// Safe to call with nil (no-op).
+// Safe to call with nil (no-op). Maps whose length exceeds
+// [maxPooledFieldsLen] are dropped rather than pooled so the pool
+// cannot be poisoned by an outlier event.
 func returnFieldsToPool(fields Fields) {
-	if fields != nil {
-		clear(fields)
-		fieldsPool.Put(fields)
+	if fields == nil {
+		return
 	}
+	if len(fields) > maxPooledFieldsLen {
+		// Drop oversized maps — let GC reclaim. Do not Put back.
+		fieldsPoolDrops.Add(1)
+		return
+	}
+	clear(fields)
+	fieldsPool.Put(fields)
 }
 
 // copyFieldsWithDefaults creates a merged copy of fields + standard field

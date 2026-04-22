@@ -21,12 +21,22 @@ import (
 	"github.com/axonops/audit"
 )
 
-// auditorConfigResult holds both the Config and the disabled flag parsed
-// from the YAML auditor: section. Disabled is tracked separately because
-// Config no longer has an Enabled field.
-type auditorConfigResult struct {
-	config   audit.Config
-	disabled bool
+// auditorConfigResult holds the [audit.Option] values and the disabled
+// flag parsed from the YAML auditor: section. Disabled is tracked
+// separately so callers can combine it with other auditor-level options
+// (e.g. [audit.WithMetrics]) added after parse time.
+//
+// parseAuditorConfig produces audit.Option values directly — the
+// library no longer exposes a Config struct (#579).
+type auditorConfigResult struct { //nolint:govet // fieldalignment: readability preferred over packing
+	opts []audit.Option
+	// queueSize..disabled retained for internal test introspection via
+	// export_test.go. Not part of the public surface.
+	validationMode  audit.ValidationMode
+	shutdownTimeout time.Duration
+	queueSize       int
+	omitEmpty       bool
+	disabled        bool
 }
 
 func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
@@ -56,7 +66,10 @@ func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo
 			if v > audit.MaxQueueSize {
 				return result, fmt.Errorf("queue_size: %d exceeds maximum %d", v, audit.MaxQueueSize)
 			}
-			result.config.QueueSize = v
+			result.queueSize = v
+			if v > 0 {
+				result.opts = append(result.opts, audit.WithQueueSize(v))
+			}
 		case "shutdown_timeout":
 			s, err := toString(val)
 			if err != nil {
@@ -73,7 +86,10 @@ func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo
 				if d > audit.MaxShutdownTimeout {
 					return result, fmt.Errorf("shutdown_timeout: %s exceeds maximum %s", d, audit.MaxShutdownTimeout)
 				}
-				result.config.ShutdownTimeout = d
+				result.shutdownTimeout = d
+				if d > 0 {
+					result.opts = append(result.opts, audit.WithShutdownTimeout(d))
+				}
 			}
 		case "validation_mode":
 			s, err := toString(val)
@@ -83,7 +99,8 @@ func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo
 			if s != "" {
 				switch audit.ValidationMode(s) {
 				case audit.ValidationStrict, audit.ValidationWarn, audit.ValidationPermissive:
-					result.config.ValidationMode = audit.ValidationMode(s)
+					result.validationMode = audit.ValidationMode(s)
+					result.opts = append(result.opts, audit.WithValidationMode(audit.ValidationMode(s)))
 				default:
 					return result, fmt.Errorf("validation_mode: unknown mode %q (valid: strict, warn, permissive)", s)
 				}
@@ -93,7 +110,10 @@ func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo
 			if err != nil {
 				return result, fmt.Errorf("omit_empty: %w", err)
 			}
-			result.config.OmitEmpty = v
+			result.omitEmpty = v
+			if v {
+				result.opts = append(result.opts, audit.WithOmitEmpty())
+			}
 		case "drain_timeout":
 			return result, fmt.Errorf("unknown field %q (renamed to %q in this version)", "drain_timeout", "shutdown_timeout")
 		default:

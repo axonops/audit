@@ -139,7 +139,7 @@ serialises each event, and delivers it to every configured output.
 ```
 AuditEvent()
   → validate against taxonomy
-  → enqueue to channel (capacity: Config.QueueSize, default 10,000)
+  → enqueue to channel (capacity: WithQueueSize, default 10,000)
   → return immediately (sub-microsecond)
 
 Drain goroutine (single, runs continuously)
@@ -213,7 +213,7 @@ Loki is down, Loki drops events but the core queue and all other
 outputs are unaffected.
 
 **`queue_size` and `buffer_size` are different things.**
-`auditor.queue_size` (or `Config.QueueSize`) is the Level 1 core
+`auditor.queue_size` (or `WithQueueSize`) is the Level 1 core
 intake queue. `buffer_size` on any output (file, syslog, webhook,
 Loki) is that output's Level 2 channel. They are independent. Both
 default to 10,000 but they serve different purposes.

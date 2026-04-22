@@ -14,7 +14,11 @@
 
 package outputconfig
 
-import "github.com/axonops/audit"
+import (
+	"time"
+
+	"github.com/axonops/audit"
+)
 
 // ToIntForTest exposes toInt for black-box testing.
 var ToIntForTest = toInt
@@ -74,12 +78,31 @@ func ResolverClearCachesForTest(r any) {
 	rr.clearCaches()
 }
 
-// LoadedConfigForTest exposes the unexported audit.Config retained
-// on [*Loaded] so black-box tests can verify YAML parsing
-// correctness without bloating the public API (#577).
-func LoadedConfigForTest(l *Loaded) audit.Config {
+// LoadedConfigSnapshot is the test-only snapshot of the parsed
+// `auditor:` YAML section values retained on [*Loaded]. Fields
+// mirror the pre-#579 `audit.Config` shape so existing black-box
+// tests need only a helper-call change to migrate.
+type LoadedConfigSnapshot struct {
+	ValidationMode  audit.ValidationMode
+	ShutdownTimeout time.Duration
+	QueueSize       int
+	OmitEmpty       bool
+	Disabled        bool
+}
+
+// LoadedConfigForTest exposes the parsed `auditor:` YAML values
+// retained on [*Loaded] so black-box tests can verify parsing
+// correctness without bloating the public API (#579 — the audit
+// package no longer exposes a Config struct).
+func LoadedConfigForTest(l *Loaded) LoadedConfigSnapshot {
 	if l == nil {
-		return audit.Config{}
+		return LoadedConfigSnapshot{}
 	}
-	return l.config
+	return LoadedConfigSnapshot{
+		QueueSize:       l.auditorCfg.queueSize,
+		ShutdownTimeout: l.auditorCfg.shutdownTimeout,
+		ValidationMode:  l.auditorCfg.validationMode,
+		OmitEmpty:       l.auditorCfg.omitEmpty,
+		Disabled:        l.auditorCfg.disabled,
+	}
 }

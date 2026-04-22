@@ -133,7 +133,9 @@ func NewEventKV(eventType string, keysAndValues ...any) (Event, error) {
 func MustNewEventKV(eventType string, keysAndValues ...any) Event {
 	ev, err := NewEventKV(eventType, keysAndValues...)
 	if err != nil {
-		panic("audit: " + err.Error())
+		// err.Error() already starts with "audit: " via the wrapped
+		// ErrValidation sentinel — no second prefix needed.
+		panic(err.Error())
 	}
 	return ev
 }

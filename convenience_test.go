@@ -114,7 +114,7 @@ func TestNewEventKV_NonStringKey_ReturnsError(t *testing.T) {
 func TestMustNewEventKV_OddArgs_Panics(t *testing.T) {
 	t.Parallel()
 	assert.PanicsWithValue(t,
-		"audit: audit: validation error: NewEventKV requires even number of arguments, got 1",
+		"audit: validation error: NewEventKV requires even number of arguments, got 1",
 		func() {
 			args := []any{"orphan"}
 			audit.MustNewEventKV("user_create", args...)
@@ -125,7 +125,7 @@ func TestMustNewEventKV_OddArgs_Panics(t *testing.T) {
 func TestMustNewEventKV_NonStringKey_Panics(t *testing.T) {
 	t.Parallel()
 	assert.PanicsWithValue(t,
-		"audit: audit: validation error: NewEventKV key at index 0 must be string, got int",
+		"audit: validation error: NewEventKV key at index 0 must be string, got int",
 		func() { audit.MustNewEventKV("user_create", 123, "value") },
 	)
 }

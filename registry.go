@@ -112,7 +112,9 @@ func RegisterOutputFactory(typeName string, factory OutputFactory) error {
 //	}
 func MustRegisterOutputFactory(typeName string, factory OutputFactory) {
 	if err := RegisterOutputFactory(typeName, factory); err != nil {
-		panic("audit: " + err.Error())
+		// err.Error() already starts with "audit: " via the wrapped
+		// ErrValidation sentinel — no second prefix needed.
+		panic(err.Error())
 	}
 }
 

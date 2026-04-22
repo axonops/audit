@@ -27,24 +27,33 @@ func init() {
 	audit.MustRegisterOutputFactory("file", defaultFactory)
 }
 
-// defaultFactory creates a file output from YAML config. Per-output
-// metrics are auto-detected via type assertion on coreMetrics.
-// The logger is plumbed through to construction-time permission-mode
-// warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	var fileMetrics Metrics
-	if fm, ok := coreMetrics.(Metrics); ok {
-		fileMetrics = fm
-	}
-	return buildOutput(name, rawConfig, fileMetrics, logger)
+// defaultFactory creates a file output from YAML config without
+// consumer-supplied per-output metrics. Use [NewFactory] to wire an
+// [audit.OutputMetricsFactory] for rotation telemetry and async buffer
+// metrics.
+func defaultFactory(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	return buildOutput(name, rawConfig, nil, logger)
 }
 
-// NewFactory returns an [audit.OutputFactory] that creates file outputs
-// from YAML configuration with the provided file-specific metrics
-// captured in the closure. Pass nil to disable file metrics.
-func NewFactory(fileMetrics Metrics) audit.OutputFactory {
+// NewFactory returns an [audit.OutputFactory] that creates file
+// outputs from YAML configuration and wires per-output metrics via
+// the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
+// the returned [audit.Output] receives its per-output
+// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
+// at construction time; if the returned metrics also implement
+// [RotationRecorder], rotation telemetry is wired in automatically.
+// Pass nil to disable per-output metrics (equivalent to the
+// init()-registered default factory).
+//
+// Signature is identical to the other output modules'
+// `NewFactory` (syslog, webhook, loki) for consistency (#581).
+func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
 	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-		return buildOutput(name, rawConfig, fileMetrics, logger)
+		var om audit.OutputMetrics
+		if factory != nil {
+			om = factory("file", name)
+		}
+		return buildOutput(name, rawConfig, om, logger)
 	}
 }
 
@@ -78,7 +87,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, fileMetrics Metrics, logger *slog.Logger) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: file output %q: config is required", name)
 	}
@@ -99,9 +108,12 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics, logger *slo
 		BufferSize:  intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 	}
 
-	out, err := New(&cfg, fileMetrics, WithDiagnosticLogger(logger))
+	out, err := New(&cfg, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
+	}
+	if om != nil {
+		out.SetOutputMetrics(om)
 	}
 	return audit.WrapOutput(out, name), nil
 }

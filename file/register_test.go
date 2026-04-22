@@ -77,22 +77,28 @@ func TestFileFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "config is required")
 }
 
-func TestFileNewFactory_WithMetrics(t *testing.T) {
+func TestFileNewFactory_WithMetricsFactory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "metrics.log")
 	yaml := []byte("path: " + path + "\n")
 
-	metrics := &mockFileMetrics{}
-	factory := file.NewFactory(metrics)
+	var gotType, gotName string
+	mf := func(outputType, outputName string) audit.OutputMetrics {
+		gotType, gotName = outputType, outputName
+		return &factoryMockMetrics{}
+	}
+	factory := file.NewFactory(mf)
 
 	out, err := factory("with_metrics", yaml, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
 	assert.Equal(t, "with_metrics", out.Name())
+	assert.Equal(t, "file", gotType, "factory must be called with outputType=\"file\"")
+	assert.Equal(t, "with_metrics", gotName, "factory must be called with the YAML-configured output name")
 }
 
-func TestFileNewFactory_NilMetrics(t *testing.T) {
+func TestFileNewFactory_NilFactory(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nil.log")
 	yaml := []byte("path: " + path + "\n")
@@ -106,6 +112,34 @@ func TestFileNewFactory_NilMetrics(t *testing.T) {
 	assert.Equal(t, "nil_metrics", out.Name())
 }
 
-type mockFileMetrics struct{}
+// TestFileNewFactory_FactoryReturnsNil covers the silently-untested
+// branch where the OutputMetricsFactory legitimately returns nil for a
+// specific output — the constructed output must still build cleanly
+// and have no metrics wired.
+func TestFileNewFactory_FactoryReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nilret.log")
+	yaml := []byte("path: " + path + "\n")
 
-func (m *mockFileMetrics) RecordFileRotation(_ string) {}
+	factory := file.NewFactory(func(_, _ string) audit.OutputMetrics {
+		return nil
+	})
+
+	out, err := factory("nil_return", yaml, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "nil_return", out.Name())
+}
+
+// factoryMockMetrics is a minimal audit.OutputMetrics scoped to the
+// NewFactory tests so it does not collide with mockOutputMetrics in
+// file_test.go. It does NOT implement [file.RotationRecorder], which
+// exercises the structural-typing "base-only metrics" branch in
+// SetOutputMetrics.
+type factoryMockMetrics struct {
+	audit.NoOpOutputMetrics
+}
+
+// Compile-time assertion: the factory mock is audit.OutputMetrics.
+var _ audit.OutputMetrics = (*factoryMockMetrics)(nil)

@@ -25,11 +25,16 @@
 //	    MaxSizeMB:  100,
 //	    MaxBackups: 5,
 //	    MaxAgeDays: 30,
-//	}, nil) // optional file.Metrics
+//	})
 //
 // The parent directory of [Config.Path] must exist before calling [New];
 // the file itself is created if it does not exist. Default permissions
 // are 0600.
+//
+// To observe rotation events, wire an [audit.OutputMetrics] value via
+// [Output.SetOutputMetrics]. If the value also implements
+// [RotationRecorder] its RecordRotation method is called on every
+// rotation (structural typing — no explicit registration needed).
 //
 // # Rotation
 //

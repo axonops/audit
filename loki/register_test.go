@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
-	_ "github.com/axonops/audit/loki" // registers "loki" factory
+	"github.com/axonops/audit/loki"
 )
 
 // ---------------------------------------------------------------------------
@@ -423,6 +423,67 @@ labels:
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
 }
+
+// TestLokiNewFactory_WithMetricsFactory verifies that NewFactory threads
+// its OutputMetricsFactory through the constructed factory using
+// outputType="loki" and the YAML-configured outputName.
+func TestLokiNewFactory_WithMetricsFactory(t *testing.T) {
+	var gotType, gotName string
+	mf := func(outputType, outputName string) audit.OutputMetrics {
+		gotType, gotName = outputType, outputName
+		return &factoryMockLokiMetrics{}
+	}
+	factory := loki.NewFactory(mf)
+
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "with_metrics", out.Name())
+	assert.Equal(t, "loki", gotType, "factory must be called with outputType=\"loki\"")
+	assert.Equal(t, "with_metrics", gotName)
+}
+
+// TestLokiNewFactory_NilFactory verifies that NewFactory(nil) still
+// produces a working factory that constructs outputs without per-output
+// metrics wiring.
+func TestLokiNewFactory_NilFactory(t *testing.T) {
+	factory := loki.NewFactory(nil)
+
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "nil_metrics", out.Name())
+}
+
+// TestLokiNewFactory_FactoryReturnsNil covers the silently-untested
+// branch where the OutputMetricsFactory legitimately returns nil for a
+// specific output — the constructed output must still build cleanly
+// and have no metrics wired.
+func TestLokiNewFactory_FactoryReturnsNil(t *testing.T) {
+	factory := loki.NewFactory(func(_, _ string) audit.OutputMetrics {
+		return nil
+	})
+
+	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("nil_return", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "nil_return", out.Name())
+}
+
+// factoryMockLokiMetrics is a minimal audit.OutputMetrics scoped to
+// the NewFactory tests.
+type factoryMockLokiMetrics struct {
+	audit.NoOpOutputMetrics
+}
+
+// Compile-time assertion: the factory mock is audit.OutputMetrics.
+var _ audit.OutputMetrics = (*factoryMockLokiMetrics)(nil)
 
 // ---------------------------------------------------------------------------
 // Helpers

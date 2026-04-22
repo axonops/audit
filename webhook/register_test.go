@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/webhook"
 )
 
 func TestWebhookFactory_RegisteredByInit(t *testing.T) {
@@ -246,3 +247,58 @@ func TestWebhookFactory_OmittedMaxRetries_DefaultsTo3(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 }
+
+func TestWebhookNewFactory_WithMetricsFactory(t *testing.T) {
+	var gotType, gotName string
+	mf := func(outputType, outputName string) audit.OutputMetrics {
+		gotType, gotName = outputType, outputName
+		return &factoryMockWebhookMetrics{}
+	}
+	factory := webhook.NewFactory(mf)
+
+	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "with_metrics", out.Name())
+	assert.Equal(t, "webhook", gotType, "factory must be called with outputType=\"webhook\"")
+	assert.Equal(t, "with_metrics", gotName)
+}
+
+func TestWebhookNewFactory_NilFactory(t *testing.T) {
+	factory := webhook.NewFactory(nil)
+
+	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "nil_metrics", out.Name())
+}
+
+// TestWebhookNewFactory_FactoryReturnsNil covers the silently-untested
+// branch where the OutputMetricsFactory legitimately returns nil for a
+// specific output — the constructed output must still build cleanly
+// and have no metrics wired.
+func TestWebhookNewFactory_FactoryReturnsNil(t *testing.T) {
+	factory := webhook.NewFactory(func(_, _ string) audit.OutputMetrics {
+		return nil
+	})
+
+	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
+	out, err := factory("nil_return", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.Equal(t, "nil_return", out.Name())
+}
+
+// factoryMockWebhookMetrics is a minimal audit.OutputMetrics scoped
+// to the NewFactory tests.
+type factoryMockWebhookMetrics struct {
+	audit.NoOpOutputMetrics
+}
+
+// Compile-time assertion: the factory mock is audit.OutputMetrics.
+var _ audit.OutputMetrics = (*factoryMockWebhookMetrics)(nil)

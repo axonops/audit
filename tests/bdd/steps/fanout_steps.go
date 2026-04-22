@@ -190,12 +190,12 @@ func createSharedFormatterAuditor(tc *AuditTestContext) error {
 	tc.FilePaths["file-a"] = pathA
 	tc.FilePaths["file-b"] = pathB
 
-	fA, err := file.New(&file.Config{Path: pathA}, nil)
+	fA, err := file.New(&file.Config{Path: pathA})
 	if err != nil {
 		return fmt.Errorf("create file a: %w", err)
 	}
 	tc.AddCleanup(func() { _ = fA.Close() })
-	fB, err := file.New(&file.Config{Path: pathB}, nil)
+	fB, err := file.New(&file.Config{Path: pathB})
 	if err != nil {
 		return fmt.Errorf("create file b: %w", err)
 	}
@@ -341,7 +341,7 @@ func tryDuplicateOutputNames(tc *AuditTestContext) error {
 	if err != nil {
 		return err
 	}
-	f1, err := file.New(&file.Config{Path: filepath.Join(dir, "a.log")}, nil)
+	f1, err := file.New(&file.Config{Path: filepath.Join(dir, "a.log")})
 	if err != nil {
 		return fmt.Errorf("create file a: %w", err)
 	}
@@ -360,12 +360,12 @@ func tryDuplicateFilePath(tc *AuditTestContext) error {
 		return err
 	}
 	samePath := filepath.Join(dir, "same.log")
-	f1, err := file.New(&file.Config{Path: samePath}, nil)
+	f1, err := file.New(&file.Config{Path: samePath})
 	if err != nil {
 		return fmt.Errorf("create file 1: %w", err)
 	}
 	tc.AddCleanup(func() { _ = f1.Close() })
-	f2, err := file.New(&file.Config{Path: samePath}, nil)
+	f2, err := file.New(&file.Config{Path: samePath})
 	if err != nil {
 		return fmt.Errorf("create file 2: %w", err)
 	}
@@ -383,7 +383,7 @@ func tryMixedRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return err
 	}
-	f, err := file.New(&file.Config{Path: filepath.Join(dir, "mixed.log")}, nil)
+	f, err := file.New(&file.Config{Path: filepath.Join(dir, "mixed.log")})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -404,7 +404,7 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return err
 	}
-	f, err := file.New(&file.Config{Path: filepath.Join(dir, "unknown.log")}, nil)
+	f, err := file.New(&file.Config{Path: filepath.Join(dir, "unknown.log")})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -443,12 +443,12 @@ func assertRouteIncludesCategory(tc *AuditTestContext, cat string) error {
 }
 
 func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
-	s1, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"}, nil)
+	s1, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"})
 	if err != nil {
 		return fmt.Errorf("create syslog 1: %w", err)
 	}
 	tc.AddCleanup(func() { _ = s1.Close() })
-	s2, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"}, nil)
+	s2, err := syslog.New(&syslog.Config{Network: "tcp", Address: "localhost:5514", Facility: "local0"})
 	if err != nil {
 		return fmt.Errorf("create syslog 2: %w", err)
 	}
@@ -466,7 +466,7 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 	if err != nil {
 		return err
 	}
-	f, err := file.New(&file.Config{Path: filepath.Join(dir, "unknown_evt.log")}, nil)
+	f, err := file.New(&file.Config{Path: filepath.Join(dir, "unknown_evt.log")})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -505,7 +505,7 @@ func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bo
 		}
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
-		f, err := file.New(&file.Config{Path: path}, nil)
+		f, err := file.New(&file.Config{Path: path})
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
@@ -567,7 +567,7 @@ func createErrorOutputAuditor(tc *AuditTestContext) error {
 	path := filepath.Join(dir, "audit.log")
 	tc.FilePaths["default"] = path
 
-	fileOut, err := file.New(&file.Config{Path: path}, nil)
+	fileOut, err := file.New(&file.Config{Path: path})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -603,7 +603,7 @@ func createPanicOutputAuditor(tc *AuditTestContext) error {
 	path := filepath.Join(dir, "audit.log")
 	tc.FilePaths["default"] = path
 
-	fileOut, err := file.New(&file.Config{Path: path}, nil)
+	fileOut, err := file.New(&file.Config{Path: path})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -653,7 +653,7 @@ func createPanicFormatterAuditor(tc *AuditTestContext) error {
 	path := filepath.Join(dir, "audit.log")
 	tc.FilePaths["default"] = path
 
-	fileOut, err := file.New(&file.Config{Path: path}, nil)
+	fileOut, err := file.New(&file.Config{Path: path})
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -684,12 +684,12 @@ func createDualFileRoutedAuditor(tc *AuditTestContext) error {
 	tc.FilePaths["security"] = secPath
 	tc.FilePaths["write"] = writePath
 
-	secOut, err := file.New(&file.Config{Path: secPath}, nil)
+	secOut, err := file.New(&file.Config{Path: secPath})
 	if err != nil {
 		return fmt.Errorf("create security file: %w", err)
 	}
 	tc.AddCleanup(func() { _ = secOut.Close() })
-	writeOut, err := file.New(&file.Config{Path: writePath}, nil)
+	writeOut, err := file.New(&file.Config{Path: writePath})
 	if err != nil {
 		return fmt.Errorf("create write file: %w", err)
 	}
@@ -718,7 +718,7 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 	path := filepath.Join(dir, "audit.log")
 	tc.FilePaths["default"] = path
 
-	fileOut, err := file.New(&file.Config{Path: path}, nil)
+	fileOut, err := file.New(&file.Config{Path: path})
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
@@ -765,7 +765,7 @@ func createRoutedAuditor(tc *AuditTestContext, webhookRoute *audit.EventRoute) e
 	path := filepath.Join(dir, "audit.log")
 	tc.FilePaths["default"] = path
 
-	f, err := file.New(&file.Config{Path: path}, nil)
+	f, err := file.New(&file.Config{Path: path})
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}

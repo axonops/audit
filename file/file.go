@@ -64,16 +64,24 @@ const (
 	MaxOutputBufferSize = 100_000
 )
 
-// Metrics is an optional interface for file-output-specific
-// instrumentation. Pass an implementation to [New] to
-// collect rotation telemetry. Pass nil to disable.
-type Metrics interface {
-	// RecordFileRotation records that the file output rotated its
-	// active log file. The path argument is the absolute filesystem
-	// path of the file that was rotated. Implementations SHOULD NOT
-	// use this value as an unbounded metric label — it may expose
-	// infrastructure topology and cause cardinality explosion.
-	RecordFileRotation(path string)
+// RotationRecorder is an OPTIONAL extension interface for file-output
+// rotation telemetry. A consumer's [audit.OutputMetrics] implementation
+// MAY also implement RotationRecorder. When the file output receives
+// per-output metrics via [audit.OutputMetricsReceiver.SetOutputMetrics],
+// it type-asserts for RotationRecorder and invokes RecordRotation on
+// every log-file rotation. Precedent: [net/http.Flusher] as an
+// optional extension on [http.ResponseWriter].
+//
+// Consumers who do not care about rotation telemetry need not
+// implement this interface — the base [audit.OutputMetrics] contract
+// is sufficient.
+type RotationRecorder interface {
+	// RecordRotation records that the file output rotated its active
+	// log file. path is the absolute filesystem path of the file that
+	// was rotated. Implementations SHOULD NOT use path as an unbounded
+	// metric label — it may expose infrastructure topology and cause
+	// cardinality explosion.
+	RecordRotation(path string)
 }
 
 // Config holds configuration for [Output].
@@ -137,19 +145,19 @@ const dropWarnInterval = 10 * time.Second
 // Output is safe for concurrent use, including concurrent calls
 // to [Output.Write] and [Output.Close].
 type Output struct {
-	writer        *rotate.Writer
-	logger        atomic.Pointer[slog.Logger] // diagnostic logger; swapped atomically post-construction (#474)
-	outputMetrics atomic.Pointer[audit.OutputMetrics]
-	fileMetrics   atomic.Pointer[Metrics]
-	ch            chan []byte
-	closeCh       chan struct{}
-	done          chan struct{}
-	name          string
-	path          string
-	writeCount    uint64
-	drops         dropLimiter
-	closed        atomic.Bool
-	mu            sync.Mutex
+	writer           *rotate.Writer
+	logger           atomic.Pointer[slog.Logger] // diagnostic logger; swapped atomically post-construction (#474)
+	outputMetrics    atomic.Pointer[audit.OutputMetrics]
+	rotationRecorder atomic.Pointer[RotationRecorder]
+	ch               chan []byte
+	closeCh          chan struct{}
+	done             chan struct{}
+	name             string
+	path             string
+	writeCount       uint64
+	drops            dropLimiter
+	closed           atomic.Bool
+	mu               sync.Mutex
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -179,16 +187,21 @@ func resolvePath(path string) (string, error) {
 	return abs, nil
 }
 
-// New creates a new [Output] from the given config.
-// It validates the path, permissions, and parent directory existence,
-// then starts a background goroutine for async event delivery.
-// The fileMetrics parameter is optional (may be nil).
+// New creates a new [Output] from the given config. It validates the
+// path, permissions, and parent directory existence, then starts a
+// background goroutine for async event delivery.
+//
+// Per-output metrics arrive later via
+// [audit.OutputMetricsReceiver.SetOutputMetrics] — the auditor wires
+// them in after construction when an [audit.OutputMetricsFactory] is
+// registered. An [*Output] silently discards telemetry until
+// SetOutputMetrics is called.
 //
 // Callers MUST NOT mutate cfg.Compress via the pointer after New
 // returns — the defensive copy is shallow, so caller and Output share
 // the same *bool. Mutating other fields after New is safe; they are
 // copied by value.
-func New(cfg *Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
+func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
 	if cfg == nil {
 		return nil, fmt.Errorf("audit: file config must not be nil")
 	}
@@ -247,9 +260,6 @@ func New(cfg *Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //
 	// Publish the initial logger BEFORE any goroutine starts reading
 	// it. resolveOptions has already replaced nil with slog.Default.
 	out.logger.Store(logger)
-	if fileMetrics != nil {
-		out.fileMetrics.Store(&fileMetrics)
-	}
 
 	logPath := cfg.Path // capture for closure
 	rotCfg := rotate.Config{
@@ -264,11 +274,11 @@ func New(cfg *Config, fileMetrics Metrics, opts ...Option) (*Output, error) { //
 		},
 	}
 	// Always install OnRotate — reads from the struct field so that
-	// SetOutputMetrics can provide a Metrics implementation after
-	// construction.
+	// SetOutputMetrics can provide a RotationRecorder implementation
+	// after construction.
 	rotCfg.OnRotate = func(path string) {
-		if fmp := out.fileMetrics.Load(); fmp != nil {
-			(*fmp).RecordFileRotation(path)
+		if rrp := out.rotationRecorder.Load(); rrp != nil {
+			(*rrp).RecordRotation(path)
 		}
 	}
 	rw, err := rotate.New(cfg.Path, rotCfg)
@@ -352,14 +362,19 @@ func (f *Output) Close() error {
 func (f *Output) ReportsDelivery() bool { return true }
 
 // SetOutputMetrics receives the per-output metrics instance created
-// by the [audit.OutputMetricsFactory]. Called once after construction,
-// before the first Write call.
+// by the [audit.OutputMetricsFactory]. Typically called once after
+// construction and before the first Write call, but repeat calls are
+// safe: the rotation-recorder slot is always reset from the new m so
+// a replacement value cannot accidentally keep firing against the old
+// recorder. If m also implements [RotationRecorder], rotation telemetry
+// is wired up automatically via structural typing (pattern mirrors
+// [net/http.Flusher] detection on [net/http.ResponseWriter]).
 func (f *Output) SetOutputMetrics(m audit.OutputMetrics) {
 	f.outputMetrics.Store(&m)
-	// Check if the OutputMetrics also implements the file-specific
-	// Metrics extension interface for rotation recording.
-	if fm, ok := m.(Metrics); ok {
-		f.fileMetrics.Store(&fm)
+	if rr, ok := m.(RotationRecorder); ok {
+		f.rotationRecorder.Store(&rr)
+	} else {
+		f.rotationRecorder.Store(nil)
 	}
 }
 

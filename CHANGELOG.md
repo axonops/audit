@@ -15,6 +15,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- All four output sub-modules (`file`, `syslog`, `webhook`, `loki`) now expose the identical `NewFactory` signature (#581):
+  ```go
+  func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory
+  ```
+  Previously `file` and `syslog` accepted a module-local `Metrics` interface; `webhook` and `loki` exposed no `NewFactory` at all. The library's unified `audit.OutputMetricsFactory` plumbing now covers all four. Passing `nil` opts out of per-output metrics. Direct-Go migration:
+  ```go
+  // Before (file, syslog only — webhook / loki had no exported NewFactory)
+  audit.RegisterOutputFactory("file",   file.NewFactory(myFileMetrics))
+  audit.RegisterOutputFactory("syslog", syslog.NewFactory(mySyslogMetrics))
+
+  // After — identical signature across all four modules
+  audit.RegisterOutputFactory("file",    file.NewFactory(myOutputMetricsFactory))
+  audit.RegisterOutputFactory("syslog",  syslog.NewFactory(myOutputMetricsFactory))
+  audit.RegisterOutputFactory("webhook", webhook.NewFactory(myOutputMetricsFactory))
+  audit.RegisterOutputFactory("loki",    loki.NewFactory(myOutputMetricsFactory))
+  ```
+
+- `file.Metrics` renamed to `file.RotationRecorder` and `syslog.Metrics` renamed to `syslog.ReconnectRecorder`; their methods change from `RecordFileRotation(path)` / `RecordSyslogReconnect(address, success)` to `RecordRotation(path)` / `RecordReconnect(address, success)` (#581). The new names follow the Go stdlib `-er` convention for single-method extension interfaces layered on a base contract (`http.Flusher` / `http.Hijacker` on `http.ResponseWriter`, `sql/driver.Queryer` / `Execer` on `driver.Conn`). Both are detected automatically via type-assertion on the `audit.OutputMetrics` value supplied through `SetOutputMetrics` or the factory — no explicit registration required. Direct-Go migration: any type previously implementing `RecordFileRotation(path)` must rename the method to `RecordRotation(path)`; likewise `RecordSyslogReconnect(address, success)` becomes `RecordReconnect(address, success)`. BDD / audittest helpers and the internal `testhelper.MockMetrics` type are updated; consumer test mocks must rename to match. **AC deviation**: the original issue called for outright removal of `file.Metrics` + `syslog.Metrics`; api-ergonomics review locked the stdlib extension-interface precedent instead, because outright removal would drop the rotation and reconnect recording points entirely.
+
+- `file.New` and `syslog.New` drop the positional `Metrics` parameter: construct without metrics, then call `out.SetOutputMetrics(m)` — matching the existing webhook / loki pattern (#581). Direct-Go migration:
+  ```go
+  // Before
+  fileOut, _ := file.New(&cfg, myFileMetrics, opts...)
+  syslogOut, _ := syslog.New(&cfg, mySyslogMetrics, opts...)
+
+  // After
+  fileOut, _ := file.New(&cfg, opts...)
+  fileOut.SetOutputMetrics(myOutputMetrics) // may also implement file.RotationRecorder
+
+  syslogOut, _ := syslog.New(&cfg, opts...)
+  syslogOut.SetOutputMetrics(myOutputMetrics) // may also implement syslog.ReconnectRecorder
+  ```
+  See `docs/metrics-monitoring.md` for the unified-factory walkthrough.
+
 - `audit.Config` struct and `audit.WithConfig` option removed — functional options are now the sole configuration mechanism for `audit.New` (#579). The dual-pattern exposed a bool-ambiguity footgun in the struct-merge (`OmitEmpty: false` indistinguishable from unset) that forced a dedicated `WithOmitEmpty()` to exist alongside the struct; this is an explicit admission the pattern was broken. Migration: replace `audit.WithConfig(audit.Config{QueueSize: 500})` with `audit.WithQueueSize(500)`; `audit.WithConfig(audit.Config{ShutdownTimeout: d})` with `audit.WithShutdownTimeout(d)`; etc. `audit.Config.version` is also removed — schema versioning lives in `outputconfig` YAML where it already did. Stdlib precedent: `log/slog` (`slog.New(handler)` + attribute-based options), `grpc.DialOption`, `redis.Options`, `mongo/options` — none expose parallel struct + functional-option surfaces. See [ADR-0003: Single Configuration Pattern](docs/adr/0003-config-pattern.md). `audittest.WithConfig(cfg audit.Config)` removed; migrate to `audittest.WithAuditOption(audit.WithQueueSize(n))`.
 - `audit.go` `returnFieldsToPool` now drops `Fields` maps whose `len > 64` rather than returning them to `fieldsPool` (#579 B-26). Prevents a single giant event (e.g. one with hundreds of fields) from poisoning the pool for every subsequent caller. No API change; purely a pool-hygiene correctness fix matching the 64-KiB buffer cap pattern from #497.
 

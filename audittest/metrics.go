@@ -26,8 +26,9 @@ var _ audit.Metrics = (*MetricsRecorder)(nil)
 // calls for assertion. It is safe for concurrent use.
 //
 // MetricsRecorder also satisfies the output-specific extension
-// interfaces (file.Metrics, syslog.Metrics) via structural typing,
-// enabling per-output rotation and reconnection recording.
+// interfaces ([file.RotationRecorder], [syslog.ReconnectRecorder]) via
+// structural typing, enabling per-output rotation and reconnection
+// recording.
 type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over alignment
 	mu                  sync.Mutex     // guards all fields below
 	events              map[string]int // "output:status" → count
@@ -39,8 +40,8 @@ type MetricsRecorder struct { //nolint:govet // mu placed first for clarity over
 	bufferDrops         int
 	submitted           int
 
-	// Per-output metrics (satisfies file.Metrics, syslog.Metrics
-	// via structural typing for output-specific extensions).
+	// Per-output metrics (satisfies file.RotationRecorder and
+	// syslog.ReconnectRecorder via structural typing).
 	fileRotations    map[string]int // path → count
 	syslogReconnects map[string]int // "address:success"/"address:failure" → count
 }
@@ -186,15 +187,15 @@ func (m *MetricsRecorder) SerializationErrors(eventType string) int {
 
 // --- Per-output metrics (structural typing) ---
 
-// RecordFileRotation satisfies file.Metrics.
-func (m *MetricsRecorder) RecordFileRotation(path string) {
+// RecordRotation satisfies file.RotationRecorder (#581).
+func (m *MetricsRecorder) RecordRotation(path string) {
 	m.mu.Lock()
 	m.fileRotations[path]++
 	m.mu.Unlock()
 }
 
-// RecordSyslogReconnect satisfies syslog.Metrics.
-func (m *MetricsRecorder) RecordSyslogReconnect(address string, success bool) {
+// RecordReconnect satisfies syslog.ReconnectRecorder (#581).
+func (m *MetricsRecorder) RecordReconnect(address string, success bool) {
 	key := address + ":failure"
 	if success {
 		key = address + ":success"

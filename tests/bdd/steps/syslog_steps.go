@@ -29,14 +29,18 @@ import (
 	"github.com/axonops/audit/syslog"
 )
 
-// MockSyslogMetrics captures syslog.Metrics calls.
+// MockSyslogMetrics captures syslog reconnect events. It embeds
+// [audit.NoOpOutputMetrics] to satisfy [audit.OutputMetrics] and
+// additionally implements [syslog.ReconnectRecorder] so the syslog
+// output detects and calls RecordReconnect via structural typing.
 type MockSyslogMetrics struct {
+	audit.NoOpOutputMetrics
 	mu         sync.Mutex
 	reconnects int
 }
 
-// RecordSyslogReconnect satisfies syslog.Metrics.
-func (m *MockSyslogMetrics) RecordSyslogReconnect(_ string, _ bool) {
+// RecordReconnect satisfies [syslog.ReconnectRecorder].
+func (m *MockSyslogMetrics) RecordReconnect(_ string, _ bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.reconnects++
@@ -362,7 +366,7 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 	})
 
 	ctx.Step(`^I try to create a syslog output with empty address$`, func() error {
-		out, err := syslog.New(&syslog.Config{Network: "tcp", Address: ""}, nil)
+		out, err := syslog.New(&syslog.Config{Network: "tcp", Address: ""})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -371,7 +375,7 @@ func registerSyslogWhenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 	})
 
 	ctx.Step(`^I try to create a syslog output on "([^"]*)" to "([^"]*)"$`, func(network, address string) error {
-		out, err := syslog.New(&syslog.Config{Network: network, Address: address}, nil)
+		out, err := syslog.New(&syslog.Config{Network: network, Address: address})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -515,7 +519,7 @@ func createSyslogAuditor(tc *AuditTestContext, cfg *syslog.Config) error {
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg, nil)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -542,14 +546,13 @@ func createSyslogAuditorWithMetrics(tc *AuditTestContext, cfg *syslog.Config) er
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	var sm syslog.Metrics
-	if tc.SyslogMetrics != nil {
-		sm = tc.SyslogMetrics
-	}
-	out, err := syslog.New(cfg, sm)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	if tc.SyslogMetrics != nil {
+		out.SetOutputMetrics(tc.SyslogMetrics)
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
 

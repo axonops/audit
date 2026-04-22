@@ -151,8 +151,9 @@ func (NoOpMetrics) RecordQueueDepth(int, int) {}
 // Output-specific extensions (e.g. file rotation, syslog reconnection)
 // are detected via type assertion on the OutputMetrics value. The
 // returned OutputMetrics MAY optionally implement output-specific
-// extension interfaces (e.g. file.Metrics, syslog.Metrics). If
-// detected, the output uses the extended methods automatically.
+// extension interfaces (e.g. [file.RotationRecorder],
+// [syslog.ReconnectRecorder]). If detected, the output uses the
+// extended methods automatically.
 //
 // Consumers SHOULD embed [NoOpOutputMetrics] for forward compatibility.
 type OutputMetrics interface {

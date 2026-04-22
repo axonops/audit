@@ -30,8 +30,8 @@ import (
 //
 //   - audit.Metrics (9 methods including RecordSubmitted, RecordQueueDepth)
 //   - audit.OutputMetrics (5 methods: RecordDrop, RecordFlush, RecordError, RecordRetry, RecordQueueDepth)
-//   - file.Metrics  (RecordFileRotation)
-//   - syslog.Metrics (RecordSyslogReconnect)
+//   - file.RotationRecorder  (RecordRotation)
+//   - syslog.ReconnectRecorder (RecordReconnect)
 type auditMetrics struct {
 	events              *prometheus.CounterVec
 	outputErrors        *prometheus.CounterVec
@@ -153,9 +153,9 @@ func (m *auditMetrics) RecordBufferDrop() {
 	m.bufferDrops.Inc()
 }
 
-// --- file.Metrics ---
+// --- file.RotationRecorder ---
 
-func (m *auditMetrics) RecordFileRotation(path string) {
+func (m *auditMetrics) RecordRotation(path string) {
 	m.fileRotations.WithLabelValues(path).Inc()
 }
 

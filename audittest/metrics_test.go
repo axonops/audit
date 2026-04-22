@@ -62,15 +62,15 @@ func TestMetricsRecorder_PerOutputMetrics(t *testing.T) {
 	m := audittest.NewMetricsRecorder()
 
 	// File metrics.
-	m.RecordFileRotation("/var/log/audit.log")
-	m.RecordFileRotation("/var/log/audit.log")
+	m.RecordRotation("/var/log/audit.log")
+	m.RecordRotation("/var/log/audit.log")
 	assert.Equal(t, 2, m.FileRotations("/var/log/audit.log"))
 	assert.Equal(t, 0, m.FileRotations("/other/path"))
 
 	// Syslog metrics.
-	m.RecordSyslogReconnect("localhost:514", true)
-	m.RecordSyslogReconnect("localhost:514", false)
-	m.RecordSyslogReconnect("localhost:514", false)
+	m.RecordReconnect("localhost:514", true)
+	m.RecordReconnect("localhost:514", false)
+	m.RecordReconnect("localhost:514", false)
 	assert.Equal(t, 1, m.SyslogReconnects("localhost:514", true))
 	assert.Equal(t, 2, m.SyslogReconnects("localhost:514", false))
 
@@ -97,8 +97,8 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	m.RecordValidationError("test")
 
 	// Per-output extension metrics.
-	m.RecordFileRotation("/path")
-	m.RecordSyslogReconnect("addr", true)
+	m.RecordRotation("/path")
+	m.RecordReconnect("addr", true)
 
 	m.Reset()
 
@@ -136,8 +136,8 @@ func TestMetricsRecorder_Reset_AllFields(t *testing.T) {
 	m.RecordFiltered("evt")
 	m.RecordSerializationError("evt")
 	m.RecordBufferDrop()
-	m.RecordFileRotation("/path")
-	m.RecordSyslogReconnect("addr", true)
+	m.RecordRotation("/path")
+	m.RecordReconnect("addr", true)
 
 	m.Reset()
 

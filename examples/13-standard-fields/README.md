@@ -127,7 +127,7 @@ The `standard_fields` YAML section is handled automatically by
 `outputconfig.New` — no manual wiring needed:
 
 ```go
-auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml")
 ```
 
 The facade reads the `standard_fields` map, creates a

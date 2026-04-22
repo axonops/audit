@@ -116,11 +116,15 @@ const (
 **Typed Builder:**
 ```go
 // Required fields are constructor parameters — compile-time safety
-func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent
+func NewUserCreateEvent(actorID string, outcome string) *UserCreateEvent
 
-// Optional fields are chainable setters
-func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent
-func (e *UserCreateEvent) SetReason(v any) *UserCreateEvent
+// Optional fields are chainable setters typed from the YAML `type:`
+// annotation (default string)
+func (e *UserCreateEvent) SetTargetID(v string) *UserCreateEvent
+func (e *UserCreateEvent) SetReason(v string) *UserCreateEvent
+func (e *UserCreateEvent) SetQuota(v int) *UserCreateEvent        // type: int
+func (e *UserCreateEvent) SetCreatedAt(v time.Time) *UserCreateEvent // type: time
+func (e *UserCreateEvent) SetIdleTimeout(v time.Duration) *UserCreateEvent // type: duration
 
 // Implements audit.Event — pass directly to auditor.AuditEvent()
 func (e *UserCreateEvent) EventType() string      // returns "user_create"
@@ -135,13 +139,53 @@ func (e *UserCreateEvent) Description() string
 ### Usage
 
 ```go
-// Type-safe — typos fail at compile time
+// Type-safe — typos fail at compile time, and wrong value types too
 err := auditor.AuditEvent(
     NewUserCreateEvent("alice", "success").
         SetTargetID("user-42").
         SetReason("admin request"),
 )
 ```
+
+### Typed Custom Fields
+
+Every custom (non-reserved) field in the taxonomy may carry a
+`type:` annotation to produce a Go-typed setter. Accepted values:
+
+| YAML `type:` | Generated Go setter param | Notes |
+|---|---|---|
+| `string` (default when omitted) | `v string` | Fallback — no extra annotation needed |
+| `int` | `v int` | Most audit counters; JSON-numeric on the wire |
+| `int64` | `v int64` | Use when the value clearly exceeds 2³¹ |
+| `float64` | `v float64` | Scores, rates, latencies (if stored as seconds) |
+| `bool` | `v bool` | Flags, binary outcomes |
+| `time` | `v time.Time` | Timestamps (RFC 3339 on the wire) |
+| `duration` | `v time.Duration` | Elapsed times, TTLs |
+
+Reserved standard fields (`actor_id`, `source_ip`, `dest_port`, …)
+always use the library-authoritative Go type and reject any YAML
+`type:` override — the generator's reserved-field table stays
+canonical.
+
+Example taxonomy:
+
+```yaml
+events:
+  request_handled:
+    fields:
+      outcome:     {required: true}          # reserved → string
+      actor_id:    {required: true}          # reserved → string
+      endpoint:    {type: string}            # explicit string
+      status_code: {type: int}               # typed int
+      response_ms: {type: int64}             # typed int64
+      received_at: {type: time}              # typed time.Time
+      idle_timeout: {type: duration}         # typed time.Duration
+      privileged:  {type: bool}              # typed bool
+```
+
+Unknown type values are rejected at taxonomy parse time with the
+valid-set listed in the error message (e.g. `unknown type "strng"
+(valid: string, int, int64, float64, bool, time, duration)`).
 
 ## ⌨️ CLI Flags
 
@@ -155,6 +199,7 @@ err := auditor.AuditEvent(
 | `-categories` | `true` | Generate category constants |
 | `-labels` | `true` | Generate sensitivity label constants |
 | `-builders` | `true` | Generate typed event builder structs |
+| `-standard-setters` | `all` | `all` = every builder gets a setter for every reserved standard field (IDE-autocomplete-friendly); `explicit` = only taxonomy-declared reserved fields produce setters (cuts generator output by ~80 % for small schemas) |
 
 ## ⚡ Performance
 

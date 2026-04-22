@@ -312,7 +312,20 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *AuthFailureEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *AuthFailureEvent) Description() string { return "An authentication attempt failed" }
@@ -357,7 +370,7 @@ func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 // Categories returns the categories this event belongs to.
 func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategorySecurity, Severity: intPtr(8)},
+		{Name: CategorySecurity, Severity: auditIntPtr(8)},
 	}
 }
 
@@ -589,7 +602,20 @@ func (e *AuthSuccessEvent) SetUserAgent(v string) *AuthSuccessEvent {
 func (e *AuthSuccessEvent) EventType() string { return EventAuthSuccess }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthSuccessEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *AuthSuccessEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *AuthSuccessEvent) Description() string { return "An authentication attempt succeeded" }
@@ -634,7 +660,7 @@ func (e *AuthSuccessEvent) FieldInfo() AuthSuccessFields {
 // Categories returns the categories this event belongs to.
 func (e *AuthSuccessEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategorySecurity, Severity: intPtr(8)},
+		{Name: CategorySecurity, Severity: auditIntPtr(8)},
 	}
 }
 
@@ -866,7 +892,20 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *UserCreateEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *UserCreateEvent) Description() string { return "A new user account was created" }
@@ -911,8 +950,10 @@ func (e *UserCreateEvent) FieldInfo() UserCreateFields {
 // Categories returns the categories this event belongs to.
 func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite, Severity: intPtr(3)},
+		{Name: CategoryWrite, Severity: auditIntPtr(3)},
 	}
 }
 
-func intPtr(n int) *int { return &n }
+// auditIntPtr returns a pointer to the given int. It is generator-owned
+// helper (prefixed to avoid collision with any consumer-defined intPtr).
+func auditIntPtr(n int) *int { return &n }

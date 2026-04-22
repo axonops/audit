@@ -729,3 +729,101 @@ func BenchmarkParseTaxonomyYAML(b *testing.B) {
 		_, _ = audit.ParseTaxonomyYAML(data)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #575 custom field type annotation (B-01)
+// ---------------------------------------------------------------------------
+
+// TestParseTaxonomyYAML_CustomFieldTypeAnnotation verifies every
+// accepted type-vocabulary value round-trips through parse and
+// populates [EventDef.FieldTypes] with the Go type name consumed by
+// [cmd/audit-gen].
+func TestParseTaxonomyYAML_CustomFieldTypeAnnotation(t *testing.T) {
+	t.Parallel()
+	yaml := []byte(`
+version: 1
+categories:
+  write: [user_create]
+events:
+  user_create:
+    fields:
+      outcome:    {required: true}
+      actor_id:   {required: true}
+      nickname:   {}
+      email:      {type: string}
+      quota:      {type: int}
+      bytes_used: {type: int64}
+      score:      {type: float64}
+      active:     {type: bool}
+      created_at: {type: time}
+      ttl:        {type: duration}
+`)
+	tax, err := audit.ParseTaxonomyYAML(yaml)
+	require.NoError(t, err)
+	require.NotNil(t, tax)
+	ev := tax.Events["user_create"]
+	require.NotNil(t, ev)
+	require.NotNil(t, ev.FieldTypes)
+
+	want := map[string]string{
+		"email":      "string",
+		"quota":      "int",
+		"bytes_used": "int64",
+		"score":      "float64",
+		"active":     "bool",
+		"created_at": "time.Time",
+		"ttl":        "time.Duration",
+	}
+	for fieldName, expectedGo := range want {
+		assert.Equal(t, expectedGo, ev.FieldTypes[fieldName],
+			"field %q should map to Go type %q", fieldName, expectedGo)
+	}
+	// Empty type annotation defaults to string.
+	assert.Equal(t, "string", ev.FieldTypes["nickname"],
+		"no type annotation must default to string")
+	// Reserved standard fields (outcome, actor_id) are NOT in FieldTypes —
+	// their Go type is authoritative from the library's standard-field
+	// table, not from per-taxonomy declaration.
+	_, hasOutcome := ev.FieldTypes["outcome"]
+	assert.False(t, hasOutcome, "reserved field outcome must not appear in FieldTypes")
+	_, hasActorID := ev.FieldTypes["actor_id"]
+	assert.False(t, hasActorID, "reserved field actor_id must not appear in FieldTypes")
+}
+
+// TestParseTaxonomyYAML_ReservedFieldRejectsTypeAnnotation confirms
+// that taxonomy YAML cannot override the library-authoritative Go
+// type of a reserved standard field — the generator's standard-field
+// table stays canonical. Table-driven across representative reserved
+// fields (numeric, string, timestamp-ish) to lock the contract.
+func TestParseTaxonomyYAML_ReservedFieldRejectsTypeAnnotation(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		reserved string
+		declared string
+	}{
+		{name: "numeric_dest_port", reserved: "dest_port", declared: "string"},
+		{name: "string_actor_id", reserved: "actor_id", declared: "int"},
+		{name: "timestamp_start_time", reserved: "start_time", declared: "string"},
+		{name: "text_reason", reserved: "reason", declared: "bool"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			yaml := []byte(fmt.Sprintf(`
+version: 1
+categories:
+  write: [auth_failure]
+events:
+  auth_failure:
+    fields:
+      outcome: {required: true}
+      %s: {type: %s}
+`, tc.reserved, tc.declared))
+			_, err := audit.ParseTaxonomyYAML(yaml)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.reserved)
+			assert.Contains(t, err.Error(), "reserved standard field cannot declare a `type:`")
+		})
+	}
+}

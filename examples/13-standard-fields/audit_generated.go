@@ -306,6 +306,12 @@ func (e *AuthFailureEvent) SetUserAgent(v string) *AuthFailureEvent {
 func (e *AuthFailureEvent) EventType() string { return EventAuthFailure }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *AuthFailureEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -358,7 +364,7 @@ func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 // Categories returns the categories this event belongs to.
 func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategorySecurity, Severity: intPtr(8)},
+		{Name: CategorySecurity, Severity: auditIntPtr(8)},
 	}
 }
 
@@ -590,6 +596,12 @@ func (e *UserCreateEvent) SetUserAgent(v string) *UserCreateEvent {
 func (e *UserCreateEvent) EventType() string { return EventUserCreate }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *UserCreateEvent) Fields() audit.Fields { return e.fields }
 
 // donateFields satisfies [audit.FieldsDonor], opting this generated
@@ -646,4 +658,6 @@ func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
 	}
 }
 
-func intPtr(n int) *int { return &n }
+// auditIntPtr returns a pointer to the given int. It is generator-owned
+// helper (prefixed to avoid collision with any consumer-defined intPtr).
+func auditIntPtr(n int) *int { return &n }

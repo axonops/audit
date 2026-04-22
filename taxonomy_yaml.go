@@ -201,10 +201,56 @@ type yamlEventDef struct {
 }
 
 // yamlFieldDef defines a single field within an event definition.
-// A nil yamlFieldDef is treated as optional with no labels.
+// A nil yamlFieldDef is treated as optional with no labels, default
+// type string.
 type yamlFieldDef struct {
+	Type     string   `yaml:"type"`
 	Labels   []string `yaml:"labels"`
 	Required bool     `yaml:"required"`
+}
+
+// supportedCustomFieldTypes lists the YAML type-vocabulary values
+// accepted on custom (non-reserved) fields. Matches [log/slog.Kind] —
+// drops `uint64`/`group`/`any` (not applicable to leaf fields), adds
+// both `int` and `int64` widths since wire representation matters
+// for downstream consumers (SIEM parsers, CEF numeric constraints).
+// The default (empty) value is treated as "string".
+var supportedCustomFieldTypes = []string{
+	"string",
+	"int",
+	"int64",
+	"float64",
+	"bool",
+	"time",
+	"duration",
+}
+
+// customFieldYAMLToGoType maps the YAML type-vocabulary value to the
+// Go type name used by [cmd/audit-gen] in generated setters and
+// stored in [EventDef.FieldTypes].
+var customFieldYAMLToGoType = map[string]string{
+	"":         "string", // default — no type declared
+	"string":   "string",
+	"int":      "int",
+	"int64":    "int64",
+	"float64":  "float64",
+	"bool":     "bool",
+	"time":     "time.Time",
+	"duration": "time.Duration",
+}
+
+// validateCustomFieldType returns the Go type name for the supplied
+// YAML type-vocabulary value, or an error wrapping [ErrValidation]
+// listing the accepted set when the value is unknown. An empty
+// string returns "string" (the documented default).
+func validateCustomFieldType(eventName, fieldName, yamlType string) (string, error) {
+	goType, ok := customFieldYAMLToGoType[yamlType]
+	if !ok {
+		return "", fmt.Errorf("%w: event %q field %q: unknown type %q (valid: %s)",
+			ErrValidation, eventName, fieldName, yamlType,
+			strings.Join(supportedCustomFieldTypes, ", "))
+	}
+	return goType, nil
 }
 
 // sanitizeParserErrorMsg replaces C0/C1 control bytes and DEL in the
@@ -271,7 +317,10 @@ func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 		return nil, fmt.Errorf("%w: trailing content after YAML document: %s", ErrInvalidInput, sanitizeParserErrorMsg(err))
 	}
 
-	tax := convertYAMLTaxonomy(yt)
+	tax, err := convertYAMLTaxonomy(yt)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := MigrateTaxonomy(&tax); err != nil {
 		return nil, err
@@ -290,8 +339,9 @@ func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 // convertYAMLTaxonomy transforms the intermediate yamlTaxonomy into a
 // [Taxonomy]. All maps and slices are defensively copied. EventDef.Categories
 // is derived from the categories map — events may belong to multiple
-// categories or none (uncategorised).
-func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
+// categories or none (uncategorised). Returns an error when an
+// [EventDef] declares an unknown per-field type.
+func convertYAMLTaxonomy(yt yamlTaxonomy) (Taxonomy, error) {
 	categories := make(map[string]*CategoryDef, len(yt.Categories.categories))
 	for name, yamlCat := range yt.Categories.categories {
 		categories[name] = &CategoryDef{
@@ -302,7 +352,11 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 
 	events := make(map[string]*EventDef, len(yt.Events))
 	for name, def := range yt.Events {
-		events[name] = convertYAMLEventDef(def)
+		ev, evErr := convertYAMLEventDef(name, def)
+		if evErr != nil {
+			return Taxonomy{}, evErr
+		}
+		events[name] = ev
 	}
 
 	// Derive EventDef.Categories from the categories map.
@@ -336,7 +390,7 @@ func convertYAMLTaxonomy(yt yamlTaxonomy) Taxonomy {
 	if yt.Sensitivity != nil {
 		tax.Sensitivity = convertYAMLSensitivity(yt.Sensitivity)
 	}
-	return tax
+	return tax, nil
 }
 
 // convertYAMLSensitivity converts the YAML sensitivity config to a
@@ -362,32 +416,64 @@ func convertYAMLSensitivity(ys *yamlSensitivity) *SensitivityConfig {
 // convertYAMLEventDef converts a single yamlEventDef into an [EventDef].
 // Required and Optional are derived from the unified fields map. Per-field
 // label annotations are stored in fieldAnnotations for later resolution
-// by [precomputeSensitivity].
-func convertYAMLEventDef(def yamlEventDef) *EventDef {
+// by [precomputeSensitivity]. Per-field type annotations (for custom
+// fields only — reserved fields always use their standard Go type)
+// populate [EventDef.FieldTypes] after validation against
+// [supportedCustomFieldTypes].
+func convertYAMLEventDef(eventName string, def yamlEventDef) (*EventDef, error) {
 	ev := &EventDef{
 		Description: def.Description,
 		Severity:    copyIntPtr(def.Severity),
 	}
 	for fieldName, fieldDef := range def.Fields {
-		if fieldDef == nil {
-			ev.Optional = append(ev.Optional, fieldName)
-			continue
-		}
-		if fieldDef.Required {
-			ev.Required = append(ev.Required, fieldName)
-		} else {
-			ev.Optional = append(ev.Optional, fieldName)
-		}
-		if len(fieldDef.Labels) > 0 {
-			if ev.fieldAnnotations == nil {
-				ev.fieldAnnotations = make(map[string][]string)
-			}
-			ev.fieldAnnotations[fieldName] = copyStrings(fieldDef.Labels)
+		if err := convertYAMLFieldInto(ev, eventName, fieldName, fieldDef); err != nil {
+			return nil, err
 		}
 	}
 	slices.Sort(ev.Required)
 	slices.Sort(ev.Optional)
-	return ev
+	return ev, nil
+}
+
+// convertYAMLFieldInto threads a single yamlFieldDef onto ev —
+// Required/Optional list placement, label annotations, and the per-
+// field type (custom fields only). Split from convertYAMLEventDef
+// to keep cognitive complexity under the linter threshold.
+func convertYAMLFieldInto(ev *EventDef, eventName, fieldName string, fieldDef *yamlFieldDef) error {
+	if fieldDef == nil {
+		ev.Optional = append(ev.Optional, fieldName)
+		return nil
+	}
+	if fieldDef.Required {
+		ev.Required = append(ev.Required, fieldName)
+	} else {
+		ev.Optional = append(ev.Optional, fieldName)
+	}
+	if len(fieldDef.Labels) > 0 {
+		if ev.fieldAnnotations == nil {
+			ev.fieldAnnotations = make(map[string][]string)
+		}
+		ev.fieldAnnotations[fieldName] = copyStrings(fieldDef.Labels)
+	}
+	// Reserved standard fields always use their library-declared Go
+	// type — reject any consumer override via YAML `type:` so the
+	// generator's reserved-field table stays authoritative.
+	if IsReservedStandardField(fieldName) {
+		if fieldDef.Type != "" {
+			return fmt.Errorf("%w: event %q field %q: reserved standard field cannot declare a `type:` (library-defined)",
+				ErrValidation, eventName, fieldName)
+		}
+		return nil
+	}
+	goType, err := validateCustomFieldType(eventName, fieldName, fieldDef.Type)
+	if err != nil {
+		return err
+	}
+	if ev.FieldTypes == nil {
+		ev.FieldTypes = make(map[string]string)
+	}
+	ev.FieldTypes[fieldName] = goType
+	return nil
 }
 
 // copyIntPtr returns a copy of p. A nil input returns nil.

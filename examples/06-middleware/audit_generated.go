@@ -126,13 +126,13 @@ func NewHTTPRequestEvent(method string, outcome string, path string) *HTTPReques
 }
 
 // SetDurationMS sets the FieldDurationMS field.
-func (e *HTTPRequestEvent) SetDurationMS(v any) *HTTPRequestEvent {
+func (e *HTTPRequestEvent) SetDurationMS(v string) *HTTPRequestEvent {
 	e.fields[FieldDurationMS] = v
 	return e
 }
 
 // SetStatusCode sets the FieldStatusCode field.
-func (e *HTTPRequestEvent) SetStatusCode(v any) *HTTPRequestEvent {
+func (e *HTTPRequestEvent) SetStatusCode(v string) *HTTPRequestEvent {
 	e.fields[FieldStatusCode] = v
 	return e
 }
@@ -309,7 +309,20 @@ func (e *HTTPRequestEvent) SetUserAgent(v string) *HTTPRequestEvent {
 func (e *HTTPRequestEvent) EventType() string { return EventHTTPRequest }
 
 // Fields returns the event fields for [audit.Auditor.AuditEvent].
+//
+// The returned [audit.Fields] map aliases the builder's internal
+// storage. Callers MUST NOT mutate the returned map after the
+// builder has been passed to AuditEvent — the auditor takes
+// ownership via the [audit.FieldsDonor] fast path. Copy the map
+// explicitly if you need a mutable view.
 func (e *HTTPRequestEvent) Fields() audit.Fields { return e.fields }
+
+// donateFields satisfies [audit.FieldsDonor], opting this generated
+// builder into the auditor's zero-extra-alloc fast path. The auditor
+// takes ownership of the fields map returned by Fields() — generated
+// builders MUST NOT mutate or reuse the builder after calling
+// AuditEvent. See docs/adr/0001-fields-ownership-contract.md (#497).
+func (e *HTTPRequestEvent) donateFields() {}
 
 // Description returns the taxonomy description.
 func (e *HTTPRequestEvent) Description() string { return "An HTTP request was processed" }

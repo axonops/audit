@@ -169,12 +169,17 @@ fields:
     labels: [pii]
   custom_field: {}         # compact — optional, no labels
   notes:                   # bare — same as {}
+  quota:                   # typed custom field — generates SetQuota(v int)
+    type: int
+  created_at:
+    type: time             # generates SetCreatedAt(v time.Time)
 ```
 
 | Field Property | Default | Description |
 |----------------|---------|-------------|
 | `required` | `false` | If `true`, the library rejects events missing this field. |
 | `labels` | `[]` | List of sensitivity label names applied to this field. |
+| `type` | `string` | Go type emitted by [audit-gen] in the typed setter for this custom field. Accepts `string`, `int`, `int64`, `float64`, `bool`, `time` (→ `time.Time`), `duration` (→ `time.Duration`). Reserved standard fields (`actor_id`, `source_ip`, etc.) reject `type:` — their Go type is library-authoritative. Unknown values are rejected at parse time. |
 
 ## 🔒 Sensitivity Labels
 

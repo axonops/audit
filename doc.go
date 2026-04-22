@@ -55,7 +55,7 @@
 //	}
 //	defer func() { _ = auditor.Close() }()
 //
-//	err = auditor.AuditEvent(audit.NewEventKV("user_create",
+//	err = auditor.AuditEvent(audit.MustNewEventKV("user_create",
 //	    "outcome", "success",
 //	    "actor_id", "alice",
 //	))

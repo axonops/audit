@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	audit.RegisterOutputFactory("webhook", defaultFactory)
+	audit.MustRegisterOutputFactory("webhook", defaultFactory)
 }
 
 // defaultFactory creates a webhook output from YAML config. Core

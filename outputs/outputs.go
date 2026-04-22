@@ -33,7 +33,7 @@ import (
 // `type: stdout` form MUST call
 // [audit.RegisterOutputFactory] themselves:
 //
-//	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+//	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
 func init() {
-	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
 }

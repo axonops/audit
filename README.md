@@ -282,7 +282,7 @@ func TestUserCreation(t *testing.T) {
     auditor, events, _ := audittest.NewQuick(t, "user_create")
 
     // Exercise the code under test...
-    err := auditor.AuditEvent(audit.NewEventKV("user_create",
+    err := auditor.AuditEvent(audit.MustNewEventKV("user_create",
         "outcome", "success", "actor_id", "alice"))
     require.NoError(t, err)
 

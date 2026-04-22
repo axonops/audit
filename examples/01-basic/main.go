@@ -42,9 +42,11 @@ func main() {
 	}
 	defer func() { _ = auditor.Close() }()
 
-	// Emit a valid event using slog-style key-value pairs.
+	// Emit a valid event using slog-style key-value pairs. Using
+	// MustNewEventKV because the kv pairs are literal: any error would
+	// be a programmer bug in this file, caught at startup.
 	fmt.Println("--- Valid event ---")
-	if auditErr := auditor.AuditEvent(audit.NewEventKV("user_create",
+	if auditErr := auditor.AuditEvent(audit.MustNewEventKV("user_create",
 		"outcome", "success",
 		"actor_id", "alice",
 	)); auditErr != nil {

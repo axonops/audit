@@ -64,12 +64,13 @@ func TestNewWriter_NilDefaultsToStdout(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// NewEventKV()
+// NewEventKV() / MustNewEventKV()
 // ---------------------------------------------------------------------------
 
 func TestNewEventKV_ValidPairs(t *testing.T) {
 	t.Parallel()
-	evt := audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+	evt, err := audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+	require.NoError(t, err)
 	assert.Equal(t, "user_create", evt.EventType())
 	assert.Equal(t, "success", evt.Fields()["outcome"])
 	assert.Equal(t, "alice", evt.Fields()["actor_id"])
@@ -77,27 +78,55 @@ func TestNewEventKV_ValidPairs(t *testing.T) {
 
 func TestNewEventKV_EmptyFields(t *testing.T) {
 	t.Parallel()
-	evt := audit.NewEventKV("user_create")
+	evt, err := audit.NewEventKV("user_create")
+	require.NoError(t, err)
 	assert.Equal(t, "user_create", evt.EventType())
 	assert.Empty(t, evt.Fields())
 }
 
-func TestNewEventKV_OddArgs_Panics(t *testing.T) {
+// TestNewEventKV_OddArgs_ReturnsError verifies that NewEventKV now
+// returns a non-nil error wrapping [audit.ErrValidation] when called
+// with an odd number of key-value arguments (#590 part 2 of 2). Prior
+// to #590 the function panicked; the sibling MustNewEventKV preserves
+// the panic contract for literal call sites.
+func TestNewEventKV_OddArgs_ReturnsError(t *testing.T) {
+	t.Parallel()
+	args := []any{"orphan"}
+	_, err := audit.NewEventKV("user_create", args...)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.Contains(t, err.Error(), "even number of arguments")
+}
+
+func TestNewEventKV_NonStringKey_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := audit.NewEventKV("user_create", 123, "value")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.Contains(t, err.Error(), "must be string")
+}
+
+// TestMustNewEventKV_OddArgs_Panics verifies that the Must form of
+// NewEventKV preserves the pre-#590 panic behaviour for programmer
+// errors. This is the canonical regexp.MustCompile / template.Must
+// pattern — consumers who use MustNewEventKV with literal input
+// accept that programmer errors crash at startup.
+func TestMustNewEventKV_OddArgs_Panics(t *testing.T) {
 	t.Parallel()
 	assert.PanicsWithValue(t,
-		"audit: NewEventKV requires even number of arguments, got 1",
+		"audit: validation error: NewEventKV requires even number of arguments, got 1",
 		func() {
 			args := []any{"orphan"}
-			audit.NewEventKV("user_create", args...) //nolint:staticcheck // intentional odd-args test
+			audit.MustNewEventKV("user_create", args...)
 		},
 	)
 }
 
-func TestNewEventKV_NonStringKey_Panics(t *testing.T) {
+func TestMustNewEventKV_NonStringKey_Panics(t *testing.T) {
 	t.Parallel()
 	assert.PanicsWithValue(t,
-		"audit: NewEventKV key at index 0 must be string, got int",
-		func() { audit.NewEventKV("user_create", 123, "value") },
+		"audit: validation error: NewEventKV key at index 0 must be string, got int",
+		func() { audit.MustNewEventKV("user_create", 123, "value") },
 	)
 }
 
@@ -148,7 +177,7 @@ func TestFileFreePath_EndToEnd(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = auditor.AuditEvent(audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice"))
+	err = auditor.AuditEvent(audit.MustNewEventKV("user_create", "outcome", "success", "actor_id", "alice"))
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
 	assert.Equal(t, 1, out.EventCount())
@@ -160,6 +189,6 @@ func TestFileFreePath_EndToEnd(t *testing.T) {
 
 func BenchmarkNewEventKV(b *testing.B) {
 	for b.Loop() {
-		_ = audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+		_, _ = audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
 	}
 }

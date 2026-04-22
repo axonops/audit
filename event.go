@@ -82,30 +82,62 @@ func (e *basicEvent) Fields() Fields    { return e.fields }
 // NewEventKV creates an audit event from alternating key-value pairs,
 // following the [log/slog] convention:
 //
-//	audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+//	ev, err := audit.NewEventKV("user_create", "outcome", "success", "actor_id", "alice")
+//	if err != nil {
+//	    // Programmer error: odd number of args or non-string key.
+//	    return err
+//	}
 //
-// NewEventKV panics if keysAndValues has an odd number of elements or
-// if any key is not a string. These are always programming errors, not
-// runtime conditions — the same convention as [slog.Info].
+// NewEventKV returns a non-nil error wrapping [ErrValidation] if
+// keysAndValues has an odd number of elements or any key is not a
+// string. For literal call sites (tests, examples, known-good kv
+// pairs) use [MustNewEventKV] instead — it preserves the pre-#590
+// panic-on-programmer-error contract and reads as a single-line
+// expression at the call site.
 //
 // Allocation note: NewEventKV allocates the intermediate [Fields] map
 // plus the basicEvent returned by [NewEvent] — two heap allocations
 // per call (plus any-boxing of non-string values). For high-throughput
 // callers, prefer generated typed builders (zero caller-side
 // allocations after warm-up) or [EventHandle] for dynamic event types.
-func NewEventKV(eventType string, keysAndValues ...any) Event {
+func NewEventKV(eventType string, keysAndValues ...any) (Event, error) {
 	if len(keysAndValues)%2 != 0 {
-		panic(fmt.Sprintf("audit: NewEventKV requires even number of arguments, got %d", len(keysAndValues)))
+		return nil, fmt.Errorf("%w: NewEventKV requires even number of arguments, got %d",
+			ErrValidation, len(keysAndValues))
 	}
 	fields := make(Fields, len(keysAndValues)/2)
 	for i := 0; i < len(keysAndValues); i += 2 {
 		key, ok := keysAndValues[i].(string)
 		if !ok {
-			panic(fmt.Sprintf("audit: NewEventKV key at index %d must be string, got %T", i, keysAndValues[i]))
+			return nil, fmt.Errorf("%w: NewEventKV key at index %d must be string, got %T",
+				ErrValidation, i, keysAndValues[i])
 		}
 		fields[key] = keysAndValues[i+1]
 	}
-	return NewEvent(eventType, fields)
+	return NewEvent(eventType, fields), nil
+}
+
+// MustNewEventKV is like [NewEventKV] but panics if keysAndValues is
+// invalid. Intended for literal call sites (tests, examples,
+// package-level initialisation) where the input is known at compile
+// time and two-line error handling is pure noise:
+//
+//	logger.AuditEvent(audit.MustNewEventKV("user_create",
+//	    "outcome", "success",
+//	    "actor_id", "alice",
+//	))
+//
+// Mirrors [regexp.MustCompile] / [template.Must] — the canonical Go
+// pattern for configuration-time construction with compile-time-known
+// input. Dynamic-input callers should use [NewEventKV] instead.
+func MustNewEventKV(eventType string, keysAndValues ...any) Event {
+	ev, err := NewEventKV(eventType, keysAndValues...)
+	if err != nil {
+		// err.Error() already starts with "audit: " via the wrapped
+		// ErrValidation sentinel — no second prefix needed.
+		panic(err.Error())
+	}
+	return ev
 }
 
 // EventHandle is a pre-validated reference to a registered event type.

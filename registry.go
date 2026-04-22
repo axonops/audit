@@ -46,7 +46,15 @@ import (
 // mode) reach the consumer's configured handler. Factories SHOULD
 // pass it via the output module's WithDiagnosticLogger option. A nil
 // logger is valid and is treated as [slog.Default].
-type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger) (Output, error)
+//
+// fctx is the auditor-wide framework context ([FrameworkContext]),
+// plumbed through from [outputconfig.WithFrameworkContext]. Factories
+// SHOULD pass it to the output module's New constructor so that
+// construction-time cascades (syslog RFC 5424 APP-NAME defaulting from
+// the top-level app_name, etc.) apply to the first connection / first
+// request. The zero value is valid and disables the cascade; outputs
+// then fall back to their own defaults (#583).
+type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger, fctx FrameworkContext) (Output, error)
 
 // registry is a global mutable map protected by registryMu. This is an
 // intentional exception to the "no global mutable state" convention in

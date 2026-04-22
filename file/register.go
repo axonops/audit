@@ -31,7 +31,7 @@ func init() {
 // metrics are auto-detected via type assertion on coreMetrics.
 // The logger is plumbed through to construction-time permission-mode
 // warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 	var fileMetrics Metrics
 	if fm, ok := coreMetrics.(Metrics); ok {
 		fileMetrics = fm
@@ -43,7 +43,7 @@ func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, lo
 // from YAML configuration with the provided file-specific metrics
 // captured in the closure. Pass nil to disable file metrics.
 func NewFactory(fileMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return buildOutput(name, rawConfig, fileMetrics, logger)
 	}
 }

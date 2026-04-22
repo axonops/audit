@@ -83,7 +83,7 @@ outputs:
     syslog:
       network: "tcp+tls"           # "tcp" (default), "udp", or "tcp+tls"
       address: "${SYSLOG_HOST}:6514"
-      app_name: "myapp"            # RFC 5424 APP-NAME (default: "audit")
+      app_name: "myapp"            # RFC 5424 APP-NAME — cascades from top-level app_name when omitted (see docs/syslog-output.md#app-name-cascade)
       facility: "local0"           # syslog facility (default: "local0")
       tls_ca: "/etc/audit/ca.pem"
       tls_cert: "/etc/audit/client-cert.pem"   # for mTLS
@@ -475,7 +475,7 @@ See [Sensitivity Labels](sensitivity-labels.md) for details.
 |-------|---------|-------------|
 | `network` | `"tcp"` | Transport: `"tcp"`, `"udp"`, or `"tcp+tls"`. |
 | `address` | (required) | Host:port. Supports `${VAR}` substitution. |
-| `app_name` | `"audit"` | RFC 5424 APP-NAME field. |
+| `app_name` | top-level `app_name`, else `"audit"` | RFC 5424 APP-NAME field. Cascades from top-level `app_name` when omitted. See [APP-NAME Cascade](syslog-output.md#app-name-cascade). |
 | `facility` | `"local0"` | Syslog facility. Valid: kern, user, mail, daemon, auth, syslog, lpr, news, uucp, cron, authpriv, ftp, local0-local7. |
 | `tls_ca` | — | CA certificate path for TLS verification. |
 | `tls_cert` | — | Client certificate path for mTLS. |

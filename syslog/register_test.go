@@ -41,7 +41,7 @@ func TestSyslogFactory_ValidConfig(t *testing.T) {
 
 	// syslog.New eagerly connects — this may fail without a server.
 	// We test parsing separately from connectivity.
-	out, err := factory("siem_syslog", yaml, nil, nil)
+	out, err := factory("siem_syslog", yaml, nil, nil, audit.FrameworkContext{})
 	if err != nil {
 		// Connection failure is expected without Docker — verify it
 		// got past YAML parsing (error should be about connection).
@@ -58,7 +58,7 @@ func TestSyslogFactory_InvalidConfig_EmptyAddress(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_syslog", yaml, nil, nil)
+	_, err := factory("bad_syslog", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "bad_syslog")
 }
@@ -69,7 +69,7 @@ func TestSyslogFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("test", yaml, nil, nil)
+	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "bogus")
 }
@@ -78,7 +78,7 @@ func TestSyslogFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("empty", nil, nil, nil)
+	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "config is required")
 }
@@ -90,7 +90,7 @@ func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
 	require.NotNil(t, factory)
 
 	// Will fail to connect without Docker, but should parse YAML OK.
-	_, err := factory("tls_syslog", yaml, nil, nil)
+	_, err := factory("tls_syslog", yaml, nil, nil, audit.FrameworkContext{})
 	if err != nil {
 		assert.Contains(t, err.Error(), "tls_syslog")
 	}
@@ -112,7 +112,7 @@ func TestSyslogFactory_BatchingKeys(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	out, err := factory("batched", rawYAML, nil, nil)
+	out, err := factory("batched", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err, "batching keys must parse cleanly")
 	require.NotNil(t, out)
 	t.Cleanup(func() { _ = out.Close() })
@@ -126,7 +126,7 @@ func TestSyslogFactory_FlushIntervalInvalid(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_flush", rawYAML, nil, nil)
+	_, err := factory("bad_flush", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -137,7 +137,7 @@ func TestSyslogFactory_InsecureSkipVerify_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("insecure", rawYAML, nil, nil)
+	_, err := factory("insecure", rawYAML, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err, "insecure_skip_verify must not be settable via YAML")
 	assert.Contains(t, err.Error(), "insecure_skip_verify")
 }
@@ -147,7 +147,7 @@ func TestSyslogNewFactory_WithMetrics(t *testing.T) {
 	factory := syslog.NewFactory(metrics)
 
 	rawYAML := []byte("network: tcp\naddress: localhost:5514\n")
-	out, err := factory("with_metrics", rawYAML, nil, nil)
+	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
 	if err != nil {
 		// Connection failure expected without Docker.
 		t.Logf("skipping connectivity assertion: %v", err)
@@ -161,7 +161,7 @@ func TestSyslogNewFactory_NilMetrics(t *testing.T) {
 	factory := syslog.NewFactory(nil)
 
 	rawYAML := []byte("network: tcp\naddress: localhost:5514\n")
-	out, err := factory("nil_metrics", rawYAML, nil, nil)
+	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
 	if err != nil {
 		t.Logf("skipping connectivity assertion: %v", err)
 		return

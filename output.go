@@ -128,16 +128,56 @@ type MetadataWriter interface {
 	WriteWithMetadata(data []byte, meta EventMetadata) error
 }
 
+// FrameworkContext carries auditor-wide framework metadata into
+// output constructors so the first connection / first request can
+// use the correct app_name, host, timezone, and pid. Construction-
+// time cascades (e.g., syslog RFC 5424 APP-NAME defaulting from the
+// top-level app_name when the per-output YAML key is omitted) are
+// driven through this value.
+//
+// Populated by [outputconfig.Load] by parsing the top-level `app_name`
+// and `host` fields from the outputs YAML. Direct-Go consumers who
+// construct outputs themselves pass the zero value
+// (FrameworkContext{}) unless they want to pre-populate cascade
+// defaults for their use case.
+//
+// Introduced in #583 to solve the sequencing problem where framework
+// fields were propagated to outputs AFTER the initial dial in
+// [syslog.New], so the first syslog session used the wrong APP-NAME.
+type FrameworkContext struct {
+	// AppName is the auditor-wide application name. Used as the
+	// default RFC 5424 APP-NAME when the syslog per-output config
+	// omits `app_name`. May be empty — outputs fall back to their
+	// own defaults in that case.
+	AppName string
+	// Host is the auditor-wide host identifier. Used as the default
+	// RFC 5424 HOSTNAME when the syslog per-output config omits
+	// `hostname`. May be empty.
+	Host string
+	// Timezone is the auditor-wide timezone label (e.g. "UTC",
+	// "Europe/London"). Not yet populated by outputconfig.Load;
+	// reserved for future use.
+	Timezone string
+	// PID is the process ID at auditor construction time.
+	// Not yet populated by outputconfig.Load; reserved for future
+	// use.
+	PID int
+}
+
 // FrameworkFieldReceiver is an optional interface that [Output]
 // implementations may satisfy to receive auditor-wide framework fields
-// (app_name, host, timezone, pid) at construction time. The library
+// (app_name, host, timezone, pid) POST-construction. The library
 // calls SetFrameworkFields once after all options are applied and
 // before the first Write or WriteWithMetadata call.
 //
+// Since #583, framework fields are also passed to output constructors
+// via [FrameworkContext]; this interface remains for outputs that
+// need to update fields mid-lifetime or that prefer a post-
+// construction hook for other reasons (e.g., Loki stream labels
+// cached at SetFrameworkFields time).
+//
 // This is the output-side analogue of [FrameworkFieldSetter] for
-// formatters. Outputs that need framework fields for labelling or
-// routing (e.g., Loki stream labels) implement this interface.
-// Outputs that do not implement it are silently skipped.
+// formatters. Outputs that do not implement it are silently skipped.
 type FrameworkFieldReceiver interface {
 	SetFrameworkFields(appName, host, timezone string, pid int)
 }

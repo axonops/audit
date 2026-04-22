@@ -31,7 +31,7 @@ func init() {
 // defaultFactory creates a syslog output from YAML config. Per-output
 // metrics are auto-detected via type assertion on coreMetrics.
 // The logger is plumbed through to construction-time TLS warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 	var syslogMetrics Metrics
 	if sm, ok := coreMetrics.(Metrics); ok {
 		syslogMetrics = sm
@@ -43,7 +43,7 @@ func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, lo
 // outputs from YAML configuration with the provided syslog-specific
 // metrics captured in the closure. Pass nil to disable syslog metrics.
 func NewFactory(syslogMetrics Metrics) audit.OutputFactory {
-	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return buildOutput(name, rawConfig, syslogMetrics, logger)
 	}
 }

@@ -31,7 +31,7 @@ func TestStdoutFactory_RegisteredByInit(t *testing.T) {
 	factory := audit.LookupOutputFactory("stdout")
 	require.NotNil(t, factory, "stdout factory must be registered by init()")
 
-	out, err := factory("my_stdout", nil, nil, nil)
+	out, err := factory("my_stdout", nil, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -44,12 +44,12 @@ func TestStdoutFactory_AcceptsNoConfig(t *testing.T) {
 	require.NotNil(t, factory)
 
 	// nil config — accepted (the normal case)
-	out, err := factory("no_config", nil, nil, nil)
+	out, err := factory("no_config", nil, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
 	// empty byte slice — also accepted
-	out2, err := factory("empty_config", []byte{}, nil, nil)
+	out2, err := factory("empty_config", []byte{}, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out2.Close() })
 }
@@ -58,7 +58,7 @@ func TestStdoutFactory_RejectsConfig(t *testing.T) {
 	factory := audit.LookupOutputFactory("stdout")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil, nil)
+	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not accept configuration")
 	assert.Contains(t, err.Error(), "bad_stdout")

@@ -270,7 +270,11 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost strin
 			return nil, fmt.Errorf("output %q: marshal %q config: %w", name, f.typeName, err)
 		}
 	}
-	output, err := factory(name, rawConfig, coreMetrics, logger)
+	fctx := audit.FrameworkContext{
+		AppName: globalAppName,
+		Host:    globalHost,
+	}
+	output, err := factory(name, rawConfig, coreMetrics, logger, fctx)
 	if err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}

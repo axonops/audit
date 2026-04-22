@@ -32,7 +32,7 @@ func init() {
 // metrics are forwarded for delivery reporting. Per-output metrics
 // are injected via OutputMetricsReceiver after construction.
 // The logger is plumbed through to construction-time TLS warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 	return buildOutput(name, rawConfig, coreMetrics, logger)
 }
 

@@ -213,7 +213,7 @@ func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, l
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
@@ -266,7 +266,7 @@ func createFileAndLokiAuditorWithExclusion(tc *AuditTestContext, excludeLabel st
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}
@@ -308,7 +308,7 @@ func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 		Path:       tmpFile.Name(),
 		MaxSizeMB:  10,
 		MaxBackups: 1,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create file output: %w", err)
 	}

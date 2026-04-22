@@ -43,7 +43,7 @@ import (
 // avoids pulling audit/outputs as a module dependency (that would
 // create a cycle: outputs → audit).
 func init() {
-	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
 }
 
 func testTaxonomy(t *testing.T) *audit.Taxonomy {
@@ -165,7 +165,7 @@ func (l *lokiStubOutput) Close() error       { return nil }
 func (l *lokiStubOutput) Name() string       { return "loki-stub" }
 
 func init() {
-	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return &lokiStubOutput{}, nil
 	})
 }
@@ -843,7 +843,7 @@ func (s *spyOutput) Name() string       { return "spy" }
 
 func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -855,7 +855,7 @@ func TestLoad_ClosesOutputOnRouteError(t *testing.T) {
 
 func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -867,7 +867,7 @@ func TestLoad_ClosesOutputOnFormatterError(t *testing.T) {
 
 func TestLoad_ClosesEarlierOutputsWhenLaterFails(t *testing.T) {
 	spy := &spyOutput{}
-	audit.RegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("spy", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return spy, nil
 	})
 	tax := testTaxonomy(t)
@@ -1543,7 +1543,7 @@ outputs:
 func TestLoad_PerOutputTLSPolicy_Syslog(t *testing.T) {
 	t.Parallel()
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2141,7 +2141,7 @@ func TestLoad_TimezoneAtMaxLength_Accepted(t *testing.T) {
 // registration and must run exclusively with other syslog factory tests.
 func TestLoad_InjectStringField_SyslogHostnameNotOverridden(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2184,7 +2184,7 @@ outputs:
 // registration and must run exclusively with other syslog factory tests.
 func TestLoad_InjectStringField_SyslogHostnameInjected(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2226,7 +2226,7 @@ outputs:
 // does not override it.
 func TestLoad_InjectStringField_SyslogAppNameNotOverridden(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("syslog", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2267,7 +2267,7 @@ outputs:
 // registration and must run exclusively with other webhook factory tests.
 func TestLoad_InjectStringField_NonSyslogOutputNoInjection(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		return &testOutput{name: name}, nil
 	})
@@ -2313,7 +2313,7 @@ outputs:
 // with each other.
 func TestLoad_FrameworkContextReachesFactory(t *testing.T) {
 	var captured atomic.Value
-	audit.RegisterOutputFactory("syslog", func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger, fctx audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("syslog", func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger, fctx audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(fctx)
 		return &testOutput{name: name}, nil
 	})
@@ -2378,7 +2378,7 @@ func TestOutputConfig_EnvSubstitutionPreservesStringSemantics(t *testing.T) {
 	}
 
 	var captured atomic.Value
-	audit.RegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("webhook", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		captured.Store(string(rawConfig))
 		// Decode into a headers-carrying struct so we can also assert
 		// at the Go-value layer that every header lands as a string.

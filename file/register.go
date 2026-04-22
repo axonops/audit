@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	audit.RegisterOutputFactory("file", defaultFactory)
+	audit.MustRegisterOutputFactory("file", defaultFactory)
 }
 
 // defaultFactory creates a file output from YAML config. Per-output

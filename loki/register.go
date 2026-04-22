@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	audit.RegisterOutputFactory("loki", defaultFactory)
+	audit.MustRegisterOutputFactory("loki", defaultFactory)
 }
 
 // defaultFactory creates a Loki output from YAML config. Core metrics

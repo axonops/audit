@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	audit.RegisterOutputFactory("syslog", defaultFactory)
+	audit.MustRegisterOutputFactory("syslog", defaultFactory)
 }
 
 // defaultFactory creates a syslog output from YAML config. Per-output

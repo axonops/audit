@@ -32,7 +32,7 @@ func TestRegisterOutputFactory_Success(t *testing.T) {
 	factory := func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return testhelper.NewMockOutput(name), nil
 	}
-	audit.RegisterOutputFactory("test", factory)
+	require.NoError(t, audit.RegisterOutputFactory("test", factory))
 
 	got := audit.LookupOutputFactory("test")
 	require.NotNil(t, got)
@@ -48,8 +48,8 @@ func TestRegisterOutputFactory_Overwrite(t *testing.T) {
 		return testhelper.NewMockOutput("second"), nil
 	}
 
-	audit.RegisterOutputFactory("test", first)
-	audit.RegisterOutputFactory("test", second)
+	require.NoError(t, audit.RegisterOutputFactory("test", first))
+	require.NoError(t, audit.RegisterOutputFactory("test", second))
 
 	got := audit.LookupOutputFactory("test")
 	require.NotNil(t, got)
@@ -73,30 +73,38 @@ func TestRegisteredOutputTypes_Sorted(t *testing.T) {
 	dummy := func(string, []byte, audit.Metrics, *slog.Logger, audit.FrameworkContext) (audit.Output, error) {
 		return nil, nil
 	}
-	audit.RegisterOutputFactory("webhook", dummy)
-	audit.RegisterOutputFactory("file", dummy)
-	audit.RegisterOutputFactory("syslog", dummy)
+	require.NoError(t, audit.RegisterOutputFactory("webhook", dummy))
+	require.NoError(t, audit.RegisterOutputFactory("file", dummy))
+	require.NoError(t, audit.RegisterOutputFactory("syslog", dummy))
 
 	types := audit.RegisteredOutputTypes()
 	assert.Equal(t, []string{"file", "syslog", "webhook"}, types)
 }
 
-func TestRegisterOutputFactory_EmptyName_Panics(t *testing.T) {
+// TestRegisterOutputFactory_EmptyName_ReturnsError verifies that
+// [audit.RegisterOutputFactory] now returns a non-nil error wrapping
+// [audit.ErrValidation] instead of panicking on an empty type name
+// (#590 part 2 of 2). The documented caller pattern is
+// `panic-on-non-nil-error` inside the caller's own init(), preserving
+// startup-fatal semantics while keeping the library panic-free.
+func TestRegisterOutputFactory_EmptyName_ReturnsError(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	assert.Panics(t, func() {
-		audit.RegisterOutputFactory("", func(string, []byte, audit.Metrics, *slog.Logger, audit.FrameworkContext) (audit.Output, error) {
-			return nil, nil
-		})
+	err := audit.RegisterOutputFactory("", func(string, []byte, audit.Metrics, *slog.Logger, audit.FrameworkContext) (audit.Output, error) {
+		return nil, nil
 	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.Contains(t, err.Error(), "empty type name")
 }
 
-func TestRegisterOutputFactory_NilFactory_Panics(t *testing.T) {
+func TestRegisterOutputFactory_NilFactory_ReturnsError(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	assert.Panics(t, func() {
-		audit.RegisterOutputFactory("test", nil)
-	})
+	err := audit.RegisterOutputFactory("test", nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.Contains(t, err.Error(), "nil factory")
 }
 
 func TestRegisteredOutputTypes_Empty(t *testing.T) {

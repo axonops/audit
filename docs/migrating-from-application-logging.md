@@ -23,7 +23,7 @@ audit and your application logger run independently:
 slog.Info("handling request", "method", r.Method, "path", r.URL.Path)
 
 // Audit logger (audit)
-auditor.AuditEvent(audit.NewEventKV("user_create",
+auditor.AuditEvent(audit.MustNewEventKV("user_create",
     "outcome", "success",
     "actor_id", userID,
     "target_id", newUser.ID,

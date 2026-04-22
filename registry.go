@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"fmt"
 	"log/slog"
 	"slices"
 	"sync"
@@ -74,18 +75,45 @@ var (
 // This allows consumers to replace init()-registered default factories
 // with metrics-aware factories before calling the config loader.
 //
-// RegisterOutputFactory panics if typeName is empty or factory is nil.
-// These are programming errors that should be caught at startup.
-func RegisterOutputFactory(typeName string, factory OutputFactory) {
+// RegisterOutputFactory returns an error wrapping [ErrValidation] if
+// typeName is empty or factory is nil. These are programming errors;
+// callers in init() SHOULD panic on a non-nil return so the
+// programmer error surfaces at startup:
+//
+//	func init() {
+//	    if err := audit.RegisterOutputFactory("mine", mineFactory); err != nil {
+//	        panic("audit/mine: register: " + err.Error())
+//	    }
+//	}
+//
+// Prior to #590 this function panicked directly; the signature change
+// removes the last library-boundary panic in the public API.
+func RegisterOutputFactory(typeName string, factory OutputFactory) error {
 	if typeName == "" {
-		panic("audit: RegisterOutputFactory called with empty type name")
+		return fmt.Errorf("%w: RegisterOutputFactory called with empty type name", ErrValidation)
 	}
 	if factory == nil {
-		panic("audit: RegisterOutputFactory called with nil factory")
+		return fmt.Errorf("%w: RegisterOutputFactory called with nil factory for type %q", ErrValidation, typeName)
 	}
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[typeName] = factory
+	return nil
+}
+
+// MustRegisterOutputFactory is like [RegisterOutputFactory] but
+// panics if typeName is empty or factory is nil. Intended for init()
+// call sites where the inputs are literal and a programmer error
+// should crash at startup. Mirrors [regexp.MustCompile] /
+// [template.Must] — the canonical Go pattern.
+//
+//	func init() {
+//	    audit.MustRegisterOutputFactory("mine", mineFactory)
+//	}
+func MustRegisterOutputFactory(typeName string, factory OutputFactory) {
+	if err := RegisterOutputFactory(typeName, factory); err != nil {
+		panic("audit: " + err.Error())
+	}
 }
 
 // LookupOutputFactory returns the registered factory for the given

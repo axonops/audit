@@ -37,17 +37,17 @@ func init() {
 	// stdout init() in #578; blank-importing audit/outputs here would
 	// create a cross-module cycle (outputs → audit) so we register
 	// via audit.StdoutFactory() instead.
-	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
 	// Register a stub "loki" factory for BDD tests that validate
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a
 	// minimal output.
-	audit.RegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		return &lokiStub{}, nil
 	})
 	// Stub webhook factory — captures raw config bytes so #487
 	// envsubst-string-semantics scenarios can inspect them.
-	audit.RegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
 		capturedWebhookRawConfig = append(capturedWebhookRawConfig[:0], rawConfig...)
 		return &webhookStub{}, nil
 	})

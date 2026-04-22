@@ -40,7 +40,7 @@ import (
 // from core tests would create a cross-module cycle (audit <->
 // outputs), so we register via the public API here instead.
 func init() {
-	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
 }
 
 func TestFeatures(t *testing.T) {

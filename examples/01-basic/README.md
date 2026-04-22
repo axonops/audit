@@ -63,11 +63,13 @@ Two styles, same result:
 
 **slog-style key-value pairs** (concise):
 ```go
-err := auditor.AuditEvent(audit.NewEventKV("user_create",
+err := auditor.AuditEvent(audit.MustNewEventKV("user_create",
     "outcome", "success",
     "actor_id", "alice",
 ))
 ```
+
+`MustNewEventKV` panics on programmer errors (odd arg count, non-string key). For dynamic input use `audit.NewEventKV(...)` which returns `(Event, error)`.
 
 **Fields map** (explicit):
 ```go

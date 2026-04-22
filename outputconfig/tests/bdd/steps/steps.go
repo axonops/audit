@@ -33,6 +33,11 @@ import (
 )
 
 func init() {
+	// Register stdout via the public API. The core package dropped its
+	// stdout init() in #578; blank-importing audit/outputs here would
+	// create a cross-module cycle (outputs → audit) so we register
+	// via audit.StdoutFactory() instead.
+	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
 	// Register a stub "loki" factory for BDD tests that validate
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a

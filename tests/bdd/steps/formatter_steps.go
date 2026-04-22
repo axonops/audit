@@ -56,7 +56,7 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
@@ -95,7 +95,7 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}
@@ -135,13 +135,13 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		tc.FilePaths["json"] = jsonPath
 		tc.FilePaths["cef"] = cefPath
 
-		jsonOut, err := file.New(file.Config{Path: jsonPath}, nil)
+		jsonOut, err := file.New(&file.Config{Path: jsonPath}, nil)
 		if err != nil {
 			return fmt.Errorf("create json file: %w", err)
 		}
 		tc.AddCleanup(func() { _ = jsonOut.Close() })
 
-		cefOut, err := file.New(file.Config{Path: cefPath}, nil)
+		cefOut, err := file.New(&file.Config{Path: cefPath}, nil)
 		if err != nil {
 			return fmt.Errorf("create cef file: %w", err)
 		}
@@ -174,7 +174,7 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
@@ -214,7 +214,7 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
@@ -251,7 +251,7 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
@@ -286,7 +286,7 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		path := filepath.Join(dir, "audit.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file output: %w", err)
 		}

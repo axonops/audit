@@ -108,9 +108,9 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#575** feat: code generator — typed custom fields, auditIntPtr prefix, explicit setter flag, Fields() contract doc.
 - [x] **#576** refactor: rename OutputRoute/OutputFormatter/OutputExcludeLabels/OutputHMAC to WithX convention.
 - [ ] **#577** refactor: collapse outputconfig.LoadResult, fix outputconfig.New variadic, fix outputconfig/doc.go stale example.
-- [ ] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
+- [x] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
 - [ ] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
-- [ ] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.
+- [x] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.
 - [ ] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
 - [ ] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_v / _hmacVersion.
 - [x] **#583** refactor: rename syslog.app_name YAML to procid or syslog_app_name; default APP-NAME from top-level app_name.

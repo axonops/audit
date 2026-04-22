@@ -63,7 +63,7 @@ func TestFileOutput_Write(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	data := []byte(`{"event_type":"test","outcome":"success"}` + "\n")
@@ -81,7 +81,7 @@ func TestFileOutput_Write_NonBlocking(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 100}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -107,7 +107,7 @@ func TestFileOutput_BufferFull_Drops(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	// Tiny buffer to trigger drops.
-	out, err := file.New(file.Config{Path: path, BufferSize: 1}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 1}, nil)
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -131,7 +131,7 @@ func TestFileOutput_Close_DrainsBuffer(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 1000}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 1000}, nil)
 	require.NoError(t, err)
 
 	const n = 50
@@ -152,7 +152,7 @@ func TestFileOutput_Close(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	assert.NoError(t, out.Close())
 }
@@ -161,7 +161,7 @@ func TestFileOutput_CloseIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	assert.NoError(t, out.Close())
 	assert.NoError(t, out.Close())
@@ -171,7 +171,7 @@ func TestFileOutput_WriteAfterClose(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -183,7 +183,7 @@ func TestFileOutput_Name(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -194,7 +194,7 @@ func TestFileOutput_Permissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte("test\n")))
@@ -210,7 +210,7 @@ func TestFileOutput_CustomPermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:        path,
 		Permissions: "0644",
 	}, nil)
@@ -230,7 +230,7 @@ func TestFileOutput_DefaultConfig(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	// All zero-value fields should get sensible defaults.
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	// Verify the output is functional.
@@ -311,7 +311,7 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := file.New(tt.cfg, nil)
+			_, err := file.New(&tt.cfg, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
@@ -320,7 +320,7 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 
 func TestFileOutput_NegativeMaxSizeMB_DefaultsTo100(t *testing.T) {
 	dir := t.TempDir()
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:      filepath.Join(dir, "neg.log"),
 		MaxSizeMB: -1,
 	}, nil)
@@ -330,7 +330,7 @@ func TestFileOutput_NegativeMaxSizeMB_DefaultsTo100(t *testing.T) {
 
 func TestFileOutput_Permissions0000_Rejected(t *testing.T) {
 	dir := t.TempDir()
-	_, err := file.New(file.Config{
+	_, err := file.New(&file.Config{
 		Path:        filepath.Join(dir, "noaccess.log"),
 		Permissions: "0000",
 	}, nil)
@@ -341,7 +341,7 @@ func TestFileOutput_Permissions0000_Rejected(t *testing.T) {
 
 func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 	dir := t.TempDir()
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:       filepath.Join(dir, "boundary.log"),
 		MaxSizeMB:  file.MaxSizeMB,
 		MaxBackups: file.MaxBackups,
@@ -354,7 +354,7 @@ func TestFileOutput_MaxBoundaryValues_Accepted(t *testing.T) {
 
 func TestFileOutput_MaxExceeded_WrapsErrConfigInvalid(t *testing.T) {
 	dir := t.TempDir()
-	_, err := file.New(file.Config{
+	_, err := file.New(&file.Config{
 		Path:      filepath.Join(dir, "test.log"),
 		MaxSizeMB: file.MaxSizeMB + 1,
 	}, nil)
@@ -366,7 +366,7 @@ func TestFileOutput_ImplementsOutput(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -377,7 +377,7 @@ func TestFileOutput_ImplementsDeliveryReporter(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -392,7 +392,7 @@ func TestFileOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -406,7 +406,7 @@ func TestFileOutput_MultipleWrites(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	for i := range 10 {
@@ -426,7 +426,7 @@ func TestFileOutput_ConcurrentWriteClose(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	const goroutines = 20
@@ -450,7 +450,7 @@ func TestFileOutput_WriteDuringClose_NoPanic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 10}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10}, nil)
 	require.NoError(t, err)
 
 	// Write events in goroutines while Close() is called concurrently.
@@ -479,7 +479,7 @@ func TestFileOutput_CopySafety(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	data := []byte(`{"event":"original"}` + "\n")
@@ -503,7 +503,7 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	compress := false
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:     path,
 		Compress: &compress,
 	}, nil)
@@ -541,7 +541,7 @@ func TestFileOutput_NilFileMetrics_RotationDoesNotPanic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path}, nil)
+	out, err := file.New(&file.Config{Path: path}, nil)
 	require.NoError(t, err)
 
 	for range 5 {
@@ -557,7 +557,7 @@ func TestFileOutput_FileMetrics_RecordFileRotation_CalledOnRotation(t *testing.T
 	m := &fileOnlyMetrics{}
 
 	// MaxSizeMB=1 forces rotation after 1 MB of data.
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:      path,
 		MaxSizeMB: 1,
 	}, m)
@@ -592,7 +592,7 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 
 	m := &fileOnlyMetrics{}
 
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 10,
@@ -620,7 +620,7 @@ func TestFileOutput_FileMetrics_InterfaceAssertion(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	var m file.Metrics = &fileOnlyMetrics{}
-	out, err := file.New(file.Config{Path: path}, m)
+	out, err := file.New(&file.Config{Path: path}, m)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
@@ -636,7 +636,7 @@ func TestFileOutput_SymlinkRejected(t *testing.T) {
 
 	// Construction succeeds — symlink check happens on first write
 	// in the background goroutine.
-	out, err := file.New(file.Config{Path: link}, nil)
+	out, err := file.New(&file.Config{Path: link}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte("test\n")))
@@ -671,7 +671,7 @@ func TestFileOutput_DestinationKey_EquivalentPaths(t *testing.T) {
 	var keys []string
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := file.New(file.Config{Path: tt.path}, nil)
+			out, err := file.New(&file.Config{Path: tt.path}, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = out.Close() })
 
@@ -696,7 +696,7 @@ func TestFileOutput_OutputMetrics_RecordFlush(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000}, nil)
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -716,7 +716,7 @@ func TestFileOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 10_000}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000}, nil)
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -736,7 +736,7 @@ func TestFileOutput_PanicRecovery_RecordsError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 100}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -768,7 +768,7 @@ func TestFileOutput_RotationInBackgroundGoroutine(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 3,
@@ -803,7 +803,7 @@ func TestOutputMetrics_RecordError_CalledOnNonRetryableError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(file.Config{Path: path, BufferSize: 100}, nil)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 100}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -833,7 +833,7 @@ func BenchmarkFileOutput_Write(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "bench.log")
 
-	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024}, nil, file.WithDiagnosticLogger(silentLogger()))
+	out, err := file.New(&file.Config{Path: path, MaxSizeMB: 1024}, nil, file.WithDiagnosticLogger(silentLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -854,7 +854,7 @@ func BenchmarkFileOutput_Write_Parallel(b *testing.B) {
 	dir := b.TempDir()
 	path := filepath.Join(dir, "bench.log")
 
-	out, err := file.New(file.Config{Path: path, MaxSizeMB: 1024, BufferSize: 10000}, nil, file.WithDiagnosticLogger(silentLogger()))
+	out, err := file.New(&file.Config{Path: path, MaxSizeMB: 1024, BufferSize: 10000}, nil, file.WithDiagnosticLogger(silentLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -893,7 +893,7 @@ func BenchmarkFileOutput_Write_WithRotation(b *testing.B) {
 	path := filepath.Join(dir, "bench.log")
 
 	compressOff := false
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:       path,
 		MaxSizeMB:  1, // public-API minimum; see godoc above
 		MaxBackups: 2, // exercise the prune path without dir bloat
@@ -930,7 +930,7 @@ func TestFile_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 
 	// Permission 0o644 grants group read + world read → triggers the
 	// "grants group/world access" warning in file.New.
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:        path,
 		Permissions: "0644",
 	}, nil, file.WithDiagnosticLogger(injected))
@@ -954,7 +954,7 @@ func TestFile_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "perm-warning-nil.log")
 
-	out, err := file.New(file.Config{
+	out, err := file.New(&file.Config{
 		Path:        path,
 		Permissions: "0644",
 	}, nil, file.WithDiagnosticLogger(nil))
@@ -963,4 +963,14 @@ func TestFile_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 
 	assert.Contains(t, buf.String(), "permissions grant group/world access",
 		"WithDiagnosticLogger(nil) should fall back to slog.Default")
+}
+
+// TestNew_NilConfig_ReturnsError verifies that [New] returns a
+// non-nil error when passed a nil *Config (#580). The nil guard
+// prevents a nil-pointer dereference in subsequent validation.
+func TestNew_NilConfig_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := file.New(nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config must not be nil")
 }

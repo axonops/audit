@@ -2008,3 +2008,13 @@ func TestClient_RedirectBodyDrainCapped_Webhook(t *testing.T) {
 	assert.Less(t, written, int64(maxExpected),
 		"server wrote %d bytes; client should have capped drain at 4 KiB", written)
 }
+
+// TestNew_NilConfig_ReturnsError verifies that [New] returns a
+// non-nil error when passed a nil *Config. Nil-guard added for
+// consistency with file.New / loki.New (#580 follow-up).
+func TestNew_NilConfig_ReturnsError(t *testing.T) {
+	t.Parallel()
+	_, err := webhook.New(nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config must not be nil")
+}

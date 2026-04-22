@@ -152,6 +152,9 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // the auditor's diagnostic logger is propagated post-construction) to
 // a custom logger.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("audit: loki config must not be nil")
+	}
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
 	cfg = &cfgCopy

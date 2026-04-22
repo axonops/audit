@@ -22,8 +22,19 @@ import (
 	"sync"
 )
 
-func init() {
-	RegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ Metrics, _ *slog.Logger, _ FrameworkContext) (Output, error) {
+// StdoutFactory returns an [OutputFactory] that creates a
+// [StdoutOutput] writing to [os.Stdout]. Register it with
+// [RegisterOutputFactory] to enable the YAML `type: stdout` form:
+//
+//	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+//
+// Blank-importing the [github.com/axonops/audit/outputs] convenience
+// package registers this factory for you alongside file/syslog/
+// webhook/loki. Prior to #578 the registration happened automatically
+// via an init() in this package; that was dropped to eliminate hidden
+// global mutation at import time.
+func StdoutFactory() OutputFactory {
+	return func(name string, rawConfig []byte, _ Metrics, _ *slog.Logger, _ FrameworkContext) (Output, error) {
 		if len(rawConfig) > 0 {
 			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
 		}
@@ -32,25 +43,28 @@ func init() {
 			return nil, err
 		}
 		return WrapOutput(out, name), nil
-	})
+	}
 }
 
 // StdoutConfig holds configuration for [StdoutOutput].
 type StdoutConfig struct {
 	// Writer is the destination for audit events. When nil, [os.Stdout]
-	// is used. This field exists primarily for testing. The writer does
-	// not need to be safe for concurrent use; StdoutOutput serialises
-	// writes internally.
+	// is used. The writer does not need to be safe for concurrent use;
+	// StdoutOutput serialises writes internally.
 	Writer io.Writer
 }
 
 // StdoutOutput writes serialised audit events to an [io.Writer],
 // defaulting to [os.Stdout]. It is intended for development and
-// debugging; production deployments SHOULD use [FileOutput] or another
-// persistent output.
+// debugging; production deployments SHOULD use [FileOutput] or
+// another persistent output. The underlying writer can be
+// [os.Stdout], [os.Stderr], or any [io.Writer] supplied via
+// [StdoutConfig] or the convenience constructors [NewStdout],
+// [NewStderr], [NewWriter].
 //
-// StdoutOutput does NOT close the underlying writer on [Close] because
-// the writer is typically [os.Stdout], which must not be closed.
+// StdoutOutput does NOT close the underlying writer on [Close]
+// because the writer is typically [os.Stdout], which must not be
+// closed.
 //
 // StdoutOutput is safe for concurrent use.
 type StdoutOutput struct {
@@ -59,20 +73,33 @@ type StdoutOutput struct {
 	closed bool
 }
 
-// Stdout returns a [StdoutOutput] that writes to [os.Stdout]. This is
-// a convenience shorthand for NewStdoutOutput(StdoutConfig{}).
-func Stdout() *StdoutOutput {
-	out, err := NewStdoutOutput(StdoutConfig{})
-	if err != nil {
-		// StdoutConfig{} cannot fail today; panic guards against future
-		// regressions in NewStdoutOutput validation.
-		panic("audit: Stdout(): " + err.Error())
-	}
-	return out
+// NewStdout returns a [StdoutOutput] that writes to [os.Stdout].
+// Shorthand for NewStdoutOutput(StdoutConfig{}). Non-panicking
+// replacement for the pre-#578 Stdout() helper.
+func NewStdout() (*StdoutOutput, error) {
+	return NewStdoutOutput(StdoutConfig{})
+}
+
+// NewStderr returns a [StdoutOutput] that writes to [os.Stderr].
+// Useful when audit events must be visible on stderr (e.g., when
+// stdout is reserved for primary application output).
+func NewStderr() (*StdoutOutput, error) {
+	return NewStdoutOutput(StdoutConfig{Writer: os.Stderr})
+}
+
+// NewWriter returns a [StdoutOutput] that writes to the given
+// [io.Writer]. Useful for capturing audit events in a
+// [bytes.Buffer] for tests, or for routing to any other
+// destination that satisfies [io.Writer]. Passing nil causes the
+// output to write to [os.Stdout].
+func NewWriter(w io.Writer) (*StdoutOutput, error) {
+	return NewStdoutOutput(StdoutConfig{Writer: w})
 }
 
 // NewStdoutOutput creates a new [StdoutOutput] from the given config.
-// If [StdoutConfig.Writer] is nil, [os.Stdout] is used.
+// If [StdoutConfig.Writer] is nil, [os.Stdout] is used. Prefer the
+// convenience constructors [NewStdout], [NewStderr], [NewWriter]
+// unless you need the [StdoutConfig] struct for some reason.
 func NewStdoutOutput(cfg StdoutConfig) (*StdoutOutput, error) {
 	w := cfg.Writer
 	if w == nil {

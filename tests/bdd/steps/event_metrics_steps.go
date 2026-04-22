@@ -45,7 +45,7 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		path := filepath.Join(dir, "metrics.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path}, nil)
+		fileOut, err := file.New(&file.Config{Path: path}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
@@ -74,7 +74,7 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		path := filepath.Join(dir, "drops.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(file.Config{Path: path, BufferSize: bufSize}, nil)
+		fileOut, err := file.New(&file.Config{Path: path, BufferSize: bufSize}, nil)
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}

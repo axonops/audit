@@ -36,6 +36,16 @@ import (
 	"go.uber.org/goleak"
 )
 
+// init registers the stdout output factory via the public API.
+// The core `audit` package's stdout init() was dropped in #578;
+// outputconfig_test needs `type: stdout` for YAML-loading tests, so
+// register it explicitly here. Using audit.RegisterOutputFactory
+// avoids pulling audit/outputs as a module dependency (that would
+// create a cycle: outputs → audit).
+func init() {
+	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+}
+
 func testTaxonomy(t *testing.T) *audit.Taxonomy {
 	t.Helper()
 	tax, err := audit.ParseTaxonomyYAML([]byte(`

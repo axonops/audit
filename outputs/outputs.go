@@ -15,8 +15,25 @@
 package outputs
 
 import (
+	"github.com/axonops/audit"
+
 	_ "github.com/axonops/audit/file"    // register "file" output type
 	_ "github.com/axonops/audit/loki"    // register "loki" output type
 	_ "github.com/axonops/audit/syslog"  // register "syslog" output type
 	_ "github.com/axonops/audit/webhook" // register "webhook" output type
 )
+
+// init registers the "stdout" output factory. The core audit package
+// used to register it automatically via its own init(); that was
+// dropped in #578 to eliminate hidden global mutation at import time.
+// Now consumers who blank-import this convenience package get the
+// stdout factory registered alongside file/loki/syslog/webhook,
+// preserving the pre-#578 behaviour of `import _ ".../audit/outputs"`.
+// Consumers who do not blank-import this package and want the YAML
+// `type: stdout` form MUST call
+// [audit.RegisterOutputFactory] themselves:
+//
+//	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+func init() {
+	audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+}

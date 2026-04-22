@@ -99,7 +99,7 @@ func buildOutput(name string, rawConfig []byte, fileMetrics Metrics, logger *slo
 		BufferSize:  intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
 	}
 
-	out, err := New(cfg, fileMetrics, WithDiagnosticLogger(logger))
+	out, err := New(&cfg, fileMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: file output %q: %w", name, err)
 	}

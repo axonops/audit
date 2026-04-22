@@ -14,9 +14,15 @@
 
 package audit_test
 
-// This file tests init()-registered factories. It MUST NOT call
-// ResetRegistryForTest because init() registrations cannot be re-run.
-// These tests verify the real init() fired correctly.
+// Tests for the stdout OutputFactory exposed by audit.StdoutFactory().
+//
+// Prior to #578 the factory was auto-registered via an init() in the
+// core package. That was dropped to eliminate hidden global mutation
+// at import time. These tests exercise the factory directly via
+// audit.StdoutFactory(); callers who want the YAML `type: stdout`
+// form either blank-import github.com/axonops/audit/outputs (which
+// registers it for them) or call audit.RegisterOutputFactory("stdout",
+// audit.StdoutFactory()) explicitly.
 
 import (
 	"testing"
@@ -27,9 +33,10 @@ import (
 	"github.com/axonops/audit"
 )
 
-func TestStdoutFactory_RegisteredByInit(t *testing.T) {
-	factory := audit.LookupOutputFactory("stdout")
-	require.NotNil(t, factory, "stdout factory must be registered by init()")
+func TestStdoutFactory_NewReturnsWorkingOutput(t *testing.T) {
+	t.Parallel()
+	factory := audit.StdoutFactory()
+	require.NotNil(t, factory, "audit.StdoutFactory() must return a non-nil factory")
 
 	out, err := factory("my_stdout", nil, nil, nil, audit.FrameworkContext{})
 	require.NoError(t, err)
@@ -40,8 +47,8 @@ func TestStdoutFactory_RegisteredByInit(t *testing.T) {
 }
 
 func TestStdoutFactory_AcceptsNoConfig(t *testing.T) {
-	factory := audit.LookupOutputFactory("stdout")
-	require.NotNil(t, factory)
+	t.Parallel()
+	factory := audit.StdoutFactory()
 
 	// nil config — accepted (the normal case)
 	out, err := factory("no_config", nil, nil, nil, audit.FrameworkContext{})
@@ -55,11 +62,16 @@ func TestStdoutFactory_AcceptsNoConfig(t *testing.T) {
 }
 
 func TestStdoutFactory_RejectsConfig(t *testing.T) {
-	factory := audit.LookupOutputFactory("stdout")
-	require.NotNil(t, factory)
+	t.Parallel()
+	factory := audit.StdoutFactory()
 
 	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not accept configuration")
 	assert.Contains(t, err.Error(), "bad_stdout")
 }
+
+// TestOutputsConvenienceRegistersStdout documents that blank-importing
+// github.com/axonops/audit/outputs registers the stdout factory (matching
+// the pre-#578 behaviour of the core init()). This test lives in the
+// outputs convenience package itself; referenced here for discoverability.

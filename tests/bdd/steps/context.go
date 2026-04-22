@@ -190,6 +190,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	RegisterMultiCatSteps(ctx, tc)
 	registerSeverityRoutingSteps(ctx, tc)
 	registerSensitivitySteps(ctx, tc)
+	registerStdoutSteps(ctx, tc)
 	registerBuilderSteps(ctx, tc)
 	registerHMACSteps(ctx, tc)
 	registerMetadataWriterSteps(ctx, tc)

@@ -46,6 +46,22 @@ go get github.com/axonops/audit
 go get github.com/axonops/audit/outputconfig
 ```
 
+### Direct Go construction
+
+Three non-panicking convenience constructors cover the common cases:
+
+```go
+import audit "github.com/axonops/audit"
+
+out, err := audit.NewStdout()                // writes to os.Stdout
+out, err := audit.NewStderr()                // writes to os.Stderr
+out, err := audit.NewWriter(&bytes.Buffer{}) // writes to any io.Writer
+```
+
+All three return `(*audit.StdoutOutput, error)`; none panic.
+
+### YAML configuration
+
 ```yaml
 # outputs.yaml
 version: 1
@@ -56,13 +72,30 @@ outputs:
     type: stdout
 ```
 
+To make the YAML `type: stdout` form work, register the stdout factory.
+Either blank-import the convenience package (registers all five output
+types at once):
+
 ```go
 import (
     audit "github.com/axonops/audit"
     "github.com/axonops/audit/outputconfig"
-    // No blank import needed — stdout is registered by the core package.
+    _ "github.com/axonops/audit/outputs" // registers stdout + file + syslog + webhook + loki
 )
 ```
+
+…or register only stdout explicitly:
+
+```go
+import audit "github.com/axonops/audit"
+
+audit.RegisterOutputFactory("stdout", audit.StdoutFactory())
+```
+
+Prior to v0.x (#578) the core package auto-registered the stdout
+factory via a hidden `init()`. That was removed to eliminate import-
+time global mutation; opt in explicitly using one of the two patterns
+above.
 
 **[→ Progressive example with code and output](../examples/02-code-generation/)**
 

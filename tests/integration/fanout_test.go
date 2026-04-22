@@ -153,7 +153,7 @@ func TestFanOut_AllOutputs(t *testing.T) {
 	filePath := filepath.Join(dir, "audit.log")
 
 	// Create file output.
-	fileOut, err := file.New(file.Config{Path: filePath}, nil)
+	fileOut, err := file.New(&file.Config{Path: filePath}, nil)
 	require.NoError(t, err)
 
 	// Create syslog output (TCP plain).
@@ -222,7 +222,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 	filePath := filepath.Join(dir, "audit.log")
 
 	// File receives all events.
-	fileOut, err := file.New(file.Config{Path: filePath}, nil)
+	fileOut, err := file.New(&file.Config{Path: filePath}, nil)
 	require.NoError(t, err)
 
 	// Webhook receives only security events.
@@ -301,7 +301,7 @@ func TestFanOut_PartialFailure(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "audit.log")
 
-	fileOut, err := file.New(file.Config{Path: filePath}, nil)
+	fileOut, err := file.New(&file.Config{Path: filePath}, nil)
 	require.NoError(t, err)
 
 	syslogOut, err := syslog.New(&syslog.Config{
@@ -356,7 +356,7 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 	filePath := filepath.Join(dir, "audit.log")
 
 	// File with JSON formatter (default).
-	fileOut, err := file.New(file.Config{Path: filePath}, nil)
+	fileOut, err := file.New(&file.Config{Path: filePath}, nil)
 	require.NoError(t, err)
 
 	// Webhook with CEF formatter.

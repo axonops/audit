@@ -17,6 +17,7 @@ package audittest_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -367,4 +368,97 @@ func TestRecorder_NewNamedRecorder(t *testing.T) {
 	t.Parallel()
 	rec := audittest.NewNamedRecorder("custom-output")
 	assert.Equal(t, "custom-output", rec.Name())
+}
+
+// ---------------------------------------------------------------------------
+// WaitForN (#566)
+// ---------------------------------------------------------------------------
+
+func TestRecorder_WaitForN_ReachesTarget(t *testing.T) {
+	t.Parallel()
+	auditor, rec, _ := audittest.NewQuick(t, "user_create")
+
+	// Emit 3 events. Synchronous delivery guarantees they are recorded
+	// before AuditEvent returns, but WaitForN must still see them.
+	for i := 0; i < 3; i++ {
+		require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"n": i})))
+	}
+
+	assert.True(t, rec.WaitForN(t, 3, 100*time.Millisecond),
+		"3 events already recorded — WaitForN should return true immediately")
+	assert.Equal(t, 3, rec.Count())
+}
+
+func TestRecorder_WaitForN_Timeout(t *testing.T) {
+	t.Parallel()
+	_, rec, _ := audittest.NewQuick(t, "user_create")
+
+	start := time.Now()
+	ok := rec.WaitForN(t, 5, 50*time.Millisecond)
+	elapsed := time.Since(start)
+
+	assert.False(t, ok, "no events emitted — WaitForN should return false on timeout")
+	assert.Equal(t, 0, rec.Count())
+	assert.GreaterOrEqual(t, elapsed, 50*time.Millisecond, "WaitForN must respect the timeout")
+	assert.Less(t, elapsed, 500*time.Millisecond, "WaitForN must return near the timeout boundary")
+}
+
+func TestRecorder_WaitForN_AlreadyReached(t *testing.T) {
+	t.Parallel()
+	auditor, rec, _ := audittest.NewQuick(t, "user_create")
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"n": 1})))
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"n": 2})))
+
+	start := time.Now()
+	ok := rec.WaitForN(t, 2, time.Minute)
+	elapsed := time.Since(start)
+
+	assert.True(t, ok, "target already reached — returns true without sleeping")
+	// The fast path must not wait for a tick — be permissive under race mode.
+	assert.Less(t, elapsed, 10*time.Millisecond, "fast path should not sleep on a tick")
+}
+
+func TestRecorder_WaitForN_ZeroTimeout(t *testing.T) {
+	t.Parallel()
+	auditor, rec, _ := audittest.NewQuick(t, "user_create")
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"n": 1})))
+
+	// Zero-timeout + target reached → fast path returns true.
+	assert.True(t, rec.WaitForN(t, 1, 0))
+	// Zero-timeout + target unreachable (count=1, n=5) → falls through
+	// to the select loop with an immediately-firing timer → false.
+	assert.False(t, rec.WaitForN(t, 5, 0))
+}
+
+func TestRecorder_WaitForN_ZeroTimeoutEmpty(t *testing.T) {
+	t.Parallel()
+	// Count=0 + zero timeout + n>0 → miss path, no fast-path shortcut.
+	_, rec, _ := audittest.NewQuick(t, "user_create")
+	start := time.Now()
+	ok := rec.WaitForN(t, 1, 0)
+	elapsed := time.Since(start)
+	assert.False(t, ok, "empty recorder with zero timeout returns false")
+	assert.Less(t, elapsed, 10*time.Millisecond, "zero-timeout miss must not spin")
+}
+
+func TestRecorder_WaitForN_AsyncConcurrentEmit(t *testing.T) {
+	t.Parallel()
+	auditor, rec, _ := audittest.New(t, testTaxonomyYAML, audittest.WithAsync())
+
+	// Emit from a goroutine AFTER several tick intervals have elapsed —
+	// forces WaitForN through the tick-retry path rather than hitting
+	// the first tick with events already recorded.
+	go func() {
+		time.Sleep(50 * time.Millisecond) // ~5× tick interval
+		for i := 0; i < 5; i++ {
+			_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "alice",
+			}))
+		}
+	}()
+
+	assert.True(t, rec.WaitForN(t, 5, 2*time.Second),
+		"async emission of 5 events should complete within 2 seconds")
+	assert.GreaterOrEqual(t, rec.Count(), 5)
 }

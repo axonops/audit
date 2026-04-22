@@ -205,6 +205,45 @@ func (r *Recorder) Count() int {
 	return len(r.events)
 }
 
+// WaitForN blocks until at least n events have been recorded or
+// timeout elapses. It returns true if the target was reached, false
+// on timeout.
+//
+// Use WaitForN in tests built with [WithAsync]: events are delivered
+// by a background goroutine, so assertions made immediately after
+// [audit.Auditor.AuditEvent] may race the drain. WaitForN provides a
+// deterministic wait-until-ready barrier without [time.Sleep].
+//
+// For synchronous auditors (the default for [New] and [NewQuick]),
+// events are available immediately after AuditEvent returns — prefer
+// [Recorder.Count] / [Recorder.RequireEvents] there. If the target is
+// already reached at call time, WaitForN returns true without sleeping.
+//
+// The poll interval is 10 ms and is not configurable — pass a larger
+// timeout to tolerate slower CI environments. Pass tb so that
+// subsequent caller-side assertions on the returned bool attribute
+// failure lines to the calling test.
+func (r *Recorder) WaitForN(tb testing.TB, n int, timeout time.Duration) bool {
+	tb.Helper()
+	if r.Count() >= n {
+		return true
+	}
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			return r.Count() >= n
+		case <-tick.C:
+			if r.Count() >= n {
+				return true
+			}
+		}
+	}
+}
+
 // Last returns the most recently recorded event, or false if the
 // Recorder is empty.
 func (r *Recorder) Last() (RecordedEvent, bool) {

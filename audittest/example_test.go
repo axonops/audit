@@ -17,6 +17,7 @@ package audittest_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/audittest"
@@ -85,4 +86,78 @@ func ExampleRecorder_FindByType() {
 	// Output:
 	// user_create count: 2
 	// auth_failure count: 1
+}
+
+// ExampleRecorder_WaitForN shows how to wait for asynchronously-
+// delivered events to land in the Recorder before asserting. Use
+// WaitForN with [WithAsync] or any auditor configured for async
+// delivery — synchronous auditors do not need it.
+func ExampleRecorder_WaitForN() {
+	t := &testing.T{}
+
+	auditor, events, _ := audittest.New(t, exampleTaxonomyYAML, audittest.WithAsync())
+	defer func() { _ = auditor.Close() }() // stub *testing.T has no Cleanup — close explicitly
+
+	// Emit events from a goroutine — simulates a service emitting
+	// audit events on a hot path.
+	go func() {
+		for i := 0; i < 3; i++ {
+			_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "alice",
+			}))
+		}
+	}()
+
+	if ok := events.WaitForN(t, 3, 2*time.Second); !ok {
+		fmt.Println("timeout waiting for 3 events")
+		return
+	}
+	fmt.Println("count:", events.Count())
+	// Output:
+	// count: 3
+}
+
+// exampleSensitivityTaxonomyYAML registers a "pii" sensitivity label
+// so ExampleWithExcludeLabels can exercise the strip path.
+var exampleSensitivityTaxonomyYAML = []byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+`)
+
+// ExampleWithExcludeLabels shows how to assert that a compliance
+// output does NOT receive pii-labelled fields. The recorder acts as
+// the compliance destination; labels defined in the taxonomy drive
+// the strip.
+func ExampleWithExcludeLabels() {
+	t := &testing.T{}
+
+	auditor, events, _ := audittest.New(t, exampleSensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder", "pii"),
+	)
+
+	_ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"email":    "alice@example.com",
+	}))
+
+	evt := events.Events()[0]
+	fmt.Println("actor_id:", evt.StringField("actor_id"))
+	fmt.Println("email present:", evt.Field("email") != nil)
+	// Output:
+	// actor_id: alice
+	// email present: false
 }

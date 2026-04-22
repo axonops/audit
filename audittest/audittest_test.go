@@ -15,6 +15,7 @@
 package audittest_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -199,4 +200,216 @@ func TestNew_WithAuditOption(t *testing.T) {
 	evt := events.Events()[0]
 	assert.Equal(t, "user_create", evt.EventType)
 	assert.Equal(t, "test-app", evt.StringField("app_name"))
+}
+
+// ---------------------------------------------------------------------------
+// WithExcludeLabels (#566)
+// ---------------------------------------------------------------------------
+
+// sensitivityTaxonomyYAML defines a taxonomy with two sensitivity
+// labels ("pii", "financial") for WithExcludeLabels tests.
+var sensitivityTaxonomyYAML = []byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email, phone]
+    financial:
+      fields: [credit_card, bank_account]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+      phone: {}
+      credit_card: {}
+      bank_account: {}
+      locale: {}
+`)
+
+func TestWithExcludeLabels_StripsLabelledFields(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, sensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder", "pii"),
+	)
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "alice",
+		"email":       "alice@example.com",
+		"phone":       "555-1234",
+		"credit_card": "4111-1111-1111-1111",
+		"locale":      "en-GB",
+	})))
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+
+	// pii-labelled fields stripped.
+	assert.Nil(t, evt.Field("email"), "email (pii) must be stripped")
+	assert.Nil(t, evt.Field("phone"), "phone (pii) must be stripped")
+	// Non-pii fields preserved.
+	assert.Equal(t, "alice", evt.StringField("actor_id"))
+	assert.Equal(t, "success", evt.StringField("outcome"))
+	assert.Equal(t, "4111-1111-1111-1111", evt.StringField("credit_card"),
+		"financial fields must survive when only pii is excluded")
+	assert.Equal(t, "en-GB", evt.StringField("locale"))
+}
+
+func TestWithExcludeLabels_PreservesOtherFields(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, sensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder", "pii"),
+	)
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "bob",
+		"locale":   "fr-FR",
+	})))
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+	// No pii fields present, so stripping is a no-op — all fields survive.
+	assert.Equal(t, "bob", evt.StringField("actor_id"))
+	assert.Equal(t, "success", evt.StringField("outcome"))
+	assert.Equal(t, "fr-FR", evt.StringField("locale"))
+	// Framework fields also survive (never stripped).
+	assert.NotEmpty(t, evt.StringField("event_category"))
+}
+
+func TestWithExcludeLabels_MultipleLabels(t *testing.T) {
+	t.Parallel()
+	auditor, events, _ := audittest.New(t, sensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder", "pii", "financial"),
+	)
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":      "success",
+		"actor_id":     "carol",
+		"email":        "carol@example.com",
+		"credit_card":  "4111-1111-1111-1111",
+		"bank_account": "ACCT-42",
+		"locale":       "de-DE",
+	})))
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+	// All labelled fields stripped.
+	assert.Nil(t, evt.Field("email"), "pii")
+	assert.Nil(t, evt.Field("credit_card"), "financial")
+	assert.Nil(t, evt.Field("bank_account"), "financial")
+	// Non-labelled fields preserved.
+	assert.Equal(t, "carol", evt.StringField("actor_id"))
+	assert.Equal(t, "de-DE", evt.StringField("locale"))
+}
+
+func TestWithExcludeLabels_AccumulatesAcrossCalls(t *testing.T) {
+	t.Parallel()
+	// Two separate calls must accumulate label lists (not replace).
+	auditor, events, _ := audittest.New(t, sensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder", "pii"),
+		audittest.WithExcludeLabels("recorder", "financial"),
+	)
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "dave",
+		"email":       "dave@example.com",
+		"credit_card": "4111-1111-1111-1111",
+	})))
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+	assert.Nil(t, evt.Field("email"), "pii stripped by first call")
+	assert.Nil(t, evt.Field("credit_card"), "financial stripped by second call")
+}
+
+func TestWithExcludeLabels_EmptyVariadic(t *testing.T) {
+	t.Parallel()
+	// WithExcludeLabels("recorder") with zero labels engages the
+	// per-output-options plumbing branch (switch to WithNamedOutput)
+	// but the audit-level strip is a no-op. All fields should survive.
+	auditor, events, _ := audittest.New(t, sensitivityTaxonomyYAML,
+		audittest.WithExcludeLabels("recorder"),
+	)
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+		"outcome":     "success",
+		"actor_id":    "eve",
+		"email":       "eve@example.com",
+		"credit_card": "4111-1111-1111-1111",
+	})))
+
+	require.Equal(t, 1, events.Count())
+	evt := events.Events()[0]
+	// No labels supplied → no stripping.
+	assert.Equal(t, "eve@example.com", evt.StringField("email"))
+	assert.Equal(t, "4111-1111-1111-1111", evt.StringField("credit_card"))
+}
+
+func TestWithExcludeLabels_UnknownLabel(t *testing.T) {
+	t.Parallel()
+	// Unknown label — not defined in the taxonomy sensitivity section.
+	// audit.New returns an error; audittest surfaces it via tb.Fatalf.
+	// Use a captor *testing.T to verify the failure path without
+	// aborting the parent test.
+	captor := &fatalCaptor{}
+	func() {
+		defer captor.recoverFatal()
+		_, _, _ = audittest.New(captor, sensitivityTaxonomyYAML,
+			audittest.WithExcludeLabels("recorder", "not-a-label"),
+		)
+	}()
+	assert.True(t, captor.fatalCalled, "tb.Fatalf expected for unknown label")
+	assert.Contains(t, captor.fatalMsg, "not-a-label",
+		"fatal message should name the offending label")
+}
+
+func TestWithExcludeLabels_OutputNameMismatch(t *testing.T) {
+	t.Parallel()
+	// WithExcludeLabels("not-recorder", ...) targets an output that
+	// does not exist in the test logger — tb.Fatalf is expected.
+	captor := &fatalCaptor{}
+	func() {
+		defer captor.recoverFatal()
+		_, _, _ = audittest.New(captor, sensitivityTaxonomyYAML,
+			audittest.WithExcludeLabels("wrong-name", "pii"),
+		)
+	}()
+	assert.True(t, captor.fatalCalled, "tb.Fatalf expected for outputName mismatch")
+	assert.Contains(t, captor.fatalMsg, "wrong-name")
+	assert.Contains(t, captor.fatalMsg, "recorder")
+}
+
+// fatalCaptor is a testing.TB that turns Fatalf into a recorded
+// message + runtime.Goexit-equivalent. audittest.New calls tb.Fatalf
+// when audit.New returns an error; the caller must wrap the call in
+// a func/defer to scope the Goexit.
+type fatalCaptor struct {
+	testing.TB
+	fatalMsg    string
+	fatalCalled bool
+}
+
+func (f *fatalCaptor) Helper()        {}
+func (f *fatalCaptor) Cleanup(func()) {}
+func (f *fatalCaptor) Fatalf(format string, args ...any) {
+	f.fatalCalled = true
+	f.fatalMsg = fmt.Sprintf(format, args...)
+	panic(sentinelFatalPanic{})
+}
+
+type sentinelFatalPanic struct{}
+
+func (f *fatalCaptor) recoverFatal() {
+	if r := recover(); r != nil {
+		if _, ok := r.(sentinelFatalPanic); !ok {
+			panic(r)
+		}
+	}
 }

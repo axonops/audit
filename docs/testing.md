@@ -9,6 +9,8 @@
 - [Two Constructor Patterns](#two-constructor-patterns)
 - [Recorded Event API](#recorded-event-api)
 - [Assertion Helpers](#assertion-helpers)
+- [Waiting for Async Events](#waiting-for-async-events)
+- [Testing Sensitivity Stripping](#testing-sensitivity-stripping)
 - [Metrics Assertions](#metrics-assertions)
 - [OutputMetricsRecorder](#outputmetricsrecorder)
 - [Table-Driven Tests](#table-driven-tests)
@@ -188,6 +190,119 @@ events.AssertContains(t, "user_create", audit.Fields{
 | `events.Count()` | `int` | Total recorded events |
 | `events.Reset()` | — | Clear all events |
 
+## Waiting for Async Events
+
+Synchronous delivery (the default for `New` and `NewQuick`) removes
+timing concerns from most tests. When you need to exercise async-only
+behaviour — drain timeout, buffer backpressure, or a hot path that
+itself emits from a goroutine — use `Recorder.WaitForN` to block
+until events land in the recorder without resorting to `time.Sleep`:
+
+```go
+func TestAsyncHotPath(t *testing.T) {
+    auditor, events, _ := audittest.New(t, taxonomyYAML, audittest.WithAsync())
+
+    // Your service emits from a goroutine. Inlined here for clarity.
+    go func() {
+        for i := 0; i < 5; i++ {
+            _ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+                "outcome":  "success",
+                "actor_id": "alice",
+            }))
+        }
+    }()
+
+    // Block until 5 events have been recorded, or fail at 2 seconds.
+    if !events.WaitForN(t, 5, 2*time.Second) {
+        t.Fatalf("expected 5 events, got %d", events.Count())
+    }
+    // Safe to assert now — the drain has delivered the target count.
+    assert.Equal(t, 5, events.Count())
+}
+```
+
+`WaitForN` returns `true` once `Recorder.Count() >= n`, or `false` on
+timeout. The poll interval is 10ms, matching
+`testify/assert.Eventually`. If the target is already reached when
+`WaitForN` is called, it returns immediately without sleeping — so
+it is cheap to sprinkle through tests as a "wait-until-ready"
+barrier.
+
+> **Synchronous auditors do not need WaitForN.** Events are in the
+> recorder before `AuditEvent` returns. Prefer `Count()` /
+> `RequireEvents` there.
+
+## Testing Sensitivity Stripping
+
+Use `audittest.WithExcludeLabels` to verify your application's
+compliance wiring — that fields you tagged `pii` (or `financial`,
+etc.) in the taxonomy never reach an output you configured to exclude
+that label. You are testing **your** integration, not the library's
+strip logic.
+
+When your application tags fields with sensitivity labels and routes
+some outputs with `audit.WithExcludeLabels`,
+`audittest.WithExcludeLabels` lets you assert the stripping behaviour
+directly against the recorder:
+
+```go
+var taxonomyYAML = []byte(`
+version: 1
+sensitivity:
+  labels:
+    pii:
+      fields: [email, phone]
+categories:
+  write:
+    - user_create
+events:
+  user_create:
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      email: {}
+`)
+
+func TestComplianceOutput_StripsPII(t *testing.T) {
+    auditor, events, _ := audittest.New(t, taxonomyYAML,
+        audittest.WithExcludeLabels("recorder", "pii"),
+    )
+
+    _ = auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
+        "outcome":  "success",
+        "actor_id": "alice",
+        "email":    "alice@example.com",
+    }))
+
+    evt := events.Events()[0]
+    assert.Nil(t, evt.Field("email"), "pii-labelled field must be stripped")
+    assert.Equal(t, "alice", evt.StringField("actor_id"), "non-pii preserved")
+}
+```
+
+Multiple calls accumulate:
+
+```go
+audittest.New(t, taxonomyYAML,
+    audittest.WithExcludeLabels("recorder", "pii"),
+    audittest.WithExcludeLabels("recorder", "financial"),
+)
+```
+
+The first argument — `"recorder"` — is the name of the output to
+apply the exclusion to. `audittest.New` and `audittest.NewQuick`
+create a single recorder with the default name `"recorder"`; pass
+that name, or whatever was supplied to [`NewNamedRecorder`][nnr]. A
+mismatch causes `tb.Fatalf` at construction time (for both `New` and
+`NewQuick`) so typos surface immediately.
+
+[nnr]: https://pkg.go.dev/github.com/axonops/audit/audittest#NewNamedRecorder
+
+> **Taxonomy validation still applies.** Every label listed in
+> `WithExcludeLabels` MUST be defined in the taxonomy's
+> `sensitivity:` section; otherwise `audit.New` returns an error
+> and the test fails.
+
 ## Metrics Assertions
 
 The `MetricsRecorder` captures all metric calls:
@@ -255,6 +370,21 @@ do NOT need to call `auditor.Close()` before assertions. The
 cleanup automatically.
 
 Only call `Close()` before assertions when using `WithAsync()`.
+
+### WaitForN always times out
+
+If `WaitForN` never returns `true`, the three likely causes — in
+descending order of frequency:
+
+1. **Forgot `WithAsync()`.** The default is synchronous delivery; events
+   are recorded before `AuditEvent` returns, so `WaitForN` is
+   unnecessary and a bug-hunting test may never reach the target if
+   your code path never emits.
+2. **Target count exceeds buffer.** With `WithAsync()` and a small
+   queue, events may be dropped via `ErrQueueFull` before the drain
+   runs. Check metrics for drops.
+3. **Emitting goroutine panics before emitting `n` events.** Add an
+   error check to the emitter and log the panic.
 
 ### CEF formatter limitation
 

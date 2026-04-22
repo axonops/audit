@@ -209,7 +209,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#563** test: add BDD scenarios for secrets providers — TLS, partition, malformed JSON, injection safety.
 - [ ] **#564** test: BDD coverage for async delivery edge cases (panic, slow output, buffer:0, invariant).
 - [ ] **#565** test: add concrete unit tests per test-writer recommendations (Auditor, formatters, outputs, HMAC, secrets, outputconfig, audit-gen, routing, async).
-- [ ] **#566** test: expand audittest with WaitForN, PermissiveTaxonomy, WithExcludedLabels helper.
+- [x] **#566** test: expand audittest with WaitForN, PermissiveTaxonomy, WithExcludedLabels helper.
 - [ ] **#567** fix: MockOutput.WriteCh uses appropriate channel capacity to avoid signal drops.
 - [ ] **#568** test: expose GenerateTestCA and consolidate cert-generation helpers.
 - [ ] **#569** test: Docker Compose healthchecks use wait.ForLog / wait.ForFile instead of TCP port only.

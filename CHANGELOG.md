@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `audittest.Recorder.WaitForN(tb, n, timeout)` — blocks until at least `n` events have been recorded or the timeout elapses; returns `true` on success, `false` on timeout. Use in async-mode tests (`audittest.WithAsync`) or tests whose service emits from a goroutine. Poll interval is 10 ms, matching `testify/assert.Eventually`. The fast path returns immediately when the target is already reached. Synchronous auditors (the default for `New` / `NewQuick`) do not need `WaitForN` — events are recorded before `AuditEvent` returns; prefer `Count()` / `RequireEvents` there. Closes #566.
+- `audittest.WithExcludeLabels(outputName, labels...)` — applies sensitivity-label exclusion to the test recorder, mirroring `audit.WithExcludeLabels` on a named output. Lets consumer tests assert that a compliance output does NOT receive `pii`- or `financial`-labelled fields. `outputName` MUST match the recorder's name (`"recorder"` by default, or whatever was passed to `NewNamedRecorder`) — a mismatch calls `tb.Fatalf` at construction. Multiple calls accumulate labels. Internally, `audittest.New` / `audittest.NewQuick` switch from `audit.WithOutputs(rec)` to `audit.WithNamedOutput(rec, audit.WithExcludeLabels(...))` when any `audittest.WithExcludeLabels` option is present; this is observable only when the option is used. Closes #566.
+
+> **Deviations from #566 AC (accepted):** (1) `audittest.PermissiveTaxonomy()` NOT added — `audittest.QuickTaxonomy()` already exists and fills the same role; adding a second name violates the "one obvious way" principle. (2) `WithExcludedLabels` renamed to `WithExcludeLabels` to match core `audit.WithExcludeLabels` exactly (no "d"). (3) AC named `RecordedEvents.WaitForN` (a type name from the original issue draft that was never implemented in the codebase) — the actual type is `*audittest.Recorder`, so `WaitForN` is a method on `*Recorder`. All three deviations confirmed with api-ergonomics-reviewer.
+
 ### Breaking Changes
 
 - `audit.RegisterOutputFactory` now returns `error` instead of panicking on empty type name or nil factory (#590). The error wraps `audit.ErrValidation`. New companion `audit.MustRegisterOutputFactory(typeName, factory)` preserves the panic-on-programmer-error contract for init-time callers — mirrors `regexp.MustCompile`. All five built-in registrations (file / loki / stdout / syslog / webhook) migrated to `MustRegisterOutputFactory`. Custom factory authors who register via init() should migrate to `MustRegisterOutputFactory`; consumers who register dynamically should handle the returned error.

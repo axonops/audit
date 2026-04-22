@@ -109,7 +109,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#576** refactor: rename OutputRoute/OutputFormatter/OutputExcludeLabels/OutputHMAC to WithX convention.
 - [x] **#577** refactor: collapse outputconfig.LoadResult, fix outputconfig.New variadic, fix outputconfig/doc.go stale example.
 - [x] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
-- [ ] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
+- [x] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
 - [x] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.
 - [ ] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
 - [ ] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_v / _hmacVersion.

@@ -50,12 +50,12 @@ type Loaded struct {
 	timezone       string
 	standardFields map[string]string
 
-	// config retains the parsed [audit.Config] for package-internal
-	// introspection (e.g., black-box tests that assert YAML parsing
-	// correctness via export_test.go). Never exposed publicly — the
-	// equivalent audit.Option values are already in options, and
-	// exposing Config here re-creates the #577 double-apply footgun.
-	config audit.Config
+	// auditorCfg retains the parsed auditor: section values for
+	// package-internal introspection (e.g., black-box tests that
+	// assert YAML parsing correctness via export_test.go). Never
+	// exposed publicly — the equivalent audit.Option values are
+	// already in options (#579).
+	auditorCfg auditorConfigResult
 }
 
 // Options returns the slice of [audit.Option] values ready to pass to
@@ -443,23 +443,13 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		host:           top.host,
 		timezone:       top.timezone,
 		standardFields: top.standardFields,
-		config:         top.auditorResult.config,
+		auditorCfg:     top.auditorResult,
 	}
 
-	// Config-equivalent options so callers can use audit.New(loaded.Options()...).
-	cfg := top.auditorResult.config
-	if cfg.QueueSize > 0 {
-		loaded.options = append(loaded.options, audit.WithQueueSize(cfg.QueueSize))
-	}
-	if cfg.ShutdownTimeout > 0 {
-		loaded.options = append(loaded.options, audit.WithShutdownTimeout(cfg.ShutdownTimeout))
-	}
-	if cfg.ValidationMode != "" {
-		loaded.options = append(loaded.options, audit.WithValidationMode(cfg.ValidationMode))
-	}
-	if cfg.OmitEmpty {
-		loaded.options = append(loaded.options, audit.WithOmitEmpty())
-	}
+	// auditor: YAML section produced audit.Option values directly in
+	// parseAuditorConfig (#579 — no intermediate Config struct). Append
+	// them plus the disabled flag.
+	loaded.options = append(loaded.options, top.auditorResult.opts...)
 	if top.auditorResult.disabled {
 		loaded.options = append(loaded.options, audit.WithDisabled())
 	}

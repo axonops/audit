@@ -16,23 +16,6 @@ package audit
 
 import "fmt"
 
-// currentConfigVersion is the latest config schema version
-// supported by this library.
-const currentConfigVersion = 1
-
-// migrateConfig applies backwards-compatible migrations to older config
-// versions. Called after [validateConfig] (which calls [Config.applyDefaults]),
-// so version is always >= 1. The range check is scaffolding for when
-// version 2 is introduced. For v0.x only version 1 exists.
-func migrateConfig(c *Config) error {
-	if c.version > currentConfigVersion {
-		return fmt.Errorf("%w: config version %d is not supported by this library version (max: %d), upgrade the library",
-			ErrConfigInvalid, c.version, currentConfigVersion)
-	}
-	// Version 1 → current: no migration needed.
-	return nil
-}
-
 // MigrateTaxonomy applies backwards-compatible migrations to older
 // taxonomy versions. It returns an error wrapping [ErrTaxonomyInvalid]
 // if the version is unsupported.

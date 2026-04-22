@@ -25,7 +25,7 @@ type ValidationMode string
 
 const (
 	// ValidationStrict rejects unknown fields with an error; it is the
-	// default when [Config.ValidationMode] is empty.
+	// default when no [WithValidationMode] option is supplied.
 	ValidationStrict ValidationMode = "strict"
 
 	// ValidationWarn logs a warning for unknown fields via [log/slog]
@@ -53,47 +53,31 @@ const (
 	MaxShutdownTimeout = 60 * time.Second
 )
 
-// Config holds tuning parameters for the audit [Auditor]. The zero
-// value is a valid configuration: buffer=10,000, shutdown=5s,
-// validation=strict, omit_empty=false. Pass individual fields via
-// [WithQueueSize], [WithShutdownTimeout], [WithValidationMode], or
-// [WithOmitEmpty], or pass the whole struct via [WithConfig].
-type Config struct {
+// config holds tuning parameters for the audit [Auditor]. Internal
+// pipeline struct populated by option functions ([WithQueueSize],
+// [WithShutdownTimeout], [WithValidationMode], [WithOmitEmpty]).
+// The zero value is a valid configuration: queue=10,000, shutdown=5s,
+// validation=strict, omit_empty=false. Not part of the public API —
+// consumers configure auditors exclusively via functional options.
+// See docs/adr/0003-config-pattern.md (#579).
+type config struct {
 	// ValidationMode controls how unknown fields are handled.
-	// One of [ValidationStrict], [ValidationWarn], or
-	// [ValidationPermissive]. Empty defaults to [ValidationStrict].
 	ValidationMode ValidationMode
 
 	// ShutdownTimeout is the maximum time [Auditor.Close] waits for
-	// pending events to flush. Zero means [DefaultShutdownTimeout] (5s).
-	// Values above [MaxShutdownTimeout] (60s) cause [New] to
-	// return an error. Setting this too low on a high-throughput
-	// system will cause events to be lost at shutdown.
+	// pending events to flush.
 	ShutdownTimeout time.Duration
 
-	// version is the config schema version. Defaults to 1 via
-	// [Config.applyDefaults]. Unexported because consumers should
-	// never need to set it — there is only one version.
-	version int
-
-	// QueueSize is the async intake queue capacity. Zero means
-	// [DefaultQueueSize] (10,000). Values above [MaxQueueSize]
-	// (1,000,000) cause [New] to return an error.
+	// QueueSize is the async intake queue capacity.
 	QueueSize int
 
 	// OmitEmpty controls whether empty/nil/zero-value fields are
-	// included in serialised output. When true, only non-zero fields
-	// are serialised. When false (the zero value), all registered
-	// fields are present. Consumers operating under compliance regimes
-	// that require all registered fields SHOULD leave this as false.
+	// included in serialised output.
 	OmitEmpty bool
 }
 
 // applyDefaults fills zero-valued fields with their documented defaults.
-func (c *Config) applyDefaults() {
-	if c.version == 0 {
-		c.version = 1
-	}
+func (c *config) applyDefaults() {
 	if c.QueueSize <= 0 {
 		c.QueueSize = DefaultQueueSize
 	}
@@ -106,10 +90,9 @@ func (c *Config) applyDefaults() {
 }
 
 // validateConfig applies defaults to zero-valued fields, then checks the
-// config for correctness. It mutates c (via [Config.applyDefaults]) before
+// config for correctness. It mutates c (via [config.applyDefaults]) before
 // validation. Returns an error wrapping [ErrConfigInvalid] on failure.
-// Version checks are handled by [migrateConfig] which runs after this.
-func validateConfig(c *Config) error {
+func validateConfig(c *config) error {
 	c.applyDefaults()
 
 	if c.QueueSize > MaxQueueSize {

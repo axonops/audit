@@ -73,9 +73,9 @@ but couldn't flush all buffered events in time.
 
 | Cause | Fix |
 |-------|-----|
-| **Too many buffered events** | Reduce event volume before shutdown, or increase `Config.ShutdownTimeout` (max: 60s) |
+| **Too many buffered events** | Reduce event volume before shutdown, or increase `WithShutdownTimeout` (max: 60s) |
 | **Slow output during shutdown** | A syslog server or webhook endpoint is slow to accept the final batch. Check connectivity. |
-| **`ShutdownTimeout` too short** | Increase `Config.ShutdownTimeout` for high-volume applications |
+| **`ShutdownTimeout` too short** | Increase `WithShutdownTimeout` for high-volume applications |
 
 > ⚠️ Events lost to drain timeout are gone permanently. This is the
 > at-most-once delivery guarantee. Monitor this via your metrics.

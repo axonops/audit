@@ -31,7 +31,7 @@ var (
 	// ErrQueueFull is returned by [Auditor.AuditEvent] when the async
 	// intake queue is at capacity and the event is dropped. Consumers
 	// SHOULD treat this as a drop notification rather than a fatal error.
-	// Increasing [Config.QueueSize] or reducing event emission rate
+	// Increasing [WithQueueSize] or reducing event emission rate
 	// reduces the frequency of this error.
 	ErrQueueFull = errors.New("audit: queue full")
 

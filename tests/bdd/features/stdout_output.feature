@@ -1,4 +1,4 @@
-@stdout
+@core @stdout
 Feature: Stdout Output
   As a library consumer, I want non-panicking convenience constructors
   (NewStdout, NewStderr, NewWriter) that wrap an io.Writer in a

@@ -29,9 +29,19 @@ import (
 // YAML loading scenarios (queue_size, buffer_size, output metrics factory, etc.).
 func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,cyclop,gocyclo // BDD step registration
 	var (
-		yamlData   []byte
-		loadResult *outputconfig.LoadResult
+		yamlData    []byte
+		loadResult  *outputconfig.Loaded
+		auditorOwns bool // true once an auditor takes ownership of loadResult's outputs
 	)
+
+	// Reset closure state at each scenario start so state does not leak
+	// between scenarios within the same suite run.
+	ctx.Before(func(c context.Context, _ *godog.Scenario) (context.Context, error) {
+		yamlData = nil
+		loadResult = nil
+		auditorOwns = false
+		return c, nil
+	})
 
 	ctx.Step(`^the following outputs YAML:$`, func(doc *godog.DocString) error {
 		yamlData = []byte(doc.Content)
@@ -52,9 +62,14 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		tc.LastErr = err
 		// Close outputs to prevent goroutine leaks in tests.
 		if result != nil {
-			for _, o := range result.Outputs {
-				tc.AddCleanup(func() { _ = o.Output.Close() })
-			}
+			tc.AddCleanup(func() {
+				// Close only when no auditor took ownership — otherwise
+				// Auditor.Close has already closed these outputs and a
+				// second Close violates the Loaded.Close contract.
+				if !auditorOwns {
+					_ = result.Close()
+				}
+			})
 		}
 		return nil
 	})
@@ -72,9 +87,14 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		loadResult = result
 		tc.LastErr = err
 		if result != nil {
-			for _, o := range result.Outputs {
-				tc.AddCleanup(func() { _ = o.Output.Close() })
-			}
+			tc.AddCleanup(func() {
+				// Close only when no auditor took ownership — otherwise
+				// Auditor.Close has already closed these outputs and a
+				// second Close violates the Loaded.Close contract.
+				if !auditorOwns {
+					_ = result.Close()
+				}
+			})
 		}
 		return nil
 	})
@@ -87,9 +107,14 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		loadResult = result
 		tc.LastErr = err
 		if result != nil {
-			for _, o := range result.Outputs {
-				tc.AddCleanup(func() { _ = o.Output.Close() })
-			}
+			tc.AddCleanup(func() {
+				// Close only when no auditor took ownership — otherwise
+				// Auditor.Close has already closed these outputs and a
+				// second Close violates the Loaded.Close contract.
+				if !auditorOwns {
+					_ = result.Close()
+				}
+			})
 		}
 		return nil
 	})
@@ -98,11 +123,12 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		if loadResult == nil {
 			return fmt.Errorf("no load result available — load the outputs config first")
 		}
-		opts := append([]audit.Option{audit.WithTaxonomy(tc.Taxonomy)}, loadResult.Options...)
+		opts := append([]audit.Option{audit.WithTaxonomy(tc.Taxonomy)}, loadResult.Options()...)
 		auditor, err := audit.New(opts...)
 		if err != nil {
 			return fmt.Errorf("failed to create auditor from loaded config: %w", err)
 		}
+		auditorOwns = true
 		tc.Auditor = auditor
 		tc.AddCleanup(func() { _ = auditor.Close() })
 		return nil
@@ -115,12 +141,19 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		return nil
 	})
 
-	ctx.Step(`^the loaded config queue_size should be (\d+)$`, func(expected int) error {
+	ctx.Step(`^the auditor queue_size should be (\d+)$`, func(expected int) error {
 		if loadResult == nil {
-			return fmt.Errorf("no load result available")
+			return fmt.Errorf("no load result available — load the outputs config first")
 		}
-		if loadResult.Config.QueueSize != expected {
-			return fmt.Errorf("expected queue_size %d, got %d", expected, loadResult.Config.QueueSize)
+		opts := append([]audit.Option{audit.WithTaxonomy(tc.Taxonomy)}, loadResult.Options()...)
+		auditor, err := audit.New(opts...)
+		if err != nil {
+			return fmt.Errorf("create auditor from loaded config: %w", err)
+		}
+		auditorOwns = true
+		tc.AddCleanup(func() { _ = auditor.Close() })
+		if qc := auditor.QueueCap(); qc != expected {
+			return fmt.Errorf("expected queue_size %d, got QueueCap %d", expected, qc)
 		}
 		return nil
 	})
@@ -253,9 +286,14 @@ func registerOutputConfigSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		loadResult = result
 		tc.LastErr = err
 		if result != nil {
-			for _, o := range result.Outputs {
-				tc.AddCleanup(func() { _ = o.Output.Close() })
-			}
+			tc.AddCleanup(func() {
+				// Close only when no auditor took ownership — otherwise
+				// Auditor.Close has already closed these outputs and a
+				// second Close violates the Loaded.Close contract.
+				if !auditorOwns {
+					_ = result.Close()
+				}
+			})
 		}
 		return nil
 	})

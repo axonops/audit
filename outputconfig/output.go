@@ -35,7 +35,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*NamedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*namedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		_ = output.Close()
 		return nil, err
 	}
-	no := &NamedOutput{Name: name, Type: fields.typeName, Output: output, Route: route, Formatter: formatter, HMACConfig: hmacCfg}
+	no := &namedOutput{Name: name, Type: fields.typeName, Output: output, Route: route, Formatter: formatter, HMACConfig: hmacCfg}
 	if len(fields.excludeLabels) > 0 {
 		no.ExcludeLabels = fields.excludeLabels
 	}

@@ -211,10 +211,11 @@ func (tc *TestContext) stepAssertHMACSalt(expected string) error {
 	if tc.LoadResult == nil {
 		return fmt.Errorf("no load result")
 	}
-	if len(tc.LoadResult.Outputs) == 0 {
+	meta := tc.LoadResult.OutputMetadata()
+	if len(meta) == 0 {
 		return fmt.Errorf("no outputs")
 	}
-	hmac := tc.LoadResult.Outputs[0].HMACConfig
+	hmac := meta[0].HMACConfig
 	if hmac == nil {
 		return fmt.Errorf("HMAC config is nil")
 	}
@@ -230,10 +231,11 @@ func (tc *TestContext) stepAssertHMACAlgorithm(expected string) error {
 	if tc.LoadResult == nil {
 		return fmt.Errorf("no load result")
 	}
-	if len(tc.LoadResult.Outputs) == 0 {
+	meta := tc.LoadResult.OutputMetadata()
+	if len(meta) == 0 {
 		return fmt.Errorf("no outputs")
 	}
-	hmac := tc.LoadResult.Outputs[0].HMACConfig
+	hmac := meta[0].HMACConfig
 	if hmac == nil {
 		return fmt.Errorf("HMAC config is nil")
 	}

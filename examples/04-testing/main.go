@@ -67,7 +67,7 @@ func (s *UserService) Login(username, password string) error {
 
 func main() {
 	// Single-call facade: parse taxonomy, load outputs, create auditor.
-	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml", nil)
+	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml")
 	if err != nil {
 		log.Fatalf("create auditor: %v", err)
 	}

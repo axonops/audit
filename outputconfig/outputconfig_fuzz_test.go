@@ -115,12 +115,12 @@ outputs:
 		// Invariant 1 — impossible state: both nil or both non-nil.
 		if err != nil && result != nil {
 			// result may be nil-but-wrapped or a partial — but a
-			// fully populated LoadResult paired with an error is
+			// fully populated *Loaded paired with an error is
 			// impossible and would indicate a caller might see
 			// misleading values.
-			if len(result.Outputs) > 0 {
+			if len(result.OutputMetadata()) > 0 {
 				t.Fatalf("Load returned error %v together with %d outputs",
-					err, len(result.Outputs))
+					err, len(result.OutputMetadata()))
 			}
 		}
 		if err == nil && result == nil {
@@ -138,12 +138,12 @@ outputs:
 		// a non-empty Name(). A nameless output would break metric
 		// labelling downstream.
 		if err == nil && result != nil {
-			for i, no := range result.Outputs {
+			for i, no := range result.OutputMetadata() {
 				if no.Output == nil {
-					t.Fatalf("result.Outputs[%d] has nil Output", i)
+					t.Fatalf("result.OutputMetadata()[%d] has nil Output", i)
 				}
 				if no.Output.Name() == "" {
-					t.Fatalf("result.Outputs[%d] has empty Name()", i)
+					t.Fatalf("result.OutputMetadata()[%d] has empty Name()", i)
 				}
 				_ = no.Output.Close()
 			}

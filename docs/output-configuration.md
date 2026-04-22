@@ -210,18 +210,18 @@ programmatically when loading the output configuration:
 ```go
 logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-result, err := outputconfig.Load(
+loaded, err := outputconfig.Load(
     ctx,
     data,
     taxonomy,
     outputconfig.WithDiagnosticLogger(logger), // construction-time warnings
 )
 
-auditor, err := audit.New(
+opts := append([]audit.Option{
     audit.WithTaxonomy(taxonomy),
     audit.WithDiagnosticLogger(logger),         // runtime warnings
-    audit.WithOutputs(result.Outputs...),
-)
+}, loaded.Options()...)
+auditor, err := audit.New(opts...)
 ```
 
 Pass the same logger to both `outputconfig.WithDiagnosticLogger` and
@@ -589,7 +589,7 @@ if err != nil {
 }
 defer provider.Close()
 
-result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+loaded, err := outputconfig.Load(ctx, yamlData, taxonomy,
     outputconfig.WithCoreMetrics(metrics),
     outputconfig.WithSecretProvider(provider),
 )
@@ -643,21 +643,50 @@ The simplest way to create an auditor from YAML is the
 //go:embed taxonomy.yaml
 var taxonomyYAML []byte
 
-auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml")
 if err != nil {
     return fmt.Errorf("audit: %w", err)
 }
 defer func() { _ = auditor.Close() }()
 ```
 
-For advanced control (custom metrics, secret providers, per-call
-factory overrides), use `outputconfig.Load` directly:
+Additional `audit.Option` values can be appended and take
+last-wins precedence — useful for overriding `audit.WithMetrics`:
+
+```go
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml",
+    audit.WithMetrics(metricsRecorder),
+)
+```
+
+When the consumer needs `LoadOption` values (secret providers,
+core-metrics recorder, per-output metrics factory, custom factory
+registrations, diagnostic logger), use `outputconfig.NewWithLoad`:
+
+```go
+auditor, err := outputconfig.NewWithLoad(ctx, taxonomyYAML, "outputs.yaml",
+    []outputconfig.LoadOption{
+        outputconfig.WithCoreMetrics(metrics),
+        outputconfig.WithSecretProvider(provider),
+    },
+    audit.WithMetrics(metrics), // applied last — wins over Load-derived options
+)
+```
+
+For full control (inspecting parsed outputs before construction,
+mixing load options into an auditor the consumer builds manually),
+use `outputconfig.Load` directly:
 
 ```go
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-result, err := outputconfig.Load(ctx, outputsYAML, taxonomy,
+taxonomy, err := audit.ParseTaxonomyYAML(taxonomyYAML)
+if err != nil {
+    return fmt.Errorf("parse taxonomy: %w", err)
+}
+
+loaded, err := outputconfig.Load(ctx, outputsYAML, taxonomy,
     outputconfig.WithCoreMetrics(metrics),
 )
 if err != nil {
@@ -665,7 +694,7 @@ if err != nil {
 }
 
 opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
-opts = append(opts, result.Options...)
+opts = append(opts, loaded.Options()...)
 auditor, err := audit.New(opts...)
 ```
 

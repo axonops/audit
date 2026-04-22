@@ -88,16 +88,16 @@ func TestLoad_MinimalStdout(t *testing.T) {
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	assert.Len(t, result.Outputs, 1)
-	assert.Equal(t, "console", result.Outputs[0].Name)
-	assert.Nil(t, result.Outputs[0].Route)
-	assert.Nil(t, result.Outputs[0].Formatter)
-	assert.NotEmpty(t, result.Options)
+	assert.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, "console", result.OutputMetadata()[0].Name)
+	assert.Nil(t, result.OutputMetadata()[0].Route)
+	assert.Nil(t, result.OutputMetadata()[0].Formatter)
+	assert.NotEmpty(t, result.Options())
 }
 
 func TestLoad_FileWithRoute(t *testing.T) {
@@ -111,20 +111,20 @@ func TestLoad_FileWithRoute(t *testing.T) {
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	assert.Len(t, result.Outputs, 2)
+	assert.Len(t, result.OutputMetadata(), 2)
 
 	// First output: stdout (console)
-	assert.Equal(t, "console", result.Outputs[0].Name)
+	assert.Equal(t, "console", result.OutputMetadata()[0].Name)
 
 	// Second output: file with route
-	assert.Equal(t, "audit_log", result.Outputs[1].Name)
-	require.NotNil(t, result.Outputs[1].Route)
-	assert.Equal(t, []string{"write", "security"}, result.Outputs[1].Route.IncludeCategories)
+	assert.Equal(t, "audit_log", result.OutputMetadata()[1].Name)
+	require.NotNil(t, result.OutputMetadata()[1].Route)
+	assert.Equal(t, []string{"write", "security"}, result.OutputMetadata()[1].Route.IncludeCategories)
 }
 
 func TestLoad_MultipleOutputs(t *testing.T) {
@@ -148,10 +148,10 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
-	assert.Len(t, result.Outputs, 3)
+	assert.Len(t, result.OutputMetadata(), 3)
 
 	// Clean up outputs.
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -246,11 +246,11 @@ outputs:
 			tax := testTaxonomy(t)
 			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax)
 			require.NoError(t, err)
-			assert.Len(t, result.Outputs, 1)
-			require.NotNil(t, result.Outputs[0].Formatter, "explicit JSON should set per-output formatter")
-			_, isJSON := result.Outputs[0].Formatter.(*audit.JSONFormatter)
+			assert.Len(t, result.OutputMetadata(), 1)
+			require.NotNil(t, result.OutputMetadata()[0].Formatter, "explicit JSON should set per-output formatter")
+			_, isJSON := result.OutputMetadata()[0].Formatter.(*audit.JSONFormatter)
 			assert.True(t, isJSON, "formatter should be *audit.JSONFormatter")
-			_ = result.Outputs[0].Output.Close()
+			_ = result.OutputMetadata()[0].Output.Close()
 		})
 	}
 }
@@ -312,13 +312,13 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Len(t, result.Outputs, 2)
+	assert.Len(t, result.OutputMetadata(), 2)
 	// Both outputs have nil per-output formatter — they inherit the
 	// auditor's default JSONFormatter at runtime via effectiveFormatter.
-	assert.Nil(t, result.Outputs[0].Formatter)
-	assert.Nil(t, result.Outputs[1].Formatter)
-	_ = result.Outputs[0].Output.Close()
-	_ = result.Outputs[1].Output.Close()
+	assert.Nil(t, result.OutputMetadata()[0].Formatter)
+	assert.Nil(t, result.OutputMetadata()[1].Formatter)
+	_ = result.OutputMetadata()[0].Output.Close()
+	_ = result.OutputMetadata()[1].Output.Close()
 }
 
 func TestLoad_LokiDisabledWithCEF_NoError(t *testing.T) {
@@ -339,8 +339,8 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "disabled Loki output with CEF formatter should not cause an error")
-	assert.Len(t, result.Outputs, 1, "only the stdout output should be active")
-	_ = result.Outputs[0].Output.Close()
+	assert.Len(t, result.OutputMetadata(), 1, "only the stdout output should be active")
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_LokiRejectsScalarCEF(t *testing.T) {
@@ -382,9 +382,9 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 
-	assert.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Formatter)
-	_ = result.Outputs[0].Output.Close()
+	assert.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].Formatter)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_EnabledFalse_SkipsOutput(t *testing.T) {
@@ -403,10 +403,10 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
 
-	assert.Len(t, result.Outputs, 1)
-	assert.Equal(t, "active", result.Outputs[0].Name)
+	assert.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, "active", result.OutputMetadata()[0].Name)
 
-	_ = result.Outputs[0].Output.Close()
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_EnabledTrue_Explicit(t *testing.T) {
@@ -422,8 +422,8 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
-	assert.Len(t, result.Outputs, 1)
-	_ = result.Outputs[0].Output.Close()
+	assert.Len(t, result.OutputMetadata(), 1)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 // --- Error cases ---
@@ -532,8 +532,8 @@ func TestLoad_TwoDistinctNames(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  a:\n    type: stdout\n  b:\n    type: stdout\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	assert.Len(t, result.Outputs, 2)
-	for _, o := range result.Outputs {
+	assert.Len(t, result.OutputMetadata(), 2)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -612,8 +612,8 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), yaml, tax)
 	require.NoError(t, err)
-	assert.Len(t, result.Outputs, 1)
-	_ = result.Outputs[0].Output.Close()
+	assert.Len(t, result.OutputMetadata(), 1)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_MissingEnvVar(t *testing.T) {
@@ -649,11 +649,11 @@ outputs:
 	require.NoError(t, err)
 
 	// Options should contain at least one WithNamedOutput.
-	assert.NotEmpty(t, result.Options)
+	assert.NotEmpty(t, result.Options())
 
 	// Verify options can be applied to New without error.
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
+	opts = append(opts, result.Options()...)
 	auditor, err := audit.New(opts...)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -741,9 +741,9 @@ func TestLoad_RouteWithEventTypes(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      include_event_types: [user_create]\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.NotNil(t, result.Outputs[0].Route)
-	assert.Equal(t, []string{"user_create"}, result.Outputs[0].Route.IncludeEventTypes)
-	_ = result.Outputs[0].Output.Close()
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	assert.Equal(t, []string{"user_create"}, result.OutputMetadata()[0].Route.IncludeEventTypes)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_RouteExcludeEventTypes(t *testing.T) {
@@ -751,9 +751,9 @@ func TestLoad_RouteExcludeEventTypes(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  filtered:\n    type: stdout\n    route:\n      exclude_event_types: [auth_failure]\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.NotNil(t, result.Outputs[0].Route)
-	assert.Equal(t, []string{"auth_failure"}, result.Outputs[0].Route.ExcludeEventTypes)
-	_ = result.Outputs[0].Output.Close()
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	assert.Equal(t, []string{"auth_failure"}, result.OutputMetadata()[0].Route.ExcludeEventTypes)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_EnabledFalseBeforeType(t *testing.T) {
@@ -762,9 +762,9 @@ func TestLoad_EnabledFalseBeforeType(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  active:\n    type: stdout\n  skipped:\n    enabled: false\n    type: stdout\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	assert.Len(t, result.Outputs, 1)
-	assert.Equal(t, "active", result.Outputs[0].Name)
-	_ = result.Outputs[0].Output.Close()
+	assert.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, "active", result.OutputMetadata()[0].Name)
+	_ = result.OutputMetadata()[0].Output.Close()
 }
 
 func TestLoad_MissingEnvVarInFormatter(t *testing.T) {
@@ -810,7 +810,7 @@ outputs:
 	require.NoError(t, err)
 
 	opts := []audit.Option{audit.WithTaxonomy(tax)}
-	opts = append(opts, result.Options...)
+	opts = append(opts, result.Options()...)
 	auditor, err := audit.New(opts...)
 	require.NoError(t, err)
 
@@ -892,23 +892,23 @@ func TestLoadResult_String_NoCredentials(t *testing.T) {
 	assert.NotContains(t, s, "Bearer")
 }
 
-func TestLoadResult_String_Nil(t *testing.T) {
-	var r *outputconfig.LoadResult
-	assert.Equal(t, "<nil>", r.String())
+func TestLoaded_String_Nil(t *testing.T) {
+	var l *outputconfig.Loaded
+	assert.Equal(t, "<nil>", l.String())
 }
 
-func TestNamedOutput_String_NoCredentials(t *testing.T) {
-	no := &outputconfig.NamedOutput{
+func TestOutputInfo_String_NoCredentials(t *testing.T) {
+	oi := &outputconfig.OutputInfo{
 		Name: "test_output",
 	}
-	s := no.String()
+	s := oi.String()
 	assert.Contains(t, s, "test_output")
 	assert.NotContains(t, s, "Authorization")
 }
 
-func TestNamedOutput_String_Nil(t *testing.T) {
-	var no *outputconfig.NamedOutput
-	assert.Equal(t, "<nil>", no.String())
+func TestOutputInfo_String_Nil(t *testing.T) {
+	var oi *outputconfig.OutputInfo
+	assert.Equal(t, "<nil>", oi.String())
 }
 
 // --- Severity routing YAML tests (#187) ---
@@ -927,11 +927,11 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Route)
-	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
-	assert.Equal(t, 7, *result.Outputs[0].Route.MinSeverity)
-	assert.Nil(t, result.Outputs[0].Route.MaxSeverity)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	require.NotNil(t, result.OutputMetadata()[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.OutputMetadata()[0].Route.MinSeverity)
+	assert.Nil(t, result.OutputMetadata()[0].Route.MaxSeverity)
 }
 
 func TestLoad_RouteWithMaxSeverity(t *testing.T) {
@@ -948,11 +948,11 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Route)
-	assert.Nil(t, result.Outputs[0].Route.MinSeverity)
-	require.NotNil(t, result.Outputs[0].Route.MaxSeverity)
-	assert.Equal(t, 3, *result.Outputs[0].Route.MaxSeverity)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	assert.Nil(t, result.OutputMetadata()[0].Route.MinSeverity)
+	require.NotNil(t, result.OutputMetadata()[0].Route.MaxSeverity)
+	assert.Equal(t, 3, *result.OutputMetadata()[0].Route.MaxSeverity)
 }
 
 func TestLoad_RouteWithMinAndMaxSeverity(t *testing.T) {
@@ -970,12 +970,12 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Route)
-	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
-	require.NotNil(t, result.Outputs[0].Route.MaxSeverity)
-	assert.Equal(t, 3, *result.Outputs[0].Route.MinSeverity)
-	assert.Equal(t, 7, *result.Outputs[0].Route.MaxSeverity)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	require.NotNil(t, result.OutputMetadata()[0].Route.MinSeverity)
+	require.NotNil(t, result.OutputMetadata()[0].Route.MaxSeverity)
+	assert.Equal(t, 3, *result.OutputMetadata()[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.OutputMetadata()[0].Route.MaxSeverity)
 }
 
 func TestLoad_RouteWithSeverityOmitted(t *testing.T) {
@@ -992,11 +992,11 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].Route)
-	assert.Nil(t, result.Outputs[0].Route.MinSeverity,
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	assert.Nil(t, result.OutputMetadata()[0].Route.MinSeverity,
 		"severity omitted should be nil, not pointer-to-zero")
-	assert.Nil(t, result.Outputs[0].Route.MaxSeverity)
+	assert.Nil(t, result.OutputMetadata()[0].Route.MaxSeverity)
 }
 
 func TestLoad_RouteMinSeverityOutOfRange(t *testing.T) {
@@ -1065,8 +1065,8 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "severity 0 is a valid value, not rejected as zero-value")
-	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
-	assert.Equal(t, 0, *result.Outputs[0].Route.MinSeverity,
+	require.NotNil(t, result.OutputMetadata()[0].Route.MinSeverity)
+	assert.Equal(t, 0, *result.OutputMetadata()[0].Route.MinSeverity,
 		"severity 0 must be pointer-to-zero, not nil")
 }
 
@@ -1085,10 +1085,10 @@ outputs:
 `)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.NotNil(t, result.Outputs[0].Route)
-	assert.Equal(t, []string{"security"}, result.Outputs[0].Route.IncludeCategories)
-	require.NotNil(t, result.Outputs[0].Route.MinSeverity)
-	assert.Equal(t, 7, *result.Outputs[0].Route.MinSeverity)
+	require.NotNil(t, result.OutputMetadata()[0].Route)
+	assert.Equal(t, []string{"security"}, result.OutputMetadata()[0].Route.IncludeCategories)
+	require.NotNil(t, result.OutputMetadata()[0].Route.MinSeverity)
+	assert.Equal(t, 7, *result.OutputMetadata()[0].Route.MinSeverity)
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,8 +1135,8 @@ outputs:
 	tax := testTaxonomyWithSensitivity(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Equal(t, []string{"pii", "financial"}, result.Outputs[0].ExcludeLabels)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, []string{"pii", "financial"}, result.OutputMetadata()[0].ExcludeLabels)
 }
 
 func TestLoad_OutputWithExcludeLabels_Empty(t *testing.T) {
@@ -1153,8 +1153,8 @@ outputs:
 	tax := testTaxonomyWithSensitivity(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Empty(t, result.Outputs[0].ExcludeLabels)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Empty(t, result.OutputMetadata()[0].ExcludeLabels)
 }
 
 func TestLoad_OutputWithExcludeLabels_NoSensitivity(t *testing.T) {
@@ -1175,8 +1175,8 @@ outputs:
 
 	// The Load itself succeeds — validation happens at auditor creation time.
 	// Verify the labels are stored and will be passed through.
-	require.Len(t, result.Outputs, 1)
-	assert.Equal(t, []string{"pii"}, result.Outputs[0].ExcludeLabels)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, []string{"pii"}, result.OutputMetadata()[0].ExcludeLabels)
 }
 
 // ---------------------------------------------------------------------------
@@ -1197,10 +1197,10 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, result.Config.QueueSize, "zero means applyDefaults will set 10000")
-	assert.Equal(t, time.Duration(0), result.Config.ShutdownTimeout, "zero means applyDefaults will set 5s")
-	assert.Equal(t, audit.ValidationMode(""), result.Config.ValidationMode, "empty means applyDefaults will set strict")
-	assert.False(t, result.Config.OmitEmpty)
+	assert.Equal(t, 0, outputconfig.LoadedConfigForTest(result).QueueSize, "zero means applyDefaults will set 10000")
+	assert.Equal(t, time.Duration(0), outputconfig.LoadedConfigForTest(result).ShutdownTimeout, "zero means applyDefaults will set 5s")
+	assert.Equal(t, audit.ValidationMode(""), outputconfig.LoadedConfigForTest(result).ValidationMode, "empty means applyDefaults will set strict")
+	assert.False(t, outputconfig.LoadedConfigForTest(result).OmitEmpty)
 }
 
 func TestLoad_LoggerConfig_AllFields(t *testing.T) {
@@ -1223,10 +1223,10 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 50000, result.Config.QueueSize)
-	assert.Equal(t, 30*time.Second, result.Config.ShutdownTimeout)
-	assert.Equal(t, audit.ValidationMode("warn"), result.Config.ValidationMode)
-	assert.True(t, result.Config.OmitEmpty)
+	assert.Equal(t, 50000, outputconfig.LoadedConfigForTest(result).QueueSize)
+	assert.Equal(t, 30*time.Second, outputconfig.LoadedConfigForTest(result).ShutdownTimeout)
+	assert.Equal(t, audit.ValidationMode("warn"), outputconfig.LoadedConfigForTest(result).ValidationMode)
+	assert.True(t, outputconfig.LoadedConfigForTest(result).OmitEmpty)
 }
 
 func TestLoad_LoggerConfig_PartialFields(t *testing.T) {
@@ -1245,8 +1245,8 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 25000, result.Config.QueueSize)
-	assert.Equal(t, time.Duration(0), result.Config.ShutdownTimeout, "default drain timeout")
+	assert.Equal(t, 25000, outputconfig.LoadedConfigForTest(result).QueueSize)
+	assert.Equal(t, time.Duration(0), outputconfig.LoadedConfigForTest(result).ShutdownTimeout, "default drain timeout")
 }
 
 func TestLoad_LoggerConfig_EnabledFalse(t *testing.T) {
@@ -1285,8 +1285,8 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.Equal(t, 75000, result.Config.QueueSize)
-	assert.Equal(t, 15*time.Second, result.Config.ShutdownTimeout)
+	assert.Equal(t, 75000, outputconfig.LoadedConfigForTest(result).QueueSize)
+	assert.Equal(t, 15*time.Second, outputconfig.LoadedConfigForTest(result).ShutdownTimeout)
 }
 
 func TestLoad_LoggerConfig_EnvVars_Boolean(t *testing.T) {
@@ -1308,7 +1308,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 
-	assert.True(t, result.Config.OmitEmpty)
+	assert.True(t, outputconfig.LoadedConfigForTest(result).OmitEmpty)
 }
 
 func TestLoad_LoggerConfig_NotAMapping(t *testing.T) {
@@ -1481,7 +1481,7 @@ outputs:
 			tax := testTaxonomy(t)
 			result, err := outputconfig.Load(context.Background(), data, tax)
 			require.NoError(t, err)
-			assert.Equal(t, audit.ValidationMode(mode), result.Config.ValidationMode)
+			assert.Equal(t, audit.ValidationMode(mode), outputconfig.LoadedConfigForTest(result).ValidationMode)
 		})
 	}
 }
@@ -1564,14 +1564,14 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
+	require.Len(t, result.OutputMetadata(), 1)
 
 	raw, ok := captured.Load().(string)
 	require.True(t, ok, "syslog factory must have been invoked")
 	assert.Contains(t, raw, "allow_tls12: true",
 		"per-output tls_policy must marshal through to the factory")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1599,11 +1599,11 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.True(t, result.Outputs[0].HMACConfig.Enabled)
-	assert.Equal(t, "v1", result.Outputs[0].HMACConfig.SaltVersion)
-	assert.Equal(t, "HMAC-SHA-256", result.Outputs[0].HMACConfig.Algorithm)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
+	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.SaltVersion)
+	assert.Equal(t, "HMAC-SHA-256", result.OutputMetadata()[0].HMACConfig.Algorithm)
 }
 
 func TestLoad_HMAC_Disabled_Default(t *testing.T) {
@@ -1619,8 +1619,8 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].HMACConfig)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Nil(t, result.OutputMetadata()[0].HMACConfig)
 }
 
 func TestLoad_HMAC_ExplicitlyDisabled(t *testing.T) {
@@ -1638,8 +1638,8 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].HMACConfig, "disabled HMAC should be nil")
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Nil(t, result.OutputMetadata()[0].HMACConfig, "disabled HMAC should be nil")
 }
 
 func TestLoad_HMAC_SaltTooShort(t *testing.T) {
@@ -1746,8 +1746,8 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.Outputs[0].HMACConfig.SaltValue)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
 }
 
 func TestLoad_HMAC_SaltNotInError(t *testing.T) {
@@ -1794,14 +1794,14 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	require.NotNil(t, result.StandardFields)
-	assert.Equal(t, "10.0.0.1", result.StandardFields["source_ip"])
-	assert.Equal(t, "default", result.StandardFields["reason"])
+	require.NotNil(t, result.StandardFields())
+	assert.Equal(t, "10.0.0.1", result.StandardFields()["source_ip"])
+	assert.Equal(t, "default", result.StandardFields()["reason"])
 }
 
 func TestLoad_StandardFields_UnknownField(t *testing.T) {
@@ -1860,13 +1860,13 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	require.NotNil(t, result.StandardFields)
-	assert.Equal(t, "192.168.99.1", result.StandardFields["source_ip"])
+	require.NotNil(t, result.StandardFields())
+	assert.Equal(t, "192.168.99.1", result.StandardFields()["source_ip"])
 }
 
 func TestLoad_StandardFields_EnvVarMissing(t *testing.T) {
@@ -1923,17 +1923,17 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	require.NotNil(t, result.StandardFields)
-	assert.Equal(t, "10.1.2.3", result.StandardFields["source_ip"])
-	assert.Equal(t, "scheduled-job", result.StandardFields["reason"])
-	assert.Equal(t, "sess-abc", result.StandardFields["session_id"])
-	assert.Equal(t, "admin", result.StandardFields["role"])
-	assert.Len(t, result.StandardFields, 4)
+	require.NotNil(t, result.StandardFields())
+	assert.Equal(t, "10.1.2.3", result.StandardFields()["source_ip"])
+	assert.Equal(t, "scheduled-job", result.StandardFields()["reason"])
+	assert.Equal(t, "sess-abc", result.StandardFields()["session_id"])
+	assert.Equal(t, "admin", result.StandardFields()["role"])
+	assert.Len(t, result.StandardFields(), 4)
 }
 
 // ---------------------------------------------------------------------------
@@ -1954,13 +1954,13 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	assert.Equal(t, "myapp", result.AppName)
-	assert.Equal(t, "myhost.example.com", result.Host)
+	assert.Equal(t, "myapp", result.AppName())
+	assert.Equal(t, "myhost.example.com", result.Host())
 }
 
 func TestLoad_Timezone_Populated(t *testing.T) {
@@ -1978,17 +1978,17 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	assert.Equal(t, "UTC", result.Timezone)
+	assert.Equal(t, "UTC", result.Timezone())
 }
 
 func TestLoad_Timezone_Omitted(t *testing.T) {
 	t.Parallel()
-	// No timezone key — result.Timezone must be empty string, not some default.
+	// No timezone key — result.Timezone() must be empty string, not some default.
 	data := []byte(`
 version: 1
 app_name: test
@@ -2001,12 +2001,12 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
 
-	assert.Equal(t, "", result.Timezone, "omitted timezone must be empty string")
+	assert.Equal(t, "", result.Timezone(), "omitted timezone must be empty string")
 }
 
 func TestLoad_MissingAppName_Rejected(t *testing.T) {
@@ -2095,8 +2095,8 @@ func TestLoad_AppNameAtMaxLength_Accepted(t *testing.T) {
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "255-byte app_name is exactly at the limit and must be accepted")
-	assert.Equal(t, maxName, result.AppName)
-	for _, o := range result.Outputs {
+	assert.Equal(t, maxName, result.AppName())
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2109,8 +2109,8 @@ func TestLoad_HostAtMaxLength_Accepted(t *testing.T) {
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "255-byte host is exactly at the limit and must be accepted")
-	assert.Equal(t, maxHost, result.Host)
-	for _, o := range result.Outputs {
+	assert.Equal(t, maxHost, result.Host())
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2123,8 +2123,8 @@ func TestLoad_TimezoneAtMaxLength_Accepted(t *testing.T) {
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err, "64-byte timezone is exactly at the limit and must be accepted")
-	assert.Equal(t, maxTZ, result.Timezone)
-	for _, o := range result.Outputs {
+	assert.Equal(t, maxTZ, result.Timezone())
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2171,7 +2171,7 @@ outputs:
 	assert.NotContains(t, raw, "global-host.example.com",
 		"global host must not be injected when per-output hostname is already set")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2216,7 +2216,7 @@ outputs:
 	assert.Contains(t, raw, "test",
 		"global app_name value must appear in injected syslog config")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2255,7 +2255,7 @@ outputs:
 	assert.NotContains(t, raw, "global-app",
 		"global app_name must not override per-output value")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2290,7 +2290,7 @@ outputs:
 	assert.NotContains(t, raw, "hostname",
 		"hostname must not be injected into non-syslog outputs")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2340,7 +2340,7 @@ outputs:
 	assert.Equal(t, "myhost.example.com", fctx.Host,
 		"FrameworkContext.Host must carry the top-level host")
 
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2420,7 +2420,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
@@ -2461,7 +2461,7 @@ outputs:
 }
 
 // TestLoad_Timezone_PassedAsOption verifies that a non-empty timezone
-// results in a WithTimezone option being added to result.Options, and
+// results in a WithTimezone option being added to result.Options(), and
 // that omitting timezone produces no WithTimezone option.
 func TestLoad_Timezone_PassedAsOption(t *testing.T) {
 	t.Parallel()
@@ -2504,9 +2504,9 @@ outputs:
 			tax := testTaxonomy(t)
 			result, err := outputconfig.Load(context.Background(), []byte(tt.yaml), tax)
 			require.NoError(t, err)
-			assert.GreaterOrEqual(t, len(result.Options), tt.wantOpts,
-				"got %d options, want at least %d", len(result.Options), tt.wantOpts)
-			for _, o := range result.Outputs {
+			assert.GreaterOrEqual(t, len(result.Options()), tt.wantOpts,
+				"got %d options, want at least %d", len(result.Options()), tt.wantOpts)
+			for _, o := range result.OutputMetadata() {
 				_ = o.Output.Close()
 			}
 		})
@@ -2560,7 +2560,7 @@ func TestLoad_WithSecretTimeout_Accepted(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2577,7 +2577,7 @@ func TestLoad_MultipleLoadOptions_Compose(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2600,7 +2600,7 @@ func TestLoad_WithOutputMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, 1, called, "factory should be called once for stdout output")
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2615,7 +2615,7 @@ func TestLoad_WithOutputMetrics_NilFactory(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2637,10 +2637,10 @@ func TestLoad_WithFactory(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Len(t, result.Outputs, 1)
-	assert.Equal(t, "test-custom", result.Outputs[0].Type)
-	assert.Equal(t, "custom", result.Outputs[0].Name)
-	for _, o := range result.Outputs {
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Equal(t, "test-custom", result.OutputMetadata()[0].Type)
+	assert.Equal(t, "custom", result.OutputMetadata()[0].Name)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2664,7 +2664,7 @@ outputs:
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2677,8 +2677,8 @@ func TestLoad_QueueSizeInLoggerSection(t *testing.T) {
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, 200, result.Config.QueueSize)
-	for _, o := range result.Outputs {
+	assert.Equal(t, 200, outputconfig.LoadedConfigForTest(result).QueueSize)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -2825,7 +2825,7 @@ outputs:
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
@@ -2874,7 +2874,7 @@ outputs:
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})
@@ -2919,7 +2919,7 @@ outputs:
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		for _, o := range result.Outputs {
+		for _, o := range result.OutputMetadata() {
 			_ = o.Output.Close()
 		}
 	})

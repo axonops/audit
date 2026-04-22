@@ -78,11 +78,11 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.True(t, result.Outputs[0].HMACConfig.Enabled)
-	assert.Equal(t, "this-is-a-test-salt-value-at-least-16-bytes", string(result.Outputs[0].HMACConfig.SaltValue))
-	assert.Equal(t, "v1", result.Outputs[0].HMACConfig.SaltVersion)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
+	assert.Equal(t, "this-is-a-test-salt-value-at-least-16-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
+	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.SaltVersion)
 }
 
 func TestLoad_SecretsSection_Vault(t *testing.T) {
@@ -123,11 +123,11 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.True(t, result.Outputs[0].HMACConfig.Enabled)
-	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.Outputs[0].HMACConfig.SaltValue))
-	assert.Equal(t, "v2", result.Outputs[0].HMACConfig.SaltVersion)
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
+	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
+	assert.Equal(t, "v2", result.OutputMetadata()[0].HMACConfig.SaltVersion)
 }
 
 func TestLoad_SecretsSection_AllowInsecureHTTP(t *testing.T) {
@@ -166,9 +166,9 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.Equal(t, "insecure-salt-value-at-least-sixteen-bytes", string(result.Outputs[0].HMACConfig.SaltValue))
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.Equal(t, "insecure-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
 }
 
 func TestLoad_SecretsSection_UnknownProvider(t *testing.T) {
@@ -479,9 +479,9 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.Equal(t, "vault-http-salt-value-at-least-sixteen-bytes", string(result.Outputs[0].HMACConfig.SaltValue))
+	require.Len(t, result.OutputMetadata(), 1)
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.Equal(t, "vault-http-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
 }
 
 func TestLoad_SecretsSection_BothProviders(t *testing.T) {
@@ -547,10 +547,10 @@ outputs:
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 2)
+	require.Len(t, result.OutputMetadata(), 2)
 
-	assert.Equal(t, "bao-salt-value-at-least-sixteen-bytes-long", string(result.Outputs[0].HMACConfig.SaltValue))
-	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.Outputs[1].HMACConfig.SaltValue))
+	assert.Equal(t, "bao-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
+	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[1].HMACConfig.SaltValue))
 }
 
 // ---------------------------------------------------------------------------

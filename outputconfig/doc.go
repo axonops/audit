@@ -82,7 +82,7 @@
 // URIs that are resolved from external secret backends (OpenBao, Vault)
 // at load time. Register providers with [WithSecretProvider]:
 //
-//	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics,
+//	loaded, err := outputconfig.Load(ctx, yamlData, taxonomy,
 //	    outputconfig.WithSecretProvider(provider),
 //	    outputconfig.WithSecretTimeout(30*time.Second),
 //	)
@@ -93,14 +93,30 @@
 //
 // # Usage
 //
-//	result, err := outputconfig.Load(ctx, yamlData, taxonomy, metrics)
+// The primary entry point is [New]; use [NewWithLoad] when [LoadOption]
+// values are needed. Both construct a ready-to-use [audit.Auditor] in
+// a single call:
+//
+//	auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml")
 //	if err != nil {
 //	    return fmt.Errorf("audit config: %w", err)
 //	}
+//	defer auditor.Close()
 //
-//	opts := []audit.Option{audit.WithTaxonomy(taxonomy)}
-//	opts = append(opts, result.Options...)
+// When the pre-built auditor is not what you want — for example, you
+// want to inspect the parsed outputs before constructing the auditor —
+// call [Load] directly:
+//
+//	loaded, err := outputconfig.Load(ctx, yamlData, taxonomy)
+//	if err != nil {
+//	    return fmt.Errorf("audit config: %w", err)
+//	}
+//	opts := append([]audit.Option{audit.WithTaxonomy(taxonomy)}, loaded.Options()...)
 //	auditor, err := audit.New(opts...)
+//	if err != nil {
+//	    _ = loaded.Close() // clean up outputs the auditor would have owned
+//	    return err
+//	}
 //
 // [Load] fails hard on any configuration error — partial configurations
 // are never returned. This ensures that a misconfigured output does not

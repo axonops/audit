@@ -246,7 +246,7 @@ func (tc *TestContext) stepLoadYAMLWithProviders(doc *godog.DocString) error {
 		tc.LastErr = loadErr
 		return nil //nolint:nilerr // scenario asserts on tc.LastErr
 	}
-	tc.Options = result.Options
+	tc.Options = result.Options()
 	tc.LoadResult = result
 	return nil
 }

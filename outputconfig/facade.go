@@ -24,23 +24,23 @@ import (
 	"github.com/axonops/audit"
 )
 
-// New is a convenience facade that creates a ready-to-use
+// New is the convenience facade that creates a ready-to-use
 // [audit.Auditor] from embedded taxonomy YAML and a filesystem path
 // to the outputs configuration. It combines [audit.ParseTaxonomyYAML],
-// [Load], and [audit.New] into a single call.
+// [Load], and [audit.New] into a single call — the 80 % case.
 //
 // When outputsConfigPath is empty, New creates a stdout-only
 // development auditor with app_name derived from [os.Args] and host
-// from [os.Hostname]. This is useful for local development and
-// quick evaluation.
+// from [os.Hostname]. Useful for local development and quick
+// evaluation.
 //
-// loadOpts are forwarded to [Load] and can include [WithCoreMetrics],
-// [WithSecretProvider], [WithSecretTimeout], etc. Pass nil when no
-// load options are needed.
+// opts are applied after the options produced by [Load], so they
+// take precedence (last wins). Use this to add [audit.WithMetrics],
+// [audit.WithDisabled], or other overrides.
 //
-// Additional opts are applied after the options produced by [Load],
-// so they take precedence (last wins). Use this to add
-// [audit.WithMetrics], [audit.WithDisabled], or other overrides.
+// For advanced cases that need [LoadOption] values — secret
+// providers, per-output metrics factories, custom output factory
+// registrations — use [NewWithLoad] instead.
 //
 // Non-stdout output types require blank imports to register their
 // factories:
@@ -49,7 +49,20 @@ import (
 //	import _ "github.com/axonops/audit/syslog"  // syslog output
 //	import _ "github.com/axonops/audit/webhook" // webhook output
 //	import _ "github.com/axonops/audit/loki"    // loki output
-func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loadOpts []LoadOption, opts ...audit.Option) (*audit.Auditor, error) {
+//
+// — or the convenience umbrella package:
+//
+//	import _ "github.com/axonops/audit/outputs" // all output types
+func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, opts ...audit.Option) (*audit.Auditor, error) {
+	return NewWithLoad(ctx, taxonomyYAML, outputsConfigPath, nil, opts...)
+}
+
+// NewWithLoad is like [New] but forwards loadOpts to [Load]. Use
+// when you need one of [WithSecretProvider], [WithCoreMetrics],
+// [WithOutputMetrics], [WithFactory], [WithSecretTimeout], or
+// [WithDiagnosticLogger]. For the common no-LoadOption case, prefer
+// [New].
+func NewWithLoad(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loadOpts []LoadOption, opts ...audit.Option) (*audit.Auditor, error) {
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 	if err != nil {
 		return nil, fmt.Errorf("outputconfig: parse taxonomy: %w", err)
@@ -58,22 +71,24 @@ func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loa
 	var auditorOpts []audit.Option
 	auditorOpts = append(auditorOpts, audit.WithTaxonomy(tax))
 
+	var devStdout audit.Output // retained for error-path cleanup
 	if outputsConfigPath == "" {
-		devOpts, devErr := devModeOptions()
+		devOpts, stdout, devErr := devModeOptions()
 		if devErr != nil {
 			return nil, fmt.Errorf("outputconfig: dev mode: %w", devErr)
 		}
+		devStdout = stdout
 		auditorOpts = append(auditorOpts, devOpts...)
 	} else {
 		data, readErr := readConfigFile(outputsConfigPath)
 		if readErr != nil {
 			return nil, readErr
 		}
-		result, loadErr := Load(ctx, data, tax, loadOpts...)
+		loaded, loadErr := Load(ctx, data, tax, loadOpts...)
 		if loadErr != nil {
 			return nil, fmt.Errorf("outputconfig: load: %w", loadErr)
 		}
-		auditorOpts = append(auditorOpts, result.Options...)
+		auditorOpts = append(auditorOpts, loaded.Options()...)
 
 		// User options applied last — highest precedence.
 		auditorOpts = append(auditorOpts, opts...)
@@ -81,9 +96,7 @@ func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loa
 		auditor, auditorErr := audit.New(auditorOpts...)
 		if auditorErr != nil {
 			// Clean up outputs that Load constructed.
-			for _, o := range result.Outputs {
-				_ = o.Output.Close()
-			}
+			_ = loaded.Close()
 			return nil, fmt.Errorf("outputconfig: create auditor: %w", auditorErr)
 		}
 		return auditor, nil
@@ -94,17 +107,25 @@ func New(ctx context.Context, taxonomyYAML []byte, outputsConfigPath string, loa
 
 	auditor, auditorErr := audit.New(auditorOpts...)
 	if auditorErr != nil {
+		// Clean up the stdout output constructed by devModeOptions —
+		// Auditor.Close cannot run because construction failed. For
+		// os.Stdout this is a no-op today, but makes the path resilient
+		// to future dev-mode outputs with real resources.
+		if devStdout != nil {
+			_ = devStdout.Close()
+		}
 		return nil, fmt.Errorf("outputconfig: create auditor: %w", auditorErr)
 	}
 	return auditor, nil
 }
 
 // devModeOptions returns options for a stdout-only development auditor
-// with auto-detected app_name and host.
-func devModeOptions() ([]audit.Option, error) {
+// with auto-detected app_name and host, along with the constructed
+// stdout output so callers can Close it on [audit.New] failure.
+func devModeOptions() ([]audit.Option, audit.Output, error) {
 	stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{})
 	if err != nil {
-		return nil, fmt.Errorf("create stdout output: %w", err)
+		return nil, nil, fmt.Errorf("create stdout output: %w", err)
 	}
 
 	appName := "audit"
@@ -121,7 +142,7 @@ func devModeOptions() ([]audit.Option, error) {
 		audit.WithAppName(appName),
 		audit.WithHost(host),
 		audit.WithOutputs(stdout),
-	}, nil
+	}, stdout, nil
 }
 
 // readConfigFile reads a configuration file with security hardening:

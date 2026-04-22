@@ -232,13 +232,13 @@ This is loaded at startup with `outputconfig.Load`:
 //go:embed outputs.yaml
 var outputsYAML []byte
 
-result, err := outputconfig.Load(ctx, outputsYAML, &tax, nil)
+loaded, err := outputconfig.Load(ctx, outputsYAML, tax)
 ```
 
 Or use the facade — one call instead of three steps:
 
 ```go
-auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml", nil)
+auditor, err := outputconfig.New(ctx, taxonomyYAML, "outputs.yaml")
 ```
 
 ### Two Files, Two Purposes

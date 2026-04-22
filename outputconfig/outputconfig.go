@@ -36,56 +36,179 @@ const MaxOutputConfigSize = 1 << 20 // 1 MiB
 // MaxOutputCount is the maximum number of outputs in a single config.
 const MaxOutputCount = 100
 
-// LoadResult holds the outputs, options, and auditor configuration
-// produced by [Load], ready to be passed to [audit.New].
-type LoadResult struct { //nolint:govet // fieldalignment: readability preferred
-	// Config is the auditor configuration parsed from the optional
-	// top-level `auditor:` section. Exposed for inspection; pass
-	// Options to [audit.New] instead — Options includes
-	// config-equivalent options ([audit.WithQueueSize], etc.).
-	Config audit.Config
+// Loaded is the result of parsing an outputs YAML configuration via
+// [Load]. It aggregates the constructed outputs and the
+// [audit.Option] values required to create an auditor. Fields are
+// unexported — use the method accessors below.
+//
+// The zero value is not usable; always obtain via [Load].
+type Loaded struct {
+	options        []audit.Option
+	outputs        []namedOutput
+	appName        string
+	host           string
+	timezone       string
+	standardFields map[string]string
 
-	// Options contains all options needed to create the auditor:
-	// framework fields ([audit.WithAppName], [audit.WithHost]),
-	// config-equivalent options ([audit.WithQueueSize], etc.),
-	// and one [audit.WithNamedOutput] per configured output.
-	// Pass directly to [audit.New] along with
-	// [audit.WithTaxonomy].
-	Options []audit.Option
-
-	// Outputs is the ordered list of constructed outputs for
-	// inspection or testing.
-	Outputs []NamedOutput
-
-	// AppName is the application name parsed from the top-level
-	// `app_name:` key. Always non-empty after a successful Load.
-	AppName string
-
-	// Host is the hostname parsed from the top-level `host:` key.
-	// Always non-empty after a successful Load.
-	Host string
-
-	// Timezone is the timezone name parsed from the top-level
-	// `timezone:` key. Empty when not specified in the YAML.
-	Timezone string
-
-	// StandardFields maps reserved standard field names to their
-	// deployment-wide default values, parsed from the top-level
-	// `standard_fields:` section. Nil when not specified. Pass to
-	// [audit.WithStandardFieldDefaults] (when available).
-	StandardFields map[string]string
+	// config retains the parsed [audit.Config] for package-internal
+	// introspection (e.g., black-box tests that assert YAML parsing
+	// correctness via export_test.go). Never exposed publicly — the
+	// equivalent audit.Option values are already in options, and
+	// exposing Config here re-creates the #577 double-apply footgun.
+	config audit.Config
 }
 
-// NamedOutput pairs a constructed output with its config-level name
-// and resolved formatter and route.
-type NamedOutput struct {
+// Options returns the slice of [audit.Option] values ready to pass to
+// [audit.New], including framework-field options (app_name, host,
+// timezone), config-equivalent options ([audit.WithQueueSize],
+// etc.), standard-field defaults, and one [audit.WithNamedOutput]
+// per configured output.
+//
+// The returned slice aliases the internal storage with capacity
+// trimmed to length, so a caller's `append(loaded.Options(), extra)`
+// cannot silently mutate the internal slice — append will allocate
+// a new backing array. The caller must still not mutate the
+// returned elements themselves.
+//
+// The caller must also supply [audit.WithTaxonomy] separately; it
+// is not part of the returned slice because the same taxonomy is
+// typically needed independently by the application.
+func (l *Loaded) Options() []audit.Option {
+	if l == nil {
+		return nil
+	}
+	// Trim capacity to length so `append(l.Options(), x)` is guaranteed
+	// to allocate a new backing array rather than silently overwriting
+	// unused capacity of l.options.
+	return l.options[:len(l.options):len(l.options)]
+}
+
+// Outputs returns the constructed [audit.Output] instances in YAML
+// declaration order. Intended for cleanup when the caller decides
+// not to construct an auditor after a successful [Load] — call
+// [Loaded.Close] or iterate and close each output individually.
+//
+// The returned slice is a shallow copy; mutating it does not affect
+// subsequent calls to Outputs, OutputMetadata, or the auditor.
+func (l *Loaded) Outputs() []audit.Output {
+	if l == nil {
+		return nil
+	}
+	out := make([]audit.Output, len(l.outputs))
+	for i := range l.outputs {
+		out[i] = l.outputs[i].Output
+	}
+	return out
+}
+
+// OutputMetadata returns a diagnostic snapshot of each configured
+// output — name, type, route, formatter, HMAC config, exclude
+// labels — in YAML declaration order. Useful for tests asserting
+// that a YAML config parsed as intended.
+//
+// The returned slice is a shallow copy; the [OutputInfo] values
+// themselves reference the same underlying pointers as the auditor
+// pipeline, so callers MUST NOT mutate the referenced values.
+func (l *Loaded) OutputMetadata() []OutputInfo {
+	if l == nil {
+		return nil
+	}
+	info := make([]OutputInfo, len(l.outputs))
+	for i, o := range l.outputs {
+		// namedOutput and OutputInfo share identical fields —
+		// direct conversion avoids listing every field.
+		info[i] = OutputInfo(o)
+	}
+	return info
+}
+
+// AppName returns the application name parsed from the top-level
+// `app_name:` key. Always non-empty after a successful [Load].
+func (l *Loaded) AppName() string {
+	if l == nil {
+		return ""
+	}
+	return l.appName
+}
+
+// Host returns the hostname parsed from the top-level `host:` key.
+// Always non-empty after a successful [Load].
+func (l *Loaded) Host() string {
+	if l == nil {
+		return ""
+	}
+	return l.host
+}
+
+// Timezone returns the timezone name parsed from the top-level
+// `timezone:` key. Empty string when not specified in the YAML.
+func (l *Loaded) Timezone() string {
+	if l == nil {
+		return ""
+	}
+	return l.timezone
+}
+
+// StandardFields returns the reserved-standard-field defaults parsed
+// from the top-level `standard_fields:` section, or nil when not
+// specified. The returned map is the internal one; callers MUST NOT
+// mutate it.
+func (l *Loaded) StandardFields() map[string]string {
+	if l == nil {
+		return nil
+	}
+	return l.standardFields
+}
+
+// Close closes every output constructed by [Load]. Intended for use
+// when the caller decides not to construct an auditor after a
+// successful Load — for example, if [audit.New] returns an error
+// and the outputs need cleanup. Returns the first non-nil Close
+// error encountered; subsequent errors are swallowed.
+//
+// Close is not safe to call more than once, and MUST NOT be called
+// after the [Loaded.Outputs] have been handed to a live
+// [audit.Auditor] — the auditor takes ownership in that case.
+func (l *Loaded) Close() error {
+	if l == nil {
+		return nil
+	}
+	var first error
+	for _, o := range l.outputs {
+		if err := o.Output.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// String returns a safe representation of Loaded that never
+// includes credentials, header values, or resolved environment
+// variable values.
+func (l *Loaded) String() string {
+	if l == nil {
+		return "<nil>"
+	}
+	names := make([]string, len(l.outputs))
+	for i, o := range l.outputs {
+		names[i] = o.Name
+	}
+	return fmt.Sprintf("Loaded{outputs: [%s], options: %d}",
+		strings.Join(names, ", "), len(l.options))
+}
+
+// OutputInfo is a diagnostic snapshot of a single configured output,
+// returned by [Loaded.OutputMetadata]. Fields mirror the YAML
+// declaration; modifying them has no effect on the auditor
+// pipeline.
+type OutputInfo struct {
 	// Name is the config-level name of the output, as declared in the
 	// YAML outputs map key.
 	Name string
 	// Type is the output type name (e.g. "file", "syslog", "webhook",
 	// "loki", "stdout") as declared in the YAML type: field.
 	Type string
-	// Output is the constructed output instance, ready for use.
+	// Output is the constructed output instance.
 	Output audit.Output
 	// Route is the optional per-output event filter. Nil means all
 	// events are delivered to this output.
@@ -102,25 +225,10 @@ type NamedOutput struct {
 	ExcludeLabels []string
 }
 
-// String returns a safe representation of LoadResult that never
+// String returns a safe representation of OutputInfo that never
 // includes credentials, header values, or resolved environment
 // variable values.
-func (r *LoadResult) String() string {
-	if r == nil {
-		return "<nil>"
-	}
-	names := make([]string, len(r.Outputs))
-	for i, o := range r.Outputs {
-		names[i] = o.Name
-	}
-	return fmt.Sprintf("LoadResult{outputs: [%s], options: %d}",
-		strings.Join(names, ", "), len(r.Options))
-}
-
-// String returns a safe representation of NamedOutput that never
-// includes credentials, header values, or resolved environment
-// variable values.
-func (o *NamedOutput) String() string {
+func (o *OutputInfo) String() string {
 	if o == nil {
 		return "<nil>"
 	}
@@ -128,10 +236,21 @@ func (o *NamedOutput) String() string {
 	if o.Output != nil {
 		outputName = o.Output.Name()
 	}
-	hasRoute := o.Route != nil
-	hasFormatter := o.Formatter != nil
-	return fmt.Sprintf("NamedOutput{name: %q, output: %q, route: %t, formatter: %t}",
-		o.Name, outputName, hasRoute, hasFormatter)
+	return fmt.Sprintf("OutputInfo{name: %q, output: %q, route: %t, formatter: %t}",
+		o.Name, outputName, o.Route != nil, o.Formatter != nil)
+}
+
+// namedOutput is the internal pipeline struct that Load builds and
+// Loaded retains. Public callers inspect it via [Loaded.OutputMetadata]
+// which returns the equivalent exported [OutputInfo].
+type namedOutput struct {
+	Name          string
+	Type          string
+	Output        audit.Output
+	Route         *audit.EventRoute
+	Formatter     audit.Formatter
+	HMACConfig    *audit.HMACConfig
+	ExcludeLabels []string
 }
 
 // Load parses a YAML output configuration, constructs all outputs via
@@ -158,7 +277,7 @@ func (o *NamedOutput) String() string {
 // When providers are configured in the YAML secrets: section, they are
 // constructed, used for resolution, and closed within Load. They do
 // not outlive the call.
-func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...LoadOption) (*LoadResult, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
+func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...LoadOption) (*Loaded, error) { //nolint:gocognit,gocyclo,cyclop // linear pipeline with 8+ phases
 	lo := resolveOptions(opts)
 
 	// Phase 1: Size check.
@@ -261,14 +380,14 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	}
 
 	// closeAll cleans up already-constructed outputs on error.
-	closeAll := func(outputs []NamedOutput) {
+	closeAll := func(outputs []namedOutput) {
 		for _, o := range outputs {
 			_ = o.Output.Close()
 		}
 	}
 
 	seen := make(map[string]struct{})
-	outputs := make([]NamedOutput, 0, outputCount)
+	outputs := make([]namedOutput, 0, outputCount)
 
 	for _, item := range top.outputsRaw {
 		name, ok := item.Key.(string)
@@ -318,42 +437,42 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	}
 
 	// Phase 8: Build Options slice.
-	result := &LoadResult{
-		Config:         top.auditorResult.config,
-		Outputs:        outputs,
-		AppName:        top.appName,
-		Host:           top.host,
-		Timezone:       top.timezone,
-		StandardFields: top.standardFields,
+	loaded := &Loaded{
+		outputs:        outputs,
+		appName:        top.appName,
+		host:           top.host,
+		timezone:       top.timezone,
+		standardFields: top.standardFields,
+		config:         top.auditorResult.config,
 	}
 
-	// Config-equivalent options so callers can use audit.New(result.Options...).
+	// Config-equivalent options so callers can use audit.New(loaded.Options()...).
 	cfg := top.auditorResult.config
 	if cfg.QueueSize > 0 {
-		result.Options = append(result.Options, audit.WithQueueSize(cfg.QueueSize))
+		loaded.options = append(loaded.options, audit.WithQueueSize(cfg.QueueSize))
 	}
 	if cfg.ShutdownTimeout > 0 {
-		result.Options = append(result.Options, audit.WithShutdownTimeout(cfg.ShutdownTimeout))
+		loaded.options = append(loaded.options, audit.WithShutdownTimeout(cfg.ShutdownTimeout))
 	}
 	if cfg.ValidationMode != "" {
-		result.Options = append(result.Options, audit.WithValidationMode(cfg.ValidationMode))
+		loaded.options = append(loaded.options, audit.WithValidationMode(cfg.ValidationMode))
 	}
 	if cfg.OmitEmpty {
-		result.Options = append(result.Options, audit.WithOmitEmpty())
+		loaded.options = append(loaded.options, audit.WithOmitEmpty())
 	}
 	if top.auditorResult.disabled {
-		result.Options = append(result.Options, audit.WithDisabled())
+		loaded.options = append(loaded.options, audit.WithDisabled())
 	}
 
 	// Framework field options.
-	result.Options = append(result.Options, audit.WithAppName(top.appName), audit.WithHost(top.host))
+	loaded.options = append(loaded.options, audit.WithAppName(top.appName), audit.WithHost(top.host))
 	if top.timezone != "" {
-		result.Options = append(result.Options, audit.WithTimezone(top.timezone))
+		loaded.options = append(loaded.options, audit.WithTimezone(top.timezone))
 	}
 
 	// Standard field defaults.
 	if len(top.standardFields) > 0 {
-		result.Options = append(result.Options, audit.WithStandardFieldDefaults(top.standardFields))
+		loaded.options = append(loaded.options, audit.WithStandardFieldDefaults(top.standardFields))
 	}
 
 	for i := range outputs {
@@ -370,10 +489,10 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		if outputs[i].HMACConfig != nil && outputs[i].HMACConfig.Enabled {
 			outOpts = append(outOpts, audit.WithHMAC(outputs[i].HMACConfig))
 		}
-		result.Options = append(result.Options, audit.WithNamedOutput(outputs[i].Output, outOpts...))
+		loaded.options = append(loaded.options, audit.WithNamedOutput(outputs[i].Output, outOpts...))
 	}
 
-	return result, nil
+	return loaded, nil
 }
 
 // topLevel holds parsed top-level YAML fields.

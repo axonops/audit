@@ -151,14 +151,14 @@ func TestLoad_WithSecretProvider_AllHMACFieldsResolved(t *testing.T) {
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	hmac := result.Outputs[0].HMACConfig
+	require.Len(t, result.OutputMetadata(), 1)
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.True(t, hmac.Enabled)
 	assert.Equal(t, "v1", hmac.SaltVersion)
 	assert.Equal(t, []byte("my-secret-salt-value-32bytes!!!!"), hmac.SaltValue)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -190,11 +190,11 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	hmac := result.Outputs[0].HMACConfig
+	require.Len(t, result.OutputMetadata(), 1)
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.Equal(t, []byte("env-var-resolved-salt-32bytes!!!"), hmac.SaltValue)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -218,11 +218,11 @@ func TestLoad_WithSecretProvider_HMACDisabledSkipsRefs(t *testing.T) {
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].HMACConfig)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Nil(t, result.OutputMetadata()[0].HMACConfig)
 	// Provider should only have been called once (for the enabled field).
 	assert.Equal(t, int64(1), mock.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -242,9 +242,9 @@ func TestLoad_WithSecretProvider_HMACDisabledLiteral_SkipsRefs(t *testing.T) {
 		context.Background(), data, tax,
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.Nil(t, result.Outputs[0].HMACConfig)
-	for _, o := range result.Outputs {
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.Nil(t, result.OutputMetadata()[0].HMACConfig)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -255,8 +255,8 @@ func TestLoad_WithSecretProvider_NoProviderNoRefsUnchanged(t *testing.T) {
 	data := []byte("version: 1\napp_name: test\nhost: test\noutputs:\n  c:\n    type: stdout\n")
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	for _, o := range result.Outputs {
+	require.Len(t, result.OutputMetadata(), 1)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -433,18 +433,18 @@ func TestLoad_ClearsResolverCacheBeforeReturn(t *testing.T) {
 		"second Load must produce a second provider call — resolver caches must not persist across Loads (#479)")
 
 	// Sanity: both Loads produced the same resolved values.
-	require.Len(t, result1.Outputs, 1)
-	require.Len(t, result2.Outputs, 1)
-	hmac1, hmac2 := result1.Outputs[0].HMACConfig, result2.Outputs[0].HMACConfig
+	require.Len(t, result1.OutputMetadata(), 1)
+	require.Len(t, result2.OutputMetadata(), 1)
+	hmac1, hmac2 := result1.OutputMetadata()[0].HMACConfig, result2.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac1)
 	require.NotNil(t, hmac2)
 	assert.Equal(t, hmac1.SaltValue, hmac2.SaltValue)
 	assert.Equal(t, hmac1.SaltVersion, hmac2.SaltVersion)
 
-	for _, o := range result1.Outputs {
+	for _, o := range result1.OutputMetadata() {
 		_ = o.Output.Close()
 	}
-	for _, o := range result2.Outputs {
+	for _, o := range result2.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -478,13 +478,13 @@ func TestLoad_WithSecretProvider_PathLevelCache_OneCallForMultipleKeys(t *testin
 	// Path-level cache: one ResolvePath call for all 4 keys.
 	assert.Equal(t, int64(1), mock.calls.Load())
 	// Also verify the values were correctly extracted from the batch.
-	require.Len(t, result.Outputs, 1)
-	hmac := result.Outputs[0].HMACConfig
+	require.Len(t, result.OutputMetadata(), 1)
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.Equal(t, "v1", hmac.SaltVersion)
 	assert.Equal(t, []byte("cached-salt-value-32-bytes!!!!!!"), hmac.SaltValue)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -514,12 +514,12 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	hmac := result.Outputs[0].HMACConfig
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.Equal(t, "v2", hmac.SaltVersion)                                     // from env var
 	assert.Equal(t, []byte("ref-resolved-salt-value-32bytes!"), hmac.SaltValue) // from ref
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)                             // literal
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -646,8 +646,8 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "my-resolved-app", result.AppName)
-	for _, o := range result.Outputs {
+	assert.Equal(t, "my-resolved-app", result.AppName())
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -680,9 +680,9 @@ outputs:
 	)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), mock.calls.Load())
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.Equal(t, []byte("literal-salt-value-32-bytes!!!!!"), result.Outputs[0].HMACConfig.SaltValue)
-	for _, o := range result.Outputs {
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.Equal(t, []byte("literal-salt-value-32-bytes!!!!!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -728,10 +728,10 @@ outputs:
 }
 
 // ---------------------------------------------------------------------------
-// LoadResult.String() does not contain secrets
+// (*Loaded).String() does not contain secrets
 // ---------------------------------------------------------------------------
 
-func TestLoad_WithSecretProvider_LoadResultStringNeverContainsSecrets(t *testing.T) {
+func TestLoad_WithSecretProvider_LoadedStringNeverContainsSecrets(t *testing.T) {
 	t.Parallel()
 	tax := testTaxonomy(t)
 	secretSalt := "super-secret-salt-32-bytes!!!!!!"
@@ -761,7 +761,7 @@ outputs:
 	assert.NotContains(t, s, secretSalt)
 	s2 := fmt.Sprintf("%+v", result)
 	assert.NotContains(t, s2, secretSalt)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -795,9 +795,9 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.NotNil(t, result.Outputs[0].HMACConfig)
-	assert.Equal(t, []byte("env-enabled-ref-salt-32-bytes!!!"), result.Outputs[0].HMACConfig.SaltValue)
-	for _, o := range result.Outputs {
+	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
+	assert.Equal(t, []byte("env-enabled-ref-salt-32-bytes!!!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -827,11 +827,11 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "my-app", result.AppName)
-	assert.Equal(t, "my-app", result.Host)
+	assert.Equal(t, "my-app", result.AppName())
+	assert.Equal(t, "my-app", result.Host())
 	// Same scheme+path+key → one provider call, not two.
 	assert.Equal(t, int64(1), mock.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -945,10 +945,10 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	assert.NotNil(t, result.Outputs[0].Route)
+	require.Len(t, result.OutputMetadata(), 1)
+	assert.NotNil(t, result.OutputMetadata()[0].Route)
 	assert.Equal(t, int64(0), mock.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -977,14 +977,14 @@ outputs:
 		outputconfig.WithSecretProvider(mock),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
+	require.Len(t, result.OutputMetadata(), 1)
 	assert.Equal(t, int64(1), mock.calls.Load())
 	// Verify the resolved value made it into the formatter.
-	cef, ok := result.Outputs[0].Formatter.(*audit.CEFFormatter)
+	cef, ok := result.OutputMetadata()[0].Formatter.(*audit.CEFFormatter)
 	require.True(t, ok, "expected *audit.CEFFormatter")
 	assert.Equal(t, "SecretVendor", cef.Vendor)
 	assert.Equal(t, "MyProduct", cef.Product)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1184,14 +1184,14 @@ outputs:
 		outputconfig.WithSecretProvider(p),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	hmac := result.Outputs[0].HMACConfig
+	require.Len(t, result.OutputMetadata(), 1)
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.Equal(t, "v1", hmac.SaltVersion)
 	assert.Equal(t, []byte("non-batch-salt-value-32bytes!!!"), hmac.SaltValue)
 	// Two distinct refs → two Resolve calls (no batch path).
 	assert.Equal(t, int64(2), p.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1219,11 +1219,11 @@ outputs:
 		outputconfig.WithSecretProvider(p),
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "my-app", result.AppName)
-	assert.Equal(t, "my-app", result.Host)
+	assert.Equal(t, "my-app", result.AppName())
+	assert.Equal(t, "my-app", result.Host())
 	// Same scheme+path+key → cached after first call.
 	assert.Equal(t, int64(1), p.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1346,14 +1346,14 @@ outputs:
 		outputconfig.WithSecretProvider(provB),
 	)
 	require.NoError(t, err)
-	require.Len(t, result.Outputs, 1)
-	hmac := result.Outputs[0].HMACConfig
+	require.Len(t, result.OutputMetadata(), 1)
+	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.Equal(t, []byte("salt-from-prov-a-32-bytes!!!!!!"), hmac.SaltValue)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
 	assert.Equal(t, int64(1), provA.calls.Load())
 	assert.Equal(t, int64(1), provB.calls.Load())
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1480,7 +1480,7 @@ func TestLoad_WithSecretTimeout_ZeroIgnored(t *testing.T) {
 		outputconfig.WithSecretTimeout(0),
 	)
 	require.NoError(t, err)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }
@@ -1494,7 +1494,7 @@ func TestLoad_WithSecretTimeout_NegativeIgnored(t *testing.T) {
 		outputconfig.WithSecretTimeout(-5*time.Second),
 	)
 	require.NoError(t, err)
-	for _, o := range result.Outputs {
+	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
 }

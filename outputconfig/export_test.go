@@ -14,6 +14,8 @@
 
 package outputconfig
 
+import "github.com/axonops/audit"
+
 // ToIntForTest exposes toInt for black-box testing.
 var ToIntForTest = toInt
 
@@ -70,4 +72,14 @@ func ResolverClearCachesForTest(r any) {
 		return
 	}
 	rr.clearCaches()
+}
+
+// LoadedConfigForTest exposes the unexported audit.Config retained
+// on [*Loaded] so black-box tests can verify YAML parsing
+// correctness without bloating the public API (#577).
+func LoadedConfigForTest(l *Loaded) audit.Config {
+	if l == nil {
+		return audit.Config{}
+	}
+	return l.config
 }

@@ -80,8 +80,8 @@ func BenchmarkOutputConfigLoad(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		lastOutputCount = len(res.Outputs)
-		for _, no := range res.Outputs {
+		lastOutputCount = len(res.OutputMetadata())
+		for _, no := range res.OutputMetadata() {
 			closers = append(closers, no.Output)
 		}
 	}

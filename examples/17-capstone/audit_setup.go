@@ -40,7 +40,7 @@ import (
 // secrets: section — no programmatic provider setup is needed.
 func setupAuditor(m *auditMetrics) (*audit.Auditor, error) {
 	configPath := envOr("AUDIT_CONFIG_PATH", "outputs.yaml")
-	return outputconfig.New(context.Background(), taxonomyYAML, configPath,
+	return outputconfig.NewWithLoad(context.Background(), taxonomyYAML, configPath,
 		[]outputconfig.LoadOption{
 			outputconfig.WithCoreMetrics(m),
 			outputconfig.WithOutputMetrics(m.newOutputMetricsFactory()),

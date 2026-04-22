@@ -25,7 +25,7 @@ Feature: Queue Size YAML Configuration
       """
     When I load the outputs config
     Then the config should load successfully
-    And the loaded config queue_size should be 500
+    And the auditor queue_size should be 500
 
   Scenario: queue_size exceeding maximum is rejected via YAML
     Given the following outputs YAML:
@@ -54,7 +54,7 @@ Feature: Queue Size YAML Configuration
       """
     When I load the outputs config
     Then the config should load successfully
-    And the loaded config queue_size should be 0
+    And the auditor queue_size should be 10000
 
   Scenario: Old buffer_size under auditor section is rejected
     Given the following outputs YAML:

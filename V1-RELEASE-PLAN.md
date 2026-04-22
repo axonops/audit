@@ -107,7 +107,7 @@ Every issue follows this sequence. Do not skip steps.
 
 - [ ] **#575** feat: code generator — typed custom fields, auditIntPtr prefix, explicit setter flag, Fields() contract doc.
 - [x] **#576** refactor: rename OutputRoute/OutputFormatter/OutputExcludeLabels/OutputHMAC to WithX convention.
-- [ ] **#577** refactor: collapse outputconfig.LoadResult, fix outputconfig.New variadic, fix outputconfig/doc.go stale example.
+- [x] **#577** refactor: collapse outputconfig.LoadResult, fix outputconfig.New variadic, fix outputconfig/doc.go stale example.
 - [x] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
 - [ ] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
 - [x] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.

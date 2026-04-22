@@ -51,7 +51,7 @@ func TestNew_BasicEndToEnd(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path)
 	require.NoError(t, err)
 	require.NotNil(t, auditor)
 
@@ -65,7 +65,7 @@ func TestNew_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
 	// User option WithDisabled should take precedence over config.
-	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil,
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path,
 		audit.WithDisabled(),
 	)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestNew_WithOptions_UserOptionsTakePrecedence(t *testing.T) {
 func TestNew_EmptyPath_StdoutDevLogger(t *testing.T) {
 	t.Parallel()
 
-	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "", nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "")
 	require.NoError(t, err)
 	require.NotNil(t, auditor)
 
@@ -92,7 +92,7 @@ func TestNew_EmptyPath_StdoutDevLogger(t *testing.T) {
 func TestNew_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml", nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, "/nonexistent/path/outputs.yaml")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, os.ErrNotExist), "should wrap os.ErrNotExist, got: %v", err)
 	assert.Contains(t, err.Error(), "nonexistent")
@@ -102,7 +102,7 @@ func TestNew_InvalidTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.New(context.Background(), []byte("not: valid: taxonomy"), path, nil)
+	_, err := outputconfig.New(context.Background(), []byte("not: valid: taxonomy"), path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
@@ -111,7 +111,7 @@ func TestNew_InvalidOutputConfig(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", []byte("not: [valid: config"))
 
-	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load")
 }
@@ -120,7 +120,7 @@ func TestNew_EmptyTaxonomy(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	_, err := outputconfig.New(context.Background(), nil, path, nil)
+	_, err := outputconfig.New(context.Background(), nil, path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
@@ -129,7 +129,7 @@ func TestNew_Close_FlushesEvents(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path, nil)
+	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path)
 	require.NoError(t, err)
 
 	// Send events then close — should not panic or error.
@@ -144,16 +144,16 @@ func TestNew_NotRegularFile(t *testing.T) {
 	dir := t.TempDir()
 
 	// Directories are not regular files.
-	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, dir, nil)
+	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, dir)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
 }
 
-func TestNew_WithLoadOptions(t *testing.T) {
+func TestNewWithLoad_LoadOptionsThreaded(t *testing.T) {
 	t.Parallel()
 	path := writeTempFile(t, "outputs-*.yaml", facadeOutputsYAML)
 
-	auditor, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path,
+	auditor, err := outputconfig.NewWithLoad(context.Background(), facadeTaxonomyYAML, path,
 		[]outputconfig.LoadOption{outputconfig.WithCoreMetrics(nil)},
 	)
 	require.NoError(t, err)

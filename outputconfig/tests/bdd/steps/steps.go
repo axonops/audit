@@ -81,7 +81,7 @@ type TestContext struct { //nolint:govet // fieldalignment: readability preferre
 	Taxonomy      *audit.Taxonomy
 	Auditor       *audit.Auditor
 	Options       []audit.Option
-	LoadResult    *outputconfig.LoadResult
+	LoadResult    *outputconfig.Loaded
 	LastErr       error
 	FileDir       string
 	MockProvider  *mockSecretProvider       // most recently registered mock provider
@@ -134,9 +134,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		} else if tc.LoadResult != nil {
 			// Outputs were constructed but never handed to an Auditor —
 			// close them directly to avoid resource leaks.
-			for _, o := range tc.LoadResult.Outputs {
-				_ = o.Output.Close()
-			}
+			_ = tc.LoadResult.Close()
 		}
 		if tc.FileDir != "" {
 			_ = os.RemoveAll(tc.FileDir)
@@ -212,7 +210,7 @@ events:
 			tc.LastErr = loadErr
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr
 		}
-		tc.Options = result.Options
+		tc.Options = result.Options()
 		tc.LoadResult = result
 		return nil
 	})
@@ -355,7 +353,7 @@ func assertLokiFormatterJSON(tc *TestContext) error {
 	if tc.LoadResult == nil {
 		return fmt.Errorf("no load result available")
 	}
-	for _, o := range tc.LoadResult.Outputs {
+	for _, o := range tc.LoadResult.OutputMetadata() {
 		if o.Name == "loki_out" {
 			if o.Formatter == nil {
 				return fmt.Errorf("loki output formatter is nil (would inherit default)")

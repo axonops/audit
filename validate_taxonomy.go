@@ -252,7 +252,7 @@ func reservedFieldNames() []string {
 	return []string{
 		"timestamp", "event_type", "severity", "event_category",
 		"app_name", "host", "timezone", "pid",
-		"_hmac", "_hmac_v",
+		"_hmac", "_hmac_version",
 	}
 }
 

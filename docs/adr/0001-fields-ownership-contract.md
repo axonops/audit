@@ -155,7 +155,7 @@ mechanism but contributed equally to per-event GC pressure:
 1. The formatter copy-out: `Format()` allocated a fresh `[]byte` to
    return because the format-cache entry had to outlive the leased
    buffer.
-2. The post-field append: `event_category`, `_hmac_v`, `_hmac` each
+2. The post-field append: `event_category`, `_hmac_version`, `_hmac` each
    allocated a fresh `[]byte` because they had to mutate the cache
    value without aliasing it.
 3. The sorted-keys slice in the formatter when `omitEmpty` or extra

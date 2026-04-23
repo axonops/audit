@@ -200,7 +200,7 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 
 	// HMAC ordering invariant: the HMAC tag (_hmac) is the LAST field
 	// on the wire and is computed over every byte that precedes it,
-	// including event_category and _hmac_v. Any future post-field
+	// including event_category and _hmac_version. Any future post-field
 	// MUST be appended before computeHMACFast; appending after _hmac
 	// would leave the new field outside the authenticated region —
 	// same class of bug as issue #473. The buffer holding `data` MUST
@@ -231,7 +231,8 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 //
 // The HMAC tag (_hmac) is the LAST field on the wire and MUST NOT
 // cover itself. Every other post-field — currently event_category
-// and _hmac_v — MUST be inside the authenticated region so an
+// and _hmac_version (JSON) / _hmacVersion (CEF) — MUST be inside the
+// authenticated region so an
 // attacker cannot swap a salt version or inject a category label
 // without invalidating the HMAC. See issue #473 for the regression
 // class this invariant defends against.
@@ -239,8 +240,8 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 // Concretely:
 //
 //  1. Collect every "inside the authenticated region" post-field
-//     into preHMAC (currently event_category and _hmac_v; order
-//     within the batch matches the intended wire order).
+//     into preHMAC (currently event_category and _hmac_version;
+//     order within the batch matches the intended wire order).
 //  2. Append them in ONE batch call ([appendPostFieldsInto] for
 //     n == 2, [appendPostFieldInto] for n == 1) — saves one
 //     terminator rewind / restore cycle vs two sequential calls.
@@ -270,7 +271,7 @@ func (a *Auditor) assemblePostFields(fc *formatCache, base []byte, fmtr Formatte
 		n++
 	}
 	if needsHMAC {
-		preHMAC[n] = PostField{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: oe.hmacConfig.SaltVersion}
+		preHMAC[n] = PostField{JSONKey: "_hmac_version", CEFKey: "_hmacVersion", Value: oe.hmacConfig.Salt.Version}
 		n++
 	}
 	switch n {

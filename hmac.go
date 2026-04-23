@@ -26,14 +26,14 @@ import (
 	"regexp"
 )
 
-// hmacSaltVersionPattern constrains SaltVersion to a character set that
+// hmacSaltVersionPattern constrains HMACSalt.Version to a character set that
 // is safe across JSON, CEF, and syslog wire formats without any escape
 // ambiguity (issue #473). The allowed set covers typical operational
 // version identifiers ("v1", "2026-Q1", "salt_v2.1", "key-rotation-12")
 // while eliminating log-injection vectors via control characters.
 var hmacSaltVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
-// maxHMACSaltVersionLen bounds SaltVersion length. Longer values inflate
+// maxHMACSaltVersionLen bounds HMACSalt.Version length. Longer values inflate
 // every emitted event without operational benefit.
 const maxHMACSaltVersionLen = 64
 
@@ -45,19 +45,23 @@ const MinSaltLength = 16
 // true, every event delivered to the output has an HMAC appended.
 // The HMAC is computed over the final serialised payload (after
 // field stripping and event_category append).
+//
+// The Go shape mirrors the YAML shape under outputs.<name>.hmac:
+//
+//	hmac:
+//	  enabled: true
+//	  salt:
+//	    version: "2026-Q1"
+//	    value:   "${HMAC_SALT}"
+//	  algorithm: "HMAC-SHA-256"
 type HMACConfig struct { //nolint:govet // readability over alignment
 	// Enabled controls whether HMAC is computed for this output.
 	// Default: false. Must be explicitly true.
 	Enabled bool
 
-	// SaltVersion is a user-defined identifier for the salt, included
-	// in the output alongside the HMAC. Supports salt rotation —
-	// consumers use this to look up the correct salt for verification.
-	SaltVersion string
-
-	// SaltValue is the raw salt bytes. MUST be at least MinSaltLength
-	// (16 bytes / 128 bits). Never appears in logs or error messages.
-	SaltValue []byte
+	// Salt carries the salt identifier and the raw salt bytes. See
+	// [HMACSalt] for field-level documentation.
+	Salt HMACSalt
 
 	// Algorithm is the HMAC hash algorithm. Must be one of the
 	// NIST-approved values: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512,
@@ -65,13 +69,51 @@ type HMACConfig struct { //nolint:govet // readability over alignment
 	Algorithm string
 }
 
+// HMACSalt groups the salt identifier and salt bytes for an
+// [HMACConfig]. The grouping matches the nested YAML shape under
+// outputs.<name>.hmac.salt, so a consumer reading the library's
+// godoc and writing YAML sees the same structure in both places.
+//
+// HMACSalt implements [fmt.Stringer] and [fmt.GoStringer] to redact
+// the raw Value from %v, %+v, and %#v format verbs. Consumers
+// SHOULD still treat Value as secret and avoid passing it to any
+// unbounded writer.
+type HMACSalt struct {
+	// Version is a user-defined identifier for the salt, emitted in
+	// the output alongside the HMAC digest. Supports salt rotation —
+	// consumers use this to look up the correct salt for
+	// verification. Required when [HMACConfig.Enabled] is true. Must
+	// match `^[A-Za-z0-9._:-]+$` (for unambiguous authenticated-byte
+	// representation on the wire — see #473) and be at most 64
+	// characters.
+	Version string
+
+	// Value is the raw salt bytes. MUST be at least [MinSaltLength]
+	// (16 bytes / 128 bits). The built-in [HMACSalt.String] and
+	// [HMACSalt.GoString] methods redact this value; consumers
+	// implementing their own formatting MUST NOT log or include it in
+	// error messages.
+	Value []byte
+}
+
+// String returns a safe representation that never includes the salt
+// Value bytes.
+func (s HMACSalt) String() string {
+	return fmt.Sprintf("HMACSalt{Version: %q, ValueLen: %d}", s.Version, len(s.Value))
+}
+
+// GoString implements [fmt.GoStringer] to prevent salt leakage via %#v.
+func (s HMACSalt) GoString() string {
+	return s.String()
+}
+
 // String returns a safe representation that never includes the salt value.
 func (c HMACConfig) String() string {
 	if !c.Enabled {
 		return "HMACConfig{Enabled: false}"
 	}
-	return fmt.Sprintf("HMACConfig{Enabled: true, SaltVersion: %q, Algorithm: %q, SaltLen: %d}",
-		c.SaltVersion, c.Algorithm, len(c.SaltValue))
+	return fmt.Sprintf("HMACConfig{Enabled: true, Salt.Version: %q, Algorithm: %q, Salt.Len: %d}",
+		c.Salt.Version, c.Algorithm, len(c.Salt.Value))
 }
 
 // GoString implements [fmt.GoStringer] to prevent salt leakage via %#v.
@@ -118,25 +160,25 @@ func ValidateHMACConfig(cfg *HMACConfig) error {
 	if cfg == nil || !cfg.Enabled {
 		return nil
 	}
-	if cfg.SaltVersion == "" {
-		return fmt.Errorf("%w: hmac salt version is required when hmac is enabled", ErrConfigInvalid)
+	if cfg.Salt.Version == "" {
+		return fmt.Errorf("%w: hmac salt.version is required when hmac is enabled", ErrConfigInvalid)
 	}
-	if len(cfg.SaltVersion) > maxHMACSaltVersionLen {
-		return fmt.Errorf("%w: hmac salt version length %d exceeds maximum %d",
-			ErrConfigInvalid, len(cfg.SaltVersion), maxHMACSaltVersionLen)
+	if len(cfg.Salt.Version) > maxHMACSaltVersionLen {
+		return fmt.Errorf("%w: hmac salt.version length %d exceeds maximum %d",
+			ErrConfigInvalid, len(cfg.Salt.Version), maxHMACSaltVersionLen)
 	}
-	if !hmacSaltVersionPattern.MatchString(cfg.SaltVersion) {
-		return fmt.Errorf("%w: hmac salt version %q contains characters outside the allowed set [A-Za-z0-9._:-] (required so the version can be authenticated unambiguously on the wire — see issue #473)",
-			ErrConfigInvalid, cfg.SaltVersion)
+	if !hmacSaltVersionPattern.MatchString(cfg.Salt.Version) {
+		return fmt.Errorf("%w: hmac salt.version %q contains characters outside the allowed set [A-Za-z0-9._:-] (required so the version can be authenticated unambiguously on the wire — see issue #473)",
+			ErrConfigInvalid, cfg.Salt.Version)
 	}
-	if len(cfg.SaltValue) == 0 {
-		return fmt.Errorf("%w: hmac salt value is required when hmac is enabled", ErrConfigInvalid)
+	if len(cfg.Salt.Value) == 0 {
+		return fmt.Errorf("%w: hmac salt.value is required when hmac is enabled", ErrConfigInvalid)
 	}
-	if len(cfg.SaltValue) < MinSaltLength {
-		return fmt.Errorf("%w: hmac salt must be at least %d bytes", ErrConfigInvalid, MinSaltLength)
+	if len(cfg.Salt.Value) < MinSaltLength {
+		return fmt.Errorf("%w: hmac salt.value must be at least %d bytes", ErrConfigInvalid, MinSaltLength)
 	}
 	if cfg.Algorithm == "" {
-		return fmt.Errorf("%w: hmac hash algorithm is required when hmac is enabled", ErrConfigInvalid)
+		return fmt.Errorf("%w: hmac algorithm is required when hmac is enabled", ErrConfigInvalid)
 	}
 	if hmacHashFunc(cfg.Algorithm) == nil {
 		return fmt.Errorf("%w: unknown hmac algorithm %q (supported: %v)", ErrConfigInvalid, cfg.Algorithm, SupportedHMACAlgorithms())
@@ -151,7 +193,7 @@ func newHMACState(cfg *HMACConfig) *hmacState {
 	if hashFunc == nil {
 		return nil // unreachable: ValidateHMACConfig rejects unknown algorithms during New
 	}
-	mac := hmac.New(hashFunc, cfg.SaltValue)
+	mac := hmac.New(hashFunc, cfg.Salt.Value)
 	return &hmacState{
 		mac:     mac,
 		hashLen: mac.Size(),

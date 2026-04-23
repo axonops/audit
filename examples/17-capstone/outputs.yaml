@@ -55,7 +55,7 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/audit/hmac-v1#version"
         value: "ref+openbao://secret/data/audit/hmac-v1#salt"
-      hash: "ref+openbao://secret/data/audit/hmac-v1#hash"
+      algorithm: "ref+openbao://secret/data/audit/hmac-v1#hash"
 
   # 3. Security team feed — JSON, security category only, severity >= 7.
   #    HMAC v2 (SHA-512) with a DIFFERENT salt to prove per-output
@@ -81,7 +81,7 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/audit/hmac-v2#version"
         value: "ref+openbao://secret/data/audit/hmac-v2#salt"
-      hash: "ref+openbao://secret/data/audit/hmac-v2#hash"
+      algorithm: "ref+openbao://secret/data/audit/hmac-v2#hash"
 
   # 4. Operational monitoring — Loki with Grafana dashboards.
   #    PII fields (email, phone, address) are STRIPPED before delivery.

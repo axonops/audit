@@ -14,14 +14,14 @@ Feature: HMAC Integrity Verification
     When I audit event "user_create" with required fields
     And I close the auditor
     Then the output should contain "_hmac" field
-    And the output should contain "_hmac_v" field with value "v1"
+    And the output should contain "_hmac_version" field with value "v1"
 
   Scenario: HMAC fields absent when not configured
     Given an auditor with stdout output
     When I audit event "user_create" with required fields
     And I close the auditor
     Then the output should not contain "_hmac" field
-    And the output should not contain "_hmac_v" field
+    And the output should not contain "_hmac_version" field
 
   # --- Independent verification ---
 
@@ -37,7 +37,7 @@ Feature: HMAC Integrity Verification
     Given an auditor with stdout output and HMAC enabled using salt "version-test-salt-16" version "2026-Q1" and hash "HMAC-SHA-256"
     When I audit event "user_create" with required fields
     And I close the auditor
-    Then the output should contain "_hmac_v" field with value "2026-Q1"
+    Then the output should contain "_hmac_version" field with value "2026-Q1"
 
   # --- Field stripping changes the HMAC ---
 
@@ -94,7 +94,7 @@ Feature: HMAC Integrity Verification
 
   # --- Salt version authentication (issue #473) ---
   #
-  # These scenarios prove that `_hmac_v` (the salt version identifier)
+  # These scenarios prove that `_hmac_version` (the salt version identifier)
   # is authenticated by the HMAC. Before the fix, an in-transit attacker
   # could flip the version from v1 to v2 to mislead a verifier's salt
   # lookup without detection.
@@ -103,7 +103,7 @@ Feature: HMAC Integrity Verification
     Given an auditor with stdout output and HMAC enabled using salt "tamper-v-salt-16-byt" version "v1" and hash "HMAC-SHA-256"
     When I audit event "user_create" with required fields
     And I close the auditor
-    And I tamper with the "_hmac_v" field in the captured output setting it to "v2"
+    And I tamper with the "_hmac_version" field in the captured output setting it to "v2"
     Then independently recomputing HMAC-SHA-256 over the tampered payload with salt "tamper-v-salt-16-byt" does NOT match the "_hmac" value
 
   Scenario: HMAC authentication covers consumer event fields
@@ -118,14 +118,14 @@ Feature: HMAC Integrity Verification
 
   # --- Consolidated pre-HMAC batch regression guard (issue #508) ---
   #
-  # When both event_category and _hmac_v are present they are written
+  # When both event_category and _hmac_version are present they are written
   # in a single pre-HMAC batch (drain.go assemblePostFields). This
   # scenario pins two invariants:
   #
   #   1. Both fields appear on the wire alongside _hmac.
   #   2. event_category is INSIDE the authenticated region — tampering
   #      with it after production breaks HMAC verification, same as
-  #      tampering with _hmac_v (#473) or any consumer field.
+  #      tampering with _hmac_version (#473) or any consumer field.
   #
   # A future refactor that accidentally emits event_category AFTER
   # computeHMACFast would leave it unauthenticated; this scenario
@@ -136,7 +136,7 @@ Feature: HMAC Integrity Verification
     When I audit event "user_create" with required fields
     And I close the auditor
     Then the captured output should contain field "event_category" with value "write"
-    And the output should contain "_hmac_v" field with value "v1"
+    And the output should contain "_hmac_version" field with value "v1"
     And the output should contain "_hmac" field
     And independently recomputing HMAC-SHA-256 over the payload with salt "batch-guard-salt-16b" matches the "_hmac" value
 
@@ -163,7 +163,7 @@ Feature: HMAC Integrity Verification
     Examples:
       | field   |
       | _hmac   |
-      | _hmac_v |
+      | _hmac_version |
 
   Scenario Outline: Reserved library field name rejected even in permissive mode
     Given an auditor with stdout output and validation mode "permissive"
@@ -179,7 +179,7 @@ Feature: HMAC Integrity Verification
     Examples:
       | field   |
       | _hmac   |
-      | _hmac_v |
+      | _hmac_version |
 
   # --- SaltVersion charset validation (issue #473 security-reviewer finding 3) ---
 

@@ -7,7 +7,7 @@ Feature: HMAC Integrity with Loki Output
 
   The HMAC is computed in the core pipeline over the serialised
   payload (after field stripping, after event_category append, before
-  _hmac/_hmac_v append). The complete event including HMAC fields is
+  _hmac/_hmac_version append). The complete event including HMAC fields is
   then delivered to Loki via WriteWithMetadata. These tests verify
   the end-to-end chain: audit call → HMAC computation → Loki
   delivery → Loki query → independent HMAC verification.
@@ -40,7 +40,7 @@ Feature: HMAC Integrity with Loki Output
     And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should contain field "_hmac"
-    And the loki event payload should contain field "_hmac_v" with value "v1"
+    And the loki event payload should contain field "_hmac_version" with value "v1"
     And the loki event payload should contain:
       | field          | value        |
       | event_type     | user_create  |
@@ -56,7 +56,7 @@ Feature: HMAC Integrity with Loki Output
     And I close the auditor
     Then the loki server should contain the marker within 10 seconds
     And the loki event payload should not contain field "_hmac"
-    And the loki event payload should not contain field "_hmac_v"
+    And the loki event payload should not contain field "_hmac_version"
 
   Scenario: HMAC stored in Loki is independently verifiable
     Given an auditor with loki output and HMAC enabled using salt "loki-verify-salt-16!" version "v1" and hash "HMAC-SHA-256"
@@ -79,7 +79,7 @@ Feature: HMAC Integrity with Loki Output
     When I audit a uniquely marked "user_create" event with actor "alice" and outcome "success"
     And I close the auditor
     Then the loki server should contain the marker within 10 seconds
-    And the loki event payload should contain field "_hmac_v" with value "2026-Q2"
+    And the loki event payload should contain field "_hmac_version" with value "2026-Q2"
 
   Scenario: Sensitivity label stripping changes HMAC between Loki and full output
     Given the following taxonomy:
@@ -127,4 +127,4 @@ Feature: HMAC Integrity with Loki Output
       | host           | bdd-host     |
       | event_category | write        |
     And the loki event payload should contain field "_hmac"
-    And the loki event payload should contain field "_hmac_v" with value "v1"
+    And the loki event payload should contain field "_hmac_version" with value "v1"

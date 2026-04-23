@@ -200,10 +200,12 @@ func TestComputeHMAC_UnknownAlgorithm(t *testing.T) {
 func TestValidateHMACConfig_Valid(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("sixteen-byte-key"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("sixteen-byte-key"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	assert.NoError(t, audit.ValidateHMACConfig(cfg))
 }
@@ -217,10 +219,12 @@ func TestValidateHMACConfig_Disabled(t *testing.T) {
 func TestValidateHMACConfig_SaltTooShort(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("short"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("short"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
@@ -231,21 +235,21 @@ func TestValidateHMACConfig_SaltTooShort(t *testing.T) {
 func TestValidateHMACConfig_MissingSalt(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		Algorithm:   "HMAC-SHA-256",
+		Enabled:   true,
+		Salt:      audit.HMACSalt{Version: "v1"},
+		Algorithm: "HMAC-SHA-256",
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
-	assert.Contains(t, err.Error(), "salt value")
+	assert.Contains(t, err.Error(), "salt.value")
 }
 
 func TestValidateHMACConfig_MissingVersion(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
 		Enabled:   true,
-		SaltValue: []byte("sixteen-byte-key"),
+		Salt:      audit.HMACSalt{Value: []byte("sixteen-byte-key")},
 		Algorithm: "HMAC-SHA-256",
 	}
 	err := audit.ValidateHMACConfig(cfg)
@@ -257,9 +261,11 @@ func TestValidateHMACConfig_MissingVersion(t *testing.T) {
 func TestValidateHMACConfig_MissingAlgorithm(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("sixteen-byte-key"),
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("sixteen-byte-key"),
+		},
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
@@ -270,10 +276,12 @@ func TestValidateHMACConfig_MissingAlgorithm(t *testing.T) {
 func TestValidateHMACConfig_UnknownAlgorithm(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("sixteen-byte-key"),
-		Algorithm:   "SHA-1",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("sixteen-byte-key"),
+		},
+		Algorithm: "SHA-1",
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
@@ -296,10 +304,12 @@ func TestValidateHMACConfig_SaltVersionCharsetValid(t *testing.T) {
 		t.Run(v, func(t *testing.T) {
 			t.Parallel()
 			cfg := &audit.HMACConfig{
-				Enabled:     true,
-				SaltVersion: v,
-				SaltValue:   []byte("sixteen-byte-key"),
-				Algorithm:   "HMAC-SHA-256",
+				Enabled: true,
+				Salt: audit.HMACSalt{
+					Version: v,
+					Value:   []byte("sixteen-byte-key"),
+				},
+				Algorithm: "HMAC-SHA-256",
 			}
 			assert.NoError(t, audit.ValidateHMACConfig(cfg))
 		})
@@ -325,10 +335,12 @@ func TestValidateHMACConfig_SaltVersionCharsetInvalid(t *testing.T) {
 		t.Run(fmt.Sprintf("%q", v), func(t *testing.T) {
 			t.Parallel()
 			cfg := &audit.HMACConfig{
-				Enabled:     true,
-				SaltVersion: v,
-				SaltValue:   []byte("sixteen-byte-key"),
-				Algorithm:   "HMAC-SHA-256",
+				Enabled: true,
+				Salt: audit.HMACSalt{
+					Version: v,
+					Value:   []byte("sixteen-byte-key"),
+				},
+				Algorithm: "HMAC-SHA-256",
 			}
 			err := audit.ValidateHMACConfig(cfg)
 			require.Error(t, err)
@@ -342,10 +354,12 @@ func TestValidateHMACConfig_SaltVersionCharsetInvalid(t *testing.T) {
 func TestValidateHMACConfig_SaltVersionTooLong(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: strings.Repeat("a", 65),
-		SaltValue:   []byte("sixteen-byte-key"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: strings.Repeat("a", 65),
+			Value:   []byte("sixteen-byte-key"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	err := audit.ValidateHMACConfig(cfg)
 	require.Error(t, err)
@@ -354,7 +368,7 @@ func TestValidateHMACConfig_SaltVersionTooLong(t *testing.T) {
 }
 
 // TestReservedLibraryField_RejectedAtRuntime covers consumer-supplied
-// Fields map with `_hmac` or `_hmac_v`. The library emits these on
+// Fields map with `_hmac` or `_hmac_version`. The library emits these on
 // every HMAC-enabled event. Consumer-supplied collisions would
 // duplicate the field and enable canonicalisation-ambiguity attacks
 // on verifiers (issue #473 security-reviewer finding 6b). Rejection
@@ -364,7 +378,7 @@ func TestReservedLibraryField_RejectedAtRuntime(t *testing.T) {
 	for _, mode := range []audit.ValidationMode{
 		audit.ValidationStrict, audit.ValidationWarn, audit.ValidationPermissive,
 	} {
-		for _, fieldName := range []string{"_hmac", "_hmac_v"} {
+		for _, fieldName := range []string{"_hmac", "_hmac_version"} {
 			t.Run(fmt.Sprintf("%v/%s", mode, fieldName), func(t *testing.T) {
 				t.Parallel()
 				tax := &audit.Taxonomy{
@@ -447,10 +461,12 @@ func BenchmarkHMAC_SHA256_LargeEvent(b *testing.B) {
 func TestHMACConfig_String_HidesSalt(t *testing.T) {
 	t.Parallel()
 	cfg := audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("super-secret-salt-value"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("super-secret-salt-value"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	s := cfg.String()
 	assert.NotContains(t, s, "super-secret-salt-value")
@@ -492,16 +508,16 @@ func BenchmarkHMAC_SHA512_SmallEvent(b *testing.B) {
 // ---------------------------------------------------------------------------
 // Salt version authentication tests (issue #473)
 //
-// These tests verify that `_hmac_v` (the salt version identifier) is
-// authenticated by the HMAC. Before the fix, `_hmac_v` was appended to
+// These tests verify that `_hmac_version` (the salt version identifier) is
+// authenticated by the HMAC. Before the fix, `_hmac_version` was appended to
 // the wire AFTER `computeHMACFast` ran, leaving it outside the
 // authenticated region — a MITM could flip v1 → v2 to redirect a
 // verifier's salt lookup without detection. The fix reorders
-// drain.go:183-192 to append `_hmac_v` BEFORE computing HMAC.
+// drain.go:183-192 to append `_hmac_version` BEFORE computing HMAC.
 // ---------------------------------------------------------------------------
 
 // stripHMACJSONField removes the `,"_hmac":"<hex>"` field from a JSON
-// event line, keeping `_hmac_v` in place. This is the canonicalisation
+// event line, keeping `_hmac_version` in place. This is the canonicalisation
 // rule: recompute HMAC over the remaining bytes. Called from the #473
 // tests. Mirrors the helper in tests/bdd/steps/hmac_steps.go.
 func stripHMACJSONField(line []byte) []byte {
@@ -535,10 +551,12 @@ func newHMACPipelineTestAuditor(t *testing.T, name, saltVersion string, salt []b
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: saltVersion,
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: saltVersion,
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -588,13 +606,13 @@ func TestComputeHMACFast_IncludesSaltVersionInPayload(t *testing.T) {
 	lineV1, hmacV1 := runOnce("v1")
 	lineV2, hmacV2 := runOnce("v2")
 
-	// Sanity: both lines contain the expected _hmac_v value.
-	assert.Contains(t, string(lineV1), `"_hmac_v":"v1"`,
+	// Sanity: both lines contain the expected _hmac_version value.
+	assert.Contains(t, string(lineV1), `"_hmac_version":"v1"`,
 		"line must embed the salt version on the wire")
-	assert.Contains(t, string(lineV2), `"_hmac_v":"v2"`)
+	assert.Contains(t, string(lineV2), `"_hmac_version":"v2"`)
 
 	// Primary assertion: changing only SaltVersion changes the HMAC.
-	// If the implementation regressed to appending _hmac_v AFTER the
+	// If the implementation regressed to appending _hmac_version AFTER the
 	// HMAC computation, both hashes would be identical.
 	assert.NotEqual(t, hmacV1, hmacV2,
 		"HMAC must differ when SaltVersion differs — proves salt version is an input to computeHMACFast (#473)")
@@ -602,17 +620,17 @@ func TestComputeHMACFast_IncludesSaltVersionInPayload(t *testing.T) {
 	// Secondary assertion: re-compute HMAC externally over the on-wire
 	// bytes minus the `_hmac` field. The result must match the
 	// embedded HMAC, proving the wire-visible payload (which contains
-	// _hmac_v) IS what was fed into the HMAC.
+	// _hmac_version) IS what was fed into the HMAC.
 	canonicalV1 := stripHMACJSONField(lineV1)
 	verifiedV1, err := audit.VerifyHMAC(canonicalV1, hmacV1, salt, "HMAC-SHA-256")
 	require.NoError(t, err)
 	assert.True(t, verifiedV1,
-		"HMAC over (wire bytes minus _hmac) must verify — proves the payload fed to computeHMACFast was the wire content including _hmac_v")
+		"HMAC over (wire bytes minus _hmac) must verify — proves the payload fed to computeHMACFast was the wire content including _hmac_version")
 }
 
 // TestHMACOutputOrdering_VBeforeHmac asserts that on-wire JSON places
-// `_hmac_v` BEFORE `_hmac`. Pre-fix the order was reversed, which left
-// `_hmac_v` outside the authenticated region. Post-fix `_hmac_v` is
+// `_hmac_version` BEFORE `_hmac`. Pre-fix the order was reversed, which left
+// `_hmac_version` outside the authenticated region. Post-fix `_hmac_version` is
 // appended first so it is part of the hashed bytes.
 func TestHMACOutputOrdering_VBeforeHmac(t *testing.T) {
 	t.Parallel()
@@ -626,12 +644,12 @@ func TestHMACOutputOrdering_VBeforeHmac(t *testing.T) {
 
 	line := out.GetEvents()[0]
 	s := string(line)
-	vIdx := strings.Index(s, `"_hmac_v"`)
+	vIdx := strings.Index(s, `"_hmac_version"`)
 	hIdx := strings.Index(s, `"_hmac"`)
-	require.GreaterOrEqual(t, vIdx, 0, "_hmac_v must appear in JSON output")
+	require.GreaterOrEqual(t, vIdx, 0, "_hmac_version must appear in JSON output")
 	require.GreaterOrEqual(t, hIdx, 0, "_hmac must appear in JSON output")
 	assert.Less(t, vIdx, hIdx,
-		"_hmac_v must appear BEFORE _hmac so it is inside the authenticated region (issue #473)")
+		"_hmac_version must appear BEFORE _hmac so it is inside the authenticated region (issue #473)")
 }
 
 // TestDrainPipeline_NoFieldsAppearAfterHMAC asserts that `_hmac` is the
@@ -693,7 +711,7 @@ func TestHMAC_OnWireBytesMatchHashedBytes(t *testing.T) {
 	require.NotEmpty(t, hmacHex)
 
 	// Canonicalise: strip only `_hmac` from the on-wire bytes, keeping
-	// `_hmac_v` in place because it is authenticated.
+	// `_hmac_version` in place because it is authenticated.
 	canonical := stripHMACJSONField(line)
 
 	verified, err := audit.VerifyHMAC(canonical, hmacHex, salt, "HMAC-SHA-256")
@@ -704,11 +722,11 @@ func TestHMAC_OnWireBytesMatchHashedBytes(t *testing.T) {
 }
 
 // TestVerifyHMAC_TamperingHmacVersion_Detected is the primary security
-// regression test for issue #473. It emits an event with _hmac_v="v1",
-// mutates the on-wire bytes to set _hmac_v="v2" (simulating a MITM),
+// regression test for issue #473. It emits an event with _hmac_version="v1",
+// mutates the on-wire bytes to set _hmac_version="v2" (simulating a MITM),
 // then verifies using the correct salt and the canonicalisation rule
 // (strip only _hmac). The verifier MUST reject the tampered bytes
-// because _hmac_v is now part of the authenticated region.
+// because _hmac_version is now part of the authenticated region.
 func TestVerifyHMAC_TamperingHmacVersion_Detected(t *testing.T) {
 	t.Parallel()
 	salt := []byte("tamper-v-salt-16-bytes!!!!!")
@@ -728,9 +746,9 @@ func TestVerifyHMAC_TamperingHmacVersion_Detected(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, unverifyPassed, "unmodified event must verify")
 
-	// Tamper: replace "_hmac_v":"v1" with "_hmac_v":"v2" in the on-wire
+	// Tamper: replace "_hmac_version":"v1" with "_hmac_version":"v2" in the on-wire
 	// bytes. Both strings are the same length so positions don't shift.
-	tampered := bytes.Replace(line, []byte(`"_hmac_v":"v1"`), []byte(`"_hmac_v":"v2"`), 1)
+	tampered := bytes.Replace(line, []byte(`"_hmac_version":"v1"`), []byte(`"_hmac_version":"v2"`), 1)
 	require.NotEqual(t, line, tampered, "tamper step must modify the line")
 
 	// Canonicalise and verify: strip only _hmac from the TAMPERED bytes.
@@ -738,14 +756,14 @@ func TestVerifyHMAC_TamperingHmacVersion_Detected(t *testing.T) {
 	verified, err := audit.VerifyHMAC(canonical, hmacHex, salt, "HMAC-SHA-256")
 	require.NoError(t, err)
 	assert.False(t, verified,
-		"HMAC verification must fail on a tampered _hmac_v — this is the core guarantee of issue #473")
+		"HMAC verification must fail on a tampered _hmac_version — this is the core guarantee of issue #473")
 }
 
 // TestVerifyHMAC_TamperingActorId_Detected is the sanity counterpart to
 // the #473 primary test. It tampers a non-HMAC field (actor_id) and
 // confirms verification still fails, proving the HMAC continues to
 // cover the rest of the payload. Guards against a regression where
-// the fix accidentally narrows HMAC scope to only _hmac_v.
+// the fix accidentally narrows HMAC scope to only _hmac_version.
 func TestVerifyHMAC_TamperingActorId_Detected(t *testing.T) {
 	t.Parallel()
 	salt := []byte("tamper-actor-salt-16-bytes!")
@@ -793,10 +811,12 @@ func TestVerifyHMAC_CEF_TamperingHmacVersion_Detected(t *testing.T) {
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -883,11 +903,11 @@ func extractCEFExtensionValue(t *testing.T, line []byte, key string) string {
 }
 
 // TestVerifyHMAC_RemoveHmacVersion_Detected covers the "delete to
-// downgrade" attack where an attacker strips `_hmac_v` entirely from
+// downgrade" attack where an attacker strips `_hmac_version` entirely from
 // the on-wire bytes. A naive verifier that parses JSON and uses a
-// default salt when `_hmac_v` is missing would accept the event.
+// default salt when `_hmac_version` is missing would accept the event.
 // The strip-only-`_hmac` canonicalisation correctly rejects this: the
-// original `_hmac_v` was part of the hashed bytes, so removing it
+// original `_hmac_version` was part of the hashed bytes, so removing it
 // changes the canonical payload and the HMAC no longer matches.
 func TestVerifyHMAC_RemoveHmacVersion_Detected(t *testing.T) {
 	t.Parallel()
@@ -903,17 +923,17 @@ func TestVerifyHMAC_RemoveHmacVersion_Detected(t *testing.T) {
 	hmacHex := extractJSONStringField(t, line, "_hmac")
 	require.NotEmpty(t, hmacHex)
 
-	// Remove `,"_hmac_v":"v1"` from the on-wire bytes entirely.
-	// _hmac_v is inside the authenticated region, so removing it
+	// Remove `,"_hmac_version":"v1"` from the on-wire bytes entirely.
+	// _hmac_version is inside the authenticated region, so removing it
 	// changes the canonicalised bytes and verification must fail.
-	removed := bytes.ReplaceAll(line, []byte(`,"_hmac_v":"v1"`), []byte(``))
+	removed := bytes.ReplaceAll(line, []byte(`,"_hmac_version":"v1"`), []byte(``))
 	require.NotEqual(t, line, removed, "remove step must modify the line")
 
 	canonical := stripHMACJSONField(removed)
 	verified, err := audit.VerifyHMAC(canonical, hmacHex, salt, "HMAC-SHA-256")
 	require.NoError(t, err)
 	assert.False(t, verified,
-		"removing _hmac_v from the wire must fail HMAC verification (issue #473: delete-to-downgrade attack)")
+		"removing _hmac_version from the wire must fail HMAC verification (issue #473: delete-to-downgrade attack)")
 }
 
 // TestVerifyHMAC_TamperingSeverity_Detected covers tampering with a
@@ -967,10 +987,12 @@ func TestVerifyHMAC_CEF_TamperingActorId_Detected(t *testing.T) {
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -1026,10 +1048,12 @@ func TestHMAC_CEF_OnWireBytesMatchHashedBytes(t *testing.T) {
 		audit.WithTaxonomy(tax),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -1060,7 +1084,7 @@ func TestHMAC_CEF_OnWireBytesMatchHashedBytes(t *testing.T) {
 
 // TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy proves
 // that the runtime reserved-field check fires even if the consumer
-// managed to declare `_hmac` or `_hmac_v` as a taxonomy event field
+// managed to declare `_hmac` or `_hmac_version` as a taxonomy event field
 // (and the taxonomy-level `reservedFieldNames` check was bypassed or
 // disabled). The runtime check is the defence-in-depth safety net.
 func TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy(t *testing.T) {
@@ -1092,9 +1116,9 @@ func TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy(t *testing.T) {
 	defer func() { _ = auditor.Close() }()
 
 	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "alice",
-		"_hmac_v":  "attacker-injected-version",
+		"outcome":       "failure",
+		"actor_id":      "alice",
+		"_hmac_version": "attacker-injected-version",
 	}))
 	require.Error(t, err, "reserved field injection at runtime must be rejected")
 	assert.ErrorIs(t, err, audit.ErrReservedFieldName)

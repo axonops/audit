@@ -36,8 +36,8 @@ func (a *Auditor) validateFields(eventType string, def *EventDef, fields Fields)
 // regardless of ValidationMode — permissive mode cannot opt out of
 // this check.
 var libraryReservedFields = map[string]struct{}{
-	"_hmac":   {},
-	"_hmac_v": {},
+	"_hmac":         {},
+	"_hmac_version": {},
 }
 
 // checkLibraryReservedFields rejects events whose Fields map contains

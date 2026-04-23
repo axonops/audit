@@ -50,7 +50,7 @@ Every issue follows this sequence. Do not skip steps.
 
 [GitHub issue view](https://github.com/axonops/audit/issues?q=is%3Aissue+is%3Aopen+label%3Av1.0.0+%22security%22+OR+%22fix%22)
 
-- [x] **#473** security: include _hmac_v inside HMAC authenticated bytes — HMAC authenticity hole (code-reviewer C3, verified against `drain.go:183-192`). ✅ Merged in PR #623 (2026-04-17).
+- [x] **#473** security: include _hmac_version inside HMAC authenticated bytes — HMAC authenticity hole (code-reviewer C3, verified against `drain.go:183-192`). ✅ Merged in PR #623 (2026-04-17).
 - [x] **#474** fix: atomic.Pointer for diagnostic logger in async outputs — data race across webhook/file/syslog/loki. ✅ Merged in PR #629 (2026-04-18).
 - [ ] **#475** security: strip credentials from Webhook and Loki Config.String() output — token leakage via `%v` / `%+v` debug.
 - [ ] **#476** fix: apply global tls_policy to loki and secret providers — injection currently only covers syslog/webhook.
@@ -112,7 +112,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
 - [x] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.
 - [x] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
-- [ ] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_v / _hmacVersion.
+- [x] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_version / _hmacVersion.
 - [x] **#583** refactor: rename syslog.app_name YAML to procid or syslog_app_name; default APP-NAME from top-level app_name.
 - [x] **#584** refactor: align Loki gzip YAML key and Go Compress field.
 - [ ] **#585** refactor: examples use outputs convenience package instead of individual blank imports.

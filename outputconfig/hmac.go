@@ -24,9 +24,9 @@ import (
 )
 
 type yamlHMACConfig struct { //nolint:govet // readability over alignment
-	Enabled bool         `yaml:"enabled"`
-	Salt    yamlHMACSalt `yaml:"salt"`
-	Hash    string       `yaml:"hash"`
+	Enabled   bool         `yaml:"enabled"`
+	Salt      yamlHMACSalt `yaml:"salt"`
+	Algorithm string       `yaml:"algorithm"`
 }
 
 // yamlHMACSalt is the YAML representation of the hmac.salt section.
@@ -94,10 +94,12 @@ func buildHMACConfig(ctx context.Context, name string, raw any, r *resolver) (*a
 	}
 
 	cfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: yc.Salt.Version,
-		SaltValue:   []byte(yc.Salt.Value),
-		Algorithm:   yc.Hash,
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: yc.Salt.Version,
+			Value:   []byte(yc.Salt.Value),
+		},
+		Algorithm: yc.Algorithm,
 	}
 
 	if vErr := audit.ValidateHMACConfig(cfg); vErr != nil {

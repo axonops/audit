@@ -393,7 +393,7 @@ outputs:
       enabled: true
       salt: "${HMAC_SALT}"
       version: "v1"
-      hash: "HMAC-SHA-256"
+      algorithm: "HMAC-SHA-256"
 ```
 
 ### Formatter Restriction
@@ -898,23 +898,23 @@ only): `labels.dynamic.timezone: false`.
 
 ## HMAC Integrity with Loki
 
-When HMAC is enabled on a Loki output, the `_hmac` and `_hmac_v`
+When HMAC is enabled on a Loki output, the `_hmac` and `_hmac_version`
 fields are appended to every event before delivery. These fields
 appear in the JSON log line stored in Loki and are queryable via
 LogQL:
 
 ```logql
-{app_name="my-app"} | json | _hmac_v="v1"
+{app_name="my-app"} | json | _hmac_version="v1"
 ```
 
 The HMAC is computed over the serialised payload **after** sensitivity
-label stripping and **after** `_hmac_v` is appended, but **before**
-`_hmac` is appended. `_hmac_v` is authenticated by the HMAC — see
+label stripping and **after** `_hmac_version` is appended, but **before**
+`_hmac` is appended. `_hmac_version` is authenticated by the HMAC — see
 [docs/hmac-integrity.md](hmac-integrity.md) for the full
 canonicalisation contract. This means:
 
 - Events stored in Loki can be independently verified by stripping
-  **only** the `_hmac` field (keeping `_hmac_v` in place), recomputing
+  **only** the `_hmac` field (keeping `_hmac_version` in place), recomputing
   the HMAC with the same salt, and comparing
 - If the Loki output strips PII fields (via `exclude_labels`), the
   HMAC covers the stripped payload — the HMAC will differ from a

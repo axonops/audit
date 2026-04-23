@@ -3007,10 +3007,12 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   []byte("benchmark-salt-value-32-bytes!!!"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   []byte("benchmark-salt-value-32-bytes!!!"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	if err != nil {
@@ -3723,10 +3725,12 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   []byte("test-salt-sixteen-bytes!"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   []byte("test-salt-sixteen-bytes!"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -3738,7 +3742,7 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 
 	ev := out.GetEvent(0)
 	assert.NotEmpty(t, ev["_hmac"], "HMAC should be present")
-	assert.Equal(t, "v1", ev["_hmac_v"], "salt version should be present")
+	assert.Equal(t, "v1", ev["_hmac_version"], "salt version should be present")
 }
 
 func TestHMAC_Disabled_NoFields(t *testing.T) {
@@ -3778,10 +3782,12 @@ func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "2026-Q1",
-			SaltValue:   []byte("version-test-salt-16b!"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "2026-Q1",
+				Value:   []byte("version-test-salt-16b!"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -3792,12 +3798,12 @@ func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 	require.NoError(t, auditor.Close())
 
 	ev := out.GetEvent(0)
-	assert.Equal(t, "2026-Q1", ev["_hmac_v"])
+	assert.Equal(t, "2026-Q1", ev["_hmac_version"])
 }
 
 func TestHMAC_ReservedFieldNames(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"_hmac", "_hmac_v"} {
+	for _, field := range []string{"_hmac", "_hmac_version"} {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			tax := &audit.Taxonomy{
@@ -3848,16 +3854,20 @@ events:
 	// Different salts per output — proves each output uses its own
 	// HMAC config independently, not a shared singleton.
 	fullHMACCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("full-output-salt-value!"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("full-output-salt-value!"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	strippedHMACCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v2",
-		SaltValue:   []byte("stripped-output-salt!!"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v2",
+			Value:   []byte("stripped-output-salt!!"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 
 	fullOut := testhelper.NewMockOutput("full")
@@ -3900,8 +3910,8 @@ events:
 	assert.False(t, hasEmail, "stripped output should not have email (PII excluded)")
 
 	// Salt versions should reflect per-output config.
-	assert.Equal(t, "v1", fullEvent["_hmac_v"], "full output should have salt version v1")
-	assert.Equal(t, "v2", strippedEvent["_hmac_v"], "stripped output should have salt version v2")
+	assert.Equal(t, "v1", fullEvent["_hmac_version"], "full output should have salt version v1")
+	assert.Equal(t, "v2", strippedEvent["_hmac_version"], "stripped output should have salt version v2")
 
 	// The HMACs MUST be different because the payloads differ
 	// (one has email, the other does not) AND the salts differ.
@@ -3913,7 +3923,7 @@ events:
 // by the drain loop can be verified against the on-wire bytes. Emits a
 // single event to an HMAC-enabled output, then reconstructs the
 // authenticated payload by stripping only the `_hmac` field (leaving
-// `_hmac_v` in place per issue #473), and confirms the HMAC verifies.
+// `_hmac_version` in place per issue #473), and confirms the HMAC verifies.
 // This is the canonical real-world verifier pattern.
 func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 	t.Parallel()
@@ -3933,10 +3943,12 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(hmacOut, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -3958,7 +3970,7 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 	require.NotEmpty(t, hmacHex)
 
 	// Reconstruct the authenticated payload: strip ONLY `_hmac` from
-	// the on-wire bytes, keeping `_hmac_v` in place because it is
+	// the on-wire bytes, keeping `_hmac_version` in place because it is
 	// inside the authenticated region (issue #473).
 	canonical := stripHMACJSONField(line)
 
@@ -4012,10 +4024,12 @@ events:
 		// Both outputs exclude PII. baseOut is a sanity check that
 		// stripping happened; verification uses hmacOut's own bytes.
 		audit.WithNamedOutput(hmacOut, audit.WithExcludeLabels("pii"), audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   salt,
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   salt,
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 		audit.WithNamedOutput(baseOut, audit.WithExcludeLabels("pii")),
 	)
@@ -4044,7 +4058,7 @@ events:
 	}
 
 	// Verify the HMAC against hmacOut's own bytes with only `_hmac`
-	// stripped — _hmac_v remains because it is inside the authenticated
+	// stripped — _hmac_version remains because it is inside the authenticated
 	// region per issue #473.
 	hmacHex, ok := hmacEvent["_hmac"].(string)
 	require.True(t, ok, "HMAC output must contain _hmac field")
@@ -4486,10 +4500,12 @@ func TestMetadataWriter_WithHMAC_ReceivesHMACData(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v1",
-			SaltValue:   []byte("hmac-test-salt-value!"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v1",
+				Value:   []byte("hmac-test-salt-value!"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	require.NoError(t, err)
@@ -5243,7 +5259,7 @@ func BenchmarkAudit_FastPath_FanOut4_NoopOutputs(b *testing.B) {
 
 // BenchmarkAudit_FastPath_WithHMAC_Noop measures the in-place HMAC
 // post-field append cost. Pre-W2 this allocated 2 byte slices per
-// output (_hmac_v + _hmac); post-W2 these are appended in place into
+// output (_hmac_version + _hmac); post-W2 these are appended in place into
 // the per-event scratch buffer. Target: 0 allocs/op on the pipeline
 // side (HMAC compute contributes a small constant B/op from
 // hex.EncodeToString — pre-existing, not introduced by W2).
@@ -5260,10 +5276,12 @@ func BenchmarkAudit_FastPath_WithHMAC_Noop(b *testing.B) {
 	}
 	out := testhelper.NewNoopOutput("noop")
 	hmacCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),

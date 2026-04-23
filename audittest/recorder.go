@@ -98,7 +98,7 @@ func (e RecordedEvent) BoolField(key string) bool { //nolint:gocritic // value r
 
 // UserFields returns a copy of the event's fields with framework
 // fields removed (event_category, app_name, host, timezone, pid,
-// duration_ms, _hmac, _hmac_v). This is useful for count assertions
+// duration_ms, _hmac, _hmac_version). This is useful for count assertions
 // where framework fields would inflate the total.
 func (e RecordedEvent) UserFields() map[string]any { //nolint:gocritic // value receiver for consistency
 	out := make(map[string]any, len(e.Fields))
@@ -373,7 +373,7 @@ var frameworkFields = map[string]bool{
 	"pid":            true,
 	"duration_ms":    true,
 	"_hmac":          true,
-	"_hmac_v":        true,
+	"_hmac_version":  true,
 }
 
 func isFrameworkField(key string) bool {

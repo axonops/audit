@@ -12,7 +12,7 @@ outputs:
       salt:
         version: "2026-Q1"
         value: "${HMAC_SALT:-default-example-salt!}"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
     file:
       path: "./secure-audit.log"
     route:
@@ -28,7 +28,7 @@ outputs:
       salt:
         version: "2026-Q1"
         value: "${HMAC_SALT:-default-example-salt!}"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
     file:
       path: "./all-audit.log"
 

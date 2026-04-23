@@ -276,7 +276,7 @@ serialise to JSON; both sides discard the output (`slog` →
   not shown here for the reason documented in *Methodology*.
 - **HMAC costs ≈ 442 ns at 10 fields** (2178 − 1736). This is the
   cost of tamper-evidence (`HMAC-SHA-256` over the full
-  event bytes + authenticated `_hmac_v` salt version), amortised
+  event bytes + authenticated `_hmac_version` salt version), amortised
   via pre-allocated state. There is no `slog` equivalent to
   compare against.
 - **Fan-out to 4 outputs costs ≈ 63 ns per extra output**

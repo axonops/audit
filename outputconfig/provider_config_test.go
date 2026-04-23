@@ -73,7 +73,7 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/hmac#version"
         value: "ref+openbao://secret/data/hmac#salt"
-      hash: "ref+openbao://secret/data/hmac#hash"
+      algorithm: "ref+openbao://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
@@ -81,8 +81,8 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
 	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
-	assert.Equal(t, "this-is-a-test-salt-value-at-least-16-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
-	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.SaltVersion)
+	assert.Equal(t, "this-is-a-test-salt-value-at-least-16-bytes", string(result.OutputMetadata()[0].HMACConfig.Salt.Value))
+	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.Salt.Version)
 }
 
 func TestLoad_SecretsSection_Vault(t *testing.T) {
@@ -118,7 +118,7 @@ outputs:
       salt:
         version: "ref+vault://secret/data/hmac#version"
         value: "ref+vault://secret/data/hmac#salt"
-      hash: "ref+vault://secret/data/hmac#hash"
+      algorithm: "ref+vault://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
@@ -126,8 +126,8 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
 	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
-	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
-	assert.Equal(t, "v2", result.OutputMetadata()[0].HMACConfig.SaltVersion)
+	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.Salt.Value))
+	assert.Equal(t, "v2", result.OutputMetadata()[0].HMACConfig.Salt.Version)
 }
 
 func TestLoad_SecretsSection_AllowInsecureHTTP(t *testing.T) {
@@ -161,14 +161,14 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/hmac#version"
         value: "ref+openbao://secret/data/hmac#salt"
-      hash: "ref+openbao://secret/data/hmac#hash"
+      algorithm: "ref+openbao://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
 	require.Len(t, result.OutputMetadata(), 1)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
-	assert.Equal(t, "insecure-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
+	assert.Equal(t, "insecure-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.Salt.Value))
 }
 
 func TestLoad_SecretsSection_UnknownProvider(t *testing.T) {
@@ -355,7 +355,7 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/hmac#version"
         value: "ref+openbao://secret/data/hmac#salt"
-      hash: "ref+openbao://secret/data/hmac#hash"
+      algorithm: "ref+openbao://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax,
@@ -474,14 +474,14 @@ outputs:
       salt:
         version: "ref+vault://secret/data/hmac#version"
         value: "ref+vault://secret/data/hmac#salt"
-      hash: "ref+vault://secret/data/hmac#hash"
+      algorithm: "ref+vault://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
 	require.Len(t, result.OutputMetadata(), 1)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
-	assert.Equal(t, "vault-http-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
+	assert.Equal(t, "vault-http-salt-value-at-least-sixteen-bytes", string(result.OutputMetadata()[0].HMACConfig.Salt.Value))
 }
 
 func TestLoad_SecretsSection_BothProviders(t *testing.T) {
@@ -534,7 +534,7 @@ outputs:
       salt:
         version: "ref+openbao://secret/data/hmac#version"
         value: "ref+openbao://secret/data/hmac#salt"
-      hash: "ref+openbao://secret/data/hmac#hash"
+      algorithm: "ref+openbao://secret/data/hmac#hash"
   vault_output:
     type: stdout
     hmac:
@@ -542,15 +542,15 @@ outputs:
       salt:
         version: "ref+vault://secret/data/hmac#version"
         value: "ref+vault://secret/data/hmac#salt"
-      hash: "ref+vault://secret/data/hmac#hash"
+      algorithm: "ref+vault://secret/data/hmac#hash"
 `
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.NoError(t, err)
 	require.Len(t, result.OutputMetadata(), 2)
 
-	assert.Equal(t, "bao-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.SaltValue))
-	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[1].HMACConfig.SaltValue))
+	assert.Equal(t, "bao-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[0].HMACConfig.Salt.Value))
+	assert.Equal(t, "vault-salt-value-at-least-sixteen-bytes-long", string(result.OutputMetadata()[1].HMACConfig.Salt.Value))
 }
 
 // ---------------------------------------------------------------------------

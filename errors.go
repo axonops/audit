@@ -162,7 +162,7 @@ var (
 
 	// ErrReservedFieldName is returned by [Auditor.AuditEvent] when
 	// the event's Fields map uses a name reserved for library-emitted
-	// fields (for example `_hmac`, `_hmac_v`). These names would
+	// fields (for example `_hmac`, `_hmac_version`). These names would
 	// collide with library output and could enable canonicalisation-
 	// ambiguity attacks on HMAC verifiers (issue #473). This check runs
 	// regardless of [ValidationMode]; permissive mode cannot opt out.

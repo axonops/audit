@@ -221,7 +221,7 @@ func TestRecordedEvent_UserFields(t *testing.T) {
 			"pid":            float64(1234),
 			"duration_ms":    float64(10),
 			"_hmac":          "abc",
-			"_hmac_v":        float64(1),
+			"_hmac_version":  float64(1),
 		},
 	}
 	userFields := evt.UserFields()
@@ -236,7 +236,7 @@ func TestRecordedEvent_UserFields(t *testing.T) {
 	assert.NotContains(t, userFields, "pid")
 	assert.NotContains(t, userFields, "duration_ms")
 	assert.NotContains(t, userFields, "_hmac")
-	assert.NotContains(t, userFields, "_hmac_v")
+	assert.NotContains(t, userFields, "_hmac_version")
 }
 
 func TestRecordedEvent_BoolField(t *testing.T) {

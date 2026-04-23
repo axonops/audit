@@ -68,7 +68,7 @@
 //	      salt:
 //	        version: "v1"
 //	        value: "${HMAC_SALT}"
-//	      hash: HMAC-SHA-256
+//	      algorithm: HMAC-SHA-256
 //
 // # Environment Variables
 //

@@ -204,10 +204,12 @@ func itoa(n int) string {
 // No per-call allocation by construction (state pre-allocated).
 func BenchmarkComputeHMACFast(b *testing.B) {
 	cfg := &HMACConfig{
-		Enabled:     true,
-		Algorithm:   "HMAC-SHA-256",
-		SaltVersion: "v1",
-		SaltValue:   []byte("benchmark-salt-32-bytes-00000000"),
+		Enabled:   true,
+		Algorithm: "HMAC-SHA-256",
+		Salt: HMACSalt{
+			Version: "v1",
+			Value:   []byte("benchmark-salt-32-bytes-00000000"),
+		},
 	}
 	s := newHMACState(cfg)
 	payload := []byte(`{"event_type":"user_create","outcome":"success","actor_id":"alice","subject":"schema-topic"}`)

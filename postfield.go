@@ -188,7 +188,7 @@ func appendPostFieldCEFInto(buf *bytes.Buffer, f PostField) []byte {
 // appends every field in fields, and restores the terminator once —
 // saving one rewind / restore cycle per additional field over
 // N sequential [appendPostFieldInto] calls. Used by the drain
-// pipeline to emit the pre-HMAC batch (event_category + _hmac_v)
+// pipeline to emit the pre-HMAC batch (event_category + _hmac_version)
 // in a single buffer mutation; see [Auditor.assemblePostFields]
 // in drain.go.
 //

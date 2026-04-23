@@ -249,10 +249,12 @@ func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string,
 	tc.LokiOutputName = out.Name()
 
 	hmacCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: version,
-		SaltValue:   []byte(salt),
-		Algorithm:   hash,
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: version,
+			Value:   []byte(salt),
+		},
+		Algorithm: hash,
 	}
 
 	opts := []audit.Option{
@@ -268,10 +270,12 @@ func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string,
 		capture := newCaptureOutput("capture-full")
 		tc.CaptureOutput = capture
 		opts = append(opts, audit.WithNamedOutput(capture, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v-capture",
-			SaltValue:   []byte("capture-comparison16"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v-capture",
+				Value:   []byte("capture-comparison16"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})))
 	}
 	opts = append(opts, audit.WithNamedOutput(out, lokiOpts...))
@@ -305,16 +309,20 @@ func createLokiAuditorWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVer
 		audit.WithAppName("bdd-audit"),
 		audit.WithHost("bdd-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: lokiVersion,
-			SaltValue:   []byte(lokiSalt),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: lokiVersion,
+				Value:   []byte(lokiSalt),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 		audit.WithNamedOutput(capture, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: "v-capture",
-			SaltValue:   []byte("capture-salt-beta16!"),
-			Algorithm:   "HMAC-SHA-256",
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: "v-capture",
+				Value:   []byte("capture-salt-beta16!"),
+			},
+			Algorithm: "HMAC-SHA-256",
 		})),
 	)
 	if err != nil {

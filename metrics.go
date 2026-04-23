@@ -16,6 +16,33 @@ package audit
 
 import "time"
 
+// EventStatus is the outcome label for a delivery attempt recorded
+// via [Metrics.RecordEvent]. It is a typed string so consumers can
+// pass it straight to Prometheus / OpenTelemetry label vectors with
+// a zero-cost `string(status)` conversion on the hot path.
+//
+// The underlying string values are a library contract: they are
+// emitted as-is to downstream metric collectors. Existing
+// consumer-side Prometheus queries and alert rules that match on
+// `"success"` / `"error"` continue to work verbatim.
+//
+// Adding a new EventStatus value is a minor-version compatible
+// change. Removing or renaming an existing value is breaking.
+type EventStatus string
+
+// Defined EventStatus values. Production code emits only these two;
+// the set is deliberately minimal because other outcome categories
+// (filtered, dropped, validation failure) have dedicated [Metrics]
+// methods ([Metrics.RecordOutputFiltered], [Metrics.RecordBufferDrop],
+// [Metrics.RecordValidationError]).
+const (
+	// EventSuccess records a successful delivery to an output.
+	EventSuccess EventStatus = "success"
+
+	// EventError records a non-retryable delivery failure.
+	EventError EventStatus = "error"
+)
+
 // Metrics is an optional instrumentation interface that consumers implement
 // to collect audit pipeline telemetry. Pass an implementation via
 // [WithMetrics]; pass nil to disable metrics collection.
@@ -55,10 +82,10 @@ type Metrics interface {
 	// events in" counter.
 	RecordSubmitted()
 
-	// RecordEvent records an event delivery attempt to the named output.
-	// status is always one of the string literals "success" or "error";
-	// implementers MAY assume no other value is passed.
-	RecordEvent(output, status string)
+	// RecordEvent records an event delivery attempt to the named
+	// output. status is a typed enum — see [EventStatus] for the
+	// defined values.
+	RecordEvent(output string, status EventStatus)
 
 	// RecordOutputError records a write error on the named output.
 	RecordOutputError(output string)
@@ -116,7 +143,7 @@ var _ Metrics = NoOpMetrics{}
 func (NoOpMetrics) RecordSubmitted() {}
 
 // RecordEvent is a no-op.
-func (NoOpMetrics) RecordEvent(string, string) {}
+func (NoOpMetrics) RecordEvent(string, EventStatus) {}
 
 // RecordOutputError is a no-op.
 func (NoOpMetrics) RecordOutputError(string) {}

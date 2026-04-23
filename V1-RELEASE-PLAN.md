@@ -116,7 +116,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#583** refactor: rename syslog.app_name YAML to procid or syslog_app_name; default APP-NAME from top-level app_name.
 - [x] **#584** refactor: align Loki gzip YAML key and Go Compress field.
 - [x] **#585** refactor: examples use outputs convenience package instead of individual blank imports.
-- [ ] **#586** refactor: replace Metrics.RecordEvent stringly-typed status with EventStatus enum.
+- [x] **#586** refactor: replace Metrics.RecordEvent stringly-typed status with EventStatus enum.
 - [ ] **#587** perf: WrapOutput conditionally implements MetadataWriter based on inner capability.
 - [ ] **#588** refactor: inline rgooding/go-syncmap; drop third-party dependency on filter hot path.
 - [ ] **#589** docs: fix Formatter docstring concurrency-safety contradiction with CEFFormatter sync.Once.

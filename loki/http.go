@@ -26,6 +26,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/axonops/audit"
 )
 
 // sanitiseClientError returns a copy of err with any embedded
@@ -230,7 +232,7 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 	if o.metrics != nil {
 		name := o.Name()
 		for range batchSize {
-			o.metrics.RecordEvent(name, "success")
+			o.metrics.RecordEvent(name, audit.EventSuccess)
 		}
 	}
 }
@@ -243,7 +245,7 @@ func (o *Output) recordDrop(count int) {
 			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
-			o.metrics.RecordEvent(name, "error")
+			o.metrics.RecordEvent(name, audit.EventError)
 		}
 	}
 }

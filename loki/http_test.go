@@ -643,25 +643,25 @@ type mockCoreMetrics struct { //nolint:govet // fieldalignment: readability pref
 	events map[string]int // status → count
 }
 
-func (m *mockCoreMetrics) RecordEvent(_, status string) {
+func (m *mockCoreMetrics) RecordEvent(_ string, status audit.EventStatus) {
 	m.mu.Lock()
 	if m.events == nil {
 		m.events = make(map[string]int)
 	}
-	m.events[status]++
+	m.events[string(status)]++
 	m.mu.Unlock()
 }
 
 func (m *mockCoreMetrics) successCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.events["success"]
+	return m.events[string(audit.EventSuccess)]
 }
 
 func (m *mockCoreMetrics) errorCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.events["error"]
+	return m.events[string(audit.EventError)]
 }
 
 // Satisfy the full audit.Metrics interface with no-ops.

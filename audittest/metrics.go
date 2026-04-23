@@ -71,9 +71,9 @@ func (m *MetricsRecorder) RecordSubmitted() {
 }
 
 // RecordEvent implements [audit.Metrics].
-func (m *MetricsRecorder) RecordEvent(output, status string) {
+func (m *MetricsRecorder) RecordEvent(output string, status audit.EventStatus) {
 	m.mu.Lock()
-	m.events[output+":"+status]++
+	m.events[output+":"+string(status)]++
 	m.mu.Unlock()
 }
 
@@ -125,11 +125,12 @@ func (m *MetricsRecorder) RecordQueueDepth(_, _ int) {}
 // --- Query methods ---
 
 // EventDeliveries returns the number of delivery attempts recorded
-// for the given output and status ("success" or "error").
-func (m *MetricsRecorder) EventDeliveries(output, status string) int {
+// for the given output and [audit.EventStatus]
+// ([audit.EventSuccess] or [audit.EventError]).
+func (m *MetricsRecorder) EventDeliveries(output string, status audit.EventStatus) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.events[output+":"+status]
+	return m.events[output+":"+string(status)]
 }
 
 // ValidationErrors returns the count of validation errors recorded

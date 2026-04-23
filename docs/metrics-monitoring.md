@@ -26,7 +26,7 @@ library never imports a concrete metrics implementation.
 ```go
 type Metrics interface {
     RecordSubmitted()                           // total events entering the pipeline
-    RecordEvent(output, status string)          // "success" or "error" (non-DeliveryReporter outputs only)
+    RecordEvent(output string, status EventStatus) // EventSuccess / EventError (non-DeliveryReporter outputs only)
     RecordOutputError(output string)
     RecordOutputFiltered(output string)
     RecordValidationError(eventType string)
@@ -60,7 +60,7 @@ auditor, err := audit.New(
 
 | Metric | Method | Meaning |
 |--------|--------|---------|
-| **Delivery success/error** | `RecordEvent(output, "success"/"error")` | Per-output delivery outcome. A rising error rate indicates an output is degrading. |
+| **Delivery success/error** | `RecordEvent(output, EventSuccess/EventError)` | Per-output delivery outcome. A rising error rate indicates an output is degrading. |
 | **Serialization errors** | `RecordSerializationError(eventType)` | The formatter failed to serialize an event. This usually indicates a bug in field values (e.g., a channel or function passed as a field value). |
 
 ### Informational — Track for Visibility
@@ -81,8 +81,10 @@ type prometheusMetrics struct {
     outputErrors *prometheus.CounterVec
 }
 
-func (m *prometheusMetrics) RecordEvent(output, status string) {
-    m.events.WithLabelValues(output, status).Inc()
+func (m *prometheusMetrics) RecordEvent(output string, status audit.EventStatus) {
+    // EventStatus is a typed string so string(status) is a zero-cost
+    // conversion — pass it straight to WithLabelValues.
+    m.events.WithLabelValues(output, string(status)).Inc()
 }
 
 func (m *prometheusMetrics) RecordBufferDrop() {
@@ -122,7 +124,7 @@ Where:
 |-------|-----------|--------|
 | Audit buffer drops | `RecordBufferDrop` > 0 in 5 minutes | Increase buffer size or investigate slow outputs |
 | Output failure | `RecordOutputError` > threshold | Check output connectivity (syslog server, webhook endpoint, disk space) |
-| Delivery error rate | `RecordEvent("error")` / total > 5% | Investigate failing output |
+| Delivery error rate | `RecordEvent(_, EventError)` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
 ## 🔀 Per-Output Metrics (`OutputMetrics`)
@@ -249,7 +251,7 @@ auditor, _, metrics := audittest.New(t, taxonomyYAML)
 // ... emit events ...
 auditor.Close()
 
-assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
+assert.Equal(t, 1, metrics.EventDeliveries("recorder", audit.EventSuccess))
 assert.Equal(t, 0, metrics.BufferDrops())
 ```
 

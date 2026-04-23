@@ -445,12 +445,12 @@ type DeliveryReporter interface {
 ### What It Controls
 
 When `ReportsDelivery()` returns `true`, the core auditor's post-write
-logic skips `Metrics.RecordEvent(outputName, "success"|"error")` and
+logic skips `Metrics.RecordEvent(outputName, audit.EventSuccess | audit.EventError)` and
 `Metrics.RecordOutputError(outputName)` for that output. Delivery
 accounting is left entirely to the output via `OutputMetrics`:
 
-- `RecordFlush` replaces `Metrics.RecordEvent(name, "success")`
-- `RecordError` replaces `Metrics.RecordEvent(name, "error")` and
+- `RecordFlush` replaces `Metrics.RecordEvent(name, audit.EventSuccess)`
+- `RecordError` replaces `Metrics.RecordEvent(name, audit.EventError)` and
   `Metrics.RecordOutputError(name)`
 
 **Panic exception:** if the output panics during `Write`, the core

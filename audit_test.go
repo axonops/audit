@@ -1417,7 +1417,7 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	// Close drains all pending events and completes metric recording.
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("bad-write", "error"), 0)
+	assert.Greater(t, metrics.GetEventCount("bad-write", audit.EventError), 0)
 	assert.Greater(t, metrics.GetOutputErrorCount("bad-write"), 0)
 }
 
@@ -2046,9 +2046,9 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 	assert.Equal(t, 1, out.EventCount())
 
 	// The core auditor must not have called RecordEvent for this output.
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "success"),
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventSuccess),
 		"core auditor must not call RecordEvent(success) for DeliveryReporter outputs")
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", "error"),
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventError),
 		"core auditor must not call RecordEvent(error) for DeliveryReporter outputs")
 }
 
@@ -2073,9 +2073,9 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 	require.NoError(t, auditor.Close())
 
 	// Core auditor must not record any metrics for the self-reporting output.
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "success"),
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventSuccess),
 		"core auditor must not call RecordEvent(success) for DeliveryReporter outputs")
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", "error"),
+	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventError),
 		"core auditor must not call RecordEvent(error) for DeliveryReporter outputs")
 
 	metrics.Mu.Lock()
@@ -2104,7 +2104,7 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 	})))
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("plain", "success"), 0,
+	assert.Greater(t, metrics.GetEventCount("plain", audit.EventSuccess), 0,
 		"core auditor must call RecordEvent(success) for plain (non-DeliveryReporter) outputs")
 }
 
@@ -4401,9 +4401,9 @@ func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("mw-metrics", "success"), 0,
+	assert.Greater(t, metrics.GetEventCount("mw-metrics", audit.EventSuccess), 0,
 		"RecordEvent(name, \"success\") must be called after a successful WriteWithMetadata")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-metrics", "error"),
+	assert.Equal(t, 0, metrics.GetEventCount("mw-metrics", audit.EventError),
 		"RecordEvent(name, \"error\") must not be called on success")
 	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-metrics"),
 		"RecordOutputError must not be called on success")
@@ -4435,11 +4435,11 @@ func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
 
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("mw-err-out", "error"), 0,
+	assert.Greater(t, metrics.GetEventCount("mw-err-out", audit.EventError), 0,
 		"RecordEvent(name, \"error\") must be called when WriteWithMetadata returns an error")
 	assert.Greater(t, metrics.GetOutputErrorCount("mw-err-out"), 0,
 		"RecordOutputError must be called when WriteWithMetadata returns an error")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-err-out", "success"),
+	assert.Equal(t, 0, metrics.GetEventCount("mw-err-out", audit.EventSuccess),
 		"RecordEvent(name, \"success\") must not be called when WriteWithMetadata returns an error")
 }
 
@@ -4474,9 +4474,9 @@ func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
 		"WriteWithMetadata must be called for an output that also implements DeliveryReporter")
 
 	// The core auditor must not have called any metrics for this output.
-	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", "success"),
+	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventSuccess),
 		"core auditor must not call RecordEvent(success) for a MetadataWriter+DeliveryReporter output")
-	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", "error"),
+	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventError),
 		"core auditor must not call RecordEvent(error) for a MetadataWriter+DeliveryReporter output")
 	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-dr"),
 		"core auditor must not call RecordOutputError for a MetadataWriter+DeliveryReporter output")

@@ -76,10 +76,10 @@ func (m *MockMetrics) RecordSubmitted() {
 	m.Submitted++
 }
 
-func (m *MockMetrics) RecordEvent(output, status string) {
+func (m *MockMetrics) RecordEvent(output string, status audit.EventStatus) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	m.Events[output+":"+status]++
+	m.Events[output+":"+string(status)]++
 	select {
 	case m.EventCh <- struct{}{}:
 	default:
@@ -189,10 +189,10 @@ func (m *MockMetrics) GetOutputFiltered(output string) int {
 }
 
 // GetEventCount returns the count of events for the named output and status.
-func (m *MockMetrics) GetEventCount(output, status string) int {
+func (m *MockMetrics) GetEventCount(output string, status audit.EventStatus) int {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	return m.Events[output+":"+status]
+	return m.Events[output+":"+string(status)]
 }
 
 // GetSerializationErrorCount returns the count of serialization errors for the event type.

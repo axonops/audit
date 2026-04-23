@@ -202,10 +202,10 @@ func newMockMetrics() *mockMetrics {
 
 // --- audit.Metrics methods ---
 
-func (m *mockMetrics) RecordEvent(output, status string) {
+func (m *mockMetrics) RecordEvent(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.events[output+":"+status]++
+	m.events[output+":"+string(status)]++
 }
 
 func (m *mockMetrics) RecordOutputError(output string) {
@@ -250,10 +250,10 @@ func (m *mockMetrics) RecordQueueDepth(_, _ int) {}
 
 // --- Accessors ---
 
-func (m *mockMetrics) getEventCount(output, status string) int {
+func (m *mockMetrics) getEventCount(output string, status audit.EventStatus) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.events[output+":"+status]
+	return m.events[output+":"+string(status)]
 }
 
 var _ audit.Metrics = (*mockMetrics)(nil)
@@ -1302,13 +1302,13 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	// and recorded metrics before we close.
 	name := out.Name()
 	require.Eventually(t, func() bool {
-		return metrics.getEventCount(name, "success") == 3
+		return metrics.getEventCount(name, audit.EventSuccess) == 3
 	}, 5*time.Second, 10*time.Millisecond,
 		"RecordEvent(success) should be called once per delivered event")
 
 	require.NoError(t, out.Close())
 
-	assert.Equal(t, 0, metrics.getEventCount(name, "error"),
+	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
 		"RecordEvent(error) should not be called on success")
 }
 
@@ -1335,9 +1335,9 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	name := out.Name()
-	assert.Equal(t, 2, metrics.getEventCount(name, "error"),
+	assert.Equal(t, 2, metrics.getEventCount(name, audit.EventError),
 		"RecordEvent(error) should be called once per dropped event")
-	assert.Equal(t, 0, metrics.getEventCount(name, "success"),
+	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventSuccess),
 		"RecordEvent(success) should not be called when retries exhausted")
 }
 
@@ -1367,7 +1367,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	name := out.Name()
-	assert.Greater(t, metrics.getEventCount(name, "error"), 0,
+	assert.Greater(t, metrics.getEventCount(name, audit.EventError), 0,
 		"RecordEvent(error) should be called for buffer overflow drops")
 }
 
@@ -1407,7 +1407,7 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	// that the client has read the response and recorded metrics.
 	name := webhookOut.Name()
 	require.Eventually(t, func() bool {
-		return metrics.getEventCount(name, "success") == 1
+		return metrics.getEventCount(name, audit.EventSuccess) == 1
 	}, 5*time.Second, 10*time.Millisecond,
 		"webhook should report delivery success from batch goroutine")
 
@@ -1424,10 +1424,10 @@ type coreOnlyMetrics struct {
 	mu     sync.Mutex
 }
 
-func (m *coreOnlyMetrics) RecordEvent(output, status string) {
+func (m *coreOnlyMetrics) RecordEvent(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.events[output+":"+status]++
+	m.events[output+":"+string(status)]++
 }
 
 func (m *coreOnlyMetrics) RecordOutputError(_ string)        {}

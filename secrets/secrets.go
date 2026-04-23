@@ -33,23 +33,23 @@ var (
 	// ErrMalformedRef indicates a string starts with "ref+" but is
 	// structurally invalid (missing scheme, path, key, or contains
 	// path traversal).
-	ErrMalformedRef = errors.New("secrets: malformed secret reference")
+	ErrMalformedRef = errors.New("audit/secrets: malformed secret reference")
 
 	// ErrProviderNotRegistered indicates no provider is registered
 	// for the scheme in a ref URI.
-	ErrProviderNotRegistered = errors.New("secrets: no provider registered for scheme")
+	ErrProviderNotRegistered = errors.New("audit/secrets: no provider registered for scheme")
 
 	// ErrSecretNotFound indicates the secret path exists but the
 	// requested key was not found.
-	ErrSecretNotFound = errors.New("secrets: secret not found at path")
+	ErrSecretNotFound = errors.New("audit/secrets: secret not found at path")
 
 	// ErrSecretResolveFailed indicates a transient or permanent
 	// failure during secret resolution (network error, auth failure).
-	ErrSecretResolveFailed = errors.New("secrets: secret resolution failed")
+	ErrSecretResolveFailed = errors.New("audit/secrets: secret resolution failed")
 
 	// ErrUnresolvedRef indicates that after all resolution passes, a
 	// string in the config still contains a ref+ URI.
-	ErrUnresolvedRef = errors.New("secrets: unresolved secret reference in config")
+	ErrUnresolvedRef = errors.New("audit/secrets: unresolved secret reference in config")
 )
 
 // Provider resolves secret references to their plaintext values.

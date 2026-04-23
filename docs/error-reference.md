@@ -254,7 +254,7 @@ URIs cannot be resolved. All errors are in `github.com/axonops/audit/secrets`.
 ### `ErrMalformedRef`
 
 ```
-secrets: malformed secret reference
+audit/secrets: malformed secret reference
 ```
 
 | | |
@@ -267,7 +267,7 @@ secrets: malformed secret reference
 ### `ErrProviderNotRegistered`
 
 ```
-secrets: no provider registered for scheme
+audit/secrets: no provider registered for scheme
 ```
 
 | | |
@@ -275,12 +275,12 @@ secrets: no provider registered for scheme
 | **When** | A ref URI references a scheme for which no `WithSecretProvider` was registered |
 | **Meaning** | The library cannot resolve this ref because no provider handles the scheme |
 | **Transient?** | No -- register the correct provider or fix the scheme in the ref URI |
-| **What to do** | The error message includes the scheme and the field path: `secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)`. Add the missing `outputconfig.WithSecretProvider(provider)` call, or correct the scheme in the ref URI. |
+| **What to do** | The error message includes the scheme and the field path: `audit/secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)`. Add the missing `outputconfig.WithSecretProvider(provider)` call, or correct the scheme in the ref URI. |
 
 ### `ErrSecretNotFound`
 
 ```
-secrets: secret not found at path
+audit/secrets: secret not found at path
 ```
 
 | | |
@@ -293,7 +293,7 @@ secrets: secret not found at path
 ### `ErrSecretResolveFailed`
 
 ```
-secrets: secret resolution failed
+audit/secrets: secret resolution failed
 ```
 
 | | |
@@ -306,7 +306,7 @@ secrets: secret resolution failed
 ### `ErrUnresolvedRef`
 
 ```
-secrets: unresolved secret reference in config
+audit/secrets: unresolved secret reference in config
 ```
 
 | | |

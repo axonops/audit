@@ -355,7 +355,7 @@ func TestSentinelErrors_HaveSecretsPrefix(t *testing.T) {
 		secrets.ErrUnresolvedRef,
 	}
 	for _, e := range errs {
-		assert.Contains(t, e.Error(), "secrets:", "error %q should have secrets: prefix", e)
+		assert.Contains(t, e.Error(), "audit/secrets:", "error %q should have audit/secrets: prefix", e)
 	}
 }
 

@@ -236,7 +236,7 @@ URIs in the YAML configuration cannot be resolved. `Load` fails hard
 ### 403 Authentication Failure
 
 ```
-secrets: secret resolution failed: authentication failed (403)
+audit/secrets: secret resolution failed: authentication failed (403)
 ```
 
 | Cause | Fix |
@@ -248,7 +248,7 @@ secrets: secret resolution failed: authentication failed (403)
 ### 404 Path Not Found
 
 ```
-secrets: secret not found at path: path returned 404
+audit/secrets: secret not found at path: path returned 404
 ```
 
 | Cause | Fix |
@@ -277,7 +277,7 @@ single timeout budget.
 ### Unresolved Ref After Resolution
 
 ```
-secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference
+audit/secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference
 ```
 
 | Cause | Fix |
@@ -290,7 +290,7 @@ secrets: unresolved secret reference in config: field outputs.siem.webhook.heade
 ### SSRF Blocking the Connection
 
 ```
-secrets: secret resolution failed: loopback address 127.0.0.1 blocked
+audit/secrets: secret resolution failed: loopback address 127.0.0.1 blocked
 ```
 
 | Cause | Fix |

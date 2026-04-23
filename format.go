@@ -113,8 +113,26 @@ func (o *FormatOptions) IsExcluded(fieldName string) bool {
 // Implementations MUST append a newline terminator. The library
 // provides [JSONFormatter] and [CEFFormatter].
 //
-// Format is called from a single goroutine (the drain loop);
-// implementations do not need to be safe for concurrent use.
+// # Concurrency
+//
+// A single Auditor's drain loop calls Format from one goroutine at a
+// time, but a formatter instance MAY be shared across multiple
+// Auditors via [WithFormatter] (multi-tenant or multi-pipeline
+// deployments) and MAY be called from caller goroutines in
+// synchronous delivery mode. Implementations MUST be safe for
+// concurrent use.
+//
+// Stateless formatters satisfy this trivially. Formatters that cache
+// derived state (resolved field mappings, compiled templates, metric
+// handles) SHOULD guard the state with [sync.Once] for one-shot
+// initialisation or [sync.RWMutex] / [sync/atomic] for mutable
+// caches. The package-level [sync.Pool] pattern used by the built-in
+// [JSONFormatter] and [CEFFormatter] is the recommended shape for
+// per-call buffer reuse.
+//
+// Precedent: [log/slog.Handler.Handle], [net/http.Handler.ServeHTTP],
+// and [encoding/json.Marshaler] all require concurrent-safe
+// implementations by the same reasoning.
 type Formatter interface {
 	// Format serialises a single audit event into a wire-format byte
 	// slice. Implementations MUST append a newline terminator; the

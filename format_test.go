@@ -2209,3 +2209,113 @@ func TestCEFFormatter_AcceptsBoundaryVendor(t *testing.T) {
 	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
 	assert.NoError(t, err)
 }
+
+// TestCEFFormatter_ConcurrentFormat is the named contract test from
+// #589. It verifies the [audit.Formatter] interface's documented
+// concurrency contract: a single formatter instance MAY be shared
+// across goroutines and MUST be safe for concurrent use.
+//
+// The test runs Format from 64 goroutines against one *CEFFormatter
+// instance. Combined with `go test -race`, it locks the contract at
+// compile time — any future regression that introduces an unguarded
+// write to shared formatter state (e.g. removing the sync.Once
+// around fieldMapping) will fail here under the race detector.
+func TestCEFFormatter_ConcurrentFormat(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "AxonOps",
+		Product: "Audit",
+		Version: "1.0",
+		FieldMapping: map[string]string{
+			"actor_id": "suser",
+			"outcome":  "outcome",
+		},
+	}
+	def := &audit.EventDef{
+		Required: []string{"outcome", "actor_id"},
+	}
+
+	const goroutines = 64
+	const iterations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errCh := make(chan error, goroutines*iterations)
+
+	for g := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			for i := range iterations {
+				fields := audit.Fields{
+					"outcome":  "success",
+					"actor_id": fmt.Sprintf("goroutine-%d-iter-%d", id, i),
+				}
+				line, err := f.Format(testTime, "user_create", fields, def, nil)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				// Basic CEF header sanity — concurrent access must not
+				// corrupt the output.
+				if !bytes.HasPrefix(line, []byte("CEF:0|AxonOps|Audit|1.0|")) {
+					errCh <- fmt.Errorf("goroutine %d iter %d: malformed CEF header: %s", id, i, line)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Errorf("concurrent Format failure: %v", err)
+	}
+}
+
+// TestJSONFormatter_ConcurrentFormat mirrors
+// TestCEFFormatter_ConcurrentFormat for [audit.JSONFormatter]. Though
+// JSONFormatter holds only write-once configuration, the contract
+// test locks the concurrent-safety guarantee in place regardless of
+// future implementation drift.
+func TestJSONFormatter_ConcurrentFormat(t *testing.T) {
+	t.Parallel()
+	f := &audit.JSONFormatter{}
+	def := &audit.EventDef{Required: []string{"outcome", "actor_id"}}
+
+	const goroutines = 64
+	const iterations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errCh := make(chan error, goroutines*iterations)
+
+	for g := range goroutines {
+		go func(id int) {
+			defer wg.Done()
+			for i := range iterations {
+				fields := audit.Fields{
+					"outcome":  "success",
+					"actor_id": fmt.Sprintf("g%d-i%d", id, i),
+				}
+				line, err := f.Format(testTime, "user_create", fields, def, nil)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				// Confirm the output is valid JSON; concurrent access
+				// must not interleave bytes from different goroutines.
+				var m map[string]any
+				if jerr := json.Unmarshal(bytes.TrimSuffix(line, []byte{'\n'}), &m); jerr != nil {
+					errCh <- fmt.Errorf("goroutine %d iter %d: invalid JSON: %w: %s", id, i, jerr, line)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Errorf("concurrent Format failure: %v", err)
+	}
+}

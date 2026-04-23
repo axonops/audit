@@ -132,6 +132,14 @@ func DefaultCEFFieldMapping() map[string]string {
 // the taxonomy-defined severity is used via [EventDef.ResolvedSeverity]:
 // event Severity (if non-nil) → first category Severity in alphabetical
 // order (if non-nil) → 5. Values are clamped to the valid CEF range 0-10.
+//
+// # Concurrency
+//
+// Safe for concurrent use by multiple goroutines, per the
+// [Formatter] contract. Lazy field-mapping resolution is guarded by
+// [sync.Once], and per-call buffers are leased from a package-level
+// [sync.Pool]. The noCopy marker prevents accidental copies that
+// would duplicate the sync.Once state.
 type CEFFormatter struct {
 	// SeverityFunc maps event types to CEF severity (0-10). If nil,
 	// taxonomy-defined severity is used via [EventDef.ResolvedSeverity].

@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `audit.Formatter` godoc now declares that `Format` MUST be safe for concurrent use (#589). Previous godoc stated the method was called from a single goroutine, but the library's own `CEFFormatter` used `sync.Once` + `noCopy` for exactly the opposite reason — a shared formatter instance across multiple Auditors calls Format concurrently. The contract is updated to match the built-in implementation and the stdlib precedent (`log/slog.Handler`, `net/http.Handler`, `encoding/json.Marshaler`). Godoc on `JSONFormatter` + `CEFFormatter` adds a "Concurrency" section describing the `sync.Once` / `sync.Pool` pattern used internally. No behavioural change to the built-in formatters — the implementation has been concurrency-safe since inception. Consumer-side `Formatter` implementations that relied on the old single-goroutine wording must guard any mutable state (field caches, compiled templates) with `sync.Once` / `sync.RWMutex` / `sync/atomic`. A new `TestCEFFormatter_ConcurrentFormat` + `TestJSONFormatter_ConcurrentFormat` in `format_test.go` locks the contract at test time — run with `-race`, a future regression will fail loudly.
+
 - All examples (`examples/02-code-generation` through `examples/17-capstone`) now blank-import the `outputs` convenience package in place of individual output-module imports (#585). README + `docs/output-configuration.md` now lead with `import _ "github.com/axonops/audit/outputs"` as the default registration path, with individual sub-module imports documented as a binary-size optimisation. No API change; consumers who already use either pattern are unaffected.
 
 ### Fixed

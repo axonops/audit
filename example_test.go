@@ -40,6 +40,8 @@ func ExampleNew() {
 				"user_create": {Required: []string{"outcome", "actor_id"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(stdout),
 	)
 	if err != nil {
@@ -82,6 +84,8 @@ func ExampleAuditor_AuditEvent() {
 				"doc_create": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(stdout),
 	)
 	if err != nil {
@@ -114,6 +118,8 @@ func ExampleAuditor_MustHandle() {
 				"doc_create": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -149,6 +155,8 @@ func ExampleAuditor_EnableCategory() {
 				"doc_create": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -178,6 +186,8 @@ func ExampleAuditor_Close() {
 				"doc_create": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -215,6 +225,8 @@ func ExampleWithFormatter() {
 				"auth_failure": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithFormatter(cef),
 	)
 	if err != nil {
@@ -283,6 +295,8 @@ func ExampleAuditor_SetOutputRoute() {
 				"auth_failure": {Required: []string{"outcome"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 	)
 	if err != nil {

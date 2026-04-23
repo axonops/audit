@@ -8,12 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `audit.MinSeverity` / `audit.MaxSeverity` constants (#593 B-27) replace the magic-number `0` / `10` range checks in `filter.go:validateSeverityRange`, `taxonomy.go:clampSeverity`, and `validate_taxonomy.go:checkSeverityRanges`. Godoc on each constant documents the inclusive CEF range semantic. Consumers may use these in their own severity validation to stay aligned with the library's contract.
+- `audit.ErrTaxonomyRequired`, `audit.ErrAppNameRequired`, and `audit.ErrHostRequired` sentinel errors (#593 B-41) returned by `audit.New` when the corresponding `WithTaxonomy` / `WithAppName` / `WithHost` is unset (unless `WithDisabled` is also applied). Matches the `outputconfig.Load` YAML-path requirement so programmatic and declarative construction share identical invariants. Discriminate via `errors.Is(err, audit.ErrAppNameRequired)`.
 - `audittest.Recorder.WaitForN(tb, n, timeout)` — blocks until at least `n` events have been recorded or the timeout elapses; returns `true` on success, `false` on timeout. Use in async-mode tests (`audittest.WithAsync`) or tests whose service emits from a goroutine. Poll interval is 10 ms, matching `testify/assert.Eventually`. The fast path returns immediately when the target is already reached. Synchronous auditors (the default for `New` / `NewQuick`) do not need `WaitForN` — events are recorded before `AuditEvent` returns; prefer `Count()` / `RequireEvents` there. Closes #566.
 - `audittest.WithExcludeLabels(outputName, labels...)` — applies sensitivity-label exclusion to the test recorder, mirroring `audit.WithExcludeLabels` on a named output. Lets consumer tests assert that a compliance output does NOT receive `pii`- or `financial`-labelled fields. `outputName` MUST match the recorder's name (`"recorder"` by default, or whatever was passed to `NewNamedRecorder`) — a mismatch calls `tb.Fatalf` at construction. Multiple calls accumulate labels. Internally, `audittest.New` / `audittest.NewQuick` switch from `audit.WithOutputs(rec)` to `audit.WithNamedOutput(rec, audit.WithExcludeLabels(...))` when any `audittest.WithExcludeLabels` option is present; this is observable only when the option is used. Closes #566.
 
 > **Deviations from #566 AC (accepted):** (1) `audittest.PermissiveTaxonomy()` NOT added — `audittest.QuickTaxonomy()` already exists and fills the same role; adding a second name violates the "one obvious way" principle. (2) `WithExcludedLabels` renamed to `WithExcludeLabels` to match core `audit.WithExcludeLabels` exactly (no "d"). (3) AC named `RecordedEvents.WaitForN` (a type name from the original issue draft that was never implemented in the codebase) — the actual type is `*audittest.Recorder`, so `WaitForN` is a method on `*Recorder`. All three deviations confirmed with api-ergonomics-reviewer.
 
 ### Changed
+
+- Small API-polish bundle #593:
+  - **B-17** TLSPolicy zero-value docs & tests verified — no code change (already documented and tested at `tls_policy.go:19-39`; `TestTLSPolicy_Apply_NilReceiver_DefaultsTLS13` and `TestTLSPolicy_Apply_ZeroValue_DefaultsTLS13` already present).
+  - **B-27** Exported `MinSeverity` / `MaxSeverity` severity-range constants; updated four magic-number call sites (`filter.go`, `taxonomy.go`, `validate_taxonomy.go`). See `### Added` above.
+  - **B-29** `Auditor.Handle` godoc now documents that a disabled auditor yields a no-op `EventHandle` for any event type without taxonomy validation, matching `AuditEvent` on a disabled auditor. New `TestAuditorHandle_DisabledAuditor_ReturnsNoOpHandle` locks the contract.
+  - **B-33** `secrets/openbao.Provider.Close` and `secrets/vault.Provider.Close` godoc now explicitly claims idempotency ("repeated calls are safe, return nil, and do not panic"). Behaviour already matches; new `TestOpenbaoClose_IsIdempotent` and `TestVaultClose_IsIdempotent` lock it.
+  - **B-39** `audittest` internal helper rename: `newTestLogger` → `newTestAuditor` for symmetry with the rest of the `Logger` → `Auditor` migration (#586 et al.). Also `TestNewLogger` → `TestNew`. Unexported, no consumer impact.
+  - **B-41** `audit.New` now requires `WithAppName` and `WithHost` (unless `WithDisabled`). See `### Added` above for sentinels and `### Breaking Changes` for migration.
+  - **B-45** Option classification documented in `options.go` package comment and per-option godoc: Required options (`WithTaxonomy`, `WithFormatter`, `WithAppName`, `WithHost`, `WithTimezone`) reject nil/empty; Optional options (`WithMetrics`, `WithDiagnosticLogger`, `WithStandardFieldDefaults`) accept nil with a documented default. No runtime behaviour change — clarification of an already-mixed-but-sensible policy, following the `net/http.Client.Transport` vs `net/http.Server.Handler` pattern.
 
 - Error-prefix convention unified across every module on the Go import-path pattern (#592). A CI grep check to enforce the convention is deferred to a follow-up issue. All modules now prefix errors with their dotted module path:
   - `audit:` (core — unchanged)
@@ -41,6 +52,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Examples `02-code-generation`, `04-testing`, `06-middleware`, `13-standard-fields`, and `15-tls-policy` failed at runtime with `unknown output type "stdout"` because they declared `type: stdout` in `outputs.yaml` without blank-importing anything that registered the stdout factory (stdout auto-registration was removed in #578). The new `_ "github.com/axonops/audit/outputs"` blank import registers stdout alongside the other built-ins (#585).
 
 ### Breaking Changes
+
+- `audit.New` now rejects configurations that omit `WithAppName` or `WithHost` (#593 B-41), matching the existing `outputconfig.Load` YAML-path contract. Missing values yield `ErrAppNameRequired` / `ErrHostRequired`. Callers using `WithDisabled` remain free of the requirement. Migration:
+  ```go
+  // Before (silent empty app_name / host on programmatic path):
+  auditor, err := audit.New(
+      audit.WithTaxonomy(tax),
+      audit.WithOutputs(out),
+  )
+
+  // After (required, compiler-friendly names):
+  auditor, err := audit.New(
+      audit.WithTaxonomy(tax),
+      audit.WithAppName("my-service"),
+      audit.WithHost(os.Hostname()),  // or a deterministic ID
+      audit.WithOutputs(out),
+  )
+  ```
+  `audittest.New` / `audittest.NewQuick` gain sensible test defaults (`"audittest"` / `"localhost"`) so existing tests continue to work without changes.
 
 - `audit.Metrics.RecordEvent` now takes a typed `audit.EventStatus` instead of a raw `string` (#586). New exported type `type EventStatus string` with constants `audit.EventSuccess` (`"success"`) and `audit.EventError` (`"error"`). Prometheus / OpenTelemetry wire format is unchanged — `string(status)` is a zero-cost conversion that emits the identical label bytes that were previously hardcoded. Consumers implementing the `Metrics` interface (e.g. Prometheus adapter) must update the `RecordEvent` method signature. Test mocks migrated in lockstep: `audittest.MetricsRecorder.EventDeliveries` and `internal/testhelper.MockMetrics.GetEventCount` both now take `audit.EventStatus`. Pre-coding consult with api-ergonomics-reviewer locked the `string`-backed enum over `int`-backed for hot-path efficiency and wire-format stability. Migration:
   ```go

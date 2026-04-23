@@ -1397,6 +1397,8 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)

@@ -507,6 +507,8 @@ func TestFieldStripping_SingleLabel(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
@@ -555,6 +557,8 @@ func TestFieldStripping_MultiLabel_AnyOverlap(t *testing.T) {
 	// Exclude financial only — card_number is stripped.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("financial")),
 	)
 	require.NoError(t, err)
@@ -588,6 +592,8 @@ func TestFieldStripping_DifferentOutputs(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(outAll),                                   // no exclusions
 		audit.WithNamedOutput(outNoPII, audit.WithExcludeLabels("pii")), // exclude PII
 	)
@@ -627,6 +633,8 @@ func TestFieldStripping_NoExclusion_AllFields(t *testing.T) {
 	// No exclude_labels → all fields delivered.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout),
 	)
 	require.NoError(t, err)
@@ -673,6 +681,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
@@ -719,6 +729,8 @@ events:
 
 	_, err = audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.Error(t, err)
@@ -749,6 +761,8 @@ events:
 
 	_, err = audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("nonexistent")),
 	)
 	require.Error(t, err)
@@ -788,6 +802,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
@@ -828,6 +844,8 @@ func TestFormatWithExclusion_ExclusionPath(t *testing.T) {
 	// Output with exclusions — formatOpts should be pre-allocated.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
@@ -865,6 +883,8 @@ func TestFormatWithExclusion_NoExclusionNoOverhead(t *testing.T) {
 	// Output WITHOUT exclusions — formatOpts should be nil.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout),
 	)
 	require.NoError(t, err)
@@ -894,6 +914,8 @@ func TestFormatWithExclusion_MultipleOutputsDifferentExclusions(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(outAll),
 		audit.WithNamedOutput(outNoPII, audit.WithExcludeLabels("pii")),
 		audit.WithNamedOutput(outNoFinancial, audit.WithExcludeLabels("financial")),
@@ -943,6 +965,8 @@ func TestFieldStripping_Concurrent(t *testing.T) {
 	out := testhelper.NewMockOutput("concurrent")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithExcludeLabels("pii")),
 	)
 	require.NoError(t, err)
@@ -1115,6 +1139,8 @@ func BenchmarkDeliverToOutputs_MultiOutput_MixedExclusion(b *testing.B) {
 	outFiltered := testhelper.NewMockOutput("filtered")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(outAll),
 		audit.WithNamedOutput(outFiltered, audit.WithExcludeLabels("pii")),
 	)
@@ -1145,6 +1171,8 @@ func benchAuditWithExclusions(b *testing.B, taxonomyYAML string, excludeLabels [
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {

@@ -369,6 +369,8 @@ func TestSetRoute_CopiesMinSeverityPointer(t *testing.T) {
 	out := testhelper.NewMockOutput("copy-min")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
@@ -401,6 +403,8 @@ func TestSetRoute_CopiesMaxSeverityPointer(t *testing.T) {
 	out := testhelper.NewMockOutput("copy-max")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
@@ -432,6 +436,8 @@ func TestGetRoute_ReturnsIndependentSeverityPointers(t *testing.T) {
 	out := testhelper.NewMockOutput("get-copy")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{MinSeverity: intPtr(4)})),
 	)
 	require.NoError(t, err)
@@ -463,6 +469,8 @@ func TestSetRoute_NilSeverityPointersPreserved(t *testing.T) {
 	out := testhelper.NewMockOutput("nil-sev")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)
@@ -679,6 +687,8 @@ func TestAudit_SeverityRouteFiltersInDrainLoop(t *testing.T) {
 	out := testhelper.NewMockOutput("sev-filter")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{MinSeverity: intPtr(7)})),
 	)
 	require.NoError(t, err)
@@ -734,6 +744,8 @@ events:
 	out := testhelper.NewMockOutput("force-enabled")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		// Output route: MinSeverity 5 — only events with severity >= 5 delivered.
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{MinSeverity: intPtr(5)})),
 	)
@@ -878,6 +890,8 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 	)
 	require.NoError(t, err)

@@ -370,7 +370,13 @@ func (p *Provider) fetchPath(ctx context.Context, path string) (map[string]strin
 
 // Close releases resources held by the provider and zeroes the
 // authentication token from memory (best-effort; Go GC may retain
-// copies). Close is idempotent.
+// copies).
+//
+// Close is idempotent: repeated calls are safe, return nil, and do
+// not panic. Token zeroing on an already-zero slice is a no-op, and
+// [http.Client.CloseIdleConnections] is safe to invoke multiple
+// times per the stdlib contract. Calls to [Provider.Resolve] after
+// Close will fail with a connection error.
 func (p *Provider) Close() error {
 	// Zero token from memory.
 	for i := range p.token {

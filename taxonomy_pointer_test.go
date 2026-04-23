@@ -68,6 +68,8 @@ func TestWithTaxonomy_NilPointer_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := audit.New(
 		audit.WithTaxonomy(nil),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
@@ -99,6 +101,8 @@ events:
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -135,6 +139,8 @@ func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectAuditor(t *testing.T
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -176,6 +182,8 @@ func TestWithTaxonomy_InlineTaxonomy_TakesAddress(t *testing.T) {
 				"ev1": {Required: []string{"f1"}},
 			},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())

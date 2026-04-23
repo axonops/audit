@@ -48,3 +48,20 @@ Feature: Auditor Configuration
       """
       audit: event "user_create" has unknown fields: [extra]
       """
+
+  # --- Required AppName / Host (#593 B-41) ---
+
+  Scenario: audit.New without WithAppName fails with ErrAppNameRequired
+    Given a standard test taxonomy
+    When I try to create an auditor without WithAppName
+    Then the auditor construction should fail with ErrAppNameRequired
+
+  Scenario: audit.New without WithHost fails with ErrHostRequired
+    Given a standard test taxonomy
+    When I try to create an auditor without WithHost
+    Then the auditor construction should fail with ErrHostRequired
+
+  Scenario: Disabled auditor bypasses AppName / Host requirement
+    Given a standard test taxonomy
+    When I try to create a disabled auditor without WithAppName or WithHost
+    Then the auditor should be created successfully

@@ -51,7 +51,7 @@ events:
       actor_id: {required: true}
 `)
 
-func TestNewLogger(t *testing.T) {
+func TestNew(t *testing.T) {
 	t.Parallel()
 	auditor, events, metrics := audittest.New(t, testTaxonomyYAML)
 

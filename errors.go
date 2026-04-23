@@ -79,6 +79,27 @@ var (
 	// [Auditor.Handle] returns a valid no-op handle instead.
 	ErrDisabled = errors.New("audit: auditor is disabled")
 
+	// ErrTaxonomyRequired is returned by [New] when [WithTaxonomy] was
+	// not called (unless [WithDisabled] is applied). Sibling of
+	// [ErrAppNameRequired] / [ErrHostRequired] — all three mark missing
+	// required options and support [errors.Is] discrimination.
+	ErrTaxonomyRequired = errors.New("audit: taxonomy is required: use WithTaxonomy")
+
+	// ErrAppNameRequired is returned by [New] when [WithAppName] was
+	// not called. All auditors (except those constructed with
+	// [WithDisabled]) must set an app name for compliance — every
+	// emitted event carries app_name as a framework field, and a blank
+	// value undermines attribution. Matches the [outputconfig.Load]
+	// YAML-path requirement for symmetry across construction paths.
+	ErrAppNameRequired = errors.New("audit: app_name is required: use WithAppName")
+
+	// ErrHostRequired is returned by [New] when [WithHost] was not
+	// called. All auditors (except those constructed with [WithDisabled])
+	// must set a host identifier for compliance. Matches the
+	// [outputconfig.Load] YAML-path requirement for symmetry across
+	// construction paths.
+	ErrHostRequired = errors.New("audit: host is required: use WithHost")
+
 	// ErrTaxonomyInvalid is the sentinel error wrapped by taxonomy
 	// validation failures. Use [errors.Is] to test for it:
 	//

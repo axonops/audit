@@ -30,6 +30,8 @@ func TestSyncLogger_EventAvailableImmediately(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -53,6 +55,8 @@ func TestSyncLogger_CloseIsSafe(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -70,6 +74,8 @@ func TestSyncLogger_ValidationStillRuns(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

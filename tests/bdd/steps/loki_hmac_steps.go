@@ -279,7 +279,6 @@ func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string,
 		})))
 	}
 	opts = append(opts, audit.WithNamedOutput(out, lokiOpts...))
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

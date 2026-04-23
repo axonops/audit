@@ -60,6 +60,16 @@ func registerConfigWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		return tryCreateAuditor(tc, audit.WithDisabled())
 	})
 
+	ctx.Step(`^I try to create an auditor without WithAppName$`, func() error {
+		return tryCreateAuditorWithoutAppNameOrHost(tc, true, false)
+	})
+	ctx.Step(`^I try to create an auditor without WithHost$`, func() error {
+		return tryCreateAuditorWithoutAppNameOrHost(tc, false, true)
+	})
+	ctx.Step(`^I try to create a disabled auditor without WithAppName or WithHost$`, func() error {
+		return tryCreateAuditorWithoutAppNameOrHost(tc, true, true, audit.WithDisabled())
+	})
+
 }
 
 func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -68,6 +78,12 @@ func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 	ctx.Step(`^the auditor construction should fail wrapping "([^"]*)"$`, func(s string) error {
 		return assertConstructionSentinel(tc, s)
+	})
+	ctx.Step(`^the auditor construction should fail with ErrAppNameRequired$`, func() error {
+		return assertConstructionSentinelValue(tc, "ErrAppNameRequired", audit.ErrAppNameRequired)
+	})
+	ctx.Step(`^the auditor construction should fail with ErrHostRequired$`, func() error {
+		return assertConstructionSentinelValue(tc, "ErrHostRequired", audit.ErrHostRequired)
 	})
 	ctx.Step(`^the auditor construction should fail with an error$`, func() error {
 		return assertConstructionFailed(tc)
@@ -103,6 +119,41 @@ func registerConfigThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 }
 
+// tryCreateAuditorWithoutAppNameOrHost exercises the #593 B-41 required-
+// options contract by omitting WithAppName / WithHost (as selected by
+// the flags) to trigger the sentinel error. Any extraOpts are applied
+// as-is — passing audit.WithDisabled here short-circuits validation.
+func tryCreateAuditorWithoutAppNameOrHost(tc *AuditTestContext, skipAppName, skipHost bool, extraOpts ...audit.Option) error {
+	buf := &bytes.Buffer{}
+	tc.StdoutBuf = buf
+
+	stdoutOut, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: buf})
+	if err != nil {
+		return fmt.Errorf("create stdout output: %w", err)
+	}
+
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithOutputs(stdoutOut),
+	}
+	if !skipAppName {
+		opts = append(opts, audit.WithAppName("test-app"))
+	}
+	if !skipHost {
+		opts = append(opts, audit.WithHost("test-host"))
+	}
+	opts = append(opts, extraOpts...)
+
+	auditor, err := audit.New(opts...)
+	if err != nil {
+		tc.LastErr = err
+		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+	}
+	tc.Auditor = auditor
+	tc.AddCleanup(func() { _ = auditor.Close() })
+	return nil
+}
+
 // tryCreateAuditor creates an auditor with the given options and stores it
 // in the test context. If creation fails, the error is stored in tc.LastErr
 // without failing the step (the scenario may assert on the error).
@@ -117,6 +168,8 @@ func tryCreateAuditor(tc *AuditTestContext, extraOpts ...audit.Option) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(stdoutOut),
 	}
 	opts = append(opts, extraOpts...)
@@ -156,6 +209,16 @@ func assertConstructionSentinel(tc *AuditTestContext, sentinel string) error {
 		}
 	default:
 		return fmt.Errorf("unknown sentinel: %s", sentinel)
+	}
+	return nil
+}
+
+func assertConstructionSentinelValue(tc *AuditTestContext, name string, want error) error {
+	if tc.LastErr == nil {
+		return fmt.Errorf("expected %s, got nil", name)
+	}
+	if !errors.Is(tc.LastErr, want) {
+		return fmt.Errorf("expected %s, got: %w", name, tc.LastErr)
 	}
 	return nil
 }

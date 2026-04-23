@@ -895,6 +895,8 @@ func TestLogger_WithFormatter_Custom(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithFormatter(custom),
 	)
@@ -922,6 +924,8 @@ func TestLogger_DefaultJSONFormatter(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -950,6 +954,8 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithFormatter(cef),
 	)
@@ -970,6 +976,8 @@ func TestLogger_CEFViaWithFormatter(t *testing.T) {
 func TestLogger_WithFormatter_Nil(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithFormatter(nil),
 	)
 	require.Error(t, err)

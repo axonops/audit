@@ -227,7 +227,11 @@ func registerFileThenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 // --- Extracted step implementations ---
 
 func createNoOutputAuditor(tc *AuditTestContext) error {
-	opts := []audit.Option{audit.WithTaxonomy(tc.Taxonomy)}
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+	}
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
@@ -530,6 +534,8 @@ func createFileAuditorImpl(tc *AuditTestContext, fileCfg file.Config, fileMetric
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(fileOut),
 	}
 	if tc.MockMetrics != nil {
@@ -537,7 +543,6 @@ func createFileAuditorImpl(tc *AuditTestContext, fileCfg file.Config, fileMetric
 	}
 	opts = append(opts, tc.Options...)
 	opts = append(opts, extraOpts...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err

@@ -34,6 +34,8 @@ func TestAuditEvent_AllValidationErrors_WrapErrValidation(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -79,6 +81,8 @@ func TestAuditEvent_UnknownEventType_WrapsErrUnknownEventType(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -98,6 +102,8 @@ func TestAuditEvent_MissingRequired_WrapsErrMissingRequiredField(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -117,6 +123,8 @@ func TestAuditEvent_UnknownFieldStrict_WrapsErrUnknownField(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -160,6 +168,8 @@ func TestValidationError_ErrorsAs(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -182,6 +192,8 @@ func TestValidationError_MessageTextUnchanged(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -207,6 +219,8 @@ func TestValidationError_ConsumerWrapping_PreservesErrorsIs(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -231,6 +245,8 @@ func TestAuditEvent_WarnMode_NoSentinelLeak(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationWarn),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -250,6 +266,8 @@ func TestAuditEvent_PermissiveMode_NoSentinelLeak(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -272,6 +290,8 @@ func TestAuditEvent_ReservedStandardField_NotErrUnknownField(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -295,6 +315,8 @@ func TestAuditEvent_EmptyEventType_WrapsErrUnknownEventType(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -318,6 +340,8 @@ func TestValidationError_Unwrap_ReturnsIndependentSlice(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

@@ -134,6 +134,8 @@ func createMultiCatAuditor(tc *AuditTestContext, route *audit.EventRoute, format
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithRoute(route), audit.WithOutputFormatter(formatter)),
 	)
 	if err != nil {

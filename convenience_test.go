@@ -153,6 +153,8 @@ func TestDevTaxonomy_WarnsAtConstruction(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("ev1")),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(testhelper.NewMockOutput("test")),
 	)
 	require.NoError(t, err)
@@ -173,6 +175,8 @@ func TestFileFreePath_EndToEnd(t *testing.T) {
 	// WithValidationMode needed.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

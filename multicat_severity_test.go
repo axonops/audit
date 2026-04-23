@@ -71,6 +71,8 @@ events:
 	out := testhelper.NewMockOutput("pipeline")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -131,6 +133,8 @@ events:
 	out := testhelper.NewMockOutput("consistent")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -177,6 +181,8 @@ events:
 	out := testhelper.NewMockOutput("three-cats")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -217,6 +223,8 @@ events:
 	out := testhelper.NewMockOutput("concurrent-filter")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -499,6 +507,8 @@ events:
 			out := testhelper.NewMockOutput("sev-pipeline")
 			auditor, err := audit.New(
 				audit.WithTaxonomy(tax),
+				audit.WithAppName("test-app"),
+				audit.WithHost("test-host"),
 				audit.WithOutputs(out),
 			)
 			require.NoError(t, err)
@@ -568,6 +578,8 @@ events:
 	out := testhelper.NewMockOutput("mixed-fmt")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

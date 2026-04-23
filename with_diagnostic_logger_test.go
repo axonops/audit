@@ -34,6 +34,8 @@ func TestWithDiagnosticLogger_CustomLogger_ReceivesMessages(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDiagnosticLogger(customLogger),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -51,6 +53,8 @@ func TestWithDiagnosticLogger_NilLogger_UsesDefault(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDiagnosticLogger(nil),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -68,6 +72,8 @@ func TestWithDiagnosticLogger_DiscardLogger_SilencesOutput(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDiagnosticLogger(discardLogger),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

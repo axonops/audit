@@ -27,6 +27,8 @@ import (
 func TestNew_ValidTaxonomy(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, auditor)
@@ -74,6 +76,8 @@ func TestNew_TaxonomyValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := audit.New(
 				audit.WithTaxonomy(tt.taxonomy),
+				audit.WithAppName("test-app"),
+				audit.WithHost("test-host"),
 			)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
@@ -85,12 +89,14 @@ func TestNew_TaxonomyValidation(t *testing.T) {
 func TestNew_TaxonomyRequired(t *testing.T) {
 	_, err := audit.New()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "taxonomy is required")
+	assert.ErrorIs(t, err, audit.ErrTaxonomyRequired)
 }
 
 func TestNew_TaxonomyValidation_SentinelError(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{Version: 0}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, audit.ErrTaxonomyInvalid))
@@ -343,6 +349,8 @@ func TestNew_TaxonomyVersionNegative(t *testing.T) {
 			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"ev1"}}},
 			Events:     map[string]*audit.EventDef{"ev1": {Required: []string{"f1"}}},
 		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)

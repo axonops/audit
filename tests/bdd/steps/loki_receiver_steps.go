@@ -246,6 +246,8 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)

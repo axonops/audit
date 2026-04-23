@@ -120,10 +120,49 @@ audit: config validation failed
 | **Transient?** | No — permanent configuration error |
 | **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `ShutdownTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
 
+### `ErrTaxonomyRequired`
+
+```
+audit: taxonomy is required: use WithTaxonomy
+```
+
+| | |
+|---|---|
+| **When** | `New()` is called without [`WithTaxonomy`] (and without [`WithDisabled`]) |
+| **Meaning** | Auditor creation failed — validation and routing require a taxonomy |
+| **Transient?** | No — permanent configuration error |
+| **What to do** | Add `audit.WithTaxonomy(tax)` to the `audit.New(...)` call, or use [`WithDisabled`] for a no-op auditor. Sibling of `ErrAppNameRequired` / `ErrHostRequired`; all three mark missing required options and support `errors.Is` discrimination. |
+
+### `ErrAppNameRequired`
+
+```
+audit: app_name is required: use WithAppName
+```
+
+| | |
+|---|---|
+| **When** | `New()` is called without [`WithAppName`] (and without [`WithDisabled`]) |
+| **Meaning** | Auditor creation failed — every emitted event carries `app_name` as a framework field, and a blank value undermines attribution |
+| **Transient?** | No — permanent configuration error |
+| **What to do** | Add `audit.WithAppName("your-service-name")` to the `audit.New(...)` call. Matches the `app_name:` requirement on the [`outputconfig.Load`] YAML construction path, so the two paths share the same invariant. |
+
+### `ErrHostRequired`
+
+```
+audit: host is required: use WithHost
+```
+
+| | |
+|---|---|
+| **When** | `New()` is called without [`WithHost`] (and without [`WithDisabled`]) |
+| **Meaning** | Auditor creation failed — every emitted event carries `host` as a framework field |
+| **Transient?** | No — permanent configuration error |
+| **What to do** | Add `audit.WithHost(os.Hostname())` or `audit.WithHost("prod-host-01")` to the `audit.New(...)` call. Matches the `host:` requirement on the [`outputconfig.Load`] YAML construction path. |
+
 ### `ErrOutputConfigInvalid`
 
 ```
-audit: output config validation failed
+audit/outputconfig: output config validation failed
 ```
 
 | | |

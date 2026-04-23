@@ -94,6 +94,8 @@ func registerMetricsGivenAdvancedSteps(ctx *godog.ScenarioContext, tc *AuditTest
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(stdoutOut),
 			audit.WithNamedOutput(fileOut),
@@ -128,6 +130,8 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithOutputs(w),
 		}
@@ -152,6 +156,8 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithFormatter(&panicFormatter{}),
 			audit.WithOutputs(stdoutOut),
@@ -177,6 +183,8 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithFormatter(&errorReturningFormatter{}),
 			audit.WithOutputs(stdoutOut),
@@ -194,6 +202,8 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 	ctx.Step(`^an auditor with error output and metrics$`, func() error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(&errorOutput{}),
 		}
@@ -234,6 +244,8 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(fileOut),
 			audit.WithNamedOutput(whOut, audit.WithRoute(&audit.EventRoute{ExcludeCategories: []string{excludeCat}})),

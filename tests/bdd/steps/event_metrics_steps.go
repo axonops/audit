@@ -53,6 +53,8 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithNamedOutput(fileOut),
 		}
@@ -91,6 +93,8 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 	ctx.Step(`^an auditor with that file output and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithQueueSize(queueSize),
 		}
 		opts = append(opts, tc.Options...)
@@ -107,6 +111,8 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 	ctx.Step(`^an auditor with that file output and pipeline metrics and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithMetrics(tc.MockMetrics),
 			audit.WithQueueSize(queueSize),
 		}
@@ -132,6 +138,8 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(stdoutOut),
 		}
 		opts = append(opts, tc.Options...)
@@ -271,6 +279,8 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	ctx.Step(`^an auditor with those outputs and queue_size (\d+)$`, func(queueSize int) error {
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithQueueSize(queueSize),
 		}
 		opts = append(opts, tc.Options...)

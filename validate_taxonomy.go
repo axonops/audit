@@ -200,22 +200,25 @@ func invalidTaxonomyNameMsg(position, name string) string {
 	return ""
 }
 
-// checkSeverityRanges validates that severity values are in range 0-10.
+// checkSeverityRanges validates that severity values are in the range
+// [MinSeverity, MaxSeverity].
 func checkSeverityRanges(t Taxonomy) []string {
 	var errs []string
 	for cat, catDef := range t.Categories {
 		if catDef == nil {
 			continue // nil categories caught by checkCategoryConsistency
 		}
-		if catDef.Severity != nil && (*catDef.Severity < 0 || *catDef.Severity > 10) {
+		if catDef.Severity != nil && (*catDef.Severity < MinSeverity || *catDef.Severity > MaxSeverity) {
 			errs = append(errs, fmt.Sprintf(
-				"category %q severity %d is out of range 0-10", cat, *catDef.Severity))
+				"category %q severity %d is out of range %d-%d",
+				cat, *catDef.Severity, MinSeverity, MaxSeverity))
 		}
 	}
 	for et, def := range t.Events {
-		if def.Severity != nil && (*def.Severity < 0 || *def.Severity > 10) {
+		if def.Severity != nil && (*def.Severity < MinSeverity || *def.Severity > MaxSeverity) {
 			errs = append(errs, fmt.Sprintf(
-				"event %q severity %d is out of range 0-10", et, *def.Severity))
+				"event %q severity %d is out of range %d-%d",
+				et, *def.Severity, MinSeverity, MaxSeverity))
 		}
 	}
 	return errs

@@ -345,10 +345,11 @@ func createSyslogAuditorWithFormatter(tc *AuditTestContext, cfg *syslog.Config, 
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithOutputFormatter(formatter)),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -373,6 +374,8 @@ func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt,
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -383,7 +386,6 @@ func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt,
 		})),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -408,10 +410,11 @@ func createSyslogAuditorWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Conf
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithExcludeLabels(excludeLabels...)),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -451,10 +454,11 @@ func createSyslogAuditorWithRoute(tc *AuditTestContext, cfg *syslog.Config, rout
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(route)),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

@@ -38,6 +38,8 @@ func ExampleMiddleware() {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -96,6 +98,8 @@ func ExampleMiddleware_skip() {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		log.Fatal(err)

@@ -47,6 +47,8 @@ func TestNoOpMetrics_Embedding_OverrideSingleMethod(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(m),
 	)
@@ -81,6 +83,8 @@ func TestNoOpMetrics_WithMetrics_Accepted(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithMetrics(audit.NoOpMetrics{}),
 	)
 	require.NoError(t, err)

@@ -64,6 +64,8 @@ func registerFormatterGivenJSONSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithFormatter(&audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis}),
 			audit.WithOutputs(fileOut),
 		}
@@ -109,6 +111,8 @@ func registerFormatterGivenCEFSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(fileOut, audit.WithOutputFormatter(cefFmt)),
 		}
 		opts = append(opts, tc.Options...)
@@ -151,6 +155,8 @@ func registerFormatterGivenMultiSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(jsonOut),                                   // default JSON
 			audit.WithNamedOutput(cefOut, audit.WithOutputFormatter(cefFmt)), // CEF
 		}
@@ -192,6 +198,8 @@ func registerFormatterGivenCustomSeveritySteps(ctx *godog.ScenarioContext, tc *A
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(fileOut, audit.WithOutputFormatter(cefFmt)),
 		}
 
@@ -229,6 +237,8 @@ func registerFormatterGivenInvalidKeySteps(ctx *godog.ScenarioContext, tc *Audit
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(fileOut, audit.WithOutputFormatter(cefFmt)),
 		}
 
@@ -264,6 +274,8 @@ func registerFormatterGivenSeveritySteps(ctx *godog.ScenarioContext, tc *AuditTe
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(fileOut, audit.WithOutputFormatter(cefFmt)),
 		}
 
@@ -303,6 +315,8 @@ func registerFormatterGivenExtraSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithNamedOutput(fileOut, audit.WithOutputFormatter(cefFmt)),
 		}
 
@@ -434,7 +448,7 @@ func assertFileEventMatching(tc *AuditTestContext, table *godog.Table) error {
 	if err != nil {
 		return err
 	}
-	autoFields := []string{"timestamp", "severity", "event_category", "pid", "timezone"}
+	autoFields := []string{"timestamp", "severity", "event_category", "pid", "timezone", "app_name", "host"}
 	for _, e := range events {
 		match, mismatch := eventMatchesExactly(e, expected, autoFields)
 		if match {

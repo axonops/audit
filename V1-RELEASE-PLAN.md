@@ -123,7 +123,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#590** refactor: error API polish — clone Unwrap slice, document ComputeHMAC contract, error returns from RegisterOutputFactory and NewEventKV.
 - [x] **#591** refactor: CEFFormatter ergonomics — FieldMapping opt-out path, avoid redundant severity clamp, cite maxCEFHeaderField.
 - [x] **#592** refactor: unify error wrapping conventions across modules; align self-reporting drop metrics; drop dead redactRef parameter.
-- [ ] **#593** refactor: small API polish — TLSPolicy zero-value docs, MinSeverity/MaxSeverity constants, Handle on disabled auditor, openbao Close idempotency, audittest rename, require AppName/Host, uniform nil-option handling.
+- [x] **#593** refactor: small API polish — TLSPolicy zero-value docs, MinSeverity/MaxSeverity constants, Handle on disabled auditor, openbao Close idempotency, audittest rename, require AppName/Host, uniform nil-option handling.
 - [ ] **#594** refactor: simplify 9-method Metrics interface into MetricEvent or split into lifecycle/delivery/validation interfaces.
 - [ ] **#595** refactor: Fields rejects unsupported value types; WithStandardFieldDefaults accepts any.
 - [ ] **#596** refactor: consolidate 6 optional Output interfaces into OutputCapabilities struct.

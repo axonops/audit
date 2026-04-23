@@ -317,13 +317,25 @@ func resolveEventSeverity(def *EventDef, t *Taxonomy) int {
 	return 5
 }
 
-// clampSeverity restricts a severity value to the valid CEF range 0-10.
+// Severity bounds for event and route severity values. These follow
+// the CEF range convention (0 = least severe, 10 = most severe). Both
+// bounds are inclusive. See [EventDef.Severity], [CategoryDef.Severity],
+// and [EventRoute.MinSeverity] / [EventRoute.MaxSeverity].
+const (
+	// MinSeverity is the minimum allowed severity (inclusive).
+	MinSeverity = 0
+	// MaxSeverity is the maximum allowed severity (inclusive).
+	MaxSeverity = 10
+)
+
+// clampSeverity restricts a severity value to the valid CEF range
+// [MinSeverity, MaxSeverity].
 func clampSeverity(s int) int {
-	if s < 0 {
-		return 0
+	if s < MinSeverity {
+		return MinSeverity
 	}
-	if s > 10 {
-		return 10
+	if s > MaxSeverity {
+		return MaxSeverity
 	}
 	return s
 }

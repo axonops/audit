@@ -174,6 +174,8 @@ func benchAudit3FieldsSync(b *testing.B) {
 	out := testhelper.NewNoopOutput("bench-cmp")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithSynchronousDelivery(),
 	)
@@ -258,6 +260,8 @@ func benchAudit10FieldsSync(b *testing.B) {
 	out := testhelper.NewNoopOutput("bench-cmp")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithSynchronousDelivery(),
 	)
@@ -294,6 +298,8 @@ func benchAudit10FieldsSyncWithHMAC(b *testing.B) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(hmacCfg)),
 		audit.WithSynchronousDelivery(),
 	)
@@ -325,6 +331,8 @@ func benchAudit10FieldsSyncFanOut4(b *testing.B) {
 	out4 := testhelper.NewNoopOutput("cmp-4")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out1, out2, out3, out4),
 		audit.WithSynchronousDelivery(),
 	)

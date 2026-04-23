@@ -104,6 +104,8 @@ func TestProcessEntry_RetainedBytes_NoForeignImpersonation(t *testing.T) {
 	bad := newRetainingOutput("retain")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(bad),
 		audit.WithSynchronousDelivery(),
 	)
@@ -201,6 +203,8 @@ func TestProcessEntry_FanOutToMultipleOutputs_BytesIntegrity(t *testing.T) {
 	out3 := testhelper.NewMockOutput("out3")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out1, out2, out3),
 		audit.WithSynchronousDelivery(),
 	)
@@ -251,6 +255,8 @@ func TestProcessEntry_ConcurrentSubmission_NoRace(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -377,6 +383,8 @@ func TestProcessEntry_MultiCategory_BufferReuseAcrossPasses(t *testing.T) {
 	cefOut := testhelper.NewMockOutput("cef")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(jsonOut, audit.WithOutputFormatter(&audit.JSONFormatter{})),
 		audit.WithNamedOutput(cefOut, audit.WithOutputFormatter(&audit.CEFFormatter{
 			Vendor: "axonops", Product: "audit", Version: "1.0",
@@ -442,6 +450,8 @@ func TestProcessEntry_PanicMidDelivery_ReleaseStillRuns(t *testing.T) {
 	good := testhelper.NewMockOutput("good")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(bad, good),
 		audit.WithSynchronousDelivery(),
 	)
@@ -494,6 +504,8 @@ func TestProcessEntry_FormatError_CacheNilEntry_NoDoublePut(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithMetrics(metrics),
 		audit.WithNamedOutput(out1, audit.WithOutputFormatter(shared), audit.WithRoute(&audit.EventRoute{})),
 		audit.WithNamedOutput(out2, audit.WithOutputFormatter(shared), audit.WithRoute(&audit.EventRoute{})),
@@ -573,6 +585,8 @@ func TestJSONFormatter_FormatBuf_OversizeEventDropsBuffer(t *testing.T) {
 	out := testhelper.NewMockOutput("out")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithSynchronousDelivery(),
 	)

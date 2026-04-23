@@ -35,6 +35,8 @@ func main() {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
+		audit.WithAppName("audit-demo"),
+		audit.WithHost("localhost"),
 		audit.WithOutputs(stdout),
 	)
 	if err != nil {

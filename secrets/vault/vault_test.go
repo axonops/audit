@@ -985,3 +985,20 @@ func TestConfig_String_TokenUnsetShowsUnsetMarker(t *testing.T) {
 	assert.Contains(t, out, "token=unset")
 	assert.NotContains(t, out, "[REDACTED]")
 }
+
+// TestVaultClose_IsIdempotent covers #593 B-33: repeated Close()
+// calls are safe and return nil. Token zeroing on an already-zero
+// slice is a no-op, and http.Client.CloseIdleConnections is safe to
+// invoke multiple times per the stdlib contract.
+func TestVaultClose_IsIdempotent(t *testing.T) {
+	t.Parallel()
+	p, err := vault.New(&vault.Config{
+		Address: "https://vault.example.com:8200",
+		Token:   "test-token",
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, p.Close(), "first Close must succeed")
+	require.NoError(t, p.Close(), "second Close must be idempotent")
+	require.NoError(t, p.Close(), "third Close must be idempotent")
+}

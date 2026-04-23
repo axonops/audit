@@ -133,18 +133,25 @@ type Auditor struct {
 }
 
 // New creates a new [Auditor] from the given options.
-// A taxonomy MUST be provided via [WithTaxonomy] unless [WithDisabled]
-// is applied; New returns an error if none is supplied.
+//
+// Required options (unless [WithDisabled] is applied):
+//   - [WithTaxonomy] — the event taxonomy. Missing → error.
+//   - [WithAppName]  — the application name. Missing → [ErrAppNameRequired].
+//   - [WithHost]     — the host identifier. Missing → [ErrHostRequired].
+//
+// The app_name and host requirements match the [outputconfig.Load]
+// YAML-path contract so that programmatic and declarative construction
+// produce equally complete framework fields.
 //
 // Defaults are: queue=10,000, shutdown=5s, validation=strict. Pass
 // tuning options like [WithQueueSize], [WithShutdownTimeout],
 // [WithValidationMode], or [WithOmitEmpty] to override.
 //
 // When [WithDisabled] is applied, New returns a valid no-op
-// auditor without requiring a taxonomy. All [Auditor.AuditEvent] calls
-// return nil immediately without validation or delivery. Methods
-// that require a taxonomy ([Auditor.EnableCategory], etc.) return
-// [ErrDisabled].
+// auditor without requiring a taxonomy, app name, or host. All
+// [Auditor.AuditEvent] calls return nil immediately without validation
+// or delivery. Methods that require a taxonomy
+// ([Auditor.EnableCategory], etc.) return [ErrDisabled].
 func New(opts ...Option) (*Auditor, error) {
 	a := &Auditor{}
 
@@ -171,8 +178,8 @@ func New(opts ...Option) (*Auditor, error) {
 		return a, nil
 	}
 
-	if a.taxonomy == nil {
-		return nil, fmt.Errorf("audit: taxonomy is required: use WithTaxonomy")
+	if err := checkRequiredOptions(a); err != nil {
+		return nil, err
 	}
 
 	a.applyDevTaxonomyOverrides()
@@ -202,6 +209,22 @@ func New(opts ...Option) (*Auditor, error) {
 	)
 
 	return a, nil
+}
+
+// checkRequiredOptions verifies that the non-disabled auditor has
+// every required option set. See [Option] godoc for the required /
+// optional classification (#593 B-41 / B-45).
+func checkRequiredOptions(a *Auditor) error {
+	if a.taxonomy == nil {
+		return ErrTaxonomyRequired
+	}
+	if a.appName == "" {
+		return ErrAppNameRequired
+	}
+	if a.host == "" {
+		return ErrHostRequired
+	}
+	return nil
 }
 
 // applyDevTaxonomyOverrides warns about DevTaxonomy and forces permissive
@@ -674,6 +697,12 @@ func (a *Auditor) OutputRoute(outputName string) (EventRoute, error) {
 // interface escape. Returns [ErrHandleNotFound] if the event type is
 // not registered. For event types known at compile time, prefer
 // generated typed builders from audit-gen.
+//
+// When the auditor was constructed with [WithDisabled], Handle
+// returns a no-op [EventHandle] for any event type without
+// validating the taxonomy — all subsequent Audit calls on the
+// handle are silent no-ops, matching [Auditor.AuditEvent] on a
+// disabled auditor.
 func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
 	if a.disabled {
 		return &EventHandle{name: eventType, auditor: a}, nil

@@ -95,7 +95,7 @@ Feature: File Output
     When I try to create a file output with empty path
     Then the file output construction should fail with error:
       """
-      audit: file output path must not be empty
+      audit/file: output path must not be empty
       """
 
   Scenario: MaxSizeMB exceeding limit is rejected

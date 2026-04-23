@@ -733,7 +733,7 @@ outputs:
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| `audit: syslog output "name": config is required` | No `syslog:` block in YAML | Add the type-specific `syslog:` configuration block |
+| `audit/syslog: output "name": config is required` | No `syslog:` block in YAML | Add the type-specific `syslog:` configuration block |
 | `audit: unknown syslog facility "name"` | Invalid facility name | Use one of the valid names: `kern`, `user`, ..., `local0`–`local7` |
 | `dial tcp host:port: connect: connection refused` | Syslog server not reachable at startup | The server MUST be reachable when the output is created; check address and port |
 | Events silently lost (UDP) | Message too large for UDP | Switch to TCP or TCP+TLS; UDP truncates at ~2048 bytes |

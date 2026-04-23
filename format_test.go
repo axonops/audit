@@ -724,7 +724,9 @@ func TestCEFFormatter_RejectsInvalidFieldMappingAtConstruction(t *testing.T) {
 		{"pipe", "has|pipe"},
 		{"newline", "has\nnewline"},
 		{"dot", "has.dot"},
-		{"empty", ""},
+		// NOTE: empty string is intentionally not a rejection case —
+		// it is the documented opt-out sentinel (see
+		// TestCEFFormatter_FieldMapping_DropDefault_ViaDelete, #591).
 	}
 	def := &audit.EventDef{Required: []string{"outcome"}}
 	for _, tc := range cases {
@@ -2318,4 +2320,66 @@ func TestJSONFormatter_ConcurrentFormat(t *testing.T) {
 	for err := range errCh {
 		t.Errorf("concurrent Format failure: %v", err)
 	}
+}
+
+// TestCEFFormatter_FieldMapping_DropDefault_ViaDelete is the named
+// contract test from issue #591 AC #1. It verifies the empty-string
+// opt-out sentinel: passing `{"actor_id": ""}` drops the default
+// actor_id → suser mapping so actor_id is emitted under its raw
+// audit field name.
+//
+// Test name retained as "ViaDelete" per issue #591 acceptance
+// criteria; the mechanism is the empty-string sentinel which
+// performs the delete from the merged mapping internally.
+func TestCEFFormatter_FieldMapping_DropDefault_ViaDelete(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"actor_id": "", // empty-string opt-out sentinel
+		},
+	}
+
+	data, err := f.Format(testTime, "user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}, &audit.EventDef{Required: []string{"outcome", "actor_id"}}, nil)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "actor_id=alice",
+		"actor_id must emit as its raw audit field name after empty-string opt-out")
+	assert.NotContains(t, line, "suser=",
+		"default actor_id→suser mapping must be suppressed")
+}
+
+// TestCEFFormatter_FieldMapping_NoEscape_SelfMap is the named contract
+// test from issue #591 AC #1. It verifies the second documented opt-out
+// pattern: pass a self-mapping entry (field → its own name) to override
+// the default mapping for that specific field without touching any
+// other default.
+func TestCEFFormatter_FieldMapping_NoEscape_SelfMap(t *testing.T) {
+	t.Parallel()
+	f := &audit.CEFFormatter{
+		Vendor:  "V",
+		Product: "P",
+		Version: "1",
+		FieldMapping: map[string]string{
+			"actor_id": "actor_id",
+		},
+	}
+
+	data, err := f.Format(testTime, "user_create", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}, &audit.EventDef{Required: []string{"outcome", "actor_id"}}, nil)
+	require.NoError(t, err)
+
+	line := string(data)
+	assert.Contains(t, line, "actor_id=alice",
+		"self-map must emit actor_id as the extension key, not the suser default")
+	assert.NotContains(t, line, "suser=",
+		"default actor_id→suser mapping must be overridden by the self-map entry")
 }

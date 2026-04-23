@@ -9,6 +9,38 @@
 - [Secret Resolution Errors](#secret-resolution-errors)
 - [Taxonomy Errors](#taxonomy-errors)
 
+## Error Format Convention
+
+Every error returned by the library is prefixed with the dotted Go
+import path of the module that produced it — matching stdlib
+precedent (`net/http:`, `crypto/tls:`, `encoding/json:`):
+
+| Module | Prefix |
+|---|---|
+| Core `audit` | `audit:` |
+| File output | `audit/file:` |
+| Syslog output | `audit/syslog:` |
+| Webhook output | `audit/webhook:` |
+| Loki output | `audit/loki:` |
+| Output config loader | `audit/outputconfig:` |
+| Secrets core | `audit/secrets:` |
+| Secrets — HashiCorp Vault | `audit/secrets/vault:` |
+| Secrets — OpenBao | `audit/secrets/openbao:` |
+
+Every configuration-validation error wraps `audit.ErrConfigInvalid`
+(directly or via a module-specific sub-sentinel). This gives you a
+single `errors.Is` match across every config-facing surface:
+
+```go
+if errors.Is(err, audit.ErrConfigInvalid) {
+    // any configuration validation failure — outputs, secrets, outputconfig
+}
+```
+
+`outputconfig.ErrOutputConfigInvalid` is a sub-sentinel that itself
+wraps `audit.ErrConfigInvalid`, so it also matches the generic form.
+Pattern parallels stdlib's `fs.ErrNotExist` / `os.ErrNotExist`.
+
 ## How to Check Errors
 
 All audit errors are sentinel values. Use `errors.Is` to check

@@ -26,7 +26,7 @@ library never imports a concrete metrics implementation.
 ```go
 type Metrics interface {
     RecordSubmitted()                           // total events entering the pipeline
-    RecordEvent(output string, status EventStatus) // EventSuccess / EventError (non-DeliveryReporter outputs only)
+    RecordEvent(output string, status EventStatus) // EventSuccess / EventError — see "Drop vs delivery error" below
     RecordOutputError(output string)
     RecordOutputFiltered(output string)
     RecordValidationError(eventType string)
@@ -117,6 +117,30 @@ Where:
 - `buffer_drops` = `RecordBufferDrop()` count (core queue full)
 - `output_buffer_drops` = `OutputMetrics.RecordDrop()` count
 - `delivered` = `OutputMetrics.RecordFlush()` count
+
+### Drop vs delivery error
+
+Every self-reporting output (file, syslog, webhook, loki) follows
+the same rule for drop-vs-error reporting:
+
+| Outcome | `OutputMetrics.RecordDrop()` | `Metrics.RecordEvent(_, EventError)` |
+|---|---|---|
+| Event rejected before queue (oversize, buffer full) | ✓ | ✗ |
+| Delivery attempted, all retries exhausted (webhook, loki) | ✗ | ✓ |
+| Delivery succeeded | ✗ | `RecordEvent(_, EventSuccess)` via `OutputMetrics.RecordFlush` |
+
+Buffer drops count only via per-output `RecordDrop` because the event
+never reached the destination — there is nothing to report as a
+delivery outcome. Retry-exhaustion failures in webhook and loki count
+via `RecordEvent(EventError)` because the output did attempt
+delivery and all retries failed; that is a genuine delivery-error
+signal, not a buffer-pressure signal. File and syslog do not have
+retries (they write synchronously once dequeued) so they only ever
+report via `RecordDrop`.
+
+Consumers that want a single "events lost" counter should sum
+`RecordBufferDrop` (core queue) + per-output `RecordDrop` + per-
+output `RecordEvent(EventError)` count.
 
 ## 🚨 Recommended Alerts
 

@@ -147,20 +147,20 @@ type Provider struct { //nolint:govet // readability over alignment
 func New(cfg *Config) (*Provider, error) {
 	// Validate address.
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: address is required")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address is required", audit.ErrConfigInvalid)
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: invalid address: %w", err)
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: invalid address: %w", audit.ErrConfigInvalid, err)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("audit/secrets/openbao: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address must use https (got %q); set AllowInsecureHTTP for local development", audit.ErrConfigInvalid, u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: address has empty host")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address has empty host", audit.ErrConfigInvalid)
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: address must not contain embedded credentials")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address must not contain embedded credentials", audit.ErrConfigInvalid)
 	}
 
 	// Normalise: strip trailing slash to prevent double-slash in URLs.
@@ -168,7 +168,7 @@ func New(cfg *Config) (*Provider, error) {
 
 	// Validate token.
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: token is required")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: token is required", audit.ErrConfigInvalid)
 	}
 
 	// Build TLS config.
@@ -217,29 +217,29 @@ func New(cfg *Config) (*Provider, error) {
 // The Config.Address and Config.Token are still validated.
 func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: config must not be nil")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: config must not be nil", audit.ErrConfigInvalid)
 	}
 	if client == nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: http client must not be nil")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: http client must not be nil", audit.ErrConfigInvalid)
 	}
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: address is required")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address is required", audit.ErrConfigInvalid)
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: invalid address: %w", err)
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: invalid address: %w", audit.ErrConfigInvalid, err)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("audit/secrets/openbao: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address must use https (got %q); set AllowInsecureHTTP for local development", audit.ErrConfigInvalid, u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: address has empty host")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address has empty host", audit.ErrConfigInvalid)
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("audit/secrets/openbao: address must not contain embedded credentials")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: address must not contain embedded credentials", audit.ErrConfigInvalid)
 	}
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: token is required")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: token is required", audit.ErrConfigInvalid)
 	}
 	return &Provider{
 		client: client,
@@ -409,21 +409,21 @@ func buildTLSConfig(cfg *Config) (*tls.Config, error) {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, fmt.Errorf("audit/secrets/openbao: load client certificate: %w", err)
+			return nil, fmt.Errorf("%w: audit/secrets/openbao: load client certificate: %w", audit.ErrConfigInvalid, err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	} else if cfg.TLSCert != "" || cfg.TLSKey != "" {
-		return nil, fmt.Errorf("audit/secrets/openbao: tls_cert and tls_key must both be set or both empty")
+		return nil, fmt.Errorf("%w: audit/secrets/openbao: tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 
 	if cfg.TLSCA != "" {
 		caCert, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, fmt.Errorf("audit/secrets/openbao: read ca certificate: %w", err)
+			return nil, fmt.Errorf("%w: audit/secrets/openbao: read ca certificate: %w", audit.ErrConfigInvalid, err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("audit/secrets/openbao: parse ca certificate: invalid PEM")
+			return nil, fmt.Errorf("%w: audit/secrets/openbao: parse ca certificate: invalid PEM", audit.ErrConfigInvalid)
 		}
 		tlsCfg.RootCAs = pool
 	}

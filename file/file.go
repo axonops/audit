@@ -203,7 +203,7 @@ func resolvePath(path string) (string, error) {
 // copied by value.
 func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop // constructor with validation
 	if cfg == nil {
-		return nil, fmt.Errorf("audit: file config must not be nil")
+		return nil, fmt.Errorf("audit/file: config must not be nil")
 	}
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg

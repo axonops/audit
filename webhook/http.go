@@ -143,7 +143,7 @@ func drainAndClose(resp *http.Response) {
 func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.url, bytes.NewReader(body))
 	if err != nil {
-		return false, fmt.Errorf("audit: webhook request: %w", err)
+		return false, fmt.Errorf("audit/webhook: request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/x-ndjson")
@@ -155,14 +155,14 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	if err != nil {
 		// Redirect rejection is non-retryable.
 		if errors.Is(err, errRedirectBlocked) {
-			return false, fmt.Errorf("audit: webhook redirect blocked: %w", err)
+			return false, fmt.Errorf("audit/webhook: redirect blocked: %w", err)
 		}
 		// Context cancellation is non-retryable.
 		if ctx.Err() != nil {
-			return false, fmt.Errorf("audit: webhook cancelled: %w", err)
+			return false, fmt.Errorf("audit/webhook: cancelled: %w", err)
 		}
 		// Network errors are retryable.
-		return true, fmt.Errorf("audit: webhook request failed: %w", err)
+		return true, fmt.Errorf("audit/webhook: request failed: %w", err)
 	}
 	defer drainAndClose(resp)
 
@@ -171,12 +171,12 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 	}
 
 	if resp.StatusCode == 429 || resp.StatusCode >= 500 {
-		return true, fmt.Errorf("audit: webhook server error %d", resp.StatusCode)
+		return true, fmt.Errorf("audit/webhook: server error %d", resp.StatusCode)
 	}
 
 	// 4xx (not 429), and any 3xx that bypassed redirect-follow
 	// (no Location header, 300, 304, ...) — client error, not retryable.
-	return false, fmt.Errorf("audit: webhook client error %d", resp.StatusCode)
+	return false, fmt.Errorf("audit/webhook: client error %d", resp.StatusCode)
 }
 
 // recordSuccess records successful delivery metrics for a batch.

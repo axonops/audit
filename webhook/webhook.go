@@ -56,7 +56,7 @@ var (
 // errRedirectBlocked is returned by the http.Client's CheckRedirect
 // function. It is checked in doPost to classify redirect errors as
 // non-retryable.
-var errRedirectBlocked = errors.New("audit: webhook redirects are not followed")
+var errRedirectBlocked = errors.New("audit/webhook: redirects are not followed")
 
 // minResponseHeaderTimeout is the floor applied to the derived
 // [http.Transport.ResponseHeaderTimeout]. Half of [Config.Timeout] is
@@ -160,7 +160,7 @@ func (w *Output) SetDiagnosticLogger(l *slog.Logger) {
 // a custom logger.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("audit: webhook config must not be nil")
+		return nil, fmt.Errorf("audit/webhook: config must not be nil")
 	}
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
@@ -174,7 +174,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 
 	tlsCfg, err := buildWebhookTLSConfig(cfg, o.logger)
 	if err != nil {
-		return nil, fmt.Errorf("audit: webhook tls: %w", err)
+		return nil, fmt.Errorf("audit/webhook: tls: %w", err)
 	}
 
 	var ssrfOpts []audit.SSRFOption
@@ -313,7 +313,7 @@ func (w *Output) Close() error {
 	select {
 	case <-w.done:
 	case <-timer.C:
-		w.logger.Load().Error("audit: webhook batch goroutine did not exit",
+		w.logger.Load().Error("audit/webhook: batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 

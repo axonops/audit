@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Error-prefix convention unified across every module on the Go import-path pattern (#592). All modules now prefix errors with their dotted module path:
+- Error-prefix convention unified across every module on the Go import-path pattern (#592). A CI grep check to enforce the convention is deferred to a follow-up issue. All modules now prefix errors with their dotted module path:
   - `audit:` (core — unchanged)
   - `audit/file:`, `audit/syslog:`, `audit/webhook:`, `audit/loki:` (previously `audit: <module> output:`)
   - `audit/outputconfig:` (new prefix via the restructured `ErrOutputConfigInvalid`)

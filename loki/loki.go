@@ -50,7 +50,7 @@ var (
 
 // errRedirectBlocked is returned by the HTTP client's CheckRedirect
 // to reject all redirects, preventing SSRF via open redirects.
-var errRedirectBlocked = errors.New("audit: loki redirects are not followed")
+var errRedirectBlocked = errors.New("audit/loki: redirects are not followed")
 
 // minResponseHeaderTimeout is the floor applied to the derived
 // [http.Transport.ResponseHeaderTimeout]. Half of [Config.Timeout] is
@@ -153,7 +153,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // a custom logger.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("audit: loki config must not be nil")
+		return nil, fmt.Errorf("audit/loki: config must not be nil")
 	}
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
@@ -344,7 +344,7 @@ func (o *Output) Close() error {
 	select {
 	case <-o.done:
 	case <-timer.C:
-		o.logger.Load().Error("audit: loki batch goroutine did not exit",
+		o.logger.Load().Error("audit/loki: batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -459,7 +459,7 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 
 	body, compressed, err := o.maybeCompress()
 	if err != nil {
-		o.logger.Load().Warn("audit: loki compression failed, sending uncompressed",
+		o.logger.Load().Warn("audit/loki: compression failed, sending uncompressed",
 			"error", err, "batch_size", len(batch))
 		body = o.payloadBuf.Bytes()
 		compressed = false

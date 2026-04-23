@@ -474,7 +474,7 @@ func buildWebhookTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, fmt.Errorf("audit: webhook tls: load client certificate: %w", err)
+			return nil, fmt.Errorf("audit/webhook: tls: load client certificate: %w", err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
@@ -482,11 +482,11 @@ func buildWebhookTLSConfig(cfg *Config, logger *slog.Logger) (*tls.Config, error
 	if cfg.TLSCA != "" {
 		caCert, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, fmt.Errorf("audit: webhook tls: read ca certificate: %w", err)
+			return nil, fmt.Errorf("audit/webhook: tls: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("audit: webhook tls: parse ca certificate: invalid pem block")
+			return nil, fmt.Errorf("audit/webhook: tls: parse ca certificate: invalid pem block")
 		}
 		tlsCfg.RootCAs = pool
 	}

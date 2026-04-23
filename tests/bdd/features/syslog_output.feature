@@ -102,7 +102,7 @@ Feature: Syslog Output
     When I try to create a syslog output with facility "bogus"
     Then the syslog construction should fail with exact error:
       """
-      audit: syslog facility "bogus": audit: config validation failed: unknown syslog facility "bogus"
+      audit/syslog: facility "bogus": audit: config validation failed: unknown syslog facility "bogus"
       """
 
   # --- Hostname configuration (#237) ---

@@ -141,10 +141,14 @@ func DefaultCEFFieldMapping() map[string]string {
 // [sync.Pool]. The noCopy marker prevents accidental copies that
 // would duplicate the sync.Once state.
 type CEFFormatter struct {
-	// SeverityFunc maps event types to CEF severity (0-10). If nil,
-	// taxonomy-defined severity is used via [EventDef.ResolvedSeverity].
-	// Values are clamped to 0-10. Set SeverityFunc only to override
-	// the taxonomy.
+	// SeverityFunc maps event types to CEF severity. If nil,
+	// taxonomy-defined severity is used via [EventDef.ResolvedSeverity]
+	// (precomputed at taxonomy registration time and guaranteed to be
+	// in the valid range 0-10 — no per-event clamp).
+	//
+	// When non-nil, return values are clamped to 0-10 on every event
+	// to protect against out-of-range consumer returns. Set
+	// SeverityFunc only to override the taxonomy.
 	SeverityFunc func(eventType string) int
 
 	// DescriptionFunc maps event types to human-readable CEF
@@ -156,9 +160,29 @@ type CEFFormatter struct {
 	// [DefaultCEFFieldMapping] is used. If non-nil, entries are merged
 	// with [DefaultCEFFieldMapping]: consumer entries override matching
 	// defaults, and defaults not present in FieldMapping remain active.
-	// To suppress all defaults, call [DefaultCEFFieldMapping], delete
-	// unwanted entries, and pass the result. Unmapped fields use their
-	// original audit field name as the extension key.
+	// Unmapped fields use their original audit field name as the
+	// extension key.
+	//
+	// To opt out of a default mapping for a specific field, use either
+	// of these supported patterns (pick whichever reads better at the
+	// call site):
+	//
+	//  1. Empty-string opt-out — pass the audit field name mapped to
+	//     "" to explicitly drop the default. The field is then emitted
+	//     with the raw audit field name as the CEF extension key:
+	//
+	//	f := &audit.CEFFormatter{FieldMapping: map[string]string{
+	//	    "actor_id": "", // drop default actor_id → suser
+	//	}}
+	//
+	//  2. Self-map — pass the audit field name mapped to itself. Same
+	//     on-wire result (the raw audit field name becomes the
+	//     extension key), but keeps the intent explicit at the call
+	//     site:
+	//
+	//	f := &audit.CEFFormatter{FieldMapping: map[string]string{
+	//	    "actor_id": "actor_id", // emit as actor_id=... not suser=...
+	//	}}
 	FieldMapping    map[string]string
 	resolvedMapping map[string]string
 
@@ -207,8 +231,23 @@ type noCopy struct{}
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
 
-// maxCEFHeaderField is the maximum length for Vendor, Product, and
-// Version header fields. Prevents unbounded header growth.
+// maxCEFHeaderField is the maximum byte length for Vendor, Product,
+// and Version header fields.
+//
+// The ArcSight CEF Implementation Standard does not define a per-
+// field limit — only a ~1022-byte cap on total header length for
+// syslog-compatible delivery. 255 is a conservative operational
+// ceiling chosen because it: (a) matches the common ASCII C-string
+// length assumption used by many SIEMs for header parsing; (b)
+// leaves ample room under the ~1022-byte total-header cap when
+// combined across Vendor + Product + Version + the variable
+// signature / name / severity fields; (c) protects against
+// pathological consumer configuration (e.g. an accidentally
+// concatenated version string growing unbounded across releases).
+//
+// Consumers who need to emit header values longer than 255 bytes
+// should raise an issue with the use case — the limit is not
+// rooted in the spec and can be revisited.
 const maxCEFHeaderField = 255
 
 // cefSeverityStrings avoids per-event strconv.Itoa for severity (0-10).
@@ -369,11 +408,16 @@ func (cf *CEFFormatter) writeFieldExtensions(buf *bytes.Buffer, extStart int, fi
 }
 
 func (cf *CEFFormatter) severity(eventType string, def *EventDef) int {
-	// SeverityFunc takes precedence (backwards compatibility).
+	// SeverityFunc takes precedence (explicit consumer override).
+	// Return value is clamped because the consumer-supplied function
+	// can return any int; an out-of-range value must not reach the
+	// wire (B-28).
 	if cf.SeverityFunc != nil {
 		return clampSeverity(cf.SeverityFunc(eventType))
 	}
-	// Use taxonomy-defined severity.
+	// Common fast path: taxonomy-resolved severity is precomputed and
+	// clamped during taxonomy registration (see precomputeTaxonomy in
+	// taxonomy.go). No per-event clamp is required here.
 	return def.ResolvedSeverity()
 }
 
@@ -405,19 +449,7 @@ func (cf *CEFFormatter) description(eventType string, def *EventDef) string {
 // surfaced from every [Format] call.
 func (cf *CEFFormatter) fieldMapping() map[string]string {
 	cf.resolveOnce.Do(func() {
-		defaults := defaultCEFFieldMappingEntries()
-		var merged map[string]string
-		if cf.FieldMapping == nil {
-			merged = defaults
-		} else {
-			merged = make(map[string]string, len(defaults)+len(cf.FieldMapping))
-			for k, v := range defaults {
-				merged[k] = v
-			}
-			for k, v := range cf.FieldMapping {
-				merged[k] = v
-			}
-		}
+		merged := cf.mergedMapping()
 		// Validate every resolved extension key. Sort the audit keys
 		// so the first error reported is deterministic.
 		auditKeys := make([]string, 0, len(merged))
@@ -437,6 +469,33 @@ func (cf *CEFFormatter) fieldMapping() map[string]string {
 		cf.resolvedMapping = merged
 	})
 	return cf.resolvedMapping
+}
+
+// mergedMapping combines [DefaultCEFFieldMapping] with
+// [CEFFormatter.FieldMapping] following the documented overlay rules:
+//
+//   - nil FieldMapping: use defaults only.
+//   - non-nil FieldMapping: start from defaults, then apply the
+//     consumer map. An empty-string consumer value is the explicit
+//     opt-out sentinel — the entry is removed from the merged map so
+//     the audit field name is emitted verbatim (B-23).
+func (cf *CEFFormatter) mergedMapping() map[string]string {
+	defaults := defaultCEFFieldMappingEntries()
+	if cf.FieldMapping == nil {
+		return defaults
+	}
+	merged := make(map[string]string, len(defaults)+len(cf.FieldMapping))
+	for k, v := range defaults {
+		merged[k] = v
+	}
+	for k, v := range cf.FieldMapping {
+		if v == "" {
+			delete(merged, k)
+			continue
+		}
+		merged[k] = v
+	}
+	return merged
 }
 
 // SetFrameworkFields stores auditor-wide framework metadata for

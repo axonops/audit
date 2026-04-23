@@ -121,7 +121,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#588** refactor: inline rgooding/go-syncmap; drop third-party dependency on filter hot path.
 - [x] **#589** docs: fix Formatter docstring concurrency-safety contradiction with CEFFormatter sync.Once.
 - [x] **#590** refactor: error API polish — clone Unwrap slice, document ComputeHMAC contract, error returns from RegisterOutputFactory and NewEventKV.
-- [ ] **#591** refactor: CEFFormatter ergonomics — FieldMapping opt-out path, avoid redundant severity clamp, cite maxCEFHeaderField.
+- [x] **#591** refactor: CEFFormatter ergonomics — FieldMapping opt-out path, avoid redundant severity clamp, cite maxCEFHeaderField.
 - [ ] **#592** refactor: unify error wrapping conventions across modules; align self-reporting drop metrics; drop dead redactRef parameter.
 - [ ] **#593** refactor: small API polish — TLSPolicy zero-value docs, MinSeverity/MaxSeverity constants, Handle on disabled auditor, openbao Close idempotency, audittest rename, require AppName/Host, uniform nil-option handling.
 - [ ] **#594** refactor: simplify 9-method Metrics interface into MetricEvent or split into lifecycle/delivery/validation interfaces.

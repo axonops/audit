@@ -73,6 +73,13 @@ func putJSONBuf(buf *bytes.Buffer) {
 // [time.Duration] values are converted to int64 milliseconds.
 // Timestamps are rendered according to [JSONFormatter.Timestamp]
 // (default [TimestampRFC3339Nano]).
+//
+// # Concurrency
+//
+// Safe for concurrent use by multiple goroutines, per the
+// [Formatter] contract. All per-call buffers are leased from a
+// package-level [sync.Pool]; the struct itself holds only
+// write-once configuration set at construction.
 type JSONFormatter struct {
 	// Timestamp controls the timestamp format. Empty defaults to
 	// [TimestampRFC3339Nano].

@@ -129,7 +129,7 @@ func intPtrOrDefault(p *int, def int) int {
 
 func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
-		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
+		return nil, fmt.Errorf("audit/loki: output %q: config is required", name)
 	}
 
 	cfg, err := parseLokiConfig(name, rawConfig)
@@ -139,7 +139,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 
 	output, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
-		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+		return nil, fmt.Errorf("audit/loki: output %q: %w", name, err)
 	}
 	if om != nil {
 		output.SetOutputMetrics(om)
@@ -151,7 +151,7 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 	var yc yamlLokiConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("audit: loki output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
+		return nil, fmt.Errorf("audit/loki: output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
 	cfg := &Config{
@@ -196,7 +196,7 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 		cfg.Labels.Static = yc.Labels.Static
 		if yc.Labels.Dynamic != nil {
 			if err := parseDynamicLabels(yc.Labels.Dynamic, &cfg.Labels.Dynamic); err != nil {
-				return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+				return nil, fmt.Errorf("audit/loki: output %q: %w", name, err)
 			}
 		}
 	}

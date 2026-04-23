@@ -182,7 +182,7 @@ func resolvePath(path string) (string, error) {
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("audit: file output path: %w", err)
+		return "", fmt.Errorf("audit/file: output path: %w", err)
 	}
 	return abs, nil
 }
@@ -213,7 +213,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 	logger := o.logger
 
 	if cfg.Path == "" {
-		return nil, fmt.Errorf("audit: file output path must not be empty")
+		return nil, fmt.Errorf("audit/file: output path must not be empty")
 	}
 	var err error
 	cfg.Path, err = resolvePath(cfg.Path)
@@ -225,17 +225,17 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 	// message. rotate.New performs the same check but with a "rotate:" prefix.
 	parentDir := filepath.Dir(cfg.Path)
 	if _, statErr := os.Lstat(parentDir); statErr != nil {
-		return nil, fmt.Errorf("audit: file output parent directory %q: %w", parentDir, statErr)
+		return nil, fmt.Errorf("audit/file: output parent directory %q: %w", parentDir, statErr)
 	}
 
 	perm, err := parsePermissions(cfg.Permissions)
 	if err != nil {
-		return nil, fmt.Errorf("audit: file output permissions %q: %w", cfg.Permissions, err)
+		return nil, fmt.Errorf("audit/file: output permissions %q: %w", cfg.Permissions, err)
 	}
 
 	// Warn if permissions grant group or world access to audit data.
 	if perm&0o077 != 0 {
-		logger.Warn("audit: file output permissions grant group/world access",
+		logger.Warn("audit/file: output permissions grant group/world access",
 			"path", cfg.Path,
 			"permissions", fmt.Sprintf("%04o", perm))
 	}
@@ -269,7 +269,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 		MaxBackups: cfg.MaxBackups,
 		Compress:   compress,
 		OnError: func(err error) {
-			out.logger.Load().Warn("audit: file output background error",
+			out.logger.Load().Warn("audit/file: output background error",
 				"path", logPath, "error", err)
 		},
 	}
@@ -283,7 +283,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 	}
 	rw, err := rotate.New(cfg.Path, rotCfg)
 	if err != nil {
-		return nil, fmt.Errorf("audit: file output: %w", err)
+		return nil, fmt.Errorf("audit/file: output: %w", err)
 	}
 	out.writer = rw
 
@@ -351,7 +351,7 @@ func (f *Output) Close() error {
 	// Close the rotate.Writer AFTER the writeLoop exits to ensure all
 	// drained events are written before the file is closed.
 	if err := f.writer.Close(); err != nil {
-		return fmt.Errorf("audit: file output close: %w", err)
+		return fmt.Errorf("audit/file: output close: %w", err)
 	}
 	return nil
 }

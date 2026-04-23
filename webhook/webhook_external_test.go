@@ -1360,15 +1360,18 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 	}, metrics)
 	require.NoError(t, err)
 
-	// Fill buffer — overflow events get RecordEvent(error).
+	// Fill buffer — overflow events are no longer recorded via
+	// core Metrics.RecordEvent (B-25 consistency with file + syslog).
+	// They surface only via OutputMetrics.RecordDrop — asserted in
+	// the separate per-output metrics test suite.
 	for range 15 {
 		_ = out.Write([]byte(`{"event":"overflow"}` + "\n"))
 	}
 	require.NoError(t, out.Close())
 
 	name := out.Name()
-	assert.Greater(t, metrics.getEventCount(name, audit.EventError), 0,
-		"RecordEvent(error) should be called for buffer overflow drops")
+	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
+		"buffer overflow drops must not be recorded via core Metrics.RecordEvent (B-25); use OutputMetrics.RecordDrop")
 }
 
 func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
@@ -1460,17 +1463,22 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 	}, m) // core Metrics only, no OutputMetrics (injected separately)
 	require.NoError(t, err)
 
-	// Overflow the buffer — should not panic despite nil WebhookMetrics.
+	// Overflow the buffer — should not panic despite missing
+	// OutputMetrics. Buffer-overflow drops are no longer recorded via
+	// core Metrics.RecordEvent (B-25); the per-output RecordDrop path
+	// is exercised in the OutputMetrics-specific tests. Here we only
+	// assert that the code does not panic.
 	for range 15 {
 		_ = out.Write([]byte(`{"event":"overflow"}` + "\n"))
 	}
 	require.NoError(t, out.Close())
 
-	// RecordEvent should still have been called for errors.
+	// Core Metrics should NOT have recorded the overflow drops as
+	// RecordEvent(EventError) — B-25 alignment with file + syslog.
 	m.mu.Lock()
 	errorCount := m.events[out.Name()+":error"]
 	m.mu.Unlock()
-	assert.Greater(t, errorCount, 0, "RecordEvent(error) should be called for drops")
+	assert.Equal(t, 0, errorCount, "buffer overflow drops must not be recorded via Metrics.RecordEvent (B-25)")
 }
 
 // ---------------------------------------------------------------------------

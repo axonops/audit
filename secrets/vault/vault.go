@@ -38,7 +38,7 @@ import (
 const maxResponseSize = 1 << 20 // 1 MiB
 
 // errRedirectBlocked is returned by the redirect policy.
-var errRedirectBlocked = errors.New("vault: redirects are blocked")
+var errRedirectBlocked = errors.New("audit/secrets/vault: redirects are blocked")
 
 // Config holds connection parameters for a HashiCorp Vault provider.
 type Config struct { //nolint:govet // readability over alignment
@@ -147,20 +147,20 @@ type Provider struct { //nolint:govet // readability over alignment
 func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear validation pipeline
 	// Validate address.
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("vault: address is required")
+		return nil, fmt.Errorf("audit/secrets/vault: address is required")
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("vault: invalid address: %w", err)
+		return nil, fmt.Errorf("audit/secrets/vault: invalid address: %w", err)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
+		return nil, fmt.Errorf("audit/secrets/vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("vault: address has empty host")
+		return nil, fmt.Errorf("audit/secrets/vault: address has empty host")
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("vault: address must not contain embedded credentials")
+		return nil, fmt.Errorf("audit/secrets/vault: address must not contain embedded credentials")
 	}
 
 	// Normalise: strip trailing slash to prevent double-slash in URLs.
@@ -168,7 +168,7 @@ func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear val
 
 	// Validate token.
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("vault: token is required")
+		return nil, fmt.Errorf("audit/secrets/vault: token is required")
 	}
 
 	// Build TLS config (skip when using plain HTTP for development).
@@ -220,29 +220,29 @@ func New(cfg *Config) (*Provider, error) { //nolint:gocyclo,cyclop // linear val
 // The Config.Address and Config.Token are still validated.
 func NewWithHTTPClient(cfg *Config, client *http.Client) (*Provider, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("vault: config must not be nil")
+		return nil, fmt.Errorf("audit/secrets/vault: config must not be nil")
 	}
 	if client == nil {
-		return nil, fmt.Errorf("vault: http client must not be nil")
+		return nil, fmt.Errorf("audit/secrets/vault: http client must not be nil")
 	}
 	if cfg.Address == "" {
-		return nil, fmt.Errorf("vault: address is required")
+		return nil, fmt.Errorf("audit/secrets/vault: address is required")
 	}
 	u, err := url.Parse(cfg.Address)
 	if err != nil {
-		return nil, fmt.Errorf("vault: invalid address: %w", err)
+		return nil, fmt.Errorf("audit/secrets/vault: invalid address: %w", err)
 	}
 	if u.Scheme != "https" && !cfg.AllowInsecureHTTP {
-		return nil, fmt.Errorf("vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
+		return nil, fmt.Errorf("audit/secrets/vault: address must use https (got %q); set AllowInsecureHTTP for local development", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("vault: address has empty host")
+		return nil, fmt.Errorf("audit/secrets/vault: address has empty host")
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("vault: address must not contain embedded credentials")
+		return nil, fmt.Errorf("audit/secrets/vault: address must not contain embedded credentials")
 	}
 	if cfg.Token == "" {
-		return nil, fmt.Errorf("vault: token is required")
+		return nil, fmt.Errorf("audit/secrets/vault: token is required")
 	}
 	return &Provider{
 		client: client,
@@ -262,7 +262,7 @@ var _ secrets.BatchProvider = (*Provider)(nil)
 // Resolve fetches a single secret value for the given reference.
 func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error) {
 	if err := ref.Valid(); err != nil {
-		return "", fmt.Errorf("vault: %w", err)
+		return "", fmt.Errorf("audit/secrets/vault: %w", err)
 	}
 	allKeys, err := p.fetchPath(ctx, ref.Path)
 	if err != nil {
@@ -280,7 +280,7 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Ref) (string, error)
 // path-level caching.
 func (p *Provider) ResolvePath(ctx context.Context, path string) (map[string]string, error) {
 	if err := secrets.ValidatePath(path); err != nil {
-		return nil, fmt.Errorf("vault: %w", err)
+		return nil, fmt.Errorf("audit/secrets/vault: %w", err)
 	}
 	return p.fetchPath(ctx, path)
 }
@@ -411,21 +411,21 @@ func buildTLSConfig(cfg *Config) (*tls.Config, error) {
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, fmt.Errorf("vault: load client certificate: %w", err)
+			return nil, fmt.Errorf("audit/secrets/vault: load client certificate: %w", err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	} else if cfg.TLSCert != "" || cfg.TLSKey != "" {
-		return nil, fmt.Errorf("vault: tls_cert and tls_key must both be set or both empty")
+		return nil, fmt.Errorf("audit/secrets/vault: tls_cert and tls_key must both be set or both empty")
 	}
 
 	if cfg.TLSCA != "" {
 		caCert, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, fmt.Errorf("vault: read ca certificate: %w", err)
+			return nil, fmt.Errorf("audit/secrets/vault: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("vault: parse ca certificate: invalid PEM")
+			return nil, fmt.Errorf("audit/secrets/vault: parse ca certificate: invalid PEM")
 		}
 		tlsCfg.RootCAs = pool
 	}

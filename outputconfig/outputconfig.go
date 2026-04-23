@@ -27,8 +27,16 @@ import (
 )
 
 // ErrOutputConfigInvalid is the sentinel error wrapped by output
-// configuration validation failures.
-var ErrOutputConfigInvalid = errors.New("audit: output config validation failed")
+// configuration validation failures. It itself wraps
+// [audit.ErrConfigInvalid] so consumers can match at either level
+// via [errors.Is]:
+//
+//	errors.Is(err, outputconfig.ErrOutputConfigInvalid)  // specific
+//	errors.Is(err, audit.ErrConfigInvalid)               // generic
+//
+// The wrapping relationship mirrors stdlib's `fs.ErrNotExist` /
+// `os.ErrNotExist` pattern.
+var ErrOutputConfigInvalid = fmt.Errorf("audit/outputconfig: output config validation failed: %w", audit.ErrConfigInvalid)
 
 // MaxOutputConfigSize is the maximum YAML input size accepted by [Load].
 const MaxOutputConfigSize = 1 << 20 // 1 MiB

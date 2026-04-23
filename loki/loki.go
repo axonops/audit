@@ -277,11 +277,14 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"max_event_bytes", o.maxEventBytes,
 				"dropped", dropped)
 		})
+		// Buffer drops (event never attempted) are counted via per-
+		// output OutputMetrics.RecordDrop only — not via pipeline-
+		// level Metrics.RecordEvent. Matches file + syslog for
+		// consistency across all self-reporting outputs (B-25).
+		// RecordEvent(EventError) remains for retries-exhausted
+		// failures in http.go where delivery WAS attempted.
 		if omp := o.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
@@ -299,11 +302,10 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
+		// Buffer drops counted via OutputMetrics.RecordDrop only — see
+		// B-25 note above.
 		if omp := o.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}

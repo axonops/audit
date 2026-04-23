@@ -253,11 +253,12 @@ func (w *Output) Write(data []byte) error {
 				"max_event_bytes", w.maxEventBytes,
 				"dropped", dropped)
 		})
+		// Drops are counted once via per-output OutputMetrics.RecordDrop
+		// only — not via pipeline-level Metrics.RecordEvent. This
+		// matches file + syslog behaviour for consistency across all
+		// self-reporting outputs (B-25).
 		if omp := w.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if w.metrics != nil {
-			w.metrics.RecordEvent(w.Name(), audit.EventError)
 		}
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
@@ -275,11 +276,10 @@ func (w *Output) Write(data []byte) error {
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
+		// Drops are counted via per-output OutputMetrics.RecordDrop
+		// only — see B-25 note above.
 		if omp := w.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if w.metrics != nil {
-			w.metrics.RecordEvent(w.Name(), audit.EventError)
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}

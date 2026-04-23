@@ -226,7 +226,7 @@ func ParseRef(s string) (Ref, error) {
 	sepIdx := strings.Index(rest, schemeSep)
 	if sepIdx < 0 {
 		// redactRef returns a fixed token; the input is never echoed.
-		return Ref{}, fmt.Errorf("%w: missing %q separator in %s", ErrMalformedRef, schemeSep, redactRef(s))
+		return Ref{}, fmt.Errorf("%w: missing %q separator in %s", ErrMalformedRef, schemeSep, redactRef())
 	}
 
 	scheme := rest[:sepIdx]
@@ -372,9 +372,10 @@ func isValidScheme(s string) bool {
 func isLowerAlpha(c byte) bool { return c >= 'a' && c <= 'z' }
 func isDigit(c byte) bool      { return c >= '0' && c <= '9' }
 
-// redactRef returns a redacted version of a ref string for use in
-// error messages. Only called when the "://" separator is missing,
-// so it always returns the malformed form.
-func redactRef(_ string) string {
+// redactRef returns a redacted placeholder used in error messages
+// where the original ref string must not be echoed (e.g. because it
+// failed scheme parsing and could contain attacker-controlled input).
+// The return value is constant; callers pass no input.
+func redactRef() string {
 	return "ref+[malformed]"
 }

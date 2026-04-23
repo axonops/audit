@@ -261,15 +261,31 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 | `github.com/axonops/audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
 | `github.com/axonops/audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
 | `github.com/axonops/audit/outputconfig` | YAML-based output configuration with env var substitution |
-| `github.com/axonops/audit/outputs` | Convenience: single blank import registers all output factories |
+| `github.com/axonops/audit/outputs` | **Recommended default** — single blank import registers all output factories |
 | `github.com/axonops/audit/secrets` | Secret provider interface for `ref+` URI resolution in YAML config |
 | `github.com/axonops/audit/secrets/openbao` | OpenBao KV v2 secret provider |
 | `github.com/axonops/audit/secrets/vault` | HashiCorp Vault KV v2 secret provider |
 | `github.com/axonops/audit/cmd/audit-gen` | Code generator: YAML taxonomy to typed Go builders |
 
 Outputs are isolated in separate modules so the core library carries
-minimal third-party dependencies. Import only the outputs you use —
-or `import _ "github.com/axonops/audit/outputs"` to register all of them.
+minimal third-party dependencies. The default path is the
+convenience package — one blank import registers every built-in
+output:
+
+```go
+import _ "github.com/axonops/audit/outputs"
+```
+
+Production services typically import only the outputs they use —
+shaving a few MB of transitive dependencies (`goccy/go-yaml`,
+`srslog`, HTTP stacks) per unused output — and the convenience
+package is ideal for demos, examples, and apps that use most output
+types:
+
+```go
+import _ "github.com/axonops/audit/file"   // only if you use type: file
+import _ "github.com/axonops/audit/syslog" // only if you use type: syslog
+```
 
 ---
 

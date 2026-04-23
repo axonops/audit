@@ -25,6 +25,7 @@ import (
 
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/outputconfig"
+	_ "github.com/axonops/audit/outputs" // registers stdout, file, syslog, webhook, loki
 )
 
 //go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main

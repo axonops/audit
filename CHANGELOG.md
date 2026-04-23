@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 > **Deviations from #566 AC (accepted):** (1) `audittest.PermissiveTaxonomy()` NOT added — `audittest.QuickTaxonomy()` already exists and fills the same role; adding a second name violates the "one obvious way" principle. (2) `WithExcludedLabels` renamed to `WithExcludeLabels` to match core `audit.WithExcludeLabels` exactly (no "d"). (3) AC named `RecordedEvents.WaitForN` (a type name from the original issue draft that was never implemented in the codebase) — the actual type is `*audittest.Recorder`, so `WaitForN` is a method on `*Recorder`. All three deviations confirmed with api-ergonomics-reviewer.
 
+### Changed
+
+- All examples (`examples/02-code-generation` through `examples/17-capstone`) now blank-import the `outputs` convenience package in place of individual output-module imports (#585). README + `docs/output-configuration.md` now lead with `import _ "github.com/axonops/audit/outputs"` as the default registration path, with individual sub-module imports documented as a binary-size optimisation. No API change; consumers who already use either pattern are unaffected.
+
+### Fixed
+
+- Examples `02-code-generation`, `04-testing`, `06-middleware`, `13-standard-fields`, and `15-tls-policy` failed at runtime with `unknown output type "stdout"` because they declared `type: stdout` in `outputs.yaml` without blank-importing anything that registered the stdout factory (stdout auto-registration was removed in #578). The new `_ "github.com/axonops/audit/outputs"` blank import registers stdout alongside the other built-ins (#585).
+
 ### Breaking Changes
 
 - HMAC configuration and wire format aligned for v1.0 API lock-in (#582). Three coordinated renames, detailed in [ADR-0004](docs/adr/0004-hmac-wire-field-naming.md):

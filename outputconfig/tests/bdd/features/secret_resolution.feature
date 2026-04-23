@@ -31,7 +31,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: my-literal-salt-32-bytes!!!!!!!
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 
@@ -53,7 +53,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ${BDD_HMAC_SALT_LITERAL}
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 
@@ -77,7 +77,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ref+mock://secret/data/hmac#version
               value: ref+mock://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 
@@ -101,7 +101,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ${BDD_HMAC_SALT_REF}
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 
@@ -125,7 +125,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ${BDD_HMAC_VERSION}
               value: ref+mock://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 
@@ -167,7 +167,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+vault://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "no provider registered for scheme"
 
@@ -189,7 +189,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+mock://secret/data/hmac
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "malformed secret reference"
 
@@ -211,7 +211,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+mock://secret/../data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "malformed secret reference"
 
@@ -235,7 +235,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+mock://secret/data/hmac#salt
-            hash: ref+mock://nonexistent/path#algorithm
+            algorithm: ref+mock://nonexistent/path#algorithm
       """
     Then the config load should fail
     And the error message should not contain "SUPER-SECRET-MUST-NOT-APPEAR-IN-ERRORS"
@@ -259,7 +259,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ref+mock://nonexistent/path#version
               value: ref+mock://nonexistent/path#salt
-            hash: ref+mock://nonexistent/path#algorithm
+            algorithm: ref+mock://nonexistent/path#algorithm
       """
     Then the config load should succeed
     And the mock provider call count should be 1
@@ -283,7 +283,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+mock://nonexistent/path#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "secret not found"
 
@@ -304,7 +304,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ref+nonexistent://path/does/not/matter#version
               value: ref+nonexistent://path/does/not/matter#salt
-            hash: ref+nonexistent://path/does/not/matter#hash
+            algorithm: ref+nonexistent://path/does/not/matter#hash
       """
     Then the config load should succeed
 
@@ -353,7 +353,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ref+mock://secret/data/hmac#version
               value: ref+mock://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
     And the mock provider call count should be 2
@@ -378,7 +378,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: v1
               value: ref+slow://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "context"
 
@@ -440,7 +440,7 @@ Feature: Secret reference resolution in output configuration
             salt:
               version: ref+mock://secret/data/hmac#version
               value: ref+mock://secret/data/hmac#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
 

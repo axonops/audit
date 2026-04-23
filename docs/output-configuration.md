@@ -563,7 +563,7 @@ outputs:
       salt:
         version: "2026-Q1"
         value: "ref+openbao://secret/data/audit/hmac#salt"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
     file:
       path: "/var/log/audit/secure.log"
   alerts:

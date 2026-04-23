@@ -187,7 +187,7 @@ func TestAppendPostFieldsCEFInto_PropertyEqualsSequentialInPlace(t *testing.T) {
 func TestAppendPostFieldsInto_MalformedBase(t *testing.T) {
 	fields := []PostField{
 		{JSONKey: "event_category", CEFKey: "cat", Value: "write"},
-		{JSONKey: "_hmac_v", CEFKey: "_hmacVersion", Value: "v1"},
+		{JSONKey: "_hmac_version", CEFKey: "_hmacVersion", Value: "v1"},
 	}
 
 	cases := []struct {

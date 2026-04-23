@@ -285,10 +285,12 @@ func benchAudit10FieldsSyncWithHMAC(b *testing.B) {
 	silenceSlog(b)
 	out := testhelper.NewNoopOutput("bench-cmp-hmac")
 	hmacCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(benchComparisonTaxonomy()),

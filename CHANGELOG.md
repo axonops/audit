@@ -15,6 +15,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- HMAC configuration and wire format aligned for v1.0 API lock-in (#582). Three coordinated renames, detailed in [ADR-0004](docs/adr/0004-hmac-wire-field-naming.md):
+  - **Go struct restructured**. `HMACConfig.SaltVersion string` + `HMACConfig.SaltValue []byte` → `HMACConfig.Salt HMACSalt` (new exported type `audit.HMACSalt{Version string, Value []byte}`). Matches the nested YAML shape so godoc and YAML read the same structure in both places. Go-precedent: `tls.Config` → `tls.Certificate` (domain-prefixed nested type).
+  - **YAML key `hash` → `algorithm`**. `hmac.hash: HMAC-SHA-256` → `hmac.algorithm: HMAC-SHA-256`. The field holds an HMAC algorithm identifier, not a hash name; the Go API already called it `Algorithm`. No backward-compat alias — pre-v1.0, stale `hash:` configs fail loudly with a clear unknown-field error.
+  - **Wire key JSON `_hmac_v` → `_hmac_version`**. CEF stays `_hmacVersion`. The pair `_hmac_version` / `_hmacVersion` matches the snake/camel symmetry already used for `event_category` / `eventCategory`. `_hmac_v` was the only abbreviated wire key and its `_v` suffix read ambiguously as version / value / verify. Position inside the HMAC-authenticated region is preserved — immediately preceding the `_hmac` digest, as locked by #473.
+  
+  Migration:
+  ```go
+  // Before
+  cfg := audit.HMACConfig{
+      Enabled:     true,
+      SaltVersion: "2026-Q1",
+      SaltValue:   salt,
+      Algorithm:   "HMAC-SHA-256",
+  }
+  
+  // After
+  cfg := audit.HMACConfig{
+      Enabled: true,
+      Salt: audit.HMACSalt{
+          Version: "2026-Q1",
+          Value:   salt,
+      },
+      Algorithm: "HMAC-SHA-256",
+  }
+  ```
+  ```yaml
+  # Before
+  hmac:
+    enabled: true
+    salt:
+      version: "2026-Q1"
+      value: "${HMAC_SALT}"
+    hash: HMAC-SHA-256
+  
+  # After
+  hmac:
+    enabled: true
+    salt:
+      version: "2026-Q1"
+      value: "${HMAC_SALT}"
+    algorithm: HMAC-SHA-256
+  ```
+  External JSON verifiers: update the string constant from `_hmac_v` to `_hmac_version`. Continue to strip only `_hmac` (never `_hmac_version`) before recomputing the HMAC. CEF verifiers: no change.
+
 - All four output sub-modules (`file`, `syslog`, `webhook`, `loki`) now expose the identical `NewFactory` signature (#581):
   ```go
   func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory

@@ -1594,7 +1594,7 @@ outputs:
       salt:
         version: "v1"
         value: "this-is-a-test-salt!"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
@@ -1602,7 +1602,7 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
 	assert.True(t, result.OutputMetadata()[0].HMACConfig.Enabled)
-	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.SaltVersion)
+	assert.Equal(t, "v1", result.OutputMetadata()[0].HMACConfig.Salt.Version)
 	assert.Equal(t, "HMAC-SHA-256", result.OutputMetadata()[0].HMACConfig.Algorithm)
 }
 
@@ -1656,7 +1656,7 @@ outputs:
       salt:
         version: "v1"
         value: "short"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
@@ -1678,7 +1678,7 @@ outputs:
       salt:
         version: "v1"
         value: "valid-salt-sixteen-b!"
-      hash: MD5
+      algorithm: MD5
 `)
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
@@ -1697,7 +1697,7 @@ outputs:
     type: stdout
     hmac:
       enabled: true
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
@@ -1741,13 +1741,13 @@ outputs:
       salt:
         version: "v1"
         value: "${TEST_HMAC_SALT}"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
 	result, err := outputconfig.Load(context.Background(), data, tax)
 	require.NoError(t, err)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
-	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
+	assert.Equal(t, []byte("env-salt-value-sixteen!"), result.OutputMetadata()[0].HMACConfig.Salt.Value)
 }
 
 func TestLoad_HMAC_SaltNotInError(t *testing.T) {
@@ -1764,7 +1764,7 @@ outputs:
       salt:
         version: "v1"
         value: "short"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)

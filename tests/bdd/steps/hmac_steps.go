@@ -42,10 +42,12 @@ func registerHMACGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			auditor, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-					Enabled:     true,
-					SaltVersion: version,
-					SaltValue:   []byte(salt),
-					Algorithm:   hash,
+					Enabled: true,
+					Salt: audit.HMACSalt{
+						Version: version,
+						Value:   []byte(salt),
+					},
+					Algorithm: hash,
 				})),
 			)
 			if err != nil {
@@ -64,10 +66,12 @@ func registerHMACWhenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			_, err := audit.New(
 				audit.WithTaxonomy(tc.Taxonomy),
 				audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-					Enabled:     true,
-					SaltVersion: version,
-					SaltValue:   []byte(salt),
-					Algorithm:   hash,
+					Enabled: true,
+					Salt: audit.HMACSalt{
+						Version: version,
+						Value:   []byte(salt),
+					},
+					Algorithm: hash,
 				})),
 			)
 			tc.LastErr = err
@@ -82,9 +86,9 @@ func registerHMACThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 func registerHMACPresenceSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the output should contain "_hmac" field$`, func() error { return assertCapturedContainsHMAC(tc) })
-	ctx.Step(`^the output should contain "_hmac_v" field with value "([^"]*)"$`, func(want string) error { return assertCapturedHMACVersion(tc, want) })
+	ctx.Step(`^the output should contain "_hmac_version" field with value "([^"]*)"$`, func(want string) error { return assertCapturedHMACVersion(tc, want) })
 	ctx.Step(`^the output should not contain "_hmac" field$`, func() error { return assertNoHMACField(tc) })
-	ctx.Step(`^the output should not contain "_hmac_v" field$`, func() error { return assertNoHMACVersionField(tc) })
+	ctx.Step(`^the output should not contain "_hmac_version" field$`, func() error { return assertNoHMACVersionField(tc) })
 	ctx.Step(`^the captured output should contain field "([^"]*)" with value "([^"]*)"$`,
 		func(field, want string) error { return assertCapturedFieldValue(tc, field, want) })
 }
@@ -154,8 +158,8 @@ func assertNoHMACVersionField(tc *AuditTestContext) error {
 		return fmt.Errorf("no events captured")
 	}
 	for _, raw := range lines {
-		if strings.Contains(string(raw), `"_hmac_v"`) {
-			return fmt.Errorf("event unexpectedly contains _hmac_v field")
+		if strings.Contains(string(raw), `"_hmac_version"`) {
+			return fmt.Errorf("event unexpectedly contains _hmac_version field")
 		}
 	}
 	return nil
@@ -170,7 +174,7 @@ func registerHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 
 	// Salt-version authentication tamper-detection steps (issue #473).
 	//
-	// Together these verify that the HMAC covers _hmac_v and the rest of
+	// Together these verify that the HMAC covers _hmac_version and the rest of
 	// the payload: tamper with a field, recompute the HMAC over the
 	// tampered bytes (stripping only _hmac), and assert the HMAC does
 	// NOT match.
@@ -256,7 +260,7 @@ func tamperCapturedField(tc *AuditTestContext, fieldName, newValue string) error
 }
 
 // assertTamperedHMACMismatches strips only _hmac from the tampered raw
-// bytes (leaving _hmac_v inside the authenticated region per issue
+// bytes (leaving _hmac_version inside the authenticated region per issue
 // #473), recomputes HMAC-SHA-256 with the given salt, and asserts it
 // does NOT match the original _hmac value. If verification succeeds
 // on tampered bytes, the HMAC has failed to cover the tampered field.
@@ -285,12 +289,12 @@ func assertHMACVersion(raw []byte, want string) error {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return fmt.Errorf("parse event JSON: %w", err)
 	}
-	got, ok := m["_hmac_v"]
+	got, ok := m["_hmac_version"]
 	if !ok {
-		return fmt.Errorf("event does not contain _hmac_v field")
+		return fmt.Errorf("event does not contain _hmac_version field")
 	}
 	if fmt.Sprint(got) != want {
-		return fmt.Errorf("_hmac_v: want %q, got %q", want, got)
+		return fmt.Errorf("_hmac_version: want %q, got %q", want, got)
 	}
 	return nil
 }
@@ -306,7 +310,7 @@ func verifyEventHMAC(raw []byte, salt string) error {
 	}
 
 	// Reconstruct the authenticated payload: strip ONLY the `_hmac`
-	// field. `_hmac_v` (salt version) is inside the authenticated
+	// field. `_hmac_version` (salt version) is inside the authenticated
 	// region per issue #473 and must remain.
 	payload := stripHMACField(raw)
 
@@ -321,7 +325,7 @@ func verifyEventHMAC(raw []byte, salt string) error {
 }
 
 // stripHMACField removes the `,"_hmac":"..."` field from a JSON line,
-// returning the bytes the HMAC was computed over. `_hmac_v` is left
+// returning the bytes the HMAC was computed over. `_hmac_version` is left
 // intact because it is authenticated by the HMAC (issue #473).
 func stripHMACField(line []byte) []byte {
 	s := string(line)
@@ -501,16 +505,20 @@ func createDualHMACAuditor(tc *AuditTestContext, strippedName, label, fullSalt, 
 	// Different salts per output — proves each output applies its own
 	// HMAC config independently, not a shared singleton.
 	fullHMACCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v1",
-		SaltValue:   []byte(fullSalt),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte(fullSalt),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 	strippedHMACCfg := &audit.HMACConfig{
-		Enabled:     true,
-		SaltVersion: "v2",
-		SaltValue:   []byte(strippedSalt),
-		Algorithm:   "HMAC-SHA-256",
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v2",
+			Value:   []byte(strippedSalt),
+		},
+		Algorithm: "HMAC-SHA-256",
 	}
 
 	auditor, err := audit.New(

@@ -36,7 +36,7 @@ Feature: Secret provider resolution with real containers
             salt:
               version: ref+<scheme>://secret/data/bdd/hmac#version
               value: ref+<scheme>://secret/data/bdd/hmac#salt
-            hash: ref+<scheme>://secret/data/bdd/hmac#algorithm
+            algorithm: ref+<scheme>://secret/data/bdd/hmac#algorithm
       """
     Then the config load should succeed
     And the HMAC config should have salt "bdd-real-salt-value-32-bytes!!!!"
@@ -66,7 +66,7 @@ Feature: Secret provider resolution with real containers
             salt:
               version: v1
               value: ${BDD_HMAC_SALT}
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
     And the HMAC config should have salt "env-to-ref-salt-value-32-bytes!!"
@@ -95,7 +95,7 @@ Feature: Secret provider resolution with real containers
             salt:
               version: ${BDD_HMAC_VERSION}
               value: ref+<scheme>://secret/data/bdd/mixed#salt
-            hash: HMAC-SHA-256
+            algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
     And the HMAC config should have salt "mixed-real-salt-value-32-bytes!!"

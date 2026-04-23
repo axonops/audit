@@ -151,7 +151,7 @@ call), the W2 pipeline is identical for both paths:
 - No `make([]byte, …)` for the formatter output. Pre-W2: 1 alloc per
   event per unique formatter.
 - No `make([]byte, …)` per `AppendPostField` call (event_category +
-  HMAC's `_hmac_v` + HMAC's `_hmac`). Pre-W2: up to 3 allocs per output
+  HMAC's `_hmac_version` + HMAC's `_hmac`). Pre-W2: up to 3 allocs per output
   per HMAC-enabled fan-out.
 - No `make([]string, …)` for sorted field keys when no extras are
   present. Pre-W2: variable.

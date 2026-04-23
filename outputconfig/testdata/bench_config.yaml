@@ -40,7 +40,7 @@ outputs:
       salt:
         version: "v1"
         value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      hash: "HMAC-SHA-256"
+      algorithm: "HMAC-SHA-256"
 
   security_log:
     type: file

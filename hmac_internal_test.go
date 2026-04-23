@@ -25,10 +25,12 @@ func TestComputeHMACFast_EquivalentToComputeHMAC(t *testing.T) {
 		t.Run(alg, func(t *testing.T) {
 			t.Parallel()
 			cfg := &HMACConfig{
-				Enabled:     true,
-				SaltVersion: "v1",
-				SaltValue:   salt,
-				Algorithm:   alg,
+				Enabled: true,
+				Salt: HMACSalt{
+					Version: "v1",
+					Value:   salt,
+				},
+				Algorithm: alg,
 			}
 			state := newHMACState(cfg)
 			if state == nil {

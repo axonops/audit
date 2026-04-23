@@ -76,7 +76,7 @@ outputs:
       salt:
         version: "2026-Q1"
         value: "${HMAC_SALT}"           # env var — never hardcode salts
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
     file:
       path: "./secure-audit.log"
     route:
@@ -94,7 +94,7 @@ outputs:
 | `hmac.enabled` | No | Default: `false`. Must be explicitly `true`. |
 | `hmac.salt.version` | Yes (when enabled) | User-defined version identifier for the salt. Included in output for rotation support. |
 | `hmac.salt.value` | Yes (when enabled) | The salt value. Min 16 bytes (128 bits). Supports `${VAR}` env vars. |
-| `hmac.hash` | Yes (when enabled) | Hash algorithm. See [Supported Algorithms](#supported-algorithms). |
+| `hmac.algorithm` | Yes (when enabled) | HMAC algorithm. See [Supported Algorithms](#supported-algorithms). |
 
 ## 📋 Supported Algorithms
 
@@ -155,21 +155,21 @@ The HMAC covers the following bytes, in this exact order:
 
 1. All event fields that survived sensitivity-label stripping.
 2. The `event_category` field (when the taxonomy has an active category for the event).
-3. The `_hmac_v` field (the salt version identifier).
+3. The `_hmac_version` field (the salt version identifier).
 
 The HMAC tag itself (`_hmac`) is **not** inside the authenticated region —
 it is the authentication tag, and it is always appended last.
 
-**Why authenticate `_hmac_v`?** A verifier uses `_hmac_v` to select the
-salt. If `_hmac_v` were outside the HMAC scope, an in-transit attacker
+**Why authenticate `_hmac_version`?** A verifier uses `_hmac_version` to select the
+salt. If `_hmac_version` were outside the HMAC scope, an in-transit attacker
 could change `v1` to `v2` to redirect the verifier to a different salt
-without detection. Including `_hmac_v` inside the authenticated bytes
+without detection. Including `_hmac_version` inside the authenticated bytes
 invalidates the HMAC on any modification to the version identifier.
 
 The library enforces this contract in two ways:
 
-- **SaltVersion character set** is restricted to `[A-Za-z0-9._:-]` (up to 64 characters) at config-time validation. Control characters, spaces, CEF/JSON escape metacharacters, and quote characters are all rejected. This eliminates escape ambiguity between the bytes that are hashed and the bytes that appear on the wire.
-- **Reserved-field collision**: consumer-supplied event fields named `_hmac` or `_hmac_v` are rejected at runtime regardless of `ValidationMode`. This prevents accidentally-or-maliciously emitting a duplicate `_hmac_v` earlier in the payload, which would introduce canonicalisation ambiguity for verifiers.
+- **`HMACSalt.Version` character set** is restricted to `[A-Za-z0-9._:-]` (up to 64 characters) at config-time validation. Control characters, spaces, CEF/JSON escape metacharacters, and quote characters are all rejected. This eliminates escape ambiguity between the bytes that are hashed and the bytes that appear on the wire.
+- **Reserved-field collision**: consumer-supplied event fields named `_hmac` or `_hmac_version` are rejected at runtime regardless of `ValidationMode`. This prevents accidentally-or-maliciously emitting a duplicate `_hmac_version` earlier in the payload, which would introduce canonicalisation ambiguity for verifiers.
 
 ## ✅ Verification
 
@@ -178,9 +178,9 @@ The library provides exported functions for HMAC verification:
 ```go
 // Verify an event's HMAC
 ok, err := audit.VerifyHMAC(
-    payloadBytes,    // on-wire bytes with ONLY the `_hmac` field removed (leave `_hmac_v` in place)
+    payloadBytes,    // on-wire bytes with ONLY the `_hmac` field removed (leave `_hmac_version` in place)
     hmacValue,       // the _hmac field value (lowercase hex)
-    salt,            // the salt bytes (looked up by _hmac_v version)
+    salt,            // the salt bytes (looked up by _hmac_version version)
     "HMAC-SHA-256",  // the algorithm
 )
 ```
@@ -189,17 +189,17 @@ ok, err := audit.VerifyHMAC(
 
 - Operate on the **on-wire bytes** (the exact bytes written by the output).
 - Strip ONLY the trailing `_hmac` field (JSON: `,"_hmac":"<hex>"` before the closing `}`; CEF: ` _hmac=<hex>` before the trailing newline).
-- **Keep `_hmac_v` in place** — it is authenticated.
+- **Keep `_hmac_version` in place** — it is authenticated.
 - Do NOT re-parse and re-serialise the event. Escape representations in the bytes the HMAC was computed over MUST match the bytes on the wire exactly.
 - Do NOT un-escape CEF values before recomputing — the escaped bytes are what the HMAC authenticates.
-- Determine `_hmac_v` by **position** (the last field before `_hmac`), not by parsing. This defends against field-duplication attacks where a payload contains two `_hmac_v` fields.
+- Determine `_hmac_version` by **position** (the last field before `_hmac`), not by parsing. This defends against field-duplication attacks where a payload contains two `_hmac_version` fields.
 - Use a **JSON-aware or CEF-aware parser** to locate the `_hmac` field, not a naive substring search for `,"_hmac":"`. A malicious consumer-controlled field value elsewhere in the payload containing that literal would confuse a substring-based stripper. The library's own tests use a simple substring strip because the taxonomy rejects reserved field names at runtime, but production verifiers should parse structurally.
 
 ### Output Format
 
 **JSON:**
 ```json
-{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"outcome":"failure","event_category":"security","_hmac_v":"2026-Q1","_hmac":"a1b2c3d4..."}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"outcome":"failure","event_category":"security","_hmac_version":"2026-Q1","_hmac":"a1b2c3d4..."}
 ```
 
 **CEF:**
@@ -207,11 +207,11 @@ ok, err := audit.VerifyHMAC(
 CEF:0|...|8|... outcome=failure cat=security _hmacVersion=2026-Q1 _hmac=a1b2c3d4...
 ```
 
-`_hmac_v` precedes `_hmac` on the wire so that `_hmac_v` is part of the
+`_hmac_version` precedes `_hmac` on the wire so that `_hmac_version` is part of the
 bytes the HMAC authenticates. `_hmac` is always the **last** field; no
 post-fields are appended after it.
 
-Note: JSON uses `_hmac_v`; CEF uses `_hmacVersion`. Verifiers parsing CEF
+Note: JSON uses `_hmac_version`; CEF uses `_hmacVersion`. Verifiers parsing CEF
 output must look for `_hmacVersion`.
 
 ### Interaction with Other Features
@@ -223,9 +223,9 @@ output must look for `_hmacVersion`.
 - **Framework fields:** HMAC covers `app_name`, `host`, `timezone`, and
   `pid` when present. These fields are part of the serialised payload
   before HMAC computation.
-- **Salt version:** `_hmac_v` is inside the authenticated region. See "What Is Authenticated" above.
+- **Salt version:** `_hmac_version` is inside the authenticated region. See "What Is Authenticated" above.
 - **Format cache:** The base serialised event is cached. HMAC is
-  computed per-delivery (after event_category + field stripping + `_hmac_v` append).
+  computed per-delivery (after event_category + field stripping + `_hmac_version` append).
 
 ## 🔄 Alternative Approaches
 

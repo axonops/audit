@@ -374,10 +374,12 @@ func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt,
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
-			Enabled:     true,
-			SaltVersion: version,
-			SaltValue:   []byte(salt),
-			Algorithm:   hash,
+			Enabled: true,
+			Salt: audit.HMACSalt{
+				Version: version,
+				Value:   []byte(salt),
+			},
+			Algorithm: hash,
 		})),
 	}
 	opts = append(opts, tc.Options...)

@@ -335,7 +335,7 @@ outputs:
       salt:
         version: "2026-Q1"
         value: "${HMAC_SALT}"
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 ```
 
 The [HMAC integrity](hmac-integrity.md) option adds a tamper-detection

@@ -121,7 +121,7 @@ outputs:
       salt:
         version: %s
         value: %s
-      hash: %s
+      algorithm: %s
 `, enabledValue, versionRef, saltRef, hashRef))
 }
 
@@ -155,8 +155,8 @@ func TestLoad_WithSecretProvider_AllHMACFieldsResolved(t *testing.T) {
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
 	assert.True(t, hmac.Enabled)
-	assert.Equal(t, "v1", hmac.SaltVersion)
-	assert.Equal(t, []byte("my-secret-salt-value-32bytes!!!!"), hmac.SaltValue)
+	assert.Equal(t, "v1", hmac.Salt.Version)
+	assert.Equal(t, []byte("my-secret-salt-value-32bytes!!!!"), hmac.Salt.Value)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
@@ -183,7 +183,7 @@ outputs:
       salt:
         version: v1
         value: ${TEST_HMAC_SALT_REF}
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -193,7 +193,7 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
-	assert.Equal(t, []byte("env-var-resolved-salt-32bytes!!!"), hmac.SaltValue)
+	assert.Equal(t, []byte("env-var-resolved-salt-32bytes!!!"), hmac.Salt.Value)
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
@@ -316,7 +316,7 @@ outputs:
       salt:
         version: v1
         value: ref+mock://path#key
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -438,8 +438,8 @@ func TestLoad_ClearsResolverCacheBeforeReturn(t *testing.T) {
 	hmac1, hmac2 := result1.OutputMetadata()[0].HMACConfig, result2.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac1)
 	require.NotNil(t, hmac2)
-	assert.Equal(t, hmac1.SaltValue, hmac2.SaltValue)
-	assert.Equal(t, hmac1.SaltVersion, hmac2.SaltVersion)
+	assert.Equal(t, hmac1.Salt.Value, hmac2.Salt.Value)
+	assert.Equal(t, hmac1.Salt.Version, hmac2.Salt.Version)
 
 	for _, o := range result1.OutputMetadata() {
 		_ = o.Output.Close()
@@ -481,8 +481,8 @@ func TestLoad_WithSecretProvider_PathLevelCache_OneCallForMultipleKeys(t *testin
 	require.Len(t, result.OutputMetadata(), 1)
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
-	assert.Equal(t, "v1", hmac.SaltVersion)
-	assert.Equal(t, []byte("cached-salt-value-32-bytes!!!!!!"), hmac.SaltValue)
+	assert.Equal(t, "v1", hmac.Salt.Version)
+	assert.Equal(t, []byte("cached-salt-value-32-bytes!!!!!!"), hmac.Salt.Value)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
@@ -507,7 +507,7 @@ outputs:
       salt:
         version: ${TEST_HMAC_VERSION}
         value: ref+mock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -516,9 +516,9 @@ outputs:
 	require.NoError(t, err)
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
-	assert.Equal(t, "v2", hmac.SaltVersion)                                     // from env var
-	assert.Equal(t, []byte("ref-resolved-salt-value-32bytes!"), hmac.SaltValue) // from ref
-	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)                             // literal
+	assert.Equal(t, "v2", hmac.Salt.Version)                                     // from env var
+	assert.Equal(t, []byte("ref-resolved-salt-value-32bytes!"), hmac.Salt.Value) // from ref
+	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)                              // literal
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
@@ -540,7 +540,7 @@ outputs:
       salt:
         version: v1
         value: ref+vault://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -672,7 +672,7 @@ outputs:
       salt:
         version: v1
         value: ${TEST_HMAC_SALT_LITERAL}
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -681,7 +681,7 @@ outputs:
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), mock.calls.Load())
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
-	assert.Equal(t, []byte("literal-salt-value-32-bytes!!!!!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
+	assert.Equal(t, []byte("literal-salt-value-32-bytes!!!!!"), result.OutputMetadata()[0].HMACConfig.Salt.Value)
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
@@ -713,7 +713,7 @@ outputs:
       salt:
         version: v1
         value: ref+mock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	// The resolved value contains "ref+mock://..." which the safety
 	// net should flag as an unresolved reference.
@@ -750,7 +750,7 @@ outputs:
       salt:
         version: v1
         value: ref+mock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -788,7 +788,7 @@ outputs:
       salt:
         version: v1
         value: ref+mock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -796,7 +796,7 @@ outputs:
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result.OutputMetadata()[0].HMACConfig)
-	assert.Equal(t, []byte("env-enabled-ref-salt-32-bytes!!!"), result.OutputMetadata()[0].HMACConfig.SaltValue)
+	assert.Equal(t, []byte("env-enabled-ref-salt-32-bytes!!!"), result.OutputMetadata()[0].HMACConfig.Salt.Value)
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()
 	}
@@ -907,7 +907,7 @@ outputs:
       salt:
         version: v1
         value: my-salt-value-32-bytes!!!!!!!!
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
@@ -1081,7 +1081,7 @@ outputs:
       salt:
         version: v1
         value: my-salt-value-that-is-32-bytes!
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -1177,7 +1177,7 @@ outputs:
       salt:
         version: ref+nbmock://secret/data/hmac#version
         value: ref+nbmock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -1187,8 +1187,8 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
-	assert.Equal(t, "v1", hmac.SaltVersion)
-	assert.Equal(t, []byte("non-batch-salt-value-32bytes!!!"), hmac.SaltValue)
+	assert.Equal(t, "v1", hmac.Salt.Version)
+	assert.Equal(t, []byte("non-batch-salt-value-32bytes!!!"), hmac.Salt.Value)
 	// Two distinct refs → two Resolve calls (no batch path).
 	assert.Equal(t, int64(2), p.calls.Load())
 	for _, o := range result.OutputMetadata() {
@@ -1247,7 +1247,7 @@ outputs:
       salt:
         version: v1
         value: ref+nbmock://secret/data/hmac#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -1338,7 +1338,7 @@ outputs:
       salt:
         version: v1
         value: ref+prova://secret/data/hmac#salt
-      hash: ref+provb://secret/data/hmac#algorithm
+      algorithm: ref+provb://secret/data/hmac#algorithm
 `)
 	result, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -1349,7 +1349,7 @@ outputs:
 	require.Len(t, result.OutputMetadata(), 1)
 	hmac := result.OutputMetadata()[0].HMACConfig
 	require.NotNil(t, hmac)
-	assert.Equal(t, []byte("salt-from-prov-a-32-bytes!!!!!!"), hmac.SaltValue)
+	assert.Equal(t, []byte("salt-from-prov-a-32-bytes!!!!!!"), hmac.Salt.Value)
 	assert.Equal(t, "HMAC-SHA-256", hmac.Algorithm)
 	assert.Equal(t, int64(1), provA.calls.Load())
 	assert.Equal(t, int64(1), provB.calls.Load())
@@ -1390,7 +1390,7 @@ outputs:
       salt:
         version: v1
         value: ref+mock://secret/data/config#salt
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
 		context.Background(), data, tax,
@@ -1526,7 +1526,7 @@ outputs:
       salt:
         version: v1
         value: some-salt-value-that-is-32-bytes
-      hash: HMAC-SHA-256
+      algorithm: HMAC-SHA-256
 `)
 	_, err := outputconfig.Load(
 		context.Background(), data, tax,

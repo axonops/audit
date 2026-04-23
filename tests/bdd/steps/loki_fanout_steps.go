@@ -50,10 +50,12 @@ func registerLokiFanoutGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^an auditor with file and loki outputs both HMAC-enabled with salt "([^"]*)" version "([^"]*)"$`,
 		func(salt, version string) error {
 			hmacCfg := &audit.HMACConfig{
-				Enabled:     true,
-				SaltVersion: version,
-				SaltValue:   []byte(salt),
-				Algorithm:   "HMAC-SHA-256",
+				Enabled: true,
+				Salt: audit.HMACSalt{
+					Version: version,
+					Value:   []byte(salt),
+				},
+				Algorithm: "HMAC-SHA-256",
 			}
 			return createFileAndLokiAuditor(tc, hmacCfg, nil)
 		})

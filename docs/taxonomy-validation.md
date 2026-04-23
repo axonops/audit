@@ -317,7 +317,7 @@ used as required or optional fields in your taxonomy:
 | `timezone` | Timezone context (set via outputs YAML or `WithTimezone`) |
 | `pid` | Process ID (auto-captured at construction) |
 | `_hmac` | HMAC integrity signature (set by HMAC config) |
-| `_hmac_v` | HMAC salt version (set by HMAC config) |
+| `_hmac_version` | HMAC salt version (set by HMAC config) |
 
 If you try to define any of these as a required or optional field,
 taxonomy validation fails with:

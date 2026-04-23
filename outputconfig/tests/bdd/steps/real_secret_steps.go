@@ -219,7 +219,7 @@ func (tc *TestContext) stepAssertHMACSalt(expected string) error {
 	if hmac == nil {
 		return fmt.Errorf("HMAC config is nil")
 	}
-	actual := string(hmac.SaltValue)
+	actual := string(hmac.Salt.Value)
 	if actual != expected {
 		return fmt.Errorf("HMAC salt: got %q, want %q", actual, expected)
 	}

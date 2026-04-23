@@ -151,7 +151,7 @@ Feature: Syslog Severity Mapping and Cross-Cutting Features
     And I close the auditor
     Then the syslog server should contain marker "hmac_present" within 10 seconds
     And the syslog line with marker "hmac_present" should contain "_hmac"
-    And the syslog line with marker "hmac_present" should contain "_hmac_v"
+    And the syslog line with marker "hmac_present" should contain "_hmac_version"
     And the syslog line with marker "hmac_present" should contain "v1"
 
   Scenario: HMAC fields absent in syslog output when not configured

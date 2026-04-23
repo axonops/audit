@@ -244,8 +244,9 @@
 //     sentinel donateFields()), and the auditor takes ownership of the
 //     event's Fields map. The formatter writes into a pool-leased
 //     *bytes.Buffer that is shared across every output and category pass
-//     for the same event; per-output post-fields (event_category, _hmac_v,
-//     _hmac) are appended in place into a per-event scratch buffer.
+//     for the same event; per-output post-fields (event_category,
+//     _hmac_version, _hmac) are appended in place into a per-event
+//     scratch buffer.
 //     This path achieves zero allocations on the drain side after warm-up.
 //
 //   - Slow path: events constructed via [NewEvent] or [NewEventKV] do

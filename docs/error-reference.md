@@ -142,10 +142,10 @@ receives invalid HMAC parameters.
 
 | Error (contains) | When |
 |------------------|------|
-| `hmac salt version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
-| `hmac salt value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
-| `hmac hash algorithm is required when hmac is enabled` | `hmac.hash` is empty or missing |
-| `hmac salt must be at least` | Salt is shorter than `audit.MinSaltLength` (currently 16) bytes |
+| `hmac salt.version is required when hmac is enabled` | `hmac.salt.version` is empty or missing |
+| `hmac salt.value is required when hmac is enabled` | `hmac.salt.value` is empty or missing |
+| `hmac algorithm is required when hmac is enabled` | `hmac.algorithm` is empty or missing |
+| `hmac salt.value must be at least` | Salt is shorter than `audit.MinSaltLength` (currently 16) bytes |
 | `unknown hmac algorithm` | Algorithm is not in `audit.SupportedHMACAlgorithms()` (currently: HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512, HMAC-SHA3-256, HMAC-SHA3-384, HMAC-SHA3-512) |
 
 All HMAC configuration validation errors (from `ValidateHMACConfig`, `outputconfig.Load()`, and `New`) wrap `audit.ErrConfigInvalid`. Use `errors.Is(err, audit.ErrConfigInvalid)` to detect them programmatically. Errors returned by `ComputeHMAC` and `VerifyHMAC` do not wrap this sentinel and must be handled separately.

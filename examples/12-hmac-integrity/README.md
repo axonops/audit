@@ -15,7 +15,7 @@ patterns side by side: **selective** (only security events) and
 - Selective HMAC via category routing (only security events pay crypto cost)
 - Global HMAC without routing (every event gets tamper detection)
 - Comparing the same event across outputs with and without HMAC
-- Understanding `_hmac` and `_hmac_v` fields in the output
+- Understanding `_hmac` and `_hmac_version` fields in the output
 - How to verify event integrity
 
 ## Prerequisites
@@ -56,7 +56,7 @@ secure_log:
     salt:
       version: "2026-Q1"
       value: "${HMAC_SALT:-default-example-salt!}"
-    hash: HMAC-SHA-256
+    algorithm: HMAC-SHA-256
   file:
     path: "./secure-audit.log"
   route:
@@ -75,7 +75,7 @@ tamperproof_log:
     salt:
       version: "2026-Q1"
       value: "${HMAC_SALT:-default-example-salt!}"
-    hash: HMAC-SHA-256
+    algorithm: HMAC-SHA-256
   file:
     path: "./all-audit.log"
   # No route — all events are delivered with HMAC
@@ -120,7 +120,7 @@ Never hardcode salts in production — use `${ENV_VAR}` substitution.
 
 ### Salt Versioning
 
-The `version` field is included in every HMAC'd event as `_hmac_v`.
+The `version` field is included in every HMAC'd event as `_hmac_version`.
 When you rotate salts, change the version so verifiers know which
 salt to use for each event.
 
@@ -128,14 +128,14 @@ salt to use for each event.
 
 Use the exported `audit.VerifyHMAC` function. The canonicalisation rule
 is: strip **only** the `_hmac` field from the on-wire bytes; leave
-`_hmac_v` in place because it is authenticated by the HMAC (issue
+`_hmac_version` in place because it is authenticated by the HMAC (issue
 [#473](https://github.com/axonops/audit/issues/473)).
 
 ```go
 // payloadBytes is the raw JSON line with ONLY the _hmac field removed.
-// The _hmac_v field stays in place — it is inside the authenticated region.
+// The _hmac_version field stays in place — it is inside the authenticated region.
 // hmacValue is the string value of the _hmac field (lowercase hex).
-// salt is []byte loaded from your key store, looked up by _hmac_v.
+// salt is []byte loaded from your key store, looked up by _hmac_version.
 ok, err := audit.VerifyHMAC(payloadBytes, hmacValue, salt, "HMAC-SHA-256")
 if err != nil {
     log.Printf("hmac verify: %v", err)
@@ -145,7 +145,7 @@ if !ok {
 }
 ```
 
-Verifiers should determine `_hmac_v` by **position** (the last field
+Verifiers should determine `_hmac_version` by **position** (the last field
 before `_hmac`), not by parsing — this defends against field-duplication
 attacks. See [`docs/hmac-integrity.md`](../../docs/hmac-integrity.md)
 for the full canonicalisation contract.
@@ -184,11 +184,11 @@ INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 
 --- secure-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac_v":"2026-Q1","_hmac":"<hex-64-chars>"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac_version":"2026-Q1","_hmac":"<hex-64-chars>"}
 
 --- all-audit.log ---
-{"timestamp":"...","event_type":"auth_failure",...,"_hmac_v":"2026-Q1","_hmac":"<same-hex>"}
-{"timestamp":"...","event_type":"user_create",...,"_hmac_v":"2026-Q1","_hmac":"<different-hex>"}
+{"timestamp":"...","event_type":"auth_failure",...,"_hmac_version":"2026-Q1","_hmac":"<same-hex>"}
+{"timestamp":"...","event_type":"user_create",...,"_hmac_version":"2026-Q1","_hmac":"<different-hex>"}
 ```
 
 Notice the three contrasts:

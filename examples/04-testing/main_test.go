@@ -39,7 +39,7 @@ func TestCreateUser_EmitsAuditEvent(t *testing.T) {
 	evt := events.RequireEvent(t, EventUserCreate)
 	assert.Equal(t, "alice", evt.StringField(FieldActorID))
 	assert.Equal(t, "alice@example.com", evt.StringField(FieldEmail))
-	assert.Equal(t, 1, metrics.EventDeliveries("recorder", "success"))
+	assert.Equal(t, 1, metrics.EventDeliveries("recorder", audit.EventSuccess))
 }
 
 func TestLogin_Failure_EmitsAuthEvent(t *testing.T) {

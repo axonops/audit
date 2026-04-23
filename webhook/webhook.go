@@ -257,7 +257,7 @@ func (w *Output) Write(data []byte) error {
 			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
-			w.metrics.RecordEvent(w.Name(), "error")
+			w.metrics.RecordEvent(w.Name(), audit.EventError)
 		}
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
@@ -279,7 +279,7 @@ func (w *Output) Write(data []byte) error {
 			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
-			w.metrics.RecordEvent(w.Name(), "error")
+			w.metrics.RecordEvent(w.Name(), audit.EventError)
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}

@@ -125,8 +125,8 @@ func (m *auditMetrics) RecordSubmitted() {}
 
 func (m *auditMetrics) RecordQueueDepth(_, _ int) {}
 
-func (m *auditMetrics) RecordEvent(output, status string) {
-	m.events.WithLabelValues(output, status).Inc()
+func (m *auditMetrics) RecordEvent(output string, status audit.EventStatus) {
+	m.events.WithLabelValues(output, string(status)).Inc()
 }
 
 func (m *auditMetrics) RecordOutputError(output string) {

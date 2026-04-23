@@ -534,11 +534,11 @@ func (a *Auditor) recordWrite(outputName, eventType string, selfReports bool, wr
 			"error", writeErr)
 		if a.metrics != nil && !selfReports {
 			a.metrics.RecordOutputError(outputName)
-			a.metrics.RecordEvent(outputName, "error")
+			a.metrics.RecordEvent(outputName, EventError)
 		}
 		return
 	}
 	if a.metrics != nil && !selfReports {
-		a.metrics.RecordEvent(outputName, "success")
+		a.metrics.RecordEvent(outputName, EventSuccess)
 	}
 }

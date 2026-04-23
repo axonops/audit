@@ -23,6 +23,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking Changes
 
+- `audit.Metrics.RecordEvent` now takes a typed `audit.EventStatus` instead of a raw `string` (#586). New exported type `type EventStatus string` with constants `audit.EventSuccess` (`"success"`) and `audit.EventError` (`"error"`). Prometheus / OpenTelemetry wire format is unchanged — `string(status)` is a zero-cost conversion that emits the identical label bytes that were previously hardcoded. Consumers implementing the `Metrics` interface (e.g. Prometheus adapter) must update the `RecordEvent` method signature. Test mocks migrated in lockstep: `audittest.MetricsRecorder.EventDeliveries` and `internal/testhelper.MockMetrics.GetEventCount` both now take `audit.EventStatus`. Pre-coding consult with api-ergonomics-reviewer locked the `string`-backed enum over `int`-backed for hot-path efficiency and wire-format stability. Migration:
+  ```go
+  // Before
+  type myMetrics struct{ /* ... */ }
+  func (m *myMetrics) RecordEvent(output, status string) {
+      m.events.WithLabelValues(output, status).Inc()
+  }
+
+  // After
+  func (m *myMetrics) RecordEvent(output string, status audit.EventStatus) {
+      m.events.WithLabelValues(output, string(status)).Inc()
+  }
+  ```
+  Test assertions:
+  ```go
+  // Before
+  assert.Equal(t, 1, metrics.EventDeliveries("out", "success"))
+  // After
+  assert.Equal(t, 1, metrics.EventDeliveries("out", audit.EventSuccess))
+  ```
+
 - HMAC configuration and wire format aligned for v1.0 API lock-in (#582). Three coordinated renames, detailed in [ADR-0004](docs/adr/0004-hmac-wire-field-naming.md):
   - **Go struct restructured**. `HMACConfig.SaltVersion string` + `HMACConfig.SaltValue []byte` → `HMACConfig.Salt HMACSalt` (new exported type `audit.HMACSalt{Version string, Value []byte}`). Matches the nested YAML shape so godoc and YAML read the same structure in both places. Go-precedent: `tls.Config` → `tls.Certificate` (domain-prefixed nested type).
   - **YAML key `hash` → `algorithm`**. `hmac.hash: HMAC-SHA-256` → `hmac.algorithm: HMAC-SHA-256`. The field holds an HMAC algorithm identifier, not a hash name; the Go API already called it `Algorithm`. No backward-compat alias — pre-v1.0, stale `hash:` configs fail loudly with a clear unknown-field error.

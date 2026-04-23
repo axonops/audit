@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/axonops/audit"
 )
 
 // sanitiseClientError returns a copy of err with any embedded
@@ -185,7 +187,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	if w.metrics != nil {
 		name := w.Name()
 		for range batchSize {
-			w.metrics.RecordEvent(name, "success")
+			w.metrics.RecordEvent(name, audit.EventSuccess)
 		}
 	}
 }
@@ -193,7 +195,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 // recordDrop records dropped events in metrics. Called when retries
 // are exhausted or a non-retryable error occurs.
 // RecordDrop is called per dropped event on OutputMetrics.
-// RecordEvent(name, "error") is called per dropped event on core Metrics.
+// RecordEvent(name, audit.EventError) is called per dropped event on core Metrics.
 func (w *Output) recordDrop(count int) {
 	name := w.Name()
 	for range count {
@@ -201,7 +203,7 @@ func (w *Output) recordDrop(count int) {
 			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
-			w.metrics.RecordEvent(name, "error")
+			w.metrics.RecordEvent(name, audit.EventError)
 		}
 	}
 }

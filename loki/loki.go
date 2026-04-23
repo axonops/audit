@@ -281,7 +281,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), "error")
+			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
@@ -303,7 +303,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), "error")
+			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}

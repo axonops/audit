@@ -21,6 +21,37 @@ import (
 )
 
 // Option configures a [Auditor] during construction via [New].
+//
+// Options fall into three classes (#593 B-45):
+//
+//   - Required options — [New] returns a sentinel error if the
+//     option is absent:
+//     [WithTaxonomy] ([ErrTaxonomyRequired]),
+//     [WithAppName] ([ErrAppNameRequired]),
+//     [WithHost] ([ErrHostRequired]).
+//     These inputs have no library-supplied default.
+//
+//   - Validated-on-call options — optional to call, but reject empty
+//     arguments when called:
+//     [WithFormatter] (nil rejected; omitting yields a default
+//     [JSONFormatter]),
+//     [WithTimezone] (empty rejected; omitting emits no timezone
+//     framework field).
+//
+//   - Optional options — accept nil / unset with a documented default:
+//     [WithMetrics]         — nil or unset disables metrics collection.
+//     [WithDiagnosticLogger] — nil or unset uses [slog.Default].
+//     [WithStandardFieldDefaults] — nil or unset uses no defaults.
+//
+// Remaining options configure behaviour via value types
+// ([WithQueueSize], [WithShutdownTimeout], [WithValidationMode],
+// [WithOmitEmpty], [WithDisabled], [WithOutputs], [WithNamedOutput],
+// [WithSynchronousDelivery]) and have their own documented
+// zero-value semantics.
+//
+// The split mirrors the [net/http] convention — [http.Client.Transport]
+// is optional with [http.DefaultTransport] as the documented
+// nil-default, but the Handler on [http.Server] is required.
 type Option func(*Auditor) error
 
 // WithTaxonomy registers the event taxonomy for validation. This option
@@ -55,10 +86,11 @@ func WithTaxonomy(t *Taxonomy) Option {
 	}
 }
 
-// WithMetrics sets the metrics recorder for the auditor. If m is nil,
-// or if WithMetrics is not called, metrics are silently discarded.
-// Implementations MUST be safe for concurrent calls from the drain
-// goroutine.
+// WithMetrics sets the metrics recorder for the auditor.
+//
+// Optional. If m is nil, or if WithMetrics is not called, metrics
+// are silently discarded (no metrics collection). Implementations
+// MUST be safe for concurrent calls from the drain goroutine.
 func WithMetrics(m Metrics) Option {
 	return func(a *Auditor) error {
 		a.metrics = m
@@ -67,7 +99,11 @@ func WithMetrics(m Metrics) Option {
 }
 
 // WithAppName sets the application name emitted as a framework field
-// in every serialised event. The value must be non-empty.
+// in every serialised event.
+//
+// Required. [New] returns [ErrAppNameRequired] if WithAppName is
+// unset (unless [WithDisabled] is also applied). The value must be
+// non-empty and at most 255 bytes.
 func WithAppName(name string) Option {
 	return func(a *Auditor) error {
 		if name == "" {
@@ -82,7 +118,11 @@ func WithAppName(name string) Option {
 }
 
 // WithHost sets the hostname emitted as a framework field in every
-// serialised event. The value must be non-empty and at most 255 bytes.
+// serialised event.
+//
+// Required. [New] returns [ErrHostRequired] if WithHost is unset
+// (unless [WithDisabled] is also applied). The value must be
+// non-empty and at most 255 bytes.
 func WithHost(host string) Option {
 	return func(a *Auditor) error {
 		if host == "" {
@@ -97,8 +137,12 @@ func WithHost(host string) Option {
 }
 
 // WithTimezone sets the timezone name emitted as a framework field in
-// every serialised event. The value must be non-empty and at most 64
-// bytes. If not set, no timezone field is emitted.
+// every serialised event.
+//
+// Optional to call; if omitted, no timezone field is emitted. If
+// called, tz MUST be non-empty (the option returns an error for an
+// empty string since there is no sane default to substitute at that
+// point). At most 64 bytes.
 func WithTimezone(tz string) Option {
 	return func(a *Auditor) error {
 		if tz == "" {
@@ -128,10 +172,11 @@ func WithSynchronousDelivery() Option {
 	}
 }
 
-// WithDiagnosticLogger sets the [log/slog.Logger] used for library diagnostics
-// (lifecycle messages, buffer drops, format errors). When not set or
-// when l is nil, [slog.Default] is used. Pass
-// slog.New(slog.DiscardHandler) to silence all library output.
+// WithDiagnosticLogger sets the [log/slog.Logger] used for library
+// diagnostics (lifecycle messages, buffer drops, format errors).
+//
+// Optional. When not set or when l is nil, [slog.Default] is used.
+// Pass slog.New(slog.DiscardHandler) to silence all library output.
 func WithDiagnosticLogger(l *slog.Logger) Option {
 	return func(a *Auditor) error {
 		a.logger = l
@@ -144,6 +189,8 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 // before validation — a default satisfies required: true constraints.
 // Per-event values always override defaults (key existence check, not
 // zero value). When called multiple times, the last call wins.
+//
+// Optional. Nil or empty map means "no defaults".
 func WithStandardFieldDefaults(defaults map[string]string) Option {
 	return func(a *Auditor) error {
 		for k := range defaults {
@@ -161,10 +208,13 @@ func WithStandardFieldDefaults(defaults map[string]string) Option {
 	}
 }
 
-// WithFormatter sets the event serialisation formatter. If not
-// provided, a [JSONFormatter] with default settings is used. Use
-// this to configure a [CEFFormatter] or a custom [Formatter]
-// implementation.
+// WithFormatter sets the event serialisation formatter.
+//
+// Optional to call; if WithFormatter is not called, a [JSONFormatter]
+// with default settings is used. If WithFormatter is called, f MUST
+// be non-nil — the option returns an error for a nil formatter since
+// there is no sane default to substitute at that point. Use this to
+// configure a [CEFFormatter] or a custom [Formatter] implementation.
 func WithFormatter(f Formatter) Option {
 	return func(a *Auditor) error {
 		if f == nil {

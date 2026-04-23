@@ -46,6 +46,8 @@ func newTestAuditor(t *testing.T, out *testhelper.MockOutput, opts ...audit.Opti
 	t.Helper()
 	allOpts := []audit.Option{
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
 	allOpts = append(allOpts, opts...)
@@ -190,6 +192,8 @@ func TestLogger_Audit_ReservedStandardField_AcceptedInStrictMode(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -216,6 +220,8 @@ func TestLogger_Audit_ReservedStandardField_StillRejectsUnknown(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -238,6 +244,7 @@ func TestWithAppName_Empty_ReturnsError(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithAppName(""),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "app_name must not be empty")
@@ -249,6 +256,7 @@ func TestWithAppName_ExceedsMaxLength(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithAppName(strings.Repeat("a", 256)),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "app_name exceeds maximum length of 255 bytes")
@@ -260,6 +268,8 @@ func TestWithAppName_AtMaxLength(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithAppName(strings.Repeat("a", 255)),
 	)
@@ -272,6 +282,7 @@ func TestWithHost_Empty_ReturnsError(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithHost(""),
+		audit.WithAppName("test-app"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "host must not be empty")
@@ -283,6 +294,7 @@ func TestWithHost_ExceedsMaxLength(t *testing.T) {
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithHost(strings.Repeat("h", 256)),
+		audit.WithAppName("test-app"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "host exceeds maximum length of 255 bytes")
@@ -294,6 +306,8 @@ func TestWithHost_AtMaxLength(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithHost(strings.Repeat("h", 255)),
 	)
@@ -305,6 +319,8 @@ func TestWithTimezone_Empty_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithTimezone(""),
 	)
 	require.Error(t, err)
@@ -316,6 +332,8 @@ func TestWithTimezone_ExceedsMaxLength(t *testing.T) {
 	// 65 bytes — one byte over the 64-byte maximum.
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithTimezone(strings.Repeat("Z", 65)),
 	)
 	require.Error(t, err)
@@ -328,6 +346,8 @@ func TestWithTimezone_AtMaxLength(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithTimezone(strings.Repeat("Z", 64)),
 	)
@@ -340,6 +360,8 @@ func TestWithStandardFieldDefaults_InvalidKey(t *testing.T) {
 	// "bogus" is not a reserved standard field and must be rejected.
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithStandardFieldDefaults(map[string]string{"bogus": "value"}),
 	)
 	require.Error(t, err)
@@ -352,6 +374,8 @@ func TestLogger_FrameworkFields_InOutput(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithAppName("testapp"),
 		audit.WithHost("testhost"),
@@ -379,6 +403,8 @@ func TestLogger_Timezone_AutoDetected(t *testing.T) {
 	// No WithTimezone — timezone should auto-detect from system.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -406,6 +432,8 @@ func TestWithStandardFieldDefaults_Applied(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
 	)
@@ -427,6 +455,8 @@ func TestWithStandardFieldDefaults_PerEventOverride(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
 	)
@@ -449,6 +479,8 @@ func TestWithStandardFieldDefaults_EmptyStringOverride(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
 	)
@@ -471,6 +503,8 @@ func TestWithStandardFieldDefaults_LastWins(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "a"}),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "b"}),
 		audit.WithValidationMode(audit.ValidationPermissive),
@@ -500,6 +534,8 @@ func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
 	)
@@ -709,6 +745,32 @@ func TestLogger_MustHandle_Panics(t *testing.T) {
 	})
 }
 
+// TestAuditorHandle_DisabledAuditor_ReturnsNoOpHandle covers #593 B-29:
+// Handle on a disabled auditor returns a no-op handle for any event
+// type without consulting the taxonomy. All Audit calls on the
+// returned handle are silent no-ops, matching AuditEvent semantics.
+func TestAuditorHandle_DisabledAuditor_ReturnsNoOpHandle(t *testing.T) {
+	t.Parallel()
+	auditor, err := audit.New(audit.WithDisabled())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Event type not registered in any taxonomy — still succeeds.
+	h, err := auditor.Handle("completely_unknown_event")
+	require.NoError(t, err, "Handle on disabled auditor must not fail")
+	require.NotNil(t, h)
+	assert.Equal(t, "completely_unknown_event", h.EventType())
+
+	// Audit via the handle is a silent no-op.
+	require.NoError(t, h.Audit(audit.Fields{"anything": "goes"}))
+
+	// MustHandle must also not panic on disabled auditor.
+	assert.NotPanics(t, func() {
+		h2 := auditor.MustHandle("another_unknown")
+		require.NotNil(t, h2)
+	})
+}
+
 func TestLogger_Handle_Audit(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")
@@ -756,6 +818,8 @@ func TestLogger_Audit_BufferFull(t *testing.T) {
 		audit.WithQueueSize(1),
 		audit.WithShutdownTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -806,6 +870,8 @@ func TestLogger_Close_DrainsEvents(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -829,6 +895,8 @@ func TestLogger_Close_Idempotent(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -842,6 +910,8 @@ func TestLogger_Audit_AfterClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -866,6 +936,8 @@ func TestLogger_Close_ShutdownTimeout(t *testing.T) {
 		audit.WithQueueSize(10),
 		audit.WithShutdownTimeout(10*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -890,6 +962,8 @@ func TestLogger_Close_OutputError(t *testing.T) {
 	out := &errorOutput{name: "bad", closeErr: errors.New("close failed")}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -919,6 +993,8 @@ func TestLogger_Close_MultipleOutputErrors(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(outA, outB, outC),
 	)
 	require.NoError(t, err)
@@ -942,6 +1018,8 @@ func TestLogger_Close_AllOutputsCloseCalledOnError(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(outA, outB),
 	)
 	require.NoError(t, err)
@@ -1071,6 +1149,8 @@ func TestLogger_MultiCategory_DeliveredPerCategory(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1100,6 +1180,8 @@ func TestLogger_MultiCategory_DisableOneCategory(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1132,6 +1214,8 @@ func TestLogger_MultiCategory_DisableAllCategories(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1169,6 +1253,8 @@ func TestLogger_Uncategorised_DeliveredToUnroutedOutput(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1197,6 +1283,8 @@ func TestLogger_MultiCategory_EnableEventOverride(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1232,6 +1320,8 @@ func TestLogger_MultiCategory_IncludeRoute(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
 		})),
@@ -1264,6 +1354,8 @@ func TestLogger_MultiCategory_ExcludeRoute(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{
 			ExcludeCategories: []string{"security"},
 		})),
@@ -1352,6 +1444,8 @@ func TestLogger_ConcurrentClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1403,6 +1497,8 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	out := &errorWriteOutput{name: "bad-write"}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1437,6 +1533,8 @@ func TestLogger_Audit_NoOutputs(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 
@@ -1457,6 +1555,8 @@ func TestNew_QueueSizeExceedsMax(t *testing.T) {
 	_, err := audit.New(
 		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1466,6 +1566,8 @@ func TestNew_ShutdownTimeoutExceedsMax(t *testing.T) {
 	_, err := audit.New(
 		audit.WithShutdownTimeout(audit.MaxShutdownTimeout+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
@@ -1550,6 +1652,8 @@ func TestLogger_Audit_NilFieldsNoRequiredFields(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1570,6 +1674,8 @@ func TestLogger_ConcurrentWritesAndClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1603,6 +1709,8 @@ func TestLogger_ThreeWayRace_AuditSetRouteClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out),
 	)
 	require.NoError(t, err)
@@ -1656,6 +1764,8 @@ func TestLogger_Handle_AuditAfterClose(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1684,6 +1794,8 @@ func TestLogger_Audit_MultipleOutputs(t *testing.T) {
 	out2 := testhelper.NewMockOutput("out2")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out1, out2),
 	)
 	require.NoError(t, err)
@@ -1768,6 +1880,8 @@ func TestLogger_Close_ShutdownEventDroppedOnFullBuffer(t *testing.T) {
 		audit.WithQueueSize(1),
 		audit.WithShutdownTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1803,6 +1917,8 @@ func TestLogger_Audit_AllCategoriesEnabledByDefault(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -1850,6 +1966,8 @@ func TestAudit_UnknownFieldStrict_RecordsValidationError(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1912,6 +2030,8 @@ func TestProcessEntry_SerializationError_RecordsMetric(t *testing.T) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithFormatter(badFormatter),
 		audit.WithMetrics(metrics),
@@ -1942,6 +2062,8 @@ func TestEmitShutdown_BufferFull_RecordsBufferDrop(t *testing.T) {
 		audit.WithQueueSize(1),
 		audit.WithShutdownTimeout(50*time.Millisecond),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -1973,6 +2095,8 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithFormatter(badFormatter),
 		// No WithMetrics -- metrics is nil.
@@ -2031,6 +2155,8 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
@@ -2061,6 +2187,8 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
@@ -2093,6 +2221,8 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -2214,6 +2344,8 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 				audit.WithOmitEmpty(),
 				audit.WithValidationMode(audit.ValidationPermissive),
 				audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+				audit.WithAppName("test-app"),
+				audit.WithHost("test-host"),
 				audit.WithOutputs(subOut),
 			)
 			require.NoError(t, err)
@@ -2259,6 +2391,8 @@ func TestWithOutputs_DuplicateDestination_ReturnsError(t *testing.T) {
 	o2 := &destKeyOutput{name: "out2", key: "/var/log/audit.log"}
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(o1, o2),
 	)
 	require.ErrorIs(t, err, audit.ErrDuplicateDestination)
@@ -2271,6 +2405,8 @@ func TestWithNamedOutput_DuplicateDestination_ReturnsError(t *testing.T) {
 	o2 := &destKeyOutput{name: "out2", key: "localhost:514"}
 	_, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(o1),
 		audit.WithNamedOutput(o2),
 	)
@@ -2285,6 +2421,8 @@ func TestWithOutputs_EmptyDestinationKey_NoCollision(t *testing.T) {
 	o2 := &destKeyOutput{name: "out2", key: ""}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(o1, o2),
 	)
 	require.NoError(t, err)
@@ -2297,6 +2435,8 @@ func TestWithOutputs_MixedTypes_NoFalsePositive(t *testing.T) {
 	o2 := testhelper.NewMockOutput("unkeyed")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(o1, o2),
 	)
 	require.NoError(t, err)
@@ -2411,6 +2551,8 @@ func TestLogger_Audit_FieldCompleteness_AllFieldsPresent(t *testing.T) {
 	out := testhelper.NewMockOutput("field-test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -2467,6 +2609,8 @@ func TestLogger_Audit_FieldCompleteness_OmittedOptionalFieldsAbsent(t *testing.T
 	auditor, err := audit.New(
 		audit.WithOmitEmpty(),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -2511,6 +2655,8 @@ func BenchmarkAudit(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -2536,6 +2682,8 @@ func BenchmarkAuditDisabledCategory(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -2557,6 +2705,8 @@ func BenchmarkAuditDisabledAuditor(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	if err != nil {
 		b.Fatal(err)
@@ -2590,6 +2740,8 @@ func BenchmarkAudit_ViaHandle_vs_NewEvent(b *testing.B) {
 	out := testhelper.NewNoopOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(b, err)
@@ -2638,6 +2790,8 @@ func BenchmarkAudit_RealisticFields(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -2670,6 +2824,8 @@ func BenchmarkAudit_Parallel(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -2704,6 +2860,8 @@ func BenchmarkAudit_PoolAmortised(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -2744,6 +2902,8 @@ func BenchmarkAudit_FanOut_SharedFormatter(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out1, out2, out3),
 	)
 	if err != nil {
@@ -2776,6 +2936,8 @@ func BenchmarkAudit_FanOut_MixedFormatters(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out1),                                    // default JSON
 		audit.WithNamedOutput(out2, audit.WithOutputFormatter(cefFmt)), // CEF
 		audit.WithNamedOutput(out3),                                    // default JSON (shared)
@@ -2810,6 +2972,8 @@ func BenchmarkAudit_FanOut_FilteredOutputs(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out1), // receives all events
 		audit.WithNamedOutput(out2, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
@@ -2849,6 +3013,8 @@ func BenchmarkAudit_FanOut_5Outputs(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(outputs...),
 	)
 	if err != nil {
@@ -2949,6 +3115,8 @@ func TestLogger_DisableEvent_UncategorisedEvent(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -2978,6 +3146,8 @@ func BenchmarkAudit_EndToEnd(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -3006,6 +3176,8 @@ func BenchmarkAudit_WithHMAC(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -3041,6 +3213,8 @@ func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out),
 		audit.WithStandardFieldDefaults(map[string]string{
 			"source_ip":  "10.0.0.1",
@@ -3073,6 +3247,8 @@ func BenchmarkDeliverToOutputs_WithMetadataWriter(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(mock),
 	)
 	if err != nil {
@@ -3097,6 +3273,8 @@ func BenchmarkDeliverToOutputs_MixedOutputs(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(mwOut),
 		audit.WithNamedOutput(plainOut),
 	)
@@ -3184,6 +3362,8 @@ func BenchmarkProcessEntry_AsyncOutputs(b *testing.B) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(syslogOut),
 		audit.WithSynchronousDelivery(),
@@ -3231,6 +3411,8 @@ func BenchmarkOutputClose_Drain(b *testing.B) {
 				auditor, err := audit.New(
 					audit.WithQueueSize(n+1000), // room for all events
 					audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+					audit.WithAppName("test-app"),
+					audit.WithHost("test-host"),
 					audit.WithOutputs(out),
 				)
 				if err != nil {
@@ -3255,6 +3437,8 @@ func BenchmarkFilterCheck(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -3278,6 +3462,8 @@ func BenchmarkFilterCheck_Parallel(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -3304,6 +3490,8 @@ func BenchmarkFilterCheck_ReadWriteContention(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -3356,6 +3544,8 @@ func TestAuditEvent_WithNewEvent(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3375,6 +3565,8 @@ func TestAuditEvent_UnknownEventType(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	defer func() { _ = auditor.Close() }()
@@ -3388,6 +3580,8 @@ func TestAuditEvent_NilEvent(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	defer func() { _ = auditor.Close() }()
@@ -3529,6 +3723,8 @@ func TestEventCategory_SingleCategory_JSON(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3560,6 +3756,8 @@ func TestEventCategory_MultiCategory_SeparateDeliveries(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3594,6 +3792,8 @@ func TestEventCategory_Uncategorised_NoField(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3623,6 +3823,8 @@ func TestEventCategory_EmitFalse_NoField(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3653,6 +3855,8 @@ func TestEventCategory_UserSupplied_Skipped(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3724,6 +3928,8 @@ func TestHMAC_Enabled_JSON_FieldsPresent(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -3756,6 +3962,8 @@ func TestHMAC_Disabled_NoFields(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -3781,6 +3989,8 @@ func TestHMAC_SaltVersion_InOutput(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -3875,6 +4085,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		// "full" output: no label exclusions — gets all fields including email.
 		audit.WithNamedOutput(fullOut, audit.WithHMAC(fullHMACCfg)),
 		// "stripped" output: excludes PII — email is removed before HMAC.
@@ -3942,6 +4154,8 @@ func TestHMAC_EndToEnd_DrainLoopVerification(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(hmacOut, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -4021,6 +4235,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		// Both outputs exclude PII. baseOut is a sanity check that
 		// stripping happened; verification uses hmacOut's own bytes.
 		audit.WithNamedOutput(hmacOut, audit.WithExcludeLabels("pii"), audit.WithHMAC(&audit.HMACConfig{
@@ -4191,6 +4407,8 @@ func TestMetadataWriter_ImplementingOutput_ReceivesMetadata(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4218,6 +4436,8 @@ func TestMetadataWriter_NonImplementingOutput_ReceivesPlainWrite(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4258,6 +4478,8 @@ func TestMetadataWriter_EventMetadata_FieldsCorrect(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4310,6 +4532,8 @@ func TestMetadataWriter_MultiCategory_CategoryVaries(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4358,6 +4582,8 @@ func TestMetadataWriter_UncategorisedEvent_EmptyCategory(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4388,6 +4614,8 @@ func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -4422,6 +4650,8 @@ func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -4456,6 +4686,8 @@ func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
 		audit.WithMetrics(metrics),
 	)
@@ -4499,6 +4731,8 @@ func TestMetadataWriter_WithHMAC_ReceivesHMACData(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -4561,6 +4795,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		// Exclude PII — email must not appear in the data received by WriteWithMetadata.
 		audit.WithNamedOutput(out, audit.WithExcludeLabels("pii")),
 	)
@@ -4613,6 +4849,8 @@ func TestMetadataWriter_WithEventCategory_DataAndMetaConsistent(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -4656,6 +4894,8 @@ func TestMetadataWriter_MixedOutputs_IsolationOnError(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(failingMW),
 		audit.WithNamedOutput(successOut),
 	)
@@ -4691,6 +4931,8 @@ func TestMetadataWriter_CachedAssertion_Correct(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(mwOut),
 		audit.WithNamedOutput(plainOut),
 	)
@@ -4730,6 +4972,8 @@ func TestTimezoneAlwaysPopulated(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithAppName("test"),
 		audit.WithHost("test"),
@@ -4758,6 +5002,8 @@ func TestTimezoneAutoDetect(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithAppName("test"),
 		audit.WithHost("test"),
@@ -4788,6 +5034,8 @@ func TestTimezoneOverride(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithAppName("test"),
 		audit.WithHost("test"),
@@ -4851,6 +5099,8 @@ events:
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		// Excluding "pii" triggers formatWithExclusion (FormatOptions non-nil).
 		audit.WithNamedOutput(out, audit.WithOutputFormatter(&exclusionErrorFormatter{}), audit.WithExcludeLabels("pii")),
 		audit.WithMetrics(metrics),
@@ -4911,6 +5161,8 @@ func TestDrainLoop_SlowOutput_DoesNotBlockOthers(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(slow, fast),
 	)
 	require.NoError(t, err)
@@ -4935,6 +5187,8 @@ func TestDrainLoop_AllOutputsAsync_NoSequentialBlocking(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(outA, outB),
 	)
 	require.NoError(t, err)
@@ -4960,6 +5214,8 @@ func TestCoreMetrics_RecordSubmitted_CalledPerAuditEvent(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -4984,6 +5240,8 @@ func TestCoreMetrics_RecordSubmitted_CalledBeforeFiltering(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -5013,6 +5271,8 @@ func TestCoreMetrics_RecordQueueDepth_SampledEveryNEvents(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithMetrics(metrics),
 	)
@@ -5064,6 +5324,8 @@ func TestAudit_NewEvent_StillDefensiveCopies(t *testing.T) {
 	out := testhelper.NewMockOutput("copy")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithSynchronousDelivery(),
 	)
@@ -5116,6 +5378,8 @@ func newFastPathBenchAuditor(tb testing.TB, opts ...audit.Option) (*audit.Audito
 	base := []audit.Option{
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
 	auditor, err := audit.New(append(base, opts...)...)
@@ -5236,6 +5500,8 @@ func BenchmarkAudit_FastPath_FanOut4_NoopOutputs(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out1, out2, out3, out4),
 	)
 	if err != nil {
@@ -5286,6 +5552,8 @@ func BenchmarkAudit_FastPath_WithHMAC_Noop(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(hmacCfg)),
 	)
 	if err != nil {
@@ -5330,6 +5598,8 @@ func newMultiFormatterAuditor(tb testing.TB, formatters []audit.Formatter) *audi
 	opts := []audit.Option{
 		audit.WithQueueSize(100_000),
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	}
 	for i, f := range formatters {
 		out := testhelper.NewNoopOutput(fmt.Sprintf("noop-%d", i))
@@ -5421,6 +5691,8 @@ func BenchmarkProcessEntry_Drain(b *testing.B) {
 	out := testhelper.NewMockOutput("bench-drain")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithSynchronousDelivery(),
 	)
@@ -5453,6 +5725,8 @@ func BenchmarkAudit_Parallelism(b *testing.B) {
 	out := testhelper.NewMockOutput("bench")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 		audit.WithQueueSize(100_000),
 	)

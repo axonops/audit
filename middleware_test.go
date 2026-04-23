@@ -79,6 +79,8 @@ func newMiddlewareTestAuditor(t *testing.T) (*audit.Auditor, *testhelper.MockOut
 	out := testhelper.NewMockOutput("mw-test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(middlewareTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -615,6 +617,8 @@ func BenchmarkMiddleware(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(1_000_000),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -656,6 +660,8 @@ func BenchmarkMiddleware_Parallel(b *testing.B) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(1_000_000),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	if err != nil {
@@ -705,6 +711,8 @@ func TestMiddleware_PoolCorrectness_ResetOnGet_ResponseWriter(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -740,6 +748,8 @@ func TestMiddleware_PoolCorrectness_TransportMetadataZeroed(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(100),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -794,6 +804,8 @@ func TestMiddleware_PoolCorrectness_HijackedRequestDoesNotLeakInnerWriter(t *tes
 	auditor, err := audit.New(
 		audit.WithQueueSize(100),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -851,6 +863,8 @@ func TestMiddleware_PoolCorrectness_Crosstalk(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(1_000_000),
 		audit.WithTaxonomy(taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

@@ -204,10 +204,11 @@ func createSharedFormatterAuditor(tc *AuditTestContext) error {
 	// Both outputs share the default JSON formatter (nil = auditor default).
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fA),
 		audit.WithNamedOutput(fB),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -348,6 +349,8 @@ func tryDuplicateOutputNames(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f1.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(f1, f1), // same output = duplicate name
 	)
 	tc.LastErr = err
@@ -372,6 +375,8 @@ func tryDuplicateFilePath(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f2.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(f1, f2),
 	)
 	tc.LastErr = err
@@ -390,6 +395,8 @@ func tryMixedRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"write"},
 			ExcludeCategories: []string{"read"},
@@ -411,6 +418,8 @@ func tryUnknownCategoryRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"nonexistent"},
 		})),
@@ -455,6 +464,8 @@ func tryDuplicateSyslogAddress(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = s2.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(s1, s2),
 	)
 	tc.LastErr = err
@@ -473,6 +484,8 @@ func tryUnknownEventTypeRoute(tc *AuditTestContext) error {
 	tc.AddCleanup(func() { _ = f.Close() })
 	_, err = audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f, audit.WithRoute(&audit.EventRoute{
 			IncludeEventTypes: []string{"nonexistent_event"},
 		})),
@@ -495,8 +508,11 @@ func assertFileContainsText(tc *AuditTestContext, name, text string) error {
 }
 
 func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bool, webhookFmt audit.Formatter, batchSize *int) error {
-	var opts []audit.Option
-	opts = append(opts, audit.WithTaxonomy(tc.Taxonomy))
+	opts := []audit.Option{
+		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+	}
 
 	if useFile {
 		dir, err := tc.EnsureFileDir()
@@ -541,7 +557,6 @@ func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bo
 		tc.AddCleanup(func() { _ = w.Close() })
 		opts = append(opts, audit.WithNamedOutput(w, audit.WithOutputFormatter(webhookFmt)))
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err
@@ -575,10 +590,11 @@ func createErrorOutputAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(&errorOutput{}),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -611,10 +627,11 @@ func createPanicOutputAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(&panicOutput{}),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -661,10 +678,11 @@ func createPanicFormatterAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut), // normal file
 		audit.WithNamedOutput(&devNullOutput{}, audit.WithOutputFormatter(&panicFormatter{})), // panicking formatter
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -697,10 +715,11 @@ func createDualFileRoutedAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(secOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})),
 		audit.WithNamedOutput(writeOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -743,11 +762,12 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut), // all events
 		audit.WithNamedOutput(syslogOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"security"}})), // security only
 		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{IncludeCategories: []string{"write"}})),   // write only
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -782,10 +802,11 @@ func createRoutedAuditor(tc *AuditTestContext, webhookRoute *audit.EventRoute) e
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(f),
 		audit.WithNamedOutput(w, audit.WithRoute(webhookRoute)),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		tc.LastErr = err

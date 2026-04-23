@@ -67,6 +67,8 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		recOut1 = &recordingMockOutput{name: "recording-1"}
 		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(stdout, recOut1),
 			audit.WithQueueSize(1000),
 		)
@@ -81,6 +83,8 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		}
 		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(stdout),
 			audit.WithQueueSize(1000),
 		)
@@ -93,6 +97,8 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		var err error
 		tc.Auditor, err = audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(recOut1, recOut2),
 			audit.WithQueueSize(1000),
 		)

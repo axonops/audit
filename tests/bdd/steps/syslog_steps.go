@@ -528,10 +528,11 @@ func createSyslogAuditor(tc *AuditTestContext, cfg *syslog.Config) error {
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -558,10 +559,11 @@ func createSyslogAuditorWithMetrics(tc *AuditTestContext, cfg *syslog.Config) er
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
 	opts = append(opts, tc.Options...)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

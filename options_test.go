@@ -35,6 +35,8 @@ func TestNew_NoConfigOptions_UsesDefaults(t *testing.T) {
 	out := testhelper.NewMockOutput("defaults")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -56,7 +58,7 @@ func TestNew_NoConfigOptions_UsesDefaults(t *testing.T) {
 func TestNew_WithoutTaxonomy_ReturnsError(t *testing.T) {
 	_, err := audit.New()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "taxonomy is required")
+	assert.ErrorIs(t, err, audit.ErrTaxonomyRequired)
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,8 @@ func TestNew_WithDisabled_CreatesNoOpLogger(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -145,6 +149,8 @@ func TestNew_WithQueueSize_SetsCustomSize(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(50000),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -154,6 +160,8 @@ func TestNew_WithQueueSize_RejectsOverMax(t *testing.T) {
 	_, err := audit.New(
 		audit.WithQueueSize(audit.MaxQueueSize+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -169,6 +177,8 @@ func TestNew_WithShutdownTimeout_SetsCustomTimeout(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithShutdownTimeout(30*time.Second),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -178,6 +188,8 @@ func TestNew_WithShutdownTimeout_RejectsOverMax(t *testing.T) {
 	_, err := audit.New(
 		audit.WithShutdownTimeout(audit.MaxShutdownTimeout+1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -194,6 +206,8 @@ func TestNew_WithValidationMode_SetsMode(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -219,6 +233,8 @@ func TestNew_WithOmitEmpty_OmitsZeroFields(t *testing.T) {
 		audit.WithOmitEmpty(),
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -295,6 +311,8 @@ func TestSuppressEventCategory_True_SuppressesCategory(t *testing.T) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -330,6 +348,8 @@ func TestNew_ConcurrentConstruction_NoRace(t *testing.T) {
 			tax := testhelper.ValidTaxonomy()
 			auditor, err := audit.New(
 				audit.WithTaxonomy(tax),
+				audit.WithAppName("test-app"),
+				audit.WithHost("test-host"),
 			)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
@@ -352,6 +372,8 @@ func BenchmarkNew_Construction(b *testing.B) {
 	for b.Loop() {
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tax),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		)
 		if err != nil {
@@ -359,4 +381,53 @@ func BenchmarkNew_Construction(b *testing.B) {
 		}
 		_ = auditor.Close()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Required AppName / Host (#593 B-41)
+// ---------------------------------------------------------------------------
+
+func TestNew_MissingAppName_ReturnsErrAppNameRequired(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	_, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrAppNameRequired)
+}
+
+func TestNew_MissingHost_ReturnsErrHostRequired(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	_, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithOutputs(out),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrHostRequired)
+}
+
+func TestNew_WithDisabled_AllowsMissingAppNameAndHost(t *testing.T) {
+	t.Parallel()
+	auditor, err := audit.New(audit.WithDisabled())
+	require.NoError(t, err, "disabled auditor must not require AppName or Host")
+	require.NotNil(t, auditor)
+	require.NoError(t, auditor.Close())
+}
+
+// ---------------------------------------------------------------------------
+// Severity constants (#593 B-27)
+// ---------------------------------------------------------------------------
+
+func TestSeverity_ExportedConstants(t *testing.T) {
+	t.Parallel()
+	// Constants exist with the documented values. Downstream code and
+	// integrations rely on these so they form part of the v1.0 API
+	// surface; regressing them requires a major-version bump.
+	assert.Equal(t, 0, audit.MinSeverity)
+	assert.Equal(t, 10, audit.MaxSeverity)
 }

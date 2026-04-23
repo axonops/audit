@@ -313,6 +313,8 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		tc.AddCleanup(func() { _ = out.Close() })
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)
@@ -372,6 +374,8 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		tc.AddCleanup(func() { _ = out.Close() })
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)
@@ -443,6 +447,8 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)
@@ -478,6 +484,8 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)
@@ -662,6 +670,8 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(out),
 		}
 		auditor, err := audit.New(opts...)
@@ -805,9 +815,10 @@ func createWebhookAuditorWithWebhookMetrics(tc *AuditTestContext, batchSize int)
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -835,9 +846,10 @@ func createWebhookAuditorFromConfig(tc *AuditTestContext, cfg *webhook.Config) e
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)
@@ -1124,6 +1136,8 @@ func createWebhookAuditorSSRF(tc *AuditTestContext, url string, allowPrivate boo
 	}
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	}
 	auditor, err := audit.New(opts...)

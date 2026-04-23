@@ -43,15 +43,20 @@ stdout, err := audit.NewStdout()
 // handle err …
 auditor, err := audit.New(
     audit.WithTaxonomy(audit.DevTaxonomy("user_create", "auth_failure")),
+    audit.WithAppName("audit-demo"),
+    audit.WithHost("localhost"),
     audit.WithOutputs(stdout),
 )
 ```
 
 `New()` takes functional options. `WithTaxonomy()` tells the auditor
-what events are valid. `WithOutputs()` tells it where to send them.
-`NewStdout()` constructs a JSON-to-stdout output — no file rotation,
-no network, no configuration. Pair it with `NewStderr()` or
-`NewWriter(w io.Writer)` when you need different destinations.
+what events are valid. `WithAppName()` and `WithHost()` populate the
+compliance framework fields stamped on every event — both are
+required (see `ErrAppNameRequired` / `ErrHostRequired`). `WithOutputs()`
+tells the auditor where to send events. `NewStdout()` constructs a
+JSON-to-stdout output — no file rotation, no network, no
+configuration. Pair it with `NewStderr()` or `NewWriter(w io.Writer)`
+when you need different destinations.
 
 In production, you'd define your taxonomy in a YAML file with required
 fields and severity levels, then use `audit-gen` to generate type-safe

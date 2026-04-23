@@ -28,6 +28,8 @@ func TestNew_InvalidValidationMode(t *testing.T) {
 	_, err := audit.New(
 		audit.WithValidationMode("bogus"),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
@@ -39,6 +41,8 @@ func TestNew_QueueSizeDefault(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(0),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -48,6 +52,8 @@ func TestNew_ShutdownTimeoutDefault(t *testing.T) {
 	// ShutdownTimeout 0 should not cause an error; it defaults to 5s.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -57,6 +63,8 @@ func TestNew_CustomShutdownTimeout(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithShutdownTimeout(10*time.Second),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	require.NoError(t, auditor.Close())
@@ -67,6 +75,8 @@ func TestNew_DisabledNoOp(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -89,6 +99,8 @@ func TestNew_NegativeQueueSize_DefaultsCorrectly(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(-1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)
@@ -108,6 +120,8 @@ func TestNew_NegativeShutdownTimeout_DefaultsCorrectly(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithShutdownTimeout(-1),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

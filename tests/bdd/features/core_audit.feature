@@ -77,27 +77,10 @@ Feature: Core Audit Logging
     Then the event should be delivered successfully
     And the output should contain field "pid" as a positive integer
 
-  Scenario: PID present even without app_name or host
-    Given an auditor with stdout output
-    When I audit event "user_create" with fields:
-      | field    | value   |
-      | outcome  | success |
-      | actor_id | alice   |
-    Then the event should be delivered successfully
-    And the output should contain field "pid" as a positive integer
-    And the output should not contain field "app_name"
-    And the output should not contain field "host"
-
-  Scenario: Timezone and PID auto-detected when not configured
-    Given an auditor with stdout output
-    When I audit event "user_create" with fields:
-      | field    | value   |
-      | outcome  | success |
-      | actor_id | alice   |
-    Then the event should be delivered successfully
-    And the output should not contain field "app_name"
-    And the output should not contain field "host"
-    And the output should contain field "pid" as a positive integer
+  # Scenarios that constructed auditors without app_name / host were
+  # removed in #593 B-41: audit.New now requires WithAppName and
+  # WithHost. See the "Required AppName / Host" block in
+  # config_versioning.feature for the new positive+negative coverage.
 
   Scenario: Framework fields present with OmitEmpty true
     Given framework fields app_name "myapp" host "prod-01" timezone "UTC"

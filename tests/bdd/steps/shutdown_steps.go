@@ -54,6 +54,8 @@ func registerShutdownSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
 			audit.WithOutputs(blocking),
 			audit.WithShutdownTimeout(time.Duration(timeoutSecs)*time.Second),
 		)

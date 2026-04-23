@@ -115,13 +115,15 @@ func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 }
 
 // validateSeverityRange checks that MinSeverity and MaxSeverity are
-// within the valid CEF range 0-10 and that min does not exceed max.
+// within [MinSeverity, MaxSeverity] and that min does not exceed max.
 func validateSeverityRange(route *EventRoute) error {
-	if route.MinSeverity != nil && (*route.MinSeverity < 0 || *route.MinSeverity > 10) {
-		return fmt.Errorf("audit: EventRoute min_severity %d out of range 0-10", *route.MinSeverity)
+	if route.MinSeverity != nil && (*route.MinSeverity < MinSeverity || *route.MinSeverity > MaxSeverity) {
+		return fmt.Errorf("audit: EventRoute min_severity %d out of range %d-%d",
+			*route.MinSeverity, MinSeverity, MaxSeverity)
 	}
-	if route.MaxSeverity != nil && (*route.MaxSeverity < 0 || *route.MaxSeverity > 10) {
-		return fmt.Errorf("audit: EventRoute max_severity %d out of range 0-10", *route.MaxSeverity)
+	if route.MaxSeverity != nil && (*route.MaxSeverity < MinSeverity || *route.MaxSeverity > MaxSeverity) {
+		return fmt.Errorf("audit: EventRoute max_severity %d out of range %d-%d",
+			*route.MaxSeverity, MinSeverity, MaxSeverity)
 	}
 	if route.MinSeverity != nil && route.MaxSeverity != nil && *route.MinSeverity > *route.MaxSeverity {
 		return fmt.Errorf("audit: EventRoute min_severity %d exceeds max_severity %d",

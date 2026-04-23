@@ -29,6 +29,8 @@ func TestQueueCap_ReturnsConfiguredSize(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithQueueSize(500),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -40,6 +42,8 @@ func TestQueueLen_ReturnsCurrentOccupancy(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -54,6 +58,8 @@ func TestOutputNames_ReturnsSortedNames(t *testing.T) {
 	outA := testhelper.NewMockOutput("alpha")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(outB, outA),
 	)
 	require.NoError(t, err)
@@ -67,6 +73,8 @@ func TestIsCategoryEnabled_ReturnsCorrectState(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -82,6 +90,8 @@ func TestIsEventEnabled_ReturnsCorrectState(t *testing.T) {
 	t.Parallel()
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -95,6 +105,8 @@ func TestIntrospection_DisabledLogger_ReturnsZero(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithDisabled(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -111,6 +123,8 @@ func TestIntrospection_SyncAuditor(t *testing.T) {
 	auditor, err := audit.New(
 		audit.WithSynchronousDelivery(),
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = auditor.Close() })
@@ -126,6 +140,8 @@ func TestIntrospection_ConcurrentWithAuditEvent_NoRace(t *testing.T) {
 	out := testhelper.NewMockOutput("test")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
 	)
 	require.NoError(t, err)

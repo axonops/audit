@@ -530,7 +530,9 @@ func assertEventMatching(tc *AuditTestContext, table *godog.Table) error {
 		return err
 	}
 	// Auto-populated fields that are allowed but not required in the table.
-	autoFields := []string{"timestamp", "severity", "event_category", "pid", "timezone"}
+	// app_name and host are required since #593 B-41 but BDD scenarios
+	// predate that contract, so they are tolerated as framework fields.
+	autoFields := []string{"timestamp", "severity", "event_category", "pid", "timezone", "app_name", "host"}
 	for _, e := range events {
 		match, mismatch := eventMatchesExactly(e, expected, autoFields)
 		if match {
@@ -598,6 +600,8 @@ func createStdoutAuditor(tc *AuditTestContext, extraOpts ...audit.Option) error 
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithOutputs(stdoutOut),
 	}
 	if tc.MockMetrics != nil {

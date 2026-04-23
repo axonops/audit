@@ -246,7 +246,6 @@ func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, l
 		audit.WithNamedOutput(fileOut, fileOpts...),
 		audit.WithNamedOutput(lokiOut, lokiOpts...),
 	)
-
 	auditor, err := audit.New(opts...)
 	if err != nil {
 		return fmt.Errorf("create auditor: %w", err)

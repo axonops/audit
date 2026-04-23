@@ -34,7 +34,7 @@ type config struct {
 
 // excludeLabelsEntry records a single [WithExcludeLabels] call so the
 // labels can be applied to the recorder via [audit.WithNamedOutput]
-// inside [newTestLogger].
+// inside [newTestAuditor].
 type excludeLabelsEntry struct {
 	outputName string
 	labels     []string
@@ -136,7 +136,7 @@ func New(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Auditor, *R
 	if err != nil {
 		tb.Fatalf("audittest: parse taxonomy: %v", err)
 	}
-	return newTestLogger(tb, tax, opts...)
+	return newTestAuditor(tb, tax, opts...)
 }
 
 // NewQuick creates a test auditor with a permissive
@@ -145,7 +145,7 @@ func New(tb testing.TB, taxonomyYAML []byte, opts ...Option) (*audit.Auditor, *R
 // are available in the Recorder immediately without calling Close.
 func NewQuick(tb testing.TB, eventTypes ...string) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
-	return newTestLogger(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive))
+	return newTestAuditor(tb, QuickTaxonomy(eventTypes...), WithValidationMode(audit.ValidationPermissive))
 }
 
 // QuickTaxonomy builds a minimal [*audit.Taxonomy] where every listed
@@ -167,7 +167,7 @@ func QuickTaxonomy(eventTypes ...string) *audit.Taxonomy {
 	}
 }
 
-func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.Auditor, *Recorder, *MetricsRecorder) {
+func newTestAuditor(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.Auditor, *Recorder, *MetricsRecorder) {
 	tb.Helper()
 
 	c := &config{}
@@ -178,9 +178,17 @@ func newTestLogger(tb testing.TB, tax *audit.Taxonomy, opts ...Option) (*audit.A
 	rec := NewRecorder()
 	met := NewMetricsRecorder()
 
+	// AppName and Host are required by audit.New (#593). For test
+	// helpers, supply sensible defaults so callers do not need to
+	// reason about them. Tests that care about specific values can
+	// override via WithOptions(audit.WithAppName("..."), ...); later
+	// options in auditOpts win because audit.New applies them in
+	// order.
 	auditOpts := []audit.Option{
 		audit.WithQueueSize(100), // small buffer — recorder has no I/O cost
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("audittest"),
+		audit.WithHost("localhost"),
 		audit.WithMetrics(met),
 	}
 

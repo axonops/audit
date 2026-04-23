@@ -65,6 +65,8 @@
 //	stdout, _ := audit.NewStdout()
 //	auditor, err := audit.New(
 //	    audit.WithTaxonomy(audit.DevTaxonomy("user_create")),
+//	    audit.WithAppName("demo"),
+//	    audit.WithHost("localhost"),
 //	    audit.WithOutputs(stdout),
 //	)
 //

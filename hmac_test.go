@@ -393,6 +393,8 @@ func TestReservedLibraryField_RejectedAtRuntime(t *testing.T) {
 				out := testhelper.NewMockOutput("reserved-check")
 				auditor, err := audit.New(
 					audit.WithTaxonomy(tax),
+					audit.WithAppName("test-app"),
+					audit.WithHost("test-host"),
 					audit.WithValidationMode(mode),
 					audit.WithOutputs(out),
 				)
@@ -550,6 +552,8 @@ func newHMACPipelineTestAuditor(t *testing.T, name, saltVersion string, salt []b
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
 			Salt: audit.HMACSalt{
@@ -809,6 +813,8 @@ func TestVerifyHMAC_CEF_TamperingHmacVersion_Detected(t *testing.T) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
@@ -985,6 +991,8 @@ func TestVerifyHMAC_CEF_TamperingActorId_Detected(t *testing.T) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
@@ -1046,6 +1054,8 @@ func TestHMAC_CEF_OnWireBytesMatchHashedBytes(t *testing.T) {
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithFormatter(cefFormatter),
 		audit.WithNamedOutput(out, audit.WithHMAC(&audit.HMACConfig{
 			Enabled: true,
@@ -1109,6 +1119,8 @@ func TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy(t *testing.T) {
 	out := testhelper.NewMockOutput("runtime-reserved")
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithOutputs(out),
 	)

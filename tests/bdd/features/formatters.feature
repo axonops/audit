@@ -300,17 +300,12 @@ Feature: Event Formatters
     And I close the auditor
     Then the CEF line should contain "dvcpid="
 
-  Scenario: CEF app_name and host absent when not configured but timezone and pid present
-    Given an auditor with file output using CEF formatter with vendor "Test" product "Test" version "1.0"
-    When I audit event "user_create" with fields:
-      | field    | value   |
-      | outcome  | success |
-      | actor_id | alice   |
-    And I close the auditor
-    Then the CEF line should not contain "deviceProcessName="
-    And the CEF line should not contain "dvchost="
-    And the CEF line should contain "dtz="
-    And the CEF line should contain "dvcpid="
+  # Scenario "CEF app_name and host absent when not configured..." was
+  # removed in #593 B-41: audit.New now requires WithAppName and
+  # WithHost so there is no "not configured" state on the programmatic
+  # path. CEF framework-field mapping for app_name/host is covered by
+  # the "CEF maps reserved standard field to CEF key" table scenarios
+  # below.
 
   # --- CEF reserved standard field mapping (#237) ---
 

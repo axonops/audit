@@ -179,6 +179,8 @@ func TestFanOut_AllOutputs(t *testing.T) {
 	// Create auditor with all three outputs.
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(syslogOut),
 		audit.WithNamedOutput(webhookOut),
@@ -238,6 +240,8 @@ func TestFanOut_EventRouting(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut), // all events
 		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{
 			IncludeCategories: []string{"security"},
@@ -325,6 +329,8 @@ func TestFanOut_PartialFailure(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),
 		audit.WithNamedOutput(syslogOut),
 		audit.WithNamedOutput(webhookOut),
@@ -378,6 +384,8 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(fileOut),                                       // JSON (default)
 		audit.WithNamedOutput(webhookOut, audit.WithOutputFormatter(cefFmt)), // CEF
 	)

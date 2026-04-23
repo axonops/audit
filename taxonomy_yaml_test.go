@@ -655,6 +655,8 @@ events:
 	// should pass strict validation (no unknown fields).
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tax),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 	)
 	require.NoError(t, err)
 	defer func() { _ = auditor.Close() }()

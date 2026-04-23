@@ -72,6 +72,8 @@ func createSensitivityAuditor(tc *AuditTestContext, excludeLabels []string) erro
 	}
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels(excludeLabels...)),
 	)
 	if err != nil {

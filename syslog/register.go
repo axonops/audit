@@ -102,13 +102,13 @@ func intPtrOrDefault(p *int, def int) int {
 
 func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
-		return nil, fmt.Errorf("audit: syslog output %q: config is required", name)
+		return nil, fmt.Errorf("audit/syslog: output %q: config is required", name)
 	}
 
 	var yc yamlSyslogConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
-		return nil, fmt.Errorf("audit: syslog output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
+		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, audit.WrapUnknownFieldError(err, yc))
 	}
 
 	cfg := &Config{
@@ -129,7 +129,7 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 	if yc.FlushInterval != "" {
 		d, err := time.ParseDuration(yc.FlushInterval)
 		if err != nil {
-			return nil, fmt.Errorf("audit: syslog output %q: flush_interval %q: %w", name, yc.FlushInterval, audit.ErrConfigInvalid)
+			return nil, fmt.Errorf("audit/syslog: output %q: flush_interval %q: %w", name, yc.FlushInterval, audit.ErrConfigInvalid)
 		}
 		cfg.FlushInterval = d
 	}
@@ -142,7 +142,7 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 
 	out, err := New(cfg, WithDiagnosticLogger(logger))
 	if err != nil {
-		return nil, fmt.Errorf("audit: syslog output %q: %w", name, err)
+		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, err)
 	}
 	if om != nil {
 		out.SetOutputMetrics(om)

@@ -9,6 +9,38 @@
 - [Secret Resolution Errors](#secret-resolution-errors)
 - [Taxonomy Errors](#taxonomy-errors)
 
+## Error Format Convention
+
+Every error returned by the library is prefixed with the dotted Go
+import path of the module that produced it — matching stdlib
+precedent (`net/http:`, `crypto/tls:`, `encoding/json:`):
+
+| Module | Prefix |
+|---|---|
+| Core `audit` | `audit:` |
+| File output | `audit/file:` |
+| Syslog output | `audit/syslog:` |
+| Webhook output | `audit/webhook:` |
+| Loki output | `audit/loki:` |
+| Output config loader | `audit/outputconfig:` |
+| Secrets core | `audit/secrets:` |
+| Secrets — HashiCorp Vault | `audit/secrets/vault:` |
+| Secrets — OpenBao | `audit/secrets/openbao:` |
+
+Every configuration-validation error wraps `audit.ErrConfigInvalid`
+(directly or via a module-specific sub-sentinel). This gives you a
+single `errors.Is` match across every config-facing surface:
+
+```go
+if errors.Is(err, audit.ErrConfigInvalid) {
+    // any configuration validation failure — outputs, secrets, outputconfig
+}
+```
+
+`outputconfig.ErrOutputConfigInvalid` is a sub-sentinel that itself
+wraps `audit.ErrConfigInvalid`, so it also matches the generic form.
+Pattern parallels stdlib's `fs.ErrNotExist` / `os.ErrNotExist`.
+
 ## How to Check Errors
 
 All audit errors are sentinel values. Use `errors.Is` to check
@@ -222,7 +254,7 @@ URIs cannot be resolved. All errors are in `github.com/axonops/audit/secrets`.
 ### `ErrMalformedRef`
 
 ```
-secrets: malformed secret reference
+audit/secrets: malformed secret reference
 ```
 
 | | |
@@ -235,7 +267,7 @@ secrets: malformed secret reference
 ### `ErrProviderNotRegistered`
 
 ```
-secrets: no provider registered for scheme
+audit/secrets: no provider registered for scheme
 ```
 
 | | |
@@ -243,12 +275,12 @@ secrets: no provider registered for scheme
 | **When** | A ref URI references a scheme for which no `WithSecretProvider` was registered |
 | **Meaning** | The library cannot resolve this ref because no provider handles the scheme |
 | **Transient?** | No -- register the correct provider or fix the scheme in the ref URI |
-| **What to do** | The error message includes the scheme and the field path: `secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)`. Add the missing `outputconfig.WithSecretProvider(provider)` call, or correct the scheme in the ref URI. |
+| **What to do** | The error message includes the scheme and the field path: `audit/secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)`. Add the missing `outputconfig.WithSecretProvider(provider)` call, or correct the scheme in the ref URI. |
 
 ### `ErrSecretNotFound`
 
 ```
-secrets: secret not found at path
+audit/secrets: secret not found at path
 ```
 
 | | |
@@ -261,7 +293,7 @@ secrets: secret not found at path
 ### `ErrSecretResolveFailed`
 
 ```
-secrets: secret resolution failed
+audit/secrets: secret resolution failed
 ```
 
 | | |
@@ -274,7 +306,7 @@ secrets: secret resolution failed
 ### `ErrUnresolvedRef`
 
 ```
-secrets: unresolved secret reference in config
+audit/secrets: unresolved secret reference in config
 ```
 
 | | |

@@ -15,6 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Error-prefix convention unified across every module on the Go import-path pattern (#592). A CI grep check to enforce the convention is deferred to a follow-up issue. All modules now prefix errors with their dotted module path:
+  - `audit:` (core — unchanged)
+  - `audit/file:`, `audit/syslog:`, `audit/webhook:`, `audit/loki:` (previously `audit: <module> output:`)
+  - `audit/outputconfig:` (new prefix via the restructured `ErrOutputConfigInvalid`)
+  - `audit/secrets/vault:`, `audit/secrets/openbao:` (previously `vault:`, `openbao:` with no library prefix)
+  
+  `outputconfig.ErrOutputConfigInvalid` now wraps `audit.ErrConfigInvalid` so `errors.Is(err, audit.ErrConfigInvalid)` matches every configuration-validation failure — a single sentinel across outputs, config, and secrets (stdlib `fs.ErrNotExist` / `os.ErrNotExist` pattern). Consumers matching errors with `strings.Contains(err.Error(), "vault:")` must migrate to `errors.Is` / `errors.As` on sentinels (already forbidden by project style).
+
+- Self-reporting output drop metrics are now consistent (#592). Webhook and Loki no longer call pipeline-level `Metrics.RecordEvent(name, audit.EventError)` on **buffer drops** (oversized event or buffer full); those drops now surface only via `OutputMetrics.RecordDrop()`, matching file + syslog. Retry-exhaustion failures in webhook/loki (where delivery WAS attempted) still call `RecordEvent(EventError)` — those are genuine delivery errors, not buffer drops. Consumers relying on `RecordEvent` as a pre-delivery drop counter should use `OutputMetrics.RecordDrop` for that counter.
+
+- `secrets.redactRef` drops its unused parameter (#592 B-35). The function was already returning a constant; the `_` parameter was dead. Internal helper — no consumer impact.
+
 - `audit.CEFFormatter` small ergonomics bundle (#591):
   - `FieldMapping` now supports an **empty-string opt-out sentinel**: passing `{"actor_id": ""}` drops the default `actor_id → suser` mapping so the field is emitted with its raw audit name. Both `ViaDelete` (empty-string sentinel) and `SelfMap` (`{"actor_id": "actor_id"}`) opt-out patterns are now documented and exercised by named tests. Previously the only working opt-out was self-map; the empty-string form failed with a validation error and the "delete from DefaultCEFFieldMapping copy" pattern was documented but did not actually suppress defaults because the merge always re-seeded from them.
   - `SeverityFunc` godoc clarified to distinguish the clamp-on-override path (consumer-supplied func return values are clamped per event) from the fast path (taxonomy-derived severity is precomputed and clamped once at taxonomy registration — no per-event clamp). Behaviour unchanged.

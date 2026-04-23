@@ -50,7 +50,7 @@ var (
 
 // errRedirectBlocked is returned by the HTTP client's CheckRedirect
 // to reject all redirects, preventing SSRF via open redirects.
-var errRedirectBlocked = errors.New("audit: loki redirects are not followed")
+var errRedirectBlocked = errors.New("audit/loki: redirects are not followed")
 
 // minResponseHeaderTimeout is the floor applied to the derived
 // [http.Transport.ResponseHeaderTimeout]. Half of [Config.Timeout] is
@@ -153,7 +153,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // a custom logger.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("audit: loki config must not be nil")
+		return nil, fmt.Errorf("audit/loki: config must not be nil")
 	}
 	// Copy config so validation/defaults don't mutate the caller's struct.
 	cfgCopy := *cfg
@@ -277,11 +277,14 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"max_event_bytes", o.maxEventBytes,
 				"dropped", dropped)
 		})
+		// Buffer drops (event never attempted) are counted via per-
+		// output OutputMetrics.RecordDrop only — not via pipeline-
+		// level Metrics.RecordEvent. Matches file + syslog for
+		// consistency across all self-reporting outputs (B-25).
+		// RecordEvent(EventError) remains for retries-exhausted
+		// failures in http.go where delivery WAS attempted.
 		if omp := o.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
@@ -299,11 +302,10 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
+		// Buffer drops counted via OutputMetrics.RecordDrop only — see
+		// B-25 note above.
 		if omp := o.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()
-		}
-		if o.metrics != nil {
-			o.metrics.RecordEvent(o.Name(), audit.EventError)
 		}
 		return nil // non-blocking — do not return error to drain goroutine
 	}
@@ -342,7 +344,7 @@ func (o *Output) Close() error {
 	select {
 	case <-o.done:
 	case <-timer.C:
-		o.logger.Load().Error("audit: loki batch goroutine did not exit",
+		o.logger.Load().Error("audit/loki: batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -457,7 +459,7 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 
 	body, compressed, err := o.maybeCompress()
 	if err != nil {
-		o.logger.Load().Warn("audit: loki compression failed, sending uncompressed",
+		o.logger.Load().Warn("audit/loki: compression failed, sending uncompressed",
 			"error", err, "batch_size", len(batch))
 		body = o.payloadBuf.Bytes()
 		compressed = false

@@ -60,7 +60,7 @@ func parseSecretsSection(raw any) (*secretsResult, error) { //nolint:gocognit,go
 	// Expand environment variables.
 	expanded, err := expandEnvInValue(raw, "secrets")
 	if err != nil {
-		return nil, fmt.Errorf("secrets: %w", err)
+		return nil, fmt.Errorf("audit/outputconfig: secrets section: %w", err)
 	}
 
 	m, ok := expanded.(map[string]any)

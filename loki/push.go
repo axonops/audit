@@ -310,10 +310,10 @@ func (o *Output) maybeCompress() (body []byte, compressed bool, err error) {
 		o.gzWriter.Reset(o.compressDest)
 	}
 	if _, wErr := o.gzWriter.Write(o.payloadBuf.Bytes()); wErr != nil {
-		return nil, false, fmt.Errorf("audit: loki: gzip write: %w", wErr)
+		return nil, false, fmt.Errorf("audit/loki: gzip write: %w", wErr)
 	}
 	if cErr := o.gzWriter.Close(); cErr != nil {
-		return nil, false, fmt.Errorf("audit: loki: gzip close: %w", cErr)
+		return nil, false, fmt.Errorf("audit/loki: gzip close: %w", cErr)
 	}
 	return o.compressBuf.Bytes(), true, nil
 }

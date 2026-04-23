@@ -833,11 +833,11 @@ if errors.Is(err, secrets.ErrMalformedRef) {
 
 | Sentinel | When | Example Message |
 |----------|------|-----------------|
-| `ErrMalformedRef` | `ParseRef` finds a structural error in a `ref+` URI | `secrets: malformed secret reference: empty key fragment` |
-| `ErrProviderNotRegistered` | No provider registered for the scheme in a ref URI | `secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)` |
-| `ErrSecretNotFound` | Secret path exists but the requested key is missing, or the path does not exist (404) | `secrets: secret not found at path: path returned 404` |
-| `ErrSecretResolveFailed` | Network error, authentication failure, or server error during resolution | `secrets: secret resolution failed: authentication failed (403)` |
-| `ErrUnresolvedRef` | After all resolution passes, a config value still contains a `ref+` URI | `secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference` |
+| `ErrMalformedRef` | `ParseRef` finds a structural error in a `ref+` URI | `audit/secrets: malformed secret reference: empty key fragment` |
+| `ErrProviderNotRegistered` | No provider registered for the scheme in a ref URI | `audit/secrets: no provider registered for scheme: scheme "openbao" (field outputs.siem.webhook.headers.Authorization)` |
+| `ErrSecretNotFound` | Secret path exists but the requested key is missing, or the path does not exist (404) | `audit/secrets: secret not found at path: path returned 404` |
+| `ErrSecretResolveFailed` | Network error, authentication failure, or server error during resolution | `audit/secrets: secret resolution failed: authentication failed (403)` |
+| `ErrUnresolvedRef` | After all resolution passes, a config value still contains a `ref+` URI | `audit/secrets: unresolved secret reference in config: field outputs.siem.webhook.headers.Authorization still contains a secret reference` |
 
 Duplicate-scheme errors from registering two providers with the same
 scheme wrap `ErrOutputConfigInvalid`:

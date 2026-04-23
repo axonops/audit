@@ -503,7 +503,7 @@ func buildLokiTLSConfig(cfg *Config) (*tls.Config, []string, error) {
 	if cfg.TLSCert != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
-			return nil, nil, fmt.Errorf("audit: loki: load client certificate: %w", err)
+			return nil, nil, fmt.Errorf("audit/loki: load client certificate: %w", err)
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
@@ -511,11 +511,11 @@ func buildLokiTLSConfig(cfg *Config) (*tls.Config, []string, error) {
 	if cfg.TLSCA != "" {
 		caPEM, err := os.ReadFile(cfg.TLSCA)
 		if err != nil {
-			return nil, nil, fmt.Errorf("audit: loki: read ca certificate: %w", err)
+			return nil, nil, fmt.Errorf("audit/loki: read ca certificate: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caPEM) {
-			return nil, nil, fmt.Errorf("audit: loki: ca certificate contains no valid pem blocks")
+			return nil, nil, fmt.Errorf("audit/loki: ca certificate contains no valid pem blocks")
 		}
 		tlsCfg.RootCAs = pool
 	}

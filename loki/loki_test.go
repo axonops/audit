@@ -312,6 +312,48 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 	require.NoError(t, out.Close())
 }
 
+// TestOutput_BufferFull_DoesNotRecordCoreEventError verifies the B-25
+// contract: buffer-full drops surface only via OutputMetrics.RecordDrop
+// and MUST NOT call core Metrics.RecordEvent(EventError). Delivery
+// errors (retry exhausted) still use RecordEvent(EventError) — this
+// test guards the buffer-drop path only.
+func TestOutput_BufferFull_DoesNotRecordCoreEventError(t *testing.T) {
+	t.Parallel()
+
+	srv := lokiTestServer(t)
+	coreMetrics := &mockCoreMetrics{}
+	outMetrics := &testOutputMetrics{}
+	cfg := validConfigWithURL(srv.URL)
+	cfg.BufferSize = loki.MinBufferSize  // smallest allowed buffer (100)
+	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
+	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
+
+	out, err := loki.New(cfg, coreMetrics)
+	require.NoError(t, err)
+	out.SetOutputMetrics(outMetrics)
+
+	data := []byte(`{"event":"fill"}`)
+	var wg sync.WaitGroup
+	for g := 0; g < 10; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				_ = out.Write(data)
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.True(t, outMetrics.waitForDrops(1, 2*time.Second),
+		"at least some events must drop when buffer is full")
+
+	require.NoError(t, out.Close())
+
+	assert.Equal(t, 0, coreMetrics.errorCount(),
+		"buffer-full drops must not call core Metrics.RecordEvent(EventError) (B-25); use OutputMetrics.RecordDrop")
+}
+
 // ---------------------------------------------------------------------------
 // Flush metrics — batch goroutine records flushes
 // ---------------------------------------------------------------------------

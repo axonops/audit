@@ -217,7 +217,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 
 	priority, err := parseFacility(cfg.Facility)
 	if err != nil {
-		return nil, fmt.Errorf("audit: syslog facility %q: %w", cfg.Facility, err)
+		return nil, fmt.Errorf("audit/syslog: facility %q: %w", cfg.Facility, err)
 	}
 
 	// Use explicit hostname from config if provided; otherwise fall
@@ -232,7 +232,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 	if cfg.Network == "tcp+tls" {
 		tlsCfg, err = buildSyslogTLSConfig(cfg, o.logger)
 		if err != nil {
-			return nil, fmt.Errorf("audit: syslog tls config: %w", err)
+			return nil, fmt.Errorf("audit/syslog: tls config: %w", err)
 		}
 	}
 
@@ -268,7 +268,7 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 	s.logger.Store(o.logger)
 
 	if err := s.connect(); err != nil {
-		return nil, fmt.Errorf("audit: syslog dial %s://%s: %w",
+		return nil, fmt.Errorf("audit/syslog: dial %s://%s: %w",
 			cfg.Network, cfg.Address, err)
 	}
 
@@ -364,7 +364,7 @@ func (s *Output) Close() error {
 	// Close the srslog.Writer AFTER the writeLoop exits.
 	if s.writer != nil {
 		if err := s.writer.Close(); err != nil {
-			return fmt.Errorf("audit: syslog close: %w", err)
+			return fmt.Errorf("audit/syslog: close: %w", err)
 		}
 	}
 	return nil
@@ -416,7 +416,7 @@ func (s *Output) connect() error {
 		w, err = srslog.Dial(s.network, s.address, defaultPriority, s.appName)
 	}
 	if err != nil {
-		return fmt.Errorf("audit: syslog connect %s://%s: %w", s.network, s.address, err)
+		return fmt.Errorf("audit/syslog: connect %s://%s: %w", s.network, s.address, err)
 	}
 
 	w.SetFormatter(srslog.RFC5424Formatter)
@@ -560,7 +560,7 @@ func resetSyslogTimer(t *time.Timer, d time.Duration) {
 
 // errSyslogNotConnected is returned when the syslog writer is nil
 // (previous reconnect failed). Pre-allocated to avoid per-event alloc.
-var errSyslogNotConnected = errors.New("audit: syslog writer not connected")
+var errSyslogNotConnected = errors.New("audit/syslog: writer not connected")
 
 // writeEntry writes a single event to the syslog server with panic
 // recovery and reconnection handling.
@@ -690,7 +690,7 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		return
 	}
 
-	s.logger.Load().Info("audit: syslog reconnected", "address", s.address)
+	s.logger.Load().Info("audit/syslog: reconnected", "address", s.address)
 	if rr != nil {
 		rr.RecordReconnect(s.address, true)
 	}

@@ -107,7 +107,7 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		if !retryable {
-			logger.Error("audit: loki non-retryable error",
+			logger.Error("audit/loki: non-retryable error",
 				"error", sanitiseClientError(err),
 				"batch_size", batchSize)
 			o.recordError()
@@ -116,14 +116,14 @@ func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int
 		}
 
 		o.recordRetry(attempt + 1)
-		logger.Warn("audit: loki retryable error",
+		logger.Warn("audit/loki: retryable error",
 			"attempt", attempt+1,
 			"max_retries", o.cfg.MaxRetries,
 			"error", sanitiseClientError(err))
 	}
 
 	// All retries exhausted.
-	logger.Error("audit: loki retries exhausted, dropping batch",
+	logger.Error("audit/loki: retries exhausted, dropping batch",
 		"batch_size", batchSize,
 		"max_retries", o.cfg.MaxRetries)
 	o.recordDrop(batchSize)
@@ -161,7 +161,7 @@ func drainAndClose(resp *http.Response) {
 func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retryable bool, statusCode int, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.cfg.URL, bytes.NewReader(body))
 	if err != nil {
-		return false, 0, fmt.Errorf("audit: loki request: %w", err)
+		return false, 0, fmt.Errorf("audit/loki: request: %w", err)
 	}
 
 	o.applyRequestHeaders(req, compressed)
@@ -169,12 +169,12 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retr
 	resp, err := o.client.Do(req)
 	if err != nil {
 		if errors.Is(err, errRedirectBlocked) {
-			return false, 0, fmt.Errorf("audit: loki redirect blocked: %w", err)
+			return false, 0, fmt.Errorf("audit/loki: redirect blocked: %w", err)
 		}
 		if ctx.Err() != nil {
-			return false, 0, fmt.Errorf("audit: loki cancelled: %w", ctx.Err())
+			return false, 0, fmt.Errorf("audit/loki: cancelled: %w", ctx.Err())
 		}
-		return true, 0, fmt.Errorf("audit: loki request failed: %w", err)
+		return true, 0, fmt.Errorf("audit/loki: request failed: %w", err)
 	}
 	defer drainAndClose(resp)
 
@@ -184,16 +184,16 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool) (retr
 
 	if resp.StatusCode == 429 {
 		o.retryHint = parseRetryAfter(resp.Header.Get("Retry-After"))
-		return true, 429, fmt.Errorf("audit: loki rate limited (429)")
+		return true, 429, fmt.Errorf("audit/loki: rate limited (429)")
 	}
 
 	if resp.StatusCode >= 500 {
-		return true, resp.StatusCode, fmt.Errorf("audit: loki server error %d", resp.StatusCode)
+		return true, resp.StatusCode, fmt.Errorf("audit/loki: server error %d", resp.StatusCode)
 	}
 
 	// 4xx (not 429), and any 3xx that bypassed redirect-follow
 	// (no Location header, 300, 304, ...) — client error, not retryable.
-	return false, resp.StatusCode, fmt.Errorf("audit: loki client error %d", resp.StatusCode)
+	return false, resp.StatusCode, fmt.Errorf("audit/loki: client error %d", resp.StatusCode)
 }
 
 // applyRequestHeaders sets all HTTP headers on the request. Consumer

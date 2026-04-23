@@ -202,7 +202,7 @@ is retried once on the new connection.
 ```yaml
 outputs:
   siem:
-    type: syslog               # Register with: import _ "github.com/axonops/audit/syslog"
+    type: syslog               # Register with: import _ "github.com/axonops/audit/outputs" (all types) or _ "github.com/axonops/audit/syslog" (this type only)
     syslog:
       network: "tcp"           # Transport: "tcp" (default), "udp", or "tcp+tls"
       address: "localhost:1514" # Required: host:port of the syslog server
@@ -237,18 +237,25 @@ comparison.
 
 ## Blank Import Required
 
-Unlike stdout (which is built-in), syslog requires a blank import to
-register its factory:
+Every output (including stdout) lives in a separate Go module and
+requires a blank import to register its factory. The easiest path is
+the convenience package that registers all built-in outputs:
+
+```go
+import _ "github.com/axonops/audit/outputs"
+```
+
+If you prefer to register only this example's output (smaller binary
+for constrained deployments), import the syslog sub-module directly:
 
 ```go
 import _ "github.com/axonops/audit/syslog"
 ```
 
-This is needed because the syslog output lives in a separate module
-(`github.com/axonops/audit/syslog`) that depends on the
-`github.com/axonops/srslog` library for RFC 5424 formatting. The blank
-import triggers the `init()` function that registers the `"syslog"`
-output factory.
+Syslog itself lives in `github.com/axonops/audit/syslog`, which
+depends on the `github.com/axonops/srslog` library for RFC 5424
+formatting. The blank import triggers the `init()` function that
+registers the `"syslog"` output factory.
 
 ## Further Reading
 

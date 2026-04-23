@@ -379,7 +379,7 @@ host: "dev-machine"          # → stream label host="dev-machine"
 
 outputs:
   loki_audit:
-    type: loki               # Registers via: import _ "github.com/axonops/audit/loki"
+    type: loki               # Register with: import _ "github.com/axonops/audit/outputs" (all types) or _ "github.com/axonops/audit/loki" (this type only)
     loki:
       url: "http://localhost:3100/loki/api/v1/push"  # Full path required
       tenant_id: "example"   # Sets X-Scope-OrgID header for multi-tenant Loki
@@ -402,6 +402,27 @@ outputs:
           pid: false         # Exclude PID (high cardinality in dev)
           # To exclude other labels: severity: false, host: false, etc.
 ```
+
+## Blank Import Required
+
+Every output (including stdout) lives in a separate Go module and
+requires a blank import to register its factory. The easiest path is
+the convenience package that registers all built-in outputs:
+
+```go
+import _ "github.com/axonops/audit/outputs"
+```
+
+If you prefer to register only Loki (smaller binary for constrained
+deployments — Loki pulls in the full HTTP + gzip stack), import the
+sub-module directly:
+
+```go
+import _ "github.com/axonops/audit/loki"
+```
+
+Without either, `outputconfig.Load` returns an error when it
+encounters `type: loki` in the YAML.
 
 ## What the Event JSON Looks Like
 

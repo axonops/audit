@@ -514,7 +514,7 @@ func TestLoad_UnknownType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown output type \"kafka\"")
 	assert.Contains(t, err.Error(), "add import")
 	assert.Contains(t, err.Error(), "audit/outputs")
-	assert.Contains(t, err.Error(), "for all types")
+	assert.Contains(t, err.Error(), "for all built-in types")
 }
 
 func TestLoad_DuplicateOutputName(t *testing.T) {

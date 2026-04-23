@@ -613,26 +613,30 @@ setup, caching, security model, and error reference.
 ## 🏭 Factory Registry
 
 Output types must be registered before `Load` can create them.
-Registration happens via blank imports in your application:
-
-```go
-import (
-    _ "github.com/axonops/audit/file"
-    _ "github.com/axonops/audit/syslog"
-    _ "github.com/axonops/audit/webhook"
-    _ "github.com/axonops/audit/loki"
-)
-```
-
-Or register all output types with a single import:
+Registration happens via a blank import in your application. The
+default — and recommended — path is the convenience package, which
+registers every built-in output (including stdout) in a single line:
 
 ```go
 import _ "github.com/axonops/audit/outputs"
 ```
 
-If an output type's module is not imported, `Load` returns an error
-— no output is silently dropped. The `stdout` type is always
-available (built into core).
+This is the pattern every example in this repository uses.
+
+If you are optimising for binary size and know exactly which output
+types your YAML references, import only those sub-modules:
+
+```go
+import (
+    _ "github.com/axonops/audit/file"
+    _ "github.com/axonops/audit/syslog"
+)
+```
+
+Note that `stdout` is also a separate module; if you use
+`type: stdout` without importing `outputs` (or calling
+`audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())`),
+`Load` returns an error — no output is silently dropped.
 
 ## 📦 Loading Output Configuration
 

@@ -252,8 +252,8 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost strin
 	if factory == nil {
 		registered := audit.RegisteredOutputTypes()
 		return nil, fmt.Errorf("output %q: unknown output type %q (registered: [%s]); "+
-			"add import _ \"github.com/axonops/audit/%s\" "+
-			"or import _ \"github.com/axonops/audit/outputs\" for all types",
+			"add import _ \"github.com/axonops/audit/outputs\" for all built-in types "+
+			"(or import _ \"github.com/axonops/audit/%s\" for only this one)",
 			name, f.typeName, strings.Join(registered, ", "), f.typeName)
 	}
 	// Inject global app_name and hostname into syslog config if not already set.

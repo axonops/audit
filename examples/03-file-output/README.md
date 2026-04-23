@@ -75,19 +75,28 @@ misconfiguration.
 
 ### Enabling the File Output Type
 
-The file output lives in its own Go module. A blank import registers it
-with the output factory:
+The file output lives in its own Go module. The easiest way to
+register it (along with every other built-in output) is to blank-
+import the convenience package:
 
 ```go
 import (
-    _ "github.com/axonops/audit/file"
     "github.com/axonops/audit/outputconfig"
+    _ "github.com/axonops/audit/outputs" // registers stdout, file, syslog, webhook, loki
 )
 ```
 
-If you reference `type: file` in YAML without this import,
+If you prefer to register only the outputs you use (smaller binary
+for constrained deployments), import the individual sub-module
+instead:
+
+```go
+import _ "github.com/axonops/audit/file"
+```
+
+If `type: file` appears in YAML without either import,
 `outputconfig.Load` returns an error like:
-`output "audit_log": unknown output type "file" (registered: [stdout]); did you import _ "github.com/axonops/audit/file"?`
+`output "audit_log": unknown output type "file" (registered: []); add import _ "github.com/axonops/audit/outputs" for all built-in types (or import _ "github.com/axonops/audit/file" for only this one)`
 
 ### Close Flushes to Disk
 

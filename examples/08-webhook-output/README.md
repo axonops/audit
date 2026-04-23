@@ -173,7 +173,7 @@ webhook:
 ```yaml
 outputs:
   alerts:
-    type: webhook              # Register with: import _ "github.com/axonops/audit/webhook"
+    type: webhook              # Register with: import _ "github.com/axonops/audit/outputs" (all types) or _ "github.com/axonops/audit/webhook" (this type only)
     webhook:
       url: "http://localhost:9090/audit"  # Required. Must be https:// in production
       batch_size: 10           # Events per batch (default: 100, max: 10,000)
@@ -189,15 +189,23 @@ outputs:
 
 ## Blank Import Required
 
-Like syslog and loki, the webhook output requires a blank import:
+Every output (including stdout) requires a blank import to register
+its factory. The easiest path is the convenience package that
+registers all built-in outputs:
+
+```go
+import _ "github.com/axonops/audit/outputs"
+```
+
+If you prefer to register only webhook (smaller binary for
+constrained deployments), import the sub-module directly:
 
 ```go
 import _ "github.com/axonops/audit/webhook"
 ```
 
-This registers the `"webhook"` output factory. Without it,
-`outputconfig.Load` returns an error when it encounters `type: webhook`
-in the YAML.
+Without either, `outputconfig.Load` returns an error when it
+encounters `type: webhook` in the YAML.
 
 ## Further Reading
 

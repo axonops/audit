@@ -18,9 +18,8 @@ import (
 	"context"
 
 	"github.com/axonops/audit"
-	_ "github.com/axonops/audit/file" // register "file" output type
-	_ "github.com/axonops/audit/loki" // register "loki" output type
 	"github.com/axonops/audit/outputconfig"
+	_ "github.com/axonops/audit/outputs" // registers stdout, file, syslog, webhook, loki
 )
 
 // setupAuditor creates an auditor using the outputconfig.New facade.

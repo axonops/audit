@@ -120,6 +120,19 @@ audit: config validation failed
 | **Transient?** | No — permanent configuration error |
 | **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `ShutdownTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
 
+### `ErrTaxonomyRequired`
+
+```
+audit: taxonomy is required: use WithTaxonomy
+```
+
+| | |
+|---|---|
+| **When** | `New()` is called without [`WithTaxonomy`] (and without [`WithDisabled`]) |
+| **Meaning** | Auditor creation failed — validation and routing require a taxonomy |
+| **Transient?** | No — permanent configuration error |
+| **What to do** | Add `audit.WithTaxonomy(tax)` to the `audit.New(...)` call, or use [`WithDisabled`] for a no-op auditor. Sibling of `ErrAppNameRequired` / `ErrHostRequired`; all three mark missing required options and support `errors.Is` discrimination. |
+
 ### `ErrAppNameRequired`
 
 ```

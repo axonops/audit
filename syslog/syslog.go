@@ -77,14 +77,15 @@ var syslogSeverities = [11]srslog.Priority{
 	srslog.LOG_CRIT,    // audit 10
 }
 
-// mapSeverity converts an audit event severity (0–10) to an srslog
-// priority constant using the mapping in syslogSeverities. Values
-// outside [0, 10] silently fall back to LOG_INFO (syslog severity 6).
-// The taxonomy enforces the 0–10 range at registration time, so
-// out-of-range values indicate a programming error in a custom [Output]
-// that bypasses the auditor and calls this function directly.
+// mapSeverity converts an audit event severity (in the range
+// [audit.MinSeverity, audit.MaxSeverity]) to an srslog priority
+// constant using the mapping in syslogSeverities. Values outside
+// that range silently fall back to LOG_INFO (syslog severity 6).
+// The taxonomy enforces the range at registration time, so
+// out-of-range values indicate a programming error in a custom
+// [Output] that bypasses the auditor and calls this function directly.
 func mapSeverity(auditSeverity int) srslog.Priority {
-	if auditSeverity < 0 || auditSeverity > 10 {
+	if auditSeverity < audit.MinSeverity || auditSeverity > audit.MaxSeverity {
 		return srslog.LOG_INFO
 	}
 	return syslogSeverities[auditSeverity]

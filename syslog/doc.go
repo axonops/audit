@@ -24,7 +24,7 @@
 //	    Network: "tcp+tls",
 //	    Address: "syslog.example.com:6514",
 //	    TLSCA:   "/etc/audit/ca.pem",
-//	}, nil) // optional syslog.Metrics
+//	})
 //
 // Valid [Config.Network] values: "tcp" (default), "udp", "tcp+tls".
 // Use "tcp+tls" with [Config.TLSCert] and [Config.TLSKey] for mTLS.
@@ -35,6 +35,12 @@
 // failure, up to [Config.MaxRetries] attempts (default 10). UDP is
 // connectionless and does not reconnect, but messages exceeding the
 // UDP MTU are silently truncated by the network.
+//
+// To observe reconnect events, wire an [audit.OutputMetrics] value via
+// [Output.SetOutputMetrics]. If the value also implements
+// [ReconnectRecorder] its RecordReconnect method is called on each
+// reconnect attempt (structural typing — no explicit registration
+// needed).
 //
 // Recommended import alias:
 //

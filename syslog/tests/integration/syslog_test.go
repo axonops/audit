@@ -94,7 +94,7 @@ func TestSyslog_TCP_SendAndReceive(t *testing.T) {
 		Address:  "localhost:5514",
 		Facility: "local0",
 		AppName:  "audit-test",
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -111,7 +111,7 @@ func TestSyslog_TCP_MultipleEvents(t *testing.T) {
 		Address:  "localhost:5514",
 		Facility: "local0",
 		AppName:  "audit-test",
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -137,7 +137,7 @@ func TestSyslog_UDP_SendAndReceive(t *testing.T) {
 		Address:  "127.0.0.1:5515",
 		Facility: "local0",
 		AppName:  "audit-test",
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -158,7 +158,7 @@ func TestSyslog_TLS_SendAndReceive(t *testing.T) {
 		Facility: "local0",
 		AppName:  "audit-test",
 		TLSCA:    filepath.Join(certs, "ca.crt"),
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -181,7 +181,7 @@ func TestSyslog_MTLS_SendAndReceive(t *testing.T) {
 		TLSCA:    filepath.Join(certs, "ca.crt"),
 		TLSCert:  filepath.Join(certs, "client.crt"),
 		TLSKey:   filepath.Join(certs, "client.key"),
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -204,7 +204,7 @@ func TestSyslog_InvalidCert_Rejected(t *testing.T) {
 		Facility: "local0",
 		AppName:  "audit-test",
 		TLSCA:    filepath.Join(certs, "invalid.crt"),
-	}, nil)
+	})
 	assert.Error(t, err, "construction with invalid CA should fail TLS handshake")
 	assert.Contains(t, err.Error(), "certificate")
 }
@@ -218,7 +218,7 @@ func TestSyslog_RFC5424_Format(t *testing.T) {
 		Address:  "localhost:5514",
 		Facility: "local0",
 		AppName:  "audit-test",
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

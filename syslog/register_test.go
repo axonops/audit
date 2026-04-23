@@ -142,34 +142,65 @@ func TestSyslogFactory_InsecureSkipVerify_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "insecure_skip_verify")
 }
 
-func TestSyslogNewFactory_WithMetrics(t *testing.T) {
-	metrics := &mockSyslogMetrics{}
-	factory := syslog.NewFactory(metrics)
+func TestSyslogNewFactory_WithMetricsFactory(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
 
-	rawYAML := []byte("network: tcp\naddress: localhost:5514\n")
-	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
-	if err != nil {
-		// Connection failure expected without Docker.
-		t.Logf("skipping connectivity assertion: %v", err)
-		return
+	var gotType, gotName string
+	mf := func(outputType, outputName string) audit.OutputMetrics {
+		gotType, gotName = outputType, outputName
+		return &factoryMockSyslogMetrics{}
 	}
+	factory := syslog.NewFactory(mf)
+
+	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
+	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "with_metrics", out.Name())
+	assert.Equal(t, "syslog", gotType, "factory must be called with outputType=\"syslog\"")
+	assert.Equal(t, "with_metrics", gotName)
 }
 
-func TestSyslogNewFactory_NilMetrics(t *testing.T) {
+func TestSyslogNewFactory_NilFactory(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
 	factory := syslog.NewFactory(nil)
 
-	rawYAML := []byte("network: tcp\naddress: localhost:5514\n")
+	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
 	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
-	if err != nil {
-		t.Logf("skipping connectivity assertion: %v", err)
-		return
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "nil_metrics", out.Name())
 }
 
-type mockSyslogMetrics struct{}
+// TestSyslogNewFactory_FactoryReturnsNil covers the silently-untested
+// branch where the OutputMetricsFactory legitimately returns nil for a
+// specific output — the constructed output must still build cleanly
+// and have no metrics wired.
+func TestSyslogNewFactory_FactoryReturnsNil(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
 
-func (m *mockSyslogMetrics) RecordSyslogReconnect(_ string, _ bool) {}
+	factory := syslog.NewFactory(func(_, _ string) audit.OutputMetrics {
+		return nil
+	})
+
+	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
+	out, err := factory("nil_return", rawYAML, nil, nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+	assert.Equal(t, "nil_return", out.Name())
+}
+
+// factoryMockSyslogMetrics is a minimal audit.OutputMetrics scoped
+// to the NewFactory tests. It does NOT implement
+// [syslog.ReconnectRecorder], which exercises the structural-typing
+// "base-only metrics" branch in SetOutputMetrics.
+type factoryMockSyslogMetrics struct {
+	audit.NoOpOutputMetrics
+}
+
+// Compile-time assertion: the factory mock is audit.OutputMetrics.
+var _ audit.OutputMetrics = (*factoryMockSyslogMetrics)(nil)

@@ -57,7 +57,7 @@ func TestFileOutput_Property_ConservationInvariant(t *testing.T) {
 		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: 1000, // >> max N of 500
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		om := &mockOutputMetrics{}
@@ -124,7 +124,7 @@ func TestFileOutput_Property_CopySafety(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "audit.log")
 
-		out, err := file.New(&file.Config{Path: path}, nil)
+		out, err := file.New(&file.Config{Path: path})
 		require.NoError(rt, err)
 
 		// Capture the original content before Write copies and enqueues it.
@@ -173,7 +173,7 @@ func TestFileOutput_Property_DropConservation(t *testing.T) {
 		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: bufSize,
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		om := &mockOutputMetrics{}
@@ -210,7 +210,7 @@ func TestFileOutput_Property_ContentIntegrity(t *testing.T) {
 		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: 10_000,
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		// Generate distinct events so we can verify exact content.

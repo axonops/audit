@@ -649,31 +649,35 @@ mapping and severity level table.
 
 ## Metrics and Monitoring
 
-The syslog output provides an optional `Metrics` interface:
+The syslog output recognises an optional extension interface on the
+`audit.OutputMetrics` value:
 
 ```go
-type Metrics interface {
-    RecordSyslogReconnect(address string, success bool)
+type ReconnectRecorder interface {
+    RecordReconnect(address string, success bool)
 }
 ```
 
-Register your implementation before calling `outputconfig.Load`. This
-replaces the default factory registered by the blank import. If you
-don't need syslog-specific metrics, the blank import
+Wire a custom per-output metrics implementation via `syslog.NewFactory`
+with an `audit.OutputMetricsFactory`. If your returned
+`audit.OutputMetrics` value also satisfies `syslog.ReconnectRecorder`,
+`RecordReconnect` is invoked on every reconnect attempt via structural
+typing — no explicit registration required. If you don't need
+syslog-specific metrics, the blank import
 `_ "github.com/axonops/audit/syslog"` is sufficient.
 
 ```go
 // When using custom metrics, register explicitly and omit the blank import:
-audit.RegisterOutputFactory("syslog", syslog.NewFactory(mySyslogMetrics))
+audit.RegisterOutputFactory("syslog", syslog.NewFactory(myOutputMetricsFactory))
 ```
 
 ### What to Monitor
 
 | Metric | Condition | Action |
 |--------|-----------|--------|
-| `RecordSyslogReconnect(_, false)` rate > 0 | Reconnection failures | Check syslog server health, network connectivity |
-| `RecordSyslogReconnect(_, true)` count increasing | Server instability | Investigate syslog server for resource issues |
-| No `RecordSyslogReconnect` calls | Normal operation | Healthy — no reconnections needed |
+| `RecordReconnect(_, false)` rate > 0 | Reconnection failures | Check syslog server health, network connectivity |
+| `RecordReconnect(_, true)` count increasing | Server instability | Investigate syslog server for resource issues |
+| No `RecordReconnect` calls | Normal operation | Healthy — no reconnections needed |
 
 ## Production Configuration
 

@@ -45,7 +45,7 @@ func TestSyslogOutput_Property_ConservationInvariant(t *testing.T) {
 			Network:    "tcp",
 			Address:    srv.addr(),
 			BufferSize: 500, // >> max N of 200
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		om := &mockOutputMetrics{}
@@ -121,7 +121,7 @@ func TestSyslogOutput_Property_CopySafety(t *testing.T) {
 		out, err := syslog.New(&syslog.Config{
 			Network: "tcp",
 			Address: srv.addr(),
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		// Capture the original content before enqueue copies it.
@@ -197,7 +197,7 @@ func TestSyslogOutput_Property_DropConservation(t *testing.T) {
 			Network:    "tcp",
 			Address:    srv.addr(),
 			BufferSize: bufSize,
-		}, nil)
+		})
 		require.NoError(rt, err)
 
 		om := &mockOutputMetrics{}

@@ -56,7 +56,7 @@ func TestWriteLoop_BatchesOnCountThreshold(t *testing.T) {
 		Address:       srv.addr(),
 		BatchSize:     10,
 		FlushInterval: 10 * time.Second, // deliberately long — count threshold must fire first
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -83,7 +83,7 @@ func TestWriteLoop_BatchesOnByteThreshold(t *testing.T) {
 		BatchSize:     1000, // deliberately high — byte threshold must fire first
 		FlushInterval: 10 * time.Second,
 		MaxBatchBytes: 4096, // 4 KiB
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -110,7 +110,7 @@ func TestWriteLoop_FlushesOnTimerTimeout(t *testing.T) {
 		Address:       srv.addr(),
 		BatchSize:     1000, // deliberately high so count threshold does not fire
 		FlushInterval: 50 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -138,7 +138,7 @@ func TestWriteLoop_FlushesPartialOnClose(t *testing.T) {
 		Address:       srv.addr(),
 		BatchSize:     1000,
 		FlushInterval: 10 * time.Second,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	for i := 0; i < 3; i++ {
@@ -165,7 +165,7 @@ func TestWriteLoop_OversizedEventFlushesAlone(t *testing.T) {
 		BatchSize:     100,
 		FlushInterval: 10 * time.Second,
 		MaxBatchBytes: 1 << 10, // 1 KiB
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -191,7 +191,7 @@ func TestWriteLoop_BatchSizeOneDisablesBatching(t *testing.T) {
 		Address:       srv.addr(),
 		BatchSize:     1,
 		FlushInterval: 10 * time.Second, // irrelevant — every event hits count threshold
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -214,7 +214,7 @@ func TestWriteLoop_MultipleFlushes(t *testing.T) {
 		Address:       srv.addr(),
 		BatchSize:     5,
 		FlushInterval: 10 * time.Second,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -251,7 +251,7 @@ func TestValidateSyslogConfig_BatchingDefaults(t *testing.T) {
 	out, err := syslog.New(&syslog.Config{
 		Network: "tcp",
 		Address: srv.addr(),
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -306,7 +306,7 @@ func TestValidateSyslogConfig_BatchingRejectsNegative(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := syslog.New(&tc.cfg, nil)
+			out, err := syslog.New(&tc.cfg)
 			require.Error(t, err, "invalid config must be rejected")
 			require.True(t, errors.Is(err, audit.ErrConfigInvalid),
 				"error must wrap audit.ErrConfigInvalid; got %T: %v", err, err)
@@ -333,7 +333,7 @@ func BenchmarkSyslogOutput_BatchedWrite(b *testing.B) {
 		BufferSize:    100_000,
 		BatchSize:     100, // explicit; matches default post-#599
 		FlushInterval: 5 * time.Second,
-	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
+	}, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}

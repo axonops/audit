@@ -123,7 +123,8 @@ server is unreachable, `New()` (or `outputconfig.Load()`) fails.
 
 After startup, TCP and TLS connections are re-established
 automatically on failure (up to `max_retries` attempts, default: 10).
-Monitor `RecordSyslogReconnect` metrics to track reconnection events.
+Monitor `RecordReconnect` on `syslog.ReconnectRecorder` to track
+reconnection events.
 
 ---
 

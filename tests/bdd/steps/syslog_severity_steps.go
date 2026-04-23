@@ -336,7 +336,7 @@ func createSyslogAuditorWithFormatter(tc *AuditTestContext, cfg *syslog.Config, 
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg, nil)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -364,7 +364,7 @@ func createSyslogAuditorWithHMAC(tc *AuditTestContext, cfg *syslog.Config, salt,
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg, nil)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -397,7 +397,7 @@ func createSyslogAuditorWithExcludeLabels(tc *AuditTestContext, cfg *syslog.Conf
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg, nil)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -440,7 +440,7 @@ func createSyslogAuditorWithRoute(tc *AuditTestContext, cfg *syslog.Config, rout
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg, nil)
+	out, err := syslog.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr

@@ -253,32 +253,35 @@ permissions are configured.
 
 ## Metrics and Monitoring
 
-The file output provides an optional `Metrics` interface:
+The file output recognises an optional extension interface on the
+`audit.OutputMetrics` value:
 
 ```go
-type Metrics interface {
-    RecordFileRotation(path string)
+type RotationRecorder interface {
+    RecordRotation(path string)
 }
 ```
 
-`RecordFileRotation` is called after each successful file rotation.
-The `path` is the absolute filesystem path of the file that was
-rotated.
+`RecordRotation` is called after each successful file rotation. The
+`path` is the absolute filesystem path of the file that was rotated.
 
-Register your implementation before calling `outputconfig.Load`. This
-replaces the default factory registered by the blank import. If you
-don't need file-specific metrics, the blank import
+Wire a custom per-output metrics implementation via `file.NewFactory`
+with an `audit.OutputMetricsFactory`. If your returned
+`audit.OutputMetrics` value also satisfies `file.RotationRecorder`,
+`RecordRotation` is invoked automatically on every rotation via
+structural typing — no explicit registration required. If you don't
+need file-specific metrics, the blank import
 `_ "github.com/axonops/audit/file"` is sufficient.
 
 ```go
-audit.RegisterOutputFactory("file", file.NewFactory(myFileMetrics))
+audit.RegisterOutputFactory("file", file.NewFactory(myOutputMetricsFactory))
 ```
 
 ### What to Monitor
 
 | Event | Meaning | Action |
 |-------|---------|--------|
-| `RecordFileRotation` frequency increasing | File filling faster (higher event volume) | Increase `max_size_mb` or add more storage |
+| `RecordRotation` frequency increasing | File filling faster (higher event volume) | Increase `max_size_mb` or add more storage |
 | Disk space alerts | Backups accumulating | Reduce `max_backups` or `max_age_days` |
 | Permission denied errors | Process user changed | Verify file ownership and permissions |
 

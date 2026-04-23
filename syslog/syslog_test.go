@@ -172,8 +172,11 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 // Test helpers: mock metrics
 // ---------------------------------------------------------------------------
 
-// mockMetrics implements syslog.Metrics for testing.
+// mockMetrics implements audit.OutputMetrics (via NoOp embed) plus
+// syslog.ReconnectRecorder — the combination picked up by the output's
+// SetOutputMetrics type-assertion (#581).
 type mockMetrics struct {
+	audit.NoOpOutputMetrics
 	syslogReconnects map[string]int // "address:success|failure" -> count
 	mu               sync.Mutex
 }
@@ -184,8 +187,8 @@ func newMockMetrics() *mockMetrics {
 	}
 }
 
-// RecordSyslogReconnect satisfies syslog.Metrics.
-func (m *mockMetrics) RecordSyslogReconnect(address string, success bool) {
+// RecordReconnect satisfies syslog.ReconnectRecorder (#581).
+func (m *mockMetrics) RecordReconnect(address string, success bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := address + ":"
@@ -210,7 +213,7 @@ func (m *mockMetrics) getSyslogReconnectCount(address string, success bool) int 
 	return m.syslogReconnects[key]
 }
 
-var _ syslog.Metrics = (*mockMetrics)(nil)
+var _ syslog.ReconnectRecorder = (*mockMetrics)(nil)
 
 // mockOutputMetrics implements audit.OutputMetrics for testing.
 type mockOutputMetrics struct {
@@ -380,7 +383,7 @@ func TestNewSyslogOutput_TCP(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
@@ -391,7 +394,7 @@ func TestNewSyslogOutput_UDP(t *testing.T) {
 		Network:       "udp",
 		Address:       "127.0.0.1:9514",
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
@@ -475,7 +478,7 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := syslog.New(&tt.cfg, nil)
+			_, err := syslog.New(&tt.cfg)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
@@ -497,7 +500,7 @@ func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
 		Address:       "localhost:6514",
 		TLSCA:         tmpFile.Name(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse")
 }
@@ -514,7 +517,7 @@ func TestSyslogOutput_Write(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	data := []byte(`{"event_type":"user_create","outcome":"success"}`)
@@ -539,7 +542,7 @@ func TestSyslogOutput_Hostname_Override(t *testing.T) {
 		Address:       srv.addr(),
 		Hostname:      "custom-host",
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"test"}`)))
@@ -561,7 +564,7 @@ func TestSyslogOutput_Hostname_DefaultFallback(t *testing.T) {
 		Address: srv.addr(),
 		// Hostname intentionally omitted — should fall back to os.Hostname.,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"test"}`)))
@@ -598,7 +601,7 @@ func TestSyslogOutput_Hostname_Validation_Invalid(t *testing.T) {
 				Address:       "localhost:1",
 				Hostname:      tc.hostname,
 				FlushInterval: 5 * time.Millisecond,
-			}, nil)
+			})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
 			assert.ErrorIs(t, err, audit.ErrConfigInvalid,
@@ -618,7 +621,7 @@ func TestSyslogOutput_Hostname_Validation_Valid(t *testing.T) {
 			Address:       srv.addr(),
 			Hostname:      hostname,
 			FlushInterval: 5 * time.Millisecond,
-		}, nil)
+		})
 		require.NoError(t, err, "valid hostname %q should not cause an error", hostname)
 		_ = out.Close()
 	}
@@ -632,7 +635,7 @@ func TestSyslogOutput_WriteMultiple(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	expected := make([]string, 5)
@@ -654,7 +657,7 @@ func TestSyslogOutput_CloseIdempotent(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	assert.NoError(t, out.Close())
@@ -669,7 +672,7 @@ func TestSyslogOutput_WriteAfterClose(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -690,7 +693,7 @@ func TestSyslogOutput_Write_NonBlocking(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    100,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -719,7 +722,7 @@ func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -748,7 +751,7 @@ func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    1000,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -781,7 +784,7 @@ func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -799,7 +802,7 @@ func TestSyslogOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -816,7 +819,7 @@ func TestSyslogOutput_CopySafety(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	data := []byte(`{"event":"original"}`)
@@ -851,7 +854,7 @@ func TestSyslogOutput_WriteDuringClose_NoPanic(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    10,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -881,7 +884,7 @@ func TestSyslogOutput_Name(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -897,7 +900,7 @@ func TestSyslogOutput_DestinationKey(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -913,7 +916,7 @@ func TestSyslogOutput_ImplementsOutput(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -941,7 +944,7 @@ func TestParseFacility_AllStandard(t *testing.T) {
 				Address:       srv.addr(),
 				Facility:      f,
 				FlushInterval: 5 * time.Millisecond,
-			}, nil)
+			})
 			require.NoError(t, err, "facility %q should be valid", f)
 			require.NoError(t, out.Close())
 		})
@@ -954,7 +957,7 @@ func TestParseFacility_Unknown(t *testing.T) {
 		Address:       "localhost:514",
 		Facility:      "nonexistent",
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown syslog facility")
 }
@@ -1074,7 +1077,7 @@ func TestSyslogOutput_TLS(t *testing.T) {
 		Address:       srv.addr(),
 		TLSCA:         certs.caPath,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"tls_test"}`)))
@@ -1100,7 +1103,7 @@ func TestSyslogOutput_MTLS(t *testing.T) {
 		TLSKey:        certs.clientKey,
 		TLSCA:         certs.caPath,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"mtls_test"}`)))
@@ -1129,7 +1132,7 @@ func TestSyslogOutput_TLSPolicy_NilPreservesBehaviour(t *testing.T) {
 		TLSCA:         certs.caPath,
 		TLSPolicy:     nil, // explicitly nil,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event":"nil_policy"}`)))
 	require.True(t, srv.waitForData(2*time.Second))
@@ -1155,7 +1158,7 @@ func TestSyslogOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 			AllowTLS12: true,
 		},
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event":"tls12_policy"}`)))
 	require.True(t, srv.waitForData(2*time.Second))
@@ -1179,7 +1182,7 @@ func TestSyslogOutput_WriteFailure_HandledInBackground(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1, // minimal retries to keep test fast,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// First write succeeds (enqueued to background goroutine).
@@ -1205,16 +1208,17 @@ func TestSyslogOutput_WriteFailure_HandledInBackground(t *testing.T) {
 // Metrics (#54)
 // ---------------------------------------------------------------------------
 
-// syslogOnlyMetrics implements syslog.Metrics but not the full
-// audit.Metrics interface. It is used to verify that NewSyslogOutput
-// accepts any syslog.Metrics implementation.
+// syslogOnlyMetrics implements audit.OutputMetrics (via NoOp embed)
+// plus syslog.ReconnectRecorder so SetOutputMetrics wires both
+// contracts (#581).
 type syslogOnlyMetrics struct {
+	audit.NoOpOutputMetrics
 	mu        sync.Mutex
 	successes int
 	failures  int
 }
 
-func (m *syslogOnlyMetrics) RecordSyslogReconnect(_ string, success bool) {
+func (m *syslogOnlyMetrics) RecordReconnect(_ string, success bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if success {
@@ -1224,9 +1228,9 @@ func (m *syslogOnlyMetrics) RecordSyslogReconnect(_ string, success bool) {
 	}
 }
 
-var _ syslog.Metrics = (*syslogOnlyMetrics)(nil)
+var _ syslog.ReconnectRecorder = (*syslogOnlyMetrics)(nil)
 
-func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
+func TestSyslogOutput_NilReconnectRecorder_ReconnectDoesNotPanic(t *testing.T) {
 	// nil Metrics must not panic during the reconnect path.
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
@@ -1236,7 +1240,7 @@ func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil) // nil Metrics
+	}) // nil Metrics
 	require.NoError(t, err)
 
 	// First write succeeds — connection is established.
@@ -1247,7 +1251,7 @@ func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
 
 	// Writes after server dies enqueue events. The background
 	// writeLoop triggers the reconnect path which would call
-	// syslogMetrics.RecordSyslogReconnect if non-nil. With nil, it
+	// reconnect recorder via RecordReconnect if non-nil. With nil, it
 	// must not panic.
 	for range 5 {
 		require.NoError(t, out.Write([]byte(`{"n":2}`)))
@@ -1257,8 +1261,8 @@ func TestSyslogOutput_NilSyslogMetrics_ReconnectDoesNotPanic(t *testing.T) {
 	require.NoError(t, out.Close())
 }
 
-func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServerDown(t *testing.T) {
-	// Verify RecordSyslogReconnect(address, false) is called when
+func TestSyslogOutput_ReconnectRecorder_RecordReconnect_FailureOnPermanentServerDown(t *testing.T) {
+	// Verify RecordReconnect(address, false) is called when
 	// reconnection fails because the server is permanently gone.
 	srv := newMockSyslogServer(t)
 	addr := srv.addr()
@@ -1269,8 +1273,9 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServ
 		Address:       addr,
 		MaxRetries:    2, // allow 2 reconnection attempts,
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 
 	// Establish the connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1289,20 +1294,20 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServ
 	require.Eventually(t, func() bool {
 		return m.getSyslogReconnectCount(addr, false) > 0
 	}, 5*time.Second, 10*time.Millisecond,
-		"RecordSyslogReconnect(address, false) should be called on reconnect failure")
+		"RecordReconnect(address, false) should be called on reconnect failure")
 
 	require.NoError(t, out.Close())
 }
 
-func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing.T) {
-	// Verify RecordSyslogReconnect(address, true) is called when a
+func TestSyslogOutput_ReconnectRecorder_RecordReconnect_SuccessPath(t *testing.T) {
+	// Verify RecordReconnect(address, true) is called when a
 	// reconnection attempt to a live server succeeds.
 	//
 	// Approach: bind a listener on a fixed address. Establish the initial
 	// connection. Close and immediately rebind the same listener (SO_REUSEADDR
 	// applies on Linux; the OS recycles the port instantly for loopback).
 	// The output's reconnect path will connect to the new listener and call
-	// RecordSyslogReconnect(addr, true).
+	// RecordReconnect(addr, true).
 
 	// Bind the server on a fixed loopback address with a kernel-assigned port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1323,8 +1328,9 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing
 		Address:       addr,
 		MaxRetries:    10, // enough headroom for reconnect,
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1365,11 +1371,11 @@ func TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_SuccessPath(t *testing
 
 	if reconnectSucceeded {
 		assert.Greater(t, m.getSyslogReconnectCount(addr, true), 0,
-			"RecordSyslogReconnect(address, true) should be called on successful reconnect")
+			"RecordReconnect(address, true) should be called on successful reconnect")
 	} else {
 		// The port rebind did not succeed fast enough on this OS/run.
 		// The failure path is already verified by
-		// TestSyslogOutput_SyslogMetrics_RecordSyslogReconnect_FailureOnPermanentServerDown.
+		// TestSyslogOutput_ReconnectRecorder_RecordReconnect_FailureOnPermanentServerDown.
 		t.Log("reconnect success test skipped: port could not be rebound fast enough")
 	}
 }
@@ -1486,8 +1492,9 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 		Address:       addr,
 		MaxRetries:    5,
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1512,26 +1519,70 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	_ = out.Close()
 
 	assert.True(t, reconnectSuccess,
-		"RecordSyslogReconnect(address, true) must be called — "+
+		"RecordReconnect(address, true) must be called — "+
 			"connect() succeeds because listener stays up, but retry write "+
 			"fails because hostile server RSTs the connection")
 }
 
-func TestSyslogOutput_SyslogMetrics_InterfaceAssertion(t *testing.T) {
-	// Compile-time: verify NewSyslogOutput accepts any syslog.Metrics,
+func TestSyslogOutput_ReconnectRecorder_InterfaceAssertion(t *testing.T) {
+	// Compile-time: verify NewSyslogOutput accepts any syslog.ReconnectRecorder,
 	// not just mockMetrics. This test would not compile if the signature
 	// changed.
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
-	var m syslog.Metrics = &syslogOnlyMetrics{}
+	m := &syslogOnlyMetrics{}
+	// Compile-time check: syslogOnlyMetrics satisfies ReconnectRecorder.
+	var _ syslog.ReconnectRecorder = m
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 	require.NoError(t, out.Close())
+}
+
+// TestSyslogOutput_SetOutputMetrics_ReplaceClearsReconnectRecorder
+// verifies the idempotency contract on SetOutputMetrics: a second call
+// with an OutputMetrics value that does NOT implement
+// ReconnectRecorder must clear the previously-wired reconnect recorder
+// rather than leaving it stale.
+func TestSyslogOutput_SetOutputMetrics_ReplaceClearsReconnectRecorder(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	addr := srv.addr()
+
+	first := &syslogOnlyMetrics{}
+	out, err := syslog.New(&syslog.Config{
+		Network:       "tcp",
+		Address:       addr,
+		MaxRetries:    2,
+		FlushInterval: 5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	out.SetOutputMetrics(first)
+
+	// Replace with a plain audit.OutputMetrics that does NOT satisfy
+	// ReconnectRecorder.
+	plain := &audit.NoOpOutputMetrics{}
+	out.SetOutputMetrics(plain)
+
+	require.NoError(t, out.Write([]byte(`{"n":1}`)))
+
+	// Bring the server down to force reconnect attempts; the old
+	// recorder must not see any callbacks.
+	srv.close()
+	for range 5 {
+		_ = out.Write([]byte(`{"n":2}`))
+	}
+	require.NoError(t, out.Close())
+
+	first.mu.Lock()
+	successes, failures := first.successes, first.failures
+	first.mu.Unlock()
+	assert.Zero(t, successes, "successes must be 0: old recorder should have been cleared on replacement")
+	assert.Zero(t, failures, "failures must be 0: old recorder should have been cleared on replacement")
 }
 
 // ---------------------------------------------------------------------------
@@ -1585,7 +1636,7 @@ func TestSyslogOutput_WriteNil(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -1603,7 +1654,7 @@ func TestSyslogOutput_WriteEmpty(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -1623,7 +1674,7 @@ func TestSyslogOutput_RapidFireTCP(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	const count = 100
@@ -1660,7 +1711,7 @@ func TestSyslogOutput_ConcurrentWrites(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	const goroutines = 50
@@ -1692,7 +1743,7 @@ func TestSyslogOutput_WriteUDP(t *testing.T) {
 		Network:       "udp",
 		Address:       addr,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"udp_test"}`)))
@@ -1721,7 +1772,7 @@ func TestSyslogOutput_WriteUDP_NoOctetCountFraming(t *testing.T) {
 		Network:       "udp",
 		Address:       conn.LocalAddr().String(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -1748,7 +1799,7 @@ func TestSyslogOutput_WriteUDP_LargePayload(t *testing.T) {
 		Network:       "udp",
 		Address:       conn.LocalAddr().String(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -1792,7 +1843,7 @@ func TestSyslogOutput_CloseDuringBackoff_DoesNotHang(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    20,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Establish a live connection and flush the initial TCP buffer.
@@ -1864,7 +1915,7 @@ func TestNewSyslogOutput_TLSConfig_InvalidCAPEM(t *testing.T) {
 		Address:       "localhost:6514",
 		TLSCA:         badCAPath,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ca certificate",
 		"error should mention CA certificate when PEM parsing fails")
@@ -1885,7 +1936,7 @@ func TestNewSyslogOutput_TLSCert_IsDirectory(t *testing.T) {
 		TLSCert:       dir, // a directory, not a file
 		TLSKey:        dir,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "directory",
 		"error should report that the TLS path is a directory")
@@ -1905,7 +1956,7 @@ func TestNewSyslogOutput_DefaultNetwork(t *testing.T) {
 		Network:       "", // empty — should default to "tcp"
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"default_network"}`)))
@@ -1927,7 +1978,7 @@ func TestNewSyslogOutput_TCP_ConnectFailure(t *testing.T) {
 		// causes a synchronous ECONNREFUSED rather than a timeout.
 		Address:       "127.0.0.1:1",
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dial",
 		"error should describe the dial failure")
@@ -1953,7 +2004,7 @@ func TestNewSyslogOutput_TLSConfig_InvalidClientCert(t *testing.T) {
 		TLSCert:       badCert,
 		TLSKey:        badKey,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tls config",
 		"error should indicate a TLS configuration failure")
@@ -1992,7 +2043,7 @@ func TestNewSyslogOutput_TLSConfig_UnreadableCAFile(t *testing.T) {
 		Address:       "localhost:6514",
 		TLSCA:         caPath,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ca certificate",
 		"error should mention CA certificate when ReadFile is denied")
@@ -2026,7 +2077,7 @@ func TestSyslogOutput_HandleWriteFailure_CloseDuringBackoff_CloseCh(t *testing.T
 		Address:       addr,
 		MaxRetries:    20, // max allowed; high so we never exhaust retries before Close fires,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Establish the connection and confirm data flows.
@@ -2085,7 +2136,7 @@ func TestSyslogOutput_CloseInterruptsBackoff(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    10, // high retries — Close must interrupt, not wait,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Establish the connection.
@@ -2131,8 +2182,9 @@ func TestSyslogOutput_MaxRetriesExceeded_DropsEvent(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 
 	// Establish the connection.
 	require.NoError(t, out.Write([]byte(`{"n":0}`)))
@@ -2181,7 +2233,7 @@ func TestSyslogOutput_Close_WriterCloseError(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"n":0}`)))
@@ -2252,7 +2304,7 @@ func TestSyslogOutput_WriteWithMetadata_SeverityMapping(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -2297,7 +2349,7 @@ func TestSyslogOutput_WriteWithMetadata_ImplementsInterface(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -2316,7 +2368,7 @@ func TestSyslogOutput_WriteWithMetadata_AfterClose(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -2432,7 +2484,7 @@ func TestSyslogOutput_OutputMetrics_RecordFlush(t *testing.T) {
 		Facility:      "local0",
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -2458,7 +2510,7 @@ func TestSyslogOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
 		Facility:      "local0",
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -2493,7 +2545,7 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 		BufferSize:    100,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -2613,7 +2665,7 @@ func BenchmarkSyslogOutput_Write(b *testing.B) {
 		Address:       srv.addr(),
 		BufferSize:    100_000, // large buffer to avoid drops,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
+	}, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2646,7 +2698,7 @@ func BenchmarkSyslogOutput_Write_Parallel(b *testing.B) {
 		Address:       srv.addr(),
 		BufferSize:    100_000,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil, syslog.WithDiagnosticLogger(silentBenchLogger()))
+	}, syslog.WithDiagnosticLogger(silentBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -2688,7 +2740,7 @@ func TestSyslogOutput_ReconnectInBackground_Success(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    10,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Establish connection with a successful write.
@@ -2737,8 +2789,9 @@ func TestSyslogOutput_ReconnectInBackground_Exhausted(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, m)
+	})
 	require.NoError(t, err)
+	out.SetOutputMetrics(m)
 
 	// Establish connection.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -2754,7 +2807,7 @@ func TestSyslogOutput_ReconnectInBackground_Exhausted(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return m.getSyslogReconnectCount(addr, false) > 0
 	}, 5*time.Second, 10*time.Millisecond,
-		"RecordSyslogReconnect(address, false) should be called when retries exhausted")
+		"RecordReconnect(address, false) should be called when retries exhausted")
 
 	require.NoError(t, out.Close())
 }
@@ -2768,7 +2821,7 @@ func TestOutputMetrics_RecordDrop_CalledOnBufferFull(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -2793,7 +2846,7 @@ func TestOutputMetrics_RecordFlush_CalledOnSuccessfulWrite(t *testing.T) {
 		Address:       srv.addr(),
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	om := &mockOutputMetrics{}
@@ -2816,7 +2869,7 @@ func TestOutputMetrics_RecordRetry_CalledOnRetryableError(t *testing.T) {
 		BufferSize:    100,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -2876,7 +2929,7 @@ func TestSyslog_TLSWarningsRoutedToInjectedLogger(t *testing.T) {
 			AllowWeakCiphers: true,
 		},
 		FlushInterval: 5 * time.Millisecond,
-	}, nil, syslog.WithDiagnosticLogger(injected))
+	}, syslog.WithDiagnosticLogger(injected))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -2924,7 +2977,7 @@ func TestSyslog_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 			AllowWeakCiphers: true,
 		},
 		FlushInterval: 5 * time.Millisecond,
-	}, nil, syslog.WithDiagnosticLogger(nil))
+	}, syslog.WithDiagnosticLogger(nil))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 

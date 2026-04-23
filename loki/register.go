@@ -33,7 +33,26 @@ func init() {
 // injected via OutputMetricsReceiver after construction.
 // The logger is plumbed through to construction-time TLS warnings.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, logger)
+	return buildOutput(name, rawConfig, coreMetrics, nil, logger)
+}
+
+// NewFactory returns an [audit.OutputFactory] that creates Loki
+// outputs from YAML configuration and wires per-output metrics via
+// the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
+// the returned [audit.Output] receives its per-output
+// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
+// at construction time. Pass nil to disable per-output metrics.
+//
+// Signature is identical to the other output modules'
+// `NewFactory` (file, syslog, webhook) for consistency (#581).
+func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
+	return func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+		var om audit.OutputMetrics
+		if factory != nil {
+			om = factory("loki", name)
+		}
+		return buildOutput(name, rawConfig, coreMetrics, om, logger)
+	}
 }
 
 // yamlLokiConfig is the YAML-specific representation of Loki output
@@ -108,11 +127,27 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: loki output %q: config is required", name)
 	}
 
+	cfg, err := parseLokiConfig(name, rawConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
+	if err != nil {
+		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
+	}
+	if om != nil {
+		output.SetOutputMetrics(om)
+	}
+	return audit.WrapOutput(output, name), nil
+}
+
+func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 	var yc yamlLokiConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
 	if err := dec.Decode(&yc); err != nil {
@@ -138,7 +173,6 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		AllowPrivateRanges: yc.AllowPriv,
 	}
 
-	// Basic auth.
 	if yc.BasicAuth != nil {
 		cfg.BasicAuth = &BasicAuth{
 			Username: yc.BasicAuth.Username,
@@ -146,7 +180,6 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		}
 	}
 
-	// TLS policy.
 	if yc.TLSPolicy != nil {
 		cfg.TLSPolicy = &audit.TLSPolicy{
 			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
@@ -154,14 +187,11 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		}
 	}
 
-	// Gzip: default true, explicit false overrides.
+	cfg.Gzip = true
 	if yc.Gzip != nil {
 		cfg.Gzip = *yc.Gzip
-	} else {
-		cfg.Gzip = true
 	}
 
-	// Labels.
 	if yc.Labels != nil {
 		cfg.Labels.Static = yc.Labels.Static
 		if yc.Labels.Dynamic != nil {
@@ -171,11 +201,7 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 		}
 	}
 
-	output, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
-	if err != nil {
-		return nil, fmt.Errorf("audit: loki output %q: %w", name, err)
-	}
-	return audit.WrapOutput(output, name), nil
+	return cfg, nil
 }
 
 // parseDynamicLabels converts the YAML dynamic labels map into the

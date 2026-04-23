@@ -90,20 +90,24 @@ func mapSeverity(auditSeverity int) srslog.Priority {
 	return syslogSeverities[auditSeverity]
 }
 
-// Metrics is an optional interface for syslog-specific
-// instrumentation. Pass an implementation to [New] to
-// collect reconnection telemetry. Pass nil to disable.
+// ReconnectRecorder is an OPTIONAL extension interface for syslog
+// reconnection telemetry. A consumer's [audit.OutputMetrics]
+// implementation MAY also implement ReconnectRecorder. When the
+// syslog output receives per-output metrics via
+// [audit.OutputMetricsReceiver.SetOutputMetrics], it type-asserts
+// for ReconnectRecorder and invokes RecordReconnect on every
+// connect attempt. Precedent: [net/http.Flusher] as an optional
+// extension on [http.ResponseWriter].
 //
-// When using the unified [audit.OutputMetrics] via
-// [audit.OutputMetricsReceiver], the syslog output auto-detects
-// whether the OutputMetrics value also implements this interface
-// via type assertion.
-type Metrics interface {
-	// RecordSyslogReconnect records a syslog reconnection attempt.
-	// success indicates whether the reconnection succeeded. The
-	// address is the configured host:port. Implementations SHOULD
-	// NOT use address as an unbounded metric label.
-	RecordSyslogReconnect(address string, success bool)
+// Consumers who do not care about reconnection telemetry need not
+// implement this interface — the base [audit.OutputMetrics] contract
+// is sufficient.
+type ReconnectRecorder interface {
+	// RecordReconnect records a syslog reconnection attempt. success
+	// indicates whether the reconnection succeeded. address is the
+	// configured host:port. Implementations SHOULD NOT use address
+	// as an unbounded metric label.
+	RecordReconnect(address string, success bool)
 }
 
 // syslogEntry carries a copied event and its priority through the
@@ -147,26 +151,26 @@ type syslogEntry struct {
 //
 // Output is safe for concurrent use.
 type Output struct {
-	writer        *srslog.Writer
-	tlsCfg        *tls.Config                         // cached for reconnection; nil for non-TLS
-	syslogMetrics atomic.Pointer[Metrics]             // extension: RecordSyslogReconnect (may be nil)
-	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	logger        atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
-	ch            chan syslogEntry                    // async buffer
-	closeCh       chan struct{}                       // signals writeLoop to drain and exit
-	done          chan struct{}                       // closed when writeLoop exits
-	name          string                              // cached Name() result
-	address       string
-	network       string
-	appName       string
-	hostname      string
-	writeCount    uint64      // drain-side event counter for RecordQueueDepth sampling
-	drops         dropLimiter // rate-limits buffer-full drop warnings
-	closed        atomic.Bool
-	mu            sync.Mutex      // protects Close sequence
-	facility      srslog.Priority // facility bits only (no severity)
-	failures      int             // consecutive failure count (writeLoop-only)
-	maxRetry      int
+	writer            *srslog.Writer
+	tlsCfg            *tls.Config                         // cached for reconnection; nil for non-TLS
+	reconnectRecorder atomic.Pointer[ReconnectRecorder]   // extension: RecordReconnect (may be nil)
+	outputMetrics     atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
+	logger            atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
+	ch                chan syslogEntry                    // async buffer
+	closeCh           chan struct{}                       // signals writeLoop to drain and exit
+	done              chan struct{}                       // closed when writeLoop exits
+	name              string                              // cached Name() result
+	address           string
+	network           string
+	appName           string
+	hostname          string
+	writeCount        uint64      // drain-side event counter for RecordQueueDepth sampling
+	drops             dropLimiter // rate-limits buffer-full drop warnings
+	closed            atomic.Bool
+	mu                sync.Mutex      // protects Close sequence
+	facility          srslog.Priority // facility bits only (no severity)
+	failures          int             // consecutive failure count (writeLoop-only)
+	maxRetry          int
 	// Batching knobs — resolved from Config at construction time
 	// (#599). See syslog.Config.BatchSize / .FlushInterval /
 	// .MaxBatchBytes for the user-facing contract.
@@ -190,16 +194,21 @@ func (s *Output) SetDiagnosticLogger(l *slog.Logger) {
 	s.logger.Store(l)
 }
 
-// New creates a new [Output] from the given config.
-// It validates the config, establishes the initial connection, and
-// starts the background writeLoop goroutine.
-// The syslogMetrics parameter is optional (may be nil).
+// New creates a new [Output] from the given config. It validates the
+// config, establishes the initial connection, and starts the
+// background writeLoop goroutine.
+//
+// Per-output metrics arrive later via
+// [audit.OutputMetricsReceiver.SetOutputMetrics] — the auditor wires
+// them in after construction when an [audit.OutputMetricsFactory] is
+// registered. An [*Output] silently discards telemetry until
+// SetOutputMetrics is called.
 //
 // Optional [Option] arguments tune construction-time behaviour. Pass
 // [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
 // the auditor's diagnostic logger is propagated post-construction) to
 // a custom logger.
-func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
+func New(cfg *Config, opts ...Option) (*Output, error) {
 	o := resolveOptions(opts)
 
 	if err := validateSyslogConfig(cfg); err != nil {
@@ -257,9 +266,6 @@ func New(cfg *Config, syslogMetrics Metrics, opts ...Option) (*Output, error) {
 	// Publish the initial logger BEFORE starting the write goroutine.
 	// resolveOptions already replaced nil with slog.Default.
 	s.logger.Store(o.logger)
-	if syslogMetrics != nil {
-		s.syslogMetrics.Store(&syslogMetrics)
-	}
 
 	if err := s.connect(); err != nil {
 		return nil, fmt.Errorf("audit: syslog dial %s://%s: %w",
@@ -370,12 +376,19 @@ func (s *Output) Close() error {
 func (s *Output) ReportsDelivery() bool { return true }
 
 // SetOutputMetrics receives the per-output metrics instance.
+// Typically called once after construction and before the first Write
+// call, but repeat calls are safe: the reconnect-recorder slot is
+// always reset from the new m so a replacement value cannot
+// accidentally keep firing against the old recorder. If m also
+// implements [ReconnectRecorder], reconnection telemetry is wired up
+// automatically via structural typing (pattern mirrors
+// [net/http.Flusher] detection on [net/http.ResponseWriter]).
 func (s *Output) SetOutputMetrics(m audit.OutputMetrics) {
 	s.outputMetrics.Store(&m)
-	// Check if the OutputMetrics also implements the syslog-specific
-	// Metrics extension interface for reconnection recording.
-	if sm, ok := m.(Metrics); ok {
-		s.syslogMetrics.Store(&sm)
+	if rr, ok := m.(ReconnectRecorder); ok {
+		s.reconnectRecorder.Store(&rr)
+	} else {
+		s.reconnectRecorder.Store(nil)
 	}
 }
 
@@ -660,10 +673,10 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 	timer.Stop()
 
-	// Load syslog extension metrics for reconnect recording.
-	var sm Metrics
-	if smp := s.syslogMetrics.Load(); smp != nil {
-		sm = *smp
+	// Load the optional ReconnectRecorder extension (may be nil).
+	var rr ReconnectRecorder
+	if rrp := s.reconnectRecorder.Load(); rrp != nil {
+		rr = *rrp
 	}
 
 	if err := s.connect(); err != nil {
@@ -671,15 +684,15 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
-		if sm != nil {
-			sm.RecordSyslogReconnect(s.address, false)
+		if rr != nil {
+			rr.RecordReconnect(s.address, false)
 		}
 		return
 	}
 
 	s.logger.Load().Info("audit: syslog reconnected", "address", s.address)
-	if sm != nil {
-		sm.RecordSyslogReconnect(s.address, true)
+	if rr != nil {
+		rr.RecordReconnect(s.address, true)
 	}
 
 	// Retry the write on the new connection.

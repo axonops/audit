@@ -34,12 +34,12 @@ import (
 //
 // coreMetrics is the auditor-level [Metrics] recorder (may be nil).
 // Forwarded to outputs that need it (e.g. webhook for delivery
-// reporting). Per-output-type metrics are auto-detected via type
-// assertion: if coreMetrics satisfies the output's specific Metrics
-// interface (e.g. file.Metrics, syslog.Metrics), the output receives
-// per-output metrics automatically. For separate per-output metrics
-// implementations, use the output's NewFactory with
-// outputconfig.WithFactory.
+// reporting). Per-output extension events (rotation, reconnect) are
+// recorded when the output's [OutputMetrics] value, supplied via
+// [OutputMetricsReceiver.SetOutputMetrics] or [OutputMetricsFactory],
+// also implements the output-specific extension interface (e.g.
+// file.RotationRecorder, syslog.ReconnectRecorder) — detected via
+// structural typing.
 //
 // logger is the auditor's diagnostic logger, plumbed through from
 // [outputconfig.WithDiagnosticLogger] or [audit.WithDiagnosticLogger]

@@ -22,6 +22,6 @@ import (
 
 // Compile-time assertions: MetricsRecorder satisfies output extension interfaces.
 var (
-	_ file.Metrics   = (*audittest.MetricsRecorder)(nil)
-	_ syslog.Metrics = (*audittest.MetricsRecorder)(nil)
+	_ file.RotationRecorder    = (*audittest.MetricsRecorder)(nil)
+	_ syslog.ReconnectRecorder = (*audittest.MetricsRecorder)(nil)
 )

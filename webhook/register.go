@@ -33,7 +33,26 @@ func init() {
 // are injected via OutputMetricsReceiver after construction.
 // The logger is plumbed through to construction-time TLS warnings.
 func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, logger)
+	return buildOutput(name, rawConfig, coreMetrics, nil, logger)
+}
+
+// NewFactory returns an [audit.OutputFactory] that creates webhook
+// outputs from YAML configuration and wires per-output metrics via
+// the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
+// the returned [audit.Output] receives its per-output
+// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
+// at construction time. Pass nil to disable per-output metrics.
+//
+// Signature is identical to the other output modules'
+// `NewFactory` (file, syslog, loki) for consistency (#581).
+func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
+	return func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+		var om audit.OutputMetrics
+		if factory != nil {
+			om = factory("webhook", name)
+		}
+		return buildOutput(name, rawConfig, coreMetrics, om, logger)
+	}
 }
 
 // yamlWebhookConfig is the YAML-specific representation of webhook
@@ -96,7 +115,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: webhook output %q: config is required", name)
 	}
@@ -133,6 +152,9 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, logge
 	out, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: webhook output %q: %w", name, err)
+	}
+	if om != nil {
+		out.SetOutputMetrics(om)
 	}
 	return audit.WrapOutput(out, name), nil
 }

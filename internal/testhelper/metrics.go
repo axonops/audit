@@ -26,7 +26,8 @@ var _ audit.Metrics = (*MockMetrics)(nil)
 
 // MockMetrics is a thread-safe mock that satisfies [audit.Metrics] and
 // structurally satisfies the output-specific extension interfaces
-// (file.Metrics, syslog.Metrics) without importing those packages.
+// (file.RotationRecorder, syslog.ReconnectRecorder) without importing
+// those packages.
 // QueueDepthRecord captures a single RecordQueueDepth call.
 type QueueDepthRecord struct {
 	Depth    int
@@ -127,17 +128,17 @@ func (m *MockMetrics) RecordQueueDepth(depth, capacity int) {
 	m.QueueDepths = append(m.QueueDepths, QueueDepthRecord{Depth: depth, Capacity: capacity})
 }
 
-// --- file.Metrics methods (structural satisfaction) ---
+// --- file.RotationRecorder methods (structural satisfaction) ---
 
-func (m *MockMetrics) RecordFileRotation(path string) {
+func (m *MockMetrics) RecordRotation(path string) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.FileRotations[path]++
 }
 
-// --- syslog.Metrics methods (structural satisfaction) ---
+// --- syslog.ReconnectRecorder methods (structural satisfaction) ---
 
-func (m *MockMetrics) RecordSyslogReconnect(address string, success bool) {
+func (m *MockMetrics) RecordReconnect(address string, success bool) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	key := address + ":"

@@ -67,7 +67,7 @@ func TestSyslog_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 		Address:  listener.Addr().String(),
 		Facility: "local0",
 		AppName:  "race-test",
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup

@@ -165,15 +165,56 @@ The `outputType` is the output kind (e.g., "file", "syslog",
 (e.g., "compliance_archive", "security_feed"). Together they allow
 fully scoped Prometheus labels.
 
+### Unified `NewFactory` Pattern
+
+Every output sub-module (`file`, `syslog`, `webhook`, `loki`) exposes
+the same `NewFactory` signature:
+
+```go
+func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory
+```
+
+Pass `nil` to opt out of per-output metrics (the output uses a no-op
+recorder). Pass a populated `OutputMetricsFactory` to wire custom
+per-output metrics:
+
+```go
+import (
+    "github.com/axonops/audit"
+    "github.com/axonops/audit/file"
+    "github.com/axonops/audit/syslog"
+    "github.com/axonops/audit/webhook"
+    "github.com/axonops/audit/loki"
+)
+
+func init() {
+    // Identical signature across all four outputs.
+    audit.RegisterOutputFactory("file",    file.NewFactory(myFactory))
+    audit.RegisterOutputFactory("syslog",  syslog.NewFactory(myFactory))
+    audit.RegisterOutputFactory("webhook", webhook.NewFactory(myFactory))
+    audit.RegisterOutputFactory("loki",    loki.NewFactory(myFactory))
+}
+```
+
+The output modules also register a no-op default via `init()`, so
+`_ "github.com/axonops/audit/file"` still works when you don't need
+custom metrics.
+
 ### Extension Interfaces
 
 Output-specific metrics beyond the common five are available as
 type-assertion extensions on the `OutputMetrics` value:
 
-- `file.Metrics` — adds `RecordFileRotation(path string)` for tracking
-  log rotation events
-- `syslog.Metrics` — adds `RecordSyslogReconnect(address string,
+- `file.RotationRecorder` — adds `RecordRotation(path string)` for
+  tracking log rotation events
+- `syslog.ReconnectRecorder` — adds `RecordReconnect(address string,
   success bool)` for tracking reconnection attempts
+
+The naming follows the Go stdlib `-er` convention for single-method
+extension interfaces that layer additional capability onto a base
+contract: `http.Flusher` / `http.Hijacker` on top of
+`http.ResponseWriter`, and `sql/driver.Queryer` / `Execer` on top of
+`driver.Conn`.
 
 To receive extension callbacks, your `OutputMetrics` implementation
 must also satisfy the extension interface:
@@ -188,11 +229,11 @@ type myOutputMetrics struct {
 // Core OutputMetrics methods:
 func (m *myOutputMetrics) RecordDrop() { m.drops.Inc() }
 
-// Extension: file.Metrics (detected via type assertion):
-func (m *myOutputMetrics) RecordFileRotation(path string) { /* ... */ }
+// Extension: file.RotationRecorder (detected via type assertion):
+func (m *myOutputMetrics) RecordRotation(path string) { /* ... */ }
 
-// Extension: syslog.Metrics (detected via type assertion):
-func (m *myOutputMetrics) RecordSyslogReconnect(addr string, ok bool) { /* ... */ }
+// Extension: syslog.ReconnectRecorder (detected via type assertion):
+func (m *myOutputMetrics) RecordReconnect(addr string, ok bool) { /* ... */ }
 ```
 
 Consumers SHOULD embed `audit.NoOpOutputMetrics` for forward

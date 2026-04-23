@@ -412,8 +412,9 @@ func (o *MyOutput) SetOutputMetrics(m audit.OutputMetrics) {
 }
 ```
 
-See `file.Metrics` (`RecordFileRotation`) and `syslog.Metrics`
-(`RecordSyslogReconnect`) for built-in examples of this pattern.
+See `file.RotationRecorder` (`RecordRotation`) and
+`syslog.ReconnectRecorder` (`RecordReconnect`) for built-in examples
+of this pattern.
 
 ### Forward Compatibility
 

@@ -41,7 +41,7 @@ func TestFile_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
 	out, err := file.New(&file.Config{
 		Path:       filepath.Join(dir, "race.log"),
 		BufferSize: 1000,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup

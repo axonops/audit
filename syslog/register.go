@@ -28,23 +28,32 @@ func init() {
 	audit.MustRegisterOutputFactory("syslog", defaultFactory)
 }
 
-// defaultFactory creates a syslog output from YAML config. Per-output
-// metrics are auto-detected via type assertion on coreMetrics.
-// The logger is plumbed through to construction-time TLS warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	var syslogMetrics Metrics
-	if sm, ok := coreMetrics.(Metrics); ok {
-		syslogMetrics = sm
-	}
-	return buildOutput(name, rawConfig, syslogMetrics, logger)
+// defaultFactory creates a syslog output from YAML config without
+// consumer-supplied per-output metrics. Use [NewFactory] to wire an
+// [audit.OutputMetricsFactory] for reconnection telemetry and async
+// buffer metrics.
+func defaultFactory(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	return buildOutput(name, rawConfig, nil, logger)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates syslog
-// outputs from YAML configuration with the provided syslog-specific
-// metrics captured in the closure. Pass nil to disable syslog metrics.
-func NewFactory(syslogMetrics Metrics) audit.OutputFactory {
+// outputs from YAML configuration and wires per-output metrics via
+// the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
+// the returned [audit.Output] receives its per-output
+// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
+// at construction time; if the returned metrics also implement
+// [ReconnectRecorder], reconnection telemetry is wired in
+// automatically. Pass nil to disable per-output metrics.
+//
+// Signature is identical to the other output modules'
+// `NewFactory` (file, webhook, loki) for consistency (#581).
+func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
 	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-		return buildOutput(name, rawConfig, syslogMetrics, logger)
+		var om audit.OutputMetrics
+		if factory != nil {
+			om = factory("syslog", name)
+		}
+		return buildOutput(name, rawConfig, om, logger)
 	}
 }
 
@@ -91,7 +100,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics, logger *slog.Logger) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit: syslog output %q: config is required", name)
 	}
@@ -131,9 +140,12 @@ func buildOutput(name string, rawConfig []byte, syslogMetrics Metrics, logger *s
 		}
 	}
 
-	out, err := New(cfg, syslogMetrics, WithDiagnosticLogger(logger))
+	out, err := New(cfg, WithDiagnosticLogger(logger))
 	if err != nil {
 		return nil, fmt.Errorf("audit: syslog output %q: %w", name, err)
+	}
+	if om != nil {
+		out.SetOutputMetrics(om)
 	}
 	return audit.WrapOutput(out, name), nil
 }

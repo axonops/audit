@@ -45,7 +45,7 @@ func TestWrite_RejectsOversizedEvent(t *testing.T) {
 		Address:       srv.addr(),
 		MaxEventBytes: 1024, // 1 KiB
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -70,7 +70,7 @@ func TestWrite_AcceptsAtLimit(t *testing.T) {
 		Address:       srv.addr(),
 		MaxEventBytes: 1024,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -93,7 +93,7 @@ func TestWrite_OversizedDoesNotStallSubsequent(t *testing.T) {
 		MaxEventBytes: 1024,
 		BatchSize:     1, // flush every event immediately
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -131,7 +131,7 @@ func TestValidateConfig_MaxEventBytesDefault(t *testing.T) {
 	out, err := syslog.New(&syslog.Config{
 		Network: "tcp",
 		Address: srv.addr(),
-	}, nil)
+	})
 	require.NoError(t, err, "zero-value Config must accept default MaxEventBytes")
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -146,7 +146,7 @@ func TestValidateConfig_MaxEventBytesNegative(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		MaxEventBytes: -1,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -161,7 +161,7 @@ func TestValidateConfig_MaxEventBytesBelowMin(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		MaxEventBytes: 512, // below 1 KiB minimum
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -176,7 +176,7 @@ func TestValidateConfig_MaxEventBytesOverRange(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		MaxEventBytes: syslog.MaxMaxEventBytes + 1,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -195,7 +195,7 @@ func TestWrite_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
 		Address:       srv.addr(),
 		MaxEventBytes: 1024,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -230,7 +230,7 @@ func TestWrite_OversizedEmitsRateLimitedWarn(t *testing.T) {
 		Address:       srv.addr(),
 		MaxEventBytes: 1024,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -273,7 +273,7 @@ func TestWrite_MaxEventBytesBoundary(t *testing.T) {
 		Address:       srv.addr(),
 		MaxEventBytes: limit,
 		FlushInterval: 5 * time.Millisecond,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

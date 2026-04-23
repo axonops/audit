@@ -111,7 +111,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#578** refactor: rename Stdout to Writer-based output with Stdout/Stderr/Writer constructors, drop core init() registration.
 - [x] **#579** refactor: pick one config pattern (Config struct vs functional options); export Version; bound fieldsPool.
 - [x] **#580** refactor: align file/syslog/webhook/loki New() constructors on pointer Config receiver.
-- [ ] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
+- [x] **#581** refactor: unified OutputMetricsFactory pattern across file/syslog/webhook/loki.
 - [ ] **#582** refactor: align HMAC Go and YAML field names; unify _hmac_v / _hmacVersion.
 - [x] **#583** refactor: rename syslog.app_name YAML to procid or syslog_app_name; default APP-NAME from top-level app_name.
 - [x] **#584** refactor: align Loki gzip YAML key and Go Compress field.

@@ -528,7 +528,7 @@ func TestHTTP_Success_RecordsCoreMetrics(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	assert.Greater(t, coreMetrics.successCount(), 0,
-		"core metrics RecordEvent should be called with success")
+		"core metrics RecordDelivery should be called with success")
 }
 
 func TestHTTP_Drop_RecordsCoreMetrics(t *testing.T) {
@@ -549,7 +549,7 @@ func TestHTTP_Drop_RecordsCoreMetrics(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	assert.Greater(t, coreMetrics.errorCount(), 0,
-		"core metrics RecordEvent should be called with error on drop")
+		"core metrics RecordDelivery should be called with error on drop")
 }
 
 // ---------------------------------------------------------------------------
@@ -643,7 +643,7 @@ type mockCoreMetrics struct { //nolint:govet // fieldalignment: readability pref
 	events map[string]int // status → count
 }
 
-func (m *mockCoreMetrics) RecordEvent(_ string, status audit.EventStatus) {
+func (m *mockCoreMetrics) RecordDelivery(_ string, status audit.EventStatus) {
 	m.mu.Lock()
 	if m.events == nil {
 		m.events = make(map[string]int)

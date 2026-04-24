@@ -187,7 +187,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	if w.metrics != nil {
 		name := w.Name()
 		for range batchSize {
-			w.metrics.RecordEvent(name, audit.EventSuccess)
+			w.metrics.RecordDelivery(name, audit.EventSuccess)
 		}
 	}
 }
@@ -195,7 +195,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 // recordDrop records dropped events in metrics. Called when retries
 // are exhausted or a non-retryable error occurs.
 // RecordDrop is called per dropped event on OutputMetrics.
-// RecordEvent(name, audit.EventError) is called per dropped event on core Metrics.
+// RecordDelivery(name, audit.EventError) is called per dropped event on core Metrics.
 func (w *Output) recordDrop(count int) {
 	name := w.Name()
 	for range count {
@@ -203,7 +203,7 @@ func (w *Output) recordDrop(count int) {
 			(*omp).RecordDrop()
 		}
 		if w.metrics != nil {
-			w.metrics.RecordEvent(name, audit.EventError)
+			w.metrics.RecordDelivery(name, audit.EventError)
 		}
 	}
 }

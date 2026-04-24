@@ -70,8 +70,8 @@ func (m *MetricsRecorder) RecordSubmitted() {
 	m.mu.Unlock()
 }
 
-// RecordEvent implements [audit.Metrics].
-func (m *MetricsRecorder) RecordEvent(output string, status audit.EventStatus) {
+// RecordDelivery implements [audit.Metrics].
+func (m *MetricsRecorder) RecordDelivery(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	m.events[output+":"+string(status)]++
 	m.mu.Unlock()

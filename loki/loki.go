@@ -279,9 +279,9 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		})
 		// Buffer drops (event never attempted) are counted via per-
 		// output OutputMetrics.RecordDrop only — not via pipeline-
-		// level Metrics.RecordEvent. Matches file + syslog for
+		// level Metrics.RecordDelivery. Matches file + syslog for
 		// consistency across all self-reporting outputs (B-25).
-		// RecordEvent(EventError) remains for retries-exhausted
+		// RecordDelivery(EventError) remains for retries-exhausted
 		// failures in http.go where delivery WAS attempted.
 		if omp := o.outputMetrics.Load(); omp != nil {
 			(*omp).RecordDrop()

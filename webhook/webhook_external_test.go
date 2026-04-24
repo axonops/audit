@@ -202,7 +202,7 @@ func newMockMetrics() *mockMetrics {
 
 // --- audit.Metrics methods ---
 
-func (m *mockMetrics) RecordEvent(output string, status audit.EventStatus) {
+func (m *mockMetrics) RecordDelivery(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.events[output+":"+string(status)]++
@@ -1304,12 +1304,12 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return metrics.getEventCount(name, audit.EventSuccess) == 3
 	}, 5*time.Second, 10*time.Millisecond,
-		"RecordEvent(success) should be called once per delivered event")
+		"RecordDelivery(success) should be called once per delivered event")
 
 	require.NoError(t, out.Close())
 
 	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
-		"RecordEvent(error) should not be called on success")
+		"RecordDelivery(error) should not be called on success")
 }
 
 func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
@@ -1336,9 +1336,9 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
 
 	name := out.Name()
 	assert.Equal(t, 2, metrics.getEventCount(name, audit.EventError),
-		"RecordEvent(error) should be called once per dropped event")
+		"RecordDelivery(error) should be called once per dropped event")
 	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventSuccess),
-		"RecordEvent(success) should not be called when retries exhausted")
+		"RecordDelivery(success) should not be called when retries exhausted")
 }
 
 func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
@@ -1361,7 +1361,7 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fill buffer — overflow events are no longer recorded via
-	// core Metrics.RecordEvent (B-25 consistency with file + syslog).
+	// core Metrics.RecordDelivery (B-25 consistency with file + syslog).
 	// They surface only via OutputMetrics.RecordDrop — asserted in
 	// the separate per-output metrics test suite.
 	for range 15 {
@@ -1371,11 +1371,11 @@ func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
 
 	name := out.Name()
 	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
-		"buffer overflow drops must not be recorded via core Metrics.RecordEvent (B-25); use OutputMetrics.RecordDrop")
+		"buffer overflow drops must not be recorded via core Metrics.RecordDelivery (B-25); use OutputMetrics.RecordDrop")
 }
 
 func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
-	// Verify that the core recordWrite does NOT call RecordEvent
+	// Verify that the core recordWrite does NOT call RecordDelivery
 	// for webhook outputs (they report their own delivery).
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
@@ -1429,7 +1429,7 @@ type coreOnlyMetrics struct {
 	mu     sync.Mutex
 }
 
-func (m *coreOnlyMetrics) RecordEvent(output string, status audit.EventStatus) {
+func (m *coreOnlyMetrics) RecordDelivery(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.events[output+":"+string(status)]++
@@ -1467,7 +1467,7 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 
 	// Overflow the buffer — should not panic despite missing
 	// OutputMetrics. Buffer-overflow drops are no longer recorded via
-	// core Metrics.RecordEvent (B-25); the per-output RecordDrop path
+	// core Metrics.RecordDelivery (B-25); the per-output RecordDrop path
 	// is exercised in the OutputMetrics-specific tests. Here we only
 	// assert that the code does not panic.
 	for range 15 {
@@ -1476,11 +1476,11 @@ func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	// Core Metrics should NOT have recorded the overflow drops as
-	// RecordEvent(EventError) — B-25 alignment with file + syslog.
+	// RecordDelivery(EventError) — B-25 alignment with file + syslog.
 	m.mu.Lock()
 	errorCount := m.events[out.Name()+":error"]
 	m.mu.Unlock()
-	assert.Equal(t, 0, errorCount, "buffer overflow drops must not be recorded via Metrics.RecordEvent (B-25)")
+	assert.Equal(t, 0, errorCount, "buffer overflow drops must not be recorded via Metrics.RecordDelivery (B-25)")
 }
 
 // ---------------------------------------------------------------------------

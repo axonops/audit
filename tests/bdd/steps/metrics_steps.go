@@ -317,7 +317,7 @@ func assertMetricsEvent(tc *AuditTestContext, output, status string) error {
 	defer tc.MockMetrics.mu.Unlock()
 	key := output + ":" + status
 	if tc.MockMetrics.Events[key] == 0 {
-		return fmt.Errorf("expected RecordEvent(%q, %q), got 0 (all: %v)", output, status, tc.MockMetrics.Events)
+		return fmt.Errorf("expected RecordDelivery(%q, %q), got 0 (all: %v)", output, status, tc.MockMetrics.Events)
 	}
 	return nil
 }
@@ -403,7 +403,7 @@ func assertMetricsNoWebhookCoreSuccess(tc *AuditTestContext) error {
 	tc.MockMetrics.mu.Lock()
 	defer tc.MockMetrics.mu.Unlock()
 	// Webhook output implements DeliveryReporter, so core metrics
-	// (RecordEvent) should NOT be called for webhook outputs.
+	// (RecordDelivery) should NOT be called for webhook outputs.
 	// Check that no "webhook:*:success" key exists.
 	for k, v := range tc.MockMetrics.Events {
 		if strings.Contains(k, "webhook") && strings.HasSuffix(k, ":success") && v > 0 {

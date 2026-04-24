@@ -314,8 +314,8 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 
 // TestOutput_BufferFull_DoesNotRecordCoreEventError verifies the B-25
 // contract: buffer-full drops surface only via OutputMetrics.RecordDrop
-// and MUST NOT call core Metrics.RecordEvent(EventError). Delivery
-// errors (retry exhausted) still use RecordEvent(EventError) — this
+// and MUST NOT call core Metrics.RecordDelivery(EventError). Delivery
+// errors (retry exhausted) still use RecordDelivery(EventError) — this
 // test guards the buffer-drop path only.
 func TestOutput_BufferFull_DoesNotRecordCoreEventError(t *testing.T) {
 	t.Parallel()
@@ -351,7 +351,7 @@ func TestOutput_BufferFull_DoesNotRecordCoreEventError(t *testing.T) {
 	require.NoError(t, out.Close())
 
 	assert.Equal(t, 0, coreMetrics.errorCount(),
-		"buffer-full drops must not call core Metrics.RecordEvent(EventError) (B-25); use OutputMetrics.RecordDrop")
+		"buffer-full drops must not call core Metrics.RecordDelivery(EventError) (B-25); use OutputMetrics.RecordDrop")
 }
 
 // ---------------------------------------------------------------------------

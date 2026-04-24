@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `audit.Metrics` interface shape locked for v1.0 via [ADR 0005](docs/adr/0005-metrics-interface-shape.md) (#594). Kept the existing nine-method shape after api-ergonomics-reviewer rejected both the single-method `Record(MetricEvent)` tagged-union proposal (reintroduces untyped payload + adds a hot-path allocation) and the split `LifecycleMetrics` / `DeliveryMetrics` / `ValidationMetrics` composed-interface proposal (silent-compile footgun when consumers embed two of three no-op partial bases). Nine methods grouped by purpose matches stdlib precedent (`slog.Handler` ×4, `http.ResponseWriter` + optional extensions, `driver.Conn`/`Stmt`/`Rows` 4-6 each). Forward-compatibility policy: new metrics added in v1.x land as separate optional interfaces detected via type assertion on the `Metrics` value (same pattern as `DeliveryReporter` / `file.RotationRecorder` / `syslog.ReconnectRecorder`); consumers embedding `NoOpMetrics` automatically retain no-op implementations. Per-method Prometheus cardinality guidance added to godoc so consumers wiring label vectors see the label-space impact. Capstone Prometheus adapter rewritten using a `vec()` helper and `NoOpMetrics` embedding — the audit-side of `examples/17-capstone/metrics.go` is now 34 lines of significant code (struct + constructor + seven `Record*` methods), comfortably inside the 50-line AC target. New `TestNoOpMetrics_AllMethodsArePresent` locks the forward-compat embed pattern at test time.
+
 - Small API-polish bundle #593:
   - **B-17** TLSPolicy zero-value docs & tests verified — no code change (already documented and tested at `tls_policy.go:19-39`; `TestTLSPolicy_Apply_NilReceiver_DefaultsTLS13` and `TestTLSPolicy_Apply_ZeroValue_DefaultsTLS13` already present).
   - **B-27** Exported `MinSeverity` / `MaxSeverity` severity-range constants; updated four magic-number call sites (`filter.go`, `taxonomy.go`, `validate_taxonomy.go`). See `### Added` above.
@@ -34,7 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   
   `outputconfig.ErrOutputConfigInvalid` now wraps `audit.ErrConfigInvalid` so `errors.Is(err, audit.ErrConfigInvalid)` matches every configuration-validation failure — a single sentinel across outputs, config, and secrets (stdlib `fs.ErrNotExist` / `os.ErrNotExist` pattern). Consumers matching errors with `strings.Contains(err.Error(), "vault:")` must migrate to `errors.Is` / `errors.As` on sentinels (already forbidden by project style).
 
-- Self-reporting output drop metrics are now consistent (#592). Webhook and Loki no longer call pipeline-level `Metrics.RecordEvent(name, audit.EventError)` on **buffer drops** (oversized event or buffer full); those drops now surface only via `OutputMetrics.RecordDrop()`, matching file + syslog. Retry-exhaustion failures in webhook/loki (where delivery WAS attempted) still call `RecordEvent(EventError)` — those are genuine delivery errors, not buffer drops. Consumers relying on `RecordEvent` as a pre-delivery drop counter should use `OutputMetrics.RecordDrop` for that counter.
+- Self-reporting output drop metrics are now consistent (#592). Webhook and Loki no longer call pipeline-level `Metrics.RecordDelivery(name, audit.EventError)` on **buffer drops** (oversized event or buffer full); those drops now surface only via `OutputMetrics.RecordDrop()`, matching file + syslog. Retry-exhaustion failures in webhook/loki (where delivery WAS attempted) still call `RecordDelivery(EventError)` — those are genuine delivery errors, not buffer drops. Consumers relying on `RecordDelivery` as a pre-delivery drop counter should use `OutputMetrics.RecordDrop` for that counter.
 
 - `secrets.redactRef` drops its unused parameter (#592 B-35). The function was already returning a constant; the `_` parameter was dead. Internal helper — no consumer impact.
 
@@ -52,6 +54,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Examples `02-code-generation`, `04-testing`, `06-middleware`, `13-standard-fields`, and `15-tls-policy` failed at runtime with `unknown output type "stdout"` because they declared `type: stdout` in `outputs.yaml` without blank-importing anything that registered the stdout factory (stdout auto-registration was removed in #578). The new `_ "github.com/axonops/audit/outputs"` blank import registers stdout alongside the other built-ins (#585).
 
 ### Breaking Changes
+
+- `audit.Metrics.RecordEvent` renamed to `RecordDelivery` (#594). The new name matches the method's actual role (per-output delivery outcome) and removes the semantic collision with `RecordSubmitted` in readers' heads. Migration is a one-line find-and-replace for every consumer of the interface:
+  ```go
+  // Before
+  func (m *myMetrics) RecordEvent(output string, status audit.EventStatus) { ... }
+  // After
+  func (m *myMetrics) RecordDelivery(output string, status audit.EventStatus) { ... }
+  ```
+  All library-internal call sites, test mocks, and the capstone example are updated in lockstep.
 
 - `audit.New` now rejects configurations that omit `WithAppName` or `WithHost` (#593 B-41), matching the existing `outputconfig.Load` YAML-path contract. Missing values yield `ErrAppNameRequired` / `ErrHostRequired`. Callers using `WithDisabled` remain free of the requirement. Migration:
   ```go
@@ -71,7 +82,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ```
   `audittest.New` / `audittest.NewQuick` gain sensible test defaults (`"audittest"` / `"localhost"`) so existing tests continue to work without changes.
 
-- `audit.Metrics.RecordEvent` now takes a typed `audit.EventStatus` instead of a raw `string` (#586). New exported type `type EventStatus string` with constants `audit.EventSuccess` (`"success"`) and `audit.EventError` (`"error"`). Prometheus / OpenTelemetry wire format is unchanged — `string(status)` is a zero-cost conversion that emits the identical label bytes that were previously hardcoded. Consumers implementing the `Metrics` interface (e.g. Prometheus adapter) must update the `RecordEvent` method signature. Test mocks migrated in lockstep: `audittest.MetricsRecorder.EventDeliveries` and `internal/testhelper.MockMetrics.GetEventCount` both now take `audit.EventStatus`. Pre-coding consult with api-ergonomics-reviewer locked the `string`-backed enum over `int`-backed for hot-path efficiency and wire-format stability. Migration:
+- `audit.Metrics.RecordDelivery` (renamed from `RecordEvent` by #594) now takes a typed `audit.EventStatus` instead of a raw `string` (#586). New exported type `type EventStatus string` with constants `audit.EventSuccess` (`"success"`) and `audit.EventError` (`"error"`). Prometheus / OpenTelemetry wire format is unchanged — `string(status)` is a zero-cost conversion that emits the identical label bytes that were previously hardcoded. Consumers implementing the `Metrics` interface (e.g. Prometheus adapter) must update the delivery-recording method signature. Test mocks migrated in lockstep: `audittest.MetricsRecorder.EventDeliveries` and `internal/testhelper.MockMetrics.GetEventCount` both now take `audit.EventStatus`. Pre-coding consult with api-ergonomics-reviewer locked the `string`-backed enum over `int`-backed for hot-path efficiency and wire-format stability. Migration:
   ```go
   // Before
   type myMetrics struct{ /* ... */ }
@@ -79,8 +90,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
       m.events.WithLabelValues(output, status).Inc()
   }
 
-  // After
-  func (m *myMetrics) RecordEvent(output string, status audit.EventStatus) {
+  // After (combined #586 typed status + #594 rename)
+  func (m *myMetrics) RecordDelivery(output string, status audit.EventStatus) {
       m.events.WithLabelValues(output, string(status)).Inc()
   }
   ```

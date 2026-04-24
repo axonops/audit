@@ -43,13 +43,13 @@ Feature: Event Count Metrics
     And I close the auditor
     Then RecordQueueDepth should have been called at least 1 time
 
-  Scenario: DeliveryReporter output skips core RecordEvent
+  Scenario: DeliveryReporter output skips core RecordDelivery
     Given an auditor with file output and pipeline metrics
     When I audit 5 events rapidly
     And I close the auditor
     Then the pipeline metrics should not have recorded a success event for file output
 
-  Scenario: Non-DeliveryReporter output records core RecordEvent
+  Scenario: Non-DeliveryReporter output records core RecordDelivery
     Given an auditor with stdout output and metrics
     When I audit event "user_create" with required fields
     And I close the auditor

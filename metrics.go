@@ -17,7 +17,7 @@ package audit
 import "time"
 
 // EventStatus is the outcome label for a delivery attempt recorded
-// via [Metrics.RecordEvent]. It is a typed string so consumers can
+// via [Metrics.RecordDelivery]. It is a typed string so consumers can
 // pass it straight to Prometheus / OpenTelemetry label vectors with
 // a zero-cost `string(status)` conversion on the hot path.
 //
@@ -48,7 +48,10 @@ const (
 // [WithMetrics]; pass nil to disable metrics collection.
 //
 // The library never imports a concrete metrics library (Prometheus,
-// OpenTelemetry, etc.). Consumers wire their own.
+// OpenTelemetry, etc.). Consumers wire their own. The
+// [examples/17-capstone] Prometheus adapter shows a complete
+// implementation in under 50 lines using a table-driven registration
+// pattern; copy it as a starting point.
 //
 // Consumers SHOULD embed [NoOpMetrics] in their implementation to
 // absorb new methods added in future versions without breaking builds.
@@ -58,7 +61,7 @@ const (
 // [Metrics] records pipeline-level counters that span the entire auditor:
 //
 //   - RecordSubmitted — total events entering the pipeline
-//   - RecordEvent — per-output delivery outcome (for non-self-reporting outputs)
+//   - RecordDelivery — per-output delivery outcome (for non-self-reporting outputs)
 //   - RecordBufferDrop — core intake queue overflow
 //   - RecordQueueDepth — core intake queue pressure gauge
 //
@@ -72,28 +75,59 @@ const (
 //   - RecordQueueDepth — per-output buffer pressure gauge
 //
 // For outputs that implement [DeliveryReporter] (webhook, loki, file,
-// syslog), the output itself calls RecordEvent after actual delivery.
-// The core auditor skips RecordEvent for these outputs to avoid
+// syslog), the output itself calls RecordDelivery after actual delivery.
+// The core auditor skips RecordDelivery for these outputs to avoid
 // phantom success counting.
+//
+// # Cardinality guidance
+//
+// Each method notes the Prometheus / OpenTelemetry label-vector
+// dimensionality implied by its arguments. "High cardinality" flags
+// methods whose label space scales with caller-supplied identifiers
+// (event types, output names) — consumers with many event types
+// should budget accordingly when wiring label vectors.
+//
+// # Forward compatibility
+//
+// Adding a method to [Metrics] in a v1.x release is a breaking
+// interface change. The library adds new metrics via separate
+// optional interfaces detected by type assertion on the passed
+// [Metrics] value, mirroring the pattern used by [DeliveryReporter]
+// on outputs and by [file.RotationRecorder] / [syslog.ReconnectRecorder]
+// on [OutputMetrics]. Consumers who embed [NoOpMetrics] retain
+// no-op implementations for every base-interface method; extensions
+// are additive. See ADR 0005 (docs/adr/0005-metrics-interface-shape.md)
+// for the full policy.
 type Metrics interface {
 	// RecordSubmitted records that an event was submitted to the
 	// pipeline via [Auditor.AuditEvent]. Called once per AuditEvent
 	// call, before any filtering or buffering. This is the "total
 	// events in" counter.
+	//
+	// Cardinality: single counter (no labels).
 	RecordSubmitted()
 
-	// RecordEvent records an event delivery attempt to the named
+	// RecordDelivery records an event delivery attempt to the named
 	// output. status is a typed enum — see [EventStatus] for the
 	// defined values.
-	RecordEvent(output string, status EventStatus)
+	//
+	// Cardinality: 2-dimensional vector (output × status).
+	// The output label set is bounded by the number of configured
+	// outputs. status has two values ([EventSuccess], [EventError]).
+	RecordDelivery(output string, status EventStatus)
 
 	// RecordOutputError records a write error on the named output.
+	//
+	// Cardinality: 1-dimensional vector (output). Bounded by the
+	// number of configured outputs.
 	RecordOutputError(output string)
 
 	// RecordOutputFiltered records that a per-output event route filter
 	// prevented an event from being delivered to the named output.
 	// This is distinct from [Metrics.RecordFiltered], which records
 	// global category/event filter drops before any output is reached.
+	//
+	// Cardinality: 1-dimensional vector (output).
 	RecordOutputFiltered(output string)
 
 	// RecordValidationError records that [Auditor.AuditEvent] rejected an
@@ -101,27 +135,44 @@ type Metrics interface {
 	// required fields, or unknown fields in strict mode. The
 	// eventType parameter is the event type string that was passed to
 	// AuditEvent.
+	//
+	// Cardinality: 1-dimensional vector (event_type). HIGH cardinality
+	// if the taxonomy grows large or if unknown event types are
+	// common. Consumers may aggregate into a single counter without
+	// the event_type label to cap the vector size.
 	RecordValidationError(eventType string)
 
 	// RecordFiltered records that an event was silently discarded by
 	// the global category/event filter. This is distinct from
 	// [Metrics.RecordOutputFiltered] which tracks per-output route
 	// filtering.
+	//
+	// Cardinality: 1-dimensional vector (event_type). HIGH cardinality
+	// — see [Metrics.RecordValidationError].
 	RecordFiltered(eventType string)
 
 	// RecordSerializationError records that the configured [Formatter]
 	// returned an error (or panicked) when serialising an event. The
 	// event is dropped when this occurs.
+	//
+	// Cardinality: 1-dimensional vector (event_type). HIGH cardinality
+	// — see [Metrics.RecordValidationError].
 	RecordSerializationError(eventType string)
 
 	// RecordBufferDrop records that an event was dropped because the
 	// main async queue was full.
+	//
+	// Cardinality: single counter (no labels).
 	RecordBufferDrop()
 
 	// RecordQueueDepth records the current depth and capacity of the
 	// core intake queue. Called from the drain loop, sampled every 64
 	// events processed. depth is len(channel), capacity is
 	// cap(channel).
+	//
+	// Cardinality: gauge (depth) and an associated gauge or constant
+	// (capacity). No per-call labels. Consumers may record the
+	// capacity once at startup and emit depth per call.
 	RecordQueueDepth(depth, capacity int)
 }
 
@@ -142,8 +193,8 @@ var _ Metrics = NoOpMetrics{}
 // RecordSubmitted is a no-op.
 func (NoOpMetrics) RecordSubmitted() {}
 
-// RecordEvent is a no-op.
-func (NoOpMetrics) RecordEvent(string, EventStatus) {}
+// RecordDelivery is a no-op.
+func (NoOpMetrics) RecordDelivery(string, EventStatus) {}
 
 // RecordOutputError is a no-op.
 func (NoOpMetrics) RecordOutputError(string) {}

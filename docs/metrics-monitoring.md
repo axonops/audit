@@ -26,7 +26,7 @@ library never imports a concrete metrics implementation.
 ```go
 type Metrics interface {
     RecordSubmitted()                           // total events entering the pipeline
-    RecordEvent(output string, status EventStatus) // EventSuccess / EventError — see "Drop vs delivery error" below
+    RecordDelivery(output string, status EventStatus) // EventSuccess / EventError — see "Drop vs delivery error" below
     RecordOutputError(output string)
     RecordOutputFiltered(output string)
     RecordValidationError(eventType string)
@@ -47,6 +47,39 @@ auditor, err := audit.New(
 )
 ```
 
+### Interface design — nine methods, stable shape
+
+The interface has nine methods. That shape is intentional and locked
+for v1.0 by [ADR 0005](adr/0005-metrics-interface-shape.md), which
+considered and rejected two alternatives: a single-method
+`Record(MetricEvent)` tagged union, and a split into
+`LifecycleMetrics` / `DeliveryMetrics` / `ValidationMetrics` composed
+sub-interfaces.
+
+Why the nine-method shape won:
+
+- **Stdlib precedent.** `log/slog.Handler` has four methods;
+  `net/http.ResponseWriter` has three plus a zoo of optional
+  extensions detected by type assertion (`http.Flusher`,
+  `http.Hijacker`). `database/sql/driver.Conn`, `Stmt`, and `Rows`
+  each have four to six. Go culture is "small interfaces, many of
+  them" — not "one god-method that dispatches on a tag." Nine
+  methods grouped by purpose is not anomalous.
+- **Typed arguments beat tagged unions.** `RecordValidationError`
+  takes a typed `eventType string`; `RecordQueueDepth` takes typed
+  `depth, capacity int`. A single `Record(MetricEvent)` would
+  reintroduce untyped payload where `Depth` is meaningful only when
+  `Kind == MetricQueueDepth` — a `map[string]any` with extra steps.
+- **Forward-compat via optional interfaces.** New metrics added in
+  future releases land as separate optional interfaces detected via
+  type assertion (same pattern as `DeliveryReporter`,
+  `file.RotationRecorder`, `syslog.ReconnectRecorder`). Consumers
+  embedding `NoOpMetrics` retain no-op defaults for every method.
+
+The real cost — consumer boilerplate — is addressed by shipping a
+compact Prometheus adapter pattern (~35 lines of significant code;
+see the capstone example at `examples/17-capstone/metrics.go`).
+
 ## 🔍 What to Monitor
 
 ### Critical — Alert Immediately
@@ -60,7 +93,7 @@ auditor, err := audit.New(
 
 | Metric | Method | Meaning |
 |--------|--------|---------|
-| **Delivery success/error** | `RecordEvent(output, EventSuccess/EventError)` | Per-output delivery outcome. A rising error rate indicates an output is degrading. |
+| **Delivery success/error** | `RecordDelivery(output, EventSuccess/EventError)` | Per-output delivery outcome. A rising error rate indicates an output is degrading. |
 | **Serialization errors** | `RecordSerializationError(eventType)` | The formatter failed to serialize an event. This usually indicates a bug in field values (e.g., a channel or function passed as a field value). |
 
 ### Informational — Track for Visibility
@@ -73,30 +106,64 @@ auditor, err := audit.New(
 
 ## Prometheus Example
 
+A complete Prometheus adapter fits in about 35 lines of significant
+code using a small `vec()` helper and `NoOpMetrics` embedding. The
+capstone example (`examples/17-capstone/metrics.go`) ships the full
+implementation; the core shape is:
+
 ```go
 type prometheusMetrics struct {
-    events       *prometheus.CounterVec
-    bufferDrops  prometheus.Counter
-    valErrors    *prometheus.CounterVec
-    outputErrors *prometheus.CounterVec
+    audit.NoOpMetrics // forward-compat: new Metrics methods default to no-op
+
+    delivery, outputErr, outputFilt       *prometheus.CounterVec
+    valErr, filt, serErr                  *prometheus.CounterVec
+    bufferDrops                           prometheus.Counter
 }
 
-func (m *prometheusMetrics) RecordEvent(output string, status audit.EventStatus) {
-    // EventStatus is a typed string so string(status) is a zero-cost
-    // conversion — pass it straight to WithLabelValues.
-    m.events.WithLabelValues(output, string(status)).Inc()
+func vec(name, help string, labels ...string) *prometheus.CounterVec {
+    return promauto.NewCounterVec(prometheus.CounterOpts{Name: name, Help: help}, labels)
 }
 
-func (m *prometheusMetrics) RecordBufferDrop() {
-    m.bufferDrops.Inc()
+func newMetrics() *prometheusMetrics {
+    return &prometheusMetrics{
+        delivery:    vec("audit_events_total", "Audit deliveries.", "output", "status"),
+        outputErr:   vec("audit_output_errors_total", "Output write errors.", "output"),
+        outputFilt:  vec("audit_output_filtered_total", "Events filtered per output.", "output"),
+        valErr:      vec("audit_validation_errors_total", "Validation errors.", "event_type"),
+        filt:        vec("audit_filtered_total", "Globally filtered events.", "event_type"),
+        serErr:      vec("audit_serialization_errors_total", "Serialization errors.", "event_type"),
+        bufferDrops: promauto.NewCounter(prometheus.CounterOpts{
+            Name: "audit_buffer_drops_total", Help: "Events dropped due to full buffer.",
+        }),
+    }
 }
 
-func (m *prometheusMetrics) RecordValidationError(eventType string) {
-    m.valErrors.WithLabelValues(eventType).Inc()
+// EventStatus is a typed string so string(status) is a zero-cost
+// conversion — pass it straight to WithLabelValues.
+func (m *prometheusMetrics) RecordDelivery(output string, status audit.EventStatus) {
+    m.delivery.WithLabelValues(output, string(status)).Inc()
 }
-
-// ... implement remaining methods
+func (m *prometheusMetrics) RecordOutputError(output string)    { m.outputErr.WithLabelValues(output).Inc() }
+func (m *prometheusMetrics) RecordOutputFiltered(output string) { m.outputFilt.WithLabelValues(output).Inc() }
+func (m *prometheusMetrics) RecordValidationError(ev string)    { m.valErr.WithLabelValues(ev).Inc() }
+func (m *prometheusMetrics) RecordFiltered(ev string)           { m.filt.WithLabelValues(ev).Inc() }
+func (m *prometheusMetrics) RecordSerializationError(ev string) { m.serErr.WithLabelValues(ev).Inc() }
+func (m *prometheusMetrics) RecordBufferDrop()                  { m.bufferDrops.Inc() }
 ```
+
+`RecordSubmitted` and `RecordQueueDepth` are inherited no-ops from the
+embedded `audit.NoOpMetrics`; wire them yourself if you want those
+counters on your dashboard.
+
+### Cardinality guidance
+
+Each method's Prometheus label dimensionality is documented in the
+[`Metrics` interface godoc](https://pkg.go.dev/github.com/axonops/audit#Metrics).
+Pay particular attention to event-type-labelled methods
+(`RecordValidationError`, `RecordFiltered`, `RecordSerializationError`):
+if your taxonomy is large or unknown event types can leak through,
+these vectors become high-cardinality. Budget accordingly, or drop
+the `event_type` label on methods where you only need a global count.
 
 ## 📊 Event Accounting
 
@@ -123,17 +190,17 @@ Where:
 Every self-reporting output (file, syslog, webhook, loki) follows
 the same rule for drop-vs-error reporting:
 
-| Outcome | `OutputMetrics.RecordDrop()` | `Metrics.RecordEvent(_, EventError)` |
+| Outcome | `OutputMetrics.RecordDrop()` | `Metrics.RecordDelivery(_, EventError)` |
 |---|---|---|
 | Event rejected before queue (oversize, buffer full) | ✓ | ✗ |
 | Delivery attempted, all retries exhausted (webhook, loki) | ✓ | ✓ |
-| Delivery succeeded | ✗ | `RecordEvent(_, EventSuccess)` via `OutputMetrics.RecordFlush` |
+| Delivery succeeded | ✗ | `RecordDelivery(_, EventSuccess)` via `OutputMetrics.RecordFlush` |
 
 Buffer drops count only via per-output `RecordDrop` because the event
 never reached the destination — there is nothing to report as a
 delivery outcome. Retry-exhaustion failures in webhook and loki count
-via BOTH `RecordDrop` and `RecordEvent(EventError)`: `RecordDrop`
-because the event is lost, and `RecordEvent(EventError)` because the
+via BOTH `RecordDrop` and `RecordDelivery(EventError)`: `RecordDrop`
+because the event is lost, and `RecordDelivery(EventError)` because the
 output did attempt delivery and all retries failed — that is a
 genuine delivery-error signal. File and syslog do not have retries
 (they write synchronously once dequeued) so they only ever report
@@ -142,7 +209,7 @@ via `RecordDrop`.
 Consumers that want a single "events lost" counter should sum
 `RecordBufferDrop` (core queue) + per-output `RecordDrop` (this
 already includes retry-exhaustion drops for webhook/loki, so no
-double-counting with `RecordEvent(EventError)` is needed).
+double-counting with `RecordDelivery(EventError)` is needed).
 
 ## 🚨 Recommended Alerts
 
@@ -150,7 +217,7 @@ double-counting with `RecordEvent(EventError)` is needed).
 |-------|-----------|--------|
 | Audit buffer drops | `RecordBufferDrop` > 0 in 5 minutes | Increase buffer size or investigate slow outputs |
 | Output failure | `RecordOutputError` > threshold | Check output connectivity (syslog server, webhook endpoint, disk space) |
-| Delivery error rate | `RecordEvent(_, EventError)` / total > 5% | Investigate failing output |
+| Delivery error rate | `RecordDelivery(_, EventError)` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
 ## 🔀 Per-Output Metrics (`OutputMetrics`)

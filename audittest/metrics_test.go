@@ -28,9 +28,9 @@ func TestMetricsRecorder_AllMethods(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewMetricsRecorder()
 
-	m.RecordEvent("recorder", audit.EventSuccess)
-	m.RecordEvent("recorder", audit.EventSuccess)
-	m.RecordEvent("recorder", audit.EventError)
+	m.RecordDelivery("recorder", audit.EventSuccess)
+	m.RecordDelivery("recorder", audit.EventSuccess)
+	m.RecordDelivery("recorder", audit.EventError)
 	m.RecordOutputError("recorder")
 	m.RecordOutputFiltered("recorder")
 	m.RecordValidationError("user_create")
@@ -93,7 +93,7 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	m := audittest.NewMetricsRecorder()
 
 	// Core metrics.
-	m.RecordEvent("recorder", audit.EventSuccess)
+	m.RecordDelivery("recorder", audit.EventSuccess)
 	m.RecordBufferDrop()
 	m.RecordValidationError("test")
 
@@ -130,7 +130,7 @@ func TestMetricsRecorder_Reset_AllFields(t *testing.T) {
 
 	// Populate all 10 metric fields.
 	m.RecordSubmitted()
-	m.RecordEvent("out", audit.EventSuccess)
+	m.RecordDelivery("out", audit.EventSuccess)
 	m.RecordOutputError("out")
 	m.RecordOutputFiltered("out")
 	m.RecordValidationError("evt")
@@ -164,7 +164,7 @@ func TestMetricsRecorder_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			m.RecordSubmitted()
-			m.RecordEvent("out", audit.EventSuccess)
+			m.RecordDelivery("out", audit.EventSuccess)
 			m.RecordOutputError("out")
 			m.RecordBufferDrop()
 			_ = m.SubmittedCount()

@@ -124,7 +124,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#591** refactor: CEFFormatter ergonomics — FieldMapping opt-out path, avoid redundant severity clamp, cite maxCEFHeaderField.
 - [x] **#592** refactor: unify error wrapping conventions across modules; align self-reporting drop metrics; drop dead redactRef parameter.
 - [x] **#593** refactor: small API polish — TLSPolicy zero-value docs, MinSeverity/MaxSeverity constants, Handle on disabled auditor, openbao Close idempotency, audittest rename, require AppName/Host, uniform nil-option handling.
-- [ ] **#594** refactor: simplify 9-method Metrics interface into MetricEvent or split into lifecycle/delivery/validation interfaces.
+- [x] **#594** refactor: simplify 9-method Metrics interface into MetricEvent or split into lifecycle/delivery/validation interfaces. (ADR 0005 locks the 9-method shape; renamed `RecordEvent` → `RecordDelivery`; capstone adapter shrunk to ≤50 lines significant code.)
 - [ ] **#595** refactor: Fields rejects unsupported value types; WithStandardFieldDefaults accepts any.
 - [ ] **#596** refactor: consolidate 6 optional Output interfaces into OutputCapabilities struct.
 - [ ] **#597** refactor: enrich Event interface with Description/Categories/FieldInfo; document emission paths.

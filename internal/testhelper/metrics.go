@@ -44,7 +44,7 @@ type MockMetrics struct { //nolint:govet // fieldalignment: readability preferre
 	FileRotations       map[string]int // path -> count
 	SyslogReconnects    map[string]int // "address:success|failure" -> count
 	QueueDepths         []QueueDepthRecord
-	// EventCh is signalled (non-blocking) on every RecordEvent call.
+	// EventCh is signalled (non-blocking) on every RecordDelivery call.
 	// It is buffered to 1000 entries and is consumed internally by
 	// [MockMetrics.WaitForMetric]; consumers do not need to read it.
 	EventCh     chan struct{}
@@ -76,7 +76,7 @@ func (m *MockMetrics) RecordSubmitted() {
 	m.Submitted++
 }
 
-func (m *MockMetrics) RecordEvent(output string, status audit.EventStatus) {
+func (m *MockMetrics) RecordDelivery(output string, status audit.EventStatus) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.Events[output+":"+string(status)]++
@@ -152,7 +152,7 @@ func (m *MockMetrics) RecordReconnect(address string, success bool) {
 
 // WaitForMetric blocks until the event metric for key reaches at least n,
 // or until timeout expires. The key format is "outputName:status" — the
-// same string [MockMetrics.RecordEvent] indexes into Events (e.g.
+// same string [MockMetrics.RecordDelivery] indexes into Events (e.g.
 // "test-out:success"). Returns true if the count reached n within the
 // deadline; returns false on timeout.
 func (m *MockMetrics) WaitForMetric(key string, n int, timeout time.Duration) bool {

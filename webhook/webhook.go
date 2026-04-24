@@ -254,7 +254,7 @@ func (w *Output) Write(data []byte) error {
 				"dropped", dropped)
 		})
 		// Drops are counted once via per-output OutputMetrics.RecordDrop
-		// only — not via pipeline-level Metrics.RecordEvent. This
+		// only — not via pipeline-level Metrics.RecordDelivery. This
 		// matches file + syslog behaviour for consistency across all
 		// self-reporting outputs (B-25).
 		if omp := w.outputMetrics.Load(); omp != nil {

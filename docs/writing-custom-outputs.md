@@ -164,7 +164,7 @@ and call `OutputMetrics.RecordDrop()`. For `DeliveryReporter` outputs
 (see [Reporting Delivery Outcomes](#reporting-delivery-outcomes)),
 returning `nil` from `Write` on a drop is correct — the drop is
 accounted for by `OutputMetrics.RecordDrop()`, and the core library
-does not call `Metrics.RecordEvent` for self-reporting outputs.
+does not call `Metrics.RecordDelivery` for self-reporting outputs.
 
 There are two distinct cases for `Write`'s return value:
 
@@ -289,7 +289,7 @@ func (o *AsyncOutput) Close() error {
     return nil
 }
 
-// ReportsDelivery signals the core auditor to skip RecordEvent for
+// ReportsDelivery signals the core auditor to skip RecordDelivery for
 // this output — delivery accounting is handled by OutputMetrics in
 // writeLoop.
 func (o *AsyncOutput) ReportsDelivery() bool { return true }
@@ -355,8 +355,8 @@ type OutputMetrics interface {
 ```
 
 `RecordFlush` is the delivery-confirmed counterpart to the core
-`Metrics.RecordEvent("success")`. For `DeliveryReporter` outputs,
-the core skips `RecordEvent` entirely — `RecordFlush` is the only
+`Metrics.RecordDelivery("success")`. For `DeliveryReporter` outputs,
+the core skips `RecordDelivery` entirely — `RecordFlush` is the only
 signal that delivery succeeded.
 
 ### Storage Pattern
@@ -445,23 +445,23 @@ type DeliveryReporter interface {
 ### What It Controls
 
 When `ReportsDelivery()` returns `true`, the core auditor's post-write
-logic skips `Metrics.RecordEvent(outputName, audit.EventSuccess | audit.EventError)` and
+logic skips `Metrics.RecordDelivery(outputName, audit.EventSuccess | audit.EventError)` and
 `Metrics.RecordOutputError(outputName)` for that output. Delivery
 accounting is left entirely to the output via `OutputMetrics`:
 
-- `RecordFlush` replaces `Metrics.RecordEvent(name, audit.EventSuccess)`
-- `RecordError` replaces `Metrics.RecordEvent(name, audit.EventError)` and
+- `RecordFlush` replaces `Metrics.RecordDelivery(name, audit.EventSuccess)`
+- `RecordError` replaces `Metrics.RecordDelivery(name, audit.EventError)` and
   `Metrics.RecordOutputError(name)`
 
 **Panic exception:** if the output panics during `Write`, the core
 logger calls `Metrics.RecordOutputError` regardless of
 `ReportsDelivery()` — a panic means the output did not self-report.
-`Metrics.RecordEvent` is not called on the panic path for any output.
+`Metrics.RecordDelivery` is not called on the panic path for any output.
 
 ### Why It Exists
 
 Without `DeliveryReporter`, the core logger calls
-`RecordEvent("success")` as soon as `Write` returns. For an async
+`RecordDelivery("success")` as soon as `Write` returns. For an async
 output, `Write` returning means the event entered the buffer — not
 that it was delivered. If the output also calls
 `OutputMetrics.RecordFlush` after actual delivery, every event is
@@ -472,7 +472,7 @@ For an async output that calls `RecordFlush` after actual delivery:
 
 | | Without DeliveryReporter | With DeliveryReporter |
 |---|---|---|
-| Core calls `RecordEvent` | Yes (at enqueue) | No |
+| Core calls `RecordDelivery` | Yes (at enqueue) | No |
 | Output calls `RecordFlush` | Yes (at delivery) | Yes (at delivery) |
 | Result | Double-counted | Correct |
 

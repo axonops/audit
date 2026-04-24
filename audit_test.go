@@ -1485,7 +1485,7 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
 
-	// Wait for the metric to be recorded — RecordEvent fires after
+	// Wait for the metric to be recorded — RecordDelivery fires after
 	// Write returns, so WaitForEvents alone is insufficient.
 	require.True(t, metrics.WaitForMetric("test-out:success", 1, 2*time.Second),
 		"timed out waiting for success metric")
@@ -2122,7 +2122,7 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // deliveryReporterOutput is a mock output that implements DeliveryReporter.
-// It reports its own delivery, so the core auditor must NOT call RecordEvent
+// It reports its own delivery, so the core auditor must NOT call RecordDelivery
 // or RecordOutputError for it.
 type deliveryReporterOutput struct {
 	writeErrToReturn error
@@ -2149,7 +2149,7 @@ var _ audit.Output = (*deliveryReporterOutput)(nil)
 
 func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 	// When an output satisfies DeliveryReporter and ReportsDelivery()
-	// returns true, the core auditor must NOT call RecordEvent on success.
+	// returns true, the core auditor must NOT call RecordDelivery on success.
 	metrics := testhelper.NewMockMetrics()
 	out := newDeliveryReporterOutput("self-reporting")
 
@@ -2171,16 +2171,16 @@ func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
 	// The self-reporting output received the event.
 	assert.Equal(t, 1, out.EventCount())
 
-	// The core auditor must not have called RecordEvent for this output.
+	// The core auditor must not have called RecordDelivery for this output.
 	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventSuccess),
-		"core auditor must not call RecordEvent(success) for DeliveryReporter outputs")
+		"core auditor must not call RecordDelivery(success) for DeliveryReporter outputs")
 	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventError),
-		"core auditor must not call RecordEvent(error) for DeliveryReporter outputs")
+		"core auditor must not call RecordDelivery(error) for DeliveryReporter outputs")
 }
 
 func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 	// When a DeliveryReporter output fails on Write, the core auditor must
-	// NOT call RecordEvent or RecordOutputError — the output is responsible.
+	// NOT call RecordDelivery or RecordOutputError — the output is responsible.
 	metrics := testhelper.NewMockMetrics()
 	out := newDeliveryReporterOutput("self-reporting-fail")
 	out.writeErrToReturn = errors.New("delivery failed")
@@ -2202,9 +2202,9 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 
 	// Core auditor must not record any metrics for the self-reporting output.
 	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventSuccess),
-		"core auditor must not call RecordEvent(success) for DeliveryReporter outputs")
+		"core auditor must not call RecordDelivery(success) for DeliveryReporter outputs")
 	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventError),
-		"core auditor must not call RecordEvent(error) for DeliveryReporter outputs")
+		"core auditor must not call RecordDelivery(error) for DeliveryReporter outputs")
 
 	metrics.Mu.Lock()
 	errCount := metrics.OutputErrors["self-reporting-fail"]
@@ -2214,7 +2214,7 @@ func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
 }
 
 func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.T) {
-	// A plain output (not DeliveryReporter) must have RecordEvent(success)
+	// A plain output (not DeliveryReporter) must have RecordDelivery(success)
 	// called by the core auditor on a successful write.
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("plain")
@@ -2235,7 +2235,7 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 	require.NoError(t, auditor.Close())
 
 	assert.Greater(t, metrics.GetEventCount("plain", audit.EventSuccess), 0,
-		"core auditor must call RecordEvent(success) for plain (non-DeliveryReporter) outputs")
+		"core auditor must call RecordDelivery(success) for plain (non-DeliveryReporter) outputs")
 }
 
 // ---------------------------------------------------------------------------
@@ -4604,7 +4604,7 @@ func TestMetadataWriter_UncategorisedEvent_EmptyCategory(t *testing.T) {
 }
 
 // TestMetadataWriter_MetricsPreserved verifies that when WriteWithMetadata
-// succeeds, the core auditor records RecordEvent(name, "success"). This mirrors
+// succeeds, the core auditor records RecordDelivery(name, "success"). This mirrors
 // the same metrics contract that Write has.
 func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 	t.Parallel()
@@ -4630,17 +4630,17 @@ func TestMetadataWriter_MetricsPreserved(t *testing.T) {
 	require.NoError(t, auditor.Close())
 
 	assert.Greater(t, metrics.GetEventCount("mw-metrics", audit.EventSuccess), 0,
-		"RecordEvent(name, \"success\") must be called after a successful WriteWithMetadata")
+		"RecordDelivery(name, \"success\") must be called after a successful WriteWithMetadata")
 	assert.Equal(t, 0, metrics.GetEventCount("mw-metrics", audit.EventError),
-		"RecordEvent(name, \"error\") must not be called on success")
+		"RecordDelivery(name, \"error\") must not be called on success")
 	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-metrics"),
 		"RecordOutputError must not be called on success")
 }
 
 // TestMetadataWriter_WriteError_RecordsMetrics verifies that when
 // WriteWithMetadata returns an error, the core auditor calls both
-// RecordOutputError and RecordEvent(name, "error"), and does NOT call
-// RecordEvent(name, "success").
+// RecordOutputError and RecordDelivery(name, "error"), and does NOT call
+// RecordDelivery(name, "success").
 func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
 	t.Parallel()
 
@@ -4666,16 +4666,16 @@ func TestMetadataWriter_WriteError_RecordsMetrics(t *testing.T) {
 	require.NoError(t, auditor.Close())
 
 	assert.Greater(t, metrics.GetEventCount("mw-err-out", audit.EventError), 0,
-		"RecordEvent(name, \"error\") must be called when WriteWithMetadata returns an error")
+		"RecordDelivery(name, \"error\") must be called when WriteWithMetadata returns an error")
 	assert.Greater(t, metrics.GetOutputErrorCount("mw-err-out"), 0,
 		"RecordOutputError must be called when WriteWithMetadata returns an error")
 	assert.Equal(t, 0, metrics.GetEventCount("mw-err-out", audit.EventSuccess),
-		"RecordEvent(name, \"success\") must not be called when WriteWithMetadata returns an error")
+		"RecordDelivery(name, \"success\") must not be called when WriteWithMetadata returns an error")
 }
 
 // TestMetadataWriter_DeliveryReporter_SkipsMetrics verifies that when an
 // output implements all three interfaces (Output, MetadataWriter, and
-// DeliveryReporter), the core auditor skips its own RecordEvent and
+// DeliveryReporter), the core auditor skips its own RecordDelivery and
 // RecordOutputError calls — regardless of whether WriteWithMetadata
 // succeeds or fails.
 func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
@@ -4707,9 +4707,9 @@ func TestMetadataWriter_DeliveryReporter_SkipsMetrics(t *testing.T) {
 
 	// The core auditor must not have called any metrics for this output.
 	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventSuccess),
-		"core auditor must not call RecordEvent(success) for a MetadataWriter+DeliveryReporter output")
+		"core auditor must not call RecordDelivery(success) for a MetadataWriter+DeliveryReporter output")
 	assert.Equal(t, 0, metrics.GetEventCount("mw-dr", audit.EventError),
-		"core auditor must not call RecordEvent(error) for a MetadataWriter+DeliveryReporter output")
+		"core auditor must not call RecordDelivery(error) for a MetadataWriter+DeliveryReporter output")
 	assert.Equal(t, 0, metrics.GetOutputErrorCount("mw-dr"),
 		"core auditor must not call RecordOutputError for a MetadataWriter+DeliveryReporter output")
 }

@@ -232,7 +232,7 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 	if o.metrics != nil {
 		name := o.Name()
 		for range batchSize {
-			o.metrics.RecordEvent(name, audit.EventSuccess)
+			o.metrics.RecordDelivery(name, audit.EventSuccess)
 		}
 	}
 }
@@ -245,7 +245,7 @@ func (o *Output) recordDrop(count int) {
 			(*omp).RecordDrop()
 		}
 		if o.metrics != nil {
-			o.metrics.RecordEvent(name, audit.EventError)
+			o.metrics.RecordDelivery(name, audit.EventError)
 		}
 	}
 }

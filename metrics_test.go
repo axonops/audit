@@ -15,6 +15,7 @@
 package audit_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,7 +56,7 @@ func TestEventStatus_WireFormat_Stable(t *testing.T) {
 }
 
 // TestEventStatus_TypeCompatibility verifies that passing a
-// string literal directly to [audit.Metrics.RecordEvent] is a
+// string literal directly to [audit.Metrics.RecordDelivery] is a
 // compile error — the status parameter is typed.
 func TestEventStatus_TypeCompatibility(t *testing.T) {
 	t.Parallel()
@@ -71,13 +72,38 @@ func TestEventStatus_TypeCompatibility(t *testing.T) {
 		"typed string literal equality")
 }
 
-// TestNoOpMetrics_RecordEvent_AcceptsTypedStatus proves that
-// [audit.NoOpMetrics] compiles with the new typed signature.
-func TestNoOpMetrics_RecordEvent_AcceptsTypedStatus(t *testing.T) {
+// TestNoOpMetrics_RecordDelivery_AcceptsTypedStatus proves that
+// [audit.NoOpMetrics] compiles with the typed signature.
+func TestNoOpMetrics_RecordDelivery_AcceptsTypedStatus(t *testing.T) {
 	t.Parallel()
 
 	var m audit.Metrics = audit.NoOpMetrics{}
 	// No-op — just needs to compile and not panic.
-	m.RecordEvent("some-output", audit.EventSuccess)
-	m.RecordEvent("some-output", audit.EventError)
+	m.RecordDelivery("some-output", audit.EventSuccess)
+	m.RecordDelivery("some-output", audit.EventError)
+}
+
+// TestNoOpMetrics_AllMethodsArePresent reflects over the
+// [audit.Metrics] interface method set and asserts that
+// [audit.NoOpMetrics] has a method for every entry. The test guards
+// the forward-compatibility promise in the Metrics godoc: consumers
+// who embed [audit.NoOpMetrics] must retain a working no-op
+// implementation of every base-interface method without writing any
+// code themselves. If a future PR adds a method to [audit.Metrics]
+// without adding the matching NoOpMetrics method, this test fails.
+// See ADR 0005 (docs/adr/0005-metrics-interface-shape.md).
+func TestNoOpMetrics_AllMethodsArePresent(t *testing.T) {
+	t.Parallel()
+
+	metricsType := reflect.TypeOf((*audit.Metrics)(nil)).Elem()
+	noOpType := reflect.TypeOf(audit.NoOpMetrics{})
+
+	for i := 0; i < metricsType.NumMethod(); i++ {
+		name := metricsType.Method(i).Name
+		if _, ok := noOpType.MethodByName(name); !ok {
+			t.Errorf("NoOpMetrics is missing method %q required by audit.Metrics — "+
+				"add a no-op implementation in metrics.go to preserve the forward-"+
+				"compatibility embed pattern (ADR 0005)", name)
+		}
+	}
 }

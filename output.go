@@ -79,7 +79,7 @@ type DestinationKeyer interface {
 // may satisfy to indicate they handle their own delivery metrics
 // reporting. When satisfied and [DeliveryReporter.ReportsDelivery]
 // returns true, the core auditor skips its default per-event
-// [Metrics.RecordEvent] calls for that output — the output is
+// [Metrics.RecordDelivery] calls for that output — the output is
 // responsible for calling them after actual delivery.
 type DeliveryReporter interface {
 	ReportsDelivery() bool

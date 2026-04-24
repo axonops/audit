@@ -169,8 +169,8 @@ func NewMockMetrics() *MockMetrics {
 	}
 }
 
-// RecordEvent satisfies audit.Metrics.
-func (m *MockMetrics) RecordEvent(output string, status audit.EventStatus) {
+// RecordDelivery satisfies audit.Metrics.
+func (m *MockMetrics) RecordDelivery(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.Events[output+":"+string(status)]++

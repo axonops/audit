@@ -103,7 +103,11 @@
 // Symbols in this group:
 //
 //   - [Event] — interface for typed audit events; pass to [Auditor.AuditEvent]
+//   - [Auditor.AuditEvent] — emit an event with [context.Background] (convenience wrapper)
+//   - [Auditor.AuditEventContext] — emit with a request-scoped [context.Context] for cancellation / deadline propagation (#600)
 //   - [EventHandle] — pre-validated handle for zero-caller-side-allocation audit calls; see [Auditor.Handle] and [Auditor.MustHandle]
+//   - [EventHandle.Audit] / [EventHandle.AuditContext] — handle-side ctx-aware variants
+//   - [EventHandle.AuditEvent] / [EventHandle.AuditEventContext] — handle-side event-typed variants
 //   - [NewEvent] — creates an event for dynamic use without code generation
 //   - [NewEventKV] — creates an event from alternating key-value pairs (slog-style)
 //   - [Fields] — defined type over map[string]any with [Fields.Has], [Fields.String], [Fields.Int] accessors

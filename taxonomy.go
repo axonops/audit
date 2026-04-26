@@ -28,6 +28,45 @@ import (
 // explicitly: audit.Fields(m).
 //
 // Comparable pattern: [net/url.Values], [net/http.Header].
+//
+// # Supported value types
+//
+// The library guarantees faithful rendering across both built-in
+// formatters (JSON and CEF) for these value types only:
+//
+//   - string
+//   - int, int32, int64
+//   - float64
+//   - bool
+//   - [time.Time]
+//   - [time.Duration]
+//   - []string
+//   - map[string]string
+//   - nil (renders as null in JSON; absent in CEF)
+//
+// Behaviour for values outside this vocabulary depends on the
+// auditor's ValidationMode (configured via [WithValidationMode]):
+//
+//   - [ValidationStrict]: [Auditor.AuditEvent] returns a
+//     [ValidationError] wrapping [ErrUnknownFieldType] and the event
+//     is dropped.
+//   - [ValidationWarn]: the unsupported value is coerced via
+//     fmt.Sprintf("%v", v) and a warning is logged through the
+//     diagnostic logger ([WithDiagnosticLogger]).
+//   - [ValidationPermissive]: the unsupported value is coerced
+//     silently.
+//
+// Coercion is functional but produces formatter-hostile output for
+// composite types (struct dumps, "{}" for empty maps). Consumers
+// should pass values in the supported vocabulary; the validation
+// mode is a backstop, not a feature.
+//
+// Reserved standard fields ([ReservedStandardFieldNames]) carry an
+// additional declared Go type (queryable via
+// [ReservedStandardFieldType]). [WithStandardFieldDefaults] enforces
+// that declared type at construction time. Per-event values supplied
+// via Fields are NOT type-checked against the reserved type — only
+// the supported-vocabulary check above runs.
 type Fields map[string]any
 
 // Has reports whether the field map contains a value for key.

@@ -15,8 +15,10 @@
 package audit
 
 import (
+	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 func (a *Auditor) validateFields(eventType string, def *EventDef, fields Fields) error {
@@ -26,7 +28,88 @@ func (a *Auditor) validateFields(eventType string, def *EventDef, fields Fields)
 	if err := checkRequiredFields(eventType, def, fields); err != nil {
 		return err
 	}
+	if err := a.checkFieldValueTypes(eventType, fields); err != nil {
+		return err
+	}
 	return a.checkUnknownFields(eventType, def, fields)
+}
+
+// isSupportedFieldValue reports whether v is one of the value types
+// the audit pipeline guarantees faithful rendering for. The set is
+// the v1.0-locked vocabulary documented on [Fields]:
+//
+//   - string
+//   - int / int32 / int64
+//   - float64
+//   - bool
+//   - time.Time
+//   - time.Duration
+//   - []string
+//   - map[string]string
+//   - nil
+//
+// Other types render via fmt.Sprintf("%v", v) and may produce SIEM-
+// hostile output (e.g. struct dumps, "{}" for empty maps). The
+// validateFields path either rejects or coerces them depending on
+// the auditor's ValidationMode (#595 B-43).
+func isSupportedFieldValue(v any) bool {
+	switch v.(type) {
+	case nil,
+		string,
+		int, int32, int64,
+		float64,
+		bool,
+		time.Time, time.Duration,
+		[]string,
+		map[string]string:
+		return true
+	}
+	return false
+}
+
+// checkFieldValueTypes enforces the supported-type vocabulary for
+// Fields values per #595 B-43. Behaviour is mode-driven:
+//
+//   - Strict: returns a [ValidationError] wrapping [ErrUnknownFieldType]
+//     listing every unsupported field name.
+//   - Warn: coerces in place via fmt.Sprintf("%v", v) and emits a
+//     diagnostic-logger warning naming the affected fields.
+//   - Permissive: coerces in place silently.
+//
+// Coercion mutates the caller's Fields map (warn / permissive paths).
+// The audit pipeline already takes ownership of Fields by the time
+// validation runs (defensive copy in the slow path; FieldsDonor
+// transfer in the fast path), so no caller-visible mutation occurs.
+func (a *Auditor) checkFieldValueTypes(eventType string, fields Fields) error {
+	var unsupported []string
+	for k, v := range fields {
+		if !isSupportedFieldValue(v) {
+			unsupported = append(unsupported, k)
+		}
+	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+	slices.Sort(unsupported)
+
+	switch a.cfg.ValidationMode {
+	case ValidationStrict:
+		return newValidationError(ErrUnknownFieldType,
+			"audit: event %q has unsupported field value types: [%s] — see Fields godoc for the supported vocabulary",
+			eventType, strings.Join(unsupported, ", "))
+	case ValidationWarn:
+		for _, k := range unsupported {
+			fields[k] = fmt.Sprintf("%v", fields[k])
+		}
+		a.logger.Warn("audit: event has unsupported field value types — coerced via fmt.Sprintf",
+			"event_type", eventType,
+			"unsupported_fields", unsupported)
+	case ValidationPermissive:
+		for _, k := range unsupported {
+			fields[k] = fmt.Sprintf("%v", fields[k])
+		}
+	}
+	return nil
 }
 
 // libraryReservedFields are field names the library emits on every

@@ -16,3 +16,9 @@ package audit
 
 // IsFrameworkField is exported for testing only.
 var IsFrameworkField = isFrameworkField
+
+// IsZeroValueForTest is exported for testing only. Direct coverage
+// of the float32 / uint / uint64 branches in isZeroValue, which are
+// no longer reachable through AuditEvent (#595 B-43 coerces those
+// types to string upstream of OmitEmpty in non-strict modes).
+var IsZeroValueForTest = isZeroValue

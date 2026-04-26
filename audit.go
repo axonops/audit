@@ -126,7 +126,7 @@ type Auditor struct {
 	// reserved standard fields. Set once via WithStandardFieldDefaults;
 	// read-only after construction. Applied in auditInternal before
 	// validation so that defaults satisfy required: true constraints.
-	standardFieldDefaults map[string]string
+	standardFieldDefaults map[string]any
 	logger                *slog.Logger // library diagnostics logger
 	drops                 dropLimiter  // rate-limits buffer-full warnings
 	drainCount            uint64       // events processed by drain loop; for sampling RecordQueueDepth

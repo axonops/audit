@@ -56,7 +56,7 @@ type Loaded struct {
 	appName        string
 	host           string
 	timezone       string
-	standardFields map[string]string
+	standardFields map[string]any
 
 	// auditorCfg retains the parsed auditor: section values for
 	// package-internal introspection (e.g., black-box tests that
@@ -161,7 +161,13 @@ func (l *Loaded) Timezone() string {
 // from the top-level `standard_fields:` section, or nil when not
 // specified. The returned map is the internal one; callers MUST NOT
 // mutate it.
-func (l *Loaded) StandardFields() map[string]string {
+//
+// Values carry the YAML-decoded Go type (int for YAML integers,
+// string for YAML strings, time.Time for ISO8601 timestamps decoded
+// natively). Type mismatches against the reserved-field declared
+// type are reported by [audit.WithStandardFieldDefaults] at
+// [audit.New] time.
+func (l *Loaded) StandardFields() map[string]any {
 	if l == nil {
 		return nil
 	}
@@ -496,7 +502,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 // topLevel holds parsed top-level YAML fields.
 type topLevel struct {
 	outputsRaw     yaml.MapSlice // preserves output declaration order
-	standardFields map[string]string
+	standardFields map[string]any
 	appName        string
 	host           string
 	timezone       string

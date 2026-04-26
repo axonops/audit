@@ -100,12 +100,18 @@ type builderField struct {
 	Labels     []builderLabel // labels on this field
 }
 
-// standardFieldGoTypes maps reserved standard field names to their Go
-// types. Fields not in this map default to "string".
+// standardFieldGoTypes maps reserved standard field names to the
+// Go-source type the generator emits for typed setters. Mirrors the
+// runtime audit.ReservedStandardFieldType enum (see std_fields.go);
+// any addition there must land in lockstep here so the typed-builder
+// surface stays consistent with WithStandardFieldDefaults
+// validation. Fields not in this map default to "string".
 var standardFieldGoTypes = map[string]string{
 	"source_port": "int",
 	"dest_port":   "int",
 	"file_size":   "int",
+	"start_time":  "time.Time",
+	"end_time":    "time.Time",
 }
 
 func standardFieldGoType(name string) string {
@@ -147,6 +153,7 @@ type templateData struct {
 	HasBuilders           bool
 	HasSeverityInBuilders bool
 	HasMetadata           bool // true when any metadata var is emitted
+	HasTimeImport         bool // true when any builder field requires "time"
 }
 
 // generate produces Go source code from a taxonomy. The output is
@@ -239,18 +246,38 @@ func buildMetadata(data *templateData, tax audit.Taxonomy, opts generateOptions)
 	if opts.Builders {
 		data.Builders = collectBuilders(tax, opts)
 		data.HasBuilders = len(data.Builders) > 0
-		for i := range data.Builders {
-			for _, c := range data.Builders[i].Categories {
-				if c.HasSeverity {
-					data.HasSeverityInBuilders = true
-					break
-				}
+		data.HasSeverityInBuilders, data.HasTimeImport = scanBuilderFlags(data.Builders)
+	}
+}
+
+// scanBuilderFlags computes the cross-builder flags that drive
+// template branches: whether any builder has a category with a
+// declared severity (so the `Severity()` method emits) and whether
+// any builder field needs a `time.Time` typed setter (so `import
+// "time"` is added to the generated file).
+func scanBuilderFlags(builders []builderDef) (hasSeverity, hasTimeImport bool) {
+	needsTime := func(setters []builderField) bool {
+		for _, s := range setters {
+			if s.GoType == "time.Time" {
+				return true
 			}
-			if data.HasSeverityInBuilders {
+		}
+		return false
+	}
+	for i := range builders {
+		for _, c := range builders[i].Categories {
+			if c.HasSeverity {
+				hasSeverity = true
 				break
 			}
 		}
+		if needsTime(builders[i].StandardSetters) ||
+			needsTime(builders[i].Required) ||
+			needsTime(builders[i].Optional) {
+			hasTimeImport = true
+		}
 	}
+	return hasSeverity, hasTimeImport
 }
 
 // buildLabelConstants creates label constant entries from the taxonomy's

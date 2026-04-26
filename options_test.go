@@ -15,6 +15,8 @@
 package audit_test
 
 import (
+	"bytes"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -430,4 +432,191 @@ func TestSeverity_ExportedConstants(t *testing.T) {
 	// surface; regressing them requires a major-version bump.
 	assert.Equal(t, 0, audit.MinSeverity)
 	assert.Equal(t, 10, audit.MaxSeverity)
+}
+
+// ---------------------------------------------------------------------------
+// WithStandardFieldDefaults type validation (#595 B-44)
+// ---------------------------------------------------------------------------
+
+func TestWithStandardFieldDefaults_TypeMismatch_Error(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	_, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithStandardFieldDefaults(map[string]any{
+			"source_port": "8080", // string passed for int-typed reserved field
+		}),
+		audit.WithOutputs(out),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), `"source_port"`)
+	assert.Contains(t, err.Error(), "expected int")
+}
+
+func TestWithStandardFieldDefaults_UnknownReservedField_Error(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	_, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithStandardFieldDefaults(map[string]any{
+			"not_a_reserved_field": "x",
+		}),
+		audit.WithOutputs(out),
+	)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), `"not_a_reserved_field"`)
+}
+
+func TestWithStandardFieldDefaults_ValidIntDefault_Accepted(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithStandardFieldDefaults(map[string]any{
+			"source_port": 8080,
+		}),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	ev := out.GetEvent(0)
+	require.Contains(t, ev, "source_port")
+	// MockOutput's getter returns events through JSON marshal/unmarshal,
+	// so int values come back as float64. Compare numerically.
+	got, ok := ev["source_port"].(float64)
+	require.True(t, ok, "source_port should be a numeric type, got %T", ev["source_port"])
+	assert.Equal(t, float64(8080), got)
+}
+
+func TestWithStandardFieldDefaults_ValidTimeDefault_Accepted(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	startTime := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithStandardFieldDefaults(map[string]any{
+			"start_time": startTime,
+		}),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
+
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	ev := out.GetEvent(0)
+	assert.Contains(t, ev, "start_time")
+}
+
+// ---------------------------------------------------------------------------
+// Fields value-type validation (#595 B-43)
+// ---------------------------------------------------------------------------
+
+func TestAudit_UnsupportedFieldValueType_RejectedInStrictMode(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithValidationMode(audit.ValidationStrict),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
+
+	ch := make(chan struct{})
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "alice",
+		"bad":      ch,
+	}))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrUnknownFieldType)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.Equal(t, 0, out.EventCount(),
+		"strict mode must drop the event before delivery")
+}
+
+func TestAudit_UnsupportedFieldValueType_WarnedAndCoercedInWarnMode(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithValidationMode(audit.ValidationWarn),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithDiagnosticLogger(logger),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
+
+	ch := make(chan struct{})
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "alice",
+		"bad":      ch,
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	// The unsupported value is coerced to string AND a warning is logged.
+	ev := out.GetEvent(0)
+	require.Contains(t, ev, "bad")
+	_, isString := ev["bad"].(string)
+	assert.True(t, isString, "warn mode coerces unsupported types to string")
+	assert.Contains(t, logBuf.String(), "unsupported field value types",
+		"warn mode must log a diagnostic about unsupported value types")
+}
+
+func TestAudit_UnsupportedFieldValueType_CoercedInPermissiveMode(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
+
+	ch := make(chan struct{})
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
+		"outcome":  "failure",
+		"actor_id": "alice",
+		"bad":      ch,
+	})))
+	require.True(t, out.WaitForEvents(1, 2*time.Second))
+
+	ev := out.GetEvent(0)
+	require.Contains(t, ev, "bad")
+	_, isString := ev["bad"].(string)
+	assert.True(t, isString, "permissive mode coerces unsupported types to string")
 }

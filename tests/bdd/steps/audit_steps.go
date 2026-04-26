@@ -120,7 +120,7 @@ func registerAuditGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	})
 
 	ctx.Step(`^standard field defaults:$`, func(table *godog.Table) error {
-		defaults := make(map[string]string, len(table.Rows)-1)
+		defaults := make(map[string]any, len(table.Rows)-1)
 		for _, row := range table.Rows[1:] {
 			defaults[row.Cells[0].Value] = row.Cells[1].Value
 		}
@@ -175,6 +175,17 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, nil))
 		return nil
 	})
+
+	// #595 B-43: emit an event with a value of a type outside the
+	// supported Fields vocabulary (here a chan struct{}) so the
+	// scenario can assert the validation-mode-specific behaviour.
+	ctx.Step(`^I audit event "([^"]*)" with an unsupported channel value in field "([^"]*)"$`,
+		func(eventType, fieldName string) error {
+			fields := defaultRequiredFields(tc.Taxonomy, eventType)
+			fields[fieldName] = make(chan struct{})
+			tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
+			return nil
+		})
 
 	ctx.Step(`^I close the auditor$`, func() error {
 		if tc.Auditor == nil {
@@ -428,6 +439,23 @@ func registerAuditThenOutputSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the output should contain an event with event_type "([^"]*)"$`, func(et string) error { return assertEventType(tc, et) })
 	ctx.Step(`^the output should contain an event with field "([^"]*)"$`, func(f string) error { return assertFieldPresent(tc, f) })
 	ctx.Step(`^the output should contain field "([^"]*)" with value "([^"]*)"$`, func(f, v string) error { return assertFieldValue(tc, f, v) })
+	ctx.Step(`^the output should contain field "([^"]*)" coerced to a string$`, func(f string) error {
+		events, err := getStdoutEvents(tc)
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			v, ok := e[f]
+			if !ok {
+				continue
+			}
+			if _, isStr := v.(string); isStr {
+				return nil
+			}
+			return fmt.Errorf("field %q present but not a string (got %T)", f, v)
+		}
+		return fmt.Errorf("field %q not found in %d events", f, len(events))
+	})
 	ctx.Step(`^the output should contain an event matching:$`, func(t *godog.Table) error { return assertEventMatching(tc, t) })
 	ctx.Step(`^the output should contain field "([^"]*)" as a positive integer$`, func(f string) error { return assertFieldPositiveInt(tc, f) })
 	ctx.Step(`^the output should not contain field "([^"]*)"$`, func(f string) error { return assertFieldAbsent(tc, f) })
@@ -554,6 +582,7 @@ var sentinelsByName = map[string]error{
 	"ErrUnknownEventType":     audit.ErrUnknownEventType,
 	"ErrMissingRequiredField": audit.ErrMissingRequiredField,
 	"ErrUnknownField":         audit.ErrUnknownField,
+	"ErrUnknownFieldType":     audit.ErrUnknownFieldType,
 	"ErrReservedFieldName":    audit.ErrReservedFieldName,
 	"ErrEventTooLarge":        audit.ErrEventTooLarge,
 }

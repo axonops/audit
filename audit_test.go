@@ -16,11 +16,14 @@ package audit_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2801,7 +2804,7 @@ func BenchmarkAuditDisabledAuditor(b *testing.B) {
 // the drain slow path (defensive Fields copy; neither implements
 // FieldsDonor); the only difference is that NewEvent allocates a
 // *basicEvent that escapes through the Event interface return,
-// whereas EventHandle.Audit calls auditInternal directly without
+// whereas EventHandle.Audit calls auditInternalCtx directly without
 // wrapping. The delta is one allocation per event. NoopOutput is
 // used to exclude output-side defensive-copy noise and isolate the
 // emission-path cost — see [internal/testhelper.NoopOutput]. #498.
@@ -5953,5 +5956,149 @@ func BenchmarkAudit_SelectiveSanitizer(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = auditor.AuditEvent(audit.NewEvent("schema_register", fields))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #600 AuditEventContext benchmarks — prove the ctx=Background fast
+// path matches the legacy AuditEvent baseline within 5%, and document
+// the additive cost when ctx is cancellable. Run via:
+//
+//   go test -run=NONE -bench='BenchmarkAudit(_AuditEventContext)?_' \
+//     -benchmem -count=10 . | tee /tmp/600.txt
+//   benchstat /tmp/600.txt
+// ---------------------------------------------------------------------------
+
+// benchCtxAuditor builds a baseline auditor for the ctx benchmarks.
+// Identical setup to BenchmarkAudit so the variants share the baseline.
+func benchCtxAuditor(b *testing.B, opts ...audit.Option) *audit.Auditor {
+	b.Helper()
+	silenceSlog(b)
+	out := testhelper.NewMockOutput("bench")
+	all := []audit.Option{
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("bench-app"),
+		audit.WithHost("bench-host"),
+		audit.WithOutputs(out),
+	}
+	all = append(all, opts...)
+	auditor, err := audit.New(all...)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = auditor.Close() })
+	return auditor
+}
+
+// BenchmarkAudit_AuditEventContext_Background must match
+// BenchmarkAudit (legacy AuditEvent) within 5% — locked AC #7.
+func BenchmarkAudit_AuditEventContext_Background(b *testing.B) {
+	auditor := benchCtxAuditor(b)
+	ctx := context.Background()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "topic",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = auditor.AuditEventContext(ctx, audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkAudit_AuditEventContext_HTTPRequestCtx exercises the
+// realistic case: an HTTP-handler ctx (a cancelCtx with non-nil
+// Done). This is the path most middleware consumers will hit.
+func BenchmarkAudit_AuditEventContext_HTTPRequestCtx(b *testing.B) {
+	auditor := benchCtxAuditor(b)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	ctx := req.Context()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "topic",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = auditor.AuditEventContext(ctx, audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkAudit_AuditEventContext_PreCancelled measures the early-
+// return cost when ctx is already cancelled. Should hit the ctx-err
+// path immediately.
+func BenchmarkAudit_AuditEventContext_PreCancelled(b *testing.B) {
+	auditor := benchCtxAuditor(b)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = auditor.AuditEventContext(ctx, audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkAudit_AuditEventContext_Background_Parallel proves the
+// fast-path holds under contention.
+func BenchmarkAudit_AuditEventContext_Background_Parallel(b *testing.B) {
+	auditor := benchCtxAuditor(b)
+	ctx := context.Background()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "topic",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.SetParallelism(100)
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = auditor.AuditEventContext(ctx, audit.NewEvent("schema_register", fields))
+		}
+	})
+}
+
+// BenchmarkAudit_AuditEventContext_Sync_Background measures the
+// synchronous-delivery path with Background ctx — should match the
+// legacy synchronous deliver path.
+func BenchmarkAudit_AuditEventContext_Sync_Background(b *testing.B) {
+	auditor := benchCtxAuditor(b, audit.WithSynchronousDelivery())
+	ctx := context.Background()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "topic",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = auditor.AuditEventContext(ctx, audit.NewEvent("schema_register", fields))
+	}
+}
+
+// BenchmarkEventHandle_AuditContext_Background exercises the handle
+// path's ctx fast path.
+func BenchmarkEventHandle_AuditContext_Background(b *testing.B) {
+	auditor := benchCtxAuditor(b)
+	h, err := auditor.Handle("schema_register")
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx := context.Background()
+	fields := audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "topic",
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = h.AuditContext(ctx, fields)
 	}
 }

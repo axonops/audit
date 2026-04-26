@@ -127,7 +127,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#594** refactor: simplify 9-method Metrics interface into MetricEvent or split into lifecycle/delivery/validation interfaces. (ADR 0005 locks the 9-method shape; renamed `RecordEvent` → `RecordDelivery`; capstone adapter shrunk to ≤50 lines significant code.)
 - [x] **#595** refactor: Fields rejects unsupported value types; WithStandardFieldDefaults accepts any. (Strict mode rejects with `ErrUnknownFieldType`; warn/permissive coerce; `WithStandardFieldDefaults(map[string]any)` validates per-key against the new `ReservedStandardFieldType` enum at `audit.New` time.)
 - [ ] **#596** refactor: consolidate 6 optional Output interfaces into OutputCapabilities struct.
-- [ ] **#597** refactor: enrich Event interface with Description/Categories/FieldInfo; document emission paths.
+- [x] **#597** refactor: enrich Event interface with Description/Categories/FieldInfo; document emission paths. (Categories returns []CategoryInfo not []string per api-ergo; AC's FieldInfo renamed to FieldInfoMap to coexist with generated builders' typed FieldInfo struct method. EventHandle exposes parallel resolved-once metadata.)
 - [ ] **#598** feat: unified Sanitizer interface — scrubs audit event fields AND re-raised middleware panic values.
 - [ ] **#599** feat: batched syslog writes — batch_size, flush_interval matching Loki/webhook conventions.
 - [ ] **#600** feat: add AuditEventContext(ctx, evt) API alongside AuditEvent.

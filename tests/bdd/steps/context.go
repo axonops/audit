@@ -39,6 +39,7 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// Auditor state.
 	Auditor     *audit.Auditor
 	EventHandle *audit.EventHandle
+	LastEvent   audit.Event // captured by NewEvent / NewEventKV scenarios (#597)
 	LastErr     error
 	Taxonomy    *audit.Taxonomy
 	Options     []audit.Option
@@ -176,6 +177,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Register all step definitions.
 	registerAuditSteps(ctx, tc)
+	registerEventMetadataSteps(ctx, tc)
 	registerTaxonomySteps(ctx, tc)
 	registerFilterSteps(ctx, tc)
 	registerConfigSteps(ctx, tc)

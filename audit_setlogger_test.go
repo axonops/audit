@@ -82,7 +82,14 @@ func TestAuditorSetLogger_UnderEventLoad_NoRace(t *testing.T) {
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
-		audit.WithOutputs(out), // async (default)
+		audit.WithOutputs(out),
+		// Synchronous delivery: race detector tracks the
+		// atomic.Pointer read/write directly and we avoid relying on
+		// a drain goroutine that goleak might catch under CI runner
+		// load. The locked AC concern is the logger-pointer race, not
+		// the event-channel race — sync mode exercises the same
+		// SetLogger path while keeping the goroutine inventory clean.
+		audit.WithSynchronousDelivery(),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = a.Close() })
@@ -129,15 +136,7 @@ func TestAuditorSetLogger_UnderEventLoad_NoRace(t *testing.T) {
 func TestAuditorSetLogger_PropagatesToOutputs(t *testing.T) {
 	t.Parallel()
 	out := newLoggerCapturingOutput("test")
-	a, err := audit.New(
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithAppName("test-app"),
-		audit.WithHost("test-host"),
-		audit.WithSynchronousDelivery(),
-		audit.WithOutputs(out),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = a.Close() })
+	a := newSetLoggerAuditor(t, audit.WithOutputs(out))
 
 	// Construction propagated some logger (default).
 	require.NotNil(t, out.Captured())

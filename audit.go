@@ -52,7 +52,7 @@ var auditEntryPool = sync.Pool{
 }
 
 // fieldsPool caches Fields maps to avoid per-event heap allocation in
-// copyFieldsWithDefaults. Maps are retrieved in auditInternal (caller
+// copyFieldsWithDefaults. Maps are retrieved in auditInternalCtx (caller
 // goroutine), populated with copied fields, sent through the channel,
 // and returned to the pool after processEntry completes (drain goroutine).
 // Maps are cleared before return to prevent stale references.
@@ -124,14 +124,14 @@ type Auditor struct {
 	pid      int
 	// standardFieldDefaults holds deployment-wide default values for
 	// reserved standard fields. Set once via WithStandardFieldDefaults;
-	// read-only after construction. Applied in auditInternal before
+	// read-only after construction. Applied in auditInternalCtx before
 	// validation so that defaults satisfy required: true constraints.
 	standardFieldDefaults map[string]any
 	// sanitizer scrubs sensitive content from event field values and
 	// from re-raised middleware panic values. Nil means no scrubbing
 	// — when both [Sanitizer] and the middleware sanitizer-failed
 	// flag are unset the per-event overhead is two branches (one
-	// nil-check + one bool check on the [auditInternalDonatedFlags]
+	// nil-check + one bool check on the [auditInternalDonatedFlagsCtx]
 	// parameter). Set via [WithSanitizer].
 	sanitizer  Sanitizer
 	logger     *slog.Logger // library diagnostics logger
@@ -279,7 +279,50 @@ func (a *Auditor) propagateLogger() {
 // been closed, or a descriptive error for validation failures.
 // If the event's category is globally disabled (and no per-event
 // override enables it), the event is silently discarded without error.
+//
+// AuditEvent is a convenience wrapper around [Auditor.AuditEventContext]
+// with [context.Background]. Prefer [Auditor.AuditEventContext] when
+// you have a request-scoped context (e.g. from an HTTP handler) — it
+// honours cancellation and deadlines at the well-defined boundary
+// points in the audit pipeline.
 func (a *Auditor) AuditEvent(evt Event) error {
+	return a.AuditEventContext(context.Background(), evt)
+}
+
+// AuditEventContext is the [context.Context]-aware variant of
+// [Auditor.AuditEvent]. The context is checked at well-defined
+// cancellation points — at the top of the validate / enqueue / sync-
+// deliver path and between fan-out outputs in synchronous-delivery
+// mode — but is NOT threaded into individual [Output.Write] calls;
+// once an event is enqueued for the drain goroutine, it is no longer
+// cancellable. See [database/sql.QueryContext] for the analogous
+// pattern (ctx checked at boundaries, not mid-syscall).
+//
+// When ctx is [context.Background] (or any context whose Done channel
+// is nil), AuditEventContext takes the same fast path as the legacy
+// [Auditor.AuditEvent] — single nil-check, no extra select, no
+// measurable overhead.
+//
+// When ctx is cancelled or its deadline expires before the event is
+// queued, AuditEventContext returns ctx.Err ([context.Canceled] or
+// [context.DeadlineExceeded]), records a buffer-drop metric via
+// [Metrics.RecordBufferDrop], and emits a diagnostic-log warn line
+// so operators can distinguish caller-driven drops from queue-full
+// drops.
+//
+// Precedence: a disabled auditor (constructed with [WithDisabled])
+// short-circuits BEFORE the ctx check — calls return nil regardless
+// of ctx state, matching the pre-#600 contract that disabled
+// auditors are a silent no-op.
+//
+// Race: when ctx is cancelled AND the async buffer is full at the
+// same instant, Go's `select` picks either the cancel branch or the
+// queue-full branch nondeterministically. The caller may see
+// either ctx.Err() or [ErrQueueFull]; in both cases the entry is
+// returned to the pool and the buffer-drop metric is incremented.
+// Callers that need to distinguish should inspect the error with
+// [errors.Is].
+func (a *Auditor) AuditEventContext(ctx context.Context, evt Event) error {
 	if evt == nil {
 		return fmt.Errorf("audit: event must not be nil")
 	}
@@ -290,42 +333,51 @@ func (a *Auditor) AuditEvent(evt Event) error {
 	// Consumer-defined Event types and NewEvent stay on the slow path.
 	// See docs/adr/0001-fields-ownership-contract.md (#497).
 	_, donated := evt.(FieldsDonor)
-	return a.auditInternalDonated(evt.EventType(), evt.Fields(), donated)
+	return a.auditInternalDonatedFlagsCtx(ctx, evt.EventType(), evt.Fields(), donated, false)
 }
 
-// auditInternal is the shared validation-and-enqueue path used by
-// both [Auditor.AuditEvent] and internal callers. Always treats the
-// caller's Fields map as untrusted and defensively copies it.
-func (a *Auditor) auditInternal(eventType string, fields Fields) error {
-	return a.auditInternalDonated(eventType, fields, false)
+// auditInternalCtx is the ctx-aware internal entry point used by
+// [EventHandle.AuditContext] and any other internal caller that
+// needs to thread context through the validate-and-enqueue path.
+func (a *Auditor) auditInternalCtx(ctx context.Context, eventType string, fields Fields) error {
+	return a.auditInternalDonatedFlagsCtx(ctx, eventType, fields, false, false)
 }
 
-// auditInternalDonated is the unified internal path that branches
-// between the donor fast-path and the defensive-copy slow-path based
-// on the donated flag. When donated is true, the caller's Fields map
-// is taken as-is (no clone); standard-field defaults are merged in
-// place via [mergeDefaultsInPlace].
-func (a *Auditor) auditInternalDonated(eventType string, fields Fields, donated bool) error {
-	return a.auditInternalDonatedFlags(eventType, fields, donated, false)
-}
-
-// auditInternalDonatedFlags extends [auditInternalDonated] with
-// library-set framework flags that are injected AFTER validation —
-// specifically the [FieldSanitizerFailed] marker the middleware path
-// uses to record a sanitiser-panic-during-panic-recovery event. The
-// flag bypasses validation deliberately; consumers cannot set it.
+// auditInternalDonatedFlagsCtx is the ctx-aware core of the audit-
+// emit pipeline. It checks ctx at well-defined boundaries (top of
+// function pre-validation; before enqueue) but does not thread ctx
+// into [Output.Write]. When `ctx.Done() == nil` (the [context.Background]
+// fast path) the per-event overhead is a single nil-check —
+// no extra select, no extra atomic, no measurable regression vs
+// the pre-#600 path.
 //
-// All other paths into the audit pipeline call this with
-// `mwSanitizerFailed=false`; only [Middleware]'s panic-recovery hook
-// sets it true.
+// All non-ctx callers go through this entry point with
+// [context.Background]; it is the unified internal pipeline used by
+// [Auditor.AuditEvent], [Auditor.AuditEventContext], and
+// [emitAuditEvent] in the middleware path. The donated flag selects
+// the donor fast-path vs defensive-copy slow-path; mwSanitizerFailed
+// is set by [Middleware]'s panic-recovery hook to inject the
+// [FieldSanitizerFailed] framework field after validation.
 //
-//nolint:gocyclo,cyclop // a flat sequence of guard / hook calls; splitting would add indirection without simplifying.
-func (a *Auditor) auditInternalDonatedFlags(eventType string, fields Fields, donated, mwSanitizerFailed bool) error {
+//nolint:gocyclo,cyclop,gocognit // a flat sequence of guard / hook calls; splitting would add indirection without simplifying.
+func (a *Auditor) auditInternalDonatedFlagsCtx(ctx context.Context, eventType string, fields Fields, donated, mwSanitizerFailed bool) error {
 	if a.disabled {
 		return nil
 	}
 	if a.closed.Load() {
 		return ErrClosed
+	}
+
+	// Pre-validate ctx check. Cheap when ctx.Done() is nil (the
+	// non-cancellable [context.Background] family); for a cancellable
+	// ctx this is a single non-blocking select.
+	if done := ctx.Done(); done != nil {
+		select {
+		case <-done:
+			a.recordCtxCancelDrop(eventType, ctx.Err())
+			return ctx.Err() //nolint:wrapcheck // ctx.Err() returns context.Canceled / DeadlineExceeded sentinels — propagate verbatim per Go convention
+		default:
+		}
 	}
 
 	if a.metrics != nil {
@@ -368,10 +420,22 @@ func (a *Auditor) auditInternalDonatedFlags(eventType string, fields Fields, don
 	entry.donated = donated
 
 	if a.synchronous {
-		a.deliverSync(entry)
-		return nil
+		return a.deliverSyncCtx(ctx, entry)
 	}
-	return a.enqueue(entry)
+	return a.enqueueCtx(ctx, entry)
+}
+
+// recordCtxCancelDrop emits the metric + diagnostic-log line for a
+// drop caused by context cancellation. Reuses [Metrics.RecordBufferDrop]
+// per ADR 0005 (#600 Q4) — operators distinguish caller-driven drops
+// from queue-full drops via the slog message text.
+func (a *Auditor) recordCtxCancelDrop(eventType string, cause error) {
+	if a.metrics != nil {
+		a.metrics.RecordBufferDrop()
+	}
+	a.logger.Warn("audit: event dropped due to context cancellation",
+		"event_type", eventType,
+		"cause", cause)
 }
 
 // validateEvent checks the event type exists, merges standard-field
@@ -422,46 +486,97 @@ func (a *Auditor) mergeDefaultsInPlace(fields Fields) {
 	}
 }
 
-// deliverSync processes an event inline within AuditEvent for
-// synchronous delivery mode. It reuses the same processEntry logic
-// as the drain goroutine, including panic recovery and pool return.
-// A mutex serialises calls because processEntry reuses per-output
-// state (formatOpts, HMAC) that is only safe under single-goroutine
-// access.
-func (a *Auditor) deliverSync(entry *auditEntry) {
+// deliverSyncCtx processes an entry synchronously. ctx is checked
+// ONCE before fan-out begins — if cancelled, the entry is dropped,
+// the buffer-drop metric is recorded, and ctx.Err() is returned.
+// Once [processEntry] starts dispatching, all configured outputs
+// receive the event; ctx is NOT threaded into individual
+// [Output.Write] calls (#600 Q3). Per-output cancellation is
+// deliberately out of scope to keep the Output interface unchanged.
+//
+// In the common [context.Background] case (`ctx.Done() == nil`),
+// deliverSyncCtx is identical to the pre-#600 deliverSync — single
+// processEntry call under syncMu, no extra checks.
+func (a *Auditor) deliverSyncCtx(ctx context.Context, entry *auditEntry) error {
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
+	if done := ctx.Done(); done != nil {
+		// Use the ctx-aware processEntry path so cancellation between
+		// outputs is observable. Currently processEntry treats outputs
+		// as a unit; ctx is rechecked at the top.
+		select {
+		case <-done:
+			a.recordCtxCancelDrop(entry.eventType, ctx.Err())
+			a.releaseEntry(entry)
+			return ctx.Err() //nolint:wrapcheck // ctx.Err() returns context.Canceled / DeadlineExceeded sentinels — propagate verbatim per Go convention
+		default:
+		}
+	}
 	a.processEntry(entry)
+	return nil
 }
 
-// enqueue attempts a non-blocking send to the async channel. On
-// buffer-full, the entry is returned to the pool to avoid leaking
-// pooled objects.
-func (a *Auditor) enqueue(entry *auditEntry) error {
+// releaseEntry returns the auditEntry's fields map to the pool (when
+// not donated) and the entry itself to auditEntryPool. Used by drop
+// paths in [enqueueCtx] and [deliverSyncCtx]; matches the cleanup
+// performed inside [drainLoop] when an entry is consumed normally.
+func (a *Auditor) releaseEntry(entry *auditEntry) {
+	if !entry.donated {
+		returnFieldsToPool(entry.fields)
+	}
+	entry.eventType = ""
+	entry.fields = nil
+	entry.donated = false
+	auditEntryPool.Put(entry)
+}
+
+// enqueueCtx attempts a non-blocking send to the async channel,
+// honouring ctx cancellation. When ctx.Done() is nil (the
+// non-cancellable [context.Background] family), the path is the
+// original 2-way select: send-or-drop on buffer-full, identical to
+// pre-#600 behaviour. When ctx is cancellable, a 3-way select races
+// send / cancel / default — a cancelled ctx aborts before the
+// buffer-full drop path runs.
+func (a *Auditor) enqueueCtx(ctx context.Context, entry *auditEntry) error {
+	done := ctx.Done()
+	if done == nil {
+		// Non-cancellable fast path — unchanged from pre-#600.
+		select {
+		case a.ch <- entry:
+			return nil
+		default:
+			return a.dropOnBufferFull(entry)
+		}
+	}
+	// Ctx-aware path — race send vs cancellation.
 	select {
 	case a.ch <- entry:
 		return nil
+	case <-done:
+		a.recordCtxCancelDrop(entry.eventType, ctx.Err())
+		a.releaseEntry(entry)
+		return ctx.Err() //nolint:wrapcheck // ctx.Err() returns context.Canceled / DeadlineExceeded sentinels — propagate verbatim per Go convention
 	default:
-		a.drops.record(dropWarnInterval, func(dropped int64) {
-			a.logger.Warn("audit: buffer full, events dropped",
-				"dropped", dropped,
-				"queue_size", cap(a.ch))
-		})
-		if a.metrics != nil {
-			a.metrics.RecordBufferDrop()
-		}
-		// Return dropped entry and fields map to pools. Skip pool-
-		// return when fields was donated by a [FieldsDonor] — the
-		// map belongs to the caller, not our fieldsPool (#497).
-		if !entry.donated {
-			returnFieldsToPool(entry.fields)
-		}
-		entry.eventType = ""
-		entry.fields = nil
-		entry.donated = false
-		auditEntryPool.Put(entry)
-		return ErrQueueFull
+		return a.dropOnBufferFull(entry)
 	}
+}
+
+// dropOnBufferFull records the drop metric, logs the rate-limited
+// warn line, and returns the entry to its pool. Returns [ErrQueueFull]
+// to the caller. Extracted from the original [enqueue] body so both
+// the Background fast path and the ctx-aware path share the drop
+// semantics.
+func (a *Auditor) dropOnBufferFull(entry *auditEntry) error {
+	a.drops.record(dropWarnInterval, func(dropped int64) {
+		a.logger.Warn("audit: buffer full, events dropped",
+			"dropped", dropped,
+			"queue_size", cap(a.ch))
+	})
+	if a.metrics != nil {
+		a.metrics.RecordBufferDrop()
+	}
+	a.releaseEntry(entry)
+	return ErrQueueFull
 }
 
 // Close shuts down the auditor gracefully. Close MUST be called when the

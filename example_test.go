@@ -16,6 +16,7 @@ package audit_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 
@@ -130,6 +131,7 @@ func ExampleAuditor_MustHandle() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(), // deterministic for goleak under loaded CI runners
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -214,6 +216,7 @@ func ExampleAuditor_EnableCategory() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -245,6 +248,7 @@ func ExampleAuditor_Close() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -285,6 +289,7 @@ func ExampleWithFormatter() {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithFormatter(cef),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -355,6 +360,7 @@ func ExampleAuditor_SetOutputRoute() {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -375,6 +381,47 @@ func ExampleAuditor_SetOutputRoute() {
 
 	fmt.Println("route set to security only")
 	// Output: route set to security only
+}
+
+// ExampleAuditor_AuditEventContext demonstrates the ctx-aware emit
+// path (#600). When a request-scoped context is cancelled or its
+// deadline expires before the audit pipeline accepts the event, the
+// call returns the ctx error and the event is dropped — useful for
+// graceful-shutdown scenarios where you want to abandon partially
+// completed work without waiting for the audit buffer to flush.
+//
+// Note: trace-correlation plumbing (e.g. extracting a `trace_id`
+// from ctx and emitting it as a framework field) is deferred to a
+// post-v1.0 follow-up issue — for now consumers extract correlation
+// values from ctx in their EventBuilder or before calling
+// AuditEventContext.
+func ExampleAuditor_AuditEventContext() {
+	auditor, err := audit.New(
+		audit.WithTaxonomy(&audit.Taxonomy{
+			Version:    1,
+			Categories: map[string]*audit.CategoryDef{"write": {Events: []string{"doc_create"}}},
+			Events: map[string]*audit.EventDef{
+				"doc_create": {Required: []string{"outcome"}},
+			},
+		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = auditor.Close() }()
+
+	// Already-cancelled ctx — call returns context.Canceled.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	emitErr := auditor.AuditEventContext(ctx, audit.NewEvent("doc_create", audit.Fields{
+		"outcome": "success",
+	}))
+	fmt.Println("emit error:", emitErr)
+	// Output: emit error: context canceled
 }
 
 // ExampleFieldsDonor demonstrates how to verify that an event satisfies

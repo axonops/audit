@@ -15,6 +15,7 @@
 package audit
 
 import (
+	"context"
 	"fmt"
 	"sort"
 )
@@ -327,8 +328,22 @@ func resolveFieldInfos(t *Taxonomy, def *EventDef) map[string]FieldInfo {
 // path is called directly. For the zero-drain-side-allocations fast
 // path (the [FieldsDonor] contract), emit a generated typed builder
 // directly via [Auditor.AuditEvent].
+//
+// Audit is a convenience wrapper around [EventHandle.AuditContext]
+// with [context.Background]. Prefer the ctx-aware variant when you
+// have a request-scoped context (e.g. from an HTTP handler) — see
+// [Auditor.AuditEventContext] for the cancellation-point semantics.
 func (e *EventHandle) Audit(fields Fields) error {
-	return e.auditor.auditInternal(e.name, fields)
+	return e.AuditContext(context.Background(), fields)
+}
+
+// AuditContext is the [context.Context]-aware variant of
+// [EventHandle.Audit]. The handle's bound event type is preserved;
+// only the cancellation-aware path differs. See
+// [Auditor.AuditEventContext] for the ctx-checking semantics —
+// AuditContext shares the same internal core via auditInternalCtx.
+func (e *EventHandle) AuditContext(ctx context.Context, fields Fields) error {
+	return e.auditor.auditInternalCtx(ctx, e.name, fields)
 }
 
 // AuditEvent emits an [Event] (typically a generated builder) using
@@ -343,8 +358,19 @@ func (e *EventHandle) Audit(fields Fields) error {
 // implement [FieldsDonor] reach 0 drain-side allocs per event; plain
 // [Event] values (including [NewEvent] output) pay the defensive-copy
 // cost described in [docs/performance.md].
+//
+// AuditEvent is a convenience wrapper around
+// [EventHandle.AuditEventContext] with [context.Background]. Prefer
+// the ctx-aware variant when you have a request-scoped context.
 func (e *EventHandle) AuditEvent(evt Event) error {
-	return e.auditor.AuditEvent(evt)
+	return e.AuditEventContext(context.Background(), evt)
+}
+
+// AuditEventContext is the [context.Context]-aware variant of
+// [EventHandle.AuditEvent]. The same auditor instance is used; ctx
+// is threaded through to [Auditor.AuditEventContext].
+func (e *EventHandle) AuditEventContext(ctx context.Context, evt Event) error {
+	return e.auditor.AuditEventContext(ctx, evt)
 }
 
 // EventType returns the event type name this handle represents.

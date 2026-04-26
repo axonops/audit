@@ -307,7 +307,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 	transport.StatusCode = statusCode
 	transport.Duration = time.Since(start)
 
-	emitAuditEvent(auditor, builder, hints, transport, sanitizerFailed)
+	emitAuditEvent(r.Context(), auditor, builder, hints, transport, sanitizerFailed)
 
 	if panicked {
 		panic(panicVal)
@@ -338,7 +338,12 @@ func invokeHandler(next http.Handler, rw *responseWriter, r *http.Request) (pani
 // panicked during panic-recovery, see #598), the framework field
 // [FieldSanitizerFailed] is injected post-validation so SIEM tooling
 // can route on the failure.
-func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transport *TransportMetadata, sanitizerFailed bool) {
+//
+// The request-scoped ctx is threaded into the audit pipeline via
+// [Auditor.auditInternalDonatedFlagsCtx], honouring cancellation /
+// deadline at the well-defined boundary points documented on
+// [Auditor.AuditEventContext] (#600).
+func emitAuditEvent(ctx context.Context, auditor *Auditor, builder EventBuilder, hints *Hints, transport *TransportMetadata, sanitizerFailed bool) {
 	var (
 		eventType string
 		fields    Fields
@@ -362,10 +367,11 @@ func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transp
 		return
 	}
 
-	// Use the flags-aware internal path so [FieldSanitizerFailed] is
-	// injected AFTER validation. The flag is library-set — strict
-	// validation MUST not reject it as an unknown field.
-	if err := auditor.auditInternalDonatedFlags(eventType, fields, false, sanitizerFailed); err != nil {
+	// Use the ctx + flags-aware internal path so [FieldSanitizerFailed]
+	// is injected AFTER validation (the flag is library-set — strict
+	// validation MUST not reject it) AND the request-scoped ctx is
+	// honoured for cancellation at the boundary points (#600).
+	if err := auditor.auditInternalDonatedFlagsCtx(ctx, eventType, fields, false, sanitizerFailed); err != nil {
 		auditor.logger.Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,

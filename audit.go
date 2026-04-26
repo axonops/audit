@@ -702,15 +702,26 @@ func (a *Auditor) OutputRoute(outputName string) (EventRoute, error) {
 // returns a no-op [EventHandle] for any event type without
 // validating the taxonomy — all subsequent Audit calls on the
 // handle are silent no-ops, matching [Auditor.AuditEvent] on a
-// disabled auditor.
+// disabled auditor. Metadata accessors ([EventHandle.Description],
+// [EventHandle.Categories], [EventHandle.FieldInfoMap]) on a
+// no-op handle return zero values.
 func (a *Auditor) Handle(eventType string) (*EventHandle, error) {
 	if a.disabled {
 		return &EventHandle{name: eventType, auditor: a}, nil
 	}
-	if _, ok := a.taxonomy.Events[eventType]; !ok {
+	def, ok := a.taxonomy.Events[eventType]
+	if !ok {
 		return nil, fmt.Errorf("audit: unknown event type %q: %w", eventType, ErrHandleNotFound)
 	}
-	return &EventHandle{name: eventType, auditor: a}, nil
+	// Resolve metadata once at construction so callers can introspect
+	// the handle without paying a taxonomy lookup per call (#597).
+	return &EventHandle{
+		name:         eventType,
+		auditor:      a,
+		description:  def.Description,
+		categories:   resolveCategoryInfos(a.taxonomy, def),
+		fieldInfoMap: resolveFieldInfos(a.taxonomy, def),
+	}, nil
 }
 
 // MustHandle returns an [EventHandle] for the named event type.

@@ -152,6 +152,53 @@ func ExampleAuditor_MustHandle() {
 	// Output: handle event type: doc_create
 }
 
+// ExampleAuditor_Handle demonstrates the EventHandle metadata
+// accessors (#597) — Description, Categories with severity, and
+// FieldInfoMap with required/optional flags. Middleware and other
+// consumers can introspect a handle without constructing an event.
+func ExampleAuditor_Handle() {
+	sev := 7
+	auditor, err := audit.New(
+		audit.WithTaxonomy(&audit.Taxonomy{
+			Version: 1,
+			Categories: map[string]*audit.CategoryDef{
+				"security": {Events: []string{"auth_failure"}, Severity: &sev},
+			},
+			Events: map[string]*audit.EventDef{
+				"auth_failure": {
+					Description: "Failed authentication attempt",
+					Required:    []string{"outcome", "actor_id"},
+				},
+			},
+		}),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = auditor.Close() }()
+
+	h, err := auditor.Handle("auth_failure")
+	if err != nil {
+		fmt.Println("handle error:", err)
+		return
+	}
+
+	fmt.Println("description:", h.Description())
+	for _, c := range h.Categories() {
+		if c.Severity != nil {
+			fmt.Printf("category: %s (severity=%d)\n", c.Name, *c.Severity)
+		}
+	}
+	fmt.Println("outcome required:", h.FieldInfoMap()["outcome"].Required)
+	// Output:
+	// description: Failed authentication attempt
+	// category: security (severity=7)
+	// outcome required: true
+}
+
 func ExampleAuditor_EnableCategory() {
 	auditor, err := audit.New(
 		audit.WithTaxonomy(&audit.Taxonomy{

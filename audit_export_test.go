@@ -42,9 +42,12 @@ type fieldsDonorForTest struct {
 	eventType string
 }
 
-func (e *fieldsDonorForTest) EventType() string { return e.eventType }
-func (e *fieldsDonorForTest) Fields() Fields    { return e.fields }
-func (e *fieldsDonorForTest) donateFields()     {}
+func (e *fieldsDonorForTest) EventType() string                  { return e.eventType }
+func (e *fieldsDonorForTest) Fields() Fields                     { return e.fields }
+func (e *fieldsDonorForTest) Description() string                { return "" }
+func (e *fieldsDonorForTest) Categories() []CategoryInfo         { return nil }
+func (e *fieldsDonorForTest) FieldInfoMap() map[string]FieldInfo { return nil }
+func (e *fieldsDonorForTest) donateFields()                      {}
 
 // NewFieldsDonorForTest creates a test-only [FieldsDonor] that
 // mirrors the shape emitted by cmd/audit-gen for generated builders.

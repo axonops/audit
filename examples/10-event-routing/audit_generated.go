@@ -3,7 +3,11 @@
 //nolint:all // generated code — do not lint
 package main
 
-import "github.com/axonops/audit"
+import (
+	"time"
+
+	"github.com/axonops/audit"
+)
 
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
@@ -167,7 +171,7 @@ func (e *AuthFailureEvent) SetDestPort(v int) *AuthFailureEvent {
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *AuthFailureEvent) SetEndTime(v string) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetEndTime(v time.Time) *AuthFailureEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
@@ -269,7 +273,7 @@ func (e *AuthFailureEvent) SetSourcePort(v int) *AuthFailureEvent {
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *AuthFailureEvent) SetStartTime(v string) *AuthFailureEvent {
+func (e *AuthFailureEvent) SetStartTime(v time.Time) *AuthFailureEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
@@ -376,6 +380,46 @@ func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 	}
 }
 
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [AuthFailureFields] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *AuthFailureEvent) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+		FieldActorID:    {Name: FieldActorID, Required: true},
+		FieldOutcome:    {Name: FieldOutcome, Required: true},
+		FieldAction:     {Name: FieldAction},
+		FieldActorUID:   {Name: FieldActorUID},
+		FieldDestHost:   {Name: FieldDestHost},
+		FieldDestIP:     {Name: FieldDestIP},
+		FieldDestPort:   {Name: FieldDestPort},
+		FieldEndTime:    {Name: FieldEndTime},
+		FieldFileHash:   {Name: FieldFileHash},
+		FieldFileName:   {Name: FieldFileName},
+		FieldFilePath:   {Name: FieldFilePath},
+		FieldFileSize:   {Name: FieldFileSize},
+		FieldMessage:    {Name: FieldMessage},
+		FieldMethod:     {Name: FieldMethod},
+		FieldPath:       {Name: FieldPath},
+		FieldProtocol:   {Name: FieldProtocol},
+		FieldReason:     {Name: FieldReason},
+		FieldReferrer:   {Name: FieldReferrer},
+		FieldRequestID:  {Name: FieldRequestID},
+		FieldRole:       {Name: FieldRole},
+		FieldSessionID:  {Name: FieldSessionID},
+		FieldSourceHost: {Name: FieldSourceHost},
+		FieldSourceIP:   {Name: FieldSourceIP},
+		FieldSourcePort: {Name: FieldSourcePort},
+		FieldStartTime:  {Name: FieldStartTime},
+		FieldTargetID:   {Name: FieldTargetID},
+		FieldTargetRole: {Name: FieldTargetRole},
+		FieldTargetType: {Name: FieldTargetType},
+		FieldTargetUID:  {Name: FieldTargetUID},
+		FieldTransport:  {Name: FieldTransport},
+		FieldUserAgent:  {Name: FieldUserAgent},
+	}
+}
+
 // UserCreateFields describes every field on [EventUserCreate] events.
 type UserCreateFields struct {
 	ActorID    audit.FieldInfo // required
@@ -457,7 +501,7 @@ func (e *UserCreateEvent) SetDestPort(v int) *UserCreateEvent {
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *UserCreateEvent) SetEndTime(v string) *UserCreateEvent {
+func (e *UserCreateEvent) SetEndTime(v time.Time) *UserCreateEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
@@ -559,7 +603,7 @@ func (e *UserCreateEvent) SetSourcePort(v int) *UserCreateEvent {
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *UserCreateEvent) SetStartTime(v string) *UserCreateEvent {
+func (e *UserCreateEvent) SetStartTime(v time.Time) *UserCreateEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
@@ -666,6 +710,46 @@ func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
 	}
 }
 
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [UserCreateFields] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *UserCreateEvent) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+		FieldActorID:    {Name: FieldActorID, Required: true},
+		FieldOutcome:    {Name: FieldOutcome, Required: true},
+		FieldAction:     {Name: FieldAction},
+		FieldActorUID:   {Name: FieldActorUID},
+		FieldDestHost:   {Name: FieldDestHost},
+		FieldDestIP:     {Name: FieldDestIP},
+		FieldDestPort:   {Name: FieldDestPort},
+		FieldEndTime:    {Name: FieldEndTime},
+		FieldFileHash:   {Name: FieldFileHash},
+		FieldFileName:   {Name: FieldFileName},
+		FieldFilePath:   {Name: FieldFilePath},
+		FieldFileSize:   {Name: FieldFileSize},
+		FieldMessage:    {Name: FieldMessage},
+		FieldMethod:     {Name: FieldMethod},
+		FieldPath:       {Name: FieldPath},
+		FieldProtocol:   {Name: FieldProtocol},
+		FieldReason:     {Name: FieldReason},
+		FieldReferrer:   {Name: FieldReferrer},
+		FieldRequestID:  {Name: FieldRequestID},
+		FieldRole:       {Name: FieldRole},
+		FieldSessionID:  {Name: FieldSessionID},
+		FieldSourceHost: {Name: FieldSourceHost},
+		FieldSourceIP:   {Name: FieldSourceIP},
+		FieldSourcePort: {Name: FieldSourcePort},
+		FieldStartTime:  {Name: FieldStartTime},
+		FieldTargetID:   {Name: FieldTargetID},
+		FieldTargetRole: {Name: FieldTargetRole},
+		FieldTargetType: {Name: FieldTargetType},
+		FieldTargetUID:  {Name: FieldTargetUID},
+		FieldTransport:  {Name: FieldTransport},
+		FieldUserAgent:  {Name: FieldUserAgent},
+	}
+}
+
 // UserReadFields describes every field on [EventUserRead] events.
 type UserReadFields struct {
 	Outcome    audit.FieldInfo // required
@@ -752,7 +836,7 @@ func (e *UserReadEvent) SetDestPort(v int) *UserReadEvent {
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *UserReadEvent) SetEndTime(v string) *UserReadEvent {
+func (e *UserReadEvent) SetEndTime(v time.Time) *UserReadEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
@@ -854,7 +938,7 @@ func (e *UserReadEvent) SetSourcePort(v int) *UserReadEvent {
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *UserReadEvent) SetStartTime(v string) *UserReadEvent {
+func (e *UserReadEvent) SetStartTime(v time.Time) *UserReadEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
@@ -958,6 +1042,46 @@ func (e *UserReadEvent) FieldInfo() UserReadFields {
 func (e *UserReadEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
 		{Name: CategoryRead},
+	}
+}
+
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [UserReadFields] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *UserReadEvent) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+		FieldOutcome:    {Name: FieldOutcome, Required: true},
+		FieldAction:     {Name: FieldAction},
+		FieldActorID:    {Name: FieldActorID},
+		FieldActorUID:   {Name: FieldActorUID},
+		FieldDestHost:   {Name: FieldDestHost},
+		FieldDestIP:     {Name: FieldDestIP},
+		FieldDestPort:   {Name: FieldDestPort},
+		FieldEndTime:    {Name: FieldEndTime},
+		FieldFileHash:   {Name: FieldFileHash},
+		FieldFileName:   {Name: FieldFileName},
+		FieldFilePath:   {Name: FieldFilePath},
+		FieldFileSize:   {Name: FieldFileSize},
+		FieldMessage:    {Name: FieldMessage},
+		FieldMethod:     {Name: FieldMethod},
+		FieldPath:       {Name: FieldPath},
+		FieldProtocol:   {Name: FieldProtocol},
+		FieldReason:     {Name: FieldReason},
+		FieldReferrer:   {Name: FieldReferrer},
+		FieldRequestID:  {Name: FieldRequestID},
+		FieldRole:       {Name: FieldRole},
+		FieldSessionID:  {Name: FieldSessionID},
+		FieldSourceHost: {Name: FieldSourceHost},
+		FieldSourceIP:   {Name: FieldSourceIP},
+		FieldSourcePort: {Name: FieldSourcePort},
+		FieldStartTime:  {Name: FieldStartTime},
+		FieldTargetID:   {Name: FieldTargetID},
+		FieldTargetRole: {Name: FieldTargetRole},
+		FieldTargetType: {Name: FieldTargetType},
+		FieldTargetUID:  {Name: FieldTargetUID},
+		FieldTransport:  {Name: FieldTransport},
+		FieldUserAgent:  {Name: FieldUserAgent},
 	}
 }
 

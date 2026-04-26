@@ -131,7 +131,8 @@ func (e *UserCreateEvent) EventType() string      // returns "user_create"
 func (e *UserCreateEvent) Fields() audit.Fields    // returns the constructed field map
 
 // Metadata accessors for introspection
-func (e *UserCreateEvent) FieldInfo() UserCreateFields
+func (e *UserCreateEvent) FieldInfo() UserCreateFields            // typed struct (compile-time field access)
+func (e *UserCreateEvent) FieldInfoMap() map[string]audit.FieldInfo // flat map (audit.Event interface, dynamic lookup)
 func (e *UserCreateEvent) Categories() []audit.CategoryInfo
 func (e *UserCreateEvent) Description() string
 ```

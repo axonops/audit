@@ -162,10 +162,10 @@ func (e *{{ $b.StructName }}) Description() string { return {{ printf "%q" $b.De
 func (e *{{ $b.StructName }}) FieldInfo() {{ $b.FieldsStruct }} {
 	return {{ $b.FieldsStruct }}{
 {{- range $b.Required }}
-		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}, Required: true{{ if .Labels }}, Labels: []audit.LabelInfo{ {{- range $i, $l := .Labels }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }{{ end }}},
+		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}, Required: true{{ template "labels" .Labels }}},
 {{- end }}
 {{- range $b.Optional }}
-		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}{{ if .Labels }}, Labels: []audit.LabelInfo{ {{- range $i, $l := .Labels }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }{{ end }}},
+		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}{{ template "labels" .Labels }}},
 {{- end }}
 {{- range $b.StandardSetters }}
 		{{ .GoName }}: audit.FieldInfo{Name: {{ .FieldConst }}},
@@ -181,8 +181,31 @@ func (e *{{ $b.StructName }}) Categories() []audit.CategoryInfo {
 {{- end }}
 	}
 }
+
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [{{ $b.FieldsStruct }}] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *{{ $b.StructName }}) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+{{- range $b.Required }}
+		{{ .FieldConst }}: {Name: {{ .FieldConst }}, Required: true{{ template "labels" .Labels }}},
+{{- end }}
+{{- range $b.Optional }}
+		{{ .FieldConst }}: {Name: {{ .FieldConst }}{{ template "labels" .Labels }}},
+{{- end }}
+{{- range $b.StandardSetters }}
+		{{ .FieldConst }}: {Name: {{ .FieldConst }}},
+{{- end }}
+	}
+}
 {{ end }}{{ if .HasSeverityInBuilders }}
 // auditIntPtr returns a pointer to the given int. It is generator-owned
 // helper (prefixed to avoid collision with any consumer-defined intPtr).
 func auditIntPtr(n int) *int { return &n }
-{{ end }}{{ end }}`
+{{ end }}{{ end }}
+{{- define "labels" -}}
+{{- if . -}}
+, Labels: []audit.LabelInfo{ {{- range $i, $l := . }}{{ if $i }}, {{ end }}{ Name: {{ $l.ConstName }}, Description: {{ printf "%q" $l.Description }}}{{ end -}} }
+{{- end -}}
+{{- end -}}`

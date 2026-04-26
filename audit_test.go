@@ -771,6 +771,78 @@ func TestAuditorHandle_DisabledAuditor_ReturnsNoOpHandle(t *testing.T) {
 	})
 }
 
+// TestEventHandle_Metadata_FromTaxonomy locks the #597 contract:
+// EventHandle exposes Description, Categories, and FieldInfoMap
+// resolved from the taxonomy at handle construction. Middleware can
+// introspect the registered handle without constructing an event.
+func TestEventHandle_Metadata_FromTaxonomy(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	auditor := newTestAuditor(t, out)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	h, err := auditor.Handle("auth_failure")
+	require.NoError(t, err)
+
+	// auth_failure must be in at least one category (security) per
+	// the test taxonomy.
+	cats := h.Categories()
+	require.NotEmpty(t, cats, "EventHandle Categories must be populated from taxonomy")
+
+	// FieldInfoMap must include outcome (required) and actor_id per
+	// the test taxonomy in internal/testhelper.
+	fim := h.FieldInfoMap()
+	require.NotNil(t, fim, "EventHandle FieldInfoMap must be populated")
+	require.Contains(t, fim, "outcome", "outcome field must be in FieldInfoMap")
+
+	outcomeFI := fim["outcome"]
+	assert.Equal(t, "outcome", outcomeFI.Name)
+	assert.True(t, outcomeFI.Required, "outcome should be required")
+
+	require.Contains(t, fim, "actor_id", "actor_id field must be in FieldInfoMap")
+	assert.Equal(t, "actor_id", fim["actor_id"].Name)
+}
+
+// TestEventHandle_Metadata_ReadOnlyContract documents the
+// [audit.Event] interface's read-only mutation contract: the
+// returned values are shared and MUST NOT be mutated by callers.
+// This test asserts the implementation honours the contract by
+// returning the same backing data — callers that mutate are
+// breaking the contract; we just verify behaviour is consistent.
+func TestEventHandle_Metadata_ReadOnlyContract(t *testing.T) {
+	t.Parallel()
+	out := testhelper.NewMockOutput("test")
+	auditor := newTestAuditor(t, out)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	h, err := auditor.Handle("auth_failure")
+	require.NoError(t, err)
+
+	// auth_failure has at least one category in the test taxonomy
+	// — assert non-empty so a regression in resolveCategoryInfos
+	// would surface as a test failure (not a silent skip).
+	first := h.Categories()
+	require.NotEmpty(t, first, "auth_failure must have at least one category")
+
+	// Repeated calls return the same Description, same Categories
+	// shape (length and per-index Name), same FieldInfoMap key set.
+	require.Equal(t, h.Description(), h.Description())
+
+	second := h.Categories()
+	require.Equal(t, len(first), len(second))
+	for i := range first {
+		assert.Equal(t, first[i].Name, second[i].Name,
+			"Categories at index %d must be stable across calls", i)
+	}
+
+	fim1 := h.FieldInfoMap()
+	fim2 := h.FieldInfoMap()
+	require.Equal(t, len(fim1), len(fim2))
+	for k := range fim1 {
+		assert.Contains(t, fim2, k)
+	}
+}
+
 func TestLogger_Handle_Audit(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")

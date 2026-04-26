@@ -3,7 +3,11 @@
 //nolint:all // generated code — do not lint
 package main
 
-import "github.com/axonops/audit"
+import (
+	"time"
+
+	"github.com/axonops/audit"
+)
 
 // Event type constants — use these instead of raw strings
 // to get compile-time safety.
@@ -207,7 +211,7 @@ func (e *PaymentProcessEvent) SetDestPort(v int) *PaymentProcessEvent {
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *PaymentProcessEvent) SetEndTime(v string) *PaymentProcessEvent {
+func (e *PaymentProcessEvent) SetEndTime(v time.Time) *PaymentProcessEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
@@ -309,7 +313,7 @@ func (e *PaymentProcessEvent) SetSourcePort(v int) *PaymentProcessEvent {
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *PaymentProcessEvent) SetStartTime(v string) *PaymentProcessEvent {
+func (e *PaymentProcessEvent) SetStartTime(v time.Time) *PaymentProcessEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
@@ -416,6 +420,49 @@ func (e *PaymentProcessEvent) FieldInfo() PaymentProcessFields {
 func (e *PaymentProcessEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
 		{Name: CategoryWrite},
+	}
+}
+
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [PaymentProcessFields] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *PaymentProcessEvent) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+		FieldActorID:    {Name: FieldActorID, Required: true},
+		FieldOutcome:    {Name: FieldOutcome, Required: true},
+		FieldAmount:     {Name: FieldAmount},
+		FieldCardExpiry: {Name: FieldCardExpiry, Labels: []audit.LabelInfo{{Name: LabelFinancial, Description: "Financial and payment data"}}},
+		FieldCardNumber: {Name: FieldCardNumber, Labels: []audit.LabelInfo{{Name: LabelFinancial, Description: "Financial and payment data"}}},
+		FieldAction:     {Name: FieldAction},
+		FieldActorUID:   {Name: FieldActorUID},
+		FieldDestHost:   {Name: FieldDestHost},
+		FieldDestIP:     {Name: FieldDestIP},
+		FieldDestPort:   {Name: FieldDestPort},
+		FieldEndTime:    {Name: FieldEndTime},
+		FieldFileHash:   {Name: FieldFileHash},
+		FieldFileName:   {Name: FieldFileName},
+		FieldFilePath:   {Name: FieldFilePath},
+		FieldFileSize:   {Name: FieldFileSize},
+		FieldMessage:    {Name: FieldMessage},
+		FieldMethod:     {Name: FieldMethod},
+		FieldPath:       {Name: FieldPath},
+		FieldProtocol:   {Name: FieldProtocol},
+		FieldReason:     {Name: FieldReason},
+		FieldReferrer:   {Name: FieldReferrer},
+		FieldRequestID:  {Name: FieldRequestID},
+		FieldRole:       {Name: FieldRole},
+		FieldSessionID:  {Name: FieldSessionID},
+		FieldSourceHost: {Name: FieldSourceHost},
+		FieldSourceIP:   {Name: FieldSourceIP},
+		FieldSourcePort: {Name: FieldSourcePort},
+		FieldStartTime:  {Name: FieldStartTime},
+		FieldTargetID:   {Name: FieldTargetID},
+		FieldTargetRole: {Name: FieldTargetRole},
+		FieldTargetType: {Name: FieldTargetType},
+		FieldTargetUID:  {Name: FieldTargetUID},
+		FieldTransport:  {Name: FieldTransport},
+		FieldUserAgent:  {Name: FieldUserAgent},
 	}
 }
 
@@ -531,7 +578,7 @@ func (e *UserCreateEvent) SetDestPort(v int) *UserCreateEvent {
 }
 
 // SetEndTime sets the reserved standard field "end_time".
-func (e *UserCreateEvent) SetEndTime(v string) *UserCreateEvent {
+func (e *UserCreateEvent) SetEndTime(v time.Time) *UserCreateEvent {
 	e.fields[FieldEndTime] = v
 	return e
 }
@@ -633,7 +680,7 @@ func (e *UserCreateEvent) SetSourcePort(v int) *UserCreateEvent {
 }
 
 // SetStartTime sets the reserved standard field "start_time".
-func (e *UserCreateEvent) SetStartTime(v string) *UserCreateEvent {
+func (e *UserCreateEvent) SetStartTime(v time.Time) *UserCreateEvent {
 	e.fields[FieldStartTime] = v
 	return e
 }
@@ -741,5 +788,49 @@ func (e *UserCreateEvent) FieldInfo() UserCreateFields {
 func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
 		{Name: CategoryWrite},
+	}
+}
+
+// FieldInfoMap returns per-field metadata keyed by field name. The
+// data mirrors the typed [UserCreateFields] returned by
+// FieldInfo, exposed as a flat map to satisfy the dynamic
+// [audit.Event] introspection contract (#597).
+func (e *UserCreateEvent) FieldInfoMap() map[string]audit.FieldInfo {
+	return map[string]audit.FieldInfo{
+		FieldActorID:    {Name: FieldActorID, Required: true},
+		FieldOutcome:    {Name: FieldOutcome, Required: true},
+		FieldDepartment: {Name: FieldDepartment},
+		FieldEmail:      {Name: FieldEmail, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		FieldPhone:      {Name: FieldPhone, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		FieldUserName:   {Name: FieldUserName, Labels: []audit.LabelInfo{{Name: LabelPii, Description: "Personally identifiable information"}}},
+		FieldAction:     {Name: FieldAction},
+		FieldActorUID:   {Name: FieldActorUID},
+		FieldDestHost:   {Name: FieldDestHost},
+		FieldDestIP:     {Name: FieldDestIP},
+		FieldDestPort:   {Name: FieldDestPort},
+		FieldEndTime:    {Name: FieldEndTime},
+		FieldFileHash:   {Name: FieldFileHash},
+		FieldFileName:   {Name: FieldFileName},
+		FieldFilePath:   {Name: FieldFilePath},
+		FieldFileSize:   {Name: FieldFileSize},
+		FieldMessage:    {Name: FieldMessage},
+		FieldMethod:     {Name: FieldMethod},
+		FieldPath:       {Name: FieldPath},
+		FieldProtocol:   {Name: FieldProtocol},
+		FieldReason:     {Name: FieldReason},
+		FieldReferrer:   {Name: FieldReferrer},
+		FieldRequestID:  {Name: FieldRequestID},
+		FieldRole:       {Name: FieldRole},
+		FieldSessionID:  {Name: FieldSessionID},
+		FieldSourceHost: {Name: FieldSourceHost},
+		FieldSourceIP:   {Name: FieldSourceIP},
+		FieldSourcePort: {Name: FieldSourcePort},
+		FieldStartTime:  {Name: FieldStartTime},
+		FieldTargetID:   {Name: FieldTargetID},
+		FieldTargetRole: {Name: FieldTargetRole},
+		FieldTargetType: {Name: FieldTargetType},
+		FieldTargetUID:  {Name: FieldTargetUID},
+		FieldTransport:  {Name: FieldTransport},
+		FieldUserAgent:  {Name: FieldUserAgent},
 	}
 }

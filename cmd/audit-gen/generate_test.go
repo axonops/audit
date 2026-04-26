@@ -796,6 +796,8 @@ func TestGenerate_Builders(t *testing.T) {
 	assert.Contains(t, src, "func (e *UserCreateEvent) Fields()")
 	// FieldInfo method.
 	assert.Contains(t, src, "func (e *UserCreateEvent) FieldInfo()")
+	// FieldInfoMap method (#597 — Event interface metadata).
+	assert.Contains(t, src, "func (e *UserCreateEvent) FieldInfoMap() map[string]audit.FieldInfo")
 	// Categories method.
 	assert.Contains(t, src, "func (e *UserCreateEvent) Categories()")
 	// Label info in FieldInfo.

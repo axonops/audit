@@ -111,6 +111,10 @@ mem.prof
 # Built binaries (not source directories)
 /audit-gen
 /cmd/audit-gen/audit-gen
+/audit-validate
+/audit-validate.exe
+/cmd/audit-validate/audit-validate
+/cmd/audit-validate/audit-validate.exe
 
 # Root-level binaries from go build ./examples/...
 /01-basic

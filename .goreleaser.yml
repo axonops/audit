@@ -26,6 +26,17 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}}
+  - id: audit-validate
+    dir: cmd/audit-validate
+    binary: audit-validate
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
 
 before:
   hooks: []

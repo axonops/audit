@@ -1,9 +1,9 @@
-.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
+.PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate \
        test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
        test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
-       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-capstone \
+       lint lint-all lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-capstone \
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
@@ -28,7 +28,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/env secrets/file secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
@@ -89,6 +89,9 @@ test-outputconfig:
 test-audit-gen:
 	cd cmd/audit-gen && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
+test-audit-validate:
+	cd cmd/audit-validate && go test -race -v -count=1 -coverprofile=coverage.out ./...
+
 test-secrets:
 	cd secrets && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
@@ -104,7 +107,7 @@ test-secrets-env:
 test-secrets-file:
 	cd secrets/file && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
+test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
 test: test-all
 
 # --- Fuzz targets (#481) ---
@@ -217,6 +220,9 @@ lint-outputconfig:
 lint-audit-gen:
 	cd cmd/audit-gen && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
+lint-audit-validate:
+	cd cmd/audit-validate && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
+
 lint-secrets:
 	cd secrets && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
@@ -229,7 +235,7 @@ lint-secrets-vault:
 lint-capstone:
 	cd examples/17-capstone && $(GOBIN)/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...
 
-lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-secrets lint-secrets-openbao lint-secrets-vault lint-capstone
+lint-all: lint-core lint-file lint-syslog lint-webhook lint-loki lint-outputconfig lint-audit-gen lint-audit-validate lint-secrets lint-secrets-openbao lint-secrets-vault lint-capstone
 lint: lint-all
 
 # --- Vet ---
@@ -563,6 +569,7 @@ PUBLISH_MODULES := \
   outputconfig|github.com/axonops/audit/outputconfig|outputconfig/ \
   outputs|github.com/axonops/audit/outputs|outputs/ \
   cmd/audit-gen|github.com/axonops/audit/cmd/audit-gen|cmd/audit-gen/ \
+  cmd/audit-validate|github.com/axonops/audit/cmd/audit-validate|cmd/audit-validate/ \
   secrets|github.com/axonops/audit/secrets|secrets/ \
   secrets/openbao|github.com/axonops/audit/secrets/openbao|secrets/openbao/ \
   secrets/vault|github.com/axonops/audit/secrets/vault|secrets/vault/

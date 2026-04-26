@@ -102,6 +102,23 @@ updates:
           - "minor"
           - "patch"
 
+  # audit-validate CLI tool
+  - package-ecosystem: "gomod"
+    directory: "/cmd/audit-validate"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
   # Capstone (inventory demo) example
   - package-ecosystem: "gomod"
     directory: "/examples/17-capstone"

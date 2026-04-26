@@ -62,6 +62,7 @@ both [JSON](docs/json-format.md) and
 |---------|-------------|------|
 | 📋 **Taxonomy Validation** | Define event schemas in YAML; every event validated at runtime | [Learn more](docs/taxonomy-validation.md) |
 | ⚙️ **Code Generation** | `audit-gen` generates typed builders; typos become compile errors | [Learn more](docs/code-generation.md) |
+| ✅ **Pre-deploy Validator** | `audit-validate` validates `outputs.yaml` in CI; distinct exit codes per failure class | [Learn more](docs/validation.md) |
 | 🛡️ **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
 | 📄 **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
 | 📡 **5 Output Types** | File (rotation), syslog (RFC 5424), webhook (NDJSON), Loki (stream labels), stdout — fan-out to all simultaneously | [Learn more](docs/outputs.md) |

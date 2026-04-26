@@ -234,7 +234,7 @@ Every issue follows this sequence. Do not skip steps.
 - [ ] **#608** docs: add failure-mode matrix per output (destination down/slow, auth fail, disk full, TLS expired).
 - [ ] **#609** docs: document file output logrotate coexistence behaviour and recommendation.
 - [ ] **#610** ci: publish ghcr.io/axonops/audit-gen OCI image via GoReleaser.
-- [ ] **#611** feat: standalone outputs.yaml validator for pre-deploy CI gate.
+- [x] **#611** feat: standalone outputs.yaml validator for pre-deploy CI gate.
 - [ ] **#612** feat: publish Grafana dashboard JSON as release artefacts.
 
 **Sequencing:** #602 is the foundational doc — cross-linked from many others; start early. #607 and #612 coordinate with existing #435 (capstone Prometheus + Grafana). #610 depends on #482/#516 (Cosign signing) and #513 (release refactor).

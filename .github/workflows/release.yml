@@ -8,12 +8,13 @@
 #   5. Verifies all modules are indexed on proxy.golang.org
 #   6. Runs a smoke test (go get + compile in a fresh module)
 #
-# Three-tier tagging:
+# Four-tier tagging:
 #   Tier 0: core + secrets (no internal deps) — tagged at CI-tested commit
 #   Tier 1: file, syslog, webhook, loki, cmd/audit-gen, secrets/openbao,
 #           secrets/vault — depend on core and/or secrets
-#   Tier 2: outputconfig — depends on core, file, secrets, secrets/openbao,
-#           secrets/vault
+#   Tier 2: outputconfig, outputs — depend on core + Tier 1 modules
+#   Tier 3: cmd/audit-validate — depends on core + outputconfig + outputs
+#           + secrets (must be tagged AFTER Tier 2)
 #
 # Sub-module tags point at commits AFTER go.mod updates (not the
 # CI-tested commit). This is the standard Go multi-module release
@@ -55,6 +56,7 @@ env:
     github.com/axonops/audit/outputconfig
     github.com/axonops/audit/outputs
     github.com/axonops/audit/cmd/audit-gen
+    github.com/axonops/audit/cmd/audit-validate
     github.com/axonops/audit/secrets
     github.com/axonops/audit/secrets/openbao
     github.com/axonops/audit/secrets/vault
@@ -230,7 +232,9 @@ jobs:
             "webhook/$PUBLISH_VERSION"
             "loki/$PUBLISH_VERSION"
             "outputconfig/$PUBLISH_VERSION"
+            "outputs/$PUBLISH_VERSION"
             "cmd/audit-gen/$PUBLISH_VERSION"
+            "cmd/audit-validate/$PUBLISH_VERSION"
             "secrets/$PUBLISH_VERSION"
             "secrets/openbao/$PUBLISH_VERSION"
             "secrets/vault/$PUBLISH_VERSION"
@@ -535,13 +539,84 @@ jobs:
           done
 
   # =====================================================================
+  # Job 4b: Tag Tier 3 modules (depend on Tier 2).
+  # cmd/audit-validate depends on core, outputconfig, outputs, secrets.
+  # =====================================================================
+  tag-tier3:
+    name: "Tag Tier 3 (cmd/audit-validate)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [tag-tier2]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Update tier 3 inter-module dependencies
+        run: |
+          set -euo pipefail
+
+          cd cmd/audit-validate
+          echo "Updating cmd/audit-validate/go.mod..."
+          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/outputs@$PUBLISH_VERSION"
+          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
+          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
+          echo "  ✓ Tidied."
+          cd "$GITHUB_WORKSPACE"
+
+      - name: Commit dependency updates
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add cmd/audit-validate/go.mod cmd/audit-validate/go.sum
+
+          if git diff --cached --quiet; then
+            echo "No changes — deps already at $PUBLISH_VERSION"
+          else
+            git commit -m "release: update tier 3 inter-module deps to $PUBLISH_VERSION"
+            git push origin main
+            echo "✓ Pushed tier 3 go.mod updates to main"
+          fi
+
+      - name: Create and push tier 3 tags
+        run: |
+          set -euo pipefail
+          HEAD=$(git rev-parse HEAD)
+          echo "Tagging commit: $HEAD"
+
+          tag="cmd/audit-validate/$PUBLISH_VERSION"
+          git tag -a "$tag" -m "Release $tag" "$HEAD"
+          if git push origin "$tag"; then
+            echo "  ✓ Pushed: $tag"
+          else
+            echo "::error::Failed to push $tag tag"
+            echo "WARNING: DO NOT delete already-pushed tags."
+            exit 1
+          fi
+
+  # =====================================================================
   # Job 5: Verify modules are published and usable (after all tags pushed).
   # =====================================================================
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [tag-tier2]
+    needs: [tag-tier3]
     permissions:
       contents: write
     steps:
@@ -600,6 +675,7 @@ jobs:
           GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go build -o /dev/null .
 
           GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go install "github.com/axonops/audit/cmd/audit-gen@$PUBLISH_VERSION"
+          GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go install "github.com/axonops/audit/cmd/audit-validate@$PUBLISH_VERSION"
           echo "✓ All modules compile and install successfully"
 
       - name: Update example go.mod files
@@ -639,7 +715,7 @@ jobs:
     name: Summary
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    needs: [ci, tag-tier0, goreleaser, tag-tier1, tag-tier2, verify]
+    needs: [ci, tag-tier0, goreleaser, tag-tier1, tag-tier2, tag-tier3, verify]
     if: always()
     steps:
       - name: Generate summary
@@ -655,6 +731,7 @@ jobs:
           | GoReleaser | ${{ needs.goreleaser.result }} |
           | Tag Tier 1 (core-dependent) | ${{ needs.tag-tier1.result }} |
           | Tag Tier 2 (outputconfig, outputs) | ${{ needs.tag-tier2.result }} |
+          | Tag Tier 3 (cmd/audit-validate) | ${{ needs.tag-tier3.result }} |
           | Verify Release | ${{ needs.verify.result }} |
 
           **Modules:**

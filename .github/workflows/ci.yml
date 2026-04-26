@@ -239,6 +239,9 @@ jobs:
           - module: cmd/audit-gen
             target: test-audit-gen
             flag: audit-gen
+          - module: cmd/audit-validate
+            target: test-audit-validate
+            flag: audit-validate
           - module: secrets
             target: test-secrets
             flag: secrets
@@ -485,6 +488,7 @@ jobs:
           - outputconfig
           - outputs
           - cmd/audit-gen
+          - cmd/audit-validate
           - secrets
           - secrets/openbao
           - secrets/vault

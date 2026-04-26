@@ -210,4 +210,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSanitizerSteps(ctx, tc)
 	registerContextAPISteps(ctx, tc)
 	registerSetLoggerSteps(ctx, tc)
+	registerAsyncEdgesSteps(ctx, tc)
 }

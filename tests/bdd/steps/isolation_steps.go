@@ -75,6 +75,19 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		return err //nolint:wrapcheck // BDD step
 	})
 
+	ctx.Step(`^an auditor with synchronous delivery and a recording mock output$`, func() error {
+		recOut1 = &recordingMockOutput{name: "recording-1"}
+		var err error
+		tc.Auditor, err = audit.New(
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
+			audit.WithOutputs(recOut1),
+			audit.WithSynchronousDelivery(),
+		)
+		return err //nolint:wrapcheck // BDD step
+	})
+
 	ctx.Step(`^an auditor with stdout output only$`, func() error {
 		stdoutBuf = &bytes.Buffer{}
 		stdout, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: stdoutBuf})
@@ -122,6 +135,20 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		}
 		if recOut1.eventCount() < n {
 			return fmt.Errorf("recording output has %d events, expected %d", recOut1.eventCount(), n)
+		}
+		return nil
+	})
+
+	// "exactly" variant for scenarios where 0 events is the contract —
+	// the lower-bound `received all` step above is vacuous at n=0
+	// (count >= 0 is always true). Use this for absence assertions.
+	ctx.Step(`^the recording output should have received exactly (\d+) events$`, func(n int) error {
+		if recOut1 == nil {
+			return fmt.Errorf("no recording output configured")
+		}
+		got := recOut1.eventCount()
+		if got != n {
+			return fmt.Errorf("recording output has %d events, expected exactly %d", got, n)
 		}
 		return nil
 	})

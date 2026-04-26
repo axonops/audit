@@ -362,7 +362,7 @@ func TestWithStandardFieldDefaults_InvalidKey(t *testing.T) {
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
-		audit.WithStandardFieldDefaults(map[string]string{"bogus": "value"}),
+		audit.WithStandardFieldDefaults(map[string]any{"bogus": "value"}),
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bogus")
@@ -435,7 +435,7 @@ func TestWithStandardFieldDefaults_Applied(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "10.0.0.1"}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
@@ -458,7 +458,7 @@ func TestWithStandardFieldDefaults_PerEventOverride(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "10.0.0.1"}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
@@ -482,7 +482,7 @@ func TestWithStandardFieldDefaults_EmptyStringOverride(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "10.0.0.1"}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
@@ -505,8 +505,8 @@ func TestWithStandardFieldDefaults_LastWins(t *testing.T) {
 		audit.WithTaxonomy(testhelper.TestTaxonomy()),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "a"}),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "b"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "a"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "b"}),
 		audit.WithValidationMode(audit.ValidationPermissive),
 		audit.WithOutputs(out),
 	)
@@ -537,7 +537,7 @@ func TestWithStandardFieldDefaults_SatisfiesRequired(t *testing.T) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithOutputs(out),
-		audit.WithStandardFieldDefaults(map[string]string{"source_ip": "10.0.0.1"}),
+		audit.WithStandardFieldDefaults(map[string]any{"source_ip": "10.0.0.1"}),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, auditor.Close()) })
@@ -1603,17 +1603,20 @@ func TestLogger_Audit_OmitEmptyZeroInt(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Serialisation failure — non-JSON-serialisable field value
+// Unsupported field value type — handled per ValidationMode (#595 B-43)
 // ---------------------------------------------------------------------------
 
-func TestLogger_Audit_SerializationFailure(t *testing.T) {
+func TestLogger_Audit_UnsupportedFieldValueType_Permissive_CoercesAndDelivers(t *testing.T) {
 
 	out := testhelper.NewMockOutput("test")
 	auditor := newTestAuditor(t, out, audit.WithValidationMode(audit.ValidationPermissive))
 
-	// A channel cannot be marshalled to JSON. The event passes validation
-	// (permissive mode) and is enqueued, but serialisation fails in the
-	// drain loop. The output should receive zero events and no panic.
+	// A channel is not in the supported Fields value vocabulary
+	// (#595 B-43). Permissive mode silently coerces via
+	// fmt.Sprintf("%v", v), so the event still delivers; the
+	// receiving system sees a stringified channel address. This is
+	// formatter-hostile output but preserves the audit-MUST-emit
+	// invariant.
 	ch := make(chan struct{})
 	err := auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
 		"outcome":  "failure",
@@ -1621,18 +1624,13 @@ func TestLogger_Audit_SerializationFailure(t *testing.T) {
 		"bad":      ch,
 	}))
 	require.NoError(t, err)
-
-	// Send a valid event as sentinel to confirm drain loop processed
-	// the bad event without crashing.
-	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "sentinel",
-	}))
-	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.Equal(t, 1, out.EventCount(), "permissive mode delivers coerced event")
 
-	// Only the valid event should have been delivered.
-	assert.Equal(t, 1, out.EventCount())
+	ev := out.GetEvent(0)
+	require.Contains(t, ev, "bad")
+	_, isString := ev["bad"].(string)
+	assert.True(t, isString, "permissive coerces unsupported types to string")
 }
 
 // ---------------------------------------------------------------------------
@@ -2242,6 +2240,36 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 // isZeroValue — integer and float type branches
 // ---------------------------------------------------------------------------
 
+// TestIsZeroValue_NumericTypeBranches_Direct exercises the float32,
+// uint, and uint64 branches in isZeroValue directly. They are no
+// longer reachable through AuditEvent: #595 B-43 coerces those types
+// to string in the validator before OmitEmpty consults isZeroValue.
+// The branches are kept for forward-compat (a future PR could add
+// these types to the supported vocabulary, or callers might invoke
+// the helper through a different path), and direct coverage avoids
+// dead-code drift.
+func TestIsZeroValue_NumericTypeBranches_Direct(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		v    any
+		name string
+		want bool
+	}{
+		{float32(0), "zero float32", true},
+		{float32(3.14), "non-zero float32", false},
+		{uint(0), "zero uint", true},
+		{uint(99), "non-zero uint", false},
+		{uint64(0), "zero uint64", true},
+		{uint64(1), "non-zero uint64", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, audit.IsZeroValueForTest(tc.v))
+		})
+	}
+}
+
 func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 	// Exercises the int32, float32, uint, uint64 branches in isZeroValue
 	// via the OmitEmpty path through the JSON formatter.
@@ -2266,42 +2294,12 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 			wantKey: "val",
 			wantIn:  true,
 		},
-		{
-			name:    "zero float32 omitted",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(0)},
-			wantKey: "val",
-			wantIn:  false,
-		},
-		{
-			name:    "non-zero float32 included",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": float32(3.14)},
-			wantKey: "val",
-			wantIn:  true,
-		},
-		{
-			name:    "zero uint omitted",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(0)},
-			wantKey: "val",
-			wantIn:  false,
-		},
-		{
-			name:    "non-zero uint included",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint(99)},
-			wantKey: "val",
-			wantIn:  true,
-		},
-		{
-			name:    "zero uint64 omitted",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(0)},
-			wantKey: "val",
-			wantIn:  false,
-		},
-		{
-			name:    "non-zero uint64 included",
-			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": uint64(1)},
-			wantKey: "val",
-			wantIn:  true,
-		},
+		// float32, uint, uint64 are not in the #595 B-43 supported
+		// Fields value vocabulary and are coerced to string by the
+		// validator in non-strict modes — exercising them here would
+		// no longer test the OmitEmpty numeric-type branches in
+		// isZeroValue. The supported numeric types (int, int32, int64,
+		// float64) are covered above and below this comment.
 		{
 			name:    "zero int64 omitted",
 			fields:  audit.Fields{"outcome": "ok", "actor_id": "x", "val": int64(0)},
@@ -3216,7 +3214,7 @@ func BenchmarkStandardFieldDefaults_Applied(b *testing.B) {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out),
-		audit.WithStandardFieldDefaults(map[string]string{
+		audit.WithStandardFieldDefaults(map[string]any{
 			"source_ip":  "10.0.0.1",
 			"actor_id":   "system",
 			"request_id": "default-req",

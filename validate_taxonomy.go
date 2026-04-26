@@ -290,41 +290,18 @@ func checkReservedFieldNames(t Taxonomy) []string {
 // that are always available on any event without explicit taxonomy
 // declaration. These fields are automatically accepted by the
 // unknown-field check and have standard CEF extension key mappings.
-// The returned slice is a fresh copy; callers may modify it safely.
+// The returned slice is a fresh copy in deterministic alphabetical
+// order; callers may modify it safely.
+//
+// The list is derived from the canonical type map in std_fields.go;
+// see [ReservedStandardFieldType] for per-field type metadata.
 func ReservedStandardFieldNames() []string {
-	return []string{
-		"action",
-		"actor_id",
-		"actor_uid",
-		"dest_host",
-		"dest_ip",
-		"dest_port",
-		"end_time",
-		"file_hash",
-		"file_name",
-		"file_path",
-		"file_size",
-		"message",
-		"method",
-		"outcome",
-		"path",
-		"protocol",
-		"reason",
-		"referrer",
-		"request_id",
-		"role",
-		"session_id",
-		"source_host",
-		"source_ip",
-		"source_port",
-		"start_time",
-		"target_id",
-		"target_role",
-		"target_type",
-		"target_uid",
-		"transport",
-		"user_agent",
+	names := make([]string, 0, len(reservedStandardFieldTypes))
+	for name := range reservedStandardFieldTypes {
+		names = append(names, name)
 	}
+	slices.Sort(names)
+	return names
 }
 
 // reservedStandardFieldMap is a precomputed set of reserved standard

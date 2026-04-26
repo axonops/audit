@@ -23,7 +23,11 @@ const tmplText = `{{ .Header }}
 //nolint:all // generated code — do not lint
 package {{ .Package }}
 {{ if .HasBuilders }}
-import "github.com/axonops/audit"
+import (
+	{{ if .HasTimeImport }}"time"
+
+	{{ end }}"github.com/axonops/audit"
+)
 {{ end }}
 {{ if .HasEvents }}
 // Event type constants — use these instead of raw strings

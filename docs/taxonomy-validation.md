@@ -391,13 +391,64 @@ for practical guidance on choosing severity values.
 
 | Mode | Behaviour |
 |------|-----------|
-| `strict` (default) | Rejects events with fields not declared in the taxonomy |
-| `warn` | Accepts unknown fields but logs a warning via `log/slog` |
-| `permissive` | Accepts any fields without warning |
+| `strict` (default) | Rejects events with fields not declared in the taxonomy or with unsupported value types |
+| `warn` | Accepts unknown fields and unsupported value types; logs a warning via `log/slog` and coerces unsupported values to string |
+| `permissive` | Accepts any fields without warning; silently coerces unsupported values to string |
 
 Set via `audit.WithValidationMode(audit.ValidationWarn)` on
 `New`, the `validation_mode` key in your outputs YAML, or
 `audittest.WithValidationMode(audit.ValidationWarn)` in tests.
+
+## 🧬 Supported Field Value Types
+
+`audit.Fields` accepts `map[string]any`, but only this set of value
+types is guaranteed to render faithfully across both the JSON and
+CEF formatters:
+
+| Type | Example |
+|------|---------|
+| `string` | `"alice"` |
+| `int`, `int32`, `int64` | `8080` |
+| `float64` | `1.5` |
+| `bool` | `true` |
+| `time.Time` | `time.Now().UTC()` |
+| `time.Duration` | `5 * time.Second` |
+| `[]string` | `[]string{"admin", "auditor"}` |
+| `map[string]string` | `map[string]string{"k": "v"}` |
+| `nil` | rendered as `null` (JSON) or absent (CEF) |
+
+Behaviour for values **outside** this vocabulary depends on the
+auditor's `ValidationMode`:
+
+| Mode | Outcome |
+|------|---------|
+| `strict` | `Auditor.AuditEvent` returns `*audit.ValidationError` wrapping `audit.ErrUnknownFieldType`; the event is dropped. |
+| `warn` | The unsupported value is coerced via `fmt.Sprintf("%v", v)` and a `log/slog` warning is emitted. |
+| `permissive` | The unsupported value is coerced silently. |
+
+Coercion produces formatter-hostile output for composite types
+(struct dumps, `{}` for empty maps). Pass values from the supported
+vocabulary; the validation mode is a backstop, not a feature.
+
+### Reserved standard field types
+
+Reserved standard fields carry an additional declared Go type for
+type-aware tooling and `WithStandardFieldDefaults` validation. Query
+the type at runtime:
+
+```go
+t, ok := audit.ReservedStandardFieldType("source_port")
+// t == audit.ReservedFieldInt
+```
+
+Most reserved fields are `string`; `source_port`, `dest_port`, and
+`file_size` are `int`; `start_time` and `end_time` are `time.Time`.
+See the `ReservedFieldType` enum in the godoc for the complete list.
+
+`audit.WithStandardFieldDefaults(map[string]any{...})` rejects
+deployment-time defaults whose Go type does not match the declared
+reserved-field type. The error wraps `audit.ErrConfigInvalid` and
+surfaces at `audit.New` time, before any event is processed.
 
 ## 📦 Loading a Taxonomy
 

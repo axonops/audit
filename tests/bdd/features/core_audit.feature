@@ -171,6 +171,22 @@ Feature: Core Audit Logging
     Then the event should be delivered successfully
     And the output should contain field "source_ip" with value "10.0.0.1"
 
+  # --- Fields value-type validation (#595 B-43) ---
+
+  Scenario: Unsupported Fields value type rejected in strict mode
+    Given a standard test taxonomy
+    And an auditor with stdout output and validation mode "strict"
+    When I audit event "user_create" with an unsupported channel value in field "extra"
+    Then the audit call should return an error wrapping "ErrUnknownFieldType"
+    And the audit call should return an error wrapping "ErrValidation"
+
+  Scenario: Unsupported Fields value type coerced in permissive mode
+    Given a standard test taxonomy
+    And an auditor with stdout output and validation mode "permissive"
+    When I audit event "user_create" with an unsupported channel value in field "extra"
+    Then the event should be delivered successfully
+    And the output should contain field "extra" coerced to a string
+
   # --- Error paths ---
 
   Scenario: Unknown event type returns error with exact message

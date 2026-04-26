@@ -153,6 +153,18 @@ var (
 	// [ValidationError].
 	ErrUnknownField = errors.New("audit: unknown field")
 
+	// ErrUnknownFieldType is returned by [Auditor.AuditEvent] in
+	// strict validation mode when a [Fields] entry carries a value
+	// of a type not in the supported set documented on [Fields].
+	// Always wrapped alongside [ErrValidation] via [ValidationError].
+	//
+	// In warn and permissive modes, unsupported values are coerced
+	// via fmt.Sprintf("%v", v) instead of returning this error; in
+	// warn mode a diagnostic-logger warning is emitted as well. See
+	// the Fields godoc for the full type vocabulary and behaviour
+	// matrix.
+	ErrUnknownFieldType = errors.New("audit: unsupported field value type")
+
 	// ErrHMACMalformed is returned by [VerifyHMAC] when the
 	// supplied HMAC value is structurally invalid — empty, the
 	// wrong length for the algorithm's hash size, or contains

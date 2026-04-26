@@ -1824,6 +1824,92 @@ outputs:
 	assert.Contains(t, err.Error(), "bogus_field")
 }
 
+// TestLoad_StandardFields_TypedYAMLValues verifies that YAML-native
+// integer and timestamp values for typed reserved fields are
+// coerced to the audit-package expected Go type (int and time.Time
+// respectively). Without coercion, goccy/go-yaml decodes integers
+// as uint64 and timestamps as string, which audit.WithStandardFieldDefaults
+// would reject (#595 B-44).
+func TestLoad_StandardFields_TypedYAMLValues(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_port: 8080
+  file_size: 1024
+  start_time: "2026-04-24T10:00:00Z"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	result, err := outputconfig.Load(context.Background(), data, tax)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.OutputMetadata() {
+			_ = o.Output.Close()
+		}
+	})
+
+	sf := result.StandardFields()
+	require.NotNil(t, sf)
+
+	// YAML-native integers come through coerced to int.
+	port, ok := sf["source_port"].(int)
+	require.True(t, ok, "source_port should be coerced to int, got %T", sf["source_port"])
+	assert.Equal(t, 8080, port)
+
+	size, ok := sf["file_size"].(int)
+	require.True(t, ok, "file_size should be coerced to int, got %T", sf["file_size"])
+	assert.Equal(t, 1024, size)
+
+	// Timestamp string is parsed as time.Time.
+	start, ok := sf["start_time"].(time.Time)
+	require.True(t, ok, "start_time should be coerced to time.Time, got %T", sf["start_time"])
+	assert.Equal(t, time.Date(2026, 4, 24, 10, 0, 0, 0, time.UTC), start.UTC())
+}
+
+func TestLoad_StandardFields_TypedYAMLValues_RejectInvalidTimestamp(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  start_time: "not-a-timestamp"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(context.Background(), data, tax)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "start_time")
+	assert.Contains(t, err.Error(), "not-a-timestamp")
+}
+
+func TestLoad_StandardFields_TypedYAMLValues_RejectStringForIntField(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+standard_fields:
+  source_port: "8080"
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(context.Background(), data, tax)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "source_port")
+}
+
 func TestLoad_StandardFields_EmptyValue(t *testing.T) {
 	t.Parallel()
 	data := []byte(`

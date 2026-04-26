@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `audit.ReservedFieldType` typed enum + `audit.ReservedStandardFieldType(name) (ReservedFieldType, bool)` accessor (#595 B-44). Reports the declared Go value type for each of the 31 reserved standard fields. Constants: `ReservedFieldString`, `ReservedFieldInt`, `ReservedFieldInt64`, `ReservedFieldFloat64`, `ReservedFieldBool`, `ReservedFieldTime`, `ReservedFieldDuration`. Backed by a private canonical map in `std_fields.go`; `ReservedStandardFieldNames()` now derives from the same source. Consumers building taxonomy linters, IDE plugins, or pre-`audit.New` config validators have a programmatic API for type metadata.
+- `audit.ErrUnknownFieldType` sentinel error (#595 B-43). Returned by `Auditor.AuditEvent` in strict validation mode when a `Fields` value's Go type is outside the supported vocabulary (`string`, `int`/`int32`/`int64`, `float64`, `bool`, `time.Time`, `time.Duration`, `[]string`, `map[string]string`, `nil`). Discriminate via `errors.Is(err, audit.ErrUnknownFieldType)`. Always wrapped alongside `ErrValidation`. Warn and permissive modes coerce unsupported values via `fmt.Sprintf("%v", v)` instead of returning the error.
 - `audit.MinSeverity` / `audit.MaxSeverity` constants (#593 B-27) replace the magic-number `0` / `10` range checks in `filter.go:validateSeverityRange`, `taxonomy.go:clampSeverity`, and `validate_taxonomy.go:checkSeverityRanges`. Godoc on each constant documents the inclusive CEF range semantic. Consumers may use these in their own severity validation to stay aligned with the library's contract.
 - `audit.ErrTaxonomyRequired`, `audit.ErrAppNameRequired`, and `audit.ErrHostRequired` sentinel errors (#593 B-41) returned by `audit.New` when the corresponding `WithTaxonomy` / `WithAppName` / `WithHost` is unset (unless `WithDisabled` is also applied). Matches the `outputconfig.Load` YAML-path requirement so programmatic and declarative construction share identical invariants. Discriminate via `errors.Is(err, audit.ErrAppNameRequired)`.
 - `audittest.Recorder.WaitForN(tb, n, timeout)` — blocks until at least `n` events have been recorded or the timeout elapses; returns `true` on success, `false` on timeout. Use in async-mode tests (`audittest.WithAsync`) or tests whose service emits from a goroutine. Poll interval is 10 ms, matching `testify/assert.Eventually`. The fast path returns immediately when the target is already reached. Synchronous auditors (the default for `New` / `NewQuick`) do not need `WaitForN` — events are recorded before `AuditEvent` returns; prefer `Count()` / `RequireEvents` there. Closes #566.
@@ -16,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 > **Deviations from #566 AC (accepted):** (1) `audittest.PermissiveTaxonomy()` NOT added — `audittest.QuickTaxonomy()` already exists and fills the same role; adding a second name violates the "one obvious way" principle. (2) `WithExcludedLabels` renamed to `WithExcludeLabels` to match core `audit.WithExcludeLabels` exactly (no "d"). (3) AC named `RecordedEvents.WaitForN` (a type name from the original issue draft that was never implemented in the codebase) — the actual type is `*audittest.Recorder`, so `WaitForN` is a method on `*Recorder`. All three deviations confirmed with api-ergonomics-reviewer.
 
 ### Changed
+
+- `audit.Fields` value-type validation locked for v1.0 (#595 B-43). The supported vocabulary is `string`, `int`/`int32`/`int64`, `float64`, `bool`, `time.Time`, `time.Duration`, `[]string`, `map[string]string`, and `nil` — see the `Fields` godoc and `docs/taxonomy-validation.md` for the full table. Unsupported values are rejected in strict mode (with the new `ErrUnknownFieldType` sentinel above) and coerced via `fmt.Sprintf("%v", v)` in warn (with a diagnostic-logger warning) and permissive modes. Pre-coding api-ergonomics consult locked the AC list because it matches the YAML `supportedCustomFieldTypes` vocabulary already declared in `taxonomy_yaml.go:218` — runtime contract == YAML schema. `cmd/audit-gen` `standardFieldGoTypes` map extended in lockstep: `start_time` and `end_time` now generate `time.Time` setters (previously `string`), matching the `ReservedFieldTime` declaration. Generated code that uses these setters now imports `"time"` automatically.
 
 - `audit.Metrics` interface shape locked for v1.0 via [ADR 0005](docs/adr/0005-metrics-interface-shape.md) (#594). Kept the existing nine-method shape after api-ergonomics-reviewer rejected both the single-method `Record(MetricEvent)` tagged-union proposal (reintroduces untyped payload + adds a hot-path allocation) and the split `LifecycleMetrics` / `DeliveryMetrics` / `ValidationMetrics` composed-interface proposal (silent-compile footgun when consumers embed two of three no-op partial bases). Nine methods grouped by purpose matches stdlib precedent (`slog.Handler` ×4, `http.ResponseWriter` + optional extensions, `driver.Conn`/`Stmt`/`Rows` 4-6 each). Forward-compatibility policy: new metrics added in v1.x land as separate optional interfaces detected via type assertion on the `Metrics` value (same pattern as `DeliveryReporter` / `file.RotationRecorder` / `syslog.ReconnectRecorder`); consumers embedding `NoOpMetrics` automatically retain no-op implementations. Per-method Prometheus cardinality guidance added to godoc so consumers wiring label vectors see the label-space impact. Capstone Prometheus adapter rewritten using a `vec()` helper and `NoOpMetrics` embedding — the audit-side of `examples/17-capstone/metrics.go` is now 34 lines of significant code (struct + constructor + seven `Record*` methods), comfortably inside the 50-line AC target. New `TestNoOpMetrics_AllMethodsArePresent` locks the forward-compat embed pattern at test time.
 
@@ -54,6 +58,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Examples `02-code-generation`, `04-testing`, `06-middleware`, `13-standard-fields`, and `15-tls-policy` failed at runtime with `unknown output type "stdout"` because they declared `type: stdout` in `outputs.yaml` without blank-importing anything that registered the stdout factory (stdout auto-registration was removed in #578). The new `_ "github.com/axonops/audit/outputs"` blank import registers stdout alongside the other built-ins (#585).
 
 ### Breaking Changes
+
+- `audit.WithStandardFieldDefaults` signature changed from `map[string]string` to `map[string]any` (#595 B-44). Reserved fields with non-string declared types (`source_port`, `dest_port`, `file_size`: int; `start_time`, `end_time`: time.Time) now require values of the correct Go type; mismatches return an error wrapping `audit.ErrConfigInvalid` at `audit.New` time, before any event is processed. Migration:
+  ```go
+  // Before
+  audit.WithStandardFieldDefaults(map[string]string{
+      "actor_id":    "service-account",
+      "source_port": "8080", // forced string even though port is logically int
+  })
+
+  // After
+  audit.WithStandardFieldDefaults(map[string]any{
+      "actor_id":    "service-account",
+      "source_port": 8080, // typed correctly per ReservedStandardFieldType
+  })
+  ```
+  YAML `standard_fields:` consumers via `outputconfig.Load` benefit automatically — YAML decoders produce typed values (`int` for YAML integers, `string` for strings), so an existing YAML with `source_port: 8080` (no quotes) starts validating correctly without YAML changes. YAML with `source_port: "8080"` (quoted, string) now fails fast with a clear error message.
 
 - `audit.Metrics.RecordEvent` renamed to `RecordDelivery` (#594). The new name matches the method's actual role (per-output delivery outcome) and removes the semantic collision with `RecordSubmitted` in readers' heads. Migration is a one-line find-and-replace for every consumer of the interface:
   ```go

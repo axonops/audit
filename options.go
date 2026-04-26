@@ -191,15 +191,32 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 // zero value). When called multiple times, the last call wins.
 //
 // Optional. Nil or empty map means "no defaults".
-func WithStandardFieldDefaults(defaults map[string]string) Option {
+//
+// Each value's Go type MUST match the reserved field's declared type
+// reported by [ReservedStandardFieldType]. On mismatch, [New]
+// returns an error wrapping [ErrConfigInvalid] so the
+// misconfiguration surfaces at startup rather than at the first
+// AuditEvent. Numeric port fields (`source_port`, `dest_port`,
+// `file_size`) require int; timestamps (`start_time`, `end_time`)
+// require time.Time; the remaining 26 reserved fields require
+// string. Pre-#595 callers passing `map[string]string` migrate by
+// changing the literal map type; values that are already strings
+// for string-typed fields keep working unchanged.
+func WithStandardFieldDefaults(defaults map[string]any) Option {
 	return func(a *Auditor) error {
-		for k := range defaults {
-			if !IsReservedStandardField(k) {
-				return fmt.Errorf("audit: standard field default key %q is not a reserved standard field", k)
+		for k, v := range defaults {
+			t, ok := ReservedStandardFieldType(k)
+			if !ok {
+				return fmt.Errorf("%w: WithStandardFieldDefaults: %q is not a reserved standard field",
+					ErrConfigInvalid, k)
+			}
+			if !valueMatchesReservedType(v, t) {
+				return fmt.Errorf("%w: WithStandardFieldDefaults[%q]: expected %s, got %T",
+					ErrConfigInvalid, k, t, v)
 			}
 		}
 		// Copy to prevent caller mutation after construction.
-		cp := make(map[string]string, len(defaults))
+		cp := make(map[string]any, len(defaults))
 		for k, v := range defaults {
 			cp[k] = v
 		}

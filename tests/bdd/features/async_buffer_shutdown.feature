@@ -41,3 +41,50 @@ Feature: Async Buffer Shutdown
     Given an auditor with a blocking output and drain timeout 1s
     When I audit event "user_create" with required fields
     Then closing the auditor should complete within 5 seconds
+
+  # #564 P0 BDD coverage for async-delivery edge cases. These scenarios
+  # pin documented contracts that were previously only covered by unit
+  # tests:
+  #
+  #   1. Synchronous AuditEvent on a closed auditor returns ErrClosed
+  #      synchronously (not after a drain wait).
+  #   2. Synchronous delivery isolates a panicking output — other
+  #      outputs still receive the event.
+  #   3. buffer_size: 0 on a per-output config silently coerces to the
+  #      per-output default capacity.
+  #   4. Delivery accounting:
+  #      submitted = delivered + filtered + dropped
+  #                + validation_errors + serialization_errors
+  #      holds under a mixed workload.
+
+  Scenario: Synchronous AuditEvent returns ErrClosed after auditor is closed
+    Given an auditor with synchronous delivery and a recording mock output
+    When I close the auditor
+    And I try to audit event "user_create" with required fields
+    Then the audit call should return an error wrapping "ErrClosed"
+    And the recording output should have received exactly 0 events
+
+  Scenario: Synchronous delivery isolates a panicking output from a healthy output
+    Given an auditor with synchronous delivery, file output, and a panicking output
+    When I audit a uniquely marked "user_create" event
+    Then the audit call should return no error
+    And the file should contain the marker
+
+  Scenario: File output with buffer_size 0 coerces to default capacity
+    Given a file output with buffer_size 0 and mock output metrics
+    Given an auditor with that file output and queue_size 1
+    When I audit event "user_create" with required fields
+    And I close the auditor
+    Then the file should contain exactly 1 event
+    And the effective output buffer capacity should be 10000
+
+  Scenario: Delivery accounting invariant holds under a mixed workload
+    Given an auditor with a recording output, pipeline metrics, and synchronous delivery
+    When I audit event "user_create" with required fields
+    And I audit event "user_create" with required fields
+    And I try to audit event "unknown_event_type" with required fields
+    And I disable category "write"
+    And I audit event "user_create" with required fields
+    And I close the auditor
+    Then RecordSubmitted should have been called 4 times
+    And the delivery accounting invariant should hold

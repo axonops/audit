@@ -434,28 +434,28 @@ func TestParseRef_NeverLeaksInputInErrorMessage(t *testing.T) {
 		{"invalid_scheme_special_char", "ref+" + schemeMarker + "!://" + pathMarker + "#" + keyMarker},
 
 		// Class: missing key fragment (no "#").
-		{"missing_key_fragment", "ref+env://" + pathMarker},
+		{"missing_key_fragment", "ref+vault://" + pathMarker},
 
-		// Class: empty path ("ref+env://#key").
-		{"empty_path", "ref+env://#" + keyMarker},
+		// Class: empty path ("ref+vault://#key").
+		{"empty_path", "ref+vault://#" + keyMarker},
 
-		// Class: empty key ("ref+env://path#").
-		{"empty_key_fragment", "ref+env://" + pathMarker + "#"},
+		// Class: empty key ("ref+vault://path#").
+		{"empty_key_fragment", "ref+vault://" + pathMarker + "#"},
 
 		// Class: key contains "#".
-		{"key_contains_hash", "ref+env://" + pathMarker + "#" + keyMarker + "#extra"},
+		{"key_contains_hash", "ref+vault://" + pathMarker + "#" + keyMarker + "#extra"},
 
 		// Class: path validation — leading "/", trailing "/",
 		// percent, traversal, empty segment, dot, control byte.
-		{"path_leading_slash", "ref+env:///" + pathMarker + "#" + keyMarker},
-		{"path_trailing_slash", "ref+env://" + pathMarker + "/#" + keyMarker},
-		{"path_percent_encoded", "ref+env://" + pathMarker + "%20x#" + keyMarker},
-		{"path_traversal_dotdot", "ref+env://" + pathMarker + "/..#" + keyMarker},
-		{"path_dot_segment", "ref+env://" + pathMarker + "/.#" + keyMarker},
-		{"path_empty_segment", "ref+env://" + pathMarker + "//x#" + keyMarker},
-		{"path_control_byte_null", "ref+env://" + pathMarker + "\x00x#" + keyMarker},
-		{"path_control_byte_newline", "ref+env://" + pathMarker + "\nx#" + keyMarker},
-		{"path_control_byte_del", "ref+env://" + pathMarker + "\x7fx#" + keyMarker},
+		{"path_leading_slash", "ref+vault:///" + pathMarker + "#" + keyMarker},
+		{"path_trailing_slash", "ref+vault://" + pathMarker + "/#" + keyMarker},
+		{"path_percent_encoded", "ref+vault://" + pathMarker + "%20x#" + keyMarker},
+		{"path_traversal_dotdot", "ref+vault://" + pathMarker + "/..#" + keyMarker},
+		{"path_dot_segment", "ref+vault://" + pathMarker + "/.#" + keyMarker},
+		{"path_empty_segment", "ref+vault://" + pathMarker + "//x#" + keyMarker},
+		{"path_control_byte_null", "ref+vault://" + pathMarker + "\x00x#" + keyMarker},
+		{"path_control_byte_newline", "ref+vault://" + pathMarker + "\nx#" + keyMarker},
+		{"path_control_byte_del", "ref+vault://" + pathMarker + "\x7fx#" + keyMarker},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -147,13 +147,93 @@ resolves.
 
 | Scheme | Module | Backend | KV Version |
 |--------|--------|---------|------------|
+| `file` | `github.com/axonops/audit/secrets/file` | Filesystem (K8s mounted secrets, Docker secrets) | n/a |
+| `env` | `github.com/axonops/audit/secrets/env` | Process environment variables | n/a |
 | `openbao` | `github.com/axonops/audit/secrets/openbao` | [OpenBao](https://openbao.org/) | KV v2 |
 | `vault` | `github.com/axonops/audit/secrets/vault` | [HashiCorp Vault](https://www.vaultproject.io/) | KV v2 |
 
-Both providers implement `secrets.BatchProvider`, enabling path-level
-caching (see [Caching Behaviour](#caching-behaviour)).
+The OpenBao and Vault providers implement `secrets.BatchProvider`,
+enabling path-level caching (see [Caching Behaviour](#caching-behaviour)).
+The `file` and `env` providers are intentionally simple and read on
+every Resolve — appropriate for K8s mounted secrets, where rotation
+is signalled by atomic-symlink swap and re-reading is the correct
+semantics.
+
+### When to use which
+
+- **`file://`** — Kubernetes mounted secrets at `/var/run/secrets/...`,
+  Docker secrets, host-bind-mounted credential files. The dominant
+  pattern for K8s deployments.
+- **`env://`** — Development, CI, simple deployments. Note that env
+  values are visible to any process running as the same UID via
+  `/proc/PID/environ` (Linux) or equivalent. Prefer `file://` or
+  `vault`/`openbao` for production.
+- **`vault`** / **`openbao`** — Centralised secret store with audit
+  log, dynamic secrets, fine-grained ACLs. Use when you need
+  out-of-process secret rotation or centralised access control.
 
 ## Provider Setup
+
+### File (K8s mounted secrets)
+
+```go
+import (
+	"context"
+
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/file"
+)
+
+// ctx, yamlData, taxonomy defined by caller
+provider := file.New()
+defer provider.Close()
+
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+	outputconfig.WithSecretProvider(provider),
+)
+```
+
+YAML usage:
+
+```yaml
+outputs:
+  - name: webhook
+    type: webhook
+    url: "https://logs.example.com/ingest"
+    bearer_token: "ref+file:///var/run/secrets/myapp/token"
+
+  # JSON file with dotted-fragment path
+  hmac:
+    secret_ref: "ref+file:///etc/secrets/audit.json#hmac.salt"
+```
+
+### Env
+
+```go
+import (
+	"context"
+
+	"github.com/axonops/audit/outputconfig"
+	"github.com/axonops/audit/secrets/env"
+)
+
+provider := env.New()
+defer provider.Close()
+
+result, err := outputconfig.Load(ctx, yamlData, taxonomy,
+	outputconfig.WithSecretProvider(provider),
+)
+```
+
+YAML usage:
+
+```yaml
+outputs:
+  - name: webhook
+    type: webhook
+    url: "ref+env://WEBHOOK_URL"
+    bearer_token: "ref+env://WEBHOOK_TOKEN"
+```
 
 ### OpenBao
 

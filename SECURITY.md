@@ -220,6 +220,33 @@ not expose a "scrub on free" hook. Memory dumps, core files, and
 heap profiles captured while the auditor is running will contain
 these values.
 
+### Provider threat models
+
+Each secret provider has a distinct threat model. Choose the
+provider whose model matches your deployment:
+
+- **`file://`** (Kubernetes mounted secrets, Docker secrets). The
+  path in `outputs.yaml` is the trust boundary — the library
+  follows symlinks and reads whatever is at the target. **The
+  operator is responsible for filesystem permissions on the
+  secret file**; the library does NOT enforce a permission-mode
+  check (Kubernetes mounts secrets at 0644 by default;
+  enforcement would break the dominant deployment pattern). All
+  errors redact the path; an attacker reading library logs
+  cannot infer the secret-mount layout from error messages
+  alone.
+- **`env://`** (process environment). Environment variables are
+  visible to any process running as the **same UID** via
+  `/proc/PID/environ` (Linux) or equivalent per-platform
+  mechanisms. They also appear in process listings when set via
+  the `env` command at exec time. For stronger isolation use
+  `file://` (filesystem permissions on the secret file) or
+  `vault`/`openbao` (out-of-process secret store with audit
+  log). All errors redact the variable name.
+- **`vault`** / **`openbao`**. Resolution uses TLS; bootstrap
+  token / namespace / response body are subject to the bootstrap
+  credential threat model documented above.
+
 ### Operational mitigation
 
 - Use **short-lived tokens** (TTL ≤ 1 hour where the provider

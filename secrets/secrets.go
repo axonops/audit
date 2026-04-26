@@ -162,10 +162,10 @@ func (r Ref) Valid() error {
 	if r.Path == "" {
 		return fmt.Errorf("%w: empty path", ErrMalformedRef)
 	}
-	if r.Key == "" {
-		return fmt.Errorf("%w: empty key", ErrMalformedRef)
-	}
-	return validatePath(r.Path)
+	// Key requirement is scheme-dependent; delegate to the same
+	// validator [ParseRef] uses so manually-constructed refs are
+	// validated identically to parsed refs (#604).
+	return validatePathForScheme(r.Scheme, r.Path, r.Key)
 }
 
 // String returns a safe representation that redacts the secret path
@@ -241,30 +241,101 @@ func ParseRef(s string) (Ref, error) {
 	// Everything after "://"
 	pathAndKey := rest[sepIdx+len(schemeSep):]
 
-	// Find "#" fragment separator.
-	hashIdx := strings.Index(pathAndKey, "#")
-	if hashIdx < 0 {
-		return Ref{}, fmt.Errorf("%w: missing key fragment (#key)", ErrMalformedRef)
+	// Find "#" fragment separator. Whether the fragment is required
+	// is scheme-dependent — vault/openbao require #key for KV-v2 path
+	// disambiguation; file:// allows whole-file mode without a key;
+	// env:// has no key concept at all (#604).
+	var path, key string
+	if hashIdx := strings.Index(pathAndKey, "#"); hashIdx >= 0 {
+		path = pathAndKey[:hashIdx]
+		key = pathAndKey[hashIdx+1:]
+	} else {
+		path = pathAndKey
 	}
-
-	path := pathAndKey[:hashIdx]
-	key := pathAndKey[hashIdx+1:]
 
 	if path == "" {
 		return Ref{}, fmt.Errorf("%w: empty path", ErrMalformedRef)
-	}
-	if key == "" {
-		return Ref{}, fmt.Errorf("%w: empty key fragment", ErrMalformedRef)
 	}
 	if strings.Contains(key, "#") {
 		return Ref{}, fmt.Errorf("%w: key fragment must not contain \"#\"", ErrMalformedRef)
 	}
 
-	if err := validatePath(path); err != nil {
+	if err := validatePathForScheme(scheme, path, key); err != nil {
 		return Ref{}, err
 	}
 
 	return Ref{Scheme: scheme, Path: path, Key: key}, nil
+}
+
+// validatePathForScheme dispatches path-validation to scheme-
+// appropriate rules. The default rule is the vault/openbao
+// convention (no leading slash, mandatory key fragment, no `..`).
+// Filesystem-style schemes (file://) require a leading slash and
+// allow no key. Environment-variable schemes (env://) treat the
+// path as an opaque variable name and forbid keys.
+func validatePathForScheme(scheme, path, key string) error {
+	switch scheme {
+	case "file":
+		// Path is a filesystem path: must start with `/`, no
+		// percent-encoding, no control bytes, no `..` segments. Key
+		// fragment is optional (whole-file vs JSON-with-fragment).
+		if !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("%w: file:// path must be absolute (start with \"/\")", ErrMalformedRef)
+		}
+		return validateFilePath(path)
+	case "env":
+		// Path is an environment-variable name: provider validates
+		// POSIX naming. ParseRef enforces only the structural rules
+		// (no key fragment; no control bytes).
+		if key != "" {
+			return fmt.Errorf("%w: env:// must not have a #fragment", ErrMalformedRef)
+		}
+		return validateEnvPath(path)
+	default:
+		// Existing vault/openbao convention: relative path, mandatory
+		// key fragment, validatePath rules.
+		if key == "" {
+			return fmt.Errorf("%w: empty key fragment", ErrMalformedRef)
+		}
+		return validatePath(path)
+	}
+}
+
+// validateFilePath enforces filesystem-path safety: no control
+// bytes (NUL et al), no `..` segments, no `%` percent-encoding.
+// Leading slash required by the caller; absolute paths are
+// expected.
+func validateFilePath(path string) error {
+	if strings.Contains(path, "%") {
+		return fmt.Errorf("%w: path must not contain percent-encoded characters", ErrMalformedRef)
+	}
+	for i := 0; i < len(path); i++ {
+		b := path[i]
+		if b < 0x20 || b == 0x7f {
+			return fmt.Errorf("%w: path contains control byte 0x%02x at offset %d",
+				ErrMalformedRef, b, i)
+		}
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == ".." {
+			return fmt.Errorf("%w: path contains \"..\" segment", ErrMalformedRef)
+		}
+	}
+	return nil
+}
+
+// validateEnvPath enforces structural rules on env:// paths
+// (variable names). The provider runs full POSIX validation; here
+// we only reject control bytes that the caller didn't strip.
+func validateEnvPath(path string) error {
+	for i := 0; i < len(path); i++ {
+		b := path[i]
+		if b < 0x20 || b == 0x7f || b == '/' {
+			return fmt.Errorf("%w: env path contains control byte 0x%02x at offset %d",
+				ErrMalformedRef, b, i)
+		}
+	}
+	return nil
 }
 
 // ContainsRef reports whether s contains a ref+ URI pattern anywhere

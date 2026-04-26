@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `secrets/file/` and `secrets/env/` provider sub-modules (#604) — fills the G-03 BLOCKER for K8s mounted-secret and plain-env consumers (~80% of deployments). Blank-import to register: `_ "github.com/axonops/audit/secrets/file"` / `_ "github.com/axonops/audit/secrets/env"`.
+  - **`ref+file:///path/to/secret.txt`** — whole-file content as the secret value (single trailing newline trimmed).
+  - **`ref+file:///path/to/secret.json#key.subkey`** — JSON file, dotted-fragment path into nested objects, scalar string leaves only.
+  - **`ref+env://VAR_NAME`** — environment variable; POSIX `[A-Z_][A-Z0-9_]*` validation; `os.LookupEnv` distinguishes unset / empty (both are rejected).
+  - Path validation enforced: absolute paths required, `..` segments rejected, NUL byte rejected, 1 MiB file size cap. Symlinks ARE followed (Kubernetes `..data` atomic-swap pattern requires it).
+  - All errors REDACT the path / variable name — no substring of operator-controlled config appears in error messages (mirrors #486 ParseRef redaction).
+  - Stateless providers; concurrent-safe by construction (no shared state). Both pass `-race` under 50-goroutine concurrency tests.
+  - SECURITY.md updated: env vars are visible to same-UID processes via `/proc/PID/environ` (recommend file:// or vault for stronger isolation); operator is responsible for filesystem permissions on file-backed secrets.
+  - Pre-coding api-ergonomics + security consults locked: support both whole-file and JSON-fragment forms; no caching layer (re-read per Resolve); no permission-mode enforcement (K8s 0644 dominant); reuse of `secrets.ParseRef` via new scheme-aware `validatePathForScheme` helper.
+- `secrets.ParseRef` now dispatches path validation by scheme via `validatePathForScheme` (#604). The vault/openbao convention (no leading slash, mandatory `#key` fragment) remains the default; `file://` requires a leading slash and allows an optional fragment; `env://` forbids fragments. Existing vault/openbao references continue to parse with identical semantics.
 - `audit.Auditor.SetLogger(l *slog.Logger)` and `audit.Auditor.Logger() *slog.Logger` (#601) — runtime diagnostic-logger swap. Consumers that rebuild their logging stack on config change can now call `SetLogger` to replace the audit library's diagnostic logger without restarting. The new logger is propagated atomically to every output that implements `DiagnosticLoggerReceiver` (built-in: file/syslog/webhook/loki, atomic.Pointer migration from #474). Safe to call concurrently with event emission.
   - **Nil-handling**: `SetLogger(nil)` substitutes `slog.Default()` — readers never see a nil pointer. Matches the existing `WithDiagnosticLogger(nil)` and per-output `SetDiagnosticLogger(nil)` semantics.
   - **Closed/disabled auditors**: SetLogger is a no-op success — pointer is updated, no panic, no error. Matches `slog.SetDefault` precedent.

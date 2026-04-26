@@ -1,5 +1,5 @@
 .PHONY: test test-all test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen \
-       test-secrets test-secrets-openbao test-secrets-vault \
+       test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault \
        test-integration test-bdd test-bdd-core test-bdd-outputconfig test-bdd-file test-bdd-syslog test-bdd-webhook test-bdd-loki test-bdd-fanout \
        test-bdd-verify \
        test-examples \
@@ -28,7 +28,7 @@
 SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
-MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/openbao secrets/vault
+MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen secrets secrets/env secrets/file secrets/openbao secrets/vault
 WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
@@ -98,7 +98,13 @@ test-secrets-openbao:
 test-secrets-vault:
 	cd secrets/vault && go test -race -v -count=1 -coverprofile=coverage.out ./...
 
-test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-secrets test-secrets-openbao test-secrets-vault
+test-secrets-env:
+	cd secrets/env && go test -race -v -count=1 -coverprofile=coverage.out ./...
+
+test-secrets-file:
+	cd secrets/file && go test -race -v -count=1 -coverprofile=coverage.out ./...
+
+test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
 test: test-all
 
 # --- Fuzz targets (#481) ---

@@ -227,7 +227,7 @@ Every issue follows this sequence. Do not skip steps.
 
 - [ ] **#602** docs: create docs/deployment.md — systemd, Kubernetes, Docker, parent-directory behaviour, capacity planning.
 - [ ] **#603** docs: create docs/v1-changes.md summarising behavioural and API changes up to v1.0.
-- [ ] **#604** feat: add file:// and env:// secret providers for K8s mounted-secret and plain-env use cases.
+- [x] **#604** feat: add file:// and env:// secret providers for K8s mounted-secret and plain-env use cases. (Two new sub-modules `secrets/file/` and `secrets/env/`; whole-file + JSON dotted-fragment for file; POSIX-validated env names; absolute paths, no `..`, no NUL, 1 MiB cap; symlinks followed for K8s `..data`; full path/name redaction in errors; stateless concurrent-safe.).
 - [ ] **#605** docs: add docs/writing-custom-secret-providers.md with complete SecretProvider example.
 - [ ] **#606** docs: add documented /healthz handler example using QueueLen/OutputNames introspection.
 - [ ] **#607** docs: complete Prometheus reference implementation in capstone and docs (tested, drop-in).

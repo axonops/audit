@@ -165,6 +165,20 @@ func WithTimezone(tz string) Option {
 // and for simple deployments (CLI tools, Lambda functions) where
 // async complexity is unwanted. [Auditor.Close] is still safe to call
 // but is not required before reading output.
+//
+// # Caller-observable contract
+//
+//   - AuditEvent returns ONLY after every output has received the
+//     event. The caller's goroutine blocks for the sum of all
+//     outputs' Write durations.
+//   - A panic inside an output's Write is RECOVERED — it is NOT
+//     propagated to the caller. The auditor logs the panic at error
+//     level, records a per-output drop metric, and continues
+//     fan-out to subsequent outputs. AuditEvent returns nil even if
+//     one or more outputs panicked.
+//   - After [Auditor.Close], AuditEvent returns [ErrClosed]
+//     synchronously without invoking any output. Close itself is
+//     idempotent: repeated calls return nil with no side effects.
 func WithSynchronousDelivery() Option {
 	return func(a *Auditor) error {
 		a.synchronous = true

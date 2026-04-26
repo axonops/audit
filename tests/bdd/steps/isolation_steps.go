@@ -118,6 +118,20 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		return err //nolint:wrapcheck // BDD step
 	})
 
+	ctx.Step(`^an auditor with synchronous delivery and two recording mock outputs$`, func() error {
+		recOut1 = &recordingMockOutput{name: "recording-1"}
+		recOut2 = &recordingMockOutput{name: "recording-2"}
+		var err error
+		tc.Auditor, err = audit.New(
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
+			audit.WithOutputs(recOut1, recOut2),
+			audit.WithSynchronousDelivery(),
+		)
+		return err //nolint:wrapcheck // BDD step
+	})
+
 	ctx.Step(`^stdout should have received all (\d+) events$`, func(n int) error {
 		if stdoutBuf == nil {
 			return fmt.Errorf("no stdout buffer configured")
@@ -162,6 +176,22 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		}
 		if recOut2.eventCount() < n {
 			return fmt.Errorf("recording-2 has %d events, expected %d", recOut2.eventCount(), n)
+		}
+		return nil
+	})
+
+	// "exactly" variant rules out duplicate-fan-out regressions in
+	// addition to the dominant 0-events failure mode. Use for
+	// synchronous-delivery scenarios where the count is deterministic.
+	ctx.Step(`^both recording outputs should have received exactly (\d+) events$`, func(n int) error {
+		if recOut1 == nil || recOut2 == nil {
+			return fmt.Errorf("recording outputs not configured")
+		}
+		if got := recOut1.eventCount(); got != n {
+			return fmt.Errorf("recording-1 has %d events, expected exactly %d", got, n)
+		}
+		if got := recOut2.eventCount(); got != n {
+			return fmt.Errorf("recording-2 has %d events, expected exactly %d", got, n)
 		}
 		return nil
 	})

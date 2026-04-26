@@ -101,7 +101,7 @@ func (a *Auditor) checkFieldValueTypes(eventType string, fields Fields) error {
 		for _, k := range unsupported {
 			fields[k] = fmt.Sprintf("%v", fields[k])
 		}
-		a.logger.Warn("audit: event has unsupported field value types — coerced via fmt.Sprintf",
+		a.logger.Load().Warn("audit: event has unsupported field value types — coerced via fmt.Sprintf",
 			"event_type", eventType,
 			"unsupported_fields", unsupported)
 	case ValidationPermissive:
@@ -182,7 +182,7 @@ func (a *Auditor) checkUnknownFields(eventType string, def *EventDef, fields Fie
 		return newValidationError(ErrUnknownField, "audit: event %q has unknown fields: [%s]",
 			eventType, strings.Join(unknown, ", "))
 	case ValidationWarn:
-		a.logger.Warn("audit: event has unknown fields",
+		a.logger.Load().Warn("audit: event has unknown fields",
 			"event_type", eventType,
 			"unknown_fields", unknown)
 	case ValidationPermissive:

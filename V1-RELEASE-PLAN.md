@@ -131,7 +131,7 @@ Every issue follows this sequence. Do not skip steps.
 - [x] **#598** feat: unified Sanitizer interface — scrubs audit event fields AND re-raised middleware panic values. (Locked by api-ergo + security: interface with SanitizeField/SanitizePanic, NoopSanitizer embed-helper, Scope A coverage, fail-open both paths on sanitiser-of-sanitiser panic with framework-field signals, diagnostic-log isolation enforced via BDD.)
 - [ ] **#599** feat: batched syslog writes — batch_size, flush_interval matching Loki/webhook conventions.
 - [x] **#600** feat: add AuditEventContext(ctx, evt) API alongside AuditEvent. (Ctx variants on Auditor + EventHandle.AuditContext / .AuditEventContext; ctx checked at boundary points only; Output.Write unchanged; ctx-cancelled drops reuse RecordBufferDrop. Trace-correlation plumbing deferred post-v1.0 per api-ergo Q2.)
-- [ ] **#601** feat: add Auditor.SetLogger for runtime diagnostic-logger swap (depends on atomic.Pointer migration #474).
+- [x] **#601** feat: add Auditor.SetLogger for runtime diagnostic-logger swap. (Auditor.logger migrated to atomic.Pointer[slog.Logger]; SetLogger swaps + propagates to outputs via existing DiagnosticLoggerReceiver from #474; paired Logger() getter; nil-safe; no-op success on closed/disabled auditors.)
 
 **Sequencing:** #601 BLOCKED BY Track A #474. #582 coordinates with #473 (both touch HMAC append path — #473 first). #596 may absorb #587. #581 + #586 + #594 all touch metrics contract — consider unified API review.
 

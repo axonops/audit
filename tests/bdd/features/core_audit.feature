@@ -326,3 +326,10 @@ Feature: Core Audit Logging
       | actor_id    | alice       |
       | marker      |             |
       | duration_ms |             |
+
+  Scenario: SetLogger swap routes subsequent diagnostic messages to the new logger
+    Given an auditor with stdout output
+    And a captured replacement diagnostic logger
+    When I call SetLogger to swap the auditor's diagnostic logger
+    And I trigger a diagnostic message via EnableCategory "security"
+    Then the captured logger should record the diagnostic message

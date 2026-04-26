@@ -23,8 +23,8 @@ import (
 
 func (a *Auditor) drainLoop(ctx context.Context) {
 	defer close(a.drainDone)
-	defer a.logger.Debug("audit: drain loop exiting")
-	a.logger.Debug("audit: drain loop started")
+	defer a.logger.Load().Debug("audit: drain loop exiting")
+	a.logger.Load().Debug("audit: drain loop started")
 	for {
 		select {
 		case entry := <-a.ch:
@@ -91,7 +91,7 @@ func (a *Auditor) processEntry(entry *auditEntry) { //nolint:gocognit,gocyclo,cy
 	defer fc.release()
 	defer func() {
 		if r := recover(); r != nil {
-			a.logger.Error("audit: panic in processEntry",
+			a.logger.Load().Error("audit: panic in processEntry",
 				"event_type", entry.eventType,
 				"panic", r)
 			if a.metrics != nil {
@@ -158,7 +158,7 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			a.logger.Error("audit: panic in output write",
+			a.logger.Load().Error("audit: panic in output write",
 				"output", oe.output.Name(),
 				"event_type", entry.eventType,
 				"panic", r,
@@ -343,7 +343,7 @@ func (a *Auditor) formatWithExclusion(oe *outputEntry, entry *auditEntry, ts tim
 	f := oe.effectiveFormatter(a.formatter)
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, oe.formatOpts)
 	if err != nil {
-		a.logger.Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
+		a.logger.Load().Error("audit: format error (filtered)", "event", entry.eventType, "output", oe.output.Name(), "error", err)
 		if a.metrics != nil {
 			a.metrics.RecordSerializationError(entry.eventType)
 		}
@@ -494,7 +494,7 @@ func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time,
 	if bf, ok := f.(bufferedFormatter); ok {
 		buf, err := bf.formatBuf(ts, entry.eventType, entry.fields, def, nil)
 		if err != nil {
-			a.logger.Error("audit: serialisation failed",
+			a.logger.Load().Error("audit: serialisation failed",
 				"event_type", entry.eventType,
 				"error", err)
 			if a.metrics != nil {
@@ -509,7 +509,7 @@ func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time,
 	// Third-party formatter — public Format path with defensive copy.
 	data, err := f.Format(ts, entry.eventType, entry.fields, def, nil)
 	if err != nil {
-		a.logger.Error("audit: serialisation failed",
+		a.logger.Load().Error("audit: serialisation failed",
 			"event_type", entry.eventType,
 			"error", err)
 		if a.metrics != nil {
@@ -528,7 +528,7 @@ func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time,
 // dispatch — all parameters are concrete values.
 func (a *Auditor) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
 	if writeErr != nil {
-		a.logger.Error("audit: output write failed",
+		a.logger.Load().Error("audit: output write failed",
 			"output", outputName,
 			"event_type", eventType,
 			"error", writeErr)

@@ -270,7 +270,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 
 	reqID := r.Header.Get("X-Request-Id")
 	if !validRequestID(reqID) {
-		reqID = newRequestID(auditor.logger)
+		reqID = newRequestID(auditor.logger.Load())
 	}
 
 	rw := acquireResponseWriter(w)
@@ -288,7 +288,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 	// that this handler is already managing.
 	var sanitizerFailed bool
 	if panicked && auditor.sanitizer != nil {
-		panicVal, sanitizerFailed = safeSanitizePanic(auditor.sanitizer, auditor.logger, panicVal)
+		panicVal, sanitizerFailed = safeSanitizePanic(auditor.sanitizer, auditor.logger.Load(), panicVal)
 	}
 
 	statusCode := rw.statusCode
@@ -354,7 +354,7 @@ func emitAuditEvent(ctx context.Context, auditor *Auditor, builder EventBuilder,
 		defer func() {
 			if v := recover(); v != nil {
 				panicStr := truncateString(fmt.Sprintf("%v", v), 512)
-				auditor.logger.Error("audit: EventBuilder panicked",
+				auditor.logger.Load().Error("audit: EventBuilder panicked",
 					"panic", panicStr,
 					"request_id", transport.RequestID)
 				skip = true
@@ -372,7 +372,7 @@ func emitAuditEvent(ctx context.Context, auditor *Auditor, builder EventBuilder,
 	// validation MUST not reject it) AND the request-scoped ctx is
 	// honoured for cancellation at the boundary points (#600).
 	if err := auditor.auditInternalDonatedFlagsCtx(ctx, eventType, fields, false, sanitizerFailed); err != nil {
-		auditor.logger.Warn("audit: middleware event failed",
+		auditor.logger.Load().Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,
 			"error", err)

@@ -133,10 +133,15 @@ type Auditor struct {
 	// flag are unset the per-event overhead is two branches (one
 	// nil-check + one bool check on the [auditInternalDonatedFlagsCtx]
 	// parameter). Set via [WithSanitizer].
-	sanitizer  Sanitizer
-	logger     *slog.Logger // library diagnostics logger
-	drops      dropLimiter  // rate-limits buffer-full warnings
-	drainCount uint64       // events processed by drain loop; for sampling RecordQueueDepth
+	sanitizer Sanitizer
+	// logger is the library diagnostics logger. Stored via
+	// atomic.Pointer so [Auditor.SetLogger] (#601) can swap the
+	// logger atomically while events are emitting on other
+	// goroutines. Construction never stores a nil pointer — readers
+	// always observe at minimum [slog.Default].
+	logger     atomic.Pointer[slog.Logger]
+	drops      dropLimiter // rate-limits buffer-full warnings
+	drainCount uint64      // events processed by drain loop; for sampling RecordQueueDepth
 }
 
 // New creates a new [Auditor] from the given options.
@@ -176,8 +181,8 @@ func New(opts ...Option) (*Auditor, error) {
 	// Release construction-only state.
 	a.destKeys = nil
 
-	if a.logger == nil {
-		a.logger = slog.Default()
+	if a.logger.Load() == nil {
+		a.logger.Store(slog.Default())
 	}
 
 	if a.disabled {
@@ -207,7 +212,7 @@ func New(opts ...Option) (*Auditor, error) {
 		go a.drainLoop(ctx)
 	}
 
-	a.logger.Info("audit: auditor created",
+	a.logger.Load().Info("audit: auditor created",
 		"queue_size", a.cfg.QueueSize,
 		"shutdown_timeout", a.cfg.ShutdownTimeout,
 		"validation_mode", string(a.cfg.ValidationMode),
@@ -240,7 +245,7 @@ func (a *Auditor) applyDevTaxonomyOverrides() {
 	if a.taxonomy == nil || !a.taxonomy.dev {
 		return
 	}
-	a.logger.Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
+	a.logger.Load().Warn("audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement")
 	if a.cfg.ValidationMode == ValidationStrict {
 		a.cfg.ValidationMode = ValidationPermissive
 	}
@@ -261,13 +266,59 @@ func (a *Auditor) applyConstructionDefaults() {
 }
 
 // propagateLogger forwards the library's slog.Logger to outputs that
-// implement [DiagnosticLoggerReceiver].
+// implement [DiagnosticLoggerReceiver]. Loads the current logger
+// atomically so it is safe to call from [Auditor.SetLogger] while
+// events are emitting on other goroutines (#601).
 func (a *Auditor) propagateLogger() {
+	l := a.logger.Load()
 	for _, oe := range a.entries {
 		if recv, ok := oe.output.(DiagnosticLoggerReceiver); ok {
-			recv.SetDiagnosticLogger(a.logger)
+			recv.SetDiagnosticLogger(l)
 		}
 	}
+}
+
+// SetLogger swaps the diagnostic logger atomically and propagates
+// the new logger to every output that implements
+// [DiagnosticLoggerReceiver]. Safe to call concurrently with event
+// emission.
+//
+// Passing nil substitutes [slog.Default] — readers never observe a
+// nil pointer. The new logger takes effect for subsequent log
+// messages; in-flight messages may still use the previous logger
+// because each diagnostic-log call performs an independent atomic
+// load.
+//
+// SetLogger is a no-op success on closed or disabled auditors —
+// the pointer is updated but there is no observable effect because
+// closed auditors stop emitting diagnostic messages. Matches the
+// stdlib precedent set by [slog.SetDefault] which also has no
+// notion of "closed".
+//
+// Cross-references the [atomic.Pointer] migration of output logger
+// fields in #474.
+func (a *Auditor) SetLogger(l *slog.Logger) {
+	if l == nil {
+		l = slog.Default()
+	}
+	a.logger.Store(l)
+	a.propagateLogger()
+}
+
+// Logger returns the current diagnostic logger. Returns the value
+// stored by the most recent [Auditor.SetLogger] / [WithDiagnosticLogger]
+// call, or [slog.Default] if neither has been called. Useful for
+// library wrappers that want to share the auditor's logger across
+// components — when the consumer later calls [Auditor.SetLogger],
+// every wrapper that called Logger gets the new value at its next
+// invocation.
+//
+// The returned *slog.Logger is the live pointer; callers should
+// not store it for long-lived use if they want to observe future
+// SetLogger swaps. Call Logger() each time, or wrap behind a
+// helper that does the load.
+func (a *Auditor) Logger() *slog.Logger {
+	return a.logger.Load()
 }
 
 // AuditEvent validates and enqueues a typed audit event. Use
@@ -396,7 +447,7 @@ func (a *Auditor) auditInternalDonatedFlagsCtx(ctx context.Context, eventType st
 	// per-field loop — when unset (the common case) overhead is one
 	// branch per event.
 	if a.sanitizer != nil {
-		if failed := applyFieldSanitizer(a.sanitizer, copied, a.logger); len(failed) > 0 {
+		if failed := applyFieldSanitizer(a.sanitizer, copied, a.logger.Load()); len(failed) > 0 {
 			copied[FieldSanitizerFailedFields] = failed
 		}
 	}
@@ -433,7 +484,7 @@ func (a *Auditor) recordCtxCancelDrop(eventType string, cause error) {
 	if a.metrics != nil {
 		a.metrics.RecordBufferDrop()
 	}
-	a.logger.Warn("audit: event dropped due to context cancellation",
+	a.logger.Load().Warn("audit: event dropped due to context cancellation",
 		"event_type", eventType,
 		"cause", cause)
 }
@@ -568,7 +619,7 @@ func (a *Auditor) enqueueCtx(ctx context.Context, entry *auditEntry) error {
 // semantics.
 func (a *Auditor) dropOnBufferFull(entry *auditEntry) error {
 	a.drops.record(dropWarnInterval, func(dropped int64) {
-		a.logger.Warn("audit: buffer full, events dropped",
+		a.logger.Load().Warn("audit: buffer full, events dropped",
 			"dropped", dropped,
 			"queue_size", cap(a.ch))
 	})
@@ -598,7 +649,7 @@ func (a *Auditor) Close() error {
 		}
 
 		shutdownStart := time.Now()
-		a.logger.Info("audit: shutdown started")
+		a.logger.Load().Info("audit: shutdown started")
 
 		if !a.synchronous {
 			a.cancel()
@@ -607,7 +658,7 @@ func (a *Auditor) Close() error {
 
 		a.closeErr = a.closeOutputs()
 
-		a.logger.Info("audit: shutdown complete",
+		a.logger.Load().Info("audit: shutdown complete",
 			"duration", time.Since(shutdownStart))
 	})
 	return a.closeErr
@@ -649,14 +700,14 @@ func (a *Auditor) closeOutputs() error {
 		case r := <-results:
 			collected++
 			if r.err != nil {
-				a.logger.Error("audit: output close failed",
+				a.logger.Load().Error("audit: output close failed",
 					"output", r.name,
 					"error", r.err)
 				closeErrs = append(closeErrs, fmt.Errorf("audit: output %q: %w", r.name, r.err))
 			}
 		case <-deadlineTimer.C:
 			remaining := len(a.entries) - collected
-			a.logger.Error("audit: output close timed out",
+			a.logger.Load().Error("audit: output close timed out",
 				"timeout", closeTimeout,
 				"remaining_outputs", remaining)
 			closeErrs = append(closeErrs, fmt.Errorf(
@@ -678,7 +729,7 @@ func (a *Auditor) waitForDrain() {
 	select {
 	case <-a.drainDone:
 	case <-timer.C:
-		a.logger.Warn("audit: drain timed out, some events may be lost",
+		a.logger.Load().Warn("audit: drain timed out, some events may be lost",
 			"shutdown_timeout", a.cfg.ShutdownTimeout,
 			"buffer_remaining", len(a.ch))
 	}
@@ -742,7 +793,7 @@ func (a *Auditor) EnableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	a.filter.enabledCategories.Store(category, true)
-	a.logger.Info("audit: category enabled", "category", category)
+	a.logger.Load().Info("audit: category enabled", "category", category)
 	return nil
 }
 
@@ -758,7 +809,7 @@ func (a *Auditor) DisableCategory(category string) error {
 		return fmt.Errorf("audit: unknown category %q", category)
 	}
 	a.filter.enabledCategories.Store(category, false)
-	a.logger.Info("audit: category disabled", "category", category)
+	a.logger.Load().Info("audit: category disabled", "category", category)
 	return nil
 }
 
@@ -775,7 +826,7 @@ func (a *Auditor) EnableEvent(eventType string) error {
 	}
 	a.filter.eventOverrides.Store(eventType, true)
 	a.filter.hasEventOverrides.Store(true)
-	a.logger.Info("audit: event enabled", "event_type", eventType)
+	a.logger.Load().Info("audit: event enabled", "event_type", eventType)
 	return nil
 }
 
@@ -792,7 +843,7 @@ func (a *Auditor) DisableEvent(eventType string) error {
 	}
 	a.filter.eventOverrides.Store(eventType, false)
 	a.filter.hasEventOverrides.Store(true)
-	a.logger.Info("audit: event disabled", "event_type", eventType)
+	a.logger.Load().Info("audit: event disabled", "event_type", eventType)
 	return nil
 }
 
@@ -814,7 +865,7 @@ func (a *Auditor) SetOutputRoute(outputName string, route *EventRoute) error {
 		return err
 	}
 	oe.setRoute(route)
-	a.logger.Info("audit: output route set", "output", outputName)
+	a.logger.Load().Info("audit: output route set", "output", outputName)
 	return nil
 }
 
@@ -828,7 +879,7 @@ func (a *Auditor) ClearOutputRoute(outputName string) error {
 		return fmt.Errorf("audit: unknown output %q", outputName)
 	}
 	oe.setRoute(&EventRoute{})
-	a.logger.Info("audit: output route cleared", "output", outputName)
+	a.logger.Load().Info("audit: output route cleared", "output", outputName)
 	return nil
 }
 

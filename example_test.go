@@ -130,6 +130,7 @@ func ExampleAuditor_MustHandle() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(), // deterministic for goleak under loaded CI runners
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -214,6 +215,7 @@ func ExampleAuditor_EnableCategory() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -245,6 +247,7 @@ func ExampleAuditor_Close() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -285,6 +288,7 @@ func ExampleWithFormatter() {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithFormatter(cef),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -355,6 +359,7 @@ func ExampleAuditor_SetOutputRoute() {
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
 		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
+		audit.WithSynchronousDelivery(),
 	)
 	if err != nil {
 		log.Fatal(err)

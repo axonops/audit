@@ -92,14 +92,27 @@ batch or retry-hold events, so per-event bytes are not re-concentrated
 into longer-lived structures. Operators with extreme throughput
 requirements on `file` should still configure upstream ingestion caps.
 
+### Privacy primitive — Sanitizer interface
+
+For consumers who DO need centralised content scrubbing (PII
+redaction, secret masking, panic-value sanitisation), the
+`audit.Sanitizer` interface is the integration point. Register one
+via `audit.WithSanitizer`; the library invokes it on every
+`Audit`/`AuditEvent` call AND on middleware-recovered panic values
+before they are re-raised to outer panic handlers. See
+`docs/sanitizer.md` for the contract, common patterns, and threat
+model. Sanitizer panics are recovered with strict logging
+isolation: the diagnostic logger records only field keys and value
+TYPES, never raw values.
+
 ### Out of scope
 
 The following are normal usage, bugs, or consumer responsibility and
 should be reported as regular GitHub issues, not security reports:
 
-- Consumers passing arbitrary data in audit fields — the library
-  records what it is given; it is not responsible for sanitising
-  application-level content
+- Consumers passing arbitrary data in audit fields without
+  configuring a [Sanitizer] — the library records what it is given
+  unless an explicit scrubbing hook is registered (see above)
 - Bugs in formatting, field ordering, or output structure
 - Performance issues
 - Consumer misconfiguration (e.g., choosing to disable TLS validation

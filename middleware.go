@@ -280,6 +280,17 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 
 	panicked, panicVal := invokeHandler(next, rw, r)
 
+	// Sanitizer panic-path hook (#598). Run BETWEEN the recover() in
+	// invokeHandler and the audit emission / re-raise so the same
+	// (sanitised) value reaches both sinks. The sanitiser call itself
+	// is wrapped in its own recover() inside safeSanitizePanic — a
+	// sanitiser-of-sanitiser panic must not poison the panic chain
+	// that this handler is already managing.
+	var sanitizerFailed bool
+	if panicked && auditor.sanitizer != nil {
+		panicVal, sanitizerFailed = safeSanitizePanic(auditor.sanitizer, auditor.logger, panicVal)
+	}
+
 	statusCode := rw.statusCode
 	if !rw.written {
 		statusCode = http.StatusOK
@@ -296,7 +307,7 @@ func serveAudit(w http.ResponseWriter, r *http.Request, next http.Handler, audit
 	transport.StatusCode = statusCode
 	transport.Duration = time.Since(start)
 
-	emitAuditEvent(auditor, builder, hints, transport)
+	emitAuditEvent(auditor, builder, hints, transport, sanitizerFailed)
 
 	if panicked {
 		panic(panicVal)
@@ -322,8 +333,12 @@ func invokeHandler(next http.Handler, rw *responseWriter, r *http.Request) (pani
 }
 
 // emitAuditEvent calls the EventBuilder and, if not skipped, emits
-// the audit event. Builder panics are recovered and logged.
-func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transport *TransportMetadata) {
+// the audit event. Builder panics are recovered and logged. When
+// sanitizerFailed is true (set when [Sanitizer.SanitizePanic]
+// panicked during panic-recovery, see #598), the framework field
+// [FieldSanitizerFailed] is injected post-validation so SIEM tooling
+// can route on the failure.
+func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transport *TransportMetadata, sanitizerFailed bool) {
 	var (
 		eventType string
 		fields    Fields
@@ -347,7 +362,10 @@ func emitAuditEvent(auditor *Auditor, builder EventBuilder, hints *Hints, transp
 		return
 	}
 
-	if err := auditor.AuditEvent(NewEvent(eventType, fields)); err != nil {
+	// Use the flags-aware internal path so [FieldSanitizerFailed] is
+	// injected AFTER validation. The flag is library-set — strict
+	// validation MUST not reject it as an unknown field.
+	if err := auditor.auditInternalDonatedFlags(eventType, fields, false, sanitizerFailed); err != nil {
 		auditor.logger.Warn("audit: middleware event failed",
 			"event_type", eventType,
 			"request_id", transport.RequestID,

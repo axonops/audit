@@ -127,9 +127,16 @@ type Auditor struct {
 	// read-only after construction. Applied in auditInternal before
 	// validation so that defaults satisfy required: true constraints.
 	standardFieldDefaults map[string]any
-	logger                *slog.Logger // library diagnostics logger
-	drops                 dropLimiter  // rate-limits buffer-full warnings
-	drainCount            uint64       // events processed by drain loop; for sampling RecordQueueDepth
+	// sanitizer scrubs sensitive content from event field values and
+	// from re-raised middleware panic values. Nil means no scrubbing
+	// — when both [Sanitizer] and the middleware sanitizer-failed
+	// flag are unset the per-event overhead is two branches (one
+	// nil-check + one bool check on the [auditInternalDonatedFlags]
+	// parameter). Set via [WithSanitizer].
+	sanitizer  Sanitizer
+	logger     *slog.Logger // library diagnostics logger
+	drops      dropLimiter  // rate-limits buffer-full warnings
+	drainCount uint64       // events processed by drain loop; for sampling RecordQueueDepth
 }
 
 // New creates a new [Auditor] from the given options.
@@ -299,6 +306,21 @@ func (a *Auditor) auditInternal(eventType string, fields Fields) error {
 // is taken as-is (no clone); standard-field defaults are merged in
 // place via [mergeDefaultsInPlace].
 func (a *Auditor) auditInternalDonated(eventType string, fields Fields, donated bool) error {
+	return a.auditInternalDonatedFlags(eventType, fields, donated, false)
+}
+
+// auditInternalDonatedFlags extends [auditInternalDonated] with
+// library-set framework flags that are injected AFTER validation —
+// specifically the [FieldSanitizerFailed] marker the middleware path
+// uses to record a sanitiser-panic-during-panic-recovery event. The
+// flag bypasses validation deliberately; consumers cannot set it.
+//
+// All other paths into the audit pipeline call this with
+// `mwSanitizerFailed=false`; only [Middleware]'s panic-recovery hook
+// sets it true.
+//
+//nolint:gocyclo,cyclop // a flat sequence of guard / hook calls; splitting would add indirection without simplifying.
+func (a *Auditor) auditInternalDonatedFlags(eventType string, fields Fields, donated, mwSanitizerFailed bool) error {
 	if a.disabled {
 		return nil
 	}
@@ -313,6 +335,21 @@ func (a *Auditor) auditInternalDonated(eventType string, fields Fields, donated 
 	_, copied, err := a.validateEvent(eventType, fields, donated)
 	if err != nil {
 		return err
+	}
+
+	// Sanitizer hot-path hook (#598). Run AFTER validation so the
+	// validator rejects unsupported types BEFORE the sanitiser sees
+	// them, and BEFORE filter / enqueue so the drain pipeline only
+	// ever sees scrubbed values. Single nil-check hoisted out of the
+	// per-field loop — when unset (the common case) overhead is one
+	// branch per event.
+	if a.sanitizer != nil {
+		if failed := applyFieldSanitizer(a.sanitizer, copied, a.logger); len(failed) > 0 {
+			copied[FieldSanitizerFailedFields] = failed
+		}
+	}
+	if mwSanitizerFailed {
+		copied[FieldSanitizerFailed] = true
 	}
 
 	if !a.filter.isEnabled(eventType, a.taxonomy) {

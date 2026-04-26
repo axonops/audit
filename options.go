@@ -457,6 +457,43 @@ func WithDisabled() Option {
 	}
 }
 
+// WithSanitizer registers a [Sanitizer] with the auditor. The
+// Sanitizer's [Sanitizer.SanitizeField] is invoked once per field on
+// every [Auditor.Audit] / [Auditor.AuditEvent] call (NOT only the
+// middleware path); [Sanitizer.SanitizePanic] is invoked on the
+// middleware panic-recovery path before the panic is re-raised.
+//
+// Passing a nil Sanitizer is a no-op (unset state). When unset, the
+// per-event hot path performs a single nil-check and pays no
+// further overhead. See the [Sanitizer] godoc for the concurrency,
+// ownership, and return-type contracts that implementations MUST
+// satisfy.
+//
+// Use Sanitizer to scrub PII, mask credentials, hash identifiers,
+// or replace internal error messages before they reach output sinks
+// AND before middleware-recovered panic values flow to outer panic
+// handlers (Sentry, panic loggers, parent recovery middleware).
+//
+// Example:
+//
+//	type RedactPasswords struct{ audit.NoopSanitizer }
+//	func (RedactPasswords) SanitizeField(key string, value any) any {
+//	    if key == "password" { return "[redacted]" }
+//	    return value
+//	}
+//	auditor, err := audit.New(
+//	    audit.WithTaxonomy(tax),
+//	    audit.WithAppName("svc"),
+//	    audit.WithHost("h1"),
+//	    audit.WithSanitizer(RedactPasswords{}),
+//	)
+func WithSanitizer(s Sanitizer) Option {
+	return func(a *Auditor) error {
+		a.sanitizer = s
+		return nil
+	}
+}
+
 // buildLabelSet converts a slice of label names to a set.
 func buildLabelSet(labels []string) map[string]struct{} {
 	m := make(map[string]struct{}, len(labels))

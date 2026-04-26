@@ -207,4 +207,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerOutputConfigSteps(ctx, tc)
 	registerSSRFSteps(ctx, tc)
 	registerAudittestSteps(ctx, tc)
+	registerSanitizerSteps(ctx, tc)
 }

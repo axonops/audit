@@ -209,4 +209,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerAudittestSteps(ctx, tc)
 	registerSanitizerSteps(ctx, tc)
 	registerContextAPISteps(ctx, tc)
+	registerSetLoggerSteps(ctx, tc)
 }

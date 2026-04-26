@@ -42,13 +42,20 @@ func ExampleNew() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		// Synchronous delivery — single-event docs example with no
+		// async drain goroutine. Avoids a CI flake where loaded
+		// runners can starve the drain goroutine past the default 5s
+		// shutdown timeout, leaving it runnable when goleak runs.
+		audit.WithSynchronousDelivery(),
 		audit.WithOutputs(stdout),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Emit an event — it will be written to the buffer as a JSON line.
+	// Emit an event — synchronous delivery means the buffer is
+	// populated before AuditEvent returns; no Close-before-assert
+	// ceremony is needed.
 	if err := auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{
 		"outcome":  "success",
 		"actor_id": "alice",
@@ -56,7 +63,8 @@ func ExampleNew() {
 		log.Fatal(err)
 	}
 
-	// Close drains the async buffer so all events are flushed.
+	// Close is still called for symmetry; in synchronous mode it is
+	// effectively a no-op for delivery and only closes outputs.
 	if err := auditor.Close(); err != nil {
 		log.Fatal(err)
 	}
@@ -86,6 +94,8 @@ func ExampleAuditor_AuditEvent() {
 		}),
 		audit.WithAppName("test-app"),
 		audit.WithHost("test-host"),
+		// Synchronous delivery — see ExampleNew for rationale.
+		audit.WithSynchronousDelivery(),
 		audit.WithOutputs(stdout),
 	)
 	if err != nil {

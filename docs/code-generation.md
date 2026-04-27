@@ -254,3 +254,4 @@ benchmark methodology see [`docs/performance.md`](performance.md).
 - [Taxonomy Validation](taxonomy-validation.md) — YAML schema reference
 - [Performance: Fast Path and Slow Path](performance.md) — drain pipeline allocation model
 - [ADR 0001: Fields Ownership Contract](adr/0001-fields-ownership-contract.md) — `FieldsDonor` design rationale
+- [Behavioural specification: typed_builders.feature](../tests/bdd/features/typed_builders.feature) — BDD scenarios that exercise audit-gen output end-to-end (constructor, setters for every reserved-field type, FieldsDonor donation, metadata accessors). Companion to [dynamic_emission.feature](../tests/bdd/features/dynamic_emission.feature) for the runtime `audit.NewEvent` path.

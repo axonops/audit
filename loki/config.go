@@ -128,14 +128,57 @@ type LabelConfig struct {
 // DynamicLabels toggles which per-event fields become Loki stream
 // labels. All fields default to included (zero value = include).
 // Set Exclude* to true to remove a field from labels.
+//
+// Cardinality is the primary tuning concern: each unique
+// label-value combination across all included fields creates a
+// distinct Loki stream. Including high-cardinality fields (like
+// PID, which changes on every process restart) can quickly exhaust
+// Loki's per-tenant stream limits. The default-included list has
+// been chosen so that typical multi-host, multi-app deployments
+// stay within Loki's recommended ceiling of <100k active streams
+// per tenant. Tighten by excluding fields that contribute the most
+// unique values.
 type DynamicLabels struct {
-	ExcludeAppName       bool
-	ExcludeHost          bool
-	ExcludeTimezone      bool
-	ExcludePID           bool
-	ExcludeEventType     bool
+	// ExcludeAppName drops the `app_name` label. Cardinality impact:
+	// equal to the number of distinct applications writing to the
+	// same Loki tenant. Usually low (<20). Exclude only if you index
+	// by app_name through a different mechanism.
+	ExcludeAppName bool
+
+	// ExcludeHost drops the `host` label. Cardinality impact: equal
+	// to the number of distinct hosts. Significant in fleet-style
+	// deployments (hundreds to thousands of hosts) — consider
+	// excluding and storing host as a JSON field instead.
+	ExcludeHost bool
+
+	// ExcludeTimezone drops the `timezone` label. Cardinality impact:
+	// negligible (typically 1 — the deployment's timezone). Safe to
+	// keep included.
+	ExcludeTimezone bool
+
+	// ExcludePID drops the `pid` label. Cardinality impact: HIGH —
+	// every process restart creates a new label value, and labels
+	// are never garbage-collected for the active retention window.
+	// Strongly recommend excluding in production unless PID is
+	// genuinely needed for stream filtering.
+	ExcludePID bool
+
+	// ExcludeEventType drops the `event_type` label. Cardinality
+	// impact: equal to the size of the taxonomy (number of distinct
+	// event types). Usually moderate (10-200). Useful for stream
+	// filtering by event type — exclude only if your alerting paths
+	// query JSON fields instead.
+	ExcludeEventType bool
+
+	// ExcludeEventCategory drops the `event_category` label.
+	// Cardinality impact: low (typically 5-20 categories). Useful
+	// for routing by category in alerts.
 	ExcludeEventCategory bool
-	ExcludeSeverity      bool
+
+	// ExcludeSeverity drops the `severity` label. Cardinality impact:
+	// at most 11 (severity 0-10). Almost always safe to keep
+	// included; primary use is severity-based alert routing.
+	ExcludeSeverity bool
 }
 
 // Config holds configuration for the Loki [Output].

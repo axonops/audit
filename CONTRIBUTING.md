@@ -137,7 +137,7 @@ is the baseline. Key points:
 
 - **External test packages** — use `package audit_test`, not `package audit`
 - **Error wrapping** — `fmt.Errorf("audit: context: %w", err)` with `%w` as the final verb
-- **Naming** — no stutter (`audit.Logger` not `audit.AuditLogger`), no `Get` prefix, acronyms in caps (`ID`, `URL`)
+- **Naming** — no stutter (`audit.Auditor` not `audit.AuditAuditor`), no `Get` prefix, acronyms in caps (`ID`, `URL`)
 - **Godoc** — all exported symbols have comments starting with the symbol name
 - **Coverage** — target 90%+; `goleak.VerifyNone(t)` on tests that start goroutines
 - **No panics** — this is a library; no `log.Fatal`, `os.Exit`, or `panic` that escapes the package boundary

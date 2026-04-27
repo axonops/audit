@@ -243,10 +243,6 @@ func (c Config) GoString() string { return c.String() } //nolint:gocritic // hug
 // This prevents TLS key path leakage via %+v and all other format verbs.
 func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) } //nolint:gocritic // hugeParam: value receiver required by fmt.Formatter
 
-// Output writes serialised audit events to a syslog server over
-// TCP, UDP, or TCP+TLS (including mTLS). Events are formatted as
-// RFC 5424 structured syslog messages with the pre-serialised audit
-
 // validateSyslogConfig is a top-level linear validator: each if /
 // switch maps 1-1 to a documented Config field constraint. Extracting
 // helpers per group (network, facility, retries, buffer) would hide

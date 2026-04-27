@@ -35,8 +35,8 @@ import (
 //     arguments when called:
 //     [WithFormatter] (nil rejected; omitting yields a default
 //     [JSONFormatter]),
-//     [WithTimezone] (empty rejected; omitting emits no timezone
-//     framework field).
+//     [WithTimezone] (empty rejected; omitting defaults to the local
+//     timezone reported by [time.Now]().Location().String()).
 //
 //   - Optional options — accept nil / unset with a documented default:
 //     [WithMetrics]         — nil or unset disables metrics collection.
@@ -139,10 +139,16 @@ func WithHost(host string) Option {
 // WithTimezone sets the timezone name emitted as a framework field in
 // every serialised event.
 //
-// Optional to call; if omitted, no timezone field is emitted. If
-// called, tz MUST be non-empty (the option returns an error for an
-// empty string since there is no sane default to substitute at that
-// point). At most 64 bytes.
+// Optional to call. If omitted, the timezone defaults to the local
+// timezone as reported by [time.Now]().Location().String(); the
+// timezone field is therefore always populated on every event. To
+// suppress the timezone field entirely, supply a custom [Formatter]
+// whose [Formatter.SetFrameworkFields] discards the timezone value.
+// The built-in [JSONFormatter] and [CEFFormatter] write the timezone
+// framework field unconditionally and cannot suppress it via
+// [FormatOptions.IsExcluded]. If called, tz MUST be non-empty (the
+// option returns an error for an empty string since there is no
+// sane default to substitute at that point). At most 64 bytes.
 func WithTimezone(tz string) Option {
 	return func(a *Auditor) error {
 		if tz == "" {

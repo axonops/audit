@@ -28,7 +28,7 @@ how you'd use audit in a real application.
 
 | File | Purpose |
 |------|---------|
-| `main.go` | Logger setup, event emission |
+| `main.go` | Auditor setup, event emission |
 
 ## Key Concepts
 
@@ -101,7 +101,7 @@ precedes it in your code.
 > [performance guide](../../docs/performance.md) has the full
 > breakdown.
 
-### Closing the Logger
+### Closing the Auditor
 
 ```go
 defer func() { _ = auditor.Close() }()

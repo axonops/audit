@@ -90,7 +90,7 @@ conditions is met:
 |---------|-------------|---------|--------------|
 | **Event count** | `batch_size` | 100 | 10 |
 | **Time elapsed** | `flush_interval` | 5s | 1s |
-| **Logger closed** | `auditor.Close()` | — | Triggers final flush |
+| **Auditor closed** | `auditor.Close()` | — | Triggers final flush |
 
 In this example, `auditor.Close()` triggers the flush because we emit
 only 4 events (below the batch_size threshold of 10) and close

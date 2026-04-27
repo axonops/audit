@@ -748,6 +748,7 @@ outputs:
 - [Output Configuration Reference](output-configuration.md) — YAML field tables
 - [Progressive Example](../examples/07-syslog-output/) — working code with embedded TCP receiver
 - [CEF Format Reference](cef-format.md) — CEF field mapping for SIEM integration
+- [Deployment Guide](deployment.md) — systemd / Kubernetes / Docker patterns; capacity planning
 - [RFC 5424: The Syslog Protocol](https://datatracker.ietf.org/doc/html/rfc5424)
 - [RFC 5425: TLS Transport Mapping for Syslog](https://datatracker.ietf.org/doc/html/rfc5425)
 - [RFC 5426: UDP Transport Mapping for Syslog](https://datatracker.ietf.org/doc/html/rfc5426)

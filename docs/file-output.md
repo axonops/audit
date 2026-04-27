@@ -360,3 +360,4 @@ signature to each event, providing evidence of modification.
 - [Progressive Example](../examples/03-file-output/) — working code with rotation
 - [HMAC Integrity](hmac-integrity.md) — tamper detection for file output
 - [Async Delivery](async-delivery.md) — buffer sizing and graceful shutdown
+- [Deployment Guide](deployment.md) — systemd / Kubernetes / Docker patterns; parent-directory creation; permissions

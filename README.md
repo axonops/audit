@@ -333,6 +333,7 @@ See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for mo
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |
+| 🚀 [Deployment Guide](docs/deployment.md) | systemd, Kubernetes, Docker Compose; capacity planning; file-output parent-directory behaviour; secret injection patterns |
 | 📝 [Changelog](CHANGELOG.md) | Release history and breaking changes |
 | ❌ [Error Reference](docs/error-reference.md) | Every error explained with recovery guidance |
 | 🔧 [Troubleshooting](docs/troubleshooting.md) | Common problems and how to fix them |

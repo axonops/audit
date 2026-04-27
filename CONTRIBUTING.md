@@ -3,6 +3,11 @@
 Thank you for your interest in contributing to audit. This document
 covers the development setup, coding standards, and pull request process.
 
+> **Deploying audit**, not contributing to it? See
+> [docs/deployment.md](docs/deployment.md) for systemd, Kubernetes,
+> Docker, capacity planning, and file-output parent-directory
+> guidance.
+
 ## Development Setup
 
 ```bash

@@ -373,3 +373,4 @@ complete working example with signal handling.
 - [Metrics and Monitoring](metrics-monitoring.md) — tracking buffer drops and output failures
 - [Outputs](outputs.md) — output types and fan-out architecture
 - [Architecture](../ARCHITECTURE.md) — pipeline implementation details
+- [Deployment Guide — Capacity Planning](deployment.md#capacity-planning) — operator-facing tier table for `queue_size` / `buffer_size` / `shutdown_timeout` against event-rate

@@ -1016,5 +1016,6 @@ delivered to all others.
 - [Sensitivity Labels](sensitivity-labels.md) — per-output field stripping
 - [HMAC Integrity](hmac-integrity.md) — tamper detection on Loki events
 - [Async Delivery](async-delivery.md) — buffer architecture and delivery guarantees
+- [Deployment Guide](deployment.md) — systemd / Kubernetes / Docker patterns; capacity planning
 
 Install: `go get github.com/axonops/audit/loki`

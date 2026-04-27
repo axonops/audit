@@ -116,7 +116,7 @@ auditor, events, metrics := audittest.New(t, taxonomyYAML)
 
 ### NewQuick — quick smoke test
 
-Creates a permissive logger — any fields accepted, no required field
+Creates a permissive auditor — any fields accepted, no required field
 enforcement:
 
 ```go

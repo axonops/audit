@@ -179,7 +179,7 @@ outputs:
 
 > ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#-per-output-tls-policy) below.
 
-## ⚙️ Logger Configuration
+## ⚙️ Auditor Configuration
 
 The optional `auditor:` section configures the core auditor. All
 fields are optional — omitted fields use sensible defaults.

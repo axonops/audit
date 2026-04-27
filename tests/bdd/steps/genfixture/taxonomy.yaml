@@ -1,0 +1,36 @@
+version: 1
+
+categories:
+  write:
+    severity: 3
+    events:
+      - user_create
+      - user_update
+  security:
+    severity: 8
+    events:
+      - auth_failure
+
+events:
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+      session_count: {type: int}
+      retry_after: {type: duration}
+
+  user_update:
+    description: "A user account was updated"
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}
+
+  auth_failure:
+    description: "An authentication attempt failed"
+    fields:
+      outcome: {required: true}
+      actor_id: {required: true}
+      marker: {}

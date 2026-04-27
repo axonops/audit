@@ -440,6 +440,32 @@ for the factory pattern and complete interface documentation.
 
 ## Production Configuration
 
+### Production Checklist — Dangerous Opt-In Flags
+
+The webhook output exposes two flags that relax the default safe
+posture. Both default to OFF; setting either to `true` is acceptable
+ONLY in the deployment patterns listed.
+
+| Flag | Default | When `true` is acceptable | When `true` is a misconfiguration |
+|---|---|---|---|
+| `allow_insecure_http` | `false` (HTTPS-only) | Local development; CI smoke tests against an in-cluster mock receiver on a closed network. Operator owns both endpoints. | Any production deployment, any cross-network traffic, anywhere the receiver is exposed beyond a single trust domain. Audit events traverse the network in cleartext. |
+| `allow_private_ranges` | `false` (SSRF block list active) | Calling an in-cluster receiver by RFC1918 address (`10.x`, `192.168.x`, `172.16-31.x`) where the SSRF guard would otherwise block. Receiver is operator-owned and within the same network policy zone. | Any URL whose authority is influenced by user input; any URL pointing at a service the operator did not deploy themselves; deployments where operator-owned and tenant-owned traffic share the same egress namespace. |
+
+Before flipping either flag in production, the operator MUST:
+
+1. Document the specific receiver address and rationale in the
+   deployment's Terraform / Helm / Kubernetes manifest comment.
+2. Set the receiver behind authentication (`headers.Authorization`
+   or mTLS — `tls_cert` + `tls_key`) so that the relaxed network
+   posture does not become an open egress for arbitrary callers.
+3. Pin the receiver host in NetworkPolicy / egress firewall rules
+   to limit the blast radius if the URL is ever templated from
+   untrusted input.
+
+See [SECURITY.md](../SECURITY.md) and [docs/threat-model.md](threat-model.md)
+for the broader posture; the SSRF block list itself is documented in
+[#-ssrf-protection](#ssrf-protection).
+
 ### Minimum Secure Configuration
 
 ```yaml

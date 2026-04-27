@@ -612,6 +612,35 @@ After all retries are exhausted, the batch is dropped and
 
 ## Security
 
+### Production Checklist — Dangerous Opt-In Flags
+
+The Loki output exposes two flags that relax the default safe posture.
+Both default to OFF; setting either to `true` is acceptable ONLY in
+the deployment patterns listed.
+
+| Flag | Default | When `true` is acceptable | When `true` is a misconfiguration |
+|---|---|---|---|
+| `allow_insecure_http` | `false` (HTTPS-only) | Local development; CI smoke tests against an in-cluster Loki on a closed network. Operator owns the Loki cluster. | Any production deployment. Audit events traverse the network in cleartext and operator credentials (basic auth, bearer token, tenant ID) ride the same plaintext channel — exposed to any in-network attacker. |
+| `allow_private_ranges` | `false` (SSRF block list active) | In-cluster Loki addressed by RFC1918 / IPv6 ULA where the SSRF guard would otherwise block. The Loki target is operator-deployed inside the same network policy zone. | Any URL whose authority is influenced by configuration templated from external systems; multi-tenant clusters where another tenant could sit on the same private range. |
+
+Cloud-metadata, link-local, CGNAT, multicast, and unspecified-address
+blocks remain active **even when `allow_private_ranges: true`** — see
+the SSRF Protection table below for the full block list and the
+unconditional reason labels.
+
+Before flipping either flag in production, the operator MUST:
+
+1. Document the specific Loki host and rationale in the deployment
+   manifest (Helm values, Terraform, Kubernetes ConfigMap).
+2. Set the Loki receiver behind authentication
+   (`basic_auth.username` / `basic_auth.password`, or a bearer token,
+   or mTLS via `tls_cert` + `tls_key`) so the relaxed network posture
+   does not become an open ingest path.
+3. Pin egress to the Loki host via NetworkPolicy / firewall rules.
+
+See [SECURITY.md](../SECURITY.md) and [docs/threat-model.md](threat-model.md)
+for the broader posture.
+
 ### SSRF Protection
 
 Private, loopback, and reserved IP ranges are **blocked by default**.

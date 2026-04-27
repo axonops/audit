@@ -497,6 +497,38 @@ returns `ErrSecretResolveFailed` wrapping a 403 status.
 > included in container image layers. Use Kubernetes secrets,
 > Docker secrets, or your platform's secrets injection mechanism.
 
+## Production Checklist — Dangerous Opt-In Flags
+
+The Vault and OpenBao providers expose two flags that relax the
+default safe posture. Both default to OFF; setting either to `true`
+is acceptable ONLY in the deployment patterns listed.
+
+| Flag | Default | When `true` is acceptable | When `true` is a misconfiguration |
+|---|---|---|---|
+| `AllowInsecureHTTP` | `false` (HTTPS-only) | Local development with Docker Compose where the provider runs on the internal Docker network. Operator owns both endpoints. | Any production deployment. The auth token is sent as `X-Vault-Token` (or equivalent) on every request — over plaintext HTTP it is exposed to any in-network observer, who then has full access to every secret the token can read. |
+| `AllowPrivateRanges` | `false` (SSRF block list active) | In-cluster Vault / OpenBao addressed by RFC1918 / IPv6 ULA where the SSRF guard would otherwise block. Provider is operator-deployed inside the same network policy zone. | Multi-tenant cluster where another tenant could sit on the same private range; deployments where the provider URL is templated from external systems. |
+
+Cloud-metadata endpoints (`169.254.169.254`, `fd00:ec2::254`),
+link-local, CGNAT, multicast, and unspecified-address blocks remain
+active **even when `AllowPrivateRanges: true`** — there is no flag
+that disables those.
+
+Before flipping either flag in production, the operator MUST:
+
+1. Use a short-lived auth token (Vault dynamic credentials with TTL
+   ≤ 1h, AppRole with renewable lease, or Kubernetes auth via the
+   service-account JWT projection — see [Authentication](#authentication)).
+   The library best-effort zeroes the token on `Provider.Close()` but
+   cannot zero its in-memory copies (Go strings are immutable; see
+   [SECURITY.md §Secrets and Memory Retention](../SECURITY.md#secrets-and-memory-retention)).
+2. Pin egress to the provider host via NetworkPolicy / firewall.
+3. Rotate the auth token on every restart (Vault, OpenBao, and
+   Kubernetes auth all support this natively); restart the consumer
+   process to pick up the new token.
+
+See [SECURITY.md](../SECURITY.md) and [docs/threat-model.md](threat-model.md)
+for the broader posture.
+
 ## YAML Configuration Examples
 
 ### HMAC Salt from OpenBao

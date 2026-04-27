@@ -22,8 +22,8 @@ import (
 
 // Output is the interface that audit event destinations MUST implement.
 // All outputs receive pre-serialised bytes (JSON, CEF, or a custom
-// format chosen via [WithFormatter]). The library will provide built-in
-// implementations for stdout, file, syslog, and webhook.
+// format chosen via [WithFormatter]). Built-in implementations are
+// provided by the file, syslog, webhook, loki, and stdout packages.
 type Output interface {
 	// Write sends a single serialised audit event to the output.
 	// data is a complete, newline-terminated byte slice. Write is

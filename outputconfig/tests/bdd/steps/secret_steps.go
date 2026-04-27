@@ -15,7 +15,9 @@
 package steps
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -173,6 +175,81 @@ func registerSecretSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		`^the error message should not contain "([^"]*)"$`,
 		tc.stepAssertErrorNotContains,
 	)
+
+	ctx.Step(
+		`^the mock provider has secret at path "([^"]*)" key "([^"]*)" containing the injection-safety fixture$`,
+		tc.stepAddInjectionSafetyFixture,
+	)
+
+	ctx.Step(
+		`^the HMAC config salt should equal the injection-safety fixture byte-for-byte$`,
+		tc.stepAssertHMACSaltEqualsInjectionFixture,
+	)
+}
+
+// injectionSafetyFixture is a 32-byte secret value that mixes
+// classes of byte sequences known to break naive serialisers and
+// shell-escape paths: NUL truncation, CR/LF newline injection,
+// ANSI escape codes (terminal-injection vector), single quotes and
+// SQL meta-tokens, ASCII control bytes (BEL, DEL). The salt is
+// consumed by [crypto/hmac] as raw bytes and must reach
+// `audit.HMACSalt.Value` byte-for-byte regardless of what the
+// resolver pipeline does on the way through. The HMAC salt is
+// never written to any output formatter, but this fixture acts as
+// a regression sentinel — if a future change to the resolver
+// decides to validate, escape, or normalise the bytes
+// (well-intentioned but incorrect for a credential), the
+// byte-for-byte assertion will fail.
+//
+// All 32 bytes are valid UTF-8 codepoints (the highest is 0x7F,
+// DEL). The resolver pipeline routes resolved secret values
+// through goccy/go-yaml which is UTF-8 bound; raw 0x80..0xFF
+// bytes get re-encoded as their two-byte UTF-8 sequence (e.g.
+// 0xFF → 0xC3 0xBF). In production, secrets crossing a YAML or
+// JSON storage layer always reach the resolver as valid UTF-8 —
+// most stores base64-encode binary secrets. This fixture
+// therefore reflects the realistic threat model: control bytes
+// and metacharacters that ARE valid UTF-8 codepoints.
+//
+// Length 32 matches the HMAC config schema's recommended salt
+// length (mirroring the literal-salt fixtures in scenarios 1–5).
+var injectionSafetyFixture = string([]byte{
+	0x00, '\n', 'A', 0x1B, '[', '3', '1', 'm', // NUL, LF, ANSI esc start
+	'\'', ';', ' ', 'D', 'R', 'O', 'P', ' ', // SQL injection
+	'T', 'A', 'B', 'L', 'E', ' ', 'x', ';', // continued
+	' ', '-', '-', ' ', '\r', '\n', 0x7F, 0x07, // CRLF, DEL, BEL
+})
+
+func (tc *TestContext) stepAddInjectionSafetyFixture(path, key string) error {
+	p := tc.currentMockProvider()
+	if p.data[path] == nil {
+		p.data[path] = make(map[string]string)
+	}
+	p.data[path][key] = injectionSafetyFixture
+	return nil
+}
+
+func (tc *TestContext) stepAssertHMACSaltEqualsInjectionFixture() error {
+	if tc.LoadResult == nil {
+		return fmt.Errorf("config was not loaded; cannot assert HMAC salt")
+	}
+	mds := tc.LoadResult.OutputMetadata()
+	if len(mds) == 0 {
+		return fmt.Errorf("no outputs loaded; cannot assert HMAC salt")
+	}
+	hmac := mds[0].HMACConfig
+	if hmac == nil {
+		return fmt.Errorf("output %q has no HMAC config", mds[0].Name)
+	}
+	want := []byte(injectionSafetyFixture)
+	if !bytes.Equal(hmac.Salt.Value, want) {
+		return fmt.Errorf(
+			"HMAC salt diverged from injection-safety fixture; "+
+				"len=%d (want %d), bytes=%s (want %s)",
+			len(hmac.Salt.Value), len(want),
+			hex.EncodeToString(hmac.Salt.Value), hex.EncodeToString(want))
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

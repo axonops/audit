@@ -584,3 +584,136 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should fail with an error containing "expired"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 25: Secret resolution that exceeds the configured timeout (#563)
+  #
+  # The mock provider deliberately delays its response by 500 ms; the
+  # configured per-secret timeout is 50 ms. The resolver's
+  # contextWithSecretTimeout (outputconfig/secrets.go) propagates the
+  # deadline to provider.Resolve, which returns ctx.Err(). The error
+  # must surface to outputconfig.Load with the standard
+  # "context deadline exceeded" wording so an operator can diagnose
+  # a slow secret-store path without inspecting the resolver internals.
+  # ---------------------------------------------------------------------------
+  Scenario: Secret resolution that exceeds the configured timeout fails with deadline-exceeded
+    Given a mock secret provider with scheme "mock" that delays 500ms
+    And the mock provider has secret at path "secret/data/hmac" key "salt" value "delayed-salt-32-bytes!!!!!!!!!!"
+    And the secret resolution timeout is 50ms
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+mock://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "context deadline exceeded"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 26: Vault provider receives malformed JSON (#563)
+  #
+  # The in-process HTTPS receiver's TLS handshake succeeds (valid cert
+  # signed by the runtime CA the provider trusts), so the provider
+  # reaches the application layer and reads the response body. The
+  # body is deliberately malformed JSON (combines a raw 0xff byte
+  # with unclosed braces) that json.Unmarshal cannot recover from.
+  # The vault provider's fetchPath wraps the parse error as
+  # `secrets.ErrSecretResolveFailed: parse response: ...` —
+  # see secrets/vault/vault.go around the kvResponse decode.
+  # ---------------------------------------------------------------------------
+  Scenario: Vault provider with malformed JSON response fails Load with parse-error diagnostic
+    Given a vault HTTPS provider returning malformed JSON
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+vault://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "parse response"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 27: OpenBao provider receives malformed JSON (#563)
+  #
+  # OpenBao's secret resolution shares the vault provider's HTTP +
+  # JSON path; the openbao provider mirrors the same parse-error
+  # wrapping. Adding the parallel scenario asserts the two providers
+  # remain symmetric — a future divergence would surface here, not
+  # silently in production.
+  # ---------------------------------------------------------------------------
+  Scenario: OpenBao provider with malformed JSON response fails Load with parse-error diagnostic
+    Given an openbao HTTPS provider returning malformed JSON
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+openbao://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "parse response"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 28: Injection-safe secret value flows verbatim to HMAC salt (#563)
+  #
+  # A provider returns a 32-byte secret value containing classes of
+  # bytes that break naive serialisers and shell-escape paths: NUL
+  # truncation, CR/LF newline injection, ANSI escape codes (terminal
+  # injection), single-quote / SQL-injection metacharacters, and
+  # ASCII control bytes (DEL, BEL). All 32 bytes are valid UTF-8
+  # codepoints — the resolver pipeline routes through a YAML
+  # decoder that is UTF-8 bound, so raw 0x80–0xFF bytes do not
+  # round-trip; in production, secrets crossing JSON/YAML storage
+  # always arrive as valid UTF-8 (binary secrets are base64-encoded).
+  #
+  # The resolver pipeline must reach `audit.HMACSalt.Value`
+  # byte-for-byte — HMAC consumes the salt as raw bytes via
+  # [crypto/hmac], so any validation or escaping the resolver chose
+  # to apply would silently break HMAC verification. The salt is
+  # never serialised to an output formatter, so this scenario is a
+  # regression sentinel: if a future change to the resolver decides
+  # to "sanitise" the value, the byte-for-byte assertion fires.
+  # ---------------------------------------------------------------------------
+  Scenario: Secret value containing control bytes and shell metacharacters flows verbatim into the HMAC salt
+    Given a mock secret provider with scheme "mock"
+    And the mock provider has secret at path "secret/data/hmac" key "salt" containing the injection-safety fixture
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+mock://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should succeed
+    And the HMAC config salt should equal the injection-safety fixture byte-for-byte

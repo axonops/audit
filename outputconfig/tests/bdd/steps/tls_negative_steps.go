@@ -39,34 +39,56 @@ import (
 )
 
 // registerSecretsTLSNegativeSteps wires step definitions for the
-// expired-cert scenarios in
-// outputconfig/tests/bdd/features/secret_resolution.feature (#552
-// AC#2). The scenario stands up an in-process HTTPS server presenting
-// a deliberately-expired certificate, points a real secrets provider
-// (vault or openbao) at it through the audit-trusted CA, and asserts
-// that outputconfig.Load surfaces the TLS handshake failure rather
-// than silently succeeding or hanging.
+// in-process secrets-provider scenarios in
+// outputconfig/tests/bdd/features/secret_resolution.feature:
 //
-// The receiver path mirrors the syslog/webhook/loki TLS negative-path
-// helpers in tests/bdd/steps/tls_negative_steps.go. It lives in this
-// sub-module because the secrets provider Load path is what we want
-// to exercise — outputconfig.Load drives provider.Resolve, which is
-// where the HTTPS GET fails.
+//   - expired-cert (#552 AC#2): TLS handshake fails because the
+//     server presents a deliberately-expired leaf certificate.
+//   - malformed-JSON (#563): TLS handshake succeeds but the server
+//     responds with a body the vault/openbao provider's JSON parser
+//     rejects.
+//
+// Both pathways stand up an in-process HTTPS server signed by a
+// fresh CA the audit-side provider trusts; the rejection cause is
+// therefore exactly the defect we install — not "unknown
+// authority" or "connection refused".
 func registerSecretsTLSNegativeSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	ctx.Step(
 		`^an? (vault|openbao) HTTPS provider with an expired server certificate$`,
-		func(scheme string) error { return startBadCertProvider(tc, scheme) },
+		func(scheme string) error {
+			return startInProcHTTPSProvider(tc, scheme, certSpecExpired, tlsRejectHandler())
+		},
+	)
+	ctx.Step(
+		`^an? (vault|openbao) HTTPS provider returning malformed JSON$`,
+		func(scheme string) error {
+			return startInProcHTTPSProvider(tc, scheme, certSpecValid, malformedJSONHandler())
+		},
 	)
 }
 
-// startBadCertProvider generates a fresh CA + expired server cert,
-// starts an HTTPS server presenting that cert, and registers a real
-// vault or openbao provider pointed at it. The audit-side provider
-// trusts the runtime CA, so the TLS rejection cause is exactly
-// "certificate has expired" — not "unknown authority".
+// certSpec selects which leaf-certificate template the in-process
+// HTTPS server presents.
+type certSpec int
+
+const (
+	certSpecExpired certSpec = iota // NotAfter one hour in the past
+	certSpecValid                   // NotAfter one hour in the future
+)
+
+// startInProcHTTPSProvider stands up an in-process HTTPS receiver
+// and points a real vault or openbao provider at it. The shared
+// scaffolding (CA generation, leaf cert, server start, provider
+// construction) is reused by every secrets failure-mode scenario;
+// callers vary only the leaf cert validity and the HTTP handler.
+//
+// The audit-side provider trusts the runtime CA, so the rejection
+// cause is exactly the defect we install — expired NotAfter for
+// the TLS rejection scenario, or malformed body for the JSON
+// scenario — not "unknown authority".
 //
 //nolint:funlen,gocyclo,cyclop // sequential cert + server + provider scaffolding.
-func startBadCertProvider(tc *TestContext, scheme string) error {
+func startInProcHTTPSProvider(tc *TestContext, scheme string, spec certSpec, handler http.Handler) error {
 	dir, err := os.MkdirTemp("", "bdd-secrets-bad-certs-*")
 	if err != nil {
 		return fmt.Errorf("temp dir: %w", err)
@@ -101,31 +123,17 @@ func startBadCertProvider(tc *TestContext, scheme string) error {
 		return fmt.Errorf("write ca pem: %w", writeErr)
 	}
 
-	// Expired server cert valid for localhost / 127.0.0.1.
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return fmt.Errorf("leaf key: %w", err)
 	}
-	leafTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(301),
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now().Add(-2 * time.Hour),
-		NotAfter:     time.Now().Add(-1 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
-	}
+	leafTemplate := leafTemplateFor(spec)
 	leafDER, err := x509.CreateCertificate(rand.Reader, leafTemplate, caCert, &leafKey.PublicKey, caKey)
 	if err != nil {
 		return fmt.Errorf("leaf cert: %w", err)
 	}
 
-	// In-process HTTPS server. Body unused — TLS handshake fails
-	// before the handler is reached.
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
+	srv := httptest.NewUnstartedServer(handler)
 	srv.TLS = &tls.Config{
 		Certificates: []tls.Certificate{{
 			Certificate: [][]byte{leafDER},
@@ -138,13 +146,13 @@ func startBadCertProvider(tc *TestContext, scheme string) error {
 	addr := srv.URL // "https://127.0.0.1:PORT"
 
 	// Build the real provider with caPath as trust anchor and
-	// AllowPrivateRanges so the SSRF guard does not pre-empt the TLS
-	// rejection.
+	// AllowPrivateRanges so the SSRF guard does not pre-empt the
+	// rejection we are testing.
 	switch scheme {
 	case "vault":
 		p, pErr := vault.New(&vault.Config{
 			Address:            addr,
-			Token:              "test-token-not-used-because-tls-fails",
+			Token:              "bdd-token-value-irrelevant-for-failure-modes",
 			TLSCA:              caPath,
 			AllowPrivateRanges: true,
 		})
@@ -156,7 +164,7 @@ func startBadCertProvider(tc *TestContext, scheme string) error {
 	case "openbao":
 		p, pErr := openbao.New(&openbao.Config{
 			Address:            addr,
-			Token:              "test-token-not-used-because-tls-fails",
+			Token:              "bdd-token-value-irrelevant-for-failure-modes",
 			TLSCA:              caPath,
 			AllowPrivateRanges: true,
 		})
@@ -169,6 +177,52 @@ func startBadCertProvider(tc *TestContext, scheme string) error {
 		return fmt.Errorf("unknown provider scheme %q", scheme)
 	}
 	return nil
+}
+
+// leafTemplateFor returns a leaf-certificate template valid for
+// localhost / 127.0.0.1, with the NotAfter selected by spec.
+func leafTemplateFor(spec certSpec) *x509.Certificate {
+	notBefore := time.Now().Add(-2 * time.Hour)
+	notAfter := time.Now().Add(time.Hour)
+	if spec == certSpecExpired {
+		notAfter = time.Now().Add(-1 * time.Hour)
+	}
+	return &x509.Certificate{
+		SerialNumber: big.NewInt(301),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
+}
+
+// tlsRejectHandler returns a handler that 500s any request that
+// reaches it. The expired-cert scenario should never let a request
+// through because the TLS handshake fails first; if a request does
+// arrive the 500 makes the failure unmistakable.
+func tlsRejectHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+}
+
+// malformedJSONHandler returns a handler that responds 200 OK with
+// a body the vault/openbao JSON parser must reject. The body
+// places a raw 0xff at value position (where a quoted string is
+// expected) followed by trailing junk and an unterminated object,
+// so json.Unmarshal returns a SyntaxError that no recovery mode
+// can mask. The vault provider's fetchPath wraps the parse error
+// as `secrets.ErrSecretResolveFailed: parse response: ...` — the
+// BDD assertion pins on the substring "parse response".
+func malformedJSONHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"data":{"salt":` + "\xff" + `not-json,]`))
+	})
 }
 
 // writePEMBlock writes a PEM-encoded block to the given path. The

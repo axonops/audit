@@ -34,6 +34,8 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "my-literal-salt-32-bytes!!!!!!!"
+    And the HMAC config should have version "v1"
 
   # ---------------------------------------------------------------------------
   # Scenario 2: Environment variable HMAC values work without secret providers
@@ -56,6 +58,8 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "literal-salt-value-32-bytes!!!!!"
+    And the HMAC config should have version "v1"
 
   # ---------------------------------------------------------------------------
   # Scenario 3: Secret reference resolved from a registered provider
@@ -80,6 +84,9 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "resolved-salt-value-32-bytes!!!!"
+    And the HMAC config should have version "v2"
+    And the HMAC config should have algorithm "HMAC-SHA-256"
 
   # ---------------------------------------------------------------------------
   # Scenario 4: Environment variable that expands to a ref is then resolved
@@ -104,6 +111,8 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "env-indirected-salt-32-bytes!!!!"
+    And the HMAC config should have version "v1"
 
   # ---------------------------------------------------------------------------
   # Scenario 5: Inline literal, env-var, and ref can be mixed in the same config
@@ -128,6 +137,9 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "mixed-source-salt-32-bytes!!!!!!"
+    And the HMAC config should have version "v3"
+    And the HMAC config should have algorithm "HMAC-SHA-256"
 
   # ---------------------------------------------------------------------------
   # Scenario 6: Unresolved reference fails when no provider is registered
@@ -399,6 +411,8 @@ Feature: Secret reference resolution in output configuration
           type: stdout
       """
     Then the config load should succeed
+    And the loaded auditor metadata should have app_name "svc-from-vault"
+    And the loaded auditor metadata should have host "host-from-env"
 
   # ---------------------------------------------------------------------------
   # Scenario 17: Disabled output with unresolvable refs does not cause an error
@@ -419,6 +433,8 @@ Feature: Secret reference resolution in output configuration
             format: ref+nonexistent://path/does/not/matter#format
       """
     Then the config load should succeed
+    And the loaded outputs should number 1
+    And the loaded outputs should not include "disabled_with_refs"
 
   # ---------------------------------------------------------------------------
   # Scenario 18: HMAC enabled as literal boolean true with ref salt
@@ -443,6 +459,8 @@ Feature: Secret reference resolution in output configuration
             algorithm: HMAC-SHA-256
       """
     Then the config load should succeed
+    And the HMAC config should have salt "literal-true-resolved-salt-32bytes"
+    And the HMAC config should have version "v4"
 
   # ---------------------------------------------------------------------------
   # Scenario 19: Secret reference resolved in a non-HMAC field

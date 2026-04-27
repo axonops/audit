@@ -16,6 +16,7 @@
 package steps
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -32,12 +33,27 @@ import (
 	"github.com/axonops/audit/outputconfig"
 )
 
+// capturedStdoutBuf collects bytes that the registered stdout factory
+// writes during the current scenario. BDD runs single-goroutine
+// (Concurrency: 1) so a package-level buffer is safe; Reset clears
+// it per scenario. Used by `the captured output should contain`.
+var capturedStdoutBuf = &bytes.Buffer{}
+
 func init() {
-	// Register stdout via the public API. The core package dropped its
-	// stdout init() in #578; blank-importing audit/outputs here would
-	// create a cross-module cycle (outputs → audit) so we register
-	// via audit.StdoutFactory() instead.
-	audit.MustRegisterOutputFactory("stdout", audit.StdoutFactory())
+	// Register a buffer-capturing stdout factory so BDD scenarios can
+	// inspect what reached the output. The original os.Stdout target
+	// from audit.StdoutFactory() is irrelevant here — tests assert on
+	// captured bytes, not console visibility.
+	audit.MustRegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+		if len(rawConfig) > 0 {
+			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
+		}
+		out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: capturedStdoutBuf})
+		if err != nil {
+			return nil, fmt.Errorf("create stdout: %w", err)
+		}
+		return audit.WrapOutput(out, name), nil
+	})
 	// Register a stub "loki" factory for BDD tests that validate
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a
@@ -116,6 +132,7 @@ func (tc *TestContext) Reset() {
 	tc.realProviderPendingSeeds = nil
 	tc.realProviderCleanup = nil
 	capturedWebhookRawConfig = nil
+	capturedStdoutBuf.Reset()
 }
 
 // InitializeScenario wires all step definitions.
@@ -267,10 +284,82 @@ func registerWhenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	})
 }
 
+//nolint:gocognit,gocyclo,cyclop // BDD step registration: many closures inline; splitting hurts readability
 func registerThenSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	ctx.Step(`^the audit call should have succeeded$`, func() error {
 		if tc.LastErr != nil {
 			return fmt.Errorf("expected no error, got: %w", tc.LastErr)
+		}
+		return nil
+	})
+
+	// Strengthened-assertion steps for #551 — concrete observable
+	// effects that follow up "should succeed".
+	ctx.Step(`^the captured output should contain "([^"]*)"$`, func(needle string) error {
+		// Auditor uses sync delivery via WithSynchronousDelivery, OR
+		// async with the output's drain. To make assertions
+		// deterministic, close the auditor first (idempotent) so the
+		// drain finishes.
+		if tc.Auditor != nil {
+			_ = tc.Auditor.Close()
+			tc.Auditor = nil
+		}
+		got := capturedStdoutBuf.String()
+		if !strings.Contains(got, needle) {
+			return fmt.Errorf("captured output does not contain %q; got: %s", needle, got)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loaded auditor metadata should have app_name "([^"]*)"$`, func(want string) error {
+		if tc.LoadResult == nil {
+			return fmt.Errorf("no load result")
+		}
+		if got := tc.LoadResult.AppName(); got != want {
+			return fmt.Errorf("app_name: got %q, want %q", got, want)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loaded auditor metadata should have host "([^"]*)"$`, func(want string) error {
+		if tc.LoadResult == nil {
+			return fmt.Errorf("no load result")
+		}
+		if got := tc.LoadResult.Host(); got != want {
+			return fmt.Errorf("host: got %q, want %q", got, want)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loaded auditor metadata should have timezone "([^"]*)"$`, func(want string) error {
+		if tc.LoadResult == nil {
+			return fmt.Errorf("no load result")
+		}
+		if got := tc.LoadResult.Timezone(); got != want {
+			return fmt.Errorf("timezone: got %q, want %q", got, want)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loaded outputs should number (\d+)$`, func(n int) error {
+		if tc.LoadResult == nil {
+			return fmt.Errorf("no load result")
+		}
+		got := len(tc.LoadResult.Outputs())
+		if got != n {
+			return fmt.Errorf("outputs count: got %d, want %d", got, n)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the loaded outputs should not include "([^"]*)"$`, func(name string) error {
+		if tc.LoadResult == nil {
+			return fmt.Errorf("no load result")
+		}
+		for _, m := range tc.LoadResult.OutputMetadata() {
+			if m.Name == name {
+				return fmt.Errorf("output %q unexpectedly present in loaded metadata", name)
+			}
 		}
 		return nil
 	})

@@ -14,26 +14,29 @@ Feature: Webhook Output
   Scenario: Batch delivery sends events in batches
     Given an auditor with webhook output configured for batch size 5
     When I audit 12 uniquely marked webhook events
-    Then the webhook receiver should have at least 3 requests within 10 seconds
+    Then the webhook receiver should have exactly 3 requests within 10 seconds
 
   Scenario: Single event with batch size 1 delivered immediately
     Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
   Scenario: Flush interval triggers delivery before batch full
     Given an auditor with webhook output configured for batch size 100 and flush interval 200ms
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
   Scenario: Timer resets after batch flush
+    # The receiver counts HTTP requests (one per batch), not the
+    # NDJSON event lines inside. batch_size=2, audit 2 events =>
+    # 1 batch; another 2 events => 1 more batch (cumulative 2).
     Given an auditor with webhook output configured for batch size 2 and flush interval 300ms
     When I audit a uniquely marked webhook "user_create" event "timer1"
     And I audit a uniquely marked webhook "user_create" event "timer2"
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 request within 5 seconds
     When I audit a uniquely marked webhook "user_create" event "timer3"
     And I audit a uniquely marked webhook "user_create" event "timer4"
-    Then the webhook receiver should have at least 2 events within 5 seconds
+    Then the webhook receiver should have exactly 2 requests within 5 seconds
 
   # --- Byte-threshold batching (#687) ---
   #
@@ -43,14 +46,19 @@ Feature: Webhook Output
   # See docs/webhook-output.md "Batching".
 
   Scenario: Webhook flushes batch on byte threshold before count threshold
+    # Receiver counts HTTP requests. 5 × 1 KiB events with 4 KiB byte
+    # threshold and 1000-event count threshold => byte threshold trips
+    # before count, so the batchLoop emits 2 requests (events 1-3 in
+    # the first batch hitting ~3-4 KiB, then events 4-5 + close drain).
     Given an auditor with webhook output configured for batch size 1000 and flush interval 10s and max batch bytes 4096
     When I audit 5 uniquely marked webhook events with 1 KiB payloads
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    And I close the auditor
+    Then the webhook receiver should have at least 1 request within 5 seconds
 
   Scenario: Webhook flushes oversized single event alone
     Given an auditor with webhook output configured for batch size 100 and flush interval 10s and max batch bytes 1024
     When I audit a uniquely marked webhook "user_create" event with a 2048-byte payload
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
   # --- Max event size (#688) ---
   #
@@ -64,14 +72,20 @@ Feature: Webhook Output
     When I audit a uniquely marked webhook "user_create" event "wh_before"
     And I audit a uniquely marked webhook "user_create" event with a 4096-byte payload
     And I audit a uniquely marked webhook "user_create" event "wh_after"
-    Then the webhook receiver should have at least 2 events within 5 seconds
+    Then the webhook receiver should have exactly 2 events within 5 seconds
 
   Scenario: Webhook delivers event within max_event_bytes cap
     Given an auditor with webhook output configured for max event bytes 1048576
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
   # --- Retry logic ---
+  #
+  # Retry-eligible scenarios use "at least N" rather than "exactly N"
+  # because under retry the receiver MAY observe duplicates: a request
+  # that timed out, succeeded server-side, and was retried client-side
+  # arrives twice. Asserting "exactly 1" would make these scenarios
+  # flaky on slow CI runners. (#554)
 
   Scenario: Retry on 503 response with eventual delivery
     Given the webhook receiver is configured to return status 503
@@ -123,28 +137,30 @@ Feature: Webhook Output
   Scenario: Custom headers delivered with events
     Given an auditor with webhook output with custom header "X-Audit-Source" = "bdd-test"
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
     And the received webhook event should have header "X-Audit-Source" with value "bdd-test"
 
   Scenario: Authorization header delivered to receiver
     Given an auditor with webhook output with custom header "Authorization" = "Bearer test-token-123"
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
     And the received webhook event should have header "Authorization" with value "Bearer test-token-123"
 
   Scenario: Content-Type is application/x-ndjson
     Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
     And the received webhook event should have header "Content-Type" with value "application/x-ndjson"
 
   # --- Shutdown flush ---
 
   Scenario: Pending events flushed on shutdown
+    # Receiver counts HTTP requests. 3 events fit in one batch
+    # (batch_size 100, flush 60s) so close emits exactly 1 batch.
     Given an auditor with webhook output configured for batch size 100 and flush interval 60s
     When I audit 3 uniquely marked webhook events
     And I close the auditor
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 request within 5 seconds
 
   # --- SSRF protection ---
 
@@ -158,8 +174,12 @@ Feature: Webhook Output
   Scenario: AllowInsecureHTTP permits http URLs
     Given an auditor with webhook output to "http://localhost:8080/events" with AllowInsecureHTTP
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
+  # SSRF/TLS drop scenarios use "at least N" because the auditor's
+  # batched flush + retry-on-network-error paths can record multiple
+  # drops for a single oversized/blocked batch — the exact count
+  # depends on internal timing and retry budget. (#554)
   Scenario: Private range blocked by default drops events
     Given a local HTTP webhook receiver
     And mock webhook metrics are configured
@@ -172,7 +192,7 @@ Feature: Webhook Output
     Given a local HTTP webhook receiver
     And an auditor with webhook output to the local receiver with AllowPrivateRanges
     When I audit a uniquely marked webhook "user_create" event
-    Then the local webhook receiver should have at least 1 event within 5 seconds
+    Then the local webhook receiver should have exactly 1 event within 5 seconds
 
   Scenario: Redirect is rejected and not followed
     Given a local HTTP webhook receiver configured to redirect
@@ -247,7 +267,7 @@ Feature: Webhook Output
       | actor_id  | alice         |
       | marker    | webhook_all   |
       | target_id | user-42       |
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
     And the webhook event body should contain field "event_type" with value "user_create"
     And the webhook event body should contain field "outcome" with value "success"
     And the webhook event body should contain field "actor_id" with value "alice"
@@ -317,7 +337,7 @@ Feature: Webhook Output
     Given a local HTTPS webhook receiver
     And an auditor with webhook output to the HTTPS receiver with custom CA
     When I audit a uniquely marked webhook "user_create" event
-    Then the HTTPS webhook receiver should have at least 1 event within 5 seconds
+    Then the HTTPS webhook receiver should have exactly 1 event within 5 seconds
 
   Scenario: Webhook HTTPS with wrong CA drops events
     Given a local HTTPS webhook receiver
@@ -334,14 +354,14 @@ Feature: Webhook Output
     Given mock webhook metrics are configured
     And an auditor with webhook output and webhook metrics configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
     And I close the auditor
     And the webhook metrics should have recorded at least 1 flush
 
   Scenario: Nil webhook metrics does not panic
     Given an auditor with webhook output configured for batch size 1
     When I audit a uniquely marked webhook "user_create" event
-    Then the webhook receiver should have at least 1 event within 5 seconds
+    Then the webhook receiver should have exactly 1 event within 5 seconds
 
   # --- Lifecycle ---
 

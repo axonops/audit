@@ -203,6 +203,11 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 		return nil
 	})
 
+	ctx.Step(`^I try to audit event "([^"]*)" with empty fields$`, func(eventType string) error {
+		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, audit.Fields{}))
+		return nil
+	})
+
 	ctx.Step(`^I get a handle for event type "([^"]*)"$`, func(eventType string) error {
 		h, err := tc.Auditor.Handle(eventType)
 		if err != nil {

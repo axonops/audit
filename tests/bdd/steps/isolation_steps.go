@@ -132,6 +132,38 @@ func registerIsolationSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { 
 		return err //nolint:wrapcheck // BDD step
 	})
 
+	// F-25 ValidationMode warn/strict variants. Reuse recOut1 so the
+	// existing `received exactly N events` assertion step works.
+	// Sync mode has no drain goroutine, so no per-scenario Close
+	// cleanup is needed beyond the suite-wide AfterScenario hook.
+	ctx.Step(`^an auditor with synchronous delivery, a recording output, and ValidationMode warn$`, func() error {
+		recOut1 = &recordingMockOutput{name: "recording-1"}
+		var err error
+		tc.Auditor, err = audit.New(
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
+			audit.WithOutputs(recOut1),
+			audit.WithSynchronousDelivery(),
+			audit.WithValidationMode(audit.ValidationWarn),
+		)
+		return err //nolint:wrapcheck // BDD step
+	})
+
+	ctx.Step(`^an auditor with synchronous delivery, a recording output, and ValidationMode strict$`, func() error {
+		recOut1 = &recordingMockOutput{name: "recording-1"}
+		var err error
+		tc.Auditor, err = audit.New(
+			audit.WithTaxonomy(tc.Taxonomy),
+			audit.WithAppName("test-app"),
+			audit.WithHost("test-host"),
+			audit.WithOutputs(recOut1),
+			audit.WithSynchronousDelivery(),
+			audit.WithValidationMode(audit.ValidationStrict),
+		)
+		return err //nolint:wrapcheck // BDD step
+	})
+
 	ctx.Step(`^stdout should have received all (\d+) events$`, func(n int) error {
 		if stdoutBuf == nil {
 			return fmt.Errorf("no stdout buffer configured")

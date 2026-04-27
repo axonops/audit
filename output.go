@@ -53,6 +53,11 @@ type Output interface {
 
 	// Name returns a human-readable identifier for the output,
 	// used in log messages and metrics labels.
+	//
+	// Name MUST NOT return an empty string. Empty names corrupt
+	// metrics labels, hide outputs in error messages, and break
+	// duplicate-name detection. [WithOutputs] and [WithNamedOutput]
+	// reject empty-name outputs at construction time.
 	Name() string
 }
 

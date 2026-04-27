@@ -214,4 +214,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSetLoggerSteps(ctx, tc)
 	registerAsyncEdgesSteps(ctx, tc)
 	registerSyncDeliverySteps(ctx, tc)
+	registerMissingCoverageSteps(ctx, tc)
 }

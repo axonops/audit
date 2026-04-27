@@ -148,6 +148,30 @@ err := auditor.AuditEvent(
 )
 ```
 
+### Setter Types — Typed vs `any`
+
+Every generated setter takes a typed Go parameter, never `any`. The
+type comes from one of two places:
+
+| Field origin | Setter type | Can `type:` change it? |
+|---|---|---|
+| Reserved standard field (see [Reserved Field Names](taxonomy-validation.md#-reserved-field-names) for the canonical list) | Library-authoritative Go type — `string` for most names; `int` for `source_port`, `dest_port`, `file_size`; `time.Time` for `start_time`, `end_time` | No. `type:` MUST NOT be declared on a reserved standard field; the taxonomy parser rejects any such override with an error wrapping `audit.ErrConfigInvalid`. |
+| Consumer-declared field with `type:` annotation | Annotated Go type (see [Typed Custom Fields](#typed-custom-fields)) | — the annotation *is* the source. |
+| Consumer-declared field with no `type:` annotation | `string` (default) | Yes — add `type:` to widen to `int`, `bool`, `time.Time`, etc. |
+
+The `any` parameter type does not appear in generated code: there is
+no path that produces an untyped setter. Reserved fields always use
+the library type; consumer fields default to `string` and become
+typed when annotated.
+
+Compile-time checking therefore extends to value types as well as
+field names:
+
+```go
+e.SetSourcePort(443)    // OK — SetSourcePort takes int
+e.SetSourcePort("443")  // compile error: cannot use "443" (string) as int
+```
+
 ### Typed Custom Fields
 
 Every custom (non-reserved) field in the taxonomy may carry a

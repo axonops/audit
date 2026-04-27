@@ -212,5 +212,5 @@ encounters `type: webhook` in the YAML.
 - [Webhook Output Reference](../../docs/webhook-output.md) — complete configuration, TLS, retry, SSRF, production patterns
 - [NDJSON Specification](https://github.com/ndjson/ndjson-spec) — the payload format
 - [Output Types Overview](../../docs/outputs.md) — all five output types
-- [Example 08: Loki Output](../08-loki-output/) — structured querying with stream labels
+- [Example 14: Loki Output](../14-loki-output/) — structured querying with stream labels
 - [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference

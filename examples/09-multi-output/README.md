@@ -18,7 +18,7 @@ and a log file, both defined in `outputs.yaml`.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [File Output](../05-file-output/)
+- Completed: [File Output](../03-file-output/)
 
 ## Files
 
@@ -81,7 +81,7 @@ receive the event.
 ### When to Add Routing
 
 Without routing rules, every output gets every event. The next example
-([Event Routing](../11-event-routing/)) shows how to send different event
+([Event Routing](../10-event-routing/)) shows how to send different event
 categories to different outputs.
 
 ## Run It

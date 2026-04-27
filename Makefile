@@ -7,7 +7,7 @@
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
-       tidy tidy-check verify check-replace check-todos check-bdd-strict \
+       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict \
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
@@ -362,6 +362,33 @@ check-todos:
 		exit 1; \
 	fi
 
+# Reject broken numeric cross-references in example READMEs (e.g.
+# `../05-file-output/` when `examples/05-formatters/` is the actual
+# directory at index 05). Catches drift after example renumbering.
+#
+# Greps every `examples/*/README.md` for relative links of the form
+# `../NN-slug` (with or without trailing slash, with or without
+# `#anchor`) and verifies that `examples/NN-slug/` exists. Any
+# pointer to a missing directory fails the target with the offending
+# file:line and the bad target.
+check-example-links:
+	@FAILING=""; \
+	for f in examples/*/README.md; do \
+		LINKS=$$(grep -oE '\.\./[0-9][0-9]-[a-z][a-z0-9-]*' "$$f" | sort -u); \
+		for link in $$LINKS; do \
+			target=$$(echo "$$link" | sed -E 's#^\.\./##'); \
+			if [ ! -d "examples/$$target" ]; then \
+				LINENOS=$$(grep -nE "\.\./$$target([/#)]|$$)" "$$f" | cut -d: -f1 | tr '\n' ',' | sed 's/,$$//'); \
+				FAILING="$$FAILING\n  $$f:$$LINENOS -> $$link (no examples/$$target/)"; \
+			fi; \
+		done; \
+	done; \
+	if [ -n "$$FAILING" ]; then \
+		printf "ERROR: broken example README cross-references:%b\n" "$$FAILING"; \
+		exit 1; \
+	fi
+	@echo "All example README cross-references resolve."
+
 # Enforce godog runners use Strict mode so undefined steps fail the
 # suite. This is the contract established by #622 — CI must NEVER
 # silently pass a scenario whose step definition doesn't exist.
@@ -457,7 +484,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-bdd-strict bench-baseline-check release-check security
+check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-example-links check-bdd-strict bench-baseline-check release-check security
 	@echo ""
 	@echo "All checks passed."
 

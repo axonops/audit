@@ -232,7 +232,7 @@ outputs:
       version: "1.0"
 ```
 
-See [Example 14: Formatters](../14-formatters/) for JSON vs CEF
+See [Example 05: Formatters](../05-formatters/) for JSON vs CEF
 comparison.
 
 ## Blank Import Required
@@ -263,5 +263,5 @@ registers the `"syslog"` output factory.
 - [RFC 5424: The Syslog Protocol](https://datatracker.ietf.org/doc/html/rfc5424) — the standard this output implements
 - [RFC 5425: TLS Transport Mapping for Syslog](https://datatracker.ietf.org/doc/html/rfc5425) — TLS transport standard
 - [Output Types Overview](../../docs/outputs.md) — all five output types
-- [Example 14: Formatters](../14-formatters/) — JSON vs CEF side-by-side
+- [Example 05: Formatters](../05-formatters/) — JSON vs CEF side-by-side
 - [Output Configuration YAML](../../docs/output-configuration.md) — full YAML reference

@@ -1,0 +1,60 @@
+# CODEOWNERS — review-required ownership map.
+#
+# Every match in this file requires the listed owner(s) to approve a PR
+# before it can merge into main. Branch protection on `main` enforces
+# this via the "Require review from Code Owners" setting (see
+# docs/releasing.md for the full UI configuration).
+#
+# The file is matched bottom-to-top: the LAST matching entry wins. Order
+# the rules from broad (top) to narrow (bottom) so specific paths
+# override the catch-all. Path-specific entries below intentionally
+# duplicate the catch-all owner; their purpose is to document intent so
+# a future editor knows the path is security-sensitive when the team
+# membership is reviewed.
+#
+# OWNER NOTE: until a dedicated `@axonops/audit-maintainers` GitHub
+# team is created, individual maintainer handles are listed below. The
+# maintainer onboarding step in docs/releasing.md will switch to the
+# team handle once it exists.
+
+# Catch-all default — a maintainer must review every change.
+*                                       @millerjp
+
+# CI/CD and release infrastructure.
+.github/                                @millerjp
+.github/workflows/                      @millerjp
+.github/CODEOWNERS                      @millerjp
+.github/dependabot.yml                  @millerjp
+
+# GoReleaser config — affects every published artefact and Cosign sig.
+.goreleaser.yml                         @millerjp
+
+# Module manifests — affect the public API surface and dependency graph.
+# `**/go.mod` matches the root file too (zero or more path segments).
+**/go.mod                               @millerjp
+**/go.sum                               @millerjp
+
+# Build orchestration.
+Makefile                                @millerjp
+
+# Security policy and threat model.
+SECURITY.md                             @millerjp
+docs/threat-model.md                    @millerjp
+
+# Release process and deployment documentation — change controls match
+# the corresponding GitHub UI settings.
+docs/releasing.md                       @millerjp
+docs/deployment.md                      @millerjp
+
+# Cryptographic primitives — extra scrutiny.
+hmac.go                                 @millerjp
+ssrf.go                                 @millerjp
+ssrf_*.go                               @millerjp
+tls_policy.go                           @millerjp
+secrets/                                @millerjp
+
+# Public test helpers — used by every consumer's test suite.
+audittest/                              @millerjp
+
+# Code generator template — output ships into every consumer.
+cmd/audit-gen/template.go               @millerjp

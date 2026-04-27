@@ -287,6 +287,23 @@ secrets:
 Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
 or `network: udp`) have no `tls_policy` field.
 
+### Tested TLS rejection failure modes
+
+The library's TLS-capable outputs reject defective server
+certificates from the same shared `audit.TLSPolicy` primitive.
+The behaviours below are pinned by BDD scenarios in
+[`tests/bdd/features/syslog_output.feature`](../tests/bdd/features/syslog_output.feature),
+[`webhook_output.feature`](../tests/bdd/features/webhook_output.feature),
+and [`loki_output.feature`](../tests/bdd/features/loki_output.feature)
+(see #552):
+
+| Failure mode | Observed behaviour |
+|---|---|
+| **Expired server certificate** | Client refuses the connection. Syslog (synchronous) returns an error containing `certificate has expired`. Webhook / Loki (asynchronous) drop the event before the HTTPS POST is attempted; the receiver sees zero requests. |
+| **Server certificate CN/SAN does not match the dialled host** | Client refuses the connection with `x509: cannot validate certificate for <host>` (or `is valid for <other-name>` on older Go releases). Same delivery semantics as expired. |
+| **Reconnect after server kill mid-buffer** | Pre-restart events deliver. Post-restart events deliver after the client reconnects. Submitted-counter accounting holds. See [`tests/bdd/features/syslog_output.feature`](../tests/bdd/features/syslog_output.feature) "Crash and replay" block (#553) for the syslog scenarios; webhook and loki use the same retry primitive (`audit.HTTPRetryPolicy`) which is unit-tested in `webhook_output_test.go` / `loki_output_test.go`. |
+| **Three rapid syslog-ng restarts** | Reconnect count stays under the 30-attempt storm threshold; bounded backoff. |
+
 ## 🔐 Secrets Configuration
 
 The optional `secrets:` section configures secret providers

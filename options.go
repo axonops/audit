@@ -282,6 +282,9 @@ func WithOutputs(outputs ...Output) Option {
 		entries := make([]*outputEntry, len(outputs))
 		for i, o := range outputs {
 			name := o.Name()
+			if name == "" {
+				return fmt.Errorf("audit: output Name() must not return an empty string")
+			}
 			if _, dup := byName[name]; dup {
 				return fmt.Errorf("audit: duplicate output name %q", name)
 			}
@@ -390,6 +393,9 @@ func WithNamedOutput(output Output, opts ...OutputOption) Option {
 // optional route/formatter/exclude-label/HMAC configuration.
 func (a *Auditor) addNamedOutput(output Output, b *outputEntryBuilder) error {
 	name := output.Name()
+	if name == "" {
+		return fmt.Errorf("audit: output Name() must not return an empty string")
+	}
 	if a.outputsByName == nil {
 		a.outputsByName = make(map[string]*outputEntry)
 	}

@@ -15,8 +15,11 @@
 package steps
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -46,7 +49,7 @@ func (s *slowMockOutput) Name() string { return "slow-output" }
 // recur across feature files live in isolation_steps.go and
 // async_edges_steps.go.
 //
-//nolint:gocognit // BDD step registration: 4 closures inline; splitting hurts readability
+//nolint:gocognit,gocyclo,cyclop // BDD step registration: many closures inline; splitting hurts readability
 func registerSyncDeliverySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	// audittest scenario state — local to sync_delivery scenarios.
 	var (
@@ -94,6 +97,94 @@ func registerSyncDeliverySteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 		audittestRecorder = rec
 		// Cleanup: NewQuick registers tb.Cleanup; run those on scenario end.
 		tc.AddCleanup(func() { tb.runCleanups() })
+		return nil
+	})
+
+	// F-22 audittest WithSync / WithVerbose / RequireEvents builders
+	// share the audittestAuditor / audittestRecorder closure with the
+	// existing scenarios in sync_delivery.feature.
+	var audittestLogBuf *bytes.Buffer
+	var audittestProbeTB *bddTB
+
+	ctx.Step(`^an audittest auditor created with WithSync$`, func() error {
+		tb := &bddTB{}
+		auditor, rec, _ := audittest.New(tb, []byte(standardTaxonomyYAML), audittest.WithSync())
+		if tb.Failed() {
+			return fmt.Errorf("audittest.New(WithSync) failed: %s", tb.fatalMsg)
+		}
+		audittestAuditor = auditor
+		audittestRecorder = rec
+		tc.AddCleanup(func() { tb.runCleanups() })
+		return nil
+	})
+
+	ctx.Step(`^an audittest auditor created with WithVerbose and a captured logger$`, func() error {
+		tb := &bddTB{}
+		audittestLogBuf = &bytes.Buffer{}
+		captured := slog.New(slog.NewTextHandler(audittestLogBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		auditor, rec, _ := audittest.New(tb, []byte(standardTaxonomyYAML),
+			audittest.WithVerbose(),
+			audittest.WithAuditOption(audit.WithDiagnosticLogger(captured)),
+		)
+		if tb.Failed() {
+			return fmt.Errorf("audittest.New(WithVerbose) failed: %s", tb.fatalMsg)
+		}
+		audittestAuditor = auditor
+		audittestRecorder = rec
+		tc.AddCleanup(func() { tb.runCleanups() })
+		return nil
+	})
+
+	ctx.Step(`^I close the audittest auditor$`, func() error {
+		if audittestAuditor == nil {
+			return errors.New("no audittest auditor")
+		}
+		_ = audittestAuditor.Close()
+		return nil
+	})
+
+	ctx.Step(`^the captured diagnostic log should contain "([^"]*)" lifecycle messages$`, func(needle string) error {
+		if audittestLogBuf == nil {
+			return errors.New("no captured log buffer — did you use 'WithVerbose and a captured logger'?")
+		}
+		if !strings.Contains(audittestLogBuf.String(), needle) {
+			return fmt.Errorf("captured log does not contain %q; got: %s", needle, audittestLogBuf.String())
+		}
+		return nil
+	})
+
+	ctx.Step(`^RequireEvents (\d+) returns the recorded events$`, func(n int) error {
+		if audittestRecorder == nil {
+			return errors.New("no audittest recorder")
+		}
+		probe := &bddTB{}
+		events := audittestRecorder.RequireEvents(probe, n)
+		if probe.Failed() {
+			return fmt.Errorf("RequireEvents(%d) unexpectedly failed: %s", n, probe.fatalMsg)
+		}
+		if len(events) != n {
+			return fmt.Errorf("RequireEvents returned %d events, expected %d", len(events), n)
+		}
+		return nil
+	})
+
+	ctx.Step(`^I call RequireEvents with n=(\d+) expecting failure$`, func(n int) error {
+		if audittestRecorder == nil {
+			return errors.New("no audittest recorder")
+		}
+		probe := &bddTB{}
+		audittestRecorder.RequireEvents(probe, n)
+		audittestProbeTB = probe
+		return nil
+	})
+
+	ctx.Step(`^the audittest test bench should have been failed$`, func() error {
+		if audittestProbeTB == nil {
+			return errors.New("no probe TB — precede with 'I call RequireEvents with n=N expecting failure'")
+		}
+		if !audittestProbeTB.Failed() {
+			return errors.New("expected audittest TB to be failed, but it was not")
+		}
 		return nil
 	})
 

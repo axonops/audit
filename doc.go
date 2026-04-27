@@ -38,8 +38,9 @@
 //
 // # Stability
 //
-// This package is pre-release (v0.x). The API is not yet stable; breaking
-// changes may occur between minor versions until v1.0.0 is released.
+// This package follows semantic versioning. The public API is stable as
+// of v1.0.0; breaking changes will not be introduced within a major
+// version.
 //
 // # Quick Start
 //

@@ -17,13 +17,17 @@ package audit
 import "fmt"
 
 // MigrateTaxonomy applies backwards-compatible migrations to older
-// taxonomy versions. It returns an error wrapping [ErrTaxonomyInvalid]
-// if the version is unsupported.
+// taxonomy versions, transforming an in-memory [*Taxonomy] in place
+// so it conforms to the schema this library version understands.
+// Returns an error wrapping [ErrTaxonomyInvalid] if the version is
+// unsupported (zero, above the maximum, or below the minimum still
+// accepted by this library).
 //
 // This function is called automatically by [WithTaxonomy]; it is
 // exported so that [ParseTaxonomyYAML] and other callers can apply
-// migration before calling [ValidateTaxonomy]. For v0.1.0 only
-// version 1 exists, so this is scaffolding.
+// migration before calling [ValidateTaxonomy]. Currently only
+// version 1 is defined; future versions will add migration steps
+// here.
 func MigrateTaxonomy(t *Taxonomy) error {
 	if t.Version == 0 {
 		return fmt.Errorf("%w: taxonomy version is required: set version to 1", ErrTaxonomyInvalid)

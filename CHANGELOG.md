@@ -99,9 +99,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- Examples `02-code-generation`, `04-testing`, `06-middleware`, `13-standard-fields`, and `15-tls-policy` failed at runtime with `unknown output type "stdout"` because they declared `type: stdout` in `outputs.yaml` without blank-importing anything that registered the stdout factory (stdout auto-registration was removed in #578). The new `_ "github.com/axonops/audit/outputs"` blank import registers stdout alongside the other built-ins (#585).
+- `ValidationError.Unwrap` and `SSRFBlockedError.Unwrap` now return a defensive copy of the wrapped-sentinel slice instead of a shared reference to the internal `[2]error` backing array (#590 part 1 of 2). Previously, a caller that retained and mutated the slice returned by `Unwrap` could corrupt subsequent `errors.Is` / `errors.As` dispatches on the same error value. The fix uses `slices.Clone` at the cost of a 16-byte allocation per `Unwrap` call — only invoked by `errors.Is` / `errors.As` on the consumer-side error-discrimination path, not the audit hot path. Also documents `ComputeHMAC`'s empty-payload / empty-salt / unknown-algorithm rejection behaviour in godoc (previously under-documented). Remaining #590 AC items (`RegisterOutputFactory` and `NewEventKV` error returns) split to PR-B.
+- Syslog reconnect path no longer silently discards the `Close` error on the previous writer. The call previously read `_ = s.writer.Close()` with no comment and no log — a `Close` failure from a mid-handshake TLS teardown, TCP half-close, or unreachable remote produced no diagnostic signal, and operators had no way to link a persistent reconnect loop back to the underlying teardown error. The error is now logged at `slog.LevelDebug` with `address` and `error` attributes; the reconnect itself still proceeds (a fresh transport is about to be established by the subsequent `connect()`, so there is no recoverable action to take beyond observing the failure) (#489)
+- Panic loudly at init if any hardcoded SSRF CIDR or IP literal fails to parse. Previously `cgnatBlock` / `deprecatedSiteLocalBlock` / `awsIPv6MetadataIP` init used `_, n, _ := net.ParseCIDR(...)` (or `net.ParseIP(...)` with no check); a source-level corruption or stdlib regression would have silently produced `nil`, and every subsequent SSRF check would have nil-deref panicked inside `Contains` / `Equal`. A new `mustParseCIDR` / `mustParseIP` wrapper panics with a clear `audit: SSRF init: failed to parse hardcoded CIDR ...` message at package load instead (#488)
 
 ### Breaking Changes
+
+- Logger → Auditor rename across the entire API surface (#457). `audit.Logger` type → `audit.Auditor`; `audit.NewLogger(...)` → `audit.New(...)`; `outputconfig.NewLogger(...)` facade → `outputconfig.New(...)`; YAML top-level `logger:` section → `auditor:` (the old key is rejected as an unknown top-level field at load time); `audit.WithLogger(*slog.Logger)` → `audit.WithDiagnosticLogger(*slog.Logger)`; `audit.LoggerReceiver` interface → `audit.DiagnosticLoggerReceiver`; `audit.Logger.Audit(...)` → `audit.Auditor.AuditEvent(...)`; `audittest.NewLoggerQuick(...)` → `audittest.NewQuick(...)`. Receiver convention `l` → `a`. Migration is mechanical: a global find-and-replace covers the renames; the YAML key rename is a manual edit per `outputs.yaml`. Rationale: the library is an audit logger, not an application logger, and the `Logger` name collided pervasively with `slog.Logger` / consumer logging frameworks across grep, IDE auto-complete, and prose. Stdlib precedent: `database/sql.DB` not `Database`, `http.Client` not `HTTPClient`, OpenTelemetry `trace.Tracer` not `trace.Logger`. The full type / option / interface map is in [#457](https://github.com/axonops/audit/issues/457).
 
 - `audit.Event` interface gains three required methods: `Description() string`, `Categories() []CategoryInfo`, `FieldInfoMap() map[string]FieldInfo` (#597). Custom `Event` implementations must add the three methods. Migration: copy the `basicEvent` zero-value pattern (return `""`, `nil`, `nil`) for taxonomy-agnostic events, or look up from your own taxonomy when you have one. All built-in implementations (basicEvent, generated builders, internal test mocks) updated. **AC corrections**: the issue text proposed `Categories() []string` and `FieldInfo() map[string]FieldInfo`; the implemented signatures are `Categories() []CategoryInfo` (preserves severity, no information loss) and `FieldInfoMap() map[string]FieldInfo` (renamed to avoid collision with generated builders' typed `FieldInfo()` method). Both decisions locked by api-ergonomics-reviewer.
 
@@ -309,13 +313,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add output-specific benchmark coverage for file rotation and outputconfig startup (#504, master tracker C-18 + C-19). Three components: (1) `BenchmarkWriter_Write_WithRotation` in `file/internal/rotate` sets `MaxSize: 4 KiB` + `MaxBackups: 2` + `Compress: false` so rotation fires every ~25 writes and the per-rotation cost is isolable from the write path (delta vs `BenchmarkWriter_Write_SyncOnWriteFalse` captures rename + new file + prune — ≈960 ns/write amortised, ≈24 µs per rotation event); a companion `BenchmarkFileOutput_Write_WithRotation` in the public `file` package uses `MaxSizeMB: 1` (the public API minimum) so rotation is dilute — catches regressions in the `file.Output → rotate.Writer → flush` chain that only surface after a rotate. Both include a post-loop `filepath.Glob` assertion that rotation actually fired, so a silent break in the rotation trigger fails the benchmark instead of reading as a free perf win. (2) `BenchmarkOutputConfigLoad` in a new `outputconfig/bench_test.go` baselines the full parse + envsubst + validate + factory dispatch path against a 4-output fixture (stdout + 3 file variants with routing, HMAC, envsubst, standard-field defaults) at ~485 µs/op, 1.23 MiB/op, ~8,171 allocs/op — a startup-only cost but a useful regression target for consumers reloading config dynamically. Outputs are closed outside the timer; a post-loop assertion verifies Load actually constructed all 4 outputs. (3) `BenchmarkLokiOutput_BatchBuild_HighCardinality` for the Loki 100-distinct-streams worst case already existed from #494 and is now cross-referenced in BENCHMARKS.md as fulfilling the Loki portion of #504's AC.
 - Publish a side-by-side benchmark against `log/slog` + `slog.NewJSONHandler` to answer the adoption-critical "why not just use `slog`?" question with measured numbers. New `BenchmarkSlog_JSONHandler_BaselineComparison` in `bench_comparison_test.go` exercises 3-field and 10-field payloads on both sides, plus audit-only `WithHMAC` and `FanOut4` variants where `slog` has no equivalent. Both sides run synchronously (`audit.WithSynchronousDelivery` on the audit side; `slog.Logger.Info` is synchronous by construction), and each audit sub-benchmark asserts `NoopOutput.Writes() == b.N` at `b.StopTimer` so a silent drop cannot make the ns/op a lie. slog's fast path (`slog.LogAttrs` with pre-constructed `[]slog.Attr`) is represented alongside the ergonomic variadic form so the comparison uses slog's best number. Results published in [`BENCHMARKS.md` § Comparison against log/slog](BENCHMARKS.md#comparison-against-logslog) with prose covering taxonomy validation, framework fields, fan-out, HMAC, and sensitivity-label features that `slog` does not provide. Synchronous-call overhead is ~1.7–1.8 × slog at matched payload sizes — the price of the audit-library guarantees. Benchmarks committed to `bench-baseline.txt` (count=10) so `make bench-compare` tracks regressions; Go stdlib upgrades that change slog numbers are expected to require a rebaseline (#512)
 
-### Fixed
-
-- `ValidationError.Unwrap` and `SSRFBlockedError.Unwrap` now return a defensive copy of the wrapped-sentinel slice instead of a shared reference to the internal `[2]error` backing array (#590 part 1 of 2). Previously, a caller that retained and mutated the slice returned by `Unwrap` could corrupt subsequent `errors.Is` / `errors.As` dispatches on the same error value. The fix uses `slices.Clone` at the cost of a 16-byte allocation per `Unwrap` call — only invoked by `errors.Is` / `errors.As` on the consumer-side error-discrimination path, not the audit hot path. Also documents `ComputeHMAC`'s empty-payload / empty-salt / unknown-algorithm rejection behaviour in godoc (previously under-documented). Remaining #590 AC items (`RegisterOutputFactory` and `NewEventKV` error returns) split to PR-B.
-- Syslog reconnect path no longer silently discards the `Close` error on the previous writer. The call previously read `_ = s.writer.Close()` with no comment and no log — a `Close` failure from a mid-handshake TLS teardown, TCP half-close, or unreachable remote produced no diagnostic signal, and operators had no way to link a persistent reconnect loop back to the underlying teardown error. The error is now logged at `slog.LevelDebug` with `address` and `error` attributes; the reconnect itself still proceeds (a fresh transport is about to be established by the subsequent `connect()`, so there is no recoverable action to take beyond observing the failure) (#489)
-- Panic loudly at init if any hardcoded SSRF CIDR or IP literal fails to parse. Previously `cgnatBlock` / `deprecatedSiteLocalBlock` / `awsIPv6MetadataIP` init used `_, n, _ := net.ParseCIDR(...)` (or `net.ParseIP(...)` with no check); a source-level corruption or stdlib regression would have silently produced `nil`, and every subsequent SSRF check would have nil-deref panicked inside `Contains` / `Equal`. A new `mustParseCIDR` / `mustParseIP` wrapper panics with a clear `audit: SSRF init: failed to parse hardcoded CIDR ...` message at package load instead (#488)
-- Data race on the diagnostic logger field in `webhook`, `file`, `syslog`, `loki` outputs. `SetDiagnosticLogger` performed a plain field assignment while background goroutines concurrently read the same field. Race detector now passes `-count=100` across all four outputs. The field is `atomic.Pointer[slog.Logger]`; writers use `Store`, readers use `Load`. No API-shape change; no functional behaviour change (#474)
-
 ### Security
 
 - Cap per-event byte size at `Write()` entry across all three async outputs (syslog, loki, webhook) to defend against consumer-controlled memory pressure (#688). Each `Config` now has a `MaxEventBytes` field (default 1 MiB, range 1 KiB–10 MiB, YAML key `max_event_bytes`). Events whose byte length exceeds the cap are rejected with the new `audit.ErrEventTooLarge` sentinel wrapping `audit.ErrValidation`; `OutputMetrics.RecordDrop()` is called and the diagnostic logger records the reject. Without this cap, a 10 MiB event in the default 10 000-slot buffer could pin ~100 GiB of memory before backpressure triggers — and the pre-existing batching path concentrates the blast radius because an oversized event flushes alone while the preceding batch may still be held for retry. `Write()` now returns a non-nil error on oversized input where it previously returned nil for buffer-full drops — that buffer-full contract is preserved; the new reject path is specifically for the oversized class. Consumers can `errors.Is(err, audit.ErrEventTooLarge)` to discriminate.
@@ -329,6 +326,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Redact user-controlled substrings from every `secrets.ParseRef` and `secrets.Ref.Valid` error message. Previously the `invalid scheme %q` error echoed the caller-supplied scheme verbatim — a malformed reference such as `ref+LEAK-SCHEME://...` would surface `LEAK-SCHEME` in any log line that printed the error. A single user-controlled substring in a diagnostic log is a leakage vector (scheme, path, and key portions of a ref are all potentially sensitive in real deployments). The error message is now category-level only (`invalid scheme (redacted, must match [a-z][a-z0-9-]*)`); sentinel `ErrMalformedRef` still wraps the error, preserving `errors.Is` discrimination (#486)
 - Enforce a 1-second minimum floor on the derived `http.Transport.ResponseHeaderTimeout` in the `webhook` and `loki` outputs. Previously the value was `Config.Timeout / 2`, which could become a sub-second figure (or even `0` for a misconfigured nanosecond-scale Timeout) unable to complete a real TLS handshake + server response. The overall `http.Client.Timeout` still enforces the caller-configured deadline unchanged; only the per-stage detection of a slow-to-respond server is now prevented from dropping below 1 second (#485)
 - Cap the response-body drain to **4 KiB on any 3xx response** in the `webhook` and `loki` outputs. `net/http.Client.CheckRedirect` rejects standard redirects (301/302/303/307/308 with a `Location` header), but a non-redirect 3xx (for example `300 Multiple Choices`, `304 Not Modified`, or a redirect code without a `Location` header) still reaches our `defer`-based drain. Without this cap an attacker-controlled endpoint could force up to `maxResponseDrain` (1 MiB for webhook, 64 KiB for loki) of traffic per *request* — and with the maximum permitted `max_retries` of 20 that becomes 20 × per event. Non-redirect 3xx is treated as a non-retryable client error, so in practice only one drain occurs per event; the cap is still necessary because configuration or policy can change retry semantics, and retries do occur on 5xx where the larger body budget continues to apply. The previous 1 MiB / 64 KiB caps continue to apply to 2xx / 4xx / 5xx responses where the body may carry useful diagnostic information (#484)
+
+## Pre-v1.0.0 Development History
+
+The sections below predate the v1.0.0 release-prep reorganisation
+above. They are retained verbatim for historical reference and to
+preserve traceability of every change against its originating PR.
+The v1.0.0 entries above are the authoritative summary for this
+release; the items below describe the v0.x development path that led
+here.
 
 ### Added
 
@@ -344,7 +350,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `WithFactory` LoadOption for per-call factory overrides (#399)
 - `webhook.WithDiagnosticLogger`, `syslog.WithDiagnosticLogger`, `loki.WithDiagnosticLogger`, `file.WithDiagnosticLogger` functional options on each output module's `New()` — route construction-time TLS and permission warnings to a caller-supplied logger rather than `slog.Default` (#490)
 - `outputconfig.WithDiagnosticLogger` LoadOption — threads the auditor's diagnostic logger through every output constructed by `outputconfig.Load`. Pair with `audit.WithDiagnosticLogger` on the `Auditor` for consistent routing of both construction-time and runtime warnings (#490)
-- Runtime introspection methods: `BufferLen()`, `BufferCap()`, `OutputNames()`, `IsCategoryEnabled()`, `IsEventEnabled()`, `IsDisabled()`, `IsSynchronous()` (#404)
+- Runtime introspection methods: `QueueLen()`, `QueueCap()`, `OutputNames()`, `IsCategoryEnabled()`, `IsEventEnabled()`, `IsDisabled()`, `IsSynchronous()` (#404)
 - `docs/writing-custom-outputs.md` — interface hierarchy and decision tree (#397)
 - `docs/migrating-from-application-logging.md` — side-by-side coexistence guide (#397)
 
@@ -352,14 +358,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - All 18 examples rewritten to use simplified API — net deletion of 285 lines (#396)
 - Unknown output type error message now suggests both specific import and convenience package (#393)
-- `audittest.NewLoggerQuick` defaults to synchronous delivery (#403)
+- `audittest.NewQuick` defaults to synchronous delivery (#403)
 
-- `default_formatter` YAML key removed — set `formatter:` on each output individually. Outputs without a `formatter:` block default to JSON. If you previously used `default_formatter: { type: json, timestamp: unix_ms }` or `default_formatter: { omit_empty: true }`, move those settings to each output's `formatter:` block or use `logger: { omit_empty: true }` for the `omit_empty` case (#305)
+- `default_formatter` YAML key removed — set `formatter:` on each output individually. Outputs without a `formatter:` block default to JSON. If you previously used `default_formatter: { type: json, timestamp: unix_ms }` or `default_formatter: { omit_empty: true }`, move those settings to each output's `formatter:` block or use `auditor: { omit_empty: true }` for the `omit_empty` case (#305)
 - Progressive examples renumbered: outputs grouped together, 04-12 → 05-17 with gaps for new examples (#278)
 - Progressive examples renumbered: new 03-standard-fields inserted, 03-11 → 04-12 (#237)
 - Bare optional declaration of reserved standard fields now rejected by `ValidateTaxonomy` — use `required: true` or add labels (#237)
 - CEF `event_category` extension key changed from `eventCategory` to `cat` (ArcSight `deviceEventCategory`) (#237)
-- `Logger.Audit(eventType, fields)` replaced by `Logger.AuditEvent(Event)` (#205)
+- `Auditor.Audit(eventType, fields)` replaced by `Auditor.AuditEvent(Event)` (#205)
 - Taxonomy YAML `required:` and `optional:` replaced by unified `fields:` map (#195)
 - `Taxonomy.Categories` type changed from `map[string][]string` to `map[string]*CategoryDef` (#188)
 - `EventDef.Category` (string) replaced by `EventDef.Categories` ([]string) — derived from categories map (#188)
@@ -367,26 +373,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `MatchesRoute` signature now requires a `severity int` parameter (#187)
 - `Taxonomy.DefaultEnabled` field removed — all categories are enabled by default (#12)
 - `InjectLifecycleEvents`, `EmitStartup`, and automatic shutdown event removed (#12)
-
-### Changed
-
 - Buffer-full slog.Warn rate-limited to at most once per 10 seconds across core, webhook, and loki outputs. Drop count included in warning message. (#251)
 - JSON post-serialisation append reduced from 6 to 1 allocs/op (#229)
 - HMAC drain-loop: hash reuse via Reset() + pre-allocated buffers, 8 → 1 extra alloc per event (#230)
 - SSRF dial control extracted from webhook/internal/ssrf to core audit package (#256)
 
+## Foundation Releases
+
 ### Added
 
-- **Secret provider integration** (`go-audit/secrets`, `go-audit/secrets/openbao`, `go-audit/secrets/vault`) — resolve sensitive config values from external secret stores using `ref+SCHEME://PATH#KEY` syntax in YAML (#353)
-  - `Provider` interface with optional `BatchProvider` for path-level caching
-  - OpenBao and Vault KV v2 providers: thin HTTP clients, HTTPS-only, SSRF protection, redirect blocking, token zeroing
-  - Resolution pipeline: env vars → ref resolution → safety-net scan for unresolved refs
-  - HMAC disabled bypass: `enabled` resolved first, remaining refs skipped when false
-  - `WithSecretProvider` and `WithSecretTimeout` LoadOptions on `outputconfig.Load()`
-  - **Breaking**: `outputconfig.Load()` signature adds `context.Context` and `...LoadOption`
-  - 22 BDD scenarios + 6 real-container integration scenarios (OpenBao + Vault with dev-tLS)
-  - Docker Compose for OpenBao and Vault dev-tls containers
-  - Comprehensive documentation: authentication guide, troubleshooting, error reference
+- `secrets.Provider` interface for resolving sensitive config values from external secret stores using `ref+SCHEME://PATH#KEY` syntax in YAML, with optional `BatchProvider` for path-level caching (#353).
+- OpenBao secret provider (`go-audit/secrets/openbao`) — thin HTTP client, HTTPS-only, SSRF protection, redirect blocking, token zeroing on Close (#353).
+- Vault secret provider (`go-audit/secrets/vault`) — KV v2 API support, HTTPS-only, SSRF protection, redirect blocking, token zeroing on Close (#353).
+- Secret-resolution pipeline: env vars → ref resolution → safety-net scan for unresolved refs. HMAC `enabled` resolved first so remaining HMAC refs are skipped when HMAC is disabled. `WithSecretProvider` and `WithSecretTimeout` LoadOptions on `outputconfig.Load()` (#353).
+- Secrets documentation: authentication guide, troubleshooting, error reference, plus 22 BDD scenarios + 6 real-container integration scenarios (OpenBao + Vault with dev-TLS) and Docker Compose for both providers (#353).
 - **Grafana Loki output** (`go-audit/loki`) — stream labels, gzip compression, multi-tenancy, batched delivery with retry (#251)
   - Config: URL, BasicAuth/BearerToken, TenantID, static + dynamic labels, batching, compression
   - Stream labels: app_name, host, pid, event_type, event_category, severity (individually toggleable)

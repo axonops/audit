@@ -21,6 +21,9 @@ Feature: YAML Output Configuration
       | actor_id | alice   |
     And I close the auditor
     Then the audit call should have succeeded
+    And the captured output should contain "user_create"
+    And the captured output should contain "alice"
+    And the loaded auditor metadata should have app_name "test"
 
   Scenario: Load file output with routing from YAML
     Given a test taxonomy
@@ -190,6 +193,7 @@ Feature: YAML Output Configuration
       | outcome  | success |
       | actor_id | alice   |
     Then the audit call should have succeeded
+    And the loaded auditor metadata should have timezone ""
 
   Scenario: timezone present in output config YAML
     Given a test taxonomy
@@ -209,6 +213,7 @@ Feature: YAML Output Configuration
       | outcome  | success |
       | actor_id | alice   |
     Then the audit call should have succeeded
+    And the loaded auditor metadata should have timezone "UTC"
 
   # --- standard_fields in output config (#237) ---
 
@@ -231,6 +236,8 @@ Feature: YAML Output Configuration
       | outcome  | success |
       | actor_id | alice   |
     Then the audit call should have succeeded
+    And the captured output should contain "10.0.0.1"
+    And the captured output should contain "source_ip"
 
   Scenario: standard_fields with unknown field rejected
     Given a test taxonomy
@@ -372,3 +379,5 @@ Feature: YAML Output Configuration
       | outcome  | success |
       | actor_id | alice   |
     Then the audit call should have succeeded
+    And the loaded auditor metadata should have app_name "injected-app"
+    And the captured output should contain "injected-app"

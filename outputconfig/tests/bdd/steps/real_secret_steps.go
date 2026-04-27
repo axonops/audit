@@ -60,6 +60,16 @@ func registerRealSecretSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		`^the HMAC config should have algorithm "([^"]*)"$`,
 		tc.stepAssertHMACAlgorithm,
 	)
+
+	ctx.Step(
+		`^the HMAC config should have version "([^"]*)"$`,
+		tc.stepAssertHMACVersion,
+	)
+
+	ctx.Step(
+		`^output "([^"]*)" HMAC should have salt "([^"]*)"$`,
+		tc.stepAssertNamedOutputHMACSalt,
+	)
 }
 
 // stepRealProvider extracts the CA cert from the container and creates
@@ -243,4 +253,44 @@ func (tc *TestContext) stepAssertHMACAlgorithm(expected string) error {
 		return fmt.Errorf("HMAC algorithm: got %q, want %q", hmac.Algorithm, expected)
 	}
 	return nil
+}
+
+// stepAssertHMACVersion checks the HMAC salt version on the first output.
+func (tc *TestContext) stepAssertHMACVersion(expected string) error {
+	if tc.LoadResult == nil {
+		return fmt.Errorf("no load result")
+	}
+	meta := tc.LoadResult.OutputMetadata()
+	if len(meta) == 0 {
+		return fmt.Errorf("no outputs")
+	}
+	hmac := meta[0].HMACConfig
+	if hmac == nil {
+		return fmt.Errorf("HMAC config is nil")
+	}
+	if hmac.Salt.Version != expected {
+		return fmt.Errorf("HMAC version: got %q, want %q", hmac.Salt.Version, expected)
+	}
+	return nil
+}
+
+// stepAssertNamedOutputHMACSalt checks the HMAC salt on the named
+// output. Used by multi-output secret-resolution scenarios.
+func (tc *TestContext) stepAssertNamedOutputHMACSalt(name, expected string) error {
+	if tc.LoadResult == nil {
+		return fmt.Errorf("no load result")
+	}
+	for _, m := range tc.LoadResult.OutputMetadata() {
+		if m.Name != name {
+			continue
+		}
+		if m.HMACConfig == nil {
+			return fmt.Errorf("output %q: HMAC config is nil", name)
+		}
+		if got := string(m.HMACConfig.Salt.Value); got != expected {
+			return fmt.Errorf("output %q HMAC salt: got %q, want %q", name, got, expected)
+		}
+		return nil
+	}
+	return fmt.Errorf("output %q not found in metadata", name)
 }

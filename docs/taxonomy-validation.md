@@ -100,18 +100,19 @@ events:
 
 ## 📂 Categories
 
-Categories group related events. Each category maps to either a
-simple list of event names or a struct with optional severity:
+Categories group related events. Each category supports two equivalent
+forms — both parse to the same internal representation, and mixing
+forms within a taxonomy MUST NOT change the resolved severity, the
+event-to-category mapping, or any other observable behaviour.
 
-**Simple list:**
-```yaml
-categories:
-  read:
-    - user_read
-    - config_read
-```
+### Expanded form (preferred style)
 
-**Struct with severity:**
+The expanded form is RECOMMENDED when any category in your taxonomy
+uses a default severity — keeping every category in the same shape
+makes the severity intent visible at a glance. Examples in this
+repository (root `README.md`,
+`examples/02-code-generation/taxonomy.yaml`) all use the expanded form:
+
 ```yaml
 categories:
   security:
@@ -121,8 +122,26 @@ categories:
       - auth_success
 ```
 
-Both formats can be mixed in the same taxonomy. Severity is optional
-(defaults to `5` if not set at either category or event level).
+### Compact form (shorthand)
+
+When a category does not need a default severity, the compact form is
+a flat list of event names — equivalent to the expanded form with no
+`severity` key:
+
+```yaml
+categories:
+  read:
+    - user_read
+    - config_read
+```
+
+The two forms are interchangeable. The compact form is purely a
+shorthand: `read: [user_read, config_read]` parses identically to
+`read: { events: [user_read, config_read] }` (severity defaults to
+`5` when not set at either category or event level).
+
+Both forms may be mixed within the same taxonomy, but using one form
+consistently makes the file easier to skim.
 
 An event can belong to multiple categories. Events not in any
 category are valid and always globally enabled.

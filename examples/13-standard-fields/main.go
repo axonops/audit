@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Example 03: Standard Fields & Framework Configuration
+// Example 13: Standard Fields & Framework Configuration
 //
 // This example shows the 31 reserved standard audit fields that are
 // always available on every event without taxonomy declaration, and

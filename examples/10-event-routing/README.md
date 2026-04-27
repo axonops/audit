@@ -207,7 +207,7 @@ All three events appear on stdout (all events). Each file contains only
 the events matching its route:
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=4
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=4 synchronous=false
 INFO audit: shutdown started
 ... (stdout shows all three events)
 INFO audit: shutdown complete duration=...

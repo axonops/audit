@@ -134,7 +134,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=5 shutdown_timeout=2s validation_mode=strict outputs=2
+INFO audit: auditor created queue_size=5 shutdown_timeout=2s validation_mode=strict outputs=2 synchronous=false
 --- Level 1: Core Queue (queue_size: 5) ---
 Emitting 20 events in a tight loop...
 WARN audit: queue full, events dropped dropped=1 queue_size=5

@@ -149,7 +149,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1 synchronous=false
 GET http://127.0.0.1:.../healthz -> 200
 GET http://127.0.0.1:.../items -> 200
 POST http://127.0.0.1:.../items -> 201

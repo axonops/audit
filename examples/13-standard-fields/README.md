@@ -180,7 +180,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1 synchronous=false
 --- Event with standard fields ---
 --- Event with default source_ip ---
 --- Event with explicit source_ip ---

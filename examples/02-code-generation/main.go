@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"log"
 
 	"github.com/axonops/audit/outputconfig"
@@ -43,11 +44,32 @@ func main() {
 	}
 	defer func() { _ = auditor.Close() }()
 
+	fmt.Println("--- Using typed event builders ---")
+
 	// All event types, field names, and categories are generated constants.
 	// A typo like "NewUserCrateEvent" would fail at compile time.
 	if auditErr := auditor.AuditEvent(
 		NewUserCreateEvent("alice", "success").
 			SetTargetID("user-42"),
+	); auditErr != nil {
+		log.Printf("audit: %v", auditErr)
+	}
+
+	// Reserved standard fields (reason, source_ip, …) get typed
+	// setters on every generated builder.
+	if auditErr := auditor.AuditEvent(
+		NewAuthFailureEvent("unknown", "failure").
+			SetReason("invalid credentials").
+			SetSourceIP("192.168.1.100"),
+	); auditErr != nil {
+		log.Printf("audit: %v", auditErr)
+	}
+
+	// Reserved standard fields (here, actor_id) are typed even when not
+	// declared in the event's taxonomy fields.
+	if auditErr := auditor.AuditEvent(
+		NewUserReadEvent("success").
+			SetActorID("bob"),
 	); auditErr != nil {
 		log.Printf("audit: %v", auditErr)
 	}

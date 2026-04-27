@@ -143,7 +143,9 @@ func registerAuditWhenBasicSteps(ctx *godog.ScenarioContext, tc *AuditTestContex
 
 	ctx.Step(`^I audit event "([^"]*)" with required fields$`, func(eventType string) error {
 		fields := defaultRequiredFields(tc.Taxonomy, eventType)
+		start := time.Now()
 		tc.LastErr = tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
+		tc.LastAuditDuration = time.Since(start)
 		return nil
 	})
 

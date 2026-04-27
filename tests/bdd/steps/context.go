@@ -37,12 +37,13 @@ import (
 // A fresh context is created for every scenario in BeforeScenario.
 type AuditTestContext struct { //nolint:govet // fieldalignment: readability preferred over packing
 	// Auditor state.
-	Auditor     *audit.Auditor
-	EventHandle *audit.EventHandle
-	LastEvent   audit.Event // captured by NewEvent / NewEventKV scenarios (#597)
-	LastErr     error
-	Taxonomy    *audit.Taxonomy
-	Options     []audit.Option
+	Auditor           *audit.Auditor
+	EventHandle       *audit.EventHandle
+	LastEvent         audit.Event // captured by NewEvent / NewEventKV scenarios (#597)
+	LastErr           error
+	LastAuditDuration time.Duration // measured by `I audit event ... with required fields` (#549 sync timing)
+	Taxonomy          *audit.Taxonomy
+	Options           []audit.Option
 
 	// Output capture.
 	StdoutBuf         *bytes.Buffer     // in-memory output for non-Docker scenarios
@@ -113,6 +114,7 @@ func (tc *AuditTestContext) Reset() {
 	tc.Auditor = nil
 	tc.EventHandle = nil
 	tc.LastErr = nil
+	tc.LastAuditDuration = 0
 	tc.Taxonomy = nil
 	tc.Options = nil
 	tc.StdoutBuf = nil
@@ -211,4 +213,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerContextAPISteps(ctx, tc)
 	registerSetLoggerSteps(ctx, tc)
 	registerAsyncEdgesSteps(ctx, tc)
+	registerSyncDeliverySteps(ctx, tc)
 }

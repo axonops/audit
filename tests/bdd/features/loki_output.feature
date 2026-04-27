@@ -351,3 +351,24 @@ Feature: Loki Output
     Given an auditor with loki output with max event bytes 1048576
     When I audit a uniquely marked "user_create" event
     Then the loki server should contain the marker within 15 seconds
+
+  # --- TLS rejection (#552) ---
+  #
+  # See the matching block in webhook_output.feature for the
+  # rationale: HTTPS delivery is async, so the TLS rejection is
+  # observed by asserting the bad-cert receiver never sees the
+  # request. Synchronous error-string coverage lives in the
+  # syslog_output.feature TLS rejection scenarios, which exercise
+  # the same audit.TLSPolicy primitive.
+
+  Scenario: Loki HTTPS rejects an expired server certificate
+    Given bad TLS certs are generated
+    And a loki HTTPS receiver presenting an expired certificate
+    When I try to send a loki event to that receiver
+    Then the bad-cert receiver should have received no requests
+
+  Scenario: Loki HTTPS rejects a wrong-CN server certificate
+    Given bad TLS certs are generated
+    And a loki HTTPS receiver presenting a wrong-CN certificate
+    When I try to send a loki event to that receiver
+    Then the bad-cert receiver should have received no requests

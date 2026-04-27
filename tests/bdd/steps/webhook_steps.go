@@ -702,7 +702,10 @@ func registerWebhookThenCountSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		return assertWebhookEventCount(tc, n, time.Duration(timeout)*time.Second)
 	})
 
-	ctx.Step(`^the webhook receiver should have exactly (\d+) events within (\d+) seconds$`, func(n, timeout int) error {
+	// #554 exact-count for non-retry happy paths. `events?|requests?`
+	// covers both event and request semantics — receiver counts are
+	// the same underlying counter.
+	ctx.Step(`^the webhook receiver should have exactly (\d+) (?:events?|requests?) within (\d+) seconds$`, func(n, timeout int) error {
 		return assertWebhookExactCount(tc, n, time.Duration(timeout)*time.Second)
 	})
 
@@ -721,6 +724,7 @@ func registerWebhookThenBodySteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the webhook should not contain event_type "([^"]*)"$`, func(eventType string) error { return assertWebhookNoEventType(tc, eventType) })
 }
 
+//nolint:gocognit,gocyclo,cyclop // BDD step registration: many closures inline; splitting hurts readability
 func registerWebhookThenLocalReceiverSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 	ctx.Step(`^the HTTPS webhook receiver should have at least (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
 		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
@@ -736,6 +740,23 @@ func registerWebhookThenLocalReceiverSteps(ctx *godog.ScenarioContext, tc *Audit
 			return fmt.Errorf("no local webhook receiver configured")
 		}
 		return pollReceiverCount("local", r.eventCount, n, timeout)
+	})
+
+	// #554 exact-count variants
+	ctx.Step(`^the HTTPS webhook receiver should have exactly (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
+		r, ok := tc.TLSReceiver.(*tlsWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no TLS webhook receiver configured")
+		}
+		return pollReceiverExactCount("HTTPS", r.eventCount, n, timeout)
+	})
+
+	ctx.Step(`^the local webhook receiver should have exactly (\d+) events? within (\d+) seconds$`, func(n, timeout int) error {
+		r, ok := tc.LocalReceiver.(*localWebhookReceiver)
+		if !ok || r == nil {
+			return fmt.Errorf("no local webhook receiver configured")
+		}
+		return pollReceiverExactCount("local", r.eventCount, n, timeout)
 	})
 
 	ctx.Step(`^the HTTPS webhook receiver should have received (\d+) events$`, func(expected int) error {
@@ -1113,6 +1134,25 @@ func pollReceiverCount(label string, countFn func() int, minCount, timeoutSecs i
 		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("wanted >= %d %s webhook events, got %d after %ds", minCount, label, countFn(), timeoutSecs)
+}
+
+// pollReceiverExactCount waits up to timeoutSecs for the count to
+// reach exactCount, then verifies no more events have arrived. Used
+// by #554 non-retry happy-path scenarios where duplicate delivery
+// is a regression.
+func pollReceiverExactCount(label string, countFn func() int, exactCount, timeoutSecs int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+	for time.Now().Before(deadline) {
+		got := countFn()
+		if got >= exactCount {
+			if got == exactCount {
+				return nil
+			}
+			return fmt.Errorf("wanted exactly %d %s webhook events, got %d", exactCount, label, got)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("wanted exactly %d %s webhook events, got %d after %ds", exactCount, label, countFn(), timeoutSecs)
 }
 
 func createWebhookAuditorSSRF(tc *AuditTestContext, url string, allowPrivate bool) error {

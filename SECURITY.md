@@ -46,6 +46,39 @@ We follow coordinated disclosure with a 90-day window:
 5. Reporter may publish their findings after the advisory is published,
    or after 90 days from the initial report — whichever comes first
 
+## Threat Model
+
+The library's full threat model — actors, assets, trust boundaries,
+guarantees, and explicit non-guarantees — lives in
+[docs/threat-model.md](docs/threat-model.md). Read it before
+deploying to a regulated or hostile environment. Highlights:
+
+- **Actors**: trusted developer (taxonomy author, `AuditEvent` caller),
+  trusted operator (`outputs.yaml` + secret store + network policy),
+  untrusted upstream caller (event field values), untrusted downstream
+  endpoint (SIEM / collector), in-transit attacker, co-located
+  attacker (out of scope — see Non-Guarantees).
+- **Assets**: audit-trail integrity and confidentiality, operator
+  credentials (HMAC salts, bearer tokens, mTLS keys), application
+  availability, diagnostic-log integrity.
+- **Trust boundaries**: taxonomy YAML is **trusted** (compiled in via
+  `go:embed`); `outputs.yaml` and env vars are **trusted-from-disk**
+  (operator-owned); event field values are **untrusted** and SHOULD
+  flow through `audit.Sanitizer` at the consumer's boundary; network
+  egress is **untrusted** and gated by the SSRF block list and TLS
+  1.3 default.
+- **Guarantees** the library makes (each test-locked): no log
+  injection, SSRF block list, TLS 1.3 by default, HMAC tamper
+  detection, no credentials in `String()` / `%v` output, at-most-once
+  delivery within a process, bounded per-event memory
+  (`MaxEventBytes`), no panics escape the package boundary,
+  constant-time HMAC verification, init-time fail-fast on hardcoded
+  SSRF data.
+- **Non-guarantees** (operator MUST NOT rely on these): producer
+  backpressure, full memory zeroing of credentials, taxonomy
+  integrity at runtime, defence against co-located attackers reading
+  process memory, defence against a compromised downstream.
+
 ## Scope
 
 If you believe you have found a flaw in the library's own defences

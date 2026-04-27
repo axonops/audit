@@ -150,8 +150,15 @@ events:
 ```
 
 > 💡 Fields like `target_id`, `source_ip`, and `reason` are **reserved standard
-> fields** — always available on every event without declaration. Use
-> `.SetTargetID()`, `.SetSourceIP()`, etc. on any builder.
+> fields** — 31 framework-defined fields (actor_id, outcome, target_id,
+> source_ip, reason, error_code, request_id, session_id, trace_id,
+> latency_ms, …) that are always available on every event without
+> declaration in the YAML. Generated builders expose them as typed
+> setters: `.SetTargetID(string)`, `.SetSourceIP(string)`,
+> `.SetReason(string)`, `.SetLatencyMS(int64)`, etc. The library
+> rejects taxonomies that re-declare a reserved name. See
+> [docs/taxonomy-validation.md#reserved-field-names](docs/taxonomy-validation.md#-reserved-field-names)
+> for the full table of 31 names, types, and CEF mappings.
 
 ### 2️⃣ Configure outputs (`outputs.yaml`) - This is your config. 
 

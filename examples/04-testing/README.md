@@ -19,7 +19,7 @@ an in-memory test logger that captures events and metrics for assertion.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Capstone](../17-capstone/)
+- Completed: [Code Generation](../02-code-generation/)
 
 ## Files
 

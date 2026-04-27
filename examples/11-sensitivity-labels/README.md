@@ -20,7 +20,7 @@ and a PCI compliance log keeps PII but strips payment card data.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Event Routing](../11-event-routing/)
+- Completed: [Event Routing](../10-event-routing/)
 
 ## Files
 

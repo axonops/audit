@@ -21,7 +21,7 @@ patterns side by side: **selective** (only security events) and
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Sensitivity Labels](../12-sensitivity-labels/)
+- Completed: [Sensitivity Labels](../11-sensitivity-labels/)
 
 ## Files
 

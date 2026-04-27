@@ -18,7 +18,7 @@ aggregators and CEF for SIEM tools like Splunk, ArcSight, or QRadar.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [HMAC Integrity](../13-hmac-integrity/)
+- Completed: [Code Generation](../02-code-generation/)
 
 ## Files
 

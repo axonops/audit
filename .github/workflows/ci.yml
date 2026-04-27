@@ -146,6 +146,9 @@ jobs:
       - name: Check replace directives
         run: make check-replace
 
+      - name: Check example README cross-references
+        run: make check-example-links
+
       # BDD Strict-mode guard — MUST run before any test matrix so a
       # regression fails loudly and early, not buried inside a later
       # test job. There is NO circumstance under which BDD runners may

@@ -25,7 +25,7 @@ checks are silently skipped.
 ## Prerequisites
 
 - Go 1.26+
-- Completed: [Formatters](../14-formatters/)
+- Completed: [Formatters](../05-formatters/)
 
 ## Files
 

@@ -388,7 +388,7 @@ func (e *AuthFailureEvent) FieldInfo() AuthFailureFields {
 // Categories returns the categories this event belongs to.
 func (e *AuthFailureEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategorySecurity},
+		{Name: CategorySecurity, Severity: auditIntPtr(8)},
 	}
 }
 
@@ -718,7 +718,7 @@ func (e *AuthSuccessEvent) FieldInfo() AuthSuccessFields {
 // Categories returns the categories this event belongs to.
 func (e *AuthSuccessEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategorySecurity},
+		{Name: CategorySecurity, Severity: auditIntPtr(8)},
 	}
 }
 
@@ -1048,7 +1048,7 @@ func (e *UserCreateEvent) FieldInfo() UserCreateFields {
 // Categories returns the categories this event belongs to.
 func (e *UserCreateEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite},
+		{Name: CategoryWrite, Severity: auditIntPtr(3)},
 	}
 }
 
@@ -1378,7 +1378,7 @@ func (e *UserDeleteEvent) FieldInfo() UserDeleteFields {
 // Categories returns the categories this event belongs to.
 func (e *UserDeleteEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryWrite},
+		{Name: CategoryWrite, Severity: auditIntPtr(3)},
 	}
 }
 
@@ -1713,7 +1713,7 @@ func (e *UserReadEvent) FieldInfo() UserReadFields {
 // Categories returns the categories this event belongs to.
 func (e *UserReadEvent) Categories() []audit.CategoryInfo {
 	return []audit.CategoryInfo{
-		{Name: CategoryRead},
+		{Name: CategoryRead, Severity: auditIntPtr(1)},
 	}
 }
 
@@ -1756,3 +1756,7 @@ func (e *UserReadEvent) FieldInfoMap() map[string]audit.FieldInfo {
 		FieldUserAgent:  {Name: FieldUserAgent},
 	}
 }
+
+// auditIntPtr returns a pointer to the given int. It is generator-owned
+// helper (prefixed to avoid collision with any consumer-defined intPtr).
+func auditIntPtr(n int) *int { return &n }

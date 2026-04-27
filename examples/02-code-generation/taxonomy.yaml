@@ -2,13 +2,19 @@ version: 1
 
 categories:
   write:
-    - user_create
-    - user_delete
+    severity: 3
+    events:
+      - user_create
+      - user_delete
   read:
-    - user_read
+    severity: 1
+    events:
+      - user_read
   security:
-    - auth_failure
-    - auth_success
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
 
 events:
   user_create:

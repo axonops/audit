@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Example 18: Buffering and Backpressure
+// Example 16: Buffering and Backpressure
 //
 // Demonstrates the two-level buffering architecture:
 //

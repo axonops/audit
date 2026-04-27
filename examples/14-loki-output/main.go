@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Example 08: Loki Output
+// Example 14: Loki Output
 //
 // Demonstrates sending audit events to Grafana Loki with stream labels,
 // gzip compression, and multi-tenant support.

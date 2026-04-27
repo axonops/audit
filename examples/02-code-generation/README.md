@@ -44,13 +44,19 @@ version: 1
 
 categories:
   write:
-    - user_create
-    - user_delete
+    severity: 3
+    events:
+      - user_create
+      - user_delete
   read:
-    - user_read
+    severity: 1
+    events:
+      - user_read
   security:
-    - auth_failure
-    - auth_success
+    severity: 8
+    events:
+      - auth_failure
+      - auth_success
 
 events:
   user_create:
@@ -79,7 +85,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../12-sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../11-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -170,15 +176,15 @@ setter methods:
 
 ```go
 // NewUserCreateEvent creates a EventUserCreate event with required fields.
-func NewUserCreateEvent(actorID any, outcome any) *UserCreateEvent {
+func NewUserCreateEvent(actorID string, outcome string) *UserCreateEvent {
     return &UserCreateEvent{fields: audit.Fields{
         FieldActorID: actorID,
         FieldOutcome: outcome,
     }}
 }
 
-// SetTargetID sets the FieldTargetID field.
-func (e *UserCreateEvent) SetTargetID(v any) *UserCreateEvent {
+// SetTargetID sets the reserved standard field "target_id".
+func (e *UserCreateEvent) SetTargetID(v string) *UserCreateEvent {
     e.fields[FieldTargetID] = v
     return e
 }
@@ -192,7 +198,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../12-sensitivity-labels/) example.
+the [Sensitivity Labels](../11-sensitivity-labels/) example.
 
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,
@@ -210,7 +216,7 @@ Fields like `target_id`, `reason`, and `source_ip` are **reserved
 standard fields** — always available without taxonomy declaration. The
 code generator produces setter methods (`.SetTargetID()`, `.SetReason()`,
 `.SetSourceIP()`) on every builder regardless of whether those fields
-appear in the taxonomy. See [example 03](../03-standard-fields/) for the
+appear in the taxonomy. See [example 13](../13-standard-fields/) for the
 full explanation.
 
 ### Configuring Outputs in YAML
@@ -305,20 +311,23 @@ go generate .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1 synchronous=false
 --- Using typed event builders ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
-{"timestamp":"...","event_type":"user_read","severity":5,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"outcome":"success","actor_id":"bob","event_category":"read"}
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+{"timestamp":"...","event_type":"auth_failure","severity":8,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","reason":"invalid credentials","source_ip":"192.168.1.100","event_category":"security"}
+{"timestamp":"...","event_type":"user_read","severity":1,"app_name":"example","host":"localhost","timezone":"Local","pid":...,"outcome":"success","actor_id":"bob","event_category":"read"}
 INFO audit: shutdown complete duration=...
 ```
 
 The `app_name`, `host`, and `pid` are framework fields — set once in
 `outputs.yaml` and automatically included in every event. The
 `event_category` field is automatically populated from the taxonomy's
-category definitions. The `INFO audit:` lines are lifecycle diagnostics
-on stderr — see [example 01](../01-basic/) for details.
+category definitions. Each event's `severity` reflects the per-category
+default declared in `taxonomy.yaml` (write=3, read=1, security=8) — see
+[Event Routing](../10-event-routing/) for severity-based routing. The
+`INFO audit:` lines are lifecycle diagnostics on stderr — see
+[example 01](../01-basic/) for details.
 
 ## Further Reading
 

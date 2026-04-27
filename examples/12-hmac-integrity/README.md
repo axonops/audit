@@ -172,7 +172,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=3
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=3 synchronous=false
 --- Security event ---
 
 --- Write event ---

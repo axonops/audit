@@ -113,7 +113,7 @@ go run .
 ## Expected Output
 
 ```
-INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=strict outputs=1 synchronous=false
 INFO audit: shutdown started
 INFO audit: shutdown complete duration=...
 --- Contents of audit.log ---

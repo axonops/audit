@@ -155,19 +155,24 @@ go run .
 ## Expected Output
 
 ```
+WARN audit: using DevTaxonomy — not suitable for production; all event types accepted without schema enforcement
+INFO audit: auditor created queue_size=10000 shutdown_timeout=5s validation_mode=permissive outputs=1 synchronous=false
 --- Valid event ---
 
 --- Auth failure event ---
 INFO audit: shutdown started
-{"timestamp":"...","event_type":"user_create","severity":5,"timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"dev"}
-{"timestamp":"...","event_type":"auth_failure","severity":5,"timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"dev"}
+{"timestamp":"...","event_type":"user_create","severity":5,"app_name":"audit-demo","host":"localhost","timezone":"Local","pid":...,"actor_id":"alice","outcome":"success","event_category":"dev"}
+{"timestamp":"...","event_type":"auth_failure","severity":5,"app_name":"audit-demo","host":"localhost","timezone":"Local","pid":...,"actor_id":"unknown","outcome":"failure","event_category":"dev"}
 INFO audit: shutdown complete duration=...
 ```
 
-The JSON events appear between the shutdown messages because
-`AuditEvent()` enqueues asynchronously and `Close()` drains the buffer
-before finishing. This is normal — `Close()` guarantees all buffered
-events are delivered before it returns.
+The first two `WARN` / `INFO` lines are emitted at construction time
+by the auditor's diagnostic logger — they confirm the dev-mode
+taxonomy and the queue / shutdown configuration. The JSON events
+appear between the shutdown messages because `AuditEvent()` enqueues
+asynchronously and `Close()` drains the buffer before finishing.
+This is normal — `Close()` guarantees all buffered events are
+delivered before it returns.
 
 ## Further Reading
 

@@ -541,3 +541,4 @@ outputs:
 - [OWASP SSRF](https://owasp.org/www-community/attacks/Server_Side_Request_Forgery) — SSRF attack reference
 - [RFC 8446: TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446)
 - [Async Delivery](async-delivery.md) — buffer sizing and graceful shutdown
+- [Deployment Guide](deployment.md) — systemd / Kubernetes / Docker patterns; capacity planning

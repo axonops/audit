@@ -108,6 +108,143 @@ If a release contains a serious bug, the correct response is:
 
 ---
 
+## For Maintainers: Repository Protection Configuration
+
+The repository's release contract depends on three layers of GitHub
+configuration. Two of them — branch protection and tag protection —
+are GitHub UI settings, not committed files. Maintainers MUST verify
+these are configured before the v1.0.0 release, and on every
+subsequent maintainer onboarding.
+
+### CODEOWNERS (committed)
+
+`.github/CODEOWNERS` declares review-required ownership for every
+security-sensitive surface — `.github/workflows/`, `.goreleaser.yml`,
+every `go.mod` / `go.sum`, `Makefile`, `SECURITY.md`,
+`docs/threat-model.md`, `docs/releasing.md`, `docs/deployment.md`,
+and the cryptographic primitives (`hmac.go`, `ssrf*.go`,
+`tls_policy.go`, `secrets/`). The catch-all `*` rule assigns the
+maintainer team as default reviewer for every other path so no PR
+merges without a maintainer's approval.
+
+### Branch protection on `main`
+
+Configure in **Settings → Branches → Add rule** (or **Edit** an
+existing rule for `main`). Required settings:
+
+| Setting | Value | Why |
+|---|---|---|
+| Branch name pattern | `main` | Protects the release branch. |
+| Require a pull request before merging | ✓ | No direct commits. |
+| Require approvals | ✓ — at least **1** approving review | Two-eyes review on every change. |
+| Dismiss stale pull request approvals when new commits are pushed | ✓ | Reset reviews on rebase / amend. |
+| Require review from Code Owners | ✓ | Enforces `.github/CODEOWNERS`. |
+| Require status checks to pass before merging | ✓ | Block on CI. |
+| Require branches to be up to date before merging | ✓ | Re-run CI on the merge target. |
+| Required status check | `CI Pass` | Aggregate gate from `.github/workflows/ci.yml`. |
+| Require conversation resolution before merging | ✓ | All review comments resolved. |
+| Require signed commits | ✓ | Cryptographic provenance for every commit on `main`. |
+| Require linear history | ✓ | Squash or rebase only — no merge commits. |
+| Include administrators | ✓ | Maintainers cannot bypass. |
+| Allow force pushes | ✗ (disabled) | Permanent history. |
+| Allow deletions | ✗ (disabled) | `main` cannot be deleted. |
+| Restrict who can push to matching branches | enabled, allowed actors empty | Closes the "PR-required, but anyone with write access can still push directly" loophole. The empty allow-list means even maintainers must go through a PR. |
+| Allow specified actors to bypass required pull requests | empty | No bypass. The "Include administrators" toggle above already covers admin enforcement; this row makes it explicit that no individual / team / app is on a bypass list. |
+| Lock branch | ✗ (disabled) | A locked branch refuses every write — only used during a freeze. Default off. |
+
+For changes touching cryptographic primitives (`hmac.go`,
+`tls_policy.go`, `secrets/`) GitHub does not currently support
+per-path approval counts; the 1-approval floor above is the global
+minimum. CODEOWNERS still routes the review to the maintainer team,
+and reviewers SHOULD pull a second maintainer in for crypto changes
+even though the gate does not enforce it.
+
+After saving, push a small test PR (e.g. a typo fix) from a fork or
+feature branch and verify the merge button is disabled until the
+status check passes and an approving review is recorded.
+
+### Tag protection — every release prefix
+
+Configure in **Settings → Tags → New rule**. GitHub matches the
+pattern against the FULL tag name (not the basename), so the core
+module pattern `v*` does NOT cover sub-module tags like
+`file/v1.0.0`. Add one rule per release prefix in the repository:
+
+| Setting | Value | Covers |
+|---|---|---|
+| Tag name pattern | `v*` | Core module: `v1.0.0`, `v1.1.0-rc.1`, etc. |
+| Tag name pattern | `file/v*` | `file` sub-module. |
+| Tag name pattern | `syslog/v*` | `syslog` sub-module. |
+| Tag name pattern | `webhook/v*` | `webhook` sub-module. |
+| Tag name pattern | `loki/v*` | `loki` sub-module. |
+| Tag name pattern | `outputconfig/v*` | `outputconfig` sub-module. |
+| Tag name pattern | `outputs/v*` | `outputs` convenience-package sub-module. |
+| Tag name pattern | `secrets/v*` | `secrets` parent sub-module. |
+| Tag name pattern | `secrets/openbao/v*` | `secrets/openbao` provider sub-module. |
+| Tag name pattern | `secrets/vault/v*` | `secrets/vault` provider sub-module. |
+| Tag name pattern | `cmd/audit-gen/v*` | `audit-gen` CLI sub-module. |
+| Tag name pattern | `cmd/audit-validate/v*` | `audit-validate` CLI sub-module. |
+| Tag name pattern | `iouring/v*` | `iouring` sub-module. |
+
+GitHub's tag-protection rule restricts tag creation to repository
+maintainers. A pushed tag is the trigger for the release workflow
+(GoReleaser, Cosign signing), so this rule is what prevents an
+unauthorised actor from triggering a release pipeline. **Without
+the per-sub-module entries, anyone with write access can publish a
+sub-module release.**
+
+Add a new rule whenever the repository gains another sub-module
+that releases independently. Audit the live tag-protection set on
+every maintainer onboarding (see verification snippet below).
+
+### Verification checklist (every release cycle)
+
+```bash
+# 1. CODEOWNERS file present and parseable.
+test -f .github/CODEOWNERS && \
+  gh api repos/:owner/:repo/codeowners/errors --jq '.errors | length' \
+    | grep -qx 0 || echo "ERROR: CODEOWNERS has parse errors"
+
+# 2. Branch protection enforces required checks.
+gh api repos/:owner/:repo/branches/main/protection --jq '
+  {
+    require_signed: .required_signatures.enabled,
+    require_linear: .required_linear_history.enabled,
+    require_codeowner_review: .required_pull_request_reviews.require_code_owner_reviews,
+    required_check: (.required_status_checks.contexts // []) | join(","),
+    allow_force: .allow_force_pushes.enabled,
+    allow_delete: .allow_deletions.enabled
+  }'
+# Expect: require_signed=true, require_linear=true,
+# require_codeowner_review=true, required_check contains "CI Pass",
+# allow_force=false, allow_delete=false.
+
+# 3. Tag-protection rules — every release prefix.
+gh api repos/:owner/:repo/tags/protection --jq '.[] | .pattern' | sort
+# Expect (one per line):
+#   cmd/audit-gen/v*
+#   cmd/audit-validate/v*
+#   file/v*
+#   iouring/v*
+#   loki/v*
+#   outputconfig/v*
+#   outputs/v*
+#   secrets/openbao/v*
+#   secrets/v*
+#   secrets/vault/v*
+#   syslog/v*
+#   v*
+#   webhook/v*
+# A 404 / empty response means NO tag-protection rules exist —
+# anyone with write access can publish a release. Configure the
+# rules in Settings → Tags → New rule before promoting.
+```
+
+If any of the three checks reports an unexpected value, fix the
+configuration in the UI before tagging the release.
+
+---
+
 ## For Maintainers: Cutting a Release
 
 ### Release Workflow Overview

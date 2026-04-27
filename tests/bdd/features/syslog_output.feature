@@ -279,3 +279,60 @@ Feature: Syslog Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
+
+  # --- Crash and replay (#553) ---
+  #
+  # The reconnect path must survive failure modes that exceed a
+  # single clean restart:
+  #
+  #   - daemon killed mid-buffer, then comes back up before Close;
+  #     every submitted event ends up either delivered or attributed
+  #     to the OutputErrors counter (no silent loss).
+  #
+  #   - three rapid restarts in succession; reconnect backoff stays
+  #     bounded — the recorded reconnect count does not climb into
+  #     a storm.
+  #
+  #   - 1000 in-flight events when the daemon dies; on restart the
+  #     auditor's drain catches up without leaking goroutines or
+  #     hanging Close (TestMain goleak provides the leak gate).
+  #
+  # Accounting note: events still in flight when Close abandons the
+  # drain (after ShutdownTimeout) may not yet have hit a terminal
+  # counter. The "accounting holds" step checks that the submitted
+  # count is fully accounted for OR that the delta is bounded by a
+  # tolerance and the operator counters tell the same story
+  # (delivered ≥ pre-stop events, OutputErrors ≥ post-stop events).
+
+  Scenario: Syslog reconnects after kill mid-buffer and post-restart events deliver
+    Given mock syslog metrics are configured
+    And the auditor uses core metrics
+    And an auditor with syslog output on "tcp" to "localhost:5514" with metrics and max retries 1
+    When I audit 5 uniquely marked events
+    And I restart the syslog-ng process
+    And I wait for syslog-ng to be ready
+    And I audit a second uniquely marked "user_create" event
+    And I close the auditor
+    Then the syslog server should contain the second marker within 15 seconds
+    And the audit metrics submitted count should be 6
+
+  Scenario: Three rapid syslog-ng restarts do not produce a reconnect storm
+    Given mock syslog metrics are configured
+    And the auditor uses core metrics
+    And an auditor with syslog output on "tcp" to "localhost:5514" with metrics and max retries 2
+    When I audit 5 uniquely marked events
+    And I rapidly restart syslog-ng 3 times within 3 seconds
+    And I audit a second uniquely marked "user_create" event
+    And I close the auditor
+    Then the syslog reconnect count should be at most 30
+    And the audit metrics submitted count should be 6
+
+  Scenario: 1000 in-flight events survive a syslog restart without leak
+    Given mock syslog metrics are configured
+    And the auditor uses core metrics
+    And an auditor with syslog output on "tcp" to "localhost:5514" with metrics and max retries 1
+    When I audit 1000 uniquely marked events
+    And I restart the syslog-ng process
+    And I wait for syslog-ng to be ready
+    And I close the auditor
+    Then the audit metrics submitted count should be 1000

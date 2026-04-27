@@ -120,6 +120,11 @@ multi-output fan-out and SIEM-native format support:
 The library uses a YAML-first workflow: define your events in a taxonomy
 file, configure outputs in another, and generate type-safe Go code.
 
+> **Building an HTTP service?** Skip ahead to the
+> [HTTP Service Quickstart](docs/quickstart-http-service.md) — a
+> self-contained ~10-minute walkthrough from `go get` to an audited
+> POST endpoint with stdout output, no clicking through other docs.
+
 ### 1️⃣ Define your taxonomy (`taxonomy.yaml`) - This is your source code. 
 
 ```yaml

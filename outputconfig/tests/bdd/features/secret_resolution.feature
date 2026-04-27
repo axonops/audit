@@ -533,3 +533,54 @@ Feature: Secret reference resolution in output configuration
           type: stdout
       """
     Then the config load should fail with an error containing "unresolved secret reference"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 23: Vault provider with expired server certificate (#552 AC#2)
+  #
+  # The provider points at an in-process HTTPS receiver presenting a
+  # cert that is signed by the runtime CA the audit client trusts but
+  # whose NotAfter is one hour in the past. The TLS handshake must fail
+  # with "expired" rather than the provider hanging or silently
+  # succeeding. The error surfaces through outputconfig.Load because
+  # provider.Resolve is what runs the HTTPS GET.
+  # ---------------------------------------------------------------------------
+  Scenario: Vault provider rejects an expired server certificate during Load
+    Given a vault HTTPS provider with an expired server certificate
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+vault://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "expired"
+
+  # ---------------------------------------------------------------------------
+  # Scenario 24: OpenBao provider with expired server certificate (#552 AC#2)
+  # ---------------------------------------------------------------------------
+  Scenario: OpenBao provider rejects an expired server certificate during Load
+    Given an openbao HTTPS provider with an expired server certificate
+    And the following output configuration YAML with secret providers:
+      """
+      version: 1
+      app_name: test
+      host: test
+      outputs:
+        audit_log:
+          type: stdout
+          hmac:
+            enabled: true
+            salt:
+              version: v1
+              value: ref+openbao://secret/data/hmac#salt
+            algorithm: HMAC-SHA-256
+      """
+    Then the config load should fail with an error containing "expired"

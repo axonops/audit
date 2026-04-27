@@ -350,6 +350,20 @@ Feature: Syslog Output
     When I try to send a syslog event over TLS to that receiver
     Then the TLS handshake should fail with "valid for"
 
+  # NOTE on stalling TLS handshake (TCP accepted, server never replies):
+  # syslog.New performs a synchronous dial + TLS handshake before
+  # returning. The handshake currently has no configurable timeout
+  # (Go's crypto/tls offers none for client side). A scenario for
+  # "server accepts TCP and never completes TLS hello" therefore
+  # requires production-side knob (TLSHandshakeTimeout in
+  # syslog.Config) before it can be expressed as a bounded BDD
+  # assertion. The expired-cert and wrong-CN scenarios above cover
+  # the realistic production cases — a misconfigured server
+  # presents a cert that fails verification, not one that never
+  # transmits a ServerHello. Webhook and Loki get the bounded
+  # behaviour for free via http.Client.Timeout (covered in
+  # webhook_output.feature and loki_output.feature).
+
   Scenario: 1000 in-flight events survive a syslog restart without leak
     Given mock syslog metrics are configured
     And the auditor uses core metrics

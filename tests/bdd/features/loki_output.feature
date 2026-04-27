@@ -372,3 +372,23 @@ Feature: Loki Output
     And a loki HTTPS receiver presenting a wrong-CN certificate
     When I try to send a loki event to that receiver
     Then the bad-cert receiver should have received no requests
+
+  # Stalling-handshake variant: the TCP accept completes but the
+  # server never participates in TLS hello. The loki output must
+  # not wedge — Close has to return within a bounded window even
+  # though the server is pathologically slow.
+  Scenario: Loki Close returns bounded under a stalled TLS handshake
+    Given bad TLS certs are generated
+    And a stalling TCP listener is started
+    When I close the loki output to that stalling listener within 10 seconds
+    Then the bad-cert receiver should have received no requests
+
+  # Rapid-restart variant: the receiver hijacks-and-closes the first
+  # connection, then answers normally. Models a server that flaps
+  # mid-request. The loki output's retry path must eventually
+  # deliver despite the connection drop.
+  Scenario: Loki recovers from rapid server connection drops
+    Given bad TLS certs are generated
+    And a flapping HTTPS receiver that drops the first 1 connections
+    When I send 1 loki events to the flapping receiver
+    Then the flapping receiver should eventually receive at least one successful request

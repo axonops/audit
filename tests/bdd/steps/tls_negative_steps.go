@@ -196,10 +196,15 @@ func tlsErrorAlternatives(substr string) []string {
 // badCerts holds the two server-side TLS configs for the
 // expired-cert and wrong-CN scenarios, plus the CA the audit client
 // trusts so the rejection is for the cert defect — not for unknown
-// authority.
+// authority. caCert/caKey are exposed so additional in-process
+// receivers (e.g., the flapping-restart server in
+// tls_handshake_steps.go) can mint valid leaf certs from the same
+// CA without spawning a fresh trust anchor.
 type badCerts struct {
 	expiredTLS *tls.Config
 	wrongCNTLS *tls.Config
+	caCert     *x509.Certificate
+	caKey      *ecdsa.PrivateKey
 	caPath     string
 	dir        string
 }
@@ -278,7 +283,28 @@ func generateBadCerts() (*badCerts, error) {
 		wrongCNTLS: wrongCNTLS,
 		caPath:     caPath,
 		dir:        dir,
+		caCert:     caCert,
+		caKey:      caKey,
 	}, nil
+}
+
+// validLocalhostTemplate returns a server-cert template good for
+// localhost / 127.0.0.1 with a valid 1-hour expiry window. Used by
+// receivers that need to present a valid (non-defective) cert from
+// the same CA the audit client trusts — for example the flapping
+// rapid-restart receiver, where the test target is the connection
+// drop, not the TLS rejection.
+func validLocalhostTemplate() *x509.Certificate {
+	return &x509.Certificate{
+		SerialNumber: big.NewInt(200),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-1 * time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	}
 }
 
 func makeServerTLSConfig(caCert *x509.Certificate, caKey *ecdsa.PrivateKey, template *x509.Certificate) (*tls.Config, error) {

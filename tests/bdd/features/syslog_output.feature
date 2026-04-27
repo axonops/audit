@@ -327,6 +327,43 @@ Feature: Syslog Output
     Then the syslog reconnect count should be at most 30
     And the audit metrics submitted count should be 6
 
+  # --- TLS rejection (#552) ---
+  #
+  # The two scenarios below verify that the syslog output's TLS
+  # client refuses to deliver to a receiver presenting a defective
+  # certificate. The receiver lives in-process so the test does not
+  # depend on Docker — bdd-syslog-ng-1 stays running on its valid
+  # cert. The certificates are signed by a freshly-generated CA;
+  # the audit client trusts that CA, so the rejection cause is
+  # exactly the defect we install (expired NotAfter / wrong
+  # DNSNames), not "unknown authority".
+
+  Scenario: Syslog TLS rejects an expired server certificate
+    Given bad TLS certs are generated
+    And a syslog TLS receiver presenting an expired certificate
+    When I try to send a syslog event over TLS to that receiver
+    Then the TLS handshake should fail with "expired"
+
+  Scenario: Syslog TLS rejects a wrong-CN server certificate
+    Given bad TLS certs are generated
+    And a syslog TLS receiver presenting a wrong-CN certificate
+    When I try to send a syslog event over TLS to that receiver
+    Then the TLS handshake should fail with "valid for"
+
+  # NOTE on stalling TLS handshake (TCP accepted, server never replies):
+  # syslog.New performs a synchronous dial + TLS handshake before
+  # returning. The handshake currently has no configurable timeout
+  # (Go's crypto/tls offers none for client side). A scenario for
+  # "server accepts TCP and never completes TLS hello" therefore
+  # requires production-side knob (TLSHandshakeTimeout in
+  # syslog.Config) before it can be expressed as a bounded BDD
+  # assertion. The expired-cert and wrong-CN scenarios above cover
+  # the realistic production cases — a misconfigured server
+  # presents a cert that fails verification, not one that never
+  # transmits a ServerHello. Webhook and Loki get the bounded
+  # behaviour for free via http.Client.Timeout (covered in
+  # webhook_output.feature and loki_output.feature).
+
   Scenario: 1000 in-flight events survive a syslog restart without leak
     Given mock syslog metrics are configured
     And the auditor uses core metrics

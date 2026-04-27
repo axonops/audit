@@ -370,3 +370,52 @@ Feature: Webhook Output
     When I close the auditor
     And I try to audit event "user_create" with required fields
     Then the audit call should return an error wrapping "ErrClosed"
+
+  # --- TLS rejection (#552) ---
+  #
+  # The webhook output delivers asynchronously: Write enqueues into
+  # a per-output buffer; the HTTPS handshake happens in the
+  # delivery goroutine. The TLS rejection therefore surfaces via
+  # metrics or via a missing-request observation rather than via
+  # the Write return value. The two scenarios below stand up an
+  # in-process httptest.NewTLSServer with a defective certificate
+  # and assert that no request ever reaches the receiver — proving
+  # the audit client refused the broken cert before the HTTPS POST
+  # could happen.
+  #
+  # Direct error-string assertions for webhook TLS rejection are
+  # handled by the syslog scenarios (which expose the synchronous
+  # handshake path); the syslog code is what every TLS-capable
+  # output configures the same way through audit.TLSPolicy.
+
+  Scenario: Webhook HTTPS rejects an expired server certificate
+    Given bad TLS certs are generated
+    And a webhook HTTPS receiver presenting an expired certificate
+    When I try to send a webhook event to that receiver
+    Then the bad-cert receiver should have received no requests
+
+  Scenario: Webhook HTTPS rejects a wrong-CN server certificate
+    Given bad TLS certs are generated
+    And a webhook HTTPS receiver presenting a wrong-CN certificate
+    When I try to send a webhook event to that receiver
+    Then the bad-cert receiver should have received no requests
+
+  # Stalling-handshake variant: the TCP accept completes but the
+  # server never participates in TLS hello. The webhook output
+  # must not wedge — Close has to return within a bounded window
+  # even though the server is pathologically slow.
+  Scenario: Webhook Close returns bounded under a stalled TLS handshake
+    Given bad TLS certs are generated
+    And a stalling TCP listener is started
+    When I close the webhook output to that stalling listener within 10 seconds
+    Then the bad-cert receiver should have received no requests
+
+  # Rapid-restart variant: the receiver hijacks-and-closes the first
+  # connection, then answers normally. Models a server that flaps
+  # mid-request. The webhook output's retry path must eventually
+  # deliver despite the connection drop.
+  Scenario: Webhook recovers from rapid server connection drops
+    Given bad TLS certs are generated
+    And a flapping HTTPS receiver that drops the first 1 connections
+    When I send 1 webhook events to the flapping receiver
+    Then the flapping receiver should eventually receive at least one successful request

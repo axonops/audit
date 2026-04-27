@@ -68,6 +68,12 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	// Loki output name (dynamic: "loki:<host>").
 	LokiOutputName string
 
+	// TLS negative-path scenarios (#552).
+	BadCerts        *badCerts // bad-cert generation + cleanup
+	BadReceiverAddr string    // host:port of the in-process bad-cert receiver
+	BadReceiverHits *uint32   // request counter for HTTPS bad-cert receiver
+	flappingDrops   *uint32   // dropped-connection counter for flapping receiver
+
 	// HMAC capture.
 	CaptureOutput  *captureOutput            // raw event bytes for HMAC verification
 	CaptureOutputs map[string]*captureOutput // named outputs for multi-output HMAC tests
@@ -206,6 +212,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerLokiUncategorisedSteps(ctx, tc)
 	registerSyslogSeveritySteps(ctx, tc)
 	registerSyslogCrashReplaySteps(ctx, tc)
+	registerTLSNegativeSteps(ctx, tc)
+	registerTLSHandshakeSteps(ctx, tc)
 	registerIsolationSteps(ctx, tc)
 	registerEventMetricsSteps(ctx, tc)
 	registerOutputConfigSteps(ctx, tc)

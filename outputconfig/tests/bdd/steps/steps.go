@@ -175,6 +175,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerThenSteps(ctx, tc)
 	registerRealSecretSteps(ctx, tc)
 	registerSecretSteps(ctx, tc)
+	registerSecretsTLSNegativeSteps(ctx, tc)
 }
 
 func registerGivenSteps(ctx *godog.ScenarioContext, tc *TestContext) {

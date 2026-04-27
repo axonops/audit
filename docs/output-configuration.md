@@ -287,6 +287,25 @@ secrets:
 Outputs that do not use TLS (file, stdout, syslog with `network: tcp`
 or `network: udp`) have no `tls_policy` field.
 
+### Tested TLS rejection failure modes
+
+The library's TLS-capable outputs reject defective server
+certificates from the same shared `audit.TLSPolicy` primitive.
+The behaviours below are pinned by BDD scenarios in
+[`tests/bdd/features/syslog_output.feature`](../tests/bdd/features/syslog_output.feature),
+[`webhook_output.feature`](../tests/bdd/features/webhook_output.feature),
+and [`loki_output.feature`](../tests/bdd/features/loki_output.feature)
+(see #552):
+
+| Failure mode | Observed behaviour |
+|---|---|
+| **Expired server certificate** | Client refuses the connection. Syslog (synchronous) returns an error containing `certificate has expired`. Webhook / Loki (asynchronous) drop the event before the HTTPS POST is attempted; the receiver sees zero requests. |
+| **Server certificate CN/SAN does not match the dialled host** | Client refuses the connection with `x509: cannot validate certificate for <host>` (or `is valid for <other-name>` on older Go releases). Same delivery semantics as expired. |
+| **Stalled TLS handshake (TCP accepted, server never replies)** | Webhook / Loki: client honours its `Timeout` config; the request fails fast and `Close` returns within the bounded shutdown window. Syslog: not exercised as a dedicated scenario — `crypto/tls` exposes no client-side handshake timeout, so the syslog `New` call blocks until the TCP RST or external cancellation arrives. The realistic production failure modes (expired and wrong-CN certificates) are exercised above; the `Three rapid syslog-ng restarts` and crash-replay block (#553) cover the related "server flapped mid-write" path. |
+| **Reconnect after server kill mid-buffer** | Pre-restart events deliver. Post-restart events deliver after the client reconnects. Submitted-counter accounting holds. See [`tests/bdd/features/syslog_output.feature`](../tests/bdd/features/syslog_output.feature) "Crash and replay" block (#553) for syslog. Webhook/Loki: see `Webhook recovers from rapid server connection drops` and `Loki recovers from rapid server connection drops` (#552). |
+| **Three rapid syslog-ng restarts** | Reconnect count stays under the 30-attempt storm threshold; bounded backoff. |
+| **Vault / OpenBao secrets endpoint with expired TLS cert** | `outputconfig.Load` fails with an error containing `expired`. The `ref+vault://` and `ref+openbao://` resolution paths refuse to connect; no secret value is returned. See `outputconfig/tests/bdd/features/secret_resolution.feature` scenarios 23–24 (#552 AC#2). |
+
 ## 🔐 Secrets Configuration
 
 The optional `secrets:` section configures secret providers

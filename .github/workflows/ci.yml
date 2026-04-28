@@ -121,39 +121,14 @@ jobs:
         with:
           install-tools: 'true'
 
-      - name: Check formatting
-        run: make fmt-check
-
-      - name: Check module tidiness
-        run: make tidy-check
-
-      - name: Check orphaned TODOs
-        run: make check-todos
-
-      - name: Check replace directives
-        run: make check-replace
-
-      - name: Reject InsecureSkipVerify in production code
-        run: make check-insecure-skip-verify
-
-      - name: Check example README cross-references
-        run: make check-example-links
-
-      # BDD Strict-mode guard — MUST run before any test matrix so a
-      # regression fails loudly and early, not buried inside a later
-      # test job. There is NO circumstance under which BDD runners may
-      # disable Strict mode — see memory feedback_bdd_strict_mode.md
-      # and CONTRIBUTING.md "BDD Strict mode" section.
-      - name: Verify BDD Strict mode is enabled everywhere
-        run: make check-bdd-strict
-
-      # Benchmark-baseline freshness guard — reject a PR that introduces
-      # a stale benchmark name to bench-baseline.txt (renames are the
-      # classic way to silently disable benchstat column pairing and
-      # break the regression gate). See #493 and
-      # scripts/bench-baseline-check.sh for details.
-      - name: Verify bench-baseline.txt references only current names
-        run: make bench-baseline-check
+      # Run every static-analysis guard in one shot, with
+      # error collection so all failures surface on a single
+      # push instead of aborting on the first. Mirrors `make
+      # check-static` which developers also run locally.
+      # Replaces 8 individual `run: make ...` steps that
+      # previously each ran in serial.
+      - name: Run static-analysis checks
+        run: make check-static
 
   lint:
     name: Lint
@@ -513,8 +488,9 @@ jobs:
 
       - name: Set up audit workspace
         uses: ./.github/actions/setup-audit
-        with:
-          install-tools: 'true'
+
+      - name: Install govulncheck only
+        run: make install-govulncheck
 
       - name: Run govulncheck for ${{ matrix.module }}
         run: make security-one MOD=${{ matrix.module }}

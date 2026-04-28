@@ -216,20 +216,87 @@ jobs:
           args: check
 
   test:
+    name: Test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [lint, changes]
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      matrix:
+        include:
+          - module: "."
+            target: test-core
+            flag: core
+          - module: file
+            target: test-file
+            flag: file
+          - module: syslog
+            target: test-syslog
+            flag: syslog
+          - module: webhook
+            target: test-webhook
+            flag: webhook
+          - module: loki
+            target: test-loki
+            flag: loki
+          - module: outputconfig
+            target: test-outputconfig
+            flag: outputconfig
+          - module: cmd/audit-gen
+            target: test-audit-gen
+            flag: audit-gen
+          - module: cmd/audit-validate
+            target: test-audit-validate
+            flag: audit-validate
+          - module: secrets
+            target: test-secrets
+            flag: secrets
+          - module: secrets/openbao
+            target: test-secrets-openbao
+            flag: secrets-openbao
+          - module: secrets/vault
+            target: test-secrets-vault
+            flag: secrets-vault
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up go.work
+        run: make workspace
+
+      - name: Run unit tests with coverage
+        run: make ${{ matrix.target }}
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        with:
+          files: ${{ matrix.module }}/coverage.out
+          flags: ${{ matrix.flag }}
+          fail_ci_if_error: false
+
+  # Cross-platform test matrix for core + file. Runs only after the
+  # Linux test and BDD jobs pass, so a Linux-side bug fails fast
+  # without burning macOS-priced minutes (10× Linux) or Windows
+  # runner time. macOS catches POSIX-but-different (symlink path
+  # canonicalisation, file system semantics); Windows catches
+  # POSIX-incompatible (permission model, file locking, timer
+  # resolution).
+  test-cross-platform:
     name: Test (${{ matrix.module }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    needs: [lint, changes]
+    needs: [test, bdd, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          # core — three platforms
-          - module: "."
-            target: test-core
-            flag: core
-            os: ubuntu-latest
           - module: "."
             target: test-core
             flag: core
@@ -238,11 +305,6 @@ jobs:
             target: test-core
             flag: core
             os: windows-latest
-          # file — three platforms
-          - module: file
-            target: test-file
-            flag: file
-            os: ubuntu-latest
           - module: file
             target: test-file
             flag: file
@@ -251,43 +313,6 @@ jobs:
             target: test-file
             flag: file
             os: windows-latest
-          # remaining modules — Linux only (primary deployment target)
-          - module: syslog
-            target: test-syslog
-            flag: syslog
-            os: ubuntu-latest
-          - module: webhook
-            target: test-webhook
-            flag: webhook
-            os: ubuntu-latest
-          - module: loki
-            target: test-loki
-            flag: loki
-            os: ubuntu-latest
-          - module: outputconfig
-            target: test-outputconfig
-            flag: outputconfig
-            os: ubuntu-latest
-          - module: cmd/audit-gen
-            target: test-audit-gen
-            flag: audit-gen
-            os: ubuntu-latest
-          - module: cmd/audit-validate
-            target: test-audit-validate
-            flag: audit-validate
-            os: ubuntu-latest
-          - module: secrets
-            target: test-secrets
-            flag: secrets
-            os: ubuntu-latest
-          - module: secrets/openbao
-            target: test-secrets-openbao
-            flag: secrets-openbao
-            os: ubuntu-latest
-          - module: secrets/vault
-            target: test-secrets-vault
-            flag: secrets-vault
-            os: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -315,7 +340,7 @@ jobs:
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           files: ${{ matrix.module }}/coverage.out
-          flags: ${{ matrix.flag }}
+          flags: ${{ matrix.flag }}-${{ matrix.os }}
           fail_ci_if_error: false
 
   integration:
@@ -618,7 +643,7 @@ jobs:
     name: CI Pass
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [changes, hygiene, lint, test, integration, bdd, bdd-verify, security, security-verify, cross-build, validate-release]
+    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed

@@ -7,6 +7,7 @@
 - [What to Monitor](#what-to-monitor)
 - [Prometheus Example](#prometheus-example)
 - [Recommended Alerts](#recommended-alerts)
+- [Health Endpoint](#health-endpoint)
 - [Per-Output Metrics](#per-output-metrics)
 - [Testing Metrics](#testing-metrics)
 
@@ -241,7 +242,13 @@ consumer to a specific HTTP framework.
 Return 503 when the queue saturation exceeds 90 % (a jammed
 queue is non-recoverable from inside the process — Kubernetes
 will restart the pod). The 90 % threshold is a default; tune for
-your workload.
+your workload using the
+[Capacity Planning tier table](deployment.md#capacity-planning).
+A worked example: with `queue_size: 10000` and a sustained drain
+rate of 5000 events/s, 90 % saturation = 9000 events ≈ 1.8 s of
+backlog. Pick a threshold that exceeds your Kubernetes probe's
+`failureThreshold × periodSeconds` so transient spikes do not
+flap the probe.
 
 ```go
 const healthzSaturationThreshold = 0.90
@@ -311,6 +318,15 @@ operator-correctable belongs in `/readyz`.
 
 A complete runnable implementation lives at
 [examples/18-health-endpoint](../examples/18-health-endpoint/).
+
+> Per-output staleness — failing liveness when a single output
+> has not delivered for N seconds — needs a new public API
+> (`Auditor.LastDeliveryAge(name)`) and is tracked under
+> [#753](https://github.com/axonops/audit/issues/753). Until it
+> lands, the queue-saturation check above catches the
+> slow-output case via backpressure, because a stalled output
+> blocks the drain goroutine and the intake queue starts to
+> fill.
 
 ## 🔀 Per-Output Metrics (`OutputMetrics`)
 

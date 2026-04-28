@@ -56,18 +56,39 @@ curl -i http://localhost:8080/healthz
 curl -i http://localhost:8080/readyz
 ```
 
-You should see something like:
+You should see (note the blank line `curl -i` prints between
+headers and body):
 
 ```
 HTTP/1.1 200 OK
 Content-Type: application/json
+
 {"status":"healthy","queue_len":0,"queue_cap":10,"saturation":0.00}
+```
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status":"ready","output_count":1,"outputs":["stdout"]}
+```
+
+A failing `/readyz` (e.g., `outputs.yaml` deleted before
+startup) returns:
+
+```
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"status":"not-ready","reason":"no outputs configured"}
 ```
 
 The example uses a tiny `queue_size: 10` (in `outputs.yaml`) and
 emits one event per second from a background goroutine, so the
 saturation indicator stays low. To see `/healthz` go red, drop
-`queue_size` to `1` and increase the loop rate — the queue will
+`queue_size` in `outputs.yaml` to `1` and shorten the
+`time.NewTicker(1 * time.Second)` interval in `driveAuditLoop`
+(`main.go`) to e.g. `1 * time.Millisecond` — the queue will
 saturate and `/healthz` will return 503 with the observed
 saturation in the body.
 
@@ -99,6 +120,14 @@ The 90 % threshold is the default the docs recommend. **Tune
 for your workload.** A larger queue tolerates a higher absolute
 backlog before declaring a fault; a smaller queue trips earlier.
 
+**Worked example.** With `queue_size: 10000` and a sustained
+drain rate of 5000 events/s, 90 % saturation = 9000 events ≈
+1.8 s of backlog. Choose the threshold so that the absolute
+backlog exceeds your Kubernetes probe's `failureThreshold ×
+periodSeconds` — otherwise transient spikes will flap the probe.
+The [Capacity Planning tier table](../../docs/deployment.md#capacity-planning)
+gives concrete `queue_size` values per event-rate tier.
+
 ### `/readyz` — readiness
 
 ```go
@@ -120,6 +149,58 @@ func readyzHandler(a *audit.Auditor) http.HandlerFunc {
 Both checks are sub-microsecond reads on internal state. Both
 are safe to call concurrently from any goroutine.
 
+**`/readyz` runtime semantics.** The output list is fixed at
+auditor construction (in `outputconfig.New`); it does not flip
+back to empty if a downstream output starts failing later. So
+`/readyz` mostly catches the "auditor was disabled" or
+"`outputs.yaml` was missing or empty at startup" case. To detect
+a runtime delivery stall on a specific output, you need
+`Auditor.LastDeliveryAge(name)` — see "What's NOT here" below.
+
+## Production checklist
+
+The example binds everything to one public listener (`:8080`)
+for simplicity. Three things to change before deploying:
+
+1. **Probes on a separate listener.** Bind probe traffic to
+   localhost (or the pod IP only) so it skips the public
+   authentication path:
+
+   ```go
+   probeMux := http.NewServeMux()
+   probeMux.HandleFunc("/healthz", healthzHandler(auditor))
+   probeMux.HandleFunc("/readyz", readyzHandler(auditor))
+   probeSrv := &http.Server{
+       Addr:              "127.0.0.1:9090",
+       Handler:           probeMux,
+       ReadHeaderTimeout: 5 * time.Second,
+   }
+   go probeSrv.ListenAndServe()
+   ```
+
+2. **Kubernetes Pod spec.** Reference the probe port from the
+   container manifest:
+
+   ```yaml
+   livenessProbe:
+     httpGet:
+       path: /healthz
+       port: 9090
+       host: 127.0.0.1
+     periodSeconds: 10
+     failureThreshold: 3
+   readinessProbe:
+     httpGet:
+       path: /readyz
+       port: 9090
+       host: 127.0.0.1
+     periodSeconds: 5
+     failureThreshold: 2
+   ```
+
+3. **Tune the saturation threshold** for your workload using
+   the worked example above.
+
 ## What's NOT here
 
 - **Per-output staleness**. A real production probe would also
@@ -127,14 +208,20 @@ are safe to call concurrently from any goroutine.
   seconds — a hung downstream syslog server, for example.
   Per-output staleness needs a new public API
   (`Auditor.LastDeliveryAge(outputName)`) that is tracked under
-  a separate issue. Until that lands, the queue-saturation check
-  catches the case where the slow output blocks the drain
-  goroutine and the queue starts to fill.
+  [#753](https://github.com/axonops/audit/issues/753). Until
+  that lands, the queue-saturation check catches the case where
+  the slow output blocks the drain goroutine and the queue
+  starts to fill.
 
 - **Authentication on the probe endpoint**. Production probes
   typically run on a separate listener bound to localhost (or
   the pod IP only) so probe traffic doesn't hit the public
-  authentication path. The example uses `:8080` for simplicity.
+  authentication path. See the Production checklist above.
+
+- **Runtime-configurable threshold.** This example uses a
+  package-level `const` for the saturation threshold. Real
+  services should expose this as a flag or env var so operators
+  can tune without redeploying.
 
 ## Files
 
@@ -144,3 +231,31 @@ are safe to call concurrently from any goroutine.
 | `taxonomy.yaml` | Minimal taxonomy with one event type (`health_probe`). |
 | `audit_generated.go` | `audit-gen` output (run `go generate` to regenerate). |
 | `outputs.yaml` | Single stdout output; tiny `queue_size` so the saturation knob is observable. |
+
+## Copying this example to your own project
+
+`go run .` works inside the workspace because `outputconfig.New`
+reads `outputs.yaml` from the current working directory. If you
+copy this example into your own repository:
+
+1. Follow the [For Consumers Outside the Workspace](../README.md#for-consumers-outside-the-workspace)
+   instructions to fetch `github.com/axonops/audit`,
+   `github.com/axonops/audit/outputconfig`, and
+   `github.com/axonops/audit/outputs`.
+2. To regenerate `audit_generated.go`, install the code generator
+   first:
+
+   ```bash
+   go install github.com/axonops/audit/cmd/audit-gen@latest
+   go generate ./...
+   ```
+
+3. Either run the binary from the directory containing
+   `outputs.yaml`, or pass an absolute path to
+   `outputconfig.New`. The taxonomy is embedded via `go:embed`
+   and travels with the binary; `outputs.yaml` is a runtime
+   config file and does not.
+
+For the complete `Auditor` introspection surface (signatures,
+return values, concurrency guarantees) see the
+[godoc](https://pkg.go.dev/github.com/axonops/audit#Auditor).

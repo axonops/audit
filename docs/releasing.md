@@ -507,6 +507,43 @@ This verifies not just the pipefail mechanism but the entire chain from test
 exit code through step status through job status through PR check status. Run
 it when modifying any test-execution step in `.github/workflows/`.
 
+### OpenSSF Scorecard
+
+The OSSF Scorecard workflow (`.github/workflows/scorecard.yml`) runs weekly on
+Monday at 08:00 UTC, on every push to `main`, and whenever a branch-protection
+rule is created or modified. It scores the repository against the OpenSSF
+supply-chain checks (Branch-Protection, Code-Review, SAST, Pinned-Dependencies,
+Token-Permissions, Vulnerabilities, etc.).
+
+Results are uploaded as SARIF to the GitHub **Security** tab and published to
+the OpenSSF public dashboard at
+<https://securityscorecards.dev/viewer/?uri=github.com/axonops/audit>. The
+README badge links to that dashboard.
+
+**If the score drops between runs:**
+
+1. Open the latest workflow run, download the `scorecard-sarif` artifact, and
+   read the per-check findings.
+2. Cross-reference with the GitHub **Security** tab — each finding includes
+   the file path and remediation guidance.
+3. File a tracking issue (labels `security`, `ci/cd`) for any regression that
+   is not a transient false positive.
+4. Common drift causes: a new workflow added without
+   `permissions: contents: read` at the top level; an action referenced by tag
+   rather than full SHA; a dependency pin bumped to a vulnerable version
+   (`govulncheck` will flag this independently in `security-scan.yml`).
+5. The **Pinned-Dependencies** check is the one most often dragged down by
+   GitHub-Actions updates that land as tag-pinned PRs from Dependabot — they
+   should be edited to a full SHA before merge, matching the convention used
+   throughout `.github/workflows/`.
+
+A score drop on **Pinned-Dependencies** or **Vulnerabilities** MUST be
+resolved before the next release — these checks measure supply-chain
+integrity and CVE exposure directly. Drops on other checks
+(Branch-Protection, Code-Review, SAST, Token-Permissions) SHOULD be
+resolved within one release cycle. File a tracking issue (labels
+`security`, `ci/cd`) for every unresolved regression before tagging.
+
 ---
 
 ## For Contributors

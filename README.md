@@ -8,6 +8,7 @@
   [![CI](https://github.com/axonops/audit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/axonops/audit/actions/workflows/ci.yml)
   [![Go Reference](https://pkg.go.dev/badge/github.com/axonops/audit.svg)](https://pkg.go.dev/github.com/axonops/audit)
   [![Go Report Card](https://goreportcard.com/badge/github.com/axonops/audit)](https://goreportcard.com/report/github.com/axonops/audit)
+  [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/axonops/audit/badge)](https://securityscorecards.dev/viewer/?uri=github.com/axonops/audit)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
   ![Status](https://img.shields.io/badge/status-pre--release-orange)
 

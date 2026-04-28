@@ -1245,7 +1245,7 @@ events:
 // don't surprise downstream tooling with bidi or homoglyph
 // characters. The original issue title framed this as
 // "supports Unicode" but the actual contract is rejection;
-// this test pins the rejection wording. (#565 G9)
+// this test pins the rejection wording. (#565 G9).
 func TestRun_UnicodeEventNames(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -1275,7 +1275,7 @@ events:
 // 1000-event taxonomy without timeout, panic, or pathological
 // memory growth. The output must compile (Go AST parse) — pinning
 // that the template scales to realistic enterprise taxonomies.
-// (#565 G9)
+// (#565 G9).
 func TestGenerate_VeryLargeTaxonomy(t *testing.T) {
 	t.Parallel()
 	var sb strings.Builder
@@ -1306,7 +1306,7 @@ func TestGenerate_VeryLargeTaxonomy(t *testing.T) {
 // returns a non-zero exit code (and prints a clear diagnostic)
 // when -output points at a path whose parent directory does not
 // exist. Operators rely on this surface to detect typos in CI
-// pipelines without silently producing partial output. (#565 G9)
+// pipelines without silently producing partial output. (#565 G9).
 func TestRun_OutputFileInNonexistentDirectory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

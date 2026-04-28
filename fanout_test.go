@@ -717,7 +717,7 @@ func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
 // TestFanout_AllExcludeRoute_ZeroDeliveries proves that fan-out
 // with all outputs configured to exclude every event category
 // produces zero deliveries. The contract: a deliberately
-// over-restrictive route does not silently leak events. (#565 G10)
+// over-restrictive route does not silently leak events. (#565 G10).
 func TestFanout_AllExcludeRoute_ZeroDeliveries(t *testing.T) {
 	excludeAll := &audit.EventRoute{
 		ExcludeCategories: []string{"write", "security", "read"},
@@ -743,7 +743,7 @@ func TestFanout_AllExcludeRoute_ZeroDeliveries(t *testing.T) {
 // TestFanout_IncludeExclude_MultipleOutputs_Independence proves
 // that two outputs with disjoint include/exclude rules each route
 // independently — no leakage from one output's filter into
-// another's. (#565 G10)
+// another's. (#565 G10).
 func TestFanout_IncludeExclude_MultipleOutputs_Independence(t *testing.T) {
 	writeOnly := &audit.EventRoute{IncludeCategories: []string{"write"}}
 	securityOnly := &audit.EventRoute{IncludeCategories: []string{"security"}}

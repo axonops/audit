@@ -930,13 +930,13 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 // boundary table for severity-range validation, complementing the
 // existing _MinSeverity_/_MaxSeverity_ unit tests by exercising
 // edge cases (boundaries, inversion, combinations) in one place.
-// (#565 G10)
+// (#565 G10).
 func TestValidateEventRoute_SeverityRanges(t *testing.T) {
 	t.Parallel()
 	tax := testhelper.TestTaxonomy()
 	cases := []struct {
-		name    string
 		route   audit.EventRoute
+		name    string
 		wantErr bool
 	}{
 		{name: "no severity bounds", route: audit.EventRoute{}, wantErr: false},
@@ -952,6 +952,7 @@ func TestValidateEventRoute_SeverityRanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := audit.ValidateEventRoute(&tc.route, tax)
 			if tc.wantErr {
 				assert.Error(t, err)

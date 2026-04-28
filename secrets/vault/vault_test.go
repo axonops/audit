@@ -1009,7 +1009,7 @@ func TestVaultClose_IsIdempotent(t *testing.T) {
 // kvV2 wire format uses a nested "data" envelope; an absent
 // inner data field is the documented "no secret at this path"
 // response when the engine returns 200 OK.
-// (#565 G7)
+// (#565 G7).
 func TestResolve_EmptyDataSection(t *testing.T) {
 	t.Parallel()
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

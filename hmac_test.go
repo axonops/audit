@@ -1143,7 +1143,7 @@ func TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy(t *testing.T) {
 // output bytes. Contract is critical for verifiers: any
 // non-determinism in the underlying primitive breaks every
 // downstream consumer that recomputes HMACs to verify integrity.
-// (#565 G6)
+// (#565 G6).
 func TestHMAC_DeterministicOutput_SameInputSameOutput(t *testing.T) {
 	t.Parallel()
 	payload := []byte(`{"event":"determinism-test","actor":"alice"}`)
@@ -1172,7 +1172,7 @@ func TestHMAC_DeterministicOutput_SameInputSameOutput(t *testing.T) {
 //
 // This is the load-bearing property that makes salt rotation
 // operationally safe: a rotation event does not retroactively
-// break verification of events already on disk. (#565 G6)
+// break verification of events already on disk. (#565 G6).
 func TestHMAC_PerOutput_KeyRotation_OldEventsVerifiable(t *testing.T) {
 	t.Parallel()
 	payload := []byte(`{"event":"rotation-test","actor":"alice"}`)
@@ -1207,7 +1207,7 @@ func TestHMAC_PerOutput_KeyRotation_OldEventsVerifiable(t *testing.T) {
 // rejects an empty Algorithm field with a clear error wrapping
 // audit.ErrConfigInvalid. The empty algorithm is a footgun: a
 // silent default would mean different consumer setups produce
-// different HMACs for the same payload. (#565 G6)
+// different HMACs for the same payload. (#565 G6).
 func TestHMAC_EmptyAlgorithmName(t *testing.T) {
 	t.Parallel()
 	cfg := &audit.HMACConfig{

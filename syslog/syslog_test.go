@@ -3073,7 +3073,7 @@ func TestSyslogReconnect_NilLoggerFallsBackToDefault(t *testing.T) { //nolint:pa
 // A regex-based parser checks that every required field is
 // present and well-formed. The audit syslog output writes its
 // own RFC 5424 header (delegating only the transport to srslog),
-// so this test guards against silent header drift. (#565 G4)
+// so this test guards against silent header drift. (#565 G4).
 func TestSyslogOutput_RFC5424_HeaderParseable(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
@@ -3129,7 +3129,7 @@ func TestSyslogOutput_RFC5424_HeaderParseable(t *testing.T) {
 // ("audit") rather than something derived from os.Args[0]. The
 // constant is the documented default in syslog/config.go:29; the
 // issue's original "DefaultsToProcessName" framing was inaccurate.
-// (#565 G4)
+// (#565 G4).
 func TestSyslogOutput_AppName_Empty_DefaultsToAuditConstant(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()

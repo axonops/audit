@@ -1033,7 +1033,7 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 // a fileOnlyMetrics with a RecordError counter and asserts at
 // least one error was recorded.
 //
-// (#565 G3)
+// (#565 G3).
 func TestFileOutput_WriteToReadOnlyDirectory(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("running as root — chmod 0o555 is bypassed; cannot drive permission-denied")
@@ -1048,9 +1048,9 @@ func TestFileOutput_WriteToReadOnlyDirectory(t *testing.T) {
 	out, err := file.New(&file.Config{Path: path})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = os.Chmod(dir, 0o755) //nolint:gosec // restoring perms to allow tempdir cleanup
+		_ = os.Chmod(dir, 0o755)
 	})
-	require.NoError(t, os.Chmod(dir, 0o555)) //nolint:gosec // 0o555 is the test target — read-only directory
+	require.NoError(t, os.Chmod(dir, 0o555))
 	m := &errorCountingMetrics{}
 	out.SetOutputMetrics(m)
 
@@ -1087,7 +1087,7 @@ func (m *errorCountingMetrics) errorCount() int {
 // TestFileOutput_Write_LargePayload pins the contract that a
 // single 1 MiB event survives the full write+close cycle without
 // truncation or corruption. Large single events are realistic
-// for fan-out audits that aggregate dozens of fields. (#565 G3)
+// for fan-out audits that aggregate dozens of fields. (#565 G3).
 func TestFileOutput_Write_LargePayload(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")

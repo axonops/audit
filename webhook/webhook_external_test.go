@@ -2035,7 +2035,7 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 // across all requests), not "requests" (which depends on
 // batching policy). After N writes and Close, the server must
 // observe exactly N event lines. Off-by-one errors in the batch
-// flush logic surface here. (#565 G5)
+// flush logic surface here. (#565 G5).
 func TestWebhookOutput_Delivery_ExactEventCount(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -2073,7 +2073,7 @@ func TestWebhookOutput_Delivery_ExactEventCount(t *testing.T) {
 // newline-terminated JSON; an embedded literal newline within a
 // JSON field value must be escaped as \n in the JSON output (Go
 // encoding/json contract), so the receiver sees a single JSON
-// document on the line and parses it cleanly. (#565 G5)
+// document on the line and parses it cleanly. (#565 G5).
 func TestWebhookOutput_NDJSON_MultiLinePayloadRejected(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -3021,7 +3021,7 @@ outputs:
 // operator can pick the correct one without consulting the
 // docs. The list is built from audit.RegisteredOutputTypes;
 // this test pins both the substring "registered:" and the
-// presence of every registered name. (#565 G8)
+// presence of every registered name. (#565 G8).
 func TestLoad_UnknownOutputType_HintContainsAllKnownTypes(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`version: 1
@@ -3045,7 +3045,7 @@ outputs:
 
 // TestLoad_OutputFactoryReturnsNil pins the contract that a
 // registered factory returning (nil, nil) surfaces a clear error
-// rather than panicking on a nil dereference downstream. (#565 G8)
+// rather than panicking on a nil dereference downstream. (#565 G8).
 //
 // (Originally listed in #565 G1 but the OutputFactory registry
 // is the outputconfig surface, not audit.New's surface. Lives
@@ -3080,7 +3080,7 @@ outputs:
 // TestLoad_EnvVarSubstitution_MixedLiteralAndReference pins the
 // envsubst path: a YAML scalar containing a mix of literal text
 // and ${VAR} references is resolved to the exact concatenation.
-// (#565 G8)
+// (#565 G8).
 func TestLoad_EnvVarSubstitution_MixedLiteralAndReference(t *testing.T) {
 	t.Setenv("BDD565_HOST", "host.example.com")
 	t.Setenv("BDD565_PORT", "8080")
@@ -3108,7 +3108,7 @@ outputs:
 // pre-cancelled context surfaces context.Canceled (or a wrap
 // thereof) from Load. The resolver pipeline must respect the
 // context deadline/cancellation everywhere it does I/O — secret
-// resolution being the obvious case. (#565 G8)
+// resolution being the obvious case. (#565 G8).
 func TestLoad_ContextCancellation(t *testing.T) {
 	tax := testTaxonomy(t)
 	data := []byte(`version: 1

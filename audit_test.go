@@ -6144,7 +6144,7 @@ func BenchmarkEventHandle_AuditContext_Background(b *testing.B) {
 // preventing drain) and that the (N+1)th event triggers exactly
 // one ErrQueueFull. The contract pins the off-by-one boundary —
 // a regression that allows N+1 events through, or rejects the
-// Nth, would surface here. (#565 G11)
+// Nth, would surface here. (#565 G11).
 func TestLogger_OverflowPolicy_ExactCapacity(t *testing.T) {
 	metrics := testhelper.NewMockMetrics()
 
@@ -6195,7 +6195,7 @@ func TestLogger_OverflowPolicy_ExactCapacity(t *testing.T) {
 // MockMetrics RecordDrop counter increments on every overflowed
 // Audit call. The contract pins exact-counting — duplicate or
 // missing increments would mislead operators about backpressure
-// pressure. (#565 G11)
+// pressure. (#565 G11).
 func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
 	metrics := testhelper.NewMockMetrics()
 
@@ -6236,7 +6236,7 @@ func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
 // waits for all enqueued events to drain when the configured
 // ShutdownTimeout is generous and the output drains quickly. The
 // contract: an explicit Close on a non-blocking pipeline never
-// drops events. (#565 G1)
+// drops events. (#565 G1).
 func TestLogger_Close_DrainCompletesBeforeTimeout(t *testing.T) {
 	out := testhelper.NewMockOutput("drainable")
 	auditor, err := audit.New(
@@ -6270,7 +6270,7 @@ func TestLogger_Close_DrainCompletesBeforeTimeout(t *testing.T) {
 // and Close honours the default. The earlier issue draft framed
 // this as a rejection; the actual contract (config.go:84) is
 // "zero defaults to DefaultShutdownTimeout" — a more permissive
-// interpretation that this test pins. (#565 G1)
+// interpretation that this test pins. (#565 G1).
 func TestLogger_Close_ZeroShutdownTimeout(t *testing.T) {
 	out := testhelper.NewMockOutput("zero-timeout")
 	auditor, err := audit.New(
@@ -6293,7 +6293,7 @@ func TestLogger_Close_ZeroShutdownTimeout(t *testing.T) {
 // boot-time disable: subsequent Audit calls for events in that
 // category surface ErrCategoryDisabled (or are silently filtered,
 // per the documented contract — verify the actual behaviour).
-// (#565 G1)
+// (#565 G1).
 func TestLogger_New_WithDisabledCategoryAtBoot(t *testing.T) {
 	out := testhelper.NewMockOutput("after-disable")
 	auditor, err := audit.New(

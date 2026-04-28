@@ -2401,7 +2401,7 @@ func TestCEFFormatter_FieldMapping_NoEscape_SelfMap(t *testing.T) {
 // produce invalid JSON. The Go encoding/json contract escapes
 // `\u0000`; the test pins this so a future formatter change
 // that forgets to escape control bytes is caught immediately.
-// (#565 G2)
+// (#565 G2).
 func TestJSONFormatter_NullByteInValue(t *testing.T) {
 	f := &audit.JSONFormatter{}
 	data, err := f.Format(testTime, "schema_register", audit.Fields{
@@ -2426,7 +2426,7 @@ func TestJSONFormatter_NullByteInValue(t *testing.T) {
 // replacement character (U+FFFD); this test pins the contract so
 // a future change that surfaces raw surrogate halves is caught —
 // invalid UTF-8 in audit payloads breaks downstream JSON parsers.
-// (#565 G2)
+// (#565 G2).
 func TestJSONFormatter_SurrogateHalfPair(t *testing.T) {
 	f := &audit.JSONFormatter{}
 	// Bytes 0xED 0xA0 0xBD are the UTF-8 encoding of the unpaired
@@ -2455,7 +2455,7 @@ func TestJSONFormatter_SurrogateHalfPair(t *testing.T) {
 // custom fields still produces a syntactically valid CEF header
 // with required positional fields populated. The trailing pipe
 // must be present even when no extensions follow it.
-// (#565 G2)
+// (#565 G2).
 func TestCEFFormatter_EmptyEvent(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "Test", Product: "audit", Version: "1.0"}
 	emptyDef := &audit.EventDef{}
@@ -2478,7 +2478,7 @@ func TestCEFFormatter_EmptyEvent(t *testing.T) {
 // extension key in the emitted line. This is a regression sentinel
 // for the mapping table — a silent edit would break SIEM queries
 // in production.
-// (#565 G2)
+// (#565 G2).
 func TestCEFFormatter_AllReservedStandardFieldMappings(t *testing.T) {
 	f := &audit.CEFFormatter{Vendor: "Test", Product: "audit", Version: "1.0"}
 	mapping := audit.DefaultCEFFieldMapping()
@@ -2516,12 +2516,12 @@ func TestCEFFormatter_AllReservedStandardFieldMappings(t *testing.T) {
 // Unix-millis timestamp encoding handles boundary inputs
 // deterministically: zero, positive, and negative values produce
 // the expected integer encoding without panic or precision loss.
-// (#565 G2)
+// (#565 G2).
 func TestJSONFormatter_TimestampUnixMillis_EdgeCases(t *testing.T) {
 	cases := []struct {
-		name    string
-		ts      time.Time
-		wantMs  int64
+		ts     time.Time
+		name   string
+		wantMs int64
 	}{
 		{
 			name:   "epoch zero",

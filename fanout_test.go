@@ -713,3 +713,57 @@ func TestFanout_ConcurrentEventOverrideAndAudit(t *testing.T) {
 	// Count is non-deterministic due to concurrent enable/disable.
 	// The test passes iff the race detector reports no data race.
 }
+
+// TestFanout_AllExcludeRoute_ZeroDeliveries proves that fan-out
+// with all outputs configured to exclude every event category
+// produces zero deliveries. The contract: a deliberately
+// over-restrictive route does not silently leak events. (#565 G10)
+func TestFanout_AllExcludeRoute_ZeroDeliveries(t *testing.T) {
+	excludeAll := &audit.EventRoute{
+		ExcludeCategories: []string{"write", "security", "read"},
+	}
+	out1 := testhelper.NewMockOutput("out1")
+	out2 := testhelper.NewMockOutput("out2")
+	auditor, err := audit.New(
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithNamedOutput(out1, audit.WithRoute(excludeAll)),
+		audit.WithNamedOutput(out2, audit.WithRoute(excludeAll)),
+	)
+	require.NoError(t, err)
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.Close())
+
+	assert.Zero(t, out1.EventCount(), "out1 must receive zero events when all categories excluded")
+	assert.Zero(t, out2.EventCount(), "out2 must receive zero events when all categories excluded")
+}
+
+// TestFanout_IncludeExclude_MultipleOutputs_Independence proves
+// that two outputs with disjoint include/exclude rules each route
+// independently — no leakage from one output's filter into
+// another's. (#565 G10)
+func TestFanout_IncludeExclude_MultipleOutputs_Independence(t *testing.T) {
+	writeOnly := &audit.EventRoute{IncludeCategories: []string{"write"}}
+	securityOnly := &audit.EventRoute{IncludeCategories: []string{"security"}}
+	out1 := testhelper.NewMockOutput("write-only")
+	out2 := testhelper.NewMockOutput("security-only")
+	auditor, err := audit.New(
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithNamedOutput(out1, audit.WithRoute(writeOnly)),
+		audit.WithNamedOutput(out2, audit.WithRoute(securityOnly)),
+	)
+	require.NoError(t, err)
+	// user_create is in the "write" category per testhelper.TestTaxonomy.
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
+	require.NoError(t, auditor.Close())
+
+	assert.Equal(t, 1, out1.EventCount(),
+		"write-only output must receive write-category events")
+	assert.Zero(t, out2.EventCount(),
+		"security-only output must NOT receive write-category events")
+}

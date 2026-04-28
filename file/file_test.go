@@ -187,7 +187,16 @@ func TestFileOutput_Name(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
-	assert.Equal(t, "file:"+path, out.Name())
+	// Normalise the expected path because the file output resolves
+	// symlinks (e.g. /var → /private/var on macOS) and short-name
+	// aliases (e.g. C:\Users\RUNNER~1 → C:\Users\runneradmin on
+	// Windows) when computing the canonical Name. The directory
+	// itself may exist before the file does, so resolve dir +
+	// rejoin rather than EvalSymlinks on the full path.
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	require.NoError(t, err)
+	expected := "file:" + filepath.Join(resolvedDir, "audit.log")
+	assert.Equal(t, expected, out.Name())
 }
 
 func TestFileOutput_Permissions(t *testing.T) {
@@ -588,7 +597,14 @@ func TestFileOutput_FileMetrics_RecordRotation_CalledOnRotation(t *testing.T) {
 	m.mu.Unlock()
 
 	if assert.NotEmpty(t, rotations, "RecordRotation must have been called") {
-		assert.Equal(t, path, rotations[0],
+		// Path comparison must account for the canonical-path
+		// resolution the file output performs internally (see
+		// TestFileOutput_Name for the macOS / Windows symlink
+		// rationale).
+		resolvedDir, evalErr := filepath.EvalSymlinks(dir)
+		require.NoError(t, evalErr)
+		expectedPath := filepath.Join(resolvedDir, "audit.log")
+		assert.Equal(t, expectedPath, rotations[0],
 			"RecordRotation should receive the active file path")
 	}
 }

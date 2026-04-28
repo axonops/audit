@@ -441,8 +441,13 @@ func TestMiddleware_Duration_Positive(t *testing.T) {
 	req.RemoteAddr = "10.0.0.1:12345"
 	mw(handler).ServeHTTP(rec, req)
 
-	// time.Since(start) always returns > 0 on monotonic clock.
-	assert.Greater(t, capturedDuration, time.Duration(0))
+	// time.Since(start) is monotonically non-decreasing. For a
+	// no-op handler on Windows the system clock resolution can
+	// produce a 0-valued duration; on Linux/macOS the nanosecond
+	// resolution effectively guarantees a positive value. The
+	// invariant we actually want is "duration was captured and
+	// is non-negative".
+	assert.GreaterOrEqual(t, capturedDuration, time.Duration(0))
 }
 
 func TestMiddleware_BuilderPanic_Recovered(t *testing.T) {

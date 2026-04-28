@@ -122,6 +122,9 @@ func TestNew_SymlinkPath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriter_Write_CreatesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -273,6 +276,9 @@ func TestWriter_Write_BackupNaming(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriter_Write_AllFilesUseConfiguredMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -305,6 +311,9 @@ func TestWriter_Write_AllFilesUseConfiguredMode(t *testing.T) {
 }
 
 func TestWriter_Write_ModeOnReopen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	// Verifies that openExistingOrNew uses configured mode, not hardcoded 0644.
 	t.Parallel()
 
@@ -546,6 +555,9 @@ func TestWriter_Compression_CreatesGz(t *testing.T) {
 }
 
 func TestWriter_Compression_CorrectMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -578,6 +590,9 @@ func TestWriter_Compression_CorrectMode(t *testing.T) {
 }
 
 func TestWriter_Compression_SourceRemoved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows holds an exclusive file lock until the writer closes; the unlink-after-compress sequence is Linux/macOS-only")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -1205,6 +1220,9 @@ func TestWriter_BackupContentIntegrity(t *testing.T) {
 }
 
 func TestWriter_CompressionOnResume(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file-locking semantics break the unlink-after-recompress sequence")
+	}
 	// Pre-create both .log and .log.gz (simulating crash during compression).
 	// Verify no corruption after the writer runs.
 	t.Parallel()

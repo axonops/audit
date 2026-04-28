@@ -38,6 +38,16 @@ Individual modules can be tested separately: `make test-core`,
 This project does not use pre-commit hooks. Run `make check` before
 committing to execute the full quality gate locally.
 
+### Security invariants enforced statically
+
+`make check` chains a set of static guards that reject
+high-impact security misuse before it can land. The most
+important is `make check-insecure-skip-verify`, which fails the
+build if any production-code `.go` file sets
+`InsecureSkipVerify: true`. CI's `Hygiene` job runs the same
+guard. See [SECURITY.md](SECURITY.md#static-analysis-guards)
+for the full list and the exemption mechanism.
+
 ### BDD Strict mode — non-negotiable
 
 Every `godog.Options{}` block in every test file MUST include

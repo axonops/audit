@@ -35,6 +35,28 @@ to report vulnerabilities. This provides a private channel for coordinated discl
 These timelines are best-effort commitments for a pre-release project
 with a small maintainer team.
 
+## Static-Analysis Guards
+
+Several security invariants are enforced by static checks, not just code
+review. The CI `Hygiene` job invokes each guard target individually;
+locally `make check` chains the same set. Contributors SHOULD run
+`make check` before pushing.
+
+| Invariant | Enforcement | Bypass mechanism |
+|---|---|---|
+| `InsecureSkipVerify: true` never appears in production code | `make check-insecure-skip-verify` (CI `Hygiene` job + local `make check`) | Append `// audit:allow-insecure-skip-verify` to the same line as the field assignment. Reserved for documented test helpers; reviewers MUST justify any exemption against the threat model. |
+| `replace` directives never appear in `go.mod` | `make check-replace` | None. |
+| `TODO` comments must reference an issue | `make check-todos` | Append `//nolint` on the same line — strongly discouraged; requires explicit reviewer justification. |
+
+The `InsecureSkipVerify` rule excludes `*_test.go` files unconditionally.
+Tests that require a self-signed CA MUST configure a custom `RootCAs`
+pool; they MUST NOT disable verification. The line-grep enforcement
+relies on `make fmt-check` running first (which it does, both as the
+first step in CI's `Hygiene` job and as the first dependency of
+`make check`): `gofmt` collapses any multi-line struct-literal back
+onto one line, so a contributor cannot evade the grep by spreading
+`InsecureSkipVerify\n: true` across lines.
+
 ## Disclosure Policy
 
 We follow coordinated disclosure with a 90-day window:

@@ -146,6 +146,9 @@ jobs:
       - name: Check replace directives
         run: make check-replace
 
+      - name: Reject InsecureSkipVerify in production code
+        run: make check-insecure-skip-verify
+
       - name: Check example README cross-references
         run: make check-example-links
 

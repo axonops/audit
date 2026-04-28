@@ -7,7 +7,7 @@
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
-       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict \
+       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify \
        security release-check check clean \
        install-tools install-benchstat workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
@@ -353,6 +353,31 @@ check-replace:
 	done
 	@echo "No replace directives found."
 
+# Reject any production-code use of InsecureSkipVerify: true.
+# The single biggest TLS footgun — must never appear outside
+# *_test.go files. To exempt a legitimate test helper, append
+# a trailing `// audit:allow-insecure-skip-verify` comment to
+# the same line as the field assignment; the rule below
+# filters those lines and the comment is grep-discoverable
+# for review.
+check-insecure-skip-verify:
+	@OFFENDERS=$$({ \
+		grep -rn -E 'InsecureSkipVerify[[:space:]]*:[[:space:]]*true' \
+			--include='*.go' \
+			--exclude='*_test.go' \
+			. 2>/dev/null || true; \
+	} | { grep -v 'audit:allow-insecure-skip-verify' || true; }); \
+	if [ -n "$$OFFENDERS" ]; then \
+		echo "ERROR: InsecureSkipVerify: true in production code:"; \
+		echo "$$OFFENDERS"; \
+		echo ""; \
+		echo "TLS verification must never be disabled in production code."; \
+		echo "If a test helper genuinely needs this, append a trailing"; \
+		echo "// audit:allow-insecure-skip-verify comment on the same line."; \
+		exit 1; \
+	fi
+	@echo "No InsecureSkipVerify: true in production code."
+
 # Enforce TODO comments must reference a GitHub issue: TODO(#NNN)
 check-todos:
 	@ORPHANED=$$({ grep -rn 'TODO' --include='*.go' || true; } | { grep -v 'TODO(#[0-9]' || true; } | { grep -v 'nolint' || true; } | { grep -v '_test.go.*TODO' || true; }); \
@@ -484,7 +509,7 @@ release-check:
 
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-todos check-example-links check-bdd-strict bench-baseline-check release-check security
+check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-insecure-skip-verify check-todos check-example-links check-bdd-strict bench-baseline-check release-check security
 	@echo ""
 	@echo "All checks passed."
 

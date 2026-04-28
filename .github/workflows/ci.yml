@@ -193,7 +193,7 @@ jobs:
     name: Test (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
@@ -259,7 +259,7 @@ jobs:
     name: Test (${{ matrix.module }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    needs: [test, bdd, changes]
+    needs: [test, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
@@ -305,7 +305,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [test, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
@@ -542,7 +542,7 @@ jobs:
     name: Cross Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout

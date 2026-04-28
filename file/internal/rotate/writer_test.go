@@ -546,6 +546,9 @@ func TestWriter_Compression_CreatesGz(t *testing.T) {
 }
 
 func TestWriter_Compression_CorrectMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -578,6 +581,9 @@ func TestWriter_Compression_CorrectMode(t *testing.T) {
 }
 
 func TestWriter_Compression_SourceRemoved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows holds an exclusive file lock until the writer closes; the unlink-after-compress sequence is Linux/macOS-only")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()

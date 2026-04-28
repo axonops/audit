@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -200,6 +201,9 @@ func TestFileOutput_Name(t *testing.T) {
 }
 
 func TestFileOutput_Permissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
@@ -216,6 +220,9 @@ func TestFileOutput_Permissions(t *testing.T) {
 }
 
 func TestFileOutput_CustomPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
@@ -1051,6 +1058,9 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 //
 // (#565 G3).
 func TestFileOutput_WriteToReadOnlyDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0o555 to make a directory read-only is a no-op on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root — chmod 0o555 is bypassed; cannot drive permission-denied")
 	}

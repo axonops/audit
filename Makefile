@@ -33,16 +33,12 @@ WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
 
-# Tool versions — pinned for supply chain safety. To update:
-#   1. Change the version constant below
-#   2. Run: make install-tools
-#   3. Verify: make check
-#   4. Commit the Makefile change (CI cache auto-invalidates via hashFiles)
-GOLANGCI_LINT_VER := v2.1.6
-GOVULNCHECK_VER   := v1.1.4
-GOIMPORTS_VER     := v0.43.0
-GORELEASER_VER    := v2.15.0
-BENCHSTAT_VER     := v0.0.0-20260312031701-16a31bc5fbd0
+# Tool versions — pinned for supply chain safety, single source
+# of truth for both this Makefile and the CI cache key. The CI
+# cache (.github/actions/setup-audit/action.yml) keys on
+# hashFiles('scripts/tool-versions.txt'), so updating that file
+# automatically invalidates the cache.
+include scripts/tool-versions.txt
 
 # --- Tool management ---
 

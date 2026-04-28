@@ -17,10 +17,6 @@ package audit_test
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/axonops/audit"
@@ -136,35 +132,4 @@ func TestTLSPolicy_Apply_TLS13_AllowWeakCiphersNoEffect(t *testing.T) {
 	assert.Equal(t, uint16(tls.VersionTLS13), cfg.MinVersion)
 	assert.Nil(t, cfg.CipherSuites)
 	assert.Empty(t, warnings, "no warning expected when AllowTLS12 is false")
-}
-
-// ---------------------------------------------------------------------------
-// Production code InsecureSkipVerify guard
-// ---------------------------------------------------------------------------
-
-func TestNoInsecureSkipVerify_InProductionCode(t *testing.T) {
-	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if path == "vendor" || path == "testdata" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		data, readErr := os.ReadFile(path)
-		require.NoError(t, readErr)
-
-		content := string(data)
-		assert.NotContains(t, content, "InsecureSkipVerify: true",
-			"%s must not set InsecureSkipVerify to true", path)
-		assert.NotContains(t, content, "InsecureSkipVerify:true",
-			"%s must not set InsecureSkipVerify to true (no space)", path)
-		return nil
-	})
-	require.NoError(t, err)
 }

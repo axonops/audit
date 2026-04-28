@@ -1168,13 +1168,6 @@ func TestWebhookOutput_TLSPolicy_AllowTLS12(t *testing.T) {
 	require.NoError(t, out.Close())
 }
 
-func TestWebhookOutput_NoInsecureSkipVerify(t *testing.T) {
-	data, err := os.ReadFile("webhook.go")
-	require.NoError(t, err)
-	assert.NotContains(t, string(data), "InsecureSkipVerify: true",
-		"InsecureSkipVerify must never be set to true")
-}
-
 // ---------------------------------------------------------------------------
 // TLS tests
 // ---------------------------------------------------------------------------

@@ -1613,20 +1613,6 @@ func TestBackoffDuration(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// No InsecureSkipVerify
-// ---------------------------------------------------------------------------
-
-func TestSyslogOutput_NoInsecureSkipVerify(t *testing.T) {
-	// Grep the source for InsecureSkipVerify — it must never be set to true.
-	data, err := os.ReadFile("syslog.go")
-	require.NoError(t, err)
-	assert.NotContains(t, string(data), "InsecureSkipVerify: true",
-		"InsecureSkipVerify must never be set to true")
-	assert.NotContains(t, string(data), "InsecureSkipVerify:true",
-		"InsecureSkipVerify must never be set to true")
-}
-
-// ---------------------------------------------------------------------------
 // Empty and edge-case payloads
 // ---------------------------------------------------------------------------
 

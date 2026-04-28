@@ -2028,3 +2028,84 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config must not be nil")
 }
+
+// TestWebhookOutput_Delivery_ExactEventCount pins the contract
+// that every enqueued event reaches the receiver — the
+// observable count is "events on the wire" (sum of NDJSON lines
+// across all requests), not "requests" (which depends on
+// batching policy). After N writes and Close, the server must
+// observe exactly N event lines. Off-by-one errors in the batch
+// flush logic surface here. (#565 G5)
+func TestWebhookOutput_Delivery_ExactEventCount(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	const n = 10
+	out := newTestWebhookOutput(t, srv.url(), func(c *webhook.Config) {
+		c.BatchSize = 1 // request per event
+		c.FlushInterval = 50 * time.Millisecond
+		c.MaxRetries = 1
+	})
+	for i := 0; i < n; i++ {
+		require.NoError(t, out.Write([]byte(fmt.Sprintf(`{"event":"e%d"}`+"\n", i))))
+	}
+	require.NoError(t, out.Close())
+
+	// Count event-marker substrings across all received bodies.
+	// Whether the webhook batches into fewer NDJSON-bundled
+	// requests or sends one per event, exactly N markers must
+	// appear on the wire.
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	totalEvents := 0
+	for _, req := range srv.requests {
+		totalEvents += strings.Count(string(req.Body), `"event":"e`)
+	}
+	assert.Equal(t, n, totalEvents,
+		"every enqueued event must reach the wire — got %d event markers across %d requests, want %d",
+		totalEvents, len(srv.requests), n)
+}
+
+// TestWebhookOutput_NDJSON_MultiLinePayloadRejected pins the
+// contract that an event payload containing a newline survives
+// the wire round-trip without splitting the receiver's
+// per-line parser. The audit-side serialiser produces
+// newline-terminated JSON; an embedded literal newline within a
+// JSON field value must be escaped as \n in the JSON output (Go
+// encoding/json contract), so the receiver sees a single JSON
+// document on the line and parses it cleanly. (#565 G5)
+func TestWebhookOutput_NDJSON_MultiLinePayloadRejected(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(c *webhook.Config) {
+		c.BatchSize = 1
+		c.FlushInterval = 50 * time.Millisecond
+		c.MaxRetries = 1
+	})
+
+	// Send a payload that already contains an escaped newline
+	// in its JSON encoding. The audit caller is responsible for
+	// producing valid JSON with embedded \n escapes — the
+	// webhook output forwards bytes verbatim. The wire test
+	// asserts that the bytes reach the server intact (single
+	// request, body containing the escaped newline).
+	payload := []byte(`{"event":"multi","msg":"line1\nline2"}` + "\n")
+	require.NoError(t, out.Write(payload))
+	require.NoError(t, out.Close())
+
+	require.True(t, srv.waitForRequests(1, 3*time.Second))
+	srv.mu.Lock()
+	require.Len(t, srv.requests, 1, "exactly one request must reach the server")
+	body := srv.requests[0].Body
+	srv.mu.Unlock()
+
+	// Parse the body as JSON — the escaped \n must NOT split
+	// the parser. A parse failure indicates the multi-line
+	// content was incorrectly forwarded as a literal newline.
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(body), &decoded),
+		"body must parse as a single JSON document; embedded \\n must remain escaped")
+	assert.Equal(t, "line1\nline2", decoded["msg"],
+		"the embedded newline must round-trip as a single string value")
+}

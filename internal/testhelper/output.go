@@ -63,9 +63,18 @@ func (n *NoopOutput) Writes() uint64 { return n.writes.Load() }
 
 // MockOutput is a thread-safe in-memory output that captures written
 // events for assertion.
+//
+// Synchronisation between Write and WaitForEvents uses a sync.Cond
+// keyed off mu rather than a buffered signal channel. The earlier
+// 1000-slot WriteCh design (#567) silently dropped signals once the
+// channel filled, which caused WaitForEvents to time out on
+// high-volume scenarios (10k+ events) even though every event
+// reached the output. Cond.Broadcast cannot drop signals: every
+// Write notifies every Wait, and the predicate check on EventCount
+// guarantees correctness.
 type MockOutput struct {
 	WriteErr error
-	WriteCh  chan struct{}
+	cond     *sync.Cond
 	name     string
 	events   [][]byte
 	mu       sync.Mutex
@@ -74,10 +83,9 @@ type MockOutput struct {
 
 // NewMockOutput creates a MockOutput with the given name.
 func NewMockOutput(name string) *MockOutput {
-	return &MockOutput{
-		name:    name,
-		WriteCh: make(chan struct{}, 1000),
-	}
+	m := &MockOutput{name: name}
+	m.cond = sync.NewCond(&m.mu)
+	return m
 }
 
 func (m *MockOutput) Write(data []byte) error {
@@ -89,10 +97,7 @@ func (m *MockOutput) Write(data []byte) error {
 	cp := make([]byte, len(data))
 	copy(cp, data)
 	m.events = append(m.events, cp)
-	select {
-	case m.WriteCh <- struct{}{}:
-	default:
-	}
+	m.cond.Broadcast()
 	return nil
 }
 
@@ -139,19 +144,37 @@ func (m *MockOutput) GetEvent(i int) map[string]interface{} {
 	return result
 }
 
-// WaitForEvents polls until at least n events are captured or timeout expires.
+// WaitForEvents waits until at least n events are captured or
+// timeout expires. The implementation uses sync.Cond.Wait under
+// the same mutex that protects the events slice, so the count
+// check and the wait are atomic — no signal can be dropped between
+// EventCount and the next Wait, and Write's Broadcast is observed
+// by every concurrent waiter.
+//
+// Returns true if EventCount reached n before the deadline; false
+// on timeout.
 func (m *MockOutput) WaitForEvents(n int, timeout time.Duration) bool {
-	deadline := time.After(timeout)
-	for {
-		if m.EventCount() >= n {
-			return true
-		}
-		select {
-		case <-m.WriteCh:
-		case <-deadline:
+	deadline := time.Now().Add(timeout)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Spawn a watchdog goroutine that broadcasts the cond when
+	// the deadline expires so the Wait below unblocks. Without
+	// this, sync.Cond.Wait has no built-in timeout.
+	timer := time.AfterFunc(timeout, func() {
+		m.mu.Lock()
+		m.cond.Broadcast()
+		m.mu.Unlock()
+	})
+	defer timer.Stop()
+
+	for len(m.events) < n {
+		if time.Now().After(deadline) {
 			return false
 		}
+		m.cond.Wait()
 	}
+	return true
 }
 
 // IsClosed returns whether Close has been called.

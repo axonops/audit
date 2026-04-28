@@ -51,7 +51,14 @@ Feature: Syslog Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
-    And the syslog line with the marker should contain "bdd-audit"
+    # Structural assertion (#572). The audit syslog client routes
+    # Config.AppName into the RFC 5424 MSGID field per srslog's
+    # wire mapping; APP-NAME is set to the process binary path.
+    # Asserting on the parsed MSGID structurally rather than via
+    # substring matching catches framing regressions that a
+    # substring search would miss.
+    And the syslog message with the marker should have msg-id "bdd-audit"
+    And the syslog message with the marker should have well-formed RFC 5424 structure
 
   Scenario: Syslog message contains timestamp
     Given an auditor with syslog output on "tcp" to "localhost:5514"
@@ -112,7 +119,10 @@ Feature: Syslog Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
-    And the syslog line with the marker should contain "bdd-custom-host"
+    # Structural assertion (#572) — pins the configured hostname
+    # to the RFC 5424 HOSTNAME field specifically, rather than a
+    # substring-anywhere search that could match a body field.
+    And the syslog message with the marker should have hostname "bdd-custom-host"
 
   Scenario: Syslog hostname defaults to os.Hostname when not configured
     Given an auditor with syslog output on "tcp" to "localhost:5514"
@@ -133,7 +143,10 @@ Feature: Syslog Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the syslog server should contain the marker within 10 seconds
-    And the syslog line with the marker should contain "audit"
+    # Structural assertion (#572). The default `Config.AppName`
+    # is the literal `audit` (syslog/config.go:29) and srslog
+    # routes it into the MSGID position on the wire.
+    And the syslog message with the marker should have msg-id "audit"
 
   Scenario Outline: Valid facility names are accepted
     Given an auditor with syslog output on "tcp" to "localhost:5514" with facility "<facility>"

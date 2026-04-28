@@ -27,6 +27,7 @@ import (
 
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/syslog"
+	"github.com/axonops/audit/tests/bdd/steps/rfc5424"
 )
 
 // MockSyslogMetrics captures syslog reconnect events. It embeds
@@ -413,6 +414,23 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		})
 	ctx.Step(`^the syslog server should contain all (\d+) markers within (\d+) seconds$`, func(c, t int) error { return assertSyslogAllMarkers(tc, c, t) })
 	ctx.Step(`^the syslog line with the marker should contain "([^"]*)"$`, func(text string) error { return assertSyslogMarkerLineContains(tc, text) })
+	// Structural RFC 5424 assertions (#572). The substring steps
+	// above are retained for opaque-payload checks (markers, year);
+	// the structural steps below assert specific RFC 5424 fields
+	// (hostname, msg-id, app-name, facility, severity, version)
+	// via the in-tree parser at tests/bdd/steps/rfc5424.
+	ctx.Step(`^the syslog message with the marker should have well-formed RFC 5424 structure$`,
+		func() error { return assertSyslogStructureWellFormed(tc) })
+	ctx.Step(`^the syslog message with the marker should have hostname "([^"]*)"$`,
+		func(want string) error { return assertSyslogField(tc, "hostname", want) })
+	ctx.Step(`^the syslog message with the marker should have app-name "([^"]*)"$`,
+		func(want string) error { return assertSyslogField(tc, "app-name", want) })
+	ctx.Step(`^the syslog message with the marker should have msg-id "([^"]*)"$`,
+		func(want string) error { return assertSyslogField(tc, "msg-id", want) })
+	ctx.Step(`^the syslog message with the marker should have facility (\d+)$`,
+		func(want int) error { return assertSyslogIntField(tc, "facility", want) })
+	ctx.Step(`^the syslog message with the marker should have severity (\d+)$`,
+		func(want int) error { return assertSyslogIntField(tc, "severity", want) })
 	ctx.Step(`^the syslog line with the marker should contain the current year$`, func() error { return assertSyslogMarkerLineContains(tc, time.Now().Format("2006")) })
 	ctx.Step(`^the syslog line with "([^"]*)" should contain "([^"]*)"$`, assertSyslogLineContainsBoth)
 	ctx.Step(`^the syslog construction should fail with exact error:$`, func(doc *godog.DocString) error {
@@ -622,4 +640,87 @@ func assertSyslogMarkerLineContains(tc *AuditTestContext, text string) error {
 		}
 	}
 	return fmt.Errorf("no syslog line found with marker %q", m)
+}
+
+// findAndParseMarkerLine locates the syslog line in the
+// syslog-ng log that contains the default marker, then parses it
+// via the in-tree RFC 5424 parser. Used by the structural
+// assertion steps (#572).
+func findAndParseMarkerLine(tc *AuditTestContext) (*rfc5424.Message, error) {
+	m, ok := tc.Markers["default"]
+	if !ok {
+		return nil, fmt.Errorf("no default marker set")
+	}
+	log := readSyslogLogFromDocker()
+	for _, line := range strings.Split(log, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, m) {
+			parsed, err := rfc5424.Parse([]byte(line))
+			if err != nil {
+				return nil, fmt.Errorf("rfc5424 parse failed for marker line %q: %w", line, err)
+			}
+			return parsed, nil
+		}
+	}
+	return nil, fmt.Errorf("no syslog line found with marker %q", m)
+}
+
+func assertSyslogStructureWellFormed(tc *AuditTestContext) error {
+	parsed, err := findAndParseMarkerLine(tc)
+	if err != nil {
+		return err
+	}
+	if parsed.Version != 1 {
+		return fmt.Errorf("RFC 5424 VERSION must be 1, got %d", parsed.Version)
+	}
+	if parsed.Priority < 0 || parsed.Priority > 191 {
+		return fmt.Errorf("RFC 5424 PRI must be 0..191, got %d", parsed.Priority)
+	}
+	return nil
+}
+
+func assertSyslogField(tc *AuditTestContext, fieldName, want string) error {
+	parsed, err := findAndParseMarkerLine(tc)
+	if err != nil {
+		return err
+	}
+	var got string
+	switch fieldName {
+	case "hostname":
+		got = parsed.Hostname
+	case "app-name":
+		got = parsed.AppName
+	case "msg-id":
+		got = parsed.MsgID
+	default:
+		return fmt.Errorf("unknown RFC 5424 field %q (want one of: hostname, app-name, msg-id)", fieldName)
+	}
+	if got != want {
+		return fmt.Errorf("RFC 5424 %s: got %q, want %q (parsed message: %+v)", fieldName, got, want, parsed)
+	}
+	return nil
+}
+
+func assertSyslogIntField(tc *AuditTestContext, fieldName string, want int) error {
+	parsed, err := findAndParseMarkerLine(tc)
+	if err != nil {
+		return err
+	}
+	var got int
+	switch fieldName {
+	case "facility":
+		got = parsed.Facility
+	case "severity":
+		got = parsed.Severity
+	case "priority":
+		got = parsed.Priority
+	default:
+		return fmt.Errorf("unknown RFC 5424 int field %q (want one of: facility, severity, priority)", fieldName)
+	}
+	if got != want {
+		return fmt.Errorf("RFC 5424 %s: got %d, want %d (parsed message: %+v)", fieldName, got, want, parsed)
+	}
+	return nil
 }

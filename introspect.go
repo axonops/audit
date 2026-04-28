@@ -17,7 +17,8 @@ package audit
 import "slices"
 
 // QueueLen returns the number of events currently queued in the async
-// intake queue. Returns 0 for disabled or synchronous auditors.
+// intake queue. Returns 0 for disabled or synchronous auditors. Safe
+// for concurrent use.
 func (a *Auditor) QueueLen() int {
 	if a.ch == nil {
 		return 0
@@ -26,7 +27,7 @@ func (a *Auditor) QueueLen() int {
 }
 
 // QueueCap returns the configured async intake queue capacity. Returns
-// 0 for disabled or synchronous auditors.
+// 0 for disabled or synchronous auditors. Safe for concurrent use.
 func (a *Auditor) QueueCap() int {
 	if a.ch == nil {
 		return 0
@@ -79,13 +80,14 @@ func (a *Auditor) IsEventEnabled(eventType string) bool {
 }
 
 // IsDisabled reports whether the auditor is a no-op (created with
-// [WithDisabled]).
+// [WithDisabled]). Safe for concurrent use.
 func (a *Auditor) IsDisabled() bool {
 	return a.disabled
 }
 
 // IsSynchronous reports whether the auditor delivers events inline
 // within [Auditor.AuditEvent] (created with [WithSynchronousDelivery]).
+// Safe for concurrent use.
 func (a *Auditor) IsSynchronous() bool {
 	return a.synchronous
 }

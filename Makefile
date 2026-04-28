@@ -192,7 +192,7 @@ test-examples:
 	            examples/11-sensitivity-labels examples/12-hmac-integrity \
 	            examples/13-standard-fields examples/14-loki-output \
 	            examples/15-tls-policy examples/16-buffering \
-	            examples/17-capstone; do \
+	            examples/17-capstone examples/18-health-endpoint; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

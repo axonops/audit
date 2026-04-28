@@ -1,0 +1,14 @@
+version: 1
+
+categories:
+  ops:
+    - health_probe
+
+events:
+  health_probe:
+    description: "An external health check probed the service"
+    fields:
+      outcome:
+        required: true
+      probe_target:
+        required: true

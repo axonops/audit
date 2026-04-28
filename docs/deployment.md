@@ -559,6 +559,12 @@ for the recipe.
 - [docs/secrets.md](secrets.md) — secret-provider authentication and
   rotation.
 - [docs/validation.md](validation.md) — `audit-validate` CLI.
+- [docs/metrics-monitoring.md § Health Endpoint](metrics-monitoring.md#-health-endpoint)
+  — `/healthz` and `/readyz` handler patterns for Kubernetes
+  liveness and readiness probes.
 - [examples/17-capstone/](../examples/17-capstone/) — complete
   deployment example with Postgres, Loki, Prometheus, graceful
   shutdown.
+- [examples/18-health-endpoint/](../examples/18-health-endpoint/) —
+  runnable `/healthz` and `/readyz` example driven by audit
+  introspection.

@@ -1,0 +1,16 @@
+# Health-endpoint example — minimal stdout output. The example's
+# focus is the introspection-driven /healthz and /readyz handlers,
+# not the output configuration. queue_size is small (10) so a
+# brief burst of audited events from the demo loop drives the
+# saturation indicator visibly.
+version: 1
+app_name: "health-endpoint-example"
+host: "localhost"
+
+auditor:
+  queue_size: 10
+  shutdown_timeout: "2s"
+
+outputs:
+  stdout:
+    type: stdout

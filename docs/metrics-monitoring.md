@@ -220,6 +220,98 @@ double-counting with `RecordDelivery(EventError)` is needed).
 | Delivery error rate | `RecordDelivery(_, EventError)` / total > 5% | Investigate failing output |
 | Validation spike | `RecordValidationError` > threshold | Application bug — check recent deployments |
 
+## 🩺 Health Endpoint
+
+Operators running audit behind a Kubernetes probe or load
+balancer typically expose two HTTP endpoints driven by the
+auditor's introspection primitives:
+
+- `/healthz` (liveness): is the audit pipeline healthy enough
+  to keep running?
+- `/readyz` (readiness): is the audit pipeline ready to receive
+  new events?
+
+The introspection primitives (`Auditor.QueueLen()`,
+`Auditor.QueueCap()`, `Auditor.OutputNames()`,
+`Auditor.IsDisabled()`) drive these checks without coupling the
+consumer to a specific HTTP framework.
+
+### `/healthz` — liveness
+
+Return 503 when the queue saturation exceeds 90 % (a jammed
+queue is non-recoverable from inside the process — Kubernetes
+will restart the pod). The 90 % threshold is a default; tune for
+your workload.
+
+```go
+const healthzSaturationThreshold = 0.90
+
+func healthzHandler(a *audit.Auditor) http.HandlerFunc {
+    return func(w http.ResponseWriter, _ *http.Request) {
+        queueLen := a.QueueLen()
+        queueCap := a.QueueCap()
+        var saturation float64
+        if queueCap > 0 {
+            saturation = float64(queueLen) / float64(queueCap)
+        }
+        w.Header().Set("Content-Type", "application/json")
+        if saturation > healthzSaturationThreshold {
+            w.WriteHeader(http.StatusServiceUnavailable)
+            fmt.Fprintf(w,
+                `{"status":"unhealthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",
+                queueLen, queueCap, saturation)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        fmt.Fprintf(w,
+            `{"status":"healthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",
+            queueLen, queueCap, saturation)
+    }
+}
+```
+
+### `/readyz` — readiness
+
+Return 503 when the auditor is disabled or no outputs are
+configured — both are operator-correctable conditions where the
+pod should be drained from the load balancer rotation but NOT
+restarted.
+
+```go
+func readyzHandler(a *audit.Auditor) http.HandlerFunc {
+    return func(w http.ResponseWriter, _ *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        if a.IsDisabled() {
+            w.WriteHeader(http.StatusServiceUnavailable)
+            fmt.Fprintln(w, `{"status":"not-ready","reason":"auditor is disabled"}`)
+            return
+        }
+        if len(a.OutputNames()) == 0 {
+            w.WriteHeader(http.StatusServiceUnavailable)
+            fmt.Fprintln(w, `{"status":"not-ready","reason":"no outputs configured"}`)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+        fmt.Fprintln(w, `{"status":"ready"}`)
+    }
+}
+```
+
+### Liveness vs readiness
+
+| Probe | What it asks | Failure consequence (Kubernetes) |
+|---|---|---|
+| Liveness (`/healthz`) | Is this process healthy enough to keep running? | Pod is restarted. |
+| Readiness (`/readyz`) | Should I send new traffic to this pod? | Pod stays alive but is removed from the load balancer rotation. |
+
+**Common mistake:** wiring the same conditions into both
+probes. A fault that is permanent for the lifetime of this pod
+belongs in `/healthz`; a fault that is transient or
+operator-correctable belongs in `/readyz`.
+
+A complete runnable implementation lives at
+[examples/18-health-endpoint](../examples/18-health-endpoint/).
+
 ## 🔀 Per-Output Metrics (`OutputMetrics`)
 
 Every async output (file, syslog, webhook, Loki) can receive a

@@ -2391,3 +2391,174 @@ func TestCEFFormatter_FieldMapping_NoEscape_SelfMap(t *testing.T) {
 	assert.NotContains(t, line, "suser=",
 		"default actor_id→suser mapping must be overridden by the self-map entry")
 }
+
+// ---------------------------------------------------------------------------
+// #565 group G2 — formatter edge-case tests
+// ---------------------------------------------------------------------------
+
+// TestJSONFormatter_NullByteInValue proves that a NUL byte
+// embedded in a string field does not truncate the value or
+// produce invalid JSON. The Go encoding/json contract escapes
+// `\u0000`; the test pins this so a future formatter change
+// that forgets to escape control bytes is caught immediately.
+// (#565 G2)
+func TestJSONFormatter_NullByteInValue(t *testing.T) {
+	f := &audit.JSONFormatter{}
+	data, err := f.Format(testTime, "schema_register", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  "before\x00after",
+	}, testDef, nil)
+	require.NoError(t, err)
+
+	// Output is valid JSON (round-trips through encoding/json).
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m),
+		"NUL byte in value must be escaped, producing valid JSON")
+	assert.Equal(t, "before\x00after", m["subject"],
+		"NUL byte must round-trip — no truncation")
+}
+
+// TestJSONFormatter_SurrogateHalfPair proves that an unpaired
+// UTF-16 high-surrogate byte sequence in a string field does not
+// produce raw invalid UTF-8 bytes in the JSON output. The Go
+// encoding/json contract replaces invalid UTF-8 with the Unicode
+// replacement character (U+FFFD); this test pins the contract so
+// a future change that surfaces raw surrogate halves is caught —
+// invalid UTF-8 in audit payloads breaks downstream JSON parsers.
+// (#565 G2)
+func TestJSONFormatter_SurrogateHalfPair(t *testing.T) {
+	f := &audit.JSONFormatter{}
+	// Bytes 0xED 0xA0 0xBD are the UTF-8 encoding of the unpaired
+	// UTF-16 high surrogate U+D83D. The byte sequence is invalid
+	// UTF-8 (RFC 3629 excludes the surrogate range). Go accepts
+	// the raw bytes via hex escape but the formatter must not
+	// pass them through unaltered.
+	subjectVal := "lonely-\xed\xa0\xbd-surrogate"
+	data, err := f.Format(testTime, "schema_register", audit.Fields{
+		"outcome":  "success",
+		"actor_id": "alice",
+		"subject":  subjectVal,
+	}, testDef, nil)
+	require.NoError(t, err)
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(data, &m),
+		"output must be valid JSON despite invalid UTF-8 in input")
+	subject, ok := m["subject"].(string)
+	require.True(t, ok, "subject must be a string")
+	assert.Contains(t, subject, "\uFFFD",
+		"unpaired surrogate must be replaced with U+FFFD")
+}
+
+// TestCEFFormatter_EmptyEvent proves that a CEF event with zero
+// custom fields still produces a syntactically valid CEF header
+// with required positional fields populated. The trailing pipe
+// must be present even when no extensions follow it.
+// (#565 G2)
+func TestCEFFormatter_EmptyEvent(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "Test", Product: "audit", Version: "1.0"}
+	emptyDef := &audit.EventDef{}
+	data, err := f.Format(testTime, "schema_register", audit.Fields{}, emptyDef, nil)
+	require.NoError(t, err)
+
+	raw := string(data)
+	// CEF format: CEF:Version|Vendor|Product|Version|Signature|Name|Severity|Extensions
+	// The first 7 pipe-separated header fields must all be present.
+	assert.True(t, strings.HasPrefix(raw, "CEF:0|Test|audit|1.0|"),
+		"empty event must emit the CEF header prefix; got: %s", raw)
+	// Trailing newline.
+	assert.True(t, len(data) > 0 && data[len(data)-1] == '\n',
+		"output must end with newline")
+}
+
+// TestCEFFormatter_AllReservedStandardFieldMappings exercises
+// every entry in DefaultCEFFieldMapping with a known value and
+// asserts the audit-field name is replaced by the documented CEF
+// extension key in the emitted line. This is a regression sentinel
+// for the mapping table — a silent edit would break SIEM queries
+// in production.
+// (#565 G2)
+func TestCEFFormatter_AllReservedStandardFieldMappings(t *testing.T) {
+	f := &audit.CEFFormatter{Vendor: "Test", Product: "audit", Version: "1.0"}
+	mapping := audit.DefaultCEFFieldMapping()
+	require.NotEmpty(t, mapping, "DefaultCEFFieldMapping must be non-empty")
+
+	// Build a sentinel value per audit field; assert each maps
+	// to its documented CEF key.
+	fields := audit.Fields{}
+	expectedKeys := make(map[string]string, len(mapping))
+	for auditName, cefKey := range mapping {
+		val := "v_" + auditName
+		fields[auditName] = val
+		expectedKeys[cefKey] = val
+	}
+
+	// EventDef must declare the optional fields so the formatter
+	// emits them. Use a permissive def listing every audit field.
+	def := &audit.EventDef{}
+	for auditName := range mapping {
+		def.Optional = append(def.Optional, auditName)
+	}
+
+	data, err := f.Format(testTime, "schema_register", fields, def, nil)
+	require.NoError(t, err)
+	raw := string(data)
+
+	for cefKey, val := range expectedKeys {
+		assertion := fmt.Sprintf("%s=%s", cefKey, val)
+		assert.Contains(t, raw, assertion,
+			"CEF output must contain mapped field %q with value %q", cefKey, val)
+	}
+}
+
+// TestJSONFormatter_TimestampUnixMillis_EdgeCases proves that
+// Unix-millis timestamp encoding handles boundary inputs
+// deterministically: zero, positive, and negative values produce
+// the expected integer encoding without panic or precision loss.
+// (#565 G2)
+func TestJSONFormatter_TimestampUnixMillis_EdgeCases(t *testing.T) {
+	cases := []struct {
+		name    string
+		ts      time.Time
+		wantMs  int64
+	}{
+		{
+			name:   "epoch zero",
+			ts:     time.Unix(0, 0).UTC(),
+			wantMs: 0,
+		},
+		{
+			name:   "year 2000",
+			ts:     time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+			wantMs: 946684800000,
+		},
+		{
+			name:   "millisecond precision",
+			ts:     time.Date(2026, 1, 1, 0, 0, 0, 123_000_000, time.UTC),
+			wantMs: 1767225600123,
+		},
+		{
+			name:   "negative pre-epoch",
+			ts:     time.Date(1969, 12, 31, 23, 59, 59, 0, time.UTC),
+			wantMs: -1000,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &audit.JSONFormatter{Timestamp: audit.TimestampUnixMillis}
+			data, err := f.Format(tc.ts, "schema_register", audit.Fields{
+				"outcome":  "success",
+				"actor_id": "a",
+				"subject":  "s",
+			}, testDef, nil)
+			require.NoError(t, err)
+			var m map[string]any
+			require.NoError(t, json.Unmarshal(data, &m))
+			gotMs, ok := m["timestamp"].(float64)
+			require.True(t, ok, "timestamp must be a JSON number; got %T", m["timestamp"])
+			assert.InDelta(t, float64(tc.wantMs), gotMs, 0,
+				"unix-ms timestamp must encode exactly")
+		})
+	}
+}

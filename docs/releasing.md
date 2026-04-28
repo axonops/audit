@@ -444,6 +444,62 @@ CI is only useful if it reports real failures as failures. Defence in depth:
 the test layer must fail loudly, AND every workflow step must propagate that
 failure out of the shell pipeline into the job result.
 
+### Job dependency graph
+
+Post-#759 the CI workflow is structured for fail-fast and parallelism:
+
+```
+                   ┌─────────┐
+                   │ changes │
+                   └────┬────┘
+                        │
+       ┌────────────────┼────────────────┐
+       ▼                ▼                ▼
+  ┌──────────┐  ┌─────────────┐  ┌──────────────┐
+  │ hygiene  │  │ validate-   │  │ dep-review   │
+  │(8 checks)│  │  release    │  │  (PR only)   │
+  └────┬─────┘  └─────────────┘  └──────────────┘
+       │
+       ├──────┬──────┬───────────┬──────────┬─────────┬─────────┬───────────────┐
+       ▼      ▼      ▼           ▼          ▼         ▼         ▼               ▼
+   ┌─────┐ ┌────┐ ┌─────────┐ ┌────────┐ ┌────────┐ ┌──────┐ ┌─────────┐ ┌──────────────┐
+   │lint │ │test│ │integ-   │ │security│ │security│ │cross-│ │examples-│ │   (etc.)     │
+   │     │ │x11 │ │ration   │ │  x13   │ │ verify │ │build │ │ build   │ └──────────────┘
+   └─────┘ └─┬──┘ └─────────┘ └────────┘ └────────┘ └──────┘ └─────────┘
+             │
+             ├──────────────┐
+             ▼              ▼
+        ┌──────┐  ┌──────────────────┐
+        │bdd x8│  │ test-cross-      │
+        └──┬───┘  │ platform x4      │
+           │      │ (mac + win)      │
+           ▼      └──────────────────┘
+     ┌────────────┐
+     │ bdd-verify │
+     └────────────┘
+
+(All roll up into ci-pass, the single aggregate gate.)
+```
+
+Hygiene is the single fan-out point: all subsequent jobs gate on it.
+Cross-platform tests and BDD gate on test (Linux unit suite must pass
+before macOS/Windows shards or BDD shards consume runner-minutes).
+
+The hygiene job runs `make check-static`, which aggregates eight static
+guards (`fmt-check`, `tidy-check`, `check-todos`, `check-replace`,
+`check-insecure-skip-verify`, `check-example-links`, `check-bdd-strict`,
+`bench-baseline-check`) in a `||`-guarded loop so every failure
+surfaces on a single push rather than aborting on the first. Developers
+running `make check-static` locally see the same one-shot summary.
+
+The CI setup ceremony (Go install, workspace init, optional tool
+install) lives in `.github/actions/setup-audit/` as a composite
+action — every job consumes it via `uses: ./.github/actions/setup-audit`.
+The cache key hashes `scripts/tool-versions.txt` so version bumps are
+the only thing that invalidate the cache.
+
+
+
 ### The pipefail bug class
 
 GitHub Actions `run:` blocks execute bash without `set -o pipefail` by default.

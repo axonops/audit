@@ -6138,3 +6138,96 @@ func BenchmarkEventHandle_AuditContext_Background(b *testing.B) {
 		_ = h.AuditContext(ctx, fields)
 	}
 }
+
+// TestLogger_OverflowPolicy_ExactCapacity proves that exactly N
+// events fit when the queue size is N (with a blocking output
+// preventing drain) and that the (N+1)th event triggers exactly
+// one ErrQueueFull. The contract pins the off-by-one boundary —
+// a regression that allows N+1 events through, or rejects the
+// Nth, would surface here. (#565 G11)
+func TestLogger_OverflowPolicy_ExactCapacity(t *testing.T) {
+	metrics := testhelper.NewMockMetrics()
+
+	// QueueSize 1 with a blocking output: the drain goroutine
+	// dequeues the first event and blocks inside Write. The
+	// queue is then empty, so a second Audit succeeds (filling
+	// the slot). A third Audit fills the channel — Audit returns
+	// ErrQueueFull on the next attempt because the drain remains
+	// blocked.
+	out := &blockingOutput{name: "blocking", blockCh: make(chan struct{}), enteredCh: make(chan struct{}, 1)}
+	t.Cleanup(func() { close(out.blockCh) })
+
+	auditor, err := audit.New(
+		audit.WithQueueSize(1),
+		audit.WithShutdownTimeout(50*time.Millisecond),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Wait for the drain goroutine to reach the blocking write.
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure",
+		audit.Fields{"outcome": "failure", "actor_id": "alice"})))
+	select {
+	case <-out.enteredCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("drain goroutine did not enter blocking Write")
+	}
+
+	// Now exactly one slot is free in the channel. Fill it.
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure",
+		audit.Fields{"outcome": "failure", "actor_id": "bob"})),
+		"second Audit must fit (exact capacity 1)")
+
+	// The next Audit must overflow.
+	err = auditor.AuditEvent(audit.NewEvent("auth_failure",
+		audit.Fields{"outcome": "failure", "actor_id": "carol"}))
+	require.Error(t, err, "third Audit must overflow")
+	assert.ErrorIs(t, err, audit.ErrQueueFull,
+		"overflow must surface ErrQueueFull")
+}
+
+// TestLogger_Audit_QueueFull_MetricsIncrement proves that the
+// MockMetrics RecordDrop counter increments on every overflowed
+// Audit call. The contract pins exact-counting — duplicate or
+// missing increments would mislead operators about backpressure
+// pressure. (#565 G11)
+func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
+	metrics := testhelper.NewMockMetrics()
+
+	out := &blockingOutput{name: "blocking", blockCh: make(chan struct{})}
+	t.Cleanup(func() { close(out.blockCh) })
+
+	auditor, err := audit.New(
+		audit.WithQueueSize(1),
+		audit.WithShutdownTimeout(50*time.Millisecond),
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+		audit.WithMetrics(metrics),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Push until 5 overflow drops are observed. Each drop must
+	// increment the metric counter by exactly 1.
+	overflowCount := 0
+	for i := 0; i < 200 && overflowCount < 5; i++ {
+		err = auditor.AuditEvent(audit.NewEvent("auth_failure",
+			audit.Fields{"outcome": "failure", "actor_id": fmt.Sprintf("u%d", i)}))
+		if errors.Is(err, audit.ErrQueueFull) {
+			overflowCount++
+		}
+	}
+	require.GreaterOrEqual(t, overflowCount, 5,
+		"failed to drive 5 overflows in 200 attempts")
+
+	// The metric counter must equal the observed overflow count.
+	assert.Equal(t, overflowCount, metrics.GetBufferDrops(),
+		"RecordDrop must fire exactly once per ErrQueueFull")
+}

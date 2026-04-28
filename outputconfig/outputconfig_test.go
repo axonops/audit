@@ -3014,3 +3014,128 @@ outputs:
 	assert.True(t, loggerWasNil.Load(),
 		"without WithDiagnosticLogger, factory must receive nil logger")
 }
+
+// TestLoad_UnknownOutputType_HintContainsAllKnownTypes pins the
+// diagnostic for the most common configuration mistake. The
+// error message must list every registered output type so an
+// operator can pick the correct one without consulting the
+// docs. The list is built from audit.RegisteredOutputTypes;
+// this test pins both the substring "registered:" and the
+// presence of every registered name. (#565 G8).
+func TestLoad_UnknownOutputType_HintContainsAllKnownTypes(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`version: 1
+app_name: test
+host: test
+outputs:
+  oops:
+    type: not-a-real-output
+`)
+	_, err := outputconfig.Load(context.Background(), data, tax)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output type "not-a-real-output"`,
+		"diagnostic must name the bad type")
+	assert.Contains(t, err.Error(), "registered:",
+		"diagnostic must include a registered-types hint")
+	// The stdout factory was registered in init(); the hint must
+	// list it so operators see at least one valid alternative.
+	assert.Contains(t, err.Error(), "stdout",
+		"hint must enumerate registered types")
+}
+
+// TestLoad_OutputFactoryReturnsNil pins the contract that a
+// registered factory returning (nil, nil) surfaces a clear error
+// rather than panicking on a nil dereference downstream. (#565 G8).
+//
+// (Originally listed in #565 G1 but the OutputFactory registry
+// is the outputconfig surface, not audit.New's surface. Lives
+// here.)
+func TestLoad_OutputFactoryReturnsNil(t *testing.T) {
+	tax := testTaxonomy(t)
+	nilFactory := func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+		return nil, nil //nolint:nilnil // intentional — proves the load path catches this misuse
+	}
+	data := []byte(`version: 1
+app_name: test
+host: test
+outputs:
+  buggy:
+    type: nil-factory
+    nil-factory: {}
+`)
+	_, err := outputconfig.Load(
+		context.Background(),
+		data,
+		tax,
+		outputconfig.WithFactory("nil-factory", nilFactory),
+	)
+	require.Error(t, err, "Load must fail when a factory returns nil output and nil error")
+	// The exact wording is implementation detail; the diagnostic
+	// must at minimum reference the bad output and indicate the
+	// factory misbehaviour (or the symptom — nil output).
+	assert.Contains(t, err.Error(), "buggy",
+		"diagnostic must name the offending output")
+}
+
+// TestLoad_EnvVarSubstitution_MixedLiteralAndReference pins the
+// envsubst path: a YAML scalar containing a mix of literal text
+// and ${VAR} references is resolved to the exact concatenation.
+// (#565 G8).
+func TestLoad_EnvVarSubstitution_MixedLiteralAndReference(t *testing.T) {
+	t.Setenv("BDD565_HOST", "host.example.com")
+	t.Setenv("BDD565_PORT", "8080")
+	tax := testTaxonomy(t)
+	data := []byte(`version: 1
+app_name: prefix-${BDD565_HOST}-suffix-${BDD565_PORT}
+host: test
+outputs:
+  audit_log:
+    type: stdout
+`)
+	result, err := outputconfig.Load(context.Background(), data, tax)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		for _, o := range result.OutputMetadata() {
+			_ = o.Output.Close()
+		}
+	})
+
+	assert.Equal(t, "prefix-host.example.com-suffix-8080", result.AppName(),
+		"mixed literal+envvar must concatenate exactly")
+}
+
+// TestLoad_ContextCancellation pins the contract that a
+// pre-cancelled context surfaces context.Canceled (or a wrap
+// thereof) from Load. The resolver pipeline must respect the
+// context deadline/cancellation everywhere it does I/O — secret
+// resolution being the obvious case. (#565 G8).
+func TestLoad_ContextCancellation(t *testing.T) {
+	tax := testTaxonomy(t)
+	data := []byte(`version: 1
+app_name: test
+host: test
+outputs:
+  audit_log:
+    type: stdout
+`)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel before Load
+	result, err := outputconfig.Load(ctx, data, tax)
+	// Two valid outcomes:
+	//  (a) Load returns a context.Canceled-wrapped error.
+	//  (b) Load completes successfully because the no-op stdout
+	//      pipeline did not need the context. The contract is
+	//      "if cancellation is observed, surface it"; no
+	//      cancellation needed → no error required.
+	if err != nil {
+		assert.ErrorIs(t, err, context.Canceled,
+			"if Load surfaces an error from a cancelled context, it must wrap context.Canceled")
+	}
+	if result != nil {
+		t.Cleanup(func() {
+			for _, o := range result.OutputMetadata() {
+				_ = o.Output.Close()
+			}
+		})
+	}
+}

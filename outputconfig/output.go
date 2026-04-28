@@ -278,5 +278,9 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost strin
 	if err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}
+	if output == nil {
+		return nil, fmt.Errorf("output %q: factory for type %q returned nil output without an error — this is a factory bug",
+			name, f.typeName)
+	}
 	return output, nil
 }

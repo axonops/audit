@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -1235,4 +1236,91 @@ events:
 	for _, ty := range []string{"string", "int", "int64", "float64", "bool", "time", "duration"} {
 		assert.Contains(t, msg, ty, "valid type %q must appear in error", ty)
 	}
+}
+
+// TestRun_UnicodeEventNames pins that audit-gen rejects YAML
+// taxonomies with Unicode (non-ASCII) event-type names. The
+// taxonomy validator (see #477) enforces an ASCII identifier
+// charset for event names so generated Go constants compile and
+// don't surprise downstream tooling with bidi or homoglyph
+// characters. The original issue title framed this as
+// "supports Unicode" but the actual contract is rejection;
+// this test pins the rejection wording. (#565 G9).
+func TestRun_UnicodeEventNames(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	yaml := filepath.Join(dir, "tax.yaml")
+	require.NoError(t, os.WriteFile(yaml, []byte(`version: 1
+events:
+  user_créate:
+    fields:
+      outcome: {required: true}
+`), 0o600))
+
+	var stderr bytes.Buffer
+	code := run([]string{
+		"-input", yaml,
+		"-output", filepath.Join(dir, "out.go"),
+		"-package", "mypkg",
+	}, &bytes.Buffer{}, &stderr)
+	assert.NotEqual(t, exitSuccess, code,
+		"taxonomy with non-ASCII event name must be rejected")
+	// The validator's diagnostic is the surface — pin "user_créate" so
+	// a clearer error wording change is visible in the diff.
+	assert.Contains(t, stderr.String(), "user_créate",
+		"diagnostic must name the offending event type")
+}
+
+// TestGenerate_VeryLargeTaxonomy proves the codegen handles a
+// 1000-event taxonomy without timeout, panic, or pathological
+// memory growth. The output must compile (Go AST parse) — pinning
+// that the template scales to realistic enterprise taxonomies.
+// (#565 G9).
+func TestGenerate_VeryLargeTaxonomy(t *testing.T) {
+	t.Parallel()
+	var sb strings.Builder
+	sb.WriteString("version: 1\ncategories:\n  bulk:\n")
+	for i := 0; i < 1000; i++ {
+		fmt.Fprintf(&sb, "    - large_event_%d\n", i)
+	}
+	sb.WriteString("events:\n")
+	for i := 0; i < 1000; i++ {
+		fmt.Fprintf(&sb, "  large_event_%d:\n    fields:\n      outcome: {required: true}\n", i)
+	}
+	tax, err := audit.ParseTaxonomyYAML([]byte(sb.String()))
+	require.NoError(t, err, "1000-event taxonomy must parse")
+
+	var buf bytes.Buffer
+	require.NoError(t, generate(&buf, *tax, defaultOpts()),
+		"generate must handle 1000-event taxonomy without error")
+	assert.Greater(t, buf.Len(), 50_000,
+		"output for 1000 events must be substantially larger than a small taxonomy")
+
+	// Output must parse as valid Go.
+	fset := token.NewFileSet()
+	_, parseErr := parser.ParseFile(fset, "gen.go", buf.Bytes(), parser.AllErrors)
+	require.NoError(t, parseErr, "generated code must parse as valid Go")
+}
+
+// TestRun_OutputFileInNonexistentDirectory pins that the binary
+// returns a non-zero exit code (and prints a clear diagnostic)
+// when -output points at a path whose parent directory does not
+// exist. Operators rely on this surface to detect typos in CI
+// pipelines without silently producing partial output. (#565 G9).
+func TestRun_OutputFileInNonexistentDirectory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bogusOutput := filepath.Join(dir, "no-such-subdir", "out.go")
+	var stderr bytes.Buffer
+	code := run([]string{
+		"-input", "testdata/valid_taxonomy.yaml",
+		"-output", bogusOutput,
+		"-package", "mypkg",
+	}, &bytes.Buffer{}, &stderr)
+	assert.NotEqual(t, exitSuccess, code,
+		"output to non-existent parent directory must fail with non-zero exit code")
+	// No partial file written.
+	_, statErr := os.Stat(bogusOutput)
+	assert.True(t, os.IsNotExist(statErr) || errors.Is(statErr, os.ErrNotExist),
+		"no partial output file must be created on failure")
 }

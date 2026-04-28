@@ -925,3 +925,40 @@ func TestConcurrentSetRouteWithSeverity(t *testing.T) {
 	// the test verifies no data race, not a specific count.
 	assert.True(t, out.EventCount() > 0, "at least some events should arrive")
 }
+
+// TestValidateEventRoute_SeverityRanges is the comprehensive
+// boundary table for severity-range validation, complementing the
+// existing _MinSeverity_/_MaxSeverity_ unit tests by exercising
+// edge cases (boundaries, inversion, combinations) in one place.
+// (#565 G10).
+func TestValidateEventRoute_SeverityRanges(t *testing.T) {
+	t.Parallel()
+	tax := testhelper.TestTaxonomy()
+	cases := []struct {
+		route   audit.EventRoute
+		name    string
+		wantErr bool
+	}{
+		{name: "no severity bounds", route: audit.EventRoute{}, wantErr: false},
+		{name: "min only at lower bound", route: audit.EventRoute{MinSeverity: intPtr(audit.MinSeverity)}, wantErr: false},
+		{name: "max only at upper bound", route: audit.EventRoute{MaxSeverity: intPtr(audit.MaxSeverity)}, wantErr: false},
+		{name: "min equals max (single value)", route: audit.EventRoute{MinSeverity: intPtr(5), MaxSeverity: intPtr(5)}, wantErr: false},
+		{name: "min just below max", route: audit.EventRoute{MinSeverity: intPtr(4), MaxSeverity: intPtr(5)}, wantErr: false},
+		{name: "min exceeds max (inverted)", route: audit.EventRoute{MinSeverity: intPtr(7), MaxSeverity: intPtr(3)}, wantErr: true},
+		{name: "min below lower bound", route: audit.EventRoute{MinSeverity: intPtr(audit.MinSeverity - 1)}, wantErr: true},
+		{name: "min above upper bound", route: audit.EventRoute{MinSeverity: intPtr(audit.MaxSeverity + 1)}, wantErr: true},
+		{name: "max below lower bound", route: audit.EventRoute{MaxSeverity: intPtr(audit.MinSeverity - 1)}, wantErr: true},
+		{name: "max above upper bound", route: audit.EventRoute{MaxSeverity: intPtr(audit.MaxSeverity + 1)}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := audit.ValidateEventRoute(&tc.route, tax)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

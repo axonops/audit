@@ -1136,3 +1136,91 @@ func TestReservedLibraryField_RejectedEvenWhenDeclaredInTaxonomy(t *testing.T) {
 	assert.ErrorIs(t, err, audit.ErrReservedFieldName)
 	assert.ErrorIs(t, err, audit.ErrValidation)
 }
+
+// TestHMAC_DeterministicOutput_SameInputSameOutput proves that
+// the HMAC computation is purely deterministic — identical
+// (payload, salt, algorithm) inputs always produce the same
+// output bytes. Contract is critical for verifiers: any
+// non-determinism in the underlying primitive breaks every
+// downstream consumer that recomputes HMACs to verify integrity.
+// (#565 G6).
+func TestHMAC_DeterministicOutput_SameInputSameOutput(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"event":"determinism-test","actor":"alice"}`)
+	salt := []byte("deterministic-salt-32-bytes-len!")
+	algo := "HMAC-SHA-256"
+
+	first, err := audit.ComputeHMAC(payload, salt, algo)
+	require.NoError(t, err)
+	second, err := audit.ComputeHMAC(payload, salt, algo)
+	require.NoError(t, err)
+	assert.Equal(t, first, second,
+		"identical inputs must produce identical HMAC bytes; "+
+			"non-determinism would break downstream verification")
+
+	third, err := audit.ComputeHMAC(payload, salt, algo)
+	require.NoError(t, err)
+	assert.Equal(t, first, third)
+}
+
+// TestHMAC_PerOutput_KeyRotation_OldEventsVerifiable proves that
+// rotating the HMAC salt on a live auditor does NOT invalidate
+// events stamped under the previous version. The verifier carries
+// the salt version inline (the `hmac_field_version` field) so
+// downstream consumers can look up the correct salt for each
+// event.
+//
+// This is the load-bearing property that makes salt rotation
+// operationally safe: a rotation event does not retroactively
+// break verification of events already on disk. (#565 G6).
+func TestHMAC_PerOutput_KeyRotation_OldEventsVerifiable(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"event":"rotation-test","actor":"alice"}`)
+	saltV1 := []byte("salt-version-one-32-bytes-len!!!")
+	saltV2 := []byte("salt-version-two-32-bytes-len!!!")
+	algo := "HMAC-SHA-256"
+
+	// Stamp an event with v1.
+	stampV1, err := audit.ComputeHMAC(payload, saltV1, algo)
+	require.NoError(t, err)
+
+	// Rotate to v2; stamp another event with the new salt.
+	stampV2, err := audit.ComputeHMAC(payload, saltV2, algo)
+	require.NoError(t, err)
+	require.NotEqual(t, stampV1, stampV2,
+		"different salts must produce different HMACs")
+
+	// The v1-stamped event must still verify with v1 salt.
+	okV1, verr := audit.VerifyHMAC(payload, stampV1, saltV1, algo)
+	require.NoError(t, verr)
+	assert.True(t, okV1, "v1-stamped event must verify under v1 salt after rotation")
+
+	// And must NOT verify with v2 salt — operators rely on this
+	// contract to detect when an event was stamped under the
+	// wrong key.
+	okWrong, verr := audit.VerifyHMAC(payload, stampV1, saltV2, algo)
+	require.NoError(t, verr)
+	assert.False(t, okWrong, "v1-stamped event must NOT verify under v2 salt")
+}
+
+// TestHMAC_EmptyAlgorithmName proves that ValidateHMACConfig
+// rejects an empty Algorithm field with a clear error wrapping
+// audit.ErrConfigInvalid. The empty algorithm is a footgun: a
+// silent default would mean different consumer setups produce
+// different HMACs for the same payload. (#565 G6).
+func TestHMAC_EmptyAlgorithmName(t *testing.T) {
+	t.Parallel()
+	cfg := &audit.HMACConfig{
+		Enabled: true,
+		Salt: audit.HMACSalt{
+			Version: "v1",
+			Value:   []byte("non-empty-salt-32-bytes-len!!!!!"),
+		},
+		Algorithm: "",
+	}
+	err := audit.ValidateHMACConfig(cfg)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
+	assert.Contains(t, err.Error(), "algorithm is required",
+		"diagnostic must name the missing field so operators can fix the config")
+}

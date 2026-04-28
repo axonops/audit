@@ -1023,3 +1023,102 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "config must not be nil")
 }
+
+// TestFileOutput_WriteToReadOnlyDirectory pins the contract that
+// a file output configured to write into a read-only directory
+// surfaces a permission error. Because the audit file output
+// opens its log file lazily inside the writeLoop goroutine, the
+// caller observes the failure via OutputMetrics.RecordError —
+// not via the synchronous Write/Close return. The test sets up
+// a fileOnlyMetrics with a RecordError counter and asserts at
+// least one error was recorded.
+//
+// (#565 G3).
+func TestFileOutput_WriteToReadOnlyDirectory(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root — chmod 0o555 is bypassed; cannot drive permission-denied")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	// Make the parent directory read-only AFTER constructing the
+	// audit output but BEFORE the first write. New() only os.Stats
+	// the parent (rotate/writer.go:resolveAndValidatePath); the
+	// actual OpenFile happens inside the writeLoop on first write,
+	// where chmod 0o555 forces EACCES.
+	out, err := file.New(&file.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chmod(dir, 0o755)
+	})
+	require.NoError(t, os.Chmod(dir, 0o555))
+	m := &errorCountingMetrics{}
+	out.SetOutputMetrics(m)
+
+	// Write should not block; the lazy file open inside the
+	// writeLoop fails with EACCES and surfaces as an error metric.
+	require.NoError(t, out.Write([]byte(`{"event":"perm_test"}`+"\n")))
+	require.NoError(t, out.Close())
+
+	assert.Greater(t, m.errorCount(), 0,
+		"writing to a read-only directory must record at least one error")
+}
+
+// errorCountingMetrics is a minimal audit.OutputMetrics that
+// counts RecordError invocations from the writeLoop goroutine.
+// Used by the read-only-directory and large-payload tests above.
+type errorCountingMetrics struct {
+	audit.NoOpOutputMetrics
+	mu     sync.Mutex
+	errors int
+}
+
+func (m *errorCountingMetrics) RecordError() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.errors++
+}
+
+func (m *errorCountingMetrics) errorCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.errors
+}
+
+// TestFileOutput_Write_LargePayload pins the contract that a
+// single 1 MiB event survives the full write+close cycle without
+// truncation or corruption. Large single events are realistic
+// for fan-out audits that aggregate dozens of fields. (#565 G3).
+func TestFileOutput_Write_LargePayload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	out, err := file.New(&file.Config{Path: path, MaxSizeMB: 100})
+	require.NoError(t, err)
+
+	// Build a deterministic 1 MiB payload (printable ASCII so a
+	// failure mode that re-encodes bytes shows up as a checksum
+	// mismatch rather than a binary diff).
+	payload := make([]byte, 1<<20)
+	for i := range payload {
+		payload[i] = byte('a' + (i % 26))
+	}
+	payload[len(payload)-1] = '\n'
+
+	require.NoError(t, out.Write(payload))
+	require.NoError(t, out.Close())
+
+	content, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	require.Equal(t, len(payload), len(content),
+		"file content length must match payload — no truncation")
+	// Spot-check three windows so a partial-write regression
+	// surfaces with a useful diff (full-buffer Equal would dump
+	// 1 MiB on failure).
+	assert.Equal(t, payload[:64], content[:64], "leading 64 bytes mismatch")
+	assert.Equal(t, payload[len(payload)/2:len(payload)/2+64], content[len(payload)/2:len(payload)/2+64], "midstream bytes mismatch")
+	assert.Equal(t, payload[len(payload)-64:], content[len(payload)-64:], "trailing 64 bytes mismatch")
+}
+
+// Note: TestFileOutput_Rotation_MetricsCallback (named in #565
+// G3) is already covered by
+// TestFileOutput_FileMetrics_RecordRotation_CalledOnRotation
+// above (file_test.go:559). Not duplicated.

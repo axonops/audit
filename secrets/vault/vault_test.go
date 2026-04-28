@@ -1002,3 +1002,28 @@ func TestVaultClose_IsIdempotent(t *testing.T) {
 	require.NoError(t, p.Close(), "second Close must be idempotent")
 	require.NoError(t, p.Close(), "third Close must be idempotent")
 }
+
+// TestResolve_EmptyDataSection proves that a Vault response with
+// data.data == null surfaces as ErrSecretNotFound rather than a
+// generic resolve failure or a panic on nil dereference. The
+// kvV2 wire format uses a nested "data" envelope; an absent
+// inner data field is the documented "no secret at this path"
+// response when the engine returns 200 OK.
+// (#565 G7).
+func TestResolve_EmptyDataSection(t *testing.T) {
+	t.Parallel()
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// data.data == null — the secret path exists but holds no
+		// values. Vault returns 200 OK with this shape rather than
+		// 404 in some KV v2 configurations.
+		_, _ = w.Write([]byte(`{"data":{"data":null}}`))
+	}))
+	p := testProvider(t, srv)
+
+	_, err := p.Resolve(context.Background(),
+		secrets.Ref{Scheme: "vault", Path: "secret/data/empty", Key: "key"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, secrets.ErrSecretNotFound,
+		"empty data section must surface as ErrSecretNotFound, not a generic failure")
+}

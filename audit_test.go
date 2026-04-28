@@ -6231,3 +6231,98 @@ func TestLogger_Audit_QueueFull_MetricsIncrement(t *testing.T) {
 	assert.Equal(t, overflowCount, metrics.GetBufferDrops(),
 		"RecordDrop must fire exactly once per ErrQueueFull")
 }
+
+// TestLogger_Close_DrainCompletesBeforeTimeout proves that Close
+// waits for all enqueued events to drain when the configured
+// ShutdownTimeout is generous and the output drains quickly. The
+// contract: an explicit Close on a non-blocking pipeline never
+// drops events. (#565 G1)
+func TestLogger_Close_DrainCompletesBeforeTimeout(t *testing.T) {
+	out := testhelper.NewMockOutput("drainable")
+	auditor, err := audit.New(
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithShutdownTimeout(5*time.Second),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+
+	const eventCount = 50
+	for i := 0; i < eventCount; i++ {
+		require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create",
+			audit.Fields{"outcome": "success", "actor_id": fmt.Sprintf("u%d", i)})))
+	}
+	closeStart := time.Now()
+	require.NoError(t, auditor.Close())
+	closeDur := time.Since(closeStart)
+	assert.Less(t, closeDur, 5*time.Second,
+		"Close must drain well before the configured ShutdownTimeout")
+	assert.Equal(t, eventCount, out.EventCount(),
+		"every enqueued event must be delivered before Close returns")
+}
+
+// TestLogger_Close_ZeroShutdownTimeout proves that
+// WithShutdownTimeout(0) is treated as the documented default-
+// trigger sentinel: applyDefaults resolves 0 to
+// DefaultShutdownTimeout, the auditor constructs successfully,
+// and Close honours the default. The earlier issue draft framed
+// this as a rejection; the actual contract (config.go:84) is
+// "zero defaults to DefaultShutdownTimeout" — a more permissive
+// interpretation that this test pins. (#565 G1)
+func TestLogger_Close_ZeroShutdownTimeout(t *testing.T) {
+	out := testhelper.NewMockOutput("zero-timeout")
+	auditor, err := audit.New(
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithShutdownTimeout(0), // sentinel for default
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err, "WithShutdownTimeout(0) must NOT be rejected — it is the default-trigger sentinel")
+	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create",
+		audit.Fields{"outcome": "success", "actor_id": "alice"})))
+	require.NoError(t, auditor.Close())
+	assert.Equal(t, 1, out.EventCount())
+}
+
+// TestLogger_New_WithDisabledCategoryAtBoot proves that calling
+// DisableCategory immediately after New produces the expected
+// boot-time disable: subsequent Audit calls for events in that
+// category surface ErrCategoryDisabled (or are silently filtered,
+// per the documented contract — verify the actual behaviour).
+// (#565 G1)
+func TestLogger_New_WithDisabledCategoryAtBoot(t *testing.T) {
+	out := testhelper.NewMockOutput("after-disable")
+	auditor, err := audit.New(
+		audit.WithValidationMode(audit.ValidationPermissive),
+		audit.WithTaxonomy(testhelper.TestTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Disable the "write" category before any events are sent —
+	// the boot-time pattern an operator would use to roll out a
+	// runtime kill switch on a particular event class.
+	require.NoError(t, auditor.DisableCategory("write"))
+
+	// user_create is in the "write" category in the test taxonomy.
+	// The documented behaviour is silent filtering — Audit returns
+	// nil but the event does not reach the output.
+	auditErr := auditor.AuditEvent(audit.NewEvent("user_create",
+		audit.Fields{"outcome": "success", "actor_id": "alice"}))
+	// Either a non-nil error OR silent filtering — both are
+	// valid contracts. The load-bearing assertion is "the event
+	// did NOT reach the output". The specific sentinel is left
+	// unpinned so a future change to the disabled-category
+	// error type does not require this test to track it.
+	_ = auditErr
+	require.NoError(t, auditor.Close())
+	assert.Zero(t, out.EventCount(),
+		"events in a disabled category must not reach the output")
+}

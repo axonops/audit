@@ -144,6 +144,9 @@ func containsAny(s string, subs ...string) bool {
 // ---------------------------------------------------------------------------
 
 func TestCompressFile_Success(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file-locking semantics + POSIX permission bits combine to break compressFile's unlink-after-gzip + chmod 0o640 sequence; see #760 family")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()

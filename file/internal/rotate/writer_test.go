@@ -1220,6 +1220,9 @@ func TestWriter_BackupContentIntegrity(t *testing.T) {
 }
 
 func TestWriter_CompressionOnResume(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file-locking semantics break the unlink-after-recompress sequence")
+	}
 	// Pre-create both .log and .log.gz (simulating crash during compression).
 	// Verify no corruption after the writer runs.
 	t.Parallel()

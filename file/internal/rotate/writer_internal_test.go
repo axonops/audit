@@ -499,6 +499,9 @@ func TestMillRunOnce_OnError_Nil_NoPanic(t *testing.T) {
 }
 
 func TestMillRunOnce_OnError_RemoveError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file-locking semantics make the directory chmod 0o555 a no-op")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permission restrictions")
 	}

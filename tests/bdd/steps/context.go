@@ -214,6 +214,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSyslogCrashReplaySteps(ctx, tc)
 	registerTLSNegativeSteps(ctx, tc)
 	registerTLSHandshakeSteps(ctx, tc)
+	registerFailureModeSteps(ctx, tc)
 	registerIsolationSteps(ctx, tc)
 	registerEventMetricsSteps(ctx, tc)
 	registerOutputConfigSteps(ctx, tc)

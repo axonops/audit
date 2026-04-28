@@ -20,6 +20,27 @@ make check           # runs the full quality gate locally
 
 Requires **Go 1.26+**.
 
+### Supported Platforms
+
+The library is tested in CI on:
+
+- `ubuntu-latest` (Linux x86_64) — primary CI target
+- `macos-latest` (macOS arm64)
+- `windows-latest` (Windows x86_64)
+
+The cross-platform matrix covers the **core** and **file**
+modules; remaining modules (syslog, webhook, loki, outputconfig,
+secrets/*, cmd/*) are tested only on Linux because their
+primary deployment target is Linux server-side. If you need
+broader platform coverage for a specific output, please file
+an issue — adding a runner is straightforward.
+
+A small number of file-output tests (POSIX permission-mode
+assertions, directory-readonly tests) skip on Windows because
+the POSIX permission model does not translate. The skip
+mechanism is grep-able: `runtime.GOOS == "windows"`. Coverage
+for these paths remains via the Linux + macOS runs.
+
 ## Running Tests
 
 ```bash

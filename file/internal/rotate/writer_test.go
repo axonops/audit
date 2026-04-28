@@ -122,6 +122,9 @@ func TestNew_SymlinkPath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriter_Write_CreatesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -273,6 +276,9 @@ func TestWriter_Write_BackupNaming(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriter_Write_AllFilesUseConfiguredMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -305,6 +311,9 @@ func TestWriter_Write_AllFilesUseConfiguredMode(t *testing.T) {
 }
 
 func TestWriter_Write_ModeOnReopen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not honoured on Windows")
+	}
 	// Verifies that openExistingOrNew uses configured mode, not hardcoded 0644.
 	t.Parallel()
 

@@ -291,7 +291,10 @@ func TestMiddleware_TransportMetadata_Complete(t *testing.T) {
 	assert.Equal(t, "test-agent/1.0", captured.UserAgent)
 	assert.Equal(t, "req-abc-123", captured.RequestID)
 	assert.Equal(t, http.StatusCreated, captured.StatusCode)
-	assert.Greater(t, captured.Duration, time.Duration(0))
+	// Same monotonic-clock caveat as TestMiddleware_Duration_Positive:
+	// on Windows the clock resolution can produce a 0-valued
+	// duration for a no-op handler. Assert non-negative.
+	assert.GreaterOrEqual(t, captured.Duration, time.Duration(0))
 }
 
 func TestMiddleware_RequestID_FromHeader(t *testing.T) {

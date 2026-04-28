@@ -373,3 +373,16 @@ Feature: Syslog Output
     And I wait for syslog-ng to be ready
     And I close the auditor
     Then the audit metrics submitted count should be 1000
+
+  # --- Failure mode: DNS-unresolvable host (#562) ---
+  #
+  # The host is in the RFC 6761 reserved `.invalid` TLD; the OS
+  # resolver returns NXDOMAIN deterministically without consulting
+  # the network. The audit syslog client should not hang and the
+  # construction should fail within a bounded window — operators
+  # rely on this to surface misconfigured destinations quickly
+  # rather than wedging a writer thread.
+  Scenario: Syslog rejects a DNS-unresolvable destination promptly
+    Given a DNS-unresolvable address is configured
+    When I try to send a syslog event over TCP to the unresolvable address within 5 seconds
+    Then the result should be a DNS-resolution failure

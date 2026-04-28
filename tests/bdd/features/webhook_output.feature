@@ -419,3 +419,52 @@ Feature: Webhook Output
     And a flapping HTTPS receiver that drops the first 1 connections
     When I send 1 webhook events to the flapping receiver
     Then the flapping receiver should eventually receive at least one successful request
+
+  # --- Failure mode: DNS-unresolvable host (#562) ---
+  #
+  # The host is in the RFC 6761 reserved `.invalid` TLD; the OS
+  # resolver returns NXDOMAIN. The audit webhook client honours
+  # the configured Timeout and surfaces the dial failure rather
+  # than wedging the delivery goroutine.
+  Scenario: Webhook rejects a DNS-unresolvable destination promptly
+    Given a DNS-unresolvable address is configured
+    When I try to send a webhook event to the unresolvable address within 3 seconds
+    Then the result should be a DNS-resolution failure
+
+  # --- Failure mode: giant response body (#562) ---
+  #
+  # The receiver returns a 4 MiB Content-Length response on a 5xx
+  # request. The webhook output's drainCap (1 MiB on 2xx/4xx/5xx,
+  # see webhook/http.go) limits the bytes the client consumes; the
+  # request must complete within the configured Timeout without
+  # exhausting memory or wedging the writer.
+  Scenario: Webhook honours drainCap on a giant 5xx response body
+    Given a webhook receiver returning a 4194304-byte body
+    When I send 1 webhook event to the configured failure-mode receiver within 5 seconds
+    Then the failure-mode receiver should have received between 1 and 5 requests
+
+  # --- Failure mode: connection reset mid-request (#562) ---
+  #
+  # The receiver hijacks the TCP connection and closes it before
+  # writing a response. The audit webhook client interprets this as
+  # a transient failure and the configured MaxRetries (default 3)
+  # drives the retry loop until exhaustion. The contract under test
+  # is "the audit client makes the request, observes the close, and
+  # tears down cleanly without wedging" — `at least 1 request`
+  # captures that without pinning to the implementation-specific
+  # retry count.
+  Scenario: Webhook handles a connection reset mid-request
+    Given a webhook receiver that resets the connection mid-request
+    When I send 1 webhook event to the configured failure-mode receiver within 5 seconds
+    Then the failure-mode receiver should have received between 1 and 5 requests
+
+  # --- Failure mode: chunked-response stall (#562) ---
+  #
+  # The receiver writes one chunk of a Transfer-Encoding: chunked
+  # response, then hangs. The audit webhook transport's
+  # ResponseHeaderTimeout floor (1 s) bounds the read; the request
+  # must fail within ~Timeout, not wedge.
+  Scenario: Webhook bounds a stalled chunked response
+    Given a webhook receiver that starts a chunked response then stalls
+    When I send 1 webhook event to the configured failure-mode receiver within 5 seconds
+    Then the failure-mode receiver should have received between 1 and 5 requests

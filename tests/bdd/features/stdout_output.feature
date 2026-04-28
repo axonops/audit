@@ -38,3 +38,13 @@ Feature: Stdout Output
     When I audit a uniquely marked "user_create" event
     And I close the auditor
     Then the captured stdout should contain the marker
+
+  # --- Failure mode: broken pipe / EPIPE downstream (#562) ---
+  #
+  # The audit stdout output backed by an os.Pipe whose read end is
+  # closed must surface EPIPE (or the platform-equivalent
+  # "broken pipe" / "closed pipe") to the caller. Operators
+  # piping audit logs to a downstream process that exits expect a
+  # clean error rather than a silent write that disappears.
+  Scenario: Stdout output to a closed pipe surfaces broken-pipe error
+    Then a stdout output bound to a closed pipe surfaces the broken-pipe error

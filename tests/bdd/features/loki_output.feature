@@ -392,3 +392,37 @@ Feature: Loki Output
     And a flapping HTTPS receiver that drops the first 1 connections
     When I send 1 loki events to the flapping receiver
     Then the flapping receiver should eventually receive at least one successful request
+
+  # --- Failure mode: DNS-unresolvable host (#562) ---
+  #
+  # The host is in the RFC 6761 reserved `.invalid` TLD; the OS
+  # resolver returns NXDOMAIN. The audit loki client honours the
+  # configured Timeout and surfaces the dial failure rather than
+  # wedging the delivery goroutine.
+  Scenario: Loki rejects a DNS-unresolvable destination promptly
+    Given a DNS-unresolvable address is configured
+    When I try to send a loki event to the unresolvable address within 3 seconds
+    Then the result should be a DNS-resolution failure
+
+  # --- Failure mode: chunked-response stall (#562) ---
+  #
+  # The receiver writes one chunk of a Transfer-Encoding: chunked
+  # response, then hangs. The audit loki transport's
+  # ResponseHeaderTimeout floor (1 s) bounds the read; the request
+  # must fail within ~Timeout, not wedge.
+  Scenario: Loki bounds a stalled chunked response
+    Given a loki receiver that starts a chunked response then stalls
+    When I send 1 loki event with tenant "test-tenant" to the configured failure-mode receiver within 5 seconds
+    Then the failure-mode receiver should have received between 1 and 5 requests
+
+  # --- Failure mode: tenant-not-found (#562) ---
+  #
+  # The receiver returns 404 with a Loki-shaped error body. The
+  # audit loki client records the failure as a non-retryable error
+  # and does not retry. The X-Scope-OrgID header is what an
+  # upstream Loki uses to decide tenant existence; we configure
+  # TenantID so the client emits the header.
+  Scenario: Loki handles tenant-not-found 404 without retry storms
+    Given a loki receiver that returns 404 tenant-not-found
+    When I send 1 loki event with tenant "nonexistent-tenant" to the configured failure-mode receiver within 3 seconds
+    Then the failure-mode receiver should have received between 1 and 5 requests

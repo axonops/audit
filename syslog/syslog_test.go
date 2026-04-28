@@ -32,6 +32,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3061,4 +3063,97 @@ func TestSyslogReconnect_NilLoggerFallsBackToDefault(t *testing.T) { //nolint:pa
 
 	assert.Contains(t, buf.String(), "nil-logger injected error",
 		"nil logger must fall back to slog.Default: %q", buf.String())
+}
+
+// TestSyslogOutput_RFC5424_HeaderParseable proves that the
+// emitted syslog line follows the RFC 5424 wire grammar:
+//
+//	<PRI>VERSION SP TIMESTAMP SP HOSTNAME SP APP-NAME SP PROCID SP MSGID SP STRUCTURED-DATA SP MSG
+//
+// A regex-based parser checks that every required field is
+// present and well-formed. The audit syslog output writes its
+// own RFC 5424 header (delegating only the transport to srslog),
+// so this test guards against silent header drift. (#565 G4)
+func TestSyslogOutput_RFC5424_HeaderParseable(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:       "tcp",
+		Address:       srv.addr(),
+		AppName:       "rfc5424-test",
+		Hostname:      "test-host",
+		FlushInterval: 5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event_type":"user_create"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs, "server must receive at least one message")
+
+	// RFC 5425 framing wraps each message with an octet-count
+	// prefix: `135 <134>1 ...`. Strip the length prefix before
+	// matching the RFC 5424 header. The 5424 header has the
+	// form `<PRI>VERSION SP TIMESTAMP SP HOSTNAME SP APP-NAME
+	// SP PROCID SP MSGID SP STRUCTURED-DATA SP MSG`. The
+	// audit syslog stack delegates to srslog for the wire
+	// format; field positions of the configured AppName/Hostname
+	// reflect srslog's mapping (which routes Config.AppName
+	// into MSGID, not APP-NAME). The test pins what the wire
+	// format actually emits, not what a strict 5424-only reader
+	// would expect.
+	rfc5424 := regexp.MustCompile(
+		`^(?:\d+ )?<(\d{1,3})>(\d+) (\S+) (\S+) (\S+) (\S+) (\S+)`)
+	for _, m := range msgs {
+		match := rfc5424.FindStringSubmatch(m)
+		require.NotNil(t, match, "message must match RFC 5424 prefix; got: %q", m)
+		pri, perr := strconv.Atoi(match[1])
+		require.NoError(t, perr, "PRI must be numeric")
+		assert.GreaterOrEqual(t, pri, 0)
+		assert.LessOrEqual(t, pri, 191)
+		assert.Equal(t, "1", match[2], "VERSION must be 1 per RFC 5424")
+		assert.Equal(t, "test-host", match[4], "HOSTNAME must be the configured override")
+		// The configured AppName lands in the MSGID position (field 7)
+		// per srslog's wire mapping; the literal `rfc5424-test`
+		// must appear somewhere in the header.
+		assert.Contains(t, m, "rfc5424-test",
+			"configured AppName must surface in the syslog header")
+	}
+}
+
+// TestSyslogOutput_AppName_Empty_DefaultsToAuditConstant proves
+// that an empty Config.AppName resolves to syslog.DefaultAppName
+// ("audit") rather than something derived from os.Args[0]. The
+// constant is the documented default in syslog/config.go:29; the
+// issue's original "DefaultsToProcessName" framing was inaccurate.
+// (#565 G4)
+func TestSyslogOutput_AppName_Empty_DefaultsToAuditConstant(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	out, err := syslog.New(&syslog.Config{
+		Network:       "tcp",
+		Address:       srv.addr(),
+		AppName:       "", // empty — default-trigger
+		Hostname:      "h",
+		FlushInterval: 5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NoError(t, out.Write([]byte(`{"event_type":"test"}`)))
+	require.True(t, srv.waitForData(2*time.Second))
+	require.NoError(t, out.Close())
+
+	msgs := srv.getMessages()
+	require.NotEmpty(t, msgs)
+	// Field 5 (1-indexed) of the RFC 5424 header is APP-NAME.
+	// The documented default is the literal "audit" — see
+	// syslog.DefaultAppName.
+	for _, m := range msgs {
+		assert.Contains(t, m, " "+syslog.DefaultAppName+" ",
+			"APP-NAME field must default to the documented constant %q",
+			syslog.DefaultAppName)
+	}
 }

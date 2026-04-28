@@ -576,6 +576,7 @@ jobs:
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [changes, hygiene, lint, test, integration, bdd, bdd-verify, security, security-verify, cross-build, validate-release]
     if: always()
     steps:

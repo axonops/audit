@@ -157,21 +157,29 @@ type Output struct {
 	reconnectRecorder atomic.Pointer[ReconnectRecorder]   // extension: RecordReconnect (may be nil)
 	outputMetrics     atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
 	logger            atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
-	ch                chan syslogEntry                    // async buffer
-	closeCh           chan struct{}                       // signals writeLoop to drain and exit
-	done              chan struct{}                       // closed when writeLoop exits
-	name              string                              // cached Name() result
-	address           string
-	network           string
-	appName           string
-	hostname          string
-	writeCount        uint64      // drain-side event counter for RecordQueueDepth sampling
-	drops             dropLimiter // rate-limits buffer-full drop warnings
-	closed            atomic.Bool
-	mu                sync.Mutex      // protects Close sequence
-	facility          srslog.Priority // facility bits only (no severity)
-	failures          int             // consecutive failure count (writeLoop-only)
-	maxRetry          int
+	// testOnFlush, if non-nil, is invoked after every successful
+	// batch flush from writeLoop. The callback receives the flushed
+	// batch size and a string identifying the trigger reason
+	// ("count_threshold", "byte_threshold", "timer", "close",
+	// "channel_closed"). Test-only seam — production code MUST NOT
+	// set this. Wired via SetTestOnFlush in export_test.go. Replaces
+	// the polling test pattern that flaked under CI runner load
+	// (#705, #763). See internal/testhelper/output.go for the
+	// canonical "wait on observable signal" pattern.
+	testOnFlush atomic.Pointer[func(int, string)]
+	ch          chan syslogEntry // async buffer
+	closeCh     chan struct{}    // signals writeLoop to drain and exit
+	done        chan struct{}    // closed when writeLoop exits
+	name        string           // cached Name() result
+	address     string
+	network     string
+	appName     string
+	hostname    string
+	writeCount  uint64      // drain-side event counter for RecordQueueDepth sampling
+	drops       dropLimiter // rate-limits buffer-full drop warnings
+	mu          sync.Mutex  // protects Close sequence
+	failures    int         // consecutive failure count (writeLoop-only)
+	maxRetry    int
 	// Batching knobs — resolved from Config at construction time
 	// (#599). See syslog.Config.BatchSize / .FlushInterval /
 	// .MaxBatchBytes for the user-facing contract.
@@ -181,6 +189,8 @@ type Output struct {
 	// maxEventBytes is the per-event size cap enforced at Write()
 	// entry to bound consumer-controlled memory pressure (#688).
 	maxEventBytes int
+	facility      srslog.Priority // facility bits only (no severity)
+	closed        atomic.Bool
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -459,16 +469,16 @@ func (s *Output) writeLoop() {
 		select {
 		case entry, ok := <-s.ch:
 			if !ok {
-				s.flushAndReset(st)
+				s.flushAndReset(st, "channel_closed")
 				return
 			}
 			st.append(entry)
-			if st.thresholdReached(s.batchSize, s.maxBatchBytes) {
-				s.flushAndReset(st)
+			if reached, reason := st.thresholdReached(s.batchSize, s.maxBatchBytes); reached {
+				s.flushAndReset(st, reason)
 				resetSyslogTimer(timer, s.flushInterval)
 			}
 		case <-timer.C:
-			s.flushAndReset(st)
+			s.flushAndReset(st, "timer")
 			resetSyslogTimer(timer, s.flushInterval)
 		case <-s.closeCh:
 			s.handleShutdownDrain(st.batch)
@@ -496,18 +506,29 @@ func (st *batchState) append(entry syslogEntry) {
 	st.batchBytes += len(entry.data)
 }
 
-func (st *batchState) thresholdReached(batchSize, maxBytes int) bool {
-	return len(st.batch) >= batchSize || st.batchBytes >= maxBytes
+// thresholdReached returns whether the current batch state has hit a
+// flush threshold and, if so, which one. The reason is one of
+// "count_threshold" or "byte_threshold"; the empty string is returned
+// when no threshold is reached.
+func (st *batchState) thresholdReached(batchSize, maxBytes int) (reached bool, reason string) {
+	if len(st.batch) >= batchSize {
+		return true, "count_threshold"
+	}
+	if st.batchBytes >= maxBytes {
+		return true, "byte_threshold"
+	}
+	return false, ""
 }
 
 // flushAndReset flushes any pending entries and returns the batch
 // slice to a fresh zero-length, refreshed-capacity state. Clears
 // per-slot pointers so stale event data does not pin memory until
 // the next flush overwrites the slot.
-func (s *Output) flushAndReset(st *batchState) {
+func (s *Output) flushAndReset(st *batchState, reason string) {
 	if len(st.batch) == 0 {
 		return
 	}
+	flushed := len(st.batch)
 	s.flushBatch(st.batch)
 	for i := range st.batch {
 		st.batch[i].data = nil
@@ -518,6 +539,13 @@ func (s *Output) flushAndReset(st *batchState) {
 	// outliers (performance-reviewer).
 	if cap(st.batch) > 2*s.batchSize {
 		st.batch = make([]syslogEntry, 0, s.batchSize)
+	}
+	// Test-only observability hook (#705/#763). Production-mode
+	// callers leave testOnFlush as nil; the predictable nil-branch
+	// is amortised over the per-batch flush path. See struct field
+	// documentation.
+	if hp := s.testOnFlush.Load(); hp != nil {
+		(*hp)(flushed, reason)
 	}
 }
 
@@ -530,7 +558,21 @@ func (s *Output) flushAndReset(st *batchState) {
 // documented on [Output.Close].
 func (s *Output) handleShutdownDrain(batch []syslogEntry) {
 	s.drainBatchNoRetry(batch)
-	s.drainRemainingNoRetry()
+	remaining := s.drainRemainingNoRetry()
+	total := len(batch) + remaining
+	// Test-only observability hook (#705/#763). Fires once at the
+	// end of the Close-path drain regardless of whether the
+	// pending batch or the channel held the events. Tests waiting
+	// on Close-time flush behaviour (TestWriteLoop_FlushesPartialOnClose)
+	// observe a single signal rather than poll. Skip the call when
+	// nothing was drained — empty Close should not produce a
+	// spurious signal.
+	if total == 0 {
+		return
+	}
+	if hp := s.testOnFlush.Load(); hp != nil {
+		(*hp)(total, "close")
+	}
 }
 
 // flushBatch writes every entry in batch to the syslog server via
@@ -724,14 +766,16 @@ func (s *Output) drainBatchNoRetry(batch []syslogEntry) {
 
 // drainRemainingNoRetry reads all remaining events from the channel
 // after closeCh fires and writes them without retry. Non-blocking;
-// returns once the channel is empty.
-func (s *Output) drainRemainingNoRetry() {
+// returns the number drained once the channel is empty.
+func (s *Output) drainRemainingNoRetry() int {
+	drained := 0
 	for {
 		select {
 		case entry := <-s.ch:
 			s.drainOne(entry)
+			drained++
 		default:
-			return
+			return drained
 		}
 	}
 }

@@ -178,7 +178,13 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 // ---------------------------------------------------------------------------
 
 // mockMetrics satisfies both audit.Metrics and webhook.Metrics for testing.
+//
+// Synchronisation: a sync.Cond keyed off mu lets tests use waitFor*
+// helpers instead of require.Eventually polling. Replaces the
+// flake-prone polling pattern (#705 family). Pattern mirrors
+// internal/testhelper/output.go MockOutput.
 type mockMetrics struct {
+	cond             *sync.Cond
 	events           map[string]int // "output:status" -> count
 	outputErrors     map[string]int
 	filteredCount    map[string]int
@@ -190,7 +196,7 @@ type mockMetrics struct {
 }
 
 func newMockMetrics() *mockMetrics {
-	return &mockMetrics{
+	m := &mockMetrics{
 		events:           make(map[string]int),
 		outputErrors:     make(map[string]int),
 		filteredCount:    make(map[string]int),
@@ -198,6 +204,8 @@ func newMockMetrics() *mockMetrics {
 		globalFiltered:   make(map[string]int),
 		serializationErr: make(map[string]int),
 	}
+	m.cond = sync.NewCond(&m.mu)
+	return m
 }
 
 // --- audit.Metrics methods ---
@@ -206,42 +214,49 @@ func (m *mockMetrics) RecordDelivery(output string, status audit.EventStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.events[output+":"+string(status)]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordOutputError(output string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.outputErrors[output]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordOutputFiltered(output string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.filteredCount[output]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordBufferDrop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bufferDrops++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordValidationError(eventType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.validationErrors[eventType]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordFiltered(eventType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.globalFiltered[eventType]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordSerializationError(eventType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.serializationErr[eventType]++
+	m.cond.Broadcast()
 }
 
 func (m *mockMetrics) RecordSubmitted() {}
@@ -256,10 +271,44 @@ func (m *mockMetrics) getEventCount(output string, status audit.EventStatus) int
 	return m.events[output+":"+string(status)]
 }
 
+// waitForEventCount blocks until the (output, status) counter
+// reaches at least n, or the timeout expires. Replaces
+// require.Eventually with a deterministic sync.Cond barrier
+// (#705 family fix). Pattern mirrors
+// internal/testhelper/output.go MockOutput.WaitForEvents.
+func (m *mockMetrics) waitForEventCount(t *testing.T, output string, status audit.EventStatus, n int, timeout time.Duration) {
+	t.Helper()
+	key := output + ":" + string(status)
+	deadline := time.Now().Add(timeout)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	timer := time.AfterFunc(timeout, func() {
+		m.mu.Lock()
+		m.cond.Broadcast()
+		m.mu.Unlock()
+	})
+	defer timer.Stop()
+	for m.events[key] < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("waitForEventCount(%s, %s, %d): only %d recorded after %v",
+				output, status, n, m.events[key], timeout)
+			return
+		}
+		m.cond.Wait()
+	}
+}
+
 var _ audit.Metrics = (*mockMetrics)(nil)
 
 // mockOutputMetrics implements audit.OutputMetrics for testing.
+//
+// Synchronisation: a sync.Cond keyed off mu lets tests use
+// waitFor* helpers instead of require.Eventually polling.
+// Replaces flake-prone polling pattern (#705 family). Construct
+// via newMockOutputMetrics to ensure the cond is initialised
+// — there is no second construction path.
 type mockOutputMetrics struct {
+	cond    *sync.Cond
 	mu      sync.Mutex
 	drops   int
 	flushes int
@@ -267,25 +316,35 @@ type mockOutputMetrics struct {
 	retries int
 }
 
+func newMockOutputMetrics() *mockOutputMetrics {
+	m := &mockOutputMetrics{}
+	m.cond = sync.NewCond(&m.mu)
+	return m
+}
+
 func (m *mockOutputMetrics) RecordDrop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.drops++
+	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.flushes++
+	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordError() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.errors++
+	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordRetry(_ int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.retries++
+	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordQueueDepth(_, _ int) {}
 
@@ -299,6 +358,30 @@ func (m *mockOutputMetrics) getRetries() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.retries
+}
+
+// waitForDrops blocks until at least n drops have been recorded
+// or timeout expires. Requires the cond to be initialised via
+// newMockOutputMetrics. Replaces require.Eventually with a
+// deterministic sync.Cond barrier (#705 family fix).
+func (m *mockOutputMetrics) waitForDrops(t *testing.T, n int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	timer := time.AfterFunc(timeout, func() {
+		m.mu.Lock()
+		m.cond.Broadcast()
+		m.mu.Unlock()
+	})
+	defer timer.Stop()
+	for m.drops < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("waitForDrops(%d): only %d recorded after %v", n, m.drops, timeout)
+			return
+		}
+		m.cond.Wait()
+	}
 }
 
 var _ audit.OutputMetrics = (*mockOutputMetrics)(nil)
@@ -541,7 +624,7 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := newMockMetrics()
-	om := &mockOutputMetrics{}
+	om := newMockOutputMetrics()
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -866,7 +949,7 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 		w.WriteHeader(503)
 	})
 	metrics := newMockMetrics()
-	om := &mockOutputMetrics{}
+	om := newMockOutputMetrics()
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -969,7 +1052,7 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	metrics := newMockMetrics()
-	om := &mockOutputMetrics{}
+	om := newMockOutputMetrics()
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
@@ -1242,7 +1325,7 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 	wrongCerts := generateTestCerts(t)
 
 	metrics := newMockMetrics()
-	om := &mockOutputMetrics{}
+	om := newMockOutputMetrics()
 	out, err := webhook.New(&webhook.Config{
 		URL:                srv.URL,
 		TLSCA:              wrongCerts.caPath, // wrong CA
@@ -1258,11 +1341,10 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 
 	require.NoError(t, out.Write([]byte(`{"event":"wrong_ca"}`+"\n")))
 
-	// Poll for the TLS failure to be recorded as an output drop.
-	require.Eventually(t, func() bool {
-		return om.getDrops() > 0
-	}, 5*time.Second, 50*time.Millisecond,
-		"wrong CA should cause TLS failure and event drop")
+	// Wait deterministically for the TLS failure to be recorded
+	// as an output drop. Replaces require.Eventually polling
+	// (#705 family fix).
+	om.waitForDrops(t, 1, 5*time.Second)
 
 	require.NoError(t, out.Close())
 }
@@ -1290,14 +1372,11 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	for range 3 {
 		require.NoError(t, out.Write([]byte(`{"event":"metric_test"}`+"\n")))
 	}
-	// Poll the success metric as the synchronisation signal — this
-	// ensures the batch goroutine has fully processed the HTTP response
-	// and recorded metrics before we close.
+	// Wait deterministically for the batch goroutine to finish
+	// delivery and record the success metric before we close.
+	// Replaces require.Eventually polling (#705 family fix).
 	name := out.Name()
-	require.Eventually(t, func() bool {
-		return metrics.getEventCount(name, audit.EventSuccess) == 3
-	}, 5*time.Second, 10*time.Millisecond,
-		"RecordDelivery(success) should be called once per delivered event")
+	metrics.waitForEventCount(t, name, audit.EventSuccess, 3, 5*time.Second)
 
 	require.NoError(t, out.Close())
 
@@ -1399,15 +1478,14 @@ func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
 
 	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
 
-	// Wait for the batch goroutine to finish delivery and record the
-	// success metric. Polling the metric is the correct synchronisation
-	// signal — waitForRequests only proves the HTTP handler fired, not
-	// that the client has read the response and recorded metrics.
+	// Wait deterministically for the batch goroutine to finish
+	// delivery and record the success metric. Polling the metric
+	// is the correct synchronisation signal — waitForRequests
+	// only proves the HTTP handler fired, not that the client
+	// has read the response and recorded metrics. Replaces
+	// require.Eventually polling (#705 family fix).
 	name := webhookOut.Name()
-	require.Eventually(t, func() bool {
-		return metrics.getEventCount(name, audit.EventSuccess) == 1
-	}, 5*time.Second, 10*time.Millisecond,
-		"webhook should report delivery success from batch goroutine")
+	metrics.waitForEventCount(t, name, audit.EventSuccess, 1, 5*time.Second)
 
 	require.NoError(t, auditor.Close())
 }

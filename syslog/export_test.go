@@ -36,3 +36,45 @@ func (s *Output) SimulateWriteFailure() {
 	s.writeEntry(syslogEntry{data: []byte("trigger-error"), priority: 0})
 	s.writer = saved
 }
+
+// SetTestOnFlush registers a test-only callback fired after every
+// successful batch flush from writeLoop. The callback receives the
+// flushed batch size and a string identifying the trigger reason:
+//
+//   - "count_threshold" — len(batch) >= Config.BatchSize
+//   - "byte_threshold"  — sum of entry sizes >= Config.MaxBatchBytes
+//   - "timer"           — Config.FlushInterval elapsed
+//   - "close"           — Output.Close drained the batch
+//   - "channel_closed"  — Audit channel closed (Close path)
+//
+// Pass nil to clear the hook. Tests typically pair this with t.Cleanup
+// to ensure the hook is cleared even if the test fails mid-flow.
+//
+// Replaces the polling test pattern (require.Eventually) that flaked
+// under CI runner load (#705, #763). The canonical usage is:
+//
+//	flushed := make(chan struct {
+//	    n      int
+//	    reason string
+//	}, 64)
+//	out.SetTestOnFlush(func(n int, reason string) {
+//	    select {
+//	    case flushed <- struct {
+//	        n      int
+//	        reason string
+//	    }{n, reason}:
+//	    default: // never block production
+//	    }
+//	})
+//	t.Cleanup(func() { out.SetTestOnFlush(nil) })
+//
+// Concurrency: the hook is invoked from the writeLoop goroutine.
+// Callbacks MUST return promptly and MUST NOT block on a full
+// channel. Use a buffered channel and non-blocking send.
+func (s *Output) SetTestOnFlush(fn func(int, string)) {
+	if fn == nil {
+		s.testOnFlush.Store(nil)
+		return
+	}
+	s.testOnFlush.Store(&fn)
+}

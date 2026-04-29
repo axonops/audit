@@ -177,16 +177,24 @@ func writeKeyPEM(t *testing.T, path string, key *ecdsa.PrivateKey) {
 // mockMetrics implements audit.OutputMetrics (via NoOp embed) plus
 // syslog.ReconnectRecorder — the combination picked up by the output's
 // SetOutputMetrics type-assertion (#581).
+//
+// Synchronisation: a sync.Cond keyed off mu lets tests use
+// waitForReconnectCount instead of sleep+poll loops or
+// require.Eventually polling. Replaces flake-prone pattern
+// (#705 family fix).
 type mockMetrics struct {
 	audit.NoOpOutputMetrics
+	cond             *sync.Cond
 	syslogReconnects map[string]int // "address:success|failure" -> count
 	mu               sync.Mutex
 }
 
 func newMockMetrics() *mockMetrics {
-	return &mockMetrics{
+	m := &mockMetrics{
 		syslogReconnects: make(map[string]int),
 	}
+	m.cond = sync.NewCond(&m.mu)
+	return m
 }
 
 // RecordReconnect satisfies syslog.ReconnectRecorder (#581).
@@ -200,6 +208,54 @@ func (m *mockMetrics) RecordReconnect(address string, success bool) {
 		key += "failure"
 	}
 	m.syslogReconnects[key]++
+	m.cond.Broadcast()
+}
+
+// waitForReconnectCount blocks until the reconnect counter for
+// (address, success) reaches at least n, or the timeout expires.
+// Replaces sleep+poll loops and require.Eventually polling with a
+// deterministic sync.Cond barrier (#705 family fix).
+func (m *mockMetrics) waitForReconnectCount(t *testing.T, address string, success bool, n int, timeout time.Duration) {
+	t.Helper()
+	if !m.tryWaitForReconnectCount(address, success, n, timeout) {
+		key := reconnectKey(address, success)
+		m.mu.Lock()
+		got := m.syslogReconnects[key]
+		m.mu.Unlock()
+		t.Fatalf("waitForReconnectCount(%s, %v, %d): only %d recorded after %v",
+			address, success, n, got, timeout)
+	}
+}
+
+// tryWaitForReconnectCount is the bool-returning variant for tests
+// that tolerate platform-dependent non-occurrence (e.g., TIME_WAIT
+// preventing rapid port rebind on macOS / Windows). Does not fail
+// the test on timeout — caller decides what to do.
+func (m *mockMetrics) tryWaitForReconnectCount(address string, success bool, n int, timeout time.Duration) bool {
+	key := reconnectKey(address, success)
+	deadline := time.Now().Add(timeout)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	timer := time.AfterFunc(timeout, func() {
+		m.mu.Lock()
+		m.cond.Broadcast()
+		m.mu.Unlock()
+	})
+	defer timer.Stop()
+	for m.syslogReconnects[key] < n {
+		if time.Now().After(deadline) {
+			return false
+		}
+		m.cond.Wait()
+	}
+	return true
+}
+
+func reconnectKey(address string, success bool) string {
+	if success {
+		return address + ":success"
+	}
+	return address + ":failure"
 }
 
 // getSyslogReconnectCount returns the reconnect count for the given address and outcome.
@@ -1291,12 +1347,10 @@ func TestSyslogOutput_ReconnectRecorder_RecordReconnect_FailureOnPermanentServer
 		_ = out.Write([]byte(`{"n":2}`))
 	}
 
-	// Wait for at least one reconnect failure to be recorded before
-	// closing. The writeLoop processes events asynchronously.
-	require.Eventually(t, func() bool {
-		return m.getSyslogReconnectCount(addr, false) > 0
-	}, 5*time.Second, 10*time.Millisecond,
-		"RecordReconnect(address, false) should be called on reconnect failure")
+	// Wait deterministically for at least one reconnect failure to
+	// be recorded before closing. Replaces require.Eventually
+	// polling (#705 family fix).
+	m.waitForReconnectCount(t, addr, false, 1, 5*time.Second)
 
 	require.NoError(t, out.Close())
 }
@@ -1354,21 +1408,18 @@ func TestSyslogOutput_ReconnectRecorder_RecordReconnect_SuccessPath(t *testing.T
 	go srv2.accept()
 	defer srv2.close()
 
-	// Write triggers failure on dead srv1, then reconnects to srv2.
-	// With MaxRetries=10 and short backoff, the reconnect should succeed.
-	// We retry writes until we see success=true recorded or exhaust attempts.
-	var reconnectSucceeded bool
-	for range 20 {
+	// Drive a few writes to trigger reconnect detection on the dead
+	// connection. With MaxRetries=10 and short backoff, the
+	// reconnect goroutine should observe srv2 listening on the same
+	// port and record success. Use tryWaitForReconnectCount rather
+	// than waitForReconnectCount so the platform-dependent TIME_WAIT
+	// case (macOS / Windows port rebind delay) skips cleanly instead
+	// of failing the test (#705 family fix replaces sleep+poll).
+	for range 5 {
 		_ = out.Write([]byte(`{"n":2}`))
-		if m.getSyslogReconnectCount(addr, true) > 0 {
-			reconnectSucceeded = true
-			break
-		}
-		// Brief yield — not sleeping for synchronisation, just giving the
-		// reconnect goroutine a chance to complete its sub-millisecond work.
-		time.Sleep(10 * time.Millisecond)
 	}
 
+	reconnectSucceeded := m.tryWaitForReconnectCount(addr, true, 1, 5*time.Second)
 	require.NoError(t, out.Close())
 
 	if reconnectSucceeded {
@@ -1481,9 +1532,38 @@ func rstClose(conn net.Conn) {
 	_ = conn.Close()
 }
 
+// TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect
+// verifies the branch where connect() succeeds (listener up) but
+// the retry write on the new connection fails (hostile RST).
+//
+// Closes #465. The original 40-iteration write+25ms-sleep loop
+// flaked under CI load. Two earlier sync.Cond fixes (5 events +
+// 10s wait; then 20 events + 15s wait) still flaked at
+// -count=100 because of an inherent race: after SetHostile RSTs
+// the server-side connection, the client kernel buffers initial
+// writes (TCP send buffer accepts bytes before the RST is
+// processed), so srslog.WriteWithPriority returns SUCCESS at
+// the syscall level. The writeLoop never observes a write
+// failure and so never triggers handleWriteFailure / reconnect
+// — RecordReconnect(true) is never called and the wait times
+// out. Increasing MaxRetries does not help because the path is
+// never entered.
+//
+// Final fix drives writes via a periodic ticker until either a
+// successful reconnect is observed (success path) or a hard
+// 30s deadline expires (regression path). The inner wait is
+// deterministic via the sync.Cond barrier; the ticker only
+// re-fires writes once the kernel has had a chance to process
+// the RST, ensuring at least one write lands on the broken
+// connection. ticker pacing is not synchronisation — the
+// signal is the metric channel, the ticker is just retry
+// cadence (same shape as the eventually-consistent backend
+// polling explicitly accepted in commit d6cd9b4).
+//
+// Verified: -race -count=500 ./syslog -run TestSyslogOutput_
+// HandleWriteFailure_WriteFailsAfterReconnect passes 500/500
+// on linux/amd64.
 func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
-	// Verify the branch where connect() succeeds but the retry write
-	// on the new connection fails (syslog.go:380-381).
 	srv := newHostileSyslogServer(t)
 	defer srv.close()
 	addr := srv.addr()
@@ -1492,7 +1572,7 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       addr,
-		MaxRetries:    5,
+		MaxRetries:    20, // Maximum allowed; ample for the ticker-paced retry loop below.
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -1504,23 +1584,36 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	// Switch to hostile: RST existing connections + RST new ones.
 	srv.SetHostile()
 
-	// Drive writes — reconnect Dial succeeds (listener up) but retry
-	// write fails (hostile RST). Window must accommodate batching
-	// flush interval + first-attempt backoff (100 ms base) —
-	// increased from the pre-batching 200 ms window to 1 s (#599).
-	var reconnectSuccess bool
-	for range 40 {
+	// Drive writes via a periodic ticker until the reconnect
+	// metric fires or the deadline expires. The first few writes
+	// after RST may succeed silently due to TCP send-buffer
+	// caching — keep firing until one lands on the broken
+	// connection. Each iteration's inner wait is signal-based
+	// (sync.Cond barrier), the ticker is purely retry cadence.
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
 		_ = out.Write([]byte(`{"n":2}`))
-		if m.getSyslogReconnectCount(addr, true) > 0 {
-			reconnectSuccess = true
+		if m.tryWaitForReconnectCount(addr, true, 1, 100*time.Millisecond) {
 			break
 		}
-		time.Sleep(25 * time.Millisecond)
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatalf("RecordReconnect(addr, true) never fired after 30s — "+
+				"writeLoop may not be detecting RST failures (recorded counts: "+
+				"success=%d, failure=%d)",
+				m.getSyslogReconnectCount(addr, true),
+				m.getSyslogReconnectCount(addr, false))
+		}
 	}
 
 	_ = out.Close()
 
-	assert.True(t, reconnectSuccess,
+	assert.Greater(t, m.getSyslogReconnectCount(addr, true), 0,
 		"RecordReconnect(address, true) must be called — "+
 			"connect() succeeds because listener stays up, but retry write "+
 			"fails because hostile server RSTs the connection")

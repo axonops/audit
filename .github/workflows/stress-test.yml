@@ -1,0 +1,45 @@
+name: Stress Test
+
+# Stress-runs the flake-prone tests N times under -race to catch
+# synchronisation regressions early. The targeted tests are those
+# refactored under the #705/#763/#560/#760/#465 flake-fix family;
+# the catch rate is high if anyone re-introduces a polling pattern
+# or removes a sync.Cond barrier.
+#
+# Schedule: nightly at 03:00 UTC. Also dispatchable on demand.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      stress-count:
+        description: 'Iteration count per test (default 100)'
+        required: false
+        default: '100'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stress:
+    name: Stress test (count=${{ github.event.inputs.stress-count || '100' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up audit Go workspace
+        uses: ./.github/actions/setup-audit
+
+      - name: Run stress test
+        env:
+          STRESS_COUNT: ${{ github.event.inputs.stress-count || '100' }}
+        run: make stress-test STRESS_COUNT=$STRESS_COUNT

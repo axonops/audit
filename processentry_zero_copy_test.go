@@ -283,12 +283,13 @@ func TestProcessEntry_ConcurrentSubmission_NoRace(t *testing.T) {
 	wg.Wait()
 	assert.Zero(t, errs.Load(), "AuditEvent reported errors under concurrency")
 
-	// Wait for drain to catch up.
-	deadline := time.Now().Add(5 * time.Second)
+	// Close synchronously drains the queue — every queued event is
+	// fully processed before Close returns. Replaces the polling
+	// loop / 5 ms time.Sleep (#705 family fix). The deferred
+	// t.Cleanup Close above is idempotent so the second call is a
+	// no-op.
+	require.NoError(t, auditor.Close())
 	expected := uint64(goroutines * perGoroutine)
-	for out.Writes() < expected && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
 	assert.Equal(t, expected, out.Writes(),
 		"some events were not delivered: got %d want %d", out.Writes(), expected)
 }

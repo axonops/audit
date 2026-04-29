@@ -173,7 +173,7 @@ func TestWebhookOutput_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
 		cfg.FlushInterval = 5 * time.Millisecond
 	})
 
-	m := &mockOutputMetrics{}
+	m := newMockOutputMetrics()
 	out.SetOutputMetrics(m)
 
 	werr := out.Write([]byte(strings.Repeat("z", 2048)))

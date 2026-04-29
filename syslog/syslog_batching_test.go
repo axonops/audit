@@ -44,6 +44,47 @@ func countEventMarkers(msgs []string) int {
 	return total
 }
 
+// flushEvent records one observation of the writeLoop's testOnFlush
+// hook (#705/#763): the flushed batch size and the trigger reason.
+// fields ordered for fieldalignment govet check.
+type flushEvent struct {
+	reason string
+	count  int
+}
+
+// installFlushHook attaches a buffered, non-blocking observer to the
+// Output's flush hook and returns the receive channel. Buffer is sized
+// well above any plausible flush count for the test; non-blocking
+// send guards the production goroutine against test-side stalls (per
+// the test-analyst pre-coding consult).
+func installFlushHook(t *testing.T, out *syslog.Output) <-chan flushEvent {
+	t.Helper()
+	ch := make(chan flushEvent, 64)
+	out.SetTestOnFlush(func(n int, reason string) {
+		select {
+		case ch <- flushEvent{count: n, reason: reason}:
+		default:
+		}
+	})
+	t.Cleanup(func() { out.SetTestOnFlush(nil) })
+	return ch
+}
+
+// waitForFlush blocks until the hook signals or the deadline expires.
+// Hard-stop after 5 s; on a healthy runner the wait is microseconds.
+// If the deadline fires it indicates a real regression in the writeLoop,
+// not test flake. (#705/#763 — replaces require.Eventually polling.)
+func waitForFlush(t *testing.T, ch <-chan flushEvent) flushEvent {
+	t.Helper()
+	select {
+	case ev := <-ch:
+		return ev
+	case <-time.After(5 * time.Second):
+		t.Fatal("testOnFlush hook never fired within 5 s — possible writeLoop regression")
+		return flushEvent{}
+	}
+}
+
 // TestWriteLoop_BatchesOnCountThreshold verifies that reaching
 // BatchSize events triggers an immediate flush regardless of the
 // (still-pending) FlushInterval timer (#599 AC #4a).
@@ -60,14 +101,19 @@ func TestWriteLoop_BatchesOnCountThreshold(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	for i := 0; i < 10; i++ {
 		require.NoError(t, out.Write([]byte(fmt.Sprintf(`{"n":%d}`, i))))
 	}
 
-	require.Eventually(t, func() bool {
-		return countEventMarkers(srv.getMessages()) >= 10
-	}, 2*time.Second, 10*time.Millisecond,
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "count_threshold", ev.reason,
 		"count threshold must trigger flush before FlushInterval elapses")
+	assert.Equal(t, 10, ev.count, "flushed batch should contain all 10 events")
+	require.True(t, srv.waitForData(2*time.Second),
+		"flushed events should reach the mock syslog server")
+	assert.GreaterOrEqual(t, countEventMarkers(srv.getMessages()), 10)
 }
 
 // TestWriteLoop_BatchesOnByteThreshold verifies that accumulated
@@ -87,16 +133,21 @@ func TestWriteLoop_BatchesOnByteThreshold(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	// Each event is ~1 KiB; 5 events = 5 KiB, exceeding MaxBatchBytes.
 	event := []byte(strings.Repeat("a", 1024))
 	for i := 0; i < 5; i++ {
 		require.NoError(t, out.Write(event))
 	}
 
-	require.Eventually(t, func() bool {
-		return srv.messageCount() >= 4
-	}, 2*time.Second, 10*time.Millisecond,
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "byte_threshold", ev.reason,
 		"byte threshold must trigger flush before count or timer")
+	assert.GreaterOrEqual(t, ev.count, 4,
+		"flushed batch should contain at least 4 events when MaxBatchBytes hit")
+	require.True(t, srv.waitForData(2*time.Second),
+		"flushed events should reach the mock syslog server")
 }
 
 // TestWriteLoop_FlushesOnTimerTimeout verifies that the
@@ -114,16 +165,19 @@ func TestWriteLoop_FlushesOnTimerTimeout(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	// Write a handful of events — well below BatchSize so only the
 	// timer can cause delivery.
 	for i := 0; i < 5; i++ {
 		require.NoError(t, out.Write([]byte(fmt.Sprintf(`{"n":%d}`, i))))
 	}
 
-	require.Eventually(t, func() bool {
-		return countEventMarkers(srv.getMessages()) >= 5
-	}, 2*time.Second, 10*time.Millisecond,
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "timer", ev.reason,
 		"FlushInterval timer must trigger flush of partial batch")
+	assert.Equal(t, 5, ev.count, "all 5 events should flush together on timer")
+	require.True(t, srv.waitForData(2*time.Second))
 }
 
 // TestWriteLoop_FlushesPartialOnClose verifies that Close drains
@@ -141,6 +195,8 @@ func TestWriteLoop_FlushesPartialOnClose(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	flushes := installFlushHook(t, out)
+
 	for i := 0; i < 3; i++ {
 		require.NoError(t, out.Write([]byte(fmt.Sprintf(`{"n":%d}`, i))))
 	}
@@ -148,7 +204,13 @@ func TestWriteLoop_FlushesPartialOnClose(t *testing.T) {
 	// Close must drain the pending batch before returning.
 	require.NoError(t, out.Close())
 
-	require.GreaterOrEqual(t, countEventMarkers(srv.getMessages()), 3,
+	// The Close path drains via drainBatchNoRetry which fires the
+	// hook with reason "close". Assert exactly that, plus the
+	// expected event count, plus the server-side observation.
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "close", ev.reason, "Close must trigger a final flush")
+	assert.Equal(t, 3, ev.count, "Close must drain all 3 pending events")
+	assert.GreaterOrEqual(t, countEventMarkers(srv.getMessages()), 3,
 		"Close must drain pending batch to syslog server")
 }
 
@@ -169,14 +231,17 @@ func TestWriteLoop_OversizedEventFlushesAlone(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	// Single event exceeding MaxBatchBytes.
 	big := []byte(strings.Repeat("x", 4<<10)) // 4 KiB
 	require.NoError(t, out.Write(big))
 
-	require.Eventually(t, func() bool {
-		return srv.messageCount() >= 1
-	}, 2*time.Second, 10*time.Millisecond,
-		"oversized event must trigger immediate flush, not drop")
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "byte_threshold", ev.reason,
+		"oversized event must trigger immediate byte-threshold flush, not drop")
+	assert.Equal(t, 1, ev.count, "oversized event flushes alone")
+	require.True(t, srv.waitForData(2*time.Second))
 }
 
 // TestWriteLoop_BatchSizeOneDisablesBatching verifies the fast-path
@@ -195,12 +260,15 @@ func TestWriteLoop_BatchSizeOneDisablesBatching(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
 
-	require.Eventually(t, func() bool {
-		return srv.messageCount() >= 1
-	}, 1*time.Second, 5*time.Millisecond,
-		"BatchSize=1 must flush every event immediately")
+	ev := waitForFlush(t, flushes)
+	assert.Equal(t, "count_threshold", ev.reason,
+		"BatchSize=1 must flush every event immediately on count threshold")
+	assert.Equal(t, 1, ev.count)
+	require.True(t, srv.waitForData(2*time.Second))
 }
 
 // TestWriteLoop_MultipleFlushes verifies that the batch slice is
@@ -218,6 +286,8 @@ func TestWriteLoop_MultipleFlushes(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
+	flushes := installFlushHook(t, out)
+
 	// 3 batches of 5 events each — must trigger 3 count-threshold flushes.
 	for batch := 0; batch < 3; batch++ {
 		for i := 0; i < 5; i++ {
@@ -225,20 +295,29 @@ func TestWriteLoop_MultipleFlushes(t *testing.T) {
 		}
 	}
 
-	require.Eventually(t, func() bool {
-		return countEventMarkers(srv.getMessages()) >= 15
-	}, 2*time.Second, 10*time.Millisecond,
-		"all three batches must flush in sequence")
+	// Wait for exactly 3 count-threshold flushes; assert the
+	// sequence rather than a polled count (test-analyst:
+	// "exactly N flushes" needs sequence-aware assertions).
+	for i := 0; i < 3; i++ {
+		ev := waitForFlush(t, flushes)
+		assert.Equal(t, "count_threshold", ev.reason,
+			"flush %d/3 should be triggered by count threshold", i+1)
+		assert.Equal(t, 5, ev.count,
+			"flush %d/3 should contain exactly 5 events", i+1)
+	}
 
-	// Assert every event reached the server (no stale-slot retention).
-	msgs := srv.getMessages()
-	all := strings.Join(msgs, "\n")
+	// Wait for every event to be observable on the server side.
+	// The hook above proves the writeLoop flushed; this proves the
+	// mock server's TCP read loop has consumed the bytes (the two
+	// are independent goroutines and can race on quick test machines).
+	expected := make([]string, 0, 15)
 	for batch := 0; batch < 3; batch++ {
 		for i := 0; i < 5; i++ {
-			assert.Contains(t, all, fmt.Sprintf(`"batch":%d,"n":%d`, batch, i),
-				"event missing from delivered payload")
+			expected = append(expected, fmt.Sprintf(`"batch":%d,"n":%d`, batch, i))
 		}
 	}
+	require.True(t, srv.waitForContent(expected, 2*time.Second),
+		"all events should be observable in the mock server payload after the 3 count-threshold flushes")
 }
 
 // TestValidateSyslogConfig_BatchingDefaults verifies zero-value

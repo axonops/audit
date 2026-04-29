@@ -15,8 +15,19 @@ git clone https://github.com/axonops/audit.git
 cd audit
 make install-tools   # golangci-lint v2.1.6, govulncheck v1.1.4, goimports, goreleaser
 make workspace       # creates go.work for IDE tooling (gitignored)
+make check-static    # all 8 static-analysis guards in one shot
 make check           # runs the full quality gate locally
 ```
+
+`make check-static` runs the same eight checks the CI hygiene job
+runs (formatting, module tidiness, replace directives, orphaned
+TODOs, InsecureSkipVerify production-code guard, example
+cross-references, BDD strict-mode guard, benchmark-baseline
+freshness) in a `||`-guarded loop, so every failure surfaces on
+one push rather than aborting on the first. `make check`
+incorporates `check-static` plus `vet-all`, `lint-all`,
+`test-all`, `build-all`, `test-examples`, `verify`,
+`release-check`, and `security`.
 
 Requires **Go 1.26+**.
 

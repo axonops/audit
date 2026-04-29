@@ -15,28 +15,29 @@ concurrency:
 permissions:
   contents: read
 
-# Job dependency chain (fail-fast ordering):
-#   changes — detects docs-only PRs; outputs.code = true/false
-#   hygiene (fmt, tidy, replace, todos) — always runs
-#   validate-release — always runs (independent)
-#   lint (vet, golangci-lint) — needs: hygiene; SKIPPED for docs-only
-#   security x12 matrix (govulncheck per module) — needs: hygiene; SKIPPED for docs-only; parallelised via matrix (#522)
-#   security-verify (go mod verify) — needs: hygiene; SKIPPED for docs-only
-#   test x7 matrix — needs: lint; SKIPPED for docs-only
-#   cross-build — needs: lint; SKIPPED for docs-only
-#   integration — needs: test; SKIPPED for docs-only
-#   bdd x6 matrix — needs: test; SKIPPED for docs-only
-#   bdd-verify — needs: bdd; SKIPPED for docs-only; verifies all scenarios were executed
-#   benchmark — needs: test; SKIPPED for docs-only; SKIPPED on PRs/feature branches
-#   ci-pass — allows "skipped" results for docs-only PRs
-#   dependency-review — PR-only, blocks PRs adding vulnerable dependencies
+# Job dependency chain (fail-fast ordering, post-#759 refactor):
+#   changes — detects docs-only PRs; outputs.code = true/false; always runs
+#   dependency-review — PR-only, blocks vulnerable-dependency PRs
+#   validate-release — always runs (GoReleaser config check)
+#   hygiene — always runs (make check-static; fmt/tidy/replace/todos/
+#              insecure-skip-verify/example-links/bdd-strict/bench-baseline)
+#   lint, test x11, cross-build, examples-build,
+#   security x13, security-verify    — needs: hygiene
+#   integration                      — needs: hygiene
+#   bdd x8                            — needs: test
+#   bdd-verify                        — needs: bdd
+#   test-cross-platform x4 (mac+win)  — needs: test
+#   ci-pass                           — needs: every job; allows "skipped"
+#                                        results for docs-only PRs
 
 jobs:
   # Detect whether code changed or only docs/markdown changed.
   # Docs-only PRs skip test, build, integration, BDD, and benchmark jobs.
   changes:
-    name: Detect Changes
+    name: Test - Detect Changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -78,9 +79,13 @@ jobs:
           # ':!*.md' matches .md at all directory levels in git pathspec.
           CHANGED=$(git diff --name-only "$BASE" HEAD -- \
             ':!*.md' \
+            ':!**/*.md' \
             ':!docs/**' \
             ':!LICENSE' \
             ':!.claude/**' \
+            ':!**/CHANGELOG*' \
+            ':!**/CONTRIBUTING*' \
+            ':!.github/ISSUE_TEMPLATE/**' \
           )
 
           if [ -z "$CHANGED" ]; then
@@ -95,8 +100,11 @@ jobs:
   # Requires Dependency Graph enabled in repo settings:
   # https://github.com/axonops/audit/settings/security_analysis
   dependency-review:
-    name: Dependency Review
+    name: Test - Dependency Review
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # action posts a PR comment on findings
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
@@ -109,68 +117,34 @@ jobs:
           fail-on-severity: high
 
   hygiene:
-    name: Hygiene
+    name: Test - Hygiene
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
         with:
-          go-version-file: go.mod
-          cache: true
+          install-tools: 'true'
 
-      - name: Set up go.work
-        run: make workspace
-
-      - name: Cache Go tools
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
-
-      - name: Install tools
-        run: make install-tools
-
-      - name: Check formatting
-        run: make fmt-check
-
-      - name: Check module tidiness
-        run: make tidy-check
-
-      - name: Check orphaned TODOs
-        run: make check-todos
-
-      - name: Check replace directives
-        run: make check-replace
-
-      - name: Reject InsecureSkipVerify in production code
-        run: make check-insecure-skip-verify
-
-      - name: Check example README cross-references
-        run: make check-example-links
-
-      # BDD Strict-mode guard — MUST run before any test matrix so a
-      # regression fails loudly and early, not buried inside a later
-      # test job. There is NO circumstance under which BDD runners may
-      # disable Strict mode — see memory feedback_bdd_strict_mode.md
-      # and CONTRIBUTING.md "BDD Strict mode" section.
-      - name: Verify BDD Strict mode is enabled everywhere
-        run: make check-bdd-strict
-
-      # Benchmark-baseline freshness guard — reject a PR that introduces
-      # a stale benchmark name to bench-baseline.txt (renames are the
-      # classic way to silently disable benchstat column pairing and
-      # break the regression gate). See #493 and
-      # scripts/bench-baseline-check.sh for details.
-      - name: Verify bench-baseline.txt references only current names
-        run: make bench-baseline-check
+      # Run every static-analysis guard in one shot, with
+      # error collection so all failures surface on a single
+      # push instead of aborting on the first. Mirrors `make
+      # check-static` which developers also run locally.
+      # Replaces 8 individual `run: make ...` steps that
+      # previously each ran in serial.
+      - name: Run static-analysis checks
+        run: make check-static
 
   lint:
-    name: Lint
+    name: Test - Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
@@ -178,23 +152,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
-
-      - name: Cache Go tools
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
-
-      - name: Install tools
-        run: make install-tools
+          install-tools: 'true'
 
       - name: Run go vet
         run: make vet-all
@@ -203,8 +164,10 @@ jobs:
         run: make lint-all
 
   validate-release:
-    name: Validate GoReleaser Config
+    name: Test - Validate GoReleaser Config
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -216,10 +179,12 @@ jobs:
           args: check
 
   test:
-    name: Test (${{ matrix.module }})
+    name: Test - Unit (${{ matrix.module }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
-    needs: [lint, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
@@ -261,14 +226,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
       - name: Run unit tests with coverage
         run: make ${{ matrix.target }}
@@ -288,10 +247,12 @@ jobs:
   # POSIX-incompatible (permission model, file locking, timer
   # resolution).
   test-cross-platform:
-    name: Test (${{ matrix.module }} on ${{ matrix.os }})
+    name: Test - Cross-Platform (${{ matrix.module }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     timeout-minutes: 15
-    needs: [test, bdd, changes]
+    needs: [test, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
@@ -317,20 +278,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install make (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: choco install make -y
-
-      - name: Set up go.work
-        shell: bash
-        run: make workspace
+          install-make-on-windows: 'true'
 
       - name: Run unit tests with coverage
         shell: bash
@@ -344,23 +295,19 @@ jobs:
           fail_ci_if_error: false
 
   integration:
-    name: Integration Tests
+    name: Test - Integration
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
-    needs: [test, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
       - name: Start test infrastructure
         run: make test-infra-up
@@ -373,8 +320,10 @@ jobs:
         run: make test-infra-down
 
   bdd:
-    name: BDD (${{ matrix.suite }})
+    name: Test - BDD (${{ matrix.suite }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: ${{ matrix.timeout }}
     needs: [test, changes]
     if: needs.changes.outputs.code == 'true'
@@ -434,14 +383,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
       - name: Start test infrastructure
         if: matrix.infra-up != ''
@@ -482,8 +425,10 @@ jobs:
         run: make ${{ matrix.infra-down }}
 
   bdd-verify:
-    name: BDD Coverage Verification
+    name: Test - BDD Coverage Verification
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     needs: [bdd, changes]
     if: needs.changes.outputs.code == 'true'
@@ -503,40 +448,14 @@ jobs:
       - name: Verify executed scenario totals
         shell: bash
         run: |
-          set -eo pipefail
-          expected=$(./scripts/count-bdd-scenarios.sh tests/bdd/features outputconfig/tests/bdd/features)
-          echo "Expected total scenarios: $expected"
-
-          # Sum all runner counts.
-          actual=0
-          for count_file in /tmp/bdd-counts/bdd-count-*/bdd-count.txt; do
-            if [ -f "$count_file" ]; then
-              suite_name=$(basename "$(dirname "$count_file")" | sed 's/bdd-count-//')
-              n=$(cat "$count_file")
-              echo "  $suite_name: $n scenarios"
-              actual=$((actual + n))
-            fi
-          done
-          echo "Actual total executed:    $actual"
-
-          if [ "$actual" -ne "$expected" ]; then
-            echo ""
-            echo "FAIL: scenario count mismatch!"
-            echo "  Expected: $expected (from feature files)"
-            echo "  Actual:   $actual (sum of runner executions)"
-            echo ""
-            echo "This means some scenarios were not executed by any runner."
-            echo "Check that all feature files have appropriate tags and that"
-            echo "the BDD matrix runner tag expressions cover all scenarios."
-            exit 1
-          fi
-
-          echo ""
-          echo "PASS: all $expected scenarios were executed across the BDD matrix."
+          ./scripts/verify-bdd-counts.sh /tmp/bdd-counts \
+            tests/bdd/features outputconfig/tests/bdd/features
 
   security:
-    name: Security Scan (${{ matrix.module }})
+    name: Test - Security (${{ matrix.module }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
@@ -565,23 +484,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
-      - name: Set up go.work
-        run: make workspace
-
-      - name: Cache Go tools
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/go/bin
-          key: go-tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
-
-      - name: Install tools
-        run: make install-tools
+      - name: Install govulncheck only
+        run: make install-govulncheck
 
       - name: Run govulncheck for ${{ matrix.module }}
         run: make security-one MOD=${{ matrix.module }}
@@ -590,8 +497,10 @@ jobs:
     # Companion job that runs the cross-module module-hygiene
     # check. Kept out of the Security Scan matrix because it
     # operates on the workspace as a whole, not per-module.
-    name: Security Verify
+    name: Test - Security Verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
@@ -599,51 +508,76 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
       - name: Verify go.sum integrity
         run: make verify
 
   cross-build:
-    name: Cross Build
+    name: Test - Cross-Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
-    needs: [lint, changes]
+    needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up go.work
-        run: make workspace
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
 
       - name: Build all platforms
         run: make build-all
 
-      - name: Build examples
+  examples-build:
+    name: Test - Build Examples
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    needs: [hygiene, changes]
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
+
+      - name: Build all examples
         run: make test-examples
 
   # Benchmarks removed from CI — GitHub Actions runners have inconsistent
   # performance, making results unreliable for comparison. Run benchmarks
   # locally on consistent hardware: make bench && make bench-compare
+
+  # Aggregate gate: every job above must succeed (or skip cleanly for a
+  # docs-only PR) for ci-pass to go green. Branch-protection should
+  # require this single check rather than enumerating every job by
+  # name.
+  #
+  # MAINTENANCE NOTE — when adding a new job to this workflow:
+  #   1. Add the job name to the `needs:` list below.
+  #   2. If the new job has its own `if: needs.changes.outputs.code
+  #      == 'true'` (i.e. it is skipped on docs-only PRs), the
+  #      `contains(needs.*.result, 'failure')` logic below will
+  #      treat its `skipped` result as success — correct.
+  #   3. If the new job runs unconditionally, ensure its own steps
+  #      honour the docs-only path or update the changes-filter.
+  #
+  # `dependency-review` is deliberately NOT in `needs:` — it has
+  # `if: github.event_name == 'pull_request'` so on push events it
+  # would always be `skipped`, which is fine but adds noise.
   ci-pass:
-    name: CI Pass
+    name: Test - CI Pass
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
-    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, validate-release]
+    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release]
     if: always()
     steps:
       - name: Check all jobs passed

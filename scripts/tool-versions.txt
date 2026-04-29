@@ -1,0 +1,19 @@
+# Pinned tool versions — single source of truth for both the
+# Makefile and the CI cache key.
+#
+# Update procedure:
+#   1. Change the version below
+#   2. Run: make install-tools
+#   3. Verify: make check
+#   4. Commit this file. The CI cache
+#      (.github/actions/setup-audit/action.yml) auto-invalidates
+#      via hashFiles('scripts/tool-versions.txt').
+#
+# Format: Make-compatible variable assignments. Included from
+# Makefile via `include scripts/tool-versions.txt`.
+
+GOLANGCI_LINT_VER := v2.1.6
+GOVULNCHECK_VER   := v1.1.4
+GOIMPORTS_VER     := v0.43.0
+GORELEASER_VER    := v2.15.0
+BENCHSTAT_VER     := v0.0.0-20260312031701-16a31bc5fbd0

@@ -7,9 +7,9 @@
        lint-secrets lint-secrets-openbao lint-secrets-vault \
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
-       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify \
+       tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-static \
        security release-check check clean \
-       install-tools install-benchstat workspace generate-certs \
+       install-tools install-benchstat install-govulncheck workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
        test-infra-syslog-up test-infra-syslog-down \
        test-infra-webhook-up test-infra-webhook-down \
@@ -33,16 +33,12 @@ WORKSPACE_MODULES := $(MODULES) examples/17-capstone
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
 
-# Tool versions — pinned for supply chain safety. To update:
-#   1. Change the version constant below
-#   2. Run: make install-tools
-#   3. Verify: make check
-#   4. Commit the Makefile change (CI cache auto-invalidates via hashFiles)
-GOLANGCI_LINT_VER := v2.1.6
-GOVULNCHECK_VER   := v1.1.4
-GOIMPORTS_VER     := v0.43.0
-GORELEASER_VER    := v2.15.0
-BENCHSTAT_VER     := v0.0.0-20260312031701-16a31bc5fbd0
+# Tool versions — pinned for supply chain safety, single source
+# of truth for both this Makefile and the CI cache key. The CI
+# cache (.github/actions/setup-audit/action.yml) keys on
+# hashFiles('scripts/tool-versions.txt'), so updating that file
+# automatically invalidates the cache.
+include scripts/tool-versions.txt
 
 # --- Tool management ---
 
@@ -507,9 +503,38 @@ security-one:
 release-check:
 	$(GOBIN)/goreleaser check
 
+# Aggregate every static-analysis guard the CI hygiene job runs,
+# in a single shell loop with `||`-guarded error collection so
+# operators see every static failure on a single push (rather
+# than aborting on the first). Mirrors the CI hygiene job's
+# behaviour 1:1: the same checks, the same exit semantics.
+check-static:
+	@FAILED=""; \
+	for target in fmt-check tidy-check check-todos check-replace \
+	              check-insecure-skip-verify check-example-links \
+	              check-bdd-strict bench-baseline-check; do \
+	  echo "==> make $$target"; \
+	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
+	done; \
+	if [ -n "$$FAILED" ]; then \
+	  echo ""; \
+	  echo "FAILED:$$FAILED"; \
+	  exit 1; \
+	fi; \
+	echo ""; \
+	echo "All static-analysis checks passed."
+
+# Install only govulncheck — used by the security matrix to
+# avoid re-installing the full tool set 13 times across the
+# per-module shards. Independent target so it can be invoked
+# without dragging in golangci-lint, goimports, goreleaser,
+# or benchstat.
+install-govulncheck:
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VER)
+
 # --- Full local quality gate ---
 
-check: fmt-check vet-all lint-all test-all build-all test-examples tidy-check verify check-replace check-insecure-skip-verify check-todos check-example-links check-bdd-strict bench-baseline-check release-check security
+check: vet-all lint-all test-all build-all test-examples verify check-static release-check security
 	@echo ""
 	@echo "All checks passed."
 

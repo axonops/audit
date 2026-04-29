@@ -241,7 +241,7 @@ These are independent serialisations of the same event. The canonical payload is
 
 **Sequence number stamping**: the canonical payload INCLUDES the sequence number. This means either (a) the canonical payload is built with a placeholder, the WAL writer stamps the position into it before writing, or (b) the canonical payload is built AFTER position assignment, with the position already known.
 
-Option (b) is simpler and is what the request/response architecture above produces: the WAL writer goroutine receives a request, assigns position, builds canonical JSON with position included, writes it. The caller goroutine builds the entry struct (without position), the writer fills in the position when serialising.
+Option (b) is simpler and is what the request/response architecture above produces: the WAL writer goroutine receives the auditEntry, assigns position, builds map<string, bytes> from Fields (UTF-8/LE encoding), proto.Marshals into WALEntry with sequence_number and wal_instance_id set, writes binary proto bytes to segment.
 
 ### Standard Out Handling
 
@@ -460,6 +460,23 @@ This is acceptable. The verifier holds historical salts (Salt.Version identifies
 
 If this is operationally important, operators should perform salt rotation only at known-clean points (graceful shutdown, then config change, then start). The audit library does not orchestrate salt-rotation safety.
 
+### Per-Record Salt Version in Canonical Payload (SEC-B3 resolution)
+
+To eliminate the verifier's "which salt was active at original delivery" ambiguity introduced by salt rotation across a crash, the canonical WALEntry payload records the salt version active at append time for every HMAC-enabled output.
+
+This is implemented as a set of map<string, bytes> entries inside the WALEntry `payload` field — one entry per HMAC-enabled output:
+
+- **Key format**: `_hmac_salt_version_at_append:<output_name>` (literal underscore prefix, colon separator)
+- **Value**: UTF-8-encoded salt version string for that output's then-active salt
+- **Population**: at WAL append time, the WAL writer goroutine reads each HMAC-enabled output's `HMACConfig.Salt.Version` and writes one map entry per output
+
+Properties:
+
+- **Generic at the WAL layer**: the WAL has no audit-specific knowledge — it serialises whatever map<string, bytes> entries the audit core hands it. The `_hmac_salt_version_at_append:*` keys are conventions enforced by the audit core, not the WAL package.
+- **Replay correctness**: a verifier reading the WAL canonical record can identify which salt version was active at original delivery by inspecting the `_hmac_salt_version_at_append:<output_name>` value. A SIEM that received the original-delivery HMAC under salt v1 AND later receives a replay-delivery HMAC under salt v2 sees both records' canonical payloads naming the salt version that produced the wire bytes.
+- **No HMAC chaining requirement**: this is independent of the v1-out-of-scope HMAC chaining feature. Salt-version recording captures "what was true at append time"; chaining captures "what came before this record." Both are independent integrity primitives.
+- **Property test**: `PropSaltVersionRecordedAtAppend` — for every appended record with HMAC enabled on N outputs, the canonical payload contains exactly N `_hmac_salt_version_at_append:<output_name>` entries with values matching the corresponding `HMACConfig.Salt.Version` at the moment of append.
+
 ### HMAC With Framework Events
 
 Framework events (startup, shutdown, corruption, control plane operations) flow through the SAME path as user events:
@@ -477,32 +494,54 @@ If a particular output does NOT have HMAC configured, framework events delivered
 
 | Layer | Bytes |
 |-------|-------|
-| WAL segment record | Canonical event payload (eventType + fields including sequence_number + wal_instance_id), serialised to internal format. No HMAC. No per-output formatting. |
+| WAL segment record | Protobuf WALEntry (proto3) with generic map<string, bytes> payload. No HMAC. No per-output formatting. Binary on disk — not human-readable without wal-inspect. |
 | Output wire format | Formatted bytes (JSON/CEF/etc.) including sequence_number + wal_instance_id as regular fields, possibly followed by HMAC digest + salt version. |
 
-The internal format used in WAL segments must be **stable across library versions** (same as the segment header format_version). Bumping format_version requires explicit migration. JSON is the practical choice for the canonical internal format because it matches the existing Fields map and is round-trip safe.
+The internal format used in WAL segments must be **stable across library versions** (same as the segment header format_version). Bumping format_version requires explicit migration. Protobuf (proto3) with a generic map<string, bytes> payload is the canonical internal format. Binary, ~70% smaller than JSON, not human-readable on disk. Stable across library versions via proto field numbering.
+
+### Canonical WAL Payload Proto Schema
+
+```proto
+syntax = "proto3";
+package wal;
+option go_package = "github.com/axonops/wal/proto;walpb";
+
+// WALEntry is the record stored in every WAL segment.
+// Domain-agnostic: no audit-specific fields. The WAL knows
+// nothing about audit events, taxonomy, or formatters.
+message WALEntry {
+  uint64            sequence_number = 1;
+  string            wal_instance_id = 2;
+  map<string,bytes> payload         = 3; // key=field name, value=UTF-8 or LE binary
+  bytes             prev_hmac       = 4; // HMAC of previous entry (chain anchor)
+  bytes             hmac            = 5; // HMAC(key, proto_bytes_excl_hmac + prev_hmac)
+}
+```
+
+Strongly typed per-event messages (UserLogin, PaymentEvent etc.) were considered and rejected. They would embed audit taxonomy into the WAL proto schema, violating the module boundary required for standalone library extraction. Generic map<string, bytes> means the WAL writer goroutine serialises the audit core's Fields map directly. Each value encodes strings as UTF-8, int64 as little-endian 8 bytes — documented as a codec convention alongside the proto schema, not in the WAL itself. Replay deserialises map<string, bytes> back to Fields map using the same convention. No schema coupling, no proto schema evolution concerns on the WAL side.
 
 ### Canonical Payload Stability Contract
 
-The canonical JSON stored in WAL segments is read by future versions of the library during replay (e.g., a WAL written by v1.2 is replayed by v1.5 after an upgrade). The contract is modelled on the well-understood Kafka schema-registry compatibility rules:
+The canonical WALEntry proto bytes stored in WAL segments are read by future versions of the library during replay (e.g., a WAL written by v1.2 is replayed by v1.5 after an upgrade).
+
+**format_version bump required only for WALEntry proto field number changes or field removal. Adding new optional fields to WALEntry is backward-compatible and does NOT require a format_version bump.**
 
 **Backward-compatible (no `format_version` bump required)**:
 
-- **Adding new optional fields** to the canonical JSON. Older library versions writing the WAL omit the field; newer versions reading the WAL handle absence gracefully (treat as zero-value, default, or omitted).
-- **Adding new event types** to the taxonomy (the canonical JSON's `event_type` value is just a string).
-- **Adding new optional sub-objects** under existing fields.
+- **Adding new optional fields** to WALEntry with new proto field numbers. Older library versions writing the WAL omit the field; newer versions reading the WAL handle absence gracefully (treat as proto3 default — zero-value).
+- **Adding new keys** to the `payload` map<string, bytes>. The map is itself untyped from proto's perspective; new keys are just additional map entries.
+- **Adding new event types** to the audit taxonomy (the WAL stores `event_type` as a string entry inside the `payload` map; it is opaque to the WAL).
 
 **Backward-incompatible (`format_version` bump required)**:
 
-- **Removing fields** that older library versions assumed were present.
-- **Renaming fields** (a rename is an add + a remove).
-- **Changing field semantics** without changing the name (e.g., `severity` changing from a number to a string label, or changing units of a numeric field).
-- **Changing the top-level structure** (e.g., wrapping the event in an envelope, or moving framework fields under a sub-object).
-- **Changing CRC algorithm or trailer canary** for the segment record format itself (this is a different layer than the canonical JSON, but follows the same rule).
+- **Removing or renumbering existing WALEntry fields**. Proto field numbers are the wire identity; once assigned, they MUST be reserved (never reused) per proto3 best practice.
+- **Changing the wire type of an existing field** (e.g., changing `sequence_number` from uint64 to string).
+- **Changing the codec convention for `payload` map<string, bytes> values** (e.g., changing int64 encoding from little-endian to big-endian, or changing string encoding from UTF-8).
+- **Changing CRC algorithm or trailer canary** for the segment record format itself (this is a different layer than the WALEntry proto, but follows the same rule).
 
 **Forward-compatibility constraint (older library reading WAL written by newer library)**:
 
-This is rarer in practice but matters during rollback. When an older library version reads a WAL written by a newer version with extra fields, the older version MUST silently ignore unknown JSON fields rather than fail. Standard Go `encoding/json` already does this by default; the implementation should explicitly verify (and add a unit test) that the canonical JSON unmarshaller does NOT use `DisallowUnknownFields`.
+Proto3 silently ignores unknown fields by default — older library versions reading WALEntry bytes written by newer versions with additional field numbers will skip those fields. The implementation should add a unit test verifying this behaviour holds for all supported proto-Go versions (`google.golang.org/protobuf` >= 1.30).
 
 **Operator implications**:
 

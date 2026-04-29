@@ -231,13 +231,13 @@ Properties this gives:
 
 In Mode B, every event is serialised TWICE:
 
-1. **Canonical WAL payload** — produced once at `AuditEvent()` time (in the caller goroutine OR the WAL writer goroutine). This is the JSON representation of the canonical event that gets stored on disk in the WAL segment. Stable format, version-controlled by `metadata.json` `format_version`. Includes all fields: eventType, framework fields (host, app_name, pid, wal_instance_id, sequence_number, etc.), event fields, severity, timestamp.
+1. **Canonical WAL payload** — produced once at `AuditEvent()` time (in the caller goroutine OR the WAL writer goroutine). This is the proto3 `WALEntry` message stored in binary form on disk in the WAL segment. The WALEntry's `payload` field is a `map<string, bytes>` holding all event fields: eventType, framework fields (host, app_name, pid, wal_instance_id, sequence_number, etc.), event fields, severity, timestamp, plus the `_hmac_salt_version_at_append:<output_name>` entries described in the HMAC section. Stable format, version-controlled by `metadata.json` `format_version` plus proto field numbering. See "Canonical WAL Payload Proto Schema" below for the complete WALEntry definition.
 
 2. **Per-output formatted payload** — produced in the drain goroutine for each output that has a unique formatter. Subject to formatter caching: outputs sharing a `Formatter` pointer get the same bytes (this is the existing optimisation in `fanout.go`). May omit excluded labels per output's sensitivity exclusions. Receives per-output HMAC append.
 
 These are independent serialisations of the same event. The canonical payload is the durable record; the per-output payload is what goes on the wire.
 
-**An implementor MUST NOT try to reuse one for the other.** The drain goroutine produces formatted bytes that may be CEF (different structure), may have HMAC appended (additional bytes), may have sensitivity exclusions (subset of fields). None of these are valid for the WAL canonical store. Conversely, the WAL canonical JSON has no HMAC and no exclusions, so it isn't valid for any output that requires those.
+**An implementor MUST NOT try to reuse one for the other.** The drain goroutine produces formatted bytes that may be CEF (different structure), may have per-output HMAC appended (additional bytes), may have sensitivity exclusions (subset of fields). None of these are valid for the WAL canonical store. Conversely, the WAL canonical WALEntry proto carries the chain-HMAC fields (`prev_hmac`, `hmac`) but has no per-output HMAC and no per-output sensitivity exclusions, so it isn't valid for any output that requires those.
 
 **Sequence number stamping**: the canonical payload INCLUDES the sequence number. This means either (a) the canonical payload is built with a placeholder, the WAL writer stamps the position into it before writing, or (b) the canonical payload is built AFTER position assignment, with the position already known.
 
@@ -434,7 +434,12 @@ The flow is:
 6. `output.Write(formatted_bytes_with_hmac)`
 7. On success: `consumer.Commit(position)`
 
-**Important: the WAL does NOT compute or care about HMAC.** The WAL stores raw event bytes. HMAC remains a per-output concern in the drain loop. The WAL provides the sequence number, and that sequence number being in the payload means the HMAC naturally covers it.
+**Two independent HMAC layers** — read this carefully. The WAL has its own HMAC concern (chain integrity, at-rest tamper detection) AND the per-output HMAC concern documented above is unchanged.
+
+1. **Per-output HMAC** (existing): computed in the drain goroutine over the formatted bytes for each output, using that output's salt. Different outputs have different per-output HMACs. The sequence_number being in the formatted payload means each per-output HMAC naturally covers it.
+2. **WAL chain HMAC** (new with proto switch): the WALEntry proto carries `prev_hmac` (HMAC of the previous entry — chain anchor) and `hmac` (`HMAC(key, proto_bytes_excl_hmac + prev_hmac)`). The WAL writer goroutine computes this at append time using a single WAL-level HMAC key (configured separately from per-output salts; see Configuration). The chain HMAC is stored in the proto on disk; it is NOT delivered to outputs. It exists solely to detect tampering, deletion, or reordering of records at rest in segment files. Recovery validates the chain on segment scan; a broken chain triggers a `recovery_inconsistency` framework event with type `chain_break`.
+
+The two layers are independent. Disabling per-output HMAC has no effect on the WAL chain HMAC. Disabling the WAL chain HMAC (via `WithWALHMACDisabled`) has no effect on per-output HMACs.
 
 ### HMAC With Replay
 
@@ -474,8 +479,51 @@ Properties:
 
 - **Generic at the WAL layer**: the WAL has no audit-specific knowledge — it serialises whatever map<string, bytes> entries the audit core hands it. The `_hmac_salt_version_at_append:*` keys are conventions enforced by the audit core, not the WAL package.
 - **Replay correctness**: a verifier reading the WAL canonical record can identify which salt version was active at original delivery by inspecting the `_hmac_salt_version_at_append:<output_name>` value. A SIEM that received the original-delivery HMAC under salt v1 AND later receives a replay-delivery HMAC under salt v2 sees both records' canonical payloads naming the salt version that produced the wire bytes.
-- **No HMAC chaining requirement**: this is independent of the v1-out-of-scope HMAC chaining feature. Salt-version recording captures "what was true at append time"; chaining captures "what came before this record." Both are independent integrity primitives.
+- **Independent of WAL chain HMAC**: the chain HMAC (WALEntry.prev_hmac, .hmac) is the WAL-layer at-rest tamper-detection primitive — it answers "has anything been inserted, modified, or deleted on disk?" Salt-version recording answers a different question — "which per-output salt was active when this record was originally produced?" Both are independent integrity primitives, both in v1 scope.
 - **Property test**: `PropSaltVersionRecordedAtAppend` — for every appended record with HMAC enabled on N outputs, the canonical payload contains exactly N `_hmac_salt_version_at_append:<output_name>` entries with values matching the corresponding `HMACConfig.Salt.Version` at the moment of append.
+
+### WAL Chain HMAC (At-Rest Tamper Detection)
+
+The WAL chain HMAC fields (`WALEntry.prev_hmac` and `WALEntry.hmac`) provide at-rest tamper detection independent of per-output HMAC. This was originally listed as out-of-scope for v1 and is moved in-scope by the proto switch. Resolves the security review's SEC-M2 finding ("HMAC chaining out-of-scope leaves v1 with no defence against record deletion at rest").
+
+**Computation**:
+
+```
+hmac_N = HMAC(WAL_HMAC_KEY, proto_bytes_of(WALEntry_N excluding hmac field) || prev_hmac_N)
+prev_hmac_N = hmac_{N-1}              // for N > first_position
+prev_hmac_{first_position} = empty     // no predecessor; the chain anchor
+```
+
+The HMAC algorithm is configurable via `WithWALHMACAlgorithm` (default: HMAC-SHA-256, matching the per-output HMAC default). The key comes from `WithWALHMACKey` and SHOULD be loaded via the existing `secrets/` provider system.
+
+**Computed by**: the WAL writer goroutine, at append time, after all other WALEntry fields are populated. The chain HMAC is computed once per record; serialised into the WALEntry proto; the resulting bytes are what gets persisted to the segment.
+
+**Validated by**: the recovery scanner on `WAL.Open` and the iterator on every `Next()`. Each record's `prev_hmac` MUST equal the previous record's `hmac`; each record's `hmac` MUST recompute to the same value given the WAL_HMAC_KEY. Any mismatch is a chain break.
+
+**Chain break handling**:
+
+- On recovery: the WAL transitions to a degraded "chain-broken" state for affected segments. A `recovery_inconsistency` framework event is emitted with type `chain_break`, including: `segment_file`, `first_broken_position`, `expected_prev_hmac` (truncated/redacted in the log line, full value in the event), `actual_prev_hmac` (truncated/redacted). Replay continues past the break (the underlying data may still be deliverable; the chain just no longer guarantees integrity for those positions).
+- On live iteration (e.g., `ReplayOutputFromEarliest`): the iterator yields the record with `Record.Corruption.GapReason = GapReasonChainBreak` (new value); audit core treats it the same as `GapReasonCorruption` for delivery purposes.
+
+**Disabling the chain**:
+
+- `WithWALHMACKey = nil` (default): chain HMAC fields in WALEntry are written as empty bytes; recovery skips chain validation; no `chain_break` events fire. This is the no-tamper-detection mode — operators relying on filesystem-level integrity (e.g., dm-verity, ZFS) may legitimately choose this.
+- `WithWALHMACDisabled = true`: explicit opt-out even when a key is otherwise wired in via the secrets layer; primarily for benchmarking the without-chain-HMAC overhead.
+
+**Performance impact**: HMAC-SHA-256 over a typical ~500-byte WALEntry is ~400 ns on amd64 (single core). The WAL writer goroutine performs this once per record before writev; for batched appends, the chain HMAC must be computed sequentially within the batch (each record's `prev_hmac` is the previous record's `hmac`), so chain HMAC effectively serialises the per-record portion of batch processing. Acceptance criterion: BenchmarkAppend with chain HMAC enabled adds ≤ 500 ns/op vs disabled.
+
+**Security properties (and what chain HMAC does NOT provide)**:
+
+- **Detects**: record modification (changes hmac), record insertion (insertion's hmac doesn't match successor's prev_hmac), record deletion (successor's prev_hmac doesn't match new predecessor's hmac), record reordering (any swap breaks the chain).
+- **Does NOT detect**: complete WAL replacement (an attacker who replaces every segment with a freshly chained sequence under the SAME key produces a valid chain). Defence: `wal_instance_id` rotation (the SIEM detects unexpected instance ID change). Or: persist a periodic chain root hash externally (out-of-scope for v1; tracked separately).
+- **Does NOT detect**: chain forgery if the attacker knows WAL_HMAC_KEY. Operators MUST protect the key the same way they protect per-output HMAC salts.
+
+**Property tests**:
+
+- `PropChainHMACContiguous` — for any sequence of appends, every WALEntry's `prev_hmac` equals the previous WALEntry's `hmac`.
+- `PropChainBreakDetectedOnTamper` — randomly mutate a single byte in a sealed segment; verify recovery detects exactly the chain_break for the mutated record's position.
+- `PropChainBreakDetectedOnDeletion` — splice out a single record from a sealed segment; verify recovery detects the chain_break.
+- `PropChainHMACAbsentWhenKeyDisabled` — when `WithWALHMACKey = nil`, all WALEntry.hmac and prev_hmac fields are empty bytes; recovery does not emit chain_break events.
 
 ### HMAC With Framework Events
 
@@ -577,7 +625,7 @@ sequenceDiagram
 
     Writer->>WALReq: receive request
     activate Writer
-    Note over Writer: assign position N<br/>build canonical JSON with N<br/>writev (batched)<br/>fsync per policy
+    Note over Writer: assign position N<br/>build WALEntry proto (incl. chain HMAC)<br/>writev (batched)<br/>fsync per policy
     Writer->>Ch: enqueue(entry with seq_num=N)
     Writer-->>Auditor: response_ch <- {pos:N, err:nil}
     deactivate Writer
@@ -1029,8 +1077,13 @@ Implementation may use either explicit reference counting or per-segment `sync.R
 | `WithCloseTimeout` | 30s | 1s - 5m | Close() timeout for in-progress operations |
 | `WithRecoveryForwardScanLimit` | 10 | 1 - 100 | Max positions to scan forward when looking for `_failed` event during recovery (suppression rule) |
 | `WithReplayTimeout` | 0 (unlimited) | 0 or 1s+ | Max time to wait for all outputs to catch up during replay; 0 = wait forever |
+| `WithWALHMACKey` | nil (disabled) | nil or `[]byte` ≥ 32 bytes | Key for WAL chain HMAC (WALEntry.prev_hmac, .hmac); nil disables chain HMAC entirely |
+| `WithWALHMACAlgorithm` | `HMACSHA256` | enum | Chain HMAC algorithm; only effective when `WithWALHMACKey` is set |
+| `WithWALHMACDisabled` | false | bool | Explicit opt-out for the chain HMAC even if a key is otherwise wired in via the secrets layer; primarily for benchmarking the without-chain-HMAC overhead |
 
 **Validation**: `Open()` validates `WithMaxRecordSizeBytes < WithSegmentSizeBytes`. A record larger than a segment is a configuration error.
+
+**Chain HMAC key sourcing**: when `WithWALHMACKey` is non-nil and ≥ 32 bytes, the WAL chain HMAC is enabled. The key SHOULD be loaded via the existing `secrets/` provider system (Vault/OpenBao/file/env) rather than passed as a literal byte slice in code. Operators wanting at-rest tamper detection MUST configure this; without a key, the chain HMAC fields in WALEntry are written as empty bytes and chain validation is skipped on recovery.
 
 ### Fsync Policy
 
@@ -1613,11 +1666,11 @@ type CorruptedRecord struct {
     SegmentOffset  int64
     ExpectedCRC    uint32
     ActualCRC      uint32
-    GapReason      string  // "partial_write" | "corruption" | "torn_header"
+    GapReason      string  // "partial_write" | "corruption" | "torn_header" | "chain_break"
 }
 
 type RecoveryInconsistency struct {
-    Type             string  // "framework_event_without_state_change" | "state_change_without_framework_event" | "state_file_corrupted"
+    Type             string  // "framework_event_without_state_change" | "state_change_without_framework_event" | "state_file_corrupted" | "chain_break"
     Description      string
     DetectedAt       time.Time
     AffectedConsumer string
@@ -2116,6 +2169,7 @@ Severity: critical. Emitted on startup if recovery detects inconsistency between
 - `framework_event_without_state_change` — Operation framework event present in WAL but state file unchanged. Operation did not take effect.
 - `state_change_without_framework_event` — State file shows change but no preceding framework event. Should be impossible if procedure followed.
 - `state_file_corrupted` — paused.json or other state file failed to parse; defaults applied.
+- `chain_break` — WAL chain HMAC validation failed for one or more records. Payload includes `segment_file`, `first_broken_position`, `expected_prev_hmac` (full value), `actual_prev_hmac` (full value). Indicates record modification, insertion, deletion, or reordering at rest. The diagnostic log line emits truncated HMAC bytes; the framework event carries full bytes for forensic analysis.
 
 Multiple inconsistencies on a single startup are emitted as separate events, each with its own sequence number, all immediately following the startup event.
 
@@ -2223,12 +2277,12 @@ Bytes        | Field
 0-7          | Position (uint64, big-endian)
 8-11         | Payload length N (uint32, big-endian)
 12-15        | CRC32C of (position || length || payload), big-endian
-16 to 15+N   | Payload bytes (canonical event JSON)
+16 to 15+N   | Payload bytes (WALEntry proto3-encoded)
 16+N to ?    | Padding to 8-byte boundary (0x00)
 ?+0 to ?+7   | Trailer canary: 0x41584F4E57414C00 ("AXONWAL\0")
 ```
 
-Payload is the canonical event serialised as JSON, including all fields (eventType, fields including sequence_number and wal_instance_id, framework metadata).
+Payload is the canonical event marshalled as a proto3 `WALEntry` message, including all fields: sequence_number (proto field 1), wal_instance_id (field 2), payload (field 3 — the map<string, bytes> carrying eventType, framework fields, event fields, severity, timestamp, and per-output salt-version entries), prev_hmac (field 4 — chain anchor), and hmac (field 5 — chain HMAC). See "Canonical WAL Payload Proto Schema" in the architecture section for the complete schema and the codec convention for map values.
 
 ### Recovery Procedure
 
@@ -2825,8 +2879,8 @@ Plus:
 
 | Test | Verification |
 |------|--------------|
-| `TestFormat_BackwardCompat_NewLibraryReadsOldWAL` | Generate WAL with a stub older-format JSON (omitting an optional field added in a hypothetical newer version); verify replay succeeds and missing field is treated as zero-value |
-| `TestFormat_ForwardCompat_OldLibraryReadsNewWAL` | Generate canonical JSON with an extra unknown field; verify Unmarshal succeeds (no DisallowUnknownFields) and the unknown field is silently ignored |
+| `TestFormat_BackwardCompat_NewLibraryReadsOldWAL` | Generate WAL with a stub older-format WALEntry proto (omitting a field added in a hypothetical newer version); verify replay succeeds and missing field is treated as proto3 zero-value |
+| `TestFormat_ForwardCompat_OldLibraryReadsNewWAL` | Generate WALEntry proto bytes with an extra unknown field number; verify proto.Unmarshal succeeds and the unknown field is silently skipped (proto3 default) |
 | `TestFormat_VersionBump_RejectsUnknownFormatVersion` | metadata.json with format_version=2 → ErrUnsupportedFormatVersion |
 | `TestFormat_VersionBump_DocumentedMigrationPath` | Verify CHANGELOG/README documents migration if format_version bumps in any library release (governance test) |
 
@@ -2841,6 +2895,27 @@ Plus:
 | `TestHMAC_ReplayProducesIdenticalHMAC` | Replayed event produces byte-identical output to original (assuming same salt) |
 | `TestHMAC_SaltRotationAcrossRestart` | Salt rotated between runs; replayed events use new salt; documented as operator concern |
 | `TestHMAC_FrameworkEventsAreHMACed` | Framework events delivered to HMAC-enabled outputs include HMAC |
+| `TestHMAC_SaltVersionInCanonicalPayload` | Per output with HMAC enabled, the canonical WALEntry payload contains `_hmac_salt_version_at_append:<output_name>` with the salt version active at append time (SEC-B3) |
+
+### WAL Chain HMAC Tests
+
+| Test | Verification |
+|------|--------------|
+| `TestChainHMAC_DisabledWhenNoKey` | With `WithWALHMACKey = nil`, all WALEntry.hmac and prev_hmac are empty; recovery emits no chain_break events |
+| `TestChainHMAC_FirstRecord_PrevHmacEmpty` | The first WALEntry of the WAL lifetime has empty `prev_hmac` (chain anchor) |
+| `TestChainHMAC_SubsequentRecords_PrevHmacMatchesPredecessor` | For every record N > first, `prev_hmac_N == hmac_{N-1}` byte-for-byte |
+| `TestChainHMAC_ContiguousAcrossSegmentBoundaries` | Chain continuity preserved when a new segment is created (last record of segment K's hmac = first record of segment K+1's prev_hmac) |
+| `TestChainHMAC_TamperedRecord_DetectedOnRecovery` | Mutate one byte of a sealed segment's record proto bytes; recovery emits `recovery_inconsistency` with type `chain_break` and the correct first_broken_position |
+| `TestChainHMAC_DeletedRecord_DetectedOnRecovery` | Splice out a record from a sealed segment; recovery emits `chain_break` event |
+| `TestChainHMAC_InsertedRecord_DetectedOnRecovery` | Insert a forged record (with valid CRC and trailer canary but unknown chain HMAC) into a sealed segment; recovery emits `chain_break` |
+| `TestChainHMAC_ReorderedRecords_DetectedOnRecovery` | Swap two adjacent records in a sealed segment; recovery emits `chain_break` |
+| `TestChainHMAC_KeyChangeAcrossRestart_AllRecordsBreak` | Restart with a different `WithWALHMACKey`; recovery emits `chain_break` for every existing record |
+| `TestChainHMAC_AlgorithmChangeAcrossRestart_FormatVersionMismatch` | Restart with a different `WithWALHMACAlgorithm` (without format_version bump) → `ErrUnsupportedFormatVersion` |
+| `TestChainHMAC_DisabledOptOut_BypassesValidation` | With `WithWALHMACDisabled = true`, recovery skips chain validation even if WALEntry.hmac fields are populated |
+| `TestChainHMAC_BenchmarkOverhead` | BenchmarkAppend with chain HMAC enabled adds ≤ 500 ns/op vs disabled (acceptance criterion) |
+| `PropChainHMACContiguous` | Property: for any sequence of N appends, every WALEntry's prev_hmac equals the previous WALEntry's hmac |
+| `PropChainBreakDetectedOnTamper` | Property: random single-byte mutation in a sealed segment is detected as exactly one chain_break |
+| `PropChainHMACAbsentWhenKeyDisabled` | Property: when key disabled, no WALEntry has non-empty hmac or prev_hmac fields |
 
 ### Framework Field Tests (wal_instance_id)
 
@@ -2980,11 +3055,12 @@ For audit, P999 latency matters more than median throughput.
 - [ ] ReplayOutputFromEarliest internal sequencing: pause flag set, framework event emitted, cursor reset, in-memory pause cleared; no two iterators concurrent on same consumer
 
 ### Format Stability Contract
-- [ ] Canonical JSON unmarshaller does NOT use DisallowUnknownFields (forward compatibility)
-- [ ] Adding optional fields is backward-compatible and does not bump format_version
-- [ ] Removing/renaming fields, semantic changes, or top-level structure changes require format_version bump
+- [ ] Canonical format is proto3 `WALEntry` (binary); proto3 silently skips unknown fields (forward compatibility) — verified by test
+- [ ] Adding optional fields with new proto field numbers is backward-compatible and does NOT bump format_version
+- [ ] Removing or renumbering existing WALEntry proto fields, changing wire types, or changing the codec convention for `payload` map<string,bytes> values requires format_version bump
 - [ ] Unknown format_version causes Open to return ErrUnsupportedFormatVersion
 - [ ] README documents the format compatibility contract and migration path
+- [ ] Proto file (`wal.proto`) committed alongside the implementation; codegen reproducible
 - [ ] CHANGELOG entries for format-affecting changes call out compatibility implications
 
 ### Framework Field: wal_instance_id
@@ -2996,14 +3072,30 @@ For audit, P999 latency matters more than median throughput.
 - [ ] Field included in HMAC coverage when HMAC is enabled (verified by test)
 - [ ] Tampering with `wal_instance_id` invalidates HMAC (verified by test)
 
-### HMAC Integration
-- [ ] HMAC remains per-output, optional, computed in drain goroutine
-- [ ] sequence_number is included in canonical event payload before formatting
-- [ ] When HMAC enabled for an output, HMAC covers sequence_number naturally (via formatted bytes)
-- [ ] When HMAC enabled, HMAC covers wal_instance_id
-- [ ] Replay produces byte-identical output for same event (assuming same salt)
+### HMAC Integration (Per-Output)
+- [ ] Per-output HMAC remains optional, computed in drain goroutine
+- [ ] sequence_number is included in canonical WALEntry `payload` map before formatting
+- [ ] When per-output HMAC enabled, HMAC covers sequence_number naturally (via formatted bytes)
+- [ ] When per-output HMAC enabled, HMAC covers wal_instance_id
+- [ ] Replay produces semantically equivalent output for same event (byte-identical only when salt unchanged)
 - [ ] Salt rotation operator concerns documented
 - [ ] Framework events HMACed identically to user events on HMAC-enabled outputs
+- [ ] Per-output salt version recorded in canonical WALEntry payload via `_hmac_salt_version_at_append:<output_name>` map keys (SEC-B3)
+
+### HMAC Integration (WAL Chain HMAC)
+- [ ] `WithWALHMACKey` / `WithWALHMACAlgorithm` / `WithWALHMACDisabled` config options exposed
+- [ ] Default: chain HMAC disabled (`WithWALHMACKey = nil`); enabled-mode opt-in via key configuration
+- [ ] When enabled, WAL writer goroutine computes `WALEntry.hmac = HMAC(key, proto_bytes_excl_hmac || prev_hmac)` per record
+- [ ] First record of WAL lifetime has empty `prev_hmac` (chain anchor)
+- [ ] Subsequent records have `prev_hmac = previous_record.hmac`
+- [ ] Chain continuity preserved across segment boundaries
+- [ ] Recovery validates the chain on Open; chain breaks emit `recovery_inconsistency` with `inconsistency_type: chain_break` carrying full prev_hmac/actual_prev_hmac bytes
+- [ ] Iterator exposes `Record.Corruption.GapReason = "chain_break"` for chain-broken records during live iteration
+- [ ] When disabled (no key OR `WithWALHMACDisabled = true`), recovery skips chain validation
+- [ ] WAL HMAC key SHOULD be loaded via the `secrets/` provider system (Vault/OpenBao/file/env); literal key in code documented as discouraged
+- [ ] BenchmarkAppend with chain HMAC enabled adds ≤ 500 ns/op vs disabled
+- [ ] Property tests pass: `PropChainHMACContiguous`, `PropChainBreakDetectedOnTamper`, `PropChainHMACAbsentWhenKeyDisabled`
+- [ ] Limitations documented: chain HMAC does NOT detect WAL-wide replacement under same key (operators rely on `wal_instance_id` rotation as defence-in-depth) or chain forgery if key is compromised
 
 ### Control Plane
 - [ ] Full API: PauseOutput, ResumeOutput, ResetOutputCursor, SkipOutputBacklog, ReplayOutputFromEarliest
@@ -3075,7 +3167,7 @@ For audit, P999 latency matters more than median throughput.
 
 ## Out of Scope (v1)
 
-- HMAC chaining (event N's HMAC includes event N-1's HMAC) — future for tamper-evidence on deletion
+- ~~HMAC chaining~~ — **MOVED IN-SCOPE** by the proto switch. WALEntry proto now carries `prev_hmac` and `hmac` fields; the WAL writer goroutine computes a chain HMAC at append time using a configured WAL-level key. Recovery validates the chain. See "Two independent HMAC layers" in the HMAC section.
 - WAL replication across nodes — future
 - Compression of segments — future
 - Encryption at rest — rely on filesystem-level encryption

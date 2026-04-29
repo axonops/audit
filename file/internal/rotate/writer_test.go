@@ -952,6 +952,10 @@ func TestWriter_Write_DeferredFlush_DefaultSyncOff(t *testing.T) {
 // TestWriter_Write_BackgroundTimerFlushes pins the deferred-
 // flush contract: bytes must become visible within ~FlushInterval
 // without any Sync/Close call.
+//
+// Synchronisation uses the testOnFlush hook (#705 family fix);
+// previously the test polled the file with 5 ms sleeps and a
+// 500 ms deadline, which flaked under CI runner load.
 func TestWriter_Write_BackgroundTimerFlushes(t *testing.T) {
 	t.Parallel()
 
@@ -966,22 +970,29 @@ func TestWriter_Write_BackgroundTimerFlushes(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, w.Close()) })
 
+	flushed := make(chan struct{}, 4)
+	w.SetTestOnFlush(func() {
+		select {
+		case flushed <- struct{}{}:
+		default:
+		}
+	})
+	t.Cleanup(func() { w.SetTestOnFlush(nil) })
+
 	event := []byte(`{"event_type":"timer.test"}` + "\n")
 	_, err = w.Write(event)
 	require.NoError(t, err)
 
-	// Wait up to 500 ms for the 10 ms timer to fire and drain.
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		data, rerr := os.ReadFile(path)
-		require.NoError(t, rerr)
-		if len(data) > 0 {
-			assert.Equal(t, string(event), string(data))
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case <-flushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("testOnFlush hook never fired within 5 s — possible flushLoop regression")
 	}
-	t.Fatal("background flush timer never fired within 500 ms")
+
+	data, rerr := os.ReadFile(path)
+	require.NoError(t, rerr)
+	assert.Equal(t, string(event), string(data),
+		"bytes must be on disk after the background flush hook fires")
 }
 
 // TestWriter_Close_DrainsPendingBytes pins that Close always

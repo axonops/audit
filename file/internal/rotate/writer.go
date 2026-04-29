@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/axonops/audit/iouring"
@@ -138,6 +139,14 @@ type Writer struct {
 	flushCh   chan struct{}
 	flushDone chan struct{}
 	flushOnce sync.Once
+
+	// testOnFlush, when set, is invoked from tickFlush after a
+	// successful background bufio.Flush. Test-only — production
+	// code MUST NOT set this. Replaces the polling pattern that
+	// flaked under CI runner load (#705 family). nil-safe via
+	// atomic.Pointer; the load on the flush hot path is one cmpq
+	// + jne when the hook is unset (the production case).
+	testOnFlush atomic.Pointer[func()]
 
 	// pendingFlush is set by writeLocked when it adds bytes to
 	// the bufio buffer without flushing (SyncOnWrite=false).
@@ -517,13 +526,27 @@ func (w *Writer) flushLoop(interval time.Duration) {
 // the Flush syscall when no bytes are pending so an idle writer
 // produces no wakeup traffic beyond the bare timer.
 func (w *Writer) tickFlush() {
+	flushed := w.tickFlushLocked()
+	if !flushed {
+		return
+	}
+	if hook := w.testOnFlush.Load(); hook != nil {
+		(*hook)()
+	}
+}
+
+// tickFlushLocked acquires the mutex, performs the conditional
+// Flush, and reports whether a flush actually happened. The
+// hook fires outside the lock.
+func (w *Writer) tickFlushLocked() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.pendingFlush || w.bw == nil || w.closed {
-		return
+		return false
 	}
 	_ = w.bw.Flush() // errors surface on the next Write / via OnError
 	w.pendingFlush = false
+	return true
 }
 
 // Close closes the active file and waits for any in-progress

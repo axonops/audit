@@ -536,16 +536,27 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 // fileOnlyMetrics implements audit.OutputMetrics (via NoOp embed)
 // plus file.RotationRecorder so the file output's SetOutputMetrics
 // wires both contracts.
+//
+// rotated is an optional buffered channel that receives every
+// rotated path. It enables tests to wait for rotation events
+// deterministically rather than poll. Leave nil to disable.
 type fileOnlyMetrics struct {
 	audit.NoOpOutputMetrics
+	rotated   chan string
 	rotations []string // paths passed to RecordRotation
 	mu        sync.Mutex
 }
 
 func (m *fileOnlyMetrics) RecordRotation(path string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.rotations = append(m.rotations, path)
+	m.mu.Unlock()
+	if m.rotated != nil {
+		select {
+		case m.rotated <- path:
+		default: // never block production
+		}
+	}
 }
 
 var (
@@ -617,16 +628,18 @@ func TestFileOutput_FileMetrics_RecordRotation_CalledOnRotation(t *testing.T) {
 }
 
 func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
-	// Flaky across all platforms — records only 2 of 3 rotations
-	// under the current Close-drain sequence. macOS + Windows
-	// fail every run; Linux fails intermittently under CI load.
-	// Same root-cause family; tracked under #760 for proper
-	// drain-synchronisation fix.
-	t.Skip("rotation count is racy under Close-drain timing; see #760")
+	// #760 fix: previously skipped because asserting "3 writes ⇒ 3
+	// rotations" was timing-sensitive. The writeLoop coalesces
+	// rapid writes into a single batched Writev which only
+	// rotates once for an oversized batch (a real production
+	// property worth pinning). The test now sequences each
+	// write/rotate pair via the RotationRecorder channel so each
+	// write is a separate batch, and asserts the per-write
+	// rotation contract.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	m := &fileOnlyMetrics{}
+	m := &fileOnlyMetrics{rotated: make(chan string, 4)}
 
 	out, err := file.New(&file.Config{
 		Path:       path,
@@ -636,20 +649,70 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 	require.NoError(t, err)
 	out.SetOutputMetrics(m)
 
-	// 3 writes of (1 MB + 1 byte) → 3 rotations.
 	payload := make([]byte, 1024*1024+1)
 	for i := range payload {
 		payload[i] = byte('a' + (i % 26))
 	}
+
 	const rotations = 3
-	for range rotations {
+	resolvedDir, evalErr := filepath.EvalSymlinks(dir)
+	require.NoError(t, evalErr)
+	expectedPath := filepath.Join(resolvedDir, "audit.log")
+
+	for i := range rotations {
 		require.NoError(t, out.Write(payload))
+		select {
+		case got := <-m.rotated:
+			assert.Equal(t, expectedPath, got,
+				"RecordRotation should receive the active file path on rotation %d", i+1)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("rotation %d/%d never recorded — possible writeLoop or rotation regression",
+				i+1, rotations)
+		}
 	}
-	// Close drains async buffer — all rotations happen in background.
 	require.NoError(t, out.Close())
 
 	assert.Equal(t, rotations, m.rotationCount(),
-		"RecordRotation should be called once per rotation")
+		"exactly %d rotations should fire when each write is sequenced", rotations)
+}
+
+// TestFileOutput_RapidWrites_RotatesAtLeastOnce is the companion to
+// TestFileOutput_FileMetrics_MultipleRotations. Whereas that test
+// sequences each write and asserts one rotation per write, this one
+// issues rapid writes back-to-back and asserts the writeLoop's
+// coalescing behaviour does NOT silently drop rotations: when the
+// total bytes written exceed MaxSize, at least one rotation must
+// fire regardless of how aggressively the batches coalesce. Pins
+// the durability contract called out in the MultipleRotations
+// rewrite comment (#760 fix follow-up).
+func TestFileOutput_RapidWrites_RotatesAtLeastOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+
+	m := &fileOnlyMetrics{}
+	out, err := file.New(&file.Config{
+		Path:       path,
+		MaxSizeMB:  1,
+		MaxBackups: 10,
+	})
+	require.NoError(t, err)
+	out.SetOutputMetrics(m)
+
+	payload := make([]byte, 1024*1024+1)
+	for i := range payload {
+		payload[i] = 'x'
+	}
+	// 5 rapid writes — total ~5 MB, well above MaxSize=1 MB. Whether
+	// these coalesce into one batch or several, rotation MUST fire
+	// at least once because the active file would otherwise grow
+	// without bound.
+	for range 5 {
+		require.NoError(t, out.Write(payload))
+	}
+	require.NoError(t, out.Close())
+
+	assert.GreaterOrEqual(t, m.rotationCount(), 1,
+		"rapid writes exceeding MaxSize must trigger at least one rotation regardless of batching")
 }
 
 func TestFileOutput_RotationRecorder_InterfaceAssertion(t *testing.T) {

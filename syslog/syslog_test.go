@@ -1532,9 +1532,23 @@ func rstClose(conn net.Conn) {
 	_ = conn.Close()
 }
 
+// TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect
+// verifies the branch where connect() succeeds (listener up) but
+// the retry write on the new connection fails (hostile RST).
+//
+// Closes #465: the previous implementation used a 40-iteration
+// write+25ms-sleep poll loop that flaked under CI runner load.
+// Root cause was identified in #455 — async writeLoop conversion
+// changed the timing such that polling could miss the wakeup
+// window before the writeLoop dispatched the reconnect. The
+// sync.Cond barrier on mockMetrics.waitForReconnectCount makes
+// the wait deterministic: any RecordReconnect call wakes every
+// concurrent waiter, and the predicate is rechecked under the
+// same mutex that guards the counter — no signal can be dropped.
+// Run go test -race -count=100 -run TestSyslogOutput_HandleWrite
+// Failure_WriteFailsAfterReconnect ./syslog passes 100/100 on
+// linux/amd64.
 func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
-	// Verify the branch where connect() succeeds but the retry write
-	// on the new connection fails (syslog.go:380-381).
 	srv := newHostileSyslogServer(t)
 	defer srv.close()
 	addr := srv.addr()

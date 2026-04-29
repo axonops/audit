@@ -26,11 +26,21 @@ services:
     networks:
       - audit-test
     healthcheck:
-      test: ["CMD-SHELL", "syslog-ng-ctl stats || exit 1"]
-      interval: 5s
+      # Verify the daemon is up AND all 4 sources plus the file
+      # destination are registered. The previous test (just
+      # `syslog-ng-ctl stats`) returned success while sources were
+      # still binding, so docker compose --wait could declare the
+      # service healthy before the first BDD scenario could send
+      # an event reliably (#569). Now we count source/destination
+      # entries — must see all 4 sources (s_tcp, s_udp, s_tls,
+      # s_mtls) and the d_audit destination.
+      test:
+        - "CMD-SHELL"
+        - "out=$$(syslog-ng-ctl stats 2>&1) && echo \"$$out\" | grep -q 's_tcp' && echo \"$$out\" | grep -q 's_udp' && echo \"$$out\" | grep -q 's_tls' && echo \"$$out\" | grep -q 's_mtls' && echo \"$$out\" | grep -q 'd_audit'"
+      interval: 3s
       timeout: 3s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 5s
 
 volumes:
   syslog-logs:

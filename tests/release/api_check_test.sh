@@ -19,7 +19,7 @@ set -euo pipefail
 
 readonly TARGET_MODULE_DIR="secrets/openbao"
 readonly TARGET_TAG_PREFIX="secrets/openbao/"
-readonly TARGET_FILE_REL="provider.go"
+readonly TARGET_FILE_REL="openbao.go"
 readonly EXPECTED_BREAKAGE_PATTERN="incompatible"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -41,7 +41,10 @@ if [[ -z "$base_tag" ]]; then
   echo "api_check_test: no prior tag matching ${TARGET_TAG_PREFIX}v* — cannot test gorelease against an empty base." >&2
   exit 2
 fi
-echo "api_check_test: base tag = $base_tag"
+# gorelease's -base flag wants the bare semver — when run from inside
+# the sub-module's directory, the path prefix is implicit.
+base_version="${base_tag#$TARGET_TAG_PREFIX}"
+echo "api_check_test: base tag = $base_tag (bare = $base_version)"
 
 # Sanity-check the target file exists.
 target_file_abs="$repo_root/$TARGET_MODULE_DIR/$TARGET_FILE_REL"
@@ -93,10 +96,18 @@ if ! grep -q "${func_name}AuditCheckProbe" "$worktree_file"; then
   exit 2
 fi
 
+# gorelease refuses to run on a worktree with uncommitted changes —
+# commit the injection inside the worktree (it never touches origin).
+(
+  cd "$worktree_dir"
+  git -c user.email=apicheck@local -c user.name="api-check-test" \
+      commit -a --allow-empty -m "fixture: inject breakage" --quiet
+)
+
 set +e
 (
   cd "$worktree_dir/$TARGET_MODULE_DIR" && \
-    GOFLAGS=-mod=readonly gorelease -base "$base_tag"
+    GOFLAGS=-mod=readonly gorelease -base "$base_version"
 ) > "$output_file" 2>&1
 gorelease_rc=$?
 set -e

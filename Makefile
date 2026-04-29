@@ -558,11 +558,13 @@ api-check:
 	  dir=$$(echo "$$entry" | cut -d'|' -f1); \
 	  prefix=$$(echo "$$entry" | cut -d'|' -f3); \
 	  base=$$(git tag --list "$${prefix}v[0-9]*" --sort=-version:refname | head -n1); \
-	  echo "==> api-check $$dir (base=$${base:-<none — skipping>})"; \
 	  if [ -z "$$base" ]; then \
+	    echo "==> api-check $$dir (base=<none — skipping>)"; \
 	    continue; \
 	  fi; \
-	  (cd "$$dir" && GOFLAGS=-mod=readonly $(GOBIN)/gorelease -base "$$base" 2>&1) \
+	  bare="$${base#$$prefix}"; \
+	  echo "==> api-check $$dir (base=$$base, bare=$$bare)"; \
+	  (cd "$$dir" && GOFLAGS=-mod=readonly $(GOBIN)/gorelease -base "$$bare" 2>&1) \
 	    || FAILED="$$FAILED $$dir"; \
 	done; \
 	if [ -n "$$FAILED" ]; then \

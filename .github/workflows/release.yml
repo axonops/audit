@@ -4,7 +4,8 @@
 #   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)
 #   2. Tags and publishes modules in dependency order (three tiers)
 #   3. Updates inter-module go.mod dependencies between tiers
-#   4. Builds binaries, SBOMs, and creates the GitHub Release via GoReleaser
+#   4. Builds binaries, signs build-provenance attestations, and creates the
+#      GitHub Release via GoReleaser
 #   5. Verifies all modules are indexed on proxy.golang.org
 #   6. Runs a smoke test (go get + compile in a fresh module)
 #
@@ -21,8 +22,9 @@
 # pattern — the core tag is on the CI-tested commit, sub-module tags
 # are on follow-up commits that update require directives.
 #
-# After Tier 0 tagging, a goreleaser job builds binaries, generates
-# SBOMs, and creates the GitHub Release — all within this workflow.
+# After Tier 0 tagging, a goreleaser job builds binaries, attests
+# build provenance, and creates the GitHub Release — all within this
+# workflow.
 #
 # See: docs/releasing.md
 name: Release
@@ -272,8 +274,9 @@ jobs:
           echo "✓ Tier 0 tags pushed."
 
   # =====================================================================
-  # Job 2b: Build binaries, SBOMs, create GitHub Release via GoReleaser.
-  # Runs in parallel with tier 1/2 tagging — only needs the core v* tag.
+  # Job 2b: Build binaries, attest provenance, create GitHub Release via
+  # GoReleaser. Runs in parallel with tier 1/2 tagging — only needs the
+  # core v* tag.
   # =====================================================================
   goreleaser:
     name: GoReleaser
@@ -316,9 +319,6 @@ jobs:
       - name: Set up go.work for inter-module resolution
         run: make workspace
 
-      - name: Install syft (SBOM generation)
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
-
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
@@ -331,11 +331,15 @@ jobs:
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
+          # SBOM publishing intentionally removed (#514). Build provenance
+          # attestations cover the binary distribution artifacts directly.
+          # Consumers verify with `gh attestation verify <artifact>
+          # --repo axonops/audit`. Library consumers use go.mod via
+          # proxy.golang.org and don't see these GitHub Release artifacts.
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/*_sbom.*
 
   # =====================================================================
   # Job 3: Tag Tier 1 modules (depend on core and/or secrets).

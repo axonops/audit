@@ -70,27 +70,22 @@ changelog:
       regexp: '^refactor'
       order: 4
 
-sboms:
-  - id: cyclonedx
-    artifacts: source
-    documents:
-      - >-
-        {{ .ProjectName }}_{{ .Version }}_sbom.cdx.json
-    cmd: syft
-    args:
-      - "${artifact}"
-      - "--output"
-      - "cyclonedx-json=${document}"
-  - id: spdx
-    artifacts: source
-    documents:
-      - >-
-        {{ .ProjectName }}_{{ .Version }}_sbom.spdx.json
-    cmd: syft
-    args:
-      - "${artifact}"
-      - "--output"
-      - "spdx-json=${document}"
+# SBOM publishing intentionally omitted — see #514 for rationale.
+#
+# This is a Go library; library consumers use `go get` against
+# proxy.golang.org and rely on go.mod for their dependency manifest,
+# which is the better SBOM-equivalent for libraries. The auxiliary
+# CLI binaries (audit-gen, audit-validate) are operator tools rather
+# than primary distribution artifacts. Build provenance for every
+# released artifact is provided via GitHub build attestations
+# (actions/attest-build-provenance, see release.yml job 2 and
+# goreleaser.yml). Consumers verify with:
+#
+#     gh attestation verify <downloaded-artifact> --repo axonops/audit
+#
+# Operators wanting an SBOM of a downloaded binary can scan it
+# locally with `syft scan <binary>`. The `make sbom` target produces
+# a source-level SBOM for development purposes only.
 
 checksum:
   name_template: 'checksums.txt'

@@ -3009,6 +3009,17 @@ Plus:
 | `PropChainHMACContiguous` | Property: for any sequence of N appends, every WALEntry's prev_hmac equals the previous WALEntry's hmac |
 | `PropChainBreakDetectedOnTamper` | Property: random single-byte mutation in a sealed segment is detected as exactly one chain_break |
 | `PropChainHMACAbsentWhenKeyDisabled` | Property: when key disabled, no WALEntry has non-empty hmac or prev_hmac fields |
+| `PropChainHMACSurvivesProtoLibraryUpgrade` | Property: regenerate WALEntry bytes with a different proto-Go version (proto-encoding may change byte layout); chain still validates because HMAC is over the canonical encoding, not raw proto bytes |
+| `PropPerInstanceKeyDefeatsCrossInstanceSplice` | Property: take a sealed segment from instance A; substitute into instance B's segment directory with matching position numbers; recovery emits chain_break for every spliced record (because B's K_i is derived from B's wal_instance_id, not A's) |
+| `PropAnchorCommitmentDetectsHeadTruncation` | Property: delete the earliest segment file (without updating metadata.json); recovery emits `chain_truncated_at_head` |
+| `TestChainHMAC_KeyRotation_OldRecordsValidUnderHistory` | Configure WithWALHMACKey + WithWALHMACKeyVersion=v2 + WithWALHMACKeyHistory={"v1": <old_key>}; pre-rotation records still validate under v1; new records validate under v2 |
+| `TestChainHMAC_AnchorUpdatedOnGC` | After GC drops the earliest segment, `metadata.json.wal_chain.earliest_anchor` reflects the new earliest record's position and hmac before the unlink completes |
+| `TestChainHMAC_QuarantineDefault_BrokenRecordNotDelivered` | Default WithChainBreakOnRecovery=Quarantine: chain-broken record's content does NOT appear at any output; framework event IS emitted; cursor advances past the position |
+| `TestChainHMAC_HaltOption_OpenReturnsErrChainBroken` | WithChainBreakOnRecovery=Halt: WAL.Open returns ErrChainBroken when chain validation fails; no records delivered until operator intervention |
+| `TestChainHMAC_ContinueOption_BrokenRecordDelivered` | WithChainBreakOnRecovery=Continue: chain-broken record IS delivered to outputs; framework event still emitted (audit trail records the integrity failure) |
+| `TestChainHMAC_LiteralKeyEmitsWarn` | Passing literal []byte to WithWALHMACKey from a non-test binary emits a slog WARN line with caller location |
+| `TestChainHMAC_HKDFDerivationStable` | Same master key + same wal_instance_id produces the same K_i; different wal_instance_id produces different K_i (RFC 5869 conformance) |
+| `BenchmarkChainHMAC_HKDF_OnceAtOpen` | HKDF cost ≤ 10 µs at WAL.Open |
 
 ### Framework Field Tests (wal_instance_id)
 
@@ -3176,19 +3187,28 @@ For audit, P999 latency matters more than median throughput.
 - [ ] Per-output salt version recorded in canonical WALEntry payload via `_hmac_salt_version_at_append:<output_name>` map keys (SEC-B3)
 
 ### HMAC Integration (WAL Chain HMAC)
-- [ ] `WithWALHMACKey` / `WithWALHMACAlgorithm` / `WithWALHMACDisabled` config options exposed
+- [ ] Config options exposed: `WithWALHMACKey`, `WithWALHMACKeyVersion` (REQUIRED when key set), `WithWALHMACAlgorithm`, `WithWALHMACKeyHistory map[string][]byte`, `WithWALHMACDisabled`, `WithChainBreakOnRecovery`
 - [ ] Default: chain HMAC disabled (`WithWALHMACKey = nil`); enabled-mode opt-in via key configuration
-- [ ] When enabled, WAL writer goroutine computes `WALEntry.hmac = HMAC(key, proto_bytes_excl_hmac || prev_hmac)` per record
-- [ ] First record of WAL lifetime has empty `prev_hmac` (chain anchor)
+- [ ] **Canonical encoding**: chain HMAC computed over the library-defined canonical encoding `uint64_BE(seq) || varint_len(instance_id) || instance_id_utf8 || canonical_map(payload) || varint_len(prev_hmac) || prev_hmac` — NOT raw proto bytes. Survives `google.golang.org/protobuf` library upgrades. Verified by `PropChainHMACSurvivesProtoLibraryUpgrade`.
+- [ ] **Per-instance key derivation**: every WAL instance derives `K_i = HKDF-Expand(WithWALHMACKey, info = "axon.audit.wal-chain-hmac.v1" || wal_instance_id, key_length(algorithm))` per RFC 5869. Cross-instance segment splice is detectable.
+- [ ] First record of WAL lifetime has empty `prev_hmac` (chain anchor); `metadata.json.wal_chain.earliest_anchor` records its position and expected_hmac
 - [ ] Subsequent records have `prev_hmac = previous_record.hmac`
 - [ ] Chain continuity preserved across segment boundaries
+- [ ] **Anchor commitment**: GC updates `metadata.json.wal_chain.earliest_anchor` atomically before unlinking the dropped earliest segment. Head truncation produces `recovery_inconsistency` with `inconsistency_type: chain_truncated_at_head`.
+- [ ] **Algorithm persistence**: `metadata.json.wal_chain.algorithm` records the active algorithm. Open returns `ErrChainHMACAlgorithmMismatch` on configured-vs-persisted mismatch.
+- [ ] **Key version persistence**: `metadata.json.wal_chain.key_version` records the active key version. Each WALEntry carries `hmac_key_version` (proto field 6). Recovery validates each record under the version named in its `hmac_key_version` field.
+- [ ] **In-place key rotation**: supported via `WithWALHMACKeyHistory` (verification-only old keys). New appends use the new key + version; old records validate under their original version.
+- [ ] **Default chain-break behaviour: `ChainBreakQuarantine`**. `WithChainBreakOnRecovery` enum exposes `Halt | Quarantine (default) | Continue`. Default skips suspect records and emits framework event without delivering bytes downstream.
 - [ ] Recovery validates the chain on Open; chain breaks emit `recovery_inconsistency` with `inconsistency_type: chain_break` carrying full prev_hmac/actual_prev_hmac bytes
+- [ ] Anchor verification on first segment scan: missing or HMAC-mismatched anchor record emits `inconsistency_type: chain_truncated_at_head`
 - [ ] Iterator exposes `Record.Corruption.GapReason = "chain_break"` for chain-broken records during live iteration
-- [ ] When disabled (no key OR `WithWALHMACDisabled = true`), recovery skips chain validation
-- [ ] WAL HMAC key SHOULD be loaded via the `secrets/` provider system (Vault/OpenBao/file/env); literal key in code documented as discouraged
+- [ ] When disabled (no key OR `WithWALHMACDisabled = true`), recovery skips chain validation; `metadata.json.wal_chain` is absent or null
+- [ ] **WAL HMAC key MUST be loaded via the `secrets/` provider system** (Vault/OpenBao/file/env). Library MUST emit a `WARN` slog line at Open if a literal byte slice is passed and the binary is not a test binary.
+- [ ] Constant-time HMAC comparison via `crypto/hmac.Equal()`
 - [ ] BenchmarkAppend with chain HMAC enabled adds ≤ 500 ns/op vs disabled
-- [ ] Property tests pass: `PropChainHMACContiguous`, `PropChainBreakDetectedOnTamper`, `PropChainHMACAbsentWhenKeyDisabled`
-- [ ] Limitations documented: chain HMAC does NOT detect WAL-wide replacement under same key (operators rely on `wal_instance_id` rotation as defence-in-depth) or chain forgery if key is compromised
+- [ ] HKDF key derivation cost ≤ 10 µs at WAL.Open (one-shot, amortised)
+- [ ] Property tests pass: `PropChainHMACContiguous`, `PropChainBreakDetectedOnTamper`, `PropChainHMACAbsentWhenKeyDisabled`, `PropChainHMACSurvivesProtoLibraryUpgrade`, `PropAnchorCommitmentDetectsHeadTruncation`, `PropPerInstanceKeyDefeatsCrossInstanceSplice`
+- [ ] Limitations documented: chain HMAC does NOT detect (a) full WAL replacement when attacker has master key AND ability to write matching `metadata.json` with chosen `wal_instance_id`, (b) chain forgery when both master key and target instance_id are compromised. Operators MUST protect master key via `secrets/` provider.
 
 ### Control Plane
 - [ ] Full API: PauseOutput, ResumeOutput, ResetOutputCursor, SkipOutputBacklog, ReplayOutputFromEarliest

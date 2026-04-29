@@ -17,7 +17,8 @@
        test-infra-openbao-up test-infra-openbao-down \
        test-infra-vault-up test-infra-vault-down \
        test-bdd-secrets \
-       sbom sbom-validate
+       sbom sbom-validate \
+       stress-test
 
 # --- Configuration ---
 
@@ -105,6 +106,24 @@ test-secrets-file:
 
 test-all: test-core test-file test-syslog test-webhook test-loki test-outputconfig test-audit-gen test-audit-validate test-secrets test-secrets-env test-secrets-file test-secrets-openbao test-secrets-vault
 test: test-all
+
+# --- Stress targets (#705 family) ---
+#
+# stress-test runs the flake-prone tests N times under -race to
+# catch synchronisation regressions early. Wired into a scheduled
+# .github/workflows/stress-test.yml so the catch rate is high if
+# anyone re-introduces a polling pattern.
+#
+# Override the iteration count on the command line:
+#     make stress-test STRESS_COUNT=500
+
+STRESS_COUNT ?= 100
+
+stress-test: ## Run flake-prone tests STRESS_COUNT times under -race (default 100)
+	cd syslog && go test -race -count=$(STRESS_COUNT) -run 'TestWriteLoop_|TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect|TestSyslogOutput_ReconnectRecorder_RecordReconnect_FailureOnPermanentServerDown' ./...
+	cd file && go test -race -count=$(STRESS_COUNT) -run 'TestWriter_Write_BackgroundTimerFlushes|TestFileOutput_FileMetrics_MultipleRotations|TestFileOutput_FileMetrics_RecordRotation|TestFileOutput_RapidWrites_RotatesAtLeastOnce' ./...
+	cd webhook && go test -race -count=$(STRESS_COUNT) -run 'TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200|TestWebhookOutput_TLS_WrongCA|TestMockMetrics_|TestMockOutputMetrics_' ./...
+	go test -race -count=$(STRESS_COUNT) -run 'TestProcessEntry_ConcurrentSubmission_NoRace' .
 
 # --- Fuzz targets (#481) ---
 #

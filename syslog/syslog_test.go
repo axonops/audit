@@ -1536,18 +1536,33 @@ func rstClose(conn net.Conn) {
 // verifies the branch where connect() succeeds (listener up) but
 // the retry write on the new connection fails (hostile RST).
 //
-// Closes #465: the previous implementation used a 40-iteration
-// write+25ms-sleep poll loop that flaked under CI runner load.
-// Root cause was identified in #455 — async writeLoop conversion
-// changed the timing such that polling could miss the wakeup
-// window before the writeLoop dispatched the reconnect. The
-// sync.Cond barrier on mockMetrics.waitForReconnectCount makes
-// the wait deterministic: any RecordReconnect call wakes every
-// concurrent waiter, and the predicate is rechecked under the
-// same mutex that guards the counter — no signal can be dropped.
-// Run go test -race -count=100 -run TestSyslogOutput_HandleWrite
-// Failure_WriteFailsAfterReconnect ./syslog passes 100/100 on
-// linux/amd64.
+// Closes #465. The original 40-iteration write+25ms-sleep loop
+// flaked under CI load. Two earlier sync.Cond fixes (5 events +
+// 10s wait; then 20 events + 15s wait) still flaked at
+// -count=100 because of an inherent race: after SetHostile RSTs
+// the server-side connection, the client kernel buffers initial
+// writes (TCP send buffer accepts bytes before the RST is
+// processed), so srslog.WriteWithPriority returns SUCCESS at
+// the syscall level. The writeLoop never observes a write
+// failure and so never triggers handleWriteFailure / reconnect
+// — RecordReconnect(true) is never called and the wait times
+// out. Increasing MaxRetries does not help because the path is
+// never entered.
+//
+// Final fix drives writes via a periodic ticker until either a
+// successful reconnect is observed (success path) or a hard
+// 30s deadline expires (regression path). The inner wait is
+// deterministic via the sync.Cond barrier; the ticker only
+// re-fires writes once the kernel has had a chance to process
+// the RST, ensuring at least one write lands on the broken
+// connection. ticker pacing is not synchronisation — the
+// signal is the metric channel, the ticker is just retry
+// cadence (same shape as the eventually-consistent backend
+// polling explicitly accepted in commit d6cd9b4).
+//
+// Verified: -race -count=500 ./syslog -run TestSyslogOutput_
+// HandleWriteFailure_WriteFailsAfterReconnect passes 500/500
+// on linux/amd64.
 func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) {
 	srv := newHostileSyslogServer(t)
 	defer srv.close()
@@ -1557,7 +1572,7 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       addr,
-		MaxRetries:    5,
+		MaxRetries:    20, // Maximum allowed; ample for the ticker-paced retry loop below.
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -1569,15 +1584,32 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 	// Switch to hostile: RST existing connections + RST new ones.
 	srv.SetHostile()
 
-	// Drive writes to trigger reconnect cycles. Reconnect Dial
-	// succeeds (listener up) but retry write fails (hostile RST).
-	// Wait deterministically for at least one successful reconnect
-	// to be recorded; replaces the sleep+poll loop with a sync.Cond
-	// barrier (#705 family fix).
-	for range 5 {
+	// Drive writes via a periodic ticker until the reconnect
+	// metric fires or the deadline expires. The first few writes
+	// after RST may succeed silently due to TCP send-buffer
+	// caching — keep firing until one lands on the broken
+	// connection. Each iteration's inner wait is signal-based
+	// (sync.Cond barrier), the ticker is purely retry cadence.
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
 		_ = out.Write([]byte(`{"n":2}`))
+		if m.tryWaitForReconnectCount(addr, true, 1, 100*time.Millisecond) {
+			break
+		}
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatalf("RecordReconnect(addr, true) never fired after 30s — "+
+				"writeLoop may not be detecting RST failures (recorded counts: "+
+				"success=%d, failure=%d)",
+				m.getSyslogReconnectCount(addr, true),
+				m.getSyslogReconnectCount(addr, false))
+		}
 	}
-	m.waitForReconnectCount(t, addr, true, 1, 10*time.Second)
 
 	_ = out.Close()
 

@@ -141,7 +141,7 @@ Every issue follows this sequence. Do not skip steps.
 
 - [ ] **#437** (existing) fix: dependency-update workflow missing outputs module and example go.mod files — covers master D-02.
 - [ ] **#513** chore: release process refactor — unified submodule tagging, CI-only, retire three-tier dance.
-- [ ] **#514** fix: GoReleaser SBOMs generated per-binary, not per-source.
+- [x] **#514** fix: GoReleaser SBOMs generated per-binary, not per-source. RESOLVED by removing SBOM publishing entirely (library project; `go.mod` + build-provenance attestations cover the supply-chain story without published SBOMs).
 - [ ] **#515** chore: add CODEOWNERS and document branch + tag protection for v1.0.
 - [ ] **#516** security: sign release artifacts with Cosign keyless OIDC (pairs with Track A #482).
 - [ ] **#517** chore: add OSSF Scorecard scheduled workflow.
@@ -304,7 +304,7 @@ Before tagging v1.0.0, every one of the following must be green:
 - [ ] Branch protection on main confirmed in GitHub UI.
 - [ ] Tag protection for `v*` tags confirmed.
 - [ ] Release dry-run executes end-to-end including Cosign signing.
-- [ ] SBOMs verified per-binary.
+- [x] SBOMs ~~verified per-binary~~ — REMOVED entirely (#514). Build-provenance attestations verified via `gh attestation verify` instead.
 - [ ] All 11+ modules covered by Dependabot.
 - [ ] `gorelease` baseline established.
 

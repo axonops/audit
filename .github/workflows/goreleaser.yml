@@ -1,5 +1,7 @@
-# Builds binaries, generates SBOMs, creates the GitHub Release, and
-# attests all artifacts for supply chain verification.
+# Builds binaries, creates the GitHub Release, and attests build
+# provenance for all artifacts (supply chain verification via
+# `gh attestation verify`). SBOMs are not published — see #514 and
+# `docs/releasing.md` "Software Bill of Materials" for the rationale.
 #
 # This workflow is for MANUAL RE-RUNS ONLY — the normal release flow
 # runs GoReleaser as a job inside release.yml.
@@ -45,9 +47,6 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
-      - name: Install syft (SBOM generation)
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
-
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
@@ -60,8 +59,9 @@ jobs:
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
+          # SBOM publishing intentionally removed (#514). Build provenance
+          # attestations cover the binary distribution artifacts directly.
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
-            dist/*_sbom.*

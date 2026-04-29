@@ -345,29 +345,42 @@ for local reproduction commands.
 
 ## Software Bill of Materials (SBOM)
 
-Every release includes SBOMs in two formats, published as assets in
-the [GitHub Release](https://github.com/axonops/audit/releases):
+This project does **not** publish SBOMs as release artifacts (#514).
+The supply-chain primitives we DO provide are stronger for both audiences:
 
-| Format | Filename | Use Case |
-|--------|----------|----------|
-| **CycloneDX** | `audit_<version>_sbom.cdx.json` | Vulnerability scanners (Trivy, Grype, Dependency-Track) |
-| **SPDX** | `audit_<version>_sbom.spdx.json` | License compliance tools, regulatory reporting |
+- **Library consumers** (importing via `go get github.com/axonops/audit`):
+  use `go.mod`, `go mod verify`, and the Go module checksum database
+  (`sum.golang.org`). These provide cryptographic guarantees against
+  source-level tampering — strictly stronger than a published SBOM
+  for a Go library.
 
-Both SBOMs list all direct and transitive dependencies across every
-module in the repository, including versions and license identifiers.
+- **Binary consumers** (downloading `audit-gen` / `audit-validate` from
+  the [GitHub Releases page](https://github.com/axonops/audit/releases)):
+  every release artifact is signed with a GitHub build-provenance
+  attestation. Verify any downloaded artifact:
 
-### Using the SBOM
+  ```bash
+  gh attestation verify audit-gen_v0.1.x_linux_amd64.tar.gz \
+      --repo axonops/audit
+  ```
 
-Scan for vulnerabilities:
+  This proves the artifact was built by the audit CI pipeline at the
+  tagged commit, via Sigstore's transparency log. No keys to manage.
 
-```bash
-# Download the SBOM from the GitHub release, then:
-trivy sbom audit_v0.1.0_sbom.cdx.json
-```
+  For an SBOM of a downloaded binary, scan it locally with
+  [syft](https://github.com/anchore/syft):
 
-Generate a local SBOM from source (requires [syft](https://github.com/anchore/syft)):
+  ```bash
+  syft scan ./audit-gen --output cyclonedx-json > audit-gen.cdx.json
+  ```
 
-```bash
-make sbom            # generates CycloneDX + SPDX in sbom/
-make sbom-validate   # validates JSON structure
-```
+  This produces an SBOM equivalent to what the project would have
+  published, derived directly from the binary you intend to run.
+
+- **Local development**: `make sbom` runs syft against the source tree
+  and writes CycloneDX + SPDX SBOMs to `sbom/`. This is a development
+  convenience for inspecting the project's own dependency graph; it is
+  not a release artifact and does not run in CI.
+
+See [`docs/releasing.md` "Software Bill of Materials"](docs/releasing.md#software-bill-of-materials-sbom)
+for the full rationale and operator workflow.

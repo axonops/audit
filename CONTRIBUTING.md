@@ -231,9 +231,11 @@ The `main` branch has protection rules enforced by GitHub:
 - **Up-to-date branches** — your branch must be rebased on the
   latest `main` before merging.
 
-Version tags (`v*`, `file/v*`, `syslog/v*`, `webhook/v*`,
-`outputconfig/v*`) are protected — they cannot be deleted or
-force-updated once created.
+Tags for every published module are protected — they cannot be
+deleted or force-updated once created. The full pattern list is
+in [docs/releasing.md](docs/releasing.md) under "Tag protection";
+that file is the single source of truth, regenerated from the
+canonical `PUBLISH_MODULES` list.
 
 ## Dependencies
 
@@ -264,14 +266,17 @@ boundaries, and key source files.
 
 Releases are cut by maintainers. Contributors do not create release tags.
 
-The full release procedure — pre-release checklist, tagging commands for all
-7 modules, proxy verification, and retraction policy — is documented in
-[docs/releasing.md](docs/releasing.md).
+The full release procedure — pre-release checklist, the unified single-tag
+flow, the `axonops-release-bot` GitHub App, the `api-check` gate, proxy
+verification, and retraction policy — is documented in
+[docs/releasing.md](docs/releasing.md). That file is the single source of
+truth for the release contract.
 
 Key points for contributors:
 
-- Do not create tags matching `v*`, `file/v*`, `syslog/v*`, `webhook/v*`,
-  `loki/v*`, `outputconfig/v*`, or `cmd/audit-gen/v*`.
+- Do not create release tags. Every published module's `v*` pattern is
+  tag-protected; only the release-bot App can create them. The full list
+  of protected patterns is in `docs/releasing.md`.
 - Do not add `replace` directives to `go.mod` on any branch intended for
   merge — `make check-replace` enforces this in CI.
 - Use `make workspace` to create a `go.work` file for local cross-module

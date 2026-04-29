@@ -40,40 +40,46 @@ before the documentation page appears.
 
 ### Multi-Module Tagging Scheme
 
-This repository contains 10 Go modules. Each module has its own `go.mod` and
-its own independent version history. The Go toolchain identifies module
-versions by tag, using a path prefix for sub-modules:
+This repository publishes twelve Go modules. Each module has its own `go.mod`,
+and the Go toolchain identifies versions by tag with a path prefix for
+sub-modules. The full list is generated from the canonical `PUBLISH_MODULES`
+variable in `Makefile` — run `make regen-release-docs` after adding or
+removing a module:
 
-| Module | Directory | Tag format | Tier |
-|--------|-----------|------------|------|
-| `github.com/axonops/audit` | `.` (root) | `vX.Y.Z` | 0 |
-| `github.com/axonops/audit/secrets` | `secrets/` | `secrets/vX.Y.Z` | 0 |
-| `github.com/axonops/audit/file` | `file/` | `file/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/syslog` | `syslog/` | `syslog/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/webhook` | `webhook/` | `webhook/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/loki` | `loki/` | `loki/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/cmd/audit-gen` | `cmd/audit-gen/` | `cmd/audit-gen/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/secrets/openbao` | `secrets/openbao/` | `secrets/openbao/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/secrets/vault` | `secrets/vault/` | `secrets/vault/vX.Y.Z` | 1 |
-| `github.com/axonops/audit/outputconfig` | `outputconfig/` | `outputconfig/vX.Y.Z` | 2 |
+<!-- BEGIN PUBLISH_MODULES TABLE — do not edit; run `make regen-release-docs` to update -->
 
-### Three-Tier Tagging
+| Module | Path | Tag prefix |
+|--------|------|------------|
+| `(repo root)` | `github.com/axonops/audit` | `v*` |
+| `file` | `github.com/axonops/audit/file` | `file/v*` |
+| `syslog` | `github.com/axonops/audit/syslog` | `syslog/v*` |
+| `webhook` | `github.com/axonops/audit/webhook` | `webhook/v*` |
+| `loki` | `github.com/axonops/audit/loki` | `loki/v*` |
+| `outputconfig` | `github.com/axonops/audit/outputconfig` | `outputconfig/v*` |
+| `outputs` | `github.com/axonops/audit/outputs` | `outputs/v*` |
+| `cmd/audit-gen` | `github.com/axonops/audit/cmd/audit-gen` | `cmd/audit-gen/v*` |
+| `cmd/audit-validate` | `github.com/axonops/audit/cmd/audit-validate` | `cmd/audit-validate/v*` |
+| `secrets` | `github.com/axonops/audit/secrets` | `secrets/v*` |
+| `secrets/openbao` | `github.com/axonops/audit/secrets/openbao` | `secrets/openbao/v*` |
+| `secrets/vault` | `github.com/axonops/audit/secrets/vault` | `secrets/vault/v*` |
+<!-- END PUBLISH_MODULES TABLE -->
 
-Tags are created in three phases based on the inter-module dependency graph:
+### Unified single-tag release flow
 
-- **Tier 0** (core + secrets): no internal dependencies. Tagged at the
-  CI-tested commit.
-- **Tier 1** (file, syslog, webhook, loki, cmd/audit-gen, secrets/openbao,
-  secrets/vault): depend on Tier 0 modules. Their `go.mod` files are updated
-  to reference the Tier 0 release version, committed to `main`, then tagged
-  at the new commit.
-- **Tier 2** (outputconfig): depends on Tier 0 + Tier 1 modules. Its `go.mod`
-  is updated after Tier 1 is indexed on the proxy, committed, then tagged.
+Background — under the legacy three-tier dance (retired #513) tags pointed
+at three different commits on `main`, with separate `go.mod` updates pushed
+between tiers. That layout produced version drift (e.g. `outputs` lagging at
+v0.1.9 while everything else moved to v0.1.11) and made post-release
+auditing harder than it needed to be.
 
-This means Tier 0, Tier 1, and Tier 2 tags point at **three different commits**
-on `main`. This is the standard Go multi-module release pattern — it ensures
-external consumers who `go get` any sub-module receive `go.mod` files that
-reference the correct release version of their dependencies.
+The current flow tags **every published module at the same merge commit**.
+The release workflow opens one PR that pins every inter-module `go.mod` in a
+single commit, waits for branch-protection-respecting auto-merge, then
+creates all twelve annotated tags pointing at that one merge SHA. The
+post-release `make check-release-invariants VERSION=...` job verifies that
+every published `go.mod` references the released version. Drift is
+prevented structurally — there is no longer any commit window where modules
+disagree on the release.
 
 ### v0.x Stability Contract
 
@@ -93,7 +99,7 @@ apply: no breaking changes within a major version.
 
 ### The "Never Modify a Published Tag" Rule
 
-Once any of the 7 tags has been fetched through `proxy.golang.org` or recorded
+Once any published tag has been fetched through `proxy.golang.org` or recorded
 in `sum.golang.org`, it is sealed. The constraint is absolute:
 
 - Force-pushing a tag causes `go mod verify` to fail for every consumer who
@@ -120,12 +126,86 @@ subsequent maintainer onboarding.
 
 `.github/CODEOWNERS` declares review-required ownership for every
 security-sensitive surface — `.github/workflows/`, `.goreleaser.yml`,
-every `go.mod` / `go.sum`, `Makefile`, `SECURITY.md`,
+every `go.mod` / `go.sum`, `Makefile`, `scripts/release/`,
+`scripts/tool-versions.txt`, `tests/release/`, `SECURITY.md`,
 `docs/threat-model.md`, `docs/releasing.md`, `docs/deployment.md`,
 and the cryptographic primitives (`hmac.go`, `ssrf*.go`,
-`tls_policy.go`, `secrets/`). The catch-all `*` rule assigns the
-maintainer team as default reviewer for every other path so no PR
-merges without a maintainer's approval.
+`tls_policy.go`, `secrets/`). The release toolchain
+(`scripts/release/`, `Makefile`, `tests/release/`,
+`scripts/tool-versions.txt`) is included because every script there
+runs under the release-bot's elevated token — a malicious edit could
+exfiltrate the App's installation token. The catch-all `*` rule
+assigns the maintainer team as default reviewer for every other path
+so no PR merges without a maintainer's approval.
+
+### Release-bot GitHub App
+
+The release workflow uses a dedicated GitHub App identity — `axonops-release-bot` —
+instead of a personal access token (PAT). PAT compromise = full account takeover
+across every org the human belongs to; App compromise is scoped to this single
+repository plus the App's explicit permissions.
+
+**Required permissions** (set during App creation):
+
+| Permission | Scope | Why |
+|---|---|---|
+| Contents | Read & write | Push the release branch and the twelve module tags. |
+| Pull requests | Read & write | Open the release PR, enable auto-merge. |
+| Metadata | Read | Mandatory baseline for all Apps. |
+| Workflows | **NOT granted** | Defends against an App-opened PR mutating `release.yml` itself. |
+
+**Repository access**: only `axonops/audit`. Do not install the App org-wide.
+
+**Repository secrets** (Settings → Secrets and variables → Actions → New
+repository secret):
+- `RELEASE_APP_ID` — the App's numeric ID (visible on the App settings page).
+- `RELEASE_APP_PRIVATE_KEY` — the App's PEM-encoded private key.
+
+**One-time UI setup** — order matters; some fields lock after the first
+installation:
+
+1. **Settings → Developer settings → GitHub Apps → New GitHub App** (on the
+   organisation, not personal account).
+2. **GitHub App name**: `axonops-release-bot`.
+3. **Homepage URL**: any URL — `https://github.com/axonops/audit` is fine.
+4. **Webhook URL**: GitHub's form requires a non-empty URL even when webhooks
+   are unused. Enter `https://github.com` and **uncheck Active**. The App will
+   not receive webhook events; this field is purely a form requirement.
+5. **Repository permissions**: set Contents, Pull requests, Metadata as in the
+   table above. Leave everything else as **No access**. Do **not** grant
+   Workflows write.
+6. **Where can this GitHub App be installed?**: Only on this account.
+7. Click **Create GitHub App**.
+8. **Generate a private key** — click "Generate a private key" on the App page.
+   The PEM file downloads once; store it immediately.
+9. **Install the App** on the repository — go to the App's public page → Install
+   App → select `axonops/audit` only. The App existing does not grant access;
+   installation is a separate UI step (the most commonly missed one).
+10. Store `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` as repository secrets.
+11. Add the App identity to the tag-protection allow-list — see Tag protection
+    section below.
+12. Verify the App is **NOT** on the branch-protection bypass list — the whole
+    point of the App is that release commits go through normal branch
+    protection. See Branch protection section below.
+
+**Smoke test** — once the secrets are in place, the next workflow run will
+mint a token via `actions/create-github-app-token` and use it. To test
+manually before the next release, run a workflow_dispatch on a no-op release
+candidate (`v0.0.0-smoke`) and confirm the App identity opens the PR.
+
+**Token rotation**: rotate the private key every 90 days (calendar reminder
+on the maintainer team's shared calendar). Procedure: generate a new key in
+the App settings, update `RELEASE_APP_PRIVATE_KEY`, then **delete the old
+key** in the App settings. The App ID does not change.
+
+**Leak playbook**: if `RELEASE_APP_PRIVATE_KEY` is suspected leaked:
+1. Immediately revoke the key in the App settings page.
+2. Generate a new key and update the repo secret.
+3. Audit the org's installation-token usage in
+   **Settings → Audit log** for the past 90 days, looking for unexpected
+   `git_push`, `pull_request_create`, or `tag_create` events.
+4. Review every tag created in that window; cross-check against the
+   release-PR audit trail.
 
 ### Branch protection on `main`
 
@@ -184,18 +264,47 @@ module pattern `v*` does NOT cover sub-module tags like
 | Tag name pattern | `secrets/vault/v*` | `secrets/vault` provider sub-module. |
 | Tag name pattern | `cmd/audit-gen/v*` | `audit-gen` CLI sub-module. |
 | Tag name pattern | `cmd/audit-validate/v*` | `audit-validate` CLI sub-module. |
-| Tag name pattern | `iouring/v*` | `iouring` sub-module. |
+| Tag name pattern | `iouring/v*` | `iouring` sub-module — **not yet in `PUBLISH_MODULES`**; the rule reserves the namespace to prevent squatting before the module is first published. |
 
 GitHub's tag-protection rule restricts tag creation to repository
 maintainers. A pushed tag is the trigger for the release workflow
-(GoReleaser, Cosign signing), so this rule is what prevents an
-unauthorised actor from triggering a release pipeline. **Without
-the per-sub-module entries, anyone with write access can publish a
-sub-module release.**
+(GoReleaser, build-provenance attestation), so this rule is what
+prevents an unauthorised actor from triggering a release pipeline.
+**Without the per-sub-module entries, anyone with write access can
+publish a sub-module release.**
+
+**Allowed actors per rule**: under the unified release flow (#513), the
+canonical creator of release tags is the `axonops-release-bot` App.
+Each rule's "Restrict who can create matching tags" allow-list MUST
+include the App identity. Maintainers are intentionally **not** on
+the standing allow-list for these patterns — see the rationale in
+"Why the maintainer team is not on the tag-protection allow-list"
+below.
 
 Add a new rule whenever the repository gains another sub-module
 that releases independently. Audit the live tag-protection set on
 every maintainer onboarding (see verification snippet below).
+
+#### Why the maintainer team is not on the tag-protection allow-list
+
+A standing maintainer entry on the allow-list is a permanent bypass
+capability: any maintainer could push a release tag at any time
+without going through `release.yml`'s CI gate. Removing the standing
+entry forces every release through the workflow.
+
+**Emergency override** — when the App identity is unavailable (e.g.
+private key revoked mid-incident, App suspended, GitHub-side outage)
+a maintainer with admin permissions can:
+
+1. Add their own user account to the relevant tag-protection allow-list
+   in **Settings → Tags → edit rule**.
+2. Push the required tag(s).
+3. **Immediately remove themselves** from the allow-list.
+
+The transient allow-list edits are recorded in
+**Settings → Audit log** under `protected_tag.update`, providing a
+post-incident audit trail. The "remove yourself" step is the
+operator's responsibility — there is no automated revocation.
 
 ### Verification checklist (every release cycle)
 
@@ -249,14 +358,48 @@ configuration in the UI before tagging the release.
 
 ### Release Workflow Overview
 
-One GitHub Actions workflow handles the entire release pipeline:
+Two GitHub Actions workflows participate in releases. The primary workflow
+runs end-to-end; the second is a manual fallback:
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
-| **Release** | `release.yml` | Manual (workflow_dispatch) | Runs full CI, creates tags, builds binaries + GitHub Release, verifies proxy, runs smoke test |
-| **GoReleaser** | `goreleaser.yml` | Manual re-run only | Re-runs GoReleaser if the goreleaser job in release.yml failed |
+| **Release** | `release.yml` | Manual (workflow_dispatch) **or** push of a `v*` tag | Runs CI, opens release PR, waits for auto-merge, tags every module at the merge SHA, builds binaries via GoReleaser, verifies the proxy, runs the invariants check |
+| **GoReleaser** | `goreleaser.yml` | Manual re-run only | Re-runs GoReleaser if the goreleaser job in `release.yml` failed |
 
-**You only trigger `Release`.** It runs the entire pipeline end-to-end: CI → tags → GoReleaser (binaries, build-provenance attestations, GitHub Release) → proxy verification → smoke test. The workflow does not report success until the GitHub Release exists.
+The two triggers serve different purposes:
+
+- **`workflow_dispatch`** is the **primary path**. The maintainer enters the
+  version (e.g. `v0.1.12`) and starts the workflow. The workflow opens the
+  release PR; the maintainer approves it (branch-protection requires a
+  human review); auto-merge fires; the workflow tags every module at the
+  merge SHA and runs GoReleaser.
+- **`push: tags: v*`** is the **recovery path**. If the primary workflow
+  failed after some tags had already been pushed (rare but possible —
+  GitHub network blip during the tag loop), or if a maintainer pushed the
+  core `v*` tag manually after an out-of-band fix, this trigger lets the
+  workflow finish: it derives the merge SHA from the pushed tag, tags any
+  remaining modules **idempotently** (skipping tags that already exist at
+  the same SHA, aborting on SHA mismatch), and runs GoReleaser. It does
+  NOT open a release PR. See "Release recovery playbook" below.
+
+The `release.yml` workflow uses the `axonops-release-bot` GitHub App for
+every write operation; it does not consume a personal access token.
+
+### `api-check` transition (advisory → blocking)
+
+`make api-check` runs `gorelease` for every published module against the
+module's most recent SemVer-sorted tag. Until the v1.0 release, the
+release workflow runs `api-check` with `inputs.api_check_blocking=false`
+(default), so a flagged incompatibility fails the step but does not stop
+the release. This reflects the v0.x stability contract: breaking changes
+are allowed.
+
+After cutting v1.0, maintainers MUST flip `inputs.api_check_blocking` to
+`true` for every subsequent release. From that point on, an incompatible
+public-API change is a blocking failure — the only ways to release a
+breaking change are to bump the major version (`/v2`) or to revert the
+breakage. Document the date of the flip in the v1.0 changelog entry so
+future maintainers know when the transition happened.
 
 ### Pre-Release Checklist
 
@@ -267,15 +410,14 @@ cannot be undone.
       [CI workflow](https://github.com/axonops/audit/actions/workflows/ci.yml)
 - [ ] `make check` passes locally with no errors or diffs
 - [ ] No `replace` directives in any `go.mod` — `make check-replace` confirms this
-- [ ] All inter-module dependencies reference the correct version. Each
-      sub-module's `go.mod` MUST require `github.com/axonops/audit` at the
-      version being released (or the most recent stable version if releasing
-      only a subset of modules). Verify with:
-
-      ```bash
-      grep "axonops/audit" file/go.mod syslog/go.mod webhook/go.mod \
-          loki/go.mod outputconfig/go.mod cmd/audit-gen/go.mod
-      ```
+- [ ] `make api-check` runs cleanly. Pre-v1.0 this is advisory — review any
+      flagged incompatibilities and confirm they are intentional before
+      releasing.
+- [ ] All inter-module dependencies will reference the correct version after
+      release. The release workflow updates them automatically from the
+      release PR — no manual action needed pre-release. Post-release, the
+      `invariants` job runs `make check-release-invariants VERSION=...` to
+      confirm every published `go.mod` is at the released version.
 
 - [ ] `CHANGELOG.md` updated — the `## [Unreleased]` section converted to
       `## [0.1.1] - 2026-01-01` (or the actual date)
@@ -307,41 +449,165 @@ cannot be undone.
 
 Releases are created via the
 [Release workflow](https://github.com/axonops/audit/actions/workflows/release.yml).
-**Do not create tags manually** — the workflow runs the full CI pipeline
-(unit tests, BDD, integration, lint, security) and only creates tags
-after everything passes.
+**Do not create tags manually** — the workflow runs the full CI pipeline,
+opens the release PR, and only tags after the PR has merged through normal
+branch protection.
 
-1. Go to **Actions → Release → Run workflow**
-2. Enter the version string (e.g. `v0.1.1`)
-3. Click **Run workflow**
+1. Go to **Actions → Release → Run workflow**.
+2. Enter the version string (e.g. `v0.1.12`).
+3. Leave `api_check_blocking` at its default (`false`) until v1.0 is cut.
+4. Click **Run workflow**.
 
-The workflow will:
-1. Run the entire CI pipeline (same as a PR check — all tests, all modules)
-2. Validate the version format and confirm HEAD is on `main`
-3. Verify no tags already exist for this version
-4. Create annotated tags for all 7 modules at HEAD
-5. Push all tags and run GoReleaser to build binaries and create the GitHub Release
+The workflow then:
+
+1. Validates the version format and confirms HEAD is on `main`.
+2. Runs the full CI pipeline (same as a PR check — all tests, all modules)
+   plus `fuzz-long`, advisory benchmark regression, and `api-check`.
+3. Opens a release PR (branch `release/<version>`) containing one commit
+   that pins every inter-module `go.mod` to the new version. Auto-merge
+   is enabled.
+4. **Waits for the PR to merge**. The PR must pass CI and any required
+   approving reviews (typically one human approval per branch protection).
+   The workflow polls the PR every ~30 seconds for up to 45 minutes.
+5. After merge, checks out the merge commit and creates twelve annotated
+   tags pointing at that one SHA: `v<version>`, `file/v<version>`,
+   `syslog/v<version>`, etc.
+6. Runs GoReleaser to build binaries, attest build provenance, and publish
+   the GitHub Release.
+7. Triggers proxy.golang.org indexing and runs the smoke test.
+8. Runs `make check-release-invariants VERSION=v<version>` against the
+   merge commit as the final post-release sanity gate.
+
+**Approve the release PR promptly.** The maintainer who triggered the
+workflow is expected to approve the auto-opened PR — auto-merge waits for
+CI green AND any required approvals before merging. If 45 minutes pass
+without merge the workflow fails; the PR may still auto-merge later, in
+which case use the recovery path (push the `v*` tag manually to re-trigger
+the goreleaser+verify+invariants jobs).
 
 If you need to test the workflow without burning a real version number,
-use a pre-release tag like `v0.1.1-alpha.1` or `v0.1.1-rc.1`.
+use a pre-release tag like `v0.1.12-rc.1`.
+
+### Example: releasing v0.1.12
+
+```bash
+# 1. Pre-release checklist passes (CI green, CHANGELOG updated, etc.).
+
+# 2. Trigger the workflow:
+gh workflow run release.yml -f version=v0.1.12 -f api_check_blocking=false
+
+# 3. The workflow opens a PR titled "release: v0.1.12" — review it:
+gh pr list --head release/v0.1.12
+
+# 4. Approve and let auto-merge fire:
+gh pr review --approve <PR_NUMBER>
+
+# 5. Watch the run:
+gh run watch
+
+# 6. After completion, verify:
+gh release view v0.1.12
+make check-release-invariants VERSION=v0.1.12
+```
 
 ### After the Release
 
-The `release.yml` workflow handles everything end-to-end: CI, tagging,
-GoReleaser (binaries, build-provenance attestations, GitHub Release),
-proxy verification, and smoke test. Monitor the single workflow run for
-the final status.
+The `release.yml` workflow handles every step end-to-end. Monitor the run
+for the final status (Actions → Release).
 
-If the GoReleaser step fails but tags were already pushed, re-run it
-manually via [Actions → GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
-on the `v*` tag ref.
+The post-release `invariants` job runs `make check-release-invariants
+VERSION=$VERSION`, which scans every published `go.mod` and confirms that
+every cross-reference to another published module is at the released
+version. A green `invariants` job is the canonical "the release is sound"
+signal.
 
 Optionally verify locally:
 
 ```bash
-make publish-verify VERSION=v0.1.1
-make publish-smoke  VERSION=v0.1.1
+make publish-verify VERSION=v0.1.12
+make publish-smoke  VERSION=v0.1.12
 ```
+
+### Release recovery playbook
+
+The release workflow is designed so that every failure mode has a
+copy-paste recovery. Tags that have already been pushed CANNOT be
+deleted — but the workflow's idempotent `tag-all` step ensures that
+re-runs do not corrupt existing tags.
+
+#### Auto-merge blocked because no human has approved the PR yet
+
+Approve the PR. Auto-merge fires on the next polling cycle (~30s). The
+release workflow will pick up the merge and continue.
+
+```bash
+gh pr review --approve <PR_NUMBER>
+```
+
+#### `wait-for-pr-merge` timed out (45 min) but the PR is still open
+
+The PR will eventually auto-merge once CI clears and approval is in
+place. After it merges:
+
+```bash
+# 1. Find the merge commit:
+MERGE_SHA=$(gh pr view <PR_NUMBER> --json mergeCommit -q '.mergeCommit.oid')
+
+# 2. Push the core v* tag manually at the merge SHA. This triggers the
+#    recovery path (push: tags: v*), which runs tag-all idempotently.
+git fetch origin
+git tag -a "v0.1.12" -m "Release v0.1.12" "$MERGE_SHA"
+git push origin "v0.1.12"
+```
+
+The workflow run triggered by the tag-push will tag the remaining
+eleven modules at the same SHA and continue with GoReleaser + verify +
+invariants. Tags that already exist at the correct SHA are no-ops; tags
+that exist at a DIFFERENT SHA cause the workflow to abort loudly (a
+genuinely suspicious state that needs human investigation).
+
+#### `tag-all` aborted after pushing some but not all twelve tags
+
+Inspect what was pushed:
+
+```bash
+git fetch origin --tags
+git ls-remote origin "*v0.1.12" | sort
+# Compare against expected — every entry must reference the same SHA.
+```
+
+If the SHAs match, push the missing tags via the same recovery path:
+
+```bash
+# Use the merge commit SHA from the partial run:
+git push origin v0.1.12  # or whichever tag is missing
+```
+
+The release.yml `push: tags: v*` trigger will fire and the workflow's
+`tag-all` step will fill in the remaining tags at the same SHA. Do
+**not** delete already-pushed tags; deletion does not unpublish the
+version from `proxy.golang.org`, but does cause `go mod verify` failures
+for any consumer who already fetched the deleted tag.
+
+If SHAs do **not** match, stop and escalate — a tag at a wrong SHA is a
+permanent contamination. The fix is to release a new patch version and
+retract the bad one. See "Retracting a Bad Release" below.
+
+#### GoReleaser failed but tags are pushed
+
+Re-run GoReleaser manually via [Actions →
+GoReleaser](https://github.com/axonops/audit/actions/workflows/goreleaser.yml)
+on the `v*` tag ref. The standalone `goreleaser.yml` workflow exists for
+exactly this case; it runs only the binary-build + attestation step
+without touching tags.
+
+#### App private key compromised mid-release
+
+Stop the in-flight workflow run (Actions → run → Cancel workflow). Follow
+the leak playbook in the "Release-bot GitHub App" section above. Do not
+restart the release until the App key has been rotated. Already-pushed
+tags are unaffected; resume from the recovery path with a freshly minted
+token.
 
 ### First Release: v0.1.1
 
@@ -393,21 +659,29 @@ per-module, not repository-wide.
 ### The Release Workflow
 
 The [Release workflow](../.github/workflows/release.yml) handles the
-entire release pipeline end-to-end. It is triggered manually via
-`workflow_dispatch` with a single `version` input.
+entire release pipeline end-to-end. It is triggered via `workflow_dispatch`
+(primary path) or `push: tags: v*` (recovery path). See "Release Workflow
+Overview" above for the trigger semantics.
 
-**What it does, in order:**
+**What it does, in order (primary path):**
 
-1. Runs the full CI pipeline (every test, lint, security check)
-2. Validates version format and confirms HEAD is on `main`
-3. Creates annotated tags for all 7 modules and pushes them
-4. Triggers `proxy.golang.org` indexing for all modules
-5. Verifies proxy serves `.info` for each module
-6. Verifies checksums via `go mod download`
-7. Runs a smoke test (`go get` + compile + install audit-gen)
+1. Validates the version format and confirms HEAD is on `main`.
+2. Runs the full CI pipeline (every test, lint, security check) plus
+   `fuzz-long`, advisory benchmark regression, and `make api-check`.
+3. Opens a release PR pinning every inter-module `go.mod` to the new
+   version in one commit; enables auto-merge.
+4. Waits for the PR to merge (CI green + required approvals).
+5. Creates twelve annotated tags at the merge commit SHA — every
+   published module tagged at the same SHA.
+6. Runs GoReleaser to build binaries and attest build provenance.
+7. Triggers `proxy.golang.org` indexing for all modules.
+8. Runs the smoke test (`go get` + compile in a fresh module).
+9. Runs `make check-release-invariants VERSION=...` against the merge
+   commit.
 
 If any step fails, the workflow stops. Tags that were already pushed
-cannot be undone — see [Retracting a Bad Release](#retracting-a-bad-release).
+cannot be undone — see [Release recovery playbook](#release-recovery-playbook)
+and [Retracting a Bad Release](#retracting-a-bad-release).
 
 ### Makefile Targets
 
@@ -432,10 +706,14 @@ performs — it forces the proxy to fetch and cache the module from GitHub.
 HTTP status of `pkg.go.dev` for each module. It does not fail on a non-200
 from `pkg.go.dev` — use it as a quick sanity check, not a gate.
 
-`publish-smoke` creates a temporary module in `$(mktemp -d)`, installs all
-7 modules at the specified version, compiles a program that imports all of
-them, and installs `audit-gen`. This is the closest local equivalent to
-"does this release actually work for a consumer."
+`publish-smoke` creates a temporary module in `$(mktemp -d)`, installs the
+published runtime modules at the specified version, compiles a program that
+imports the runtime modules, and installs `audit-gen`. This is the closest
+local equivalent to "does this release actually work for a consumer."
+`cmd/audit-validate` is excluded from the smoke build because it has no
+importable API — it is a standalone CLI with its own unit suite. The
+release workflow's `verify` job covers `cmd/audit-validate` separately
+via `go install`.
 
 ---
 
@@ -628,9 +906,10 @@ GitHub), but the proxy cache would still serve the old bytes for existing
 
 ### What Contributors MUST NOT Do
 
-- **Do not create release tags.** Tags matching `v*`, `file/v*`, `syslog/v*`,
-  `webhook/v*`, `loki/v*`, `outputconfig/v*`, or `cmd/audit-gen/v*` are
-  protected on `main` and can only be created by maintainers.
+- **Do not create release tags.** Every published module's `v*` pattern
+  is tag-protected — see "Tag protection" above for the full list.
+  Release tags are created exclusively by the `axonops-release-bot`
+  GitHub App via the `release.yml` workflow.
 - **Do not add `replace` directives to `go.mod` on any branch intended for
   merge.** `replace` directives in published modules break consumer builds.
   `make check-replace` enforces this in CI.

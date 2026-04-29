@@ -34,8 +34,13 @@
 **/go.mod                               @millerjp
 **/go.sum                               @millerjp
 
-# Build orchestration.
+# Build orchestration. The Makefile, the release toolchain scripts,
+# and pinned tool versions all run under the release-bot's elevated
+# token at release time — a malicious edit could exfiltrate it.
 Makefile                                @millerjp
+scripts/release/                        @millerjp
+scripts/tool-versions.txt               @millerjp
+tests/release/                          @millerjp
 
 # Security policy and threat model.
 SECURITY.md                             @millerjp

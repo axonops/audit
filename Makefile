@@ -8,7 +8,9 @@
        vet vet-all fmt fmt-check \
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
        tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-static \
-       security release-check check clean \
+       security release-check api-check check-release-invariants \
+       regen-release-docs regen-release-docs-check print-publish-modules \
+       check clean \
        install-tools install-benchstat install-govulncheck workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
        test-infra-syslog-up test-infra-syslog-down \
@@ -50,6 +52,7 @@ install-tools:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/exp/cmd/gorelease@$(GORELEASE_VER)
 	@echo "Tools installed to $(GOBIN)"
 
 install-benchstat:
@@ -519,8 +522,111 @@ security-one:
 
 # --- Release ---
 
-release-check:
+# release-check composes:
+#   1. goreleaser config syntax check (.goreleaser.yml)
+#   2. api-check — gorelease per published module against the
+#      module's most recent SemVer-sorted tag. Advisory pre-v1.0
+#      (inputs.api_check_blocking in release.yml controls the gate).
+# Both run in `make check` via the composite target.
+release-check: api-check
 	$(GOBIN)/goreleaser check
+
+# api-check runs gorelease for every published module, comparing
+# the module's current public surface against its most recent
+# release tag. gorelease exits non-zero on incompatible changes;
+# the Makefile collects per-module failures and reports them all
+# rather than aborting on the first.
+#
+# First-release case: a module with no prior tag is skipped (not a
+# failure — gorelease has no base to compare against).
+#
+# GOFLAGS=-mod=readonly prevents api-check from mutating go.sum.
+#
+# Pipe-character note: PUBLISH_MODULES entries are pipe-delimited
+# `dir|module|prefix`. We use $(foreach) + single-quoting so bash
+# sees each entry as one quoted argument; an unquoted shell `for`
+# would parse the pipes as control operators.
+.PHONY: api-check
+api-check:
+	@if ! git diff --quiet HEAD -- 2>/dev/null || ! git diff --cached --quiet HEAD -- 2>/dev/null; then \
+	  echo "api-check: working tree has uncommitted changes — skipping (gorelease requires a clean tree)."; \
+	  echo "          run 'make api-check' on a clean checkout, or it will run automatically in CI."; \
+	  exit 0; \
+	fi; \
+	FAILED=""; \
+	for entry in $(foreach e,$(PUBLISH_MODULES),'$(e)'); do \
+	  dir=$$(echo "$$entry" | cut -d'|' -f1); \
+	  prefix=$$(echo "$$entry" | cut -d'|' -f3); \
+	  base=$$(git tag --list "$${prefix}v[0-9]*" --sort=-version:refname | head -n1); \
+	  echo "==> api-check $$dir (base=$${base:-<none — skipping>})"; \
+	  if [ -z "$$base" ]; then \
+	    continue; \
+	  fi; \
+	  (cd "$$dir" && GOFLAGS=-mod=readonly $(GOBIN)/gorelease -base "$$base" 2>&1) \
+	    || FAILED="$$FAILED $$dir"; \
+	done; \
+	if [ -n "$$FAILED" ]; then \
+	  echo ""; \
+	  echo "api-check found incompatible changes in:$$FAILED"; \
+	  echo "Advisory pre-v1.0; release.yml inputs.api_check_blocking controls blocking."; \
+	  exit 1; \
+	fi
+
+# check-release-invariants verifies, for a given VERSION, that
+# every go.mod across every published module references that
+# exact version for every cross-reference to ANOTHER PUBLISHED
+# module. Cross-references to unpublished local modules (e.g.
+# iouring, secrets/env, secrets/file) are NOT checked — those
+# are private modules used via pseudo-versions and are not
+# subject to release tagging. Run post-release as a final sanity
+# gate; CI invokes it from the invariants job in release.yml.
+#
+# Usage: make check-release-invariants VERSION=v0.1.12
+.PHONY: check-release-invariants
+check-release-invariants:
+ifndef VERSION
+	$(error VERSION is required, e.g. make check-release-invariants VERSION=v0.1.12)
+endif
+	@PUBLISHED=" $(foreach e,$(PUBLISH_MODULES),$(word 2,$(subst |, ,$(e)))) "; \
+	FAILED=""; \
+	for entry in $(foreach e,$(PUBLISH_MODULES),'$(e)'); do \
+	  dir=$$(echo "$$entry" | cut -d'|' -f1); \
+	  while read -r name ver; do \
+	    case "$$PUBLISHED" in *" $$name "*) ;; *) continue;; esac; \
+	    if [ "$$ver" != "$(VERSION)" ]; then \
+	      echo "FAIL $$dir/go.mod: $$name @ $$ver (expected $(VERSION))"; \
+	      FAILED="1"; \
+	    fi; \
+	  done < <(awk '/^require[[:space:]]/{print $$2, $$3} /^[[:space:]]+github\.com\/axonops\/audit/{print $$1, $$2}' "$$dir/go.mod" | grep -v '//' || true); \
+	done; \
+	if [ -n "$$FAILED" ]; then \
+	  echo ""; \
+	  echo "Release invariants failed — see above."; \
+	  exit 1; \
+	fi; \
+	echo "All published go.mod files reference $(VERSION) for axonops/audit deps."
+
+# print-publish-modules emits PUBLISH_MODULES one entry per line
+# for shell-script consumption (scripts/release/*.sh). Format
+# unchanged from the variable: dir|module_path|tag_prefix.
+.PHONY: print-publish-modules
+print-publish-modules:
+	@$(foreach e,$(PUBLISH_MODULES),printf '%s\n' '$(e)';)
+
+# regen-release-docs rewrites the auto-generated module table in
+# docs/releasing.md from the canonical PUBLISH_MODULES list. Run
+# this whenever a module is added to or removed from PUBLISH_MODULES.
+.PHONY: regen-release-docs
+regen-release-docs:
+	@bash scripts/release/regen-docs.sh docs/releasing.md
+
+# regen-release-docs-check verifies docs/releasing.md is in sync
+# with PUBLISH_MODULES — runs the regenerator into a temp file
+# and diffs against the live file. Wired into check-static so a
+# stale module table fails CI.
+.PHONY: regen-release-docs-check
+regen-release-docs-check:
+	@bash scripts/release/regen-docs.sh --check docs/releasing.md
 
 # Aggregate every static-analysis guard the CI hygiene job runs,
 # in a single shell loop with `||`-guarded error collection so
@@ -531,7 +637,8 @@ check-static:
 	@FAILED=""; \
 	for target in fmt-check tidy-check check-todos check-replace \
 	              check-insecure-skip-verify check-example-links \
-	              check-bdd-strict bench-baseline-check; do \
+	              check-bdd-strict bench-baseline-check \
+	              regen-release-docs-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
 	done; \
@@ -676,7 +783,7 @@ publish-trigger: ## Trigger proxy.golang.org indexing for VERSION (e.g. make pub
 ifndef VERSION
 	$(error VERSION is required, e.g. make publish-trigger VERSION=v0.1.1)
 endif
-	@for entry in $(PUBLISH_MODULES); do \
+	@for entry in $(foreach e,$(PUBLISH_MODULES),'$(e)'); do \
 		mod=$$(echo "$$entry" | cut -d'|' -f2); \
 		echo "Indexing $$mod@$(VERSION) ..."; \
 		GOPROXY=https://proxy.golang.org go list -m "$$mod@$(VERSION)"; \
@@ -687,7 +794,7 @@ publish-verify: ## Verify modules on proxy.golang.org and pkg.go.dev for VERSION
 ifndef VERSION
 	$(error VERSION is required, e.g. make publish-verify VERSION=v0.1.1)
 endif
-	@for entry in $(PUBLISH_MODULES); do \
+	@for entry in $(foreach e,$(PUBLISH_MODULES),'$(e)'); do \
 		mod=$$(echo "$$entry" | cut -d'|' -f2); \
 		proxy_path=$$(echo "$$mod" | tr '[:upper:]' '[:lower:]'); \
 		echo "Verifying $$mod@$(VERSION) ..."; \

@@ -76,15 +76,20 @@ jobs:
           fi
 
           # Check if any non-docs files changed.
-          # ':!*.md' matches .md at all directory levels in git pathspec.
+          # Order: literal files first, then globs, then directories.
+          # ':!*.md' matches root-level .md; ':!**/*.md' matches every
+          # depth. The two together cover every .md path. Workflow
+          # files under .github/workflows/ are intentionally NOT
+          # excluded — workflow changes MUST run full CI.
           CHANGED=$(git diff --name-only "$BASE" HEAD -- \
+            ':!LICENSE' \
+            ':!NOTICE' \
             ':!*.md' \
             ':!**/*.md' \
-            ':!docs/**' \
-            ':!LICENSE' \
-            ':!.claude/**' \
             ':!**/CHANGELOG*' \
             ':!**/CONTRIBUTING*' \
+            ':!.claude/**' \
+            ':!docs/**' \
             ':!.github/ISSUE_TEMPLATE/**' \
           )
 

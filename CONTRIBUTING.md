@@ -237,6 +237,61 @@ in [docs/releasing.md](docs/releasing.md) under "Tag protection";
 that file is the single source of truth, regenerated from the
 canonical `PUBLISH_MODULES` list.
 
+## CI Behaviour
+
+The `CI` workflow (`.github/workflows/ci.yml`) detects whether a
+PR touches code or only documentation. The detection lives in the
+`changes` job near the top of the workflow and uses a `git diff`
+pathspec exclusion list.
+
+**Docs-only PRs skip the Go pipeline.** A PR whose diff touches
+only the following paths runs `changes` + `hygiene` +
+`validate-release` (≈2 minutes total) and skips the Go build,
+lint, test, integration, BDD, security, and cross-platform jobs:
+
+- `*.md` and `**/*.md` (every Markdown file at any depth)
+- `docs/**`
+- `LICENSE`, `NOTICE`
+- `**/CHANGELOG*`, `**/CONTRIBUTING*` (with or without `.md`)
+- `.github/ISSUE_TEMPLATE/**`
+- `.claude/**` (defensive — the directory is gitignored, but the
+  exclusion catches accidental commits)
+
+`hygiene` and `validate-release` continue to run because they catch
+real drift on docs-only PRs — for example,
+`make regen-release-docs-check` (in `hygiene`) verifies the
+auto-generated module table in `docs/releasing.md` is in sync with
+the canonical `PUBLISH_MODULES` list.
+
+**Mixed PRs run the full pipeline.** If the diff includes any
+non-docs file, every CI job runs. There is no per-job opt-out for
+mixed PRs.
+
+**Branch protection** is satisfied by a single aggregate check:
+`Test - CI Pass`. That job has `if: always()` and treats `skipped`
+results as success, so a docs-only PR satisfies the gate without
+any maintainer action.
+
+**Workflow changes always run full CI.** Files under
+`.github/workflows/**` are deliberately NOT excluded from the
+detection list — a workflow change must exercise the full pipeline
+before merging.
+
+**Forcing full CI on a docs-only change.** If a docs change needs
+the full pipeline (rare — e.g., regenerating a doc alongside an
+embedded test that depends on it), bundle the doc change with the
+code change in the same PR; mixed PRs run everything. Manually
+re-running the workflow via `Actions → CI → Run workflow` also
+forces full CI because the `workflow_dispatch` trigger sets
+`code=true` unconditionally.
+
+**Maintenance.** When adding a new docs-like path, edit the
+pathspec in `.github/workflows/ci.yml` `changes` job (single source
+of truth). When adding a new CI job, follow the maintenance note
+above the `ci-pass` job: add the job name to its `needs:` list and
+gate it on `if: needs.changes.outputs.code == 'true'` if it should
+skip on docs-only PRs.
+
 ## Dependencies
 
 Dependencies are kept minimal. The core library depends on

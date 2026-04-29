@@ -1,30 +1,29 @@
-# End-to-end release workflow for audit.
+# End-to-end release workflow for axonops/audit (#513).
 #
-# Trigger manually with a version string. The workflow:
-#   1. Runs the full CI pipeline (unit tests, BDD, integration, lint, security)
-#   2. Tags and publishes modules in dependency order (three tiers)
-#   3. Updates inter-module go.mod dependencies between tiers
-#   4. Builds binaries, signs build-provenance attestations, and creates the
-#      GitHub Release via GoReleaser
-#   5. Verifies all modules are indexed on proxy.golang.org
-#   6. Runs a smoke test (go get + compile in a fresh module)
+# Replaces the legacy three-tier dance with a single linear flow that
+# tags every published module at the SAME merge commit. Two entry
+# points:
 #
-# Four-tier tagging:
-#   Tier 0: core + secrets (no internal deps) — tagged at CI-tested commit
-#   Tier 1: file, syslog, webhook, loki, cmd/audit-gen, secrets/openbao,
-#           secrets/vault — depend on core and/or secrets
-#   Tier 2: outputconfig, outputs — depend on core + Tier 1 modules
-#   Tier 3: cmd/audit-validate — depends on core + outputconfig + outputs
-#           + secrets (must be tagged AFTER Tier 2)
+#   workflow_dispatch (primary path)
+#     - Runs full CI gate, fuzz-long, advisory bench, advisory api-check
+#     - Opens a release PR via the axonops-release-bot GitHub App
+#     - Waits (polling) for PR auto-merge through normal branch
+#       protection — this is what makes branch protection real
+#     - Tags every published module at the merge SHA
+#     - Hands off to GoReleaser for binaries + provenance
+#     - Verifies proxy + smoke-tests, runs invariants check
 #
-# Sub-module tags point at commits AFTER go.mod updates (not the
-# CI-tested commit). This is the standard Go multi-module release
-# pattern — the core tag is on the CI-tested commit, sub-module tags
-# are on follow-up commits that update require directives.
+#   push: tags: v* (recovery path)
+#     - Skips CI / PR / wait-for-merge
+#     - Runs tag-all idempotently (existing tags at the same SHA are
+#       no-ops; tags at a DIFFERENT SHA are aborted as a contamination)
+#     - Runs GoReleaser + verify + invariants
 #
-# After Tier 0 tagging, a goreleaser job builds binaries, attests
-# build provenance, and creates the GitHub Release — all within this
-# workflow.
+# All write operations use a token minted from the axonops-release-bot
+# GitHub App at job start (1-hour TTL; per-job mints). The legacy
+# RELEASE_TOKEN PAT is retired (see CHANGELOG #513). Each job that
+# does git pushes uses persist-credentials:false on checkouts that
+# don't need the token kept in .git/config beyond the step.
 #
 # See: docs/releasing.md
 name: Release
@@ -33,57 +32,144 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. v0.1.1)"
+        description: "Version to release (e.g. v0.1.12)"
         required: true
         type: string
+      api_check_blocking:
+        description: "Treat make api-check as blocking (set true after v1.0)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
+# Serialise per-version. Different versions can run in parallel; the
+# same version cannot. A workflow_dispatch in flight will queue a
+# subsequent v* tag-push for the same version.
 concurrency:
-  group: release
-  cancel-in-progress: false # do not cancel an in-progress release
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
+# Workflow-default permissions: read-only. Jobs widen as needed.
 permissions:
   contents: read
 
-env:
-  # Assign input to env var to prevent shell injection.
-  # All run: blocks use $PUBLISH_VERSION, never ${{ inputs.version }}.
-  PUBLISH_VERSION: ${{ inputs.version }}
-  # Single source of truth for publishable modules (space-separated).
-  PUBLISH_MODULES: >-
-    github.com/axonops/audit
-    github.com/axonops/audit/file
-    github.com/axonops/audit/syslog
-    github.com/axonops/audit/webhook
-    github.com/axonops/audit/loki
-    github.com/axonops/audit/outputconfig
-    github.com/axonops/audit/outputs
-    github.com/axonops/audit/cmd/audit-gen
-    github.com/axonops/audit/cmd/audit-validate
-    github.com/axonops/audit/secrets
-    github.com/axonops/audit/secrets/openbao
-    github.com/axonops/audit/secrets/vault
+# Note: the published-module list lives only in the Makefile's
+# PUBLISH_MODULES variable. Workflow steps that need it shell out
+# to `make print-publish-modules` rather than re-encoding it.
 
 jobs:
   # =====================================================================
-  # Job 1: Run the FULL CI pipeline — every test, every check.
+  # Job: preflight
+  # =====================================================================
+  # Resolves PUBLISH_VERSION from either the workflow_dispatch input
+  # or the pushed tag's ref. On the recovery (push) path, also
+  # verifies the tag's commit is reachable from main and runs the
+  # tag-conflict pre-check in idempotent mode against the tag's SHA.
+  # =====================================================================
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      merge_sha: ${{ steps.resolve.outputs.merge_sha }}
+      is_dispatch: ${{ steps.resolve.outputs.is_dispatch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve PUBLISH_VERSION and merge_sha
+        id: resolve
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            v="${GITHUB_REF#refs/tags/}"
+            is_dispatch=false
+          else
+            v="$DISPATCH_VERSION"
+            is_dispatch=true
+          fi
+          if ! [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.\-]+)?$ ]]; then
+            echo "::error::Invalid version format: $v (expected vX.Y.Z or vX.Y.Z-pre.N)"
+            exit 1
+          fi
+          echo "Version: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "is_dispatch=$is_dispatch" >> "$GITHUB_OUTPUT"
+          if [ "$is_dispatch" = "true" ]; then
+            # workflow_dispatch path: merge_sha is determined by
+            # wait-for-pr-merge later. Emit empty so tag-all can
+            # tell which input to use.
+            echo "merge_sha=" >> "$GITHUB_OUTPUT"
+          else
+            # Recovery path: the tag IS the trigger; its SHA is the
+            # release commit.
+            sha="$GITHUB_SHA"
+            echo "Tag-push SHA: $sha"
+            echo "merge_sha=$sha" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tag SHA is reachable from main (recovery path only)
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag SHA $GITHUB_SHA is not reachable from main."
+            echo "::error::Recovery path requires the tag to point at a commit on main."
+            exit 1
+          fi
+          echo "✓ Tag SHA reachable from main."
+
+      - name: Tag-conflict pre-check
+        env:
+          IS_DISPATCH: ${{ steps.resolve.outputs.is_dispatch }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_DISPATCH" = "true" ]; then
+            # Strict mode: reject if any tag already exists.
+            scripts/release/check-tag-conflicts.sh "$VERSION"
+          else
+            # Recovery path: idempotent — existing tags at the same
+            # SHA are fine, mismatched SHA is fatal.
+            scripts/release/check-tag-conflicts.sh "$VERSION" "$MERGE_SHA"
+          fi
+
+  # =====================================================================
+  # Job: ci (workflow_dispatch only)
   # =====================================================================
   ci:
     name: CI Gate
+    needs: [preflight]
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/ci.yml
 
   # =====================================================================
-  # Job 1b: Long fuzz run — each #481 target fuzzed for 5 minutes.
-  # A crasher here blocks the release so we never ship a regression
-  # that the fuzz harness would catch.
+  # Job: fuzz-long (workflow_dispatch only)
+  # =====================================================================
+  # 5 minutes per fuzz target — release-blocking.
   # =====================================================================
   fuzz-long:
     name: Long Fuzz (release gate)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [ci]
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -112,30 +198,23 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================================
-  # Job 1c: Benchmark regression comparison vs committed baseline.
-  #
-  # ADVISORY — never blocks the release. GitHub-hosted runners have
-  # variable CPU/memory performance between runs, so a hard threshold
-  # would produce false positives. The delta report is uploaded as an
-  # artifact and a summary is posted to the GitHub Actions summary page
-  # so the release reviewer can eyeball it before cutting the tag. A
-  # self-hosted runner with stable hardware is a follow-up; until then
-  # the advisory report is the best we can do. See #493.
+  # Job: bench-advisory (workflow_dispatch only)
+  # =====================================================================
+  # Advisory — never blocks (continue-on-error). Posts the benchstat
+  # delta to the run summary so the maintainer can eyeball it.
   # =====================================================================
   bench-advisory:
     name: Benchmark Regression (advisory)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [ci]
-    # continue-on-error: the job is advisory and never blocks the release.
-    # tag-tier0's needs: [ci, fuzz-long] deliberately excludes this job
-    # (see release.yml job graph). An infra failure here (benchstat
-    # missing, OOM, etc.) will surface as a red-but-non-blocking run
-    # in the Actions UI, which is the intended observability.
+    if: github.event_name == 'workflow_dispatch'
     continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -152,8 +231,6 @@ jobs:
       - name: Run benchmarks + compare to baseline
         shell: bash
         env:
-          # Lower than local count=5 to keep wall-clock under 30 min on
-          # shared runners. Scoped to this step only.
           BENCH_COUNT: "3"
         run: |
           set +e
@@ -164,9 +241,8 @@ jobs:
             echo '## Benchmark regression report (advisory)'
             echo
             echo 'Runner variance on shared GitHub Actions hardware means'
-            echo 'the deltas below are indicative, not authoritative. A hard'
-            echo 'threshold would produce false positives. Use this report'
-            echo 'as a sanity check, not a gate. See #493.'
+            echo 'the deltas below are indicative, not authoritative. Use'
+            echo 'this report as a sanity check, not a gate. See #493.'
             echo
             echo '```'
             cat bench-compare.txt
@@ -175,8 +251,6 @@ jobs:
           if [ "$rc" -ne 0 ]; then
             echo "::warning::bench-compare exited $rc (advisory — does not block the release)"
           fi
-          # continue-on-error: true on the job keeps this from blocking
-          # tag-tier0 / tier1 / tier2 even if rc != 0.
           exit "$rc"
 
       - name: Upload benchmark artifacts
@@ -190,120 +264,365 @@ jobs:
           if-no-files-found: ignore
 
   # =====================================================================
-  # Job 2: Tag Tier 0 modules (core + secrets — no internal deps).
-  # These are tagged at the CI-tested commit.
+  # Job: api-check (workflow_dispatch only)
   # =====================================================================
-  tag-tier0:
-    name: "Tag Tier 0 (core + secrets)"
+  # Runs `make api-check` — gorelease per published module against
+  # its most recent SemVer-sorted tag. Pre-v1.0: advisory (workflow
+  # input api_check_blocking=false suppresses the failure). After
+  # v1.0: blocking (set api_check_blocking=true).
+  # =====================================================================
+  api-check:
+    name: API Check (gorelease)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [ci, fuzz-long]
-    permissions:
-      contents: write
+    timeout-minutes: 15
+    needs: [ci]
+    if: github.event_name == 'workflow_dispatch'
     steps:
-      - name: Validate version format
-        run: |
-          if ! echo "$PUBLISH_VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.\-]+)?$'; then
-            echo "::error::Invalid version format: $PUBLISH_VERSION (expected vX.Y.Z or vX.Y.Z-pre.N)"
-            exit 1
-          fi
-          echo "Version: $PUBLISH_VERSION"
-
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
+          persist-credentials: false
 
-      - name: Verify on main branch
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install gorelease (pinned)
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "::error::HEAD is not on the main branch"
+          set -euo pipefail
+          # Parse the pinned pseudo-version from scripts/tool-versions.txt
+          # without `eval` — defence in depth in case the file ever
+          # gains an unexpected line. Strict format check before use.
+          GORELEASE_VER="$(awk -F' *:= *' '/^GORELEASE_VER[[:space:]]/{print $2}' scripts/tool-versions.txt)"
+          if ! [[ "$GORELEASE_VER" =~ ^v[0-9].*$ ]]; then
+            echo "::error::Invalid GORELEASE_VER from tool-versions.txt: '$GORELEASE_VER'"
             exit 1
           fi
-          echo "HEAD is on main: $(git rev-parse HEAD)"
+          GOTOOLCHAIN=go1.26.2 go install "golang.org/x/exp/cmd/gorelease@$GORELEASE_VER"
 
-      - name: Check ALL tags do not already exist
+      - name: Run make api-check
+        id: check
+        continue-on-error: true
+        run: make api-check
+
+      - name: Enforce blocking mode
+        if: steps.check.outcome == 'failure' && inputs.api_check_blocking
         run: |
-          set -euo pipefail
-          TAGS=(
-            "$PUBLISH_VERSION"
-            "file/$PUBLISH_VERSION"
-            "syslog/$PUBLISH_VERSION"
-            "webhook/$PUBLISH_VERSION"
-            "loki/$PUBLISH_VERSION"
-            "outputconfig/$PUBLISH_VERSION"
-            "outputs/$PUBLISH_VERSION"
-            "cmd/audit-gen/$PUBLISH_VERSION"
-            "cmd/audit-validate/$PUBLISH_VERSION"
-            "secrets/$PUBLISH_VERSION"
-            "secrets/openbao/$PUBLISH_VERSION"
-            "secrets/vault/$PUBLISH_VERSION"
-          )
-          for tag in "${TAGS[@]}"; do
-            if git tag -l "$tag" | grep -q .; then
-              echo "::error::Tag $tag already exists — cannot overwrite a published tag"
-              exit 1
-            fi
-          done
-          echo "No conflicting tags found"
+          echo "::error::api-check found incompatible changes and api_check_blocking=true."
+          exit 1
 
-      - name: Create and push Tier 0 tags
+      - name: Advisory note
+        if: steps.check.outcome == 'failure' && !inputs.api_check_blocking
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          HEAD=$(git rev-parse HEAD)
-          echo "Tagging commit: $HEAD"
-
-          TAGS=("$PUBLISH_VERSION" "secrets/$PUBLISH_VERSION")
-          for tag in "${TAGS[@]}"; do
-            git tag -a "$tag" -m "Release $tag" "$HEAD"
-            echo "  Created: $tag"
-          done
-
-          for tag in "${TAGS[@]}"; do
-            if git push origin "$tag"; then
-              echo "  Pushed: $tag"
-            else
-              echo "::error::Failed to push tag: $tag"
-              exit 1
-            fi
-          done
-          echo "✓ Tier 0 tags pushed."
+          echo "::warning::api-check found incompatible changes (advisory — does not block pre-v1.0)."
 
   # =====================================================================
-  # Job 2b: Build binaries, attest provenance, create GitHub Release via
-  # GoReleaser. Runs in parallel with tier 1/2 tagging — only needs the
-  # core v* tag.
+  # Job: update-deps-pr (workflow_dispatch only)
+  # =====================================================================
+  # Mints an App token, creates branch release/<version>, runs the
+  # update-deps script to pin every inter-module go.mod, opens a PR
+  # with auto-merge enabled. Branch protection is respected — the PR
+  # waits for CI green AND any required human approval before merging.
+  # =====================================================================
+  update-deps-pr:
+    name: Open release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [preflight, ci, fuzz-long, api-check]
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read  # job-level — App token grants the writes
+    outputs:
+      pr_number: ${{ steps.open.outputs.pr_number }}
+      branch: ${{ steps.open.outputs.branch }}
+    steps:
+      - name: Mint release-bot App token
+        id: app
+        uses: actions/create-github-app-token@a8d616148505b5069dccd32f177bb87d7f39123b # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Verify auto-merge is enabled at the repo level
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          # gh pr merge --auto silently no-ops if auto-merge is
+          # disabled at the repo level. Catch the misconfiguration
+          # here rather than discover it after the workflow times out
+          # waiting for a merge that will never happen.
+          allow=$(gh repo view --json autoMergeAllowed --jq '.autoMergeAllowed')
+          if [ "$allow" != "true" ]; then
+            echo "::error::Repository setting 'Allow auto-merge' is disabled. Enable it in Settings → General before triggering the release workflow."
+            exit 1
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run update-deps.sh
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+        run: scripts/release/update-deps.sh "$PUBLISH_VERSION"
+
+      - name: Open release PR with auto-merge
+        id: open
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/$PUBLISH_VERSION"
+          git config user.name  "axonops-release-bot[bot]"
+          git config user.email "axonops-release-bot[bot]@users.noreply.github.com"
+
+          # Recreate the branch idempotently. A previous failed run
+          # may have left both a branch AND an orphaned open PR on it
+          # — close the PR first so the audit trail stays coherent
+          # before deleting the branch.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Stale branch $BRANCH exists on origin — closing any open PRs and deleting."
+            for pr in $(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number'); do
+              echo "  closing stale PR #$pr"
+              gh pr close "$pr" --delete-branch=false --comment "Superseded by re-run of release workflow."
+            done
+            git push origin --delete "$BRANCH" || true
+          fi
+          git checkout -b "$BRANCH"
+
+          if git diff --quiet HEAD --; then
+            echo "::error::update-deps.sh produced no diff. Inter-module deps already at $PUBLISH_VERSION on main? Aborting."
+            exit 1
+          fi
+
+          git add -A
+          git commit -m "release: pin inter-module deps to $PUBLISH_VERSION"
+          git push -u origin "$BRANCH"
+
+          # `gh pr create` may emit progress lines before the URL —
+          # ask for the PR number directly via --json so we don't have
+          # to parse stdout. The URL is reconstructed for logging.
+          NUM=$(gh pr create \
+            --base main --head "$BRANCH" \
+            --title "release: $PUBLISH_VERSION" \
+            --body "Automated release PR (#513). Tags every published module at the merge commit. Approve to let auto-merge fire after CI green." \
+            | tail -n1 | sed -E 's@.*/([0-9]+)$@\1@')
+          if ! [[ "$NUM" =~ ^[0-9]+$ ]]; then
+            echo "::error::Failed to parse PR number from gh pr create output."
+            exit 1
+          fi
+          gh pr merge "$NUM" --auto --squash
+          PR_URL=$(gh pr view "$NUM" --json url --jq '.url')
+          echo "pr_number=$NUM"   >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH"   >> "$GITHUB_OUTPUT"
+          echo "::notice::Release PR opened: $PR_URL"
+
+  # =====================================================================
+  # Job: wait-for-pr-merge (workflow_dispatch only)
+  # =====================================================================
+  # Polls the release PR until it merges. Branch protection
+  # determines whether a human review is required — if so, the
+  # maintainer who triggered the workflow approves the PR; auto-merge
+  # then fires. Exponential backoff (30s → 60s → 120s, cap 120s)
+  # reduces API churn during long human-review windows.
+  # =====================================================================
+  wait-for-pr-merge:
+    name: Wait for release PR to merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs: [update-deps-pr]
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      merge_sha: ${{ steps.poll.outputs.merge_sha }}
+    steps:
+      - name: Mint release-bot App token
+        id: app
+        uses: actions/create-github-app-token@a8d616148505b5069dccd32f177bb87d7f39123b # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Poll PR until merged
+        id: poll
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ needs.update-deps-pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          GH_REPO="$GITHUB_REPOSITORY"
+          export GH_REPO
+
+          deadline=$(( $(date +%s) + 45*60 ))
+          delay=30
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            STATE=$(gh pr view "$PR" --json state --jq '.state')
+            case "$STATE" in
+              MERGED)
+                SHA=$(gh pr view "$PR" --json mergeCommit --jq '.mergeCommit.oid')
+                MERGED_AT=$(gh pr view "$PR" --json mergedAt --jq '.mergedAt')
+                if [ -z "$SHA" ] || [ "$SHA" = "null" ] || [ -z "$MERGED_AT" ] || [ "$MERGED_AT" = "null" ]; then
+                  echo "::warning::PR state=MERGED but mergeCommit/mergedAt not yet populated, retrying."
+                else
+                  echo "merge_sha=$SHA" >> "$GITHUB_OUTPUT"
+                  echo "::notice::PR #$PR merged at $SHA"
+                  exit 0
+                fi
+                ;;
+              CLOSED)
+                echo "::error::Release PR #$PR closed without merging."
+                exit 1
+                ;;
+              OPEN)
+                echo "PR state OPEN — sleeping ${delay}s"
+                ;;
+              *)
+                echo "PR state $STATE — sleeping ${delay}s"
+                ;;
+            esac
+            sleep "$delay"
+            # Exponential backoff capped at 120s.
+            if [ "$delay" -lt 120 ]; then
+              delay=$(( delay * 2 ))
+              [ "$delay" -gt 120 ] && delay=120
+            fi
+          done
+
+          {
+            echo '## wait-for-pr-merge timed out'
+            echo
+            echo "PR #$PR did not merge within 45 minutes."
+            echo
+            echo '### Recovery'
+            echo
+            echo 'The PR is still open and may auto-merge later. Once it merges, push the core tag at the merge commit to trigger the recovery path:'
+            echo
+            echo '```bash'
+            echo "MERGE_SHA=\$(gh pr view $PR --json mergeCommit --jq '.mergeCommit.oid')"
+            echo "git fetch origin"
+            echo "git tag -a \"\${VERSION}\" -m \"Release \${VERSION}\" \"\$MERGE_SHA\""
+            echo "git push origin \"\${VERSION}\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Release PR not merged within 45 min — see job summary for the recovery command."
+          exit 1
+
+  # =====================================================================
+  # Job: tag-all (both paths)
+  # =====================================================================
+  # Creates and pushes every published-module tag at the merge SHA.
+  # Idempotent: existing tags at the same SHA are no-ops; tags at a
+  # different SHA abort with a contamination warning.
+  #
+  # Runs on BOTH paths:
+  #   - workflow_dispatch: merge_sha from wait-for-pr-merge
+  #   - push:tag (recovery): merge_sha from preflight ($GITHUB_SHA)
+  # The job needs preflight + wait-for-pr-merge with `if: always()`
+  # plus result-checks so it runs only when the upstream completed
+  # successfully.
+  # =====================================================================
+  tag-all:
+    name: Tag all published modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [preflight, wait-for-pr-merge]
+    if: |
+      always() &&
+      needs.preflight.result == 'success' &&
+      (needs.wait-for-pr-merge.result == 'success' || needs.wait-for-pr-merge.result == 'skipped')
+    permissions:
+      contents: read  # App token grants writes
+    outputs:
+      merge_sha: ${{ steps.sha.outputs.merge_sha }}
+    steps:
+      - name: Resolve merge_sha
+        id: sha
+        env:
+          DISPATCH_SHA: ${{ needs.wait-for-pr-merge.outputs.merge_sha }}
+          PREFLIGHT_SHA: ${{ needs.preflight.outputs.merge_sha }}
+          WAIT_RESULT: ${{ needs.wait-for-pr-merge.result }}
+        run: |
+          set -euo pipefail
+          if [ "$WAIT_RESULT" = "success" ] && [ -n "$DISPATCH_SHA" ]; then
+            echo "merge_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+            echo "Using dispatch merge SHA: $DISPATCH_SHA"
+          else
+            if [ -z "$PREFLIGHT_SHA" ]; then
+              echo "::error::No merge SHA available — neither path provided one."
+              exit 1
+            fi
+            echo "merge_sha=$PREFLIGHT_SHA" >> "$GITHUB_OUTPUT"
+            echo "Using recovery-path merge SHA: $PREFLIGHT_SHA"
+          fi
+
+      - name: Mint release-bot App token
+        id: app
+        uses: actions/create-github-app-token@a8d616148505b5069dccd32f177bb87d7f39123b # v2.1.4
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout merge SHA
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.sha.outputs.merge_sha }}
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Run tag-all.sh (idempotent)
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+          MERGE_SHA: ${{ steps.sha.outputs.merge_sha }}
+        run: scripts/release/tag-all.sh "$PUBLISH_VERSION" "$MERGE_SHA"
+
+  # =====================================================================
+  # Job: goreleaser
+  # =====================================================================
+  # Builds binaries for the published-CLI matrix, attests build
+  # provenance, creates the GitHub Release. Identical semantics to
+  # the legacy job; only the inputs (tag, SHA) come from the new
+  # tag-all job.
   # =====================================================================
   goreleaser:
     name: GoReleaser
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [tag-tier0]
+    needs: [preflight, tag-all]
     permissions:
       contents: write
-      id-token: write       # OIDC for attestation
-      attestations: write   # upload attestations
+      id-token: write
+      attestations: write
     steps:
-      # Checkout main with full history, then explicitly fetch and
-      # checkout the release tag. This is more resilient than using
-      # ref: directly, which can fail if GitHub's internal ref
-      # propagation hasn't completed from the tag-tier0 push.
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch and checkout release tag
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
+          set -euo pipefail
           git fetch origin tag "$PUBLISH_VERSION" --no-tags
           git checkout "$PUBLISH_VERSION"
 
       - name: Verify tag is on main
         run: |
+          set -euo pipefail
           git fetch origin main
           if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
             echo "ERROR: tag must point to a commit on main"
@@ -331,335 +650,64 @@ jobs:
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          # SBOM publishing intentionally removed (#514). Build provenance
-          # attestations cover the binary distribution artifacts directly.
-          # Consumers verify with `gh attestation verify <artifact>
-          # --repo axonops/audit`. Library consumers use go.mod via
-          # proxy.golang.org and don't see these GitHub Release artifacts.
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
 
   # =====================================================================
-  # Job 3: Tag Tier 1 modules (depend on core and/or secrets).
-  # Updates go.mod files, commits to main, then tags at the new commit.
+  # Job: verify
   # =====================================================================
-  tag-tier1:
-    name: "Tag Tier 1 (core-dependent modules)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [tag-tier0]
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Update inter-module dependencies
-        run: |
-          set -euo pipefail
-          CORE="github.com/axonops/audit"
-          SECRETS="github.com/axonops/audit/secrets"
-
-          # Modules that depend on core only
-          for dir in file syslog webhook loki cmd/audit-gen; do
-            echo "Updating $dir/go.mod → core@$PUBLISH_VERSION"
-            cd "$dir"
-            go mod edit -require "$CORE@$PUBLISH_VERSION"
-            GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-            cd "$GITHUB_WORKSPACE"
-          done
-
-          # Modules that depend on core + secrets
-          for dir in secrets/openbao secrets/vault; do
-            echo "Updating $dir/go.mod → core@$PUBLISH_VERSION + secrets@$PUBLISH_VERSION"
-            cd "$dir"
-            go mod edit -require "$CORE@$PUBLISH_VERSION"
-            go mod edit -require "$SECRETS@$PUBLISH_VERSION"
-            GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-            cd "$GITHUB_WORKSPACE"
-          done
-
-      - name: Commit dependency updates
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add file/go.mod file/go.sum \
-                  syslog/go.mod syslog/go.sum \
-                  webhook/go.mod webhook/go.sum \
-                  loki/go.mod loki/go.sum \
-                  cmd/audit-gen/go.mod cmd/audit-gen/go.sum \
-                  secrets/openbao/go.mod secrets/openbao/go.sum \
-                  secrets/vault/go.mod secrets/vault/go.sum
-
-          if git diff --cached --quiet; then
-            echo "No changes — inter-module deps already at $PUBLISH_VERSION"
-          else
-            git commit -m "release: update tier 1 inter-module deps to $PUBLISH_VERSION"
-            git push origin main
-            echo "✓ Pushed tier 1 go.mod updates to main"
-          fi
-
-      - name: Create and push Tier 1 tags
-        run: |
-          set -euo pipefail
-          HEAD=$(git rev-parse HEAD)
-          echo "Tagging commit: $HEAD"
-
-          TAGS=(
-            "file/$PUBLISH_VERSION"
-            "syslog/$PUBLISH_VERSION"
-            "webhook/$PUBLISH_VERSION"
-            "loki/$PUBLISH_VERSION"
-            "cmd/audit-gen/$PUBLISH_VERSION"
-            "secrets/openbao/$PUBLISH_VERSION"
-            "secrets/vault/$PUBLISH_VERSION"
-          )
-
-          for tag in "${TAGS[@]}"; do
-            git tag -a "$tag" -m "Release $tag" "$HEAD"
-            echo "  Created: $tag"
-          done
-
-          FAILED=()
-          for tag in "${TAGS[@]}"; do
-            if git push origin "$tag"; then
-              echo "  Pushed: $tag"
-            else
-              echo "::error::Failed to push tag: $tag"
-              FAILED+=("$tag")
-            fi
-          done
-
-          if [ ${#FAILED[@]} -gt 0 ]; then
-            echo ""
-            echo "::error::Failed to push ${#FAILED[*]} tag(s): ${FAILED[*]}"
-            echo "::error::DO NOT delete already-pushed tags. Push remaining tags manually."
-            exit 1
-          fi
-          echo "✓ All Tier 1 tags pushed."
-
-      # No proxy wait — GOPROXY=direct in go mod tidy fetches from GitHub directly.
-      # The proxy indexes on demand when consumers first request the module.
-
-  # =====================================================================
-  # Job 4: Tag Tier 2 modules (depend on Tier 0 + Tier 1).
-  # outputconfig depends on core, file, secrets, secrets/openbao, secrets/vault.
-  # =====================================================================
-  tag-tier2:
-    name: "Tag Tier 2 (outputconfig, outputs)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [tag-tier1]
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Update tier 2 inter-module dependencies
-        run: |
-          set -euo pipefail
-
-          # outputconfig depends on core, file, secrets, secrets/openbao, secrets/vault
-          cd outputconfig
-          echo "Updating outputconfig/go.mod..."
-          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets/vault@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-          echo "  ✓ Tidied."
-          cd "$GITHUB_WORKSPACE"
-
-          # outputs depends on core, file, syslog, webhook, loki
-          cd outputs
-          echo "Updating outputs/go.mod..."
-          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/loki@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-          echo "  ✓ Tidied."
-          cd "$GITHUB_WORKSPACE"
-
-      - name: Commit dependency updates
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add outputconfig/go.mod outputconfig/go.sum
-          git add outputs/go.mod outputs/go.sum
-
-          if git diff --cached --quiet; then
-            echo "No changes — deps already at $PUBLISH_VERSION"
-          else
-            git commit -m "release: update tier 2 inter-module deps to $PUBLISH_VERSION"
-            git push origin main
-            echo "✓ Pushed tier 2 go.mod updates to main"
-          fi
-
-      - name: Create and push tier 2 tags
-        run: |
-          set -euo pipefail
-          HEAD=$(git rev-parse HEAD)
-          echo "Tagging commit: $HEAD"
-
-          for mod in outputconfig outputs; do
-            git tag -a "$mod/$PUBLISH_VERSION" -m "Release $mod/$PUBLISH_VERSION" "$HEAD"
-            if git push origin "$mod/$PUBLISH_VERSION"; then
-              echo "  ✓ Pushed: $mod/$PUBLISH_VERSION"
-            else
-              echo "::error::Failed to push $mod tag"
-              echo "WARNING: DO NOT delete already-pushed tags."
-              exit 1
-            fi
-          done
-
-  # =====================================================================
-  # Job 4b: Tag Tier 3 modules (depend on Tier 2).
-  # cmd/audit-validate depends on core, outputconfig, outputs, secrets.
-  # =====================================================================
-  tag-tier3:
-    name: "Tag Tier 3 (cmd/audit-validate)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [tag-tier2]
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Update tier 3 inter-module dependencies
-        run: |
-          set -euo pipefail
-
-          cd cmd/audit-validate
-          echo "Updating cmd/audit-validate/go.mod..."
-          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/outputs@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-          echo "  ✓ Tidied."
-          cd "$GITHUB_WORKSPACE"
-
-      - name: Commit dependency updates
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add cmd/audit-validate/go.mod cmd/audit-validate/go.sum
-
-          if git diff --cached --quiet; then
-            echo "No changes — deps already at $PUBLISH_VERSION"
-          else
-            git commit -m "release: update tier 3 inter-module deps to $PUBLISH_VERSION"
-            git push origin main
-            echo "✓ Pushed tier 3 go.mod updates to main"
-          fi
-
-      - name: Create and push tier 3 tags
-        run: |
-          set -euo pipefail
-          HEAD=$(git rev-parse HEAD)
-          echo "Tagging commit: $HEAD"
-
-          tag="cmd/audit-validate/$PUBLISH_VERSION"
-          git tag -a "$tag" -m "Release $tag" "$HEAD"
-          if git push origin "$tag"; then
-            echo "  ✓ Pushed: $tag"
-          else
-            echo "::error::Failed to push $tag tag"
-            echo "WARNING: DO NOT delete already-pushed tags."
-            exit 1
-          fi
-
-  # =====================================================================
-  # Job 5: Verify modules are published and usable (after all tags pushed).
+  # Triggers proxy.golang.org indexing and runs a smoke test
+  # (go get + compile + install) against the freshly tagged versions.
   # =====================================================================
   verify:
     name: Verify Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [tag-tier3]
+    needs: [preflight, goreleaser]
     permissions:
-      contents: write
+      contents: read
+    env:
+      PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ secrets.RELEASE_TOKEN }}
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.26.2"
+          go-version-file: go.mod
+          cache: true
 
       - name: Trigger proxy indexing (best-effort)
         run: |
-          # Trigger indexing but don't fail if the proxy is slow.
-          # The proxy indexes on demand — consumers will trigger it.
-          for mod in $PUBLISH_MODULES; do
+          set -euo pipefail
+          while IFS='|' read -r dir mod prefix; do
+            [ -z "$mod" ] && continue
             echo "Requesting $mod@$PUBLISH_VERSION ..."
             if GOPROXY=https://proxy.golang.org go list -m "$mod@$PUBLISH_VERSION" 2>/dev/null; then
               echo "  ✓ indexed"
             else
               echo "  ⚠ not yet indexed (will index on first consumer request)"
             fi
-          done
+          done < <(make -s --no-print-directory print-publish-modules)
 
-      - name: Smoke test (via GOPROXY=direct)
+      - name: Smoke test (go get + compile)
         run: |
           set -euo pipefail
+          REPO_ROOT="$PWD"
           dir=$(mktemp -d)
           trap 'rm -rf "$dir"' EXIT
           cd "$dir"
 
           go mod init smoketest
-          for mod in $PUBLISH_MODULES; do
+          while IFS='|' read -r src mod prefix; do
+            [ -z "$mod" ] && continue
             GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go get "$mod@$PUBLISH_VERSION"
-          done
+          done < <(cd "$REPO_ROOT" && make -s --no-print-directory print-publish-modules)
 
           cat > main.go << 'GOEOF'
           package main
@@ -670,6 +718,7 @@ jobs:
             _ "github.com/axonops/audit/webhook"
             _ "github.com/axonops/audit/loki"
             _ "github.com/axonops/audit/outputconfig"
+            _ "github.com/axonops/audit/outputs"
             _ "github.com/axonops/audit/secrets"
             _ "github.com/axonops/audit/secrets/openbao"
             _ "github.com/axonops/audit/secrets/vault"
@@ -682,74 +731,95 @@ jobs:
           GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go install "github.com/axonops/audit/cmd/audit-validate@$PUBLISH_VERSION"
           echo "✓ All modules compile and install successfully"
 
-      - name: Update example go.mod files
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  # =====================================================================
+  # Job: invariants
+  # =====================================================================
+  # Final post-release sanity gate: every published go.mod references
+  # the released version. Catches drift introduced if anything raced
+  # the release window.
+  # =====================================================================
+  invariants:
+    name: Release Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [preflight, tag-all, verify]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout merge SHA
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.tag-all.outputs.merge_sha }}
+          persist-credentials: false
 
-          # Update capstone example (all tier-2 modules are now on proxy)
-          cd examples/17-capstone
-          echo "Updating examples/17-capstone/go.mod..."
-          go mod edit -require "github.com/axonops/audit@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/file@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/loki@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/outputconfig@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/secrets/openbao@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/syslog@$PUBLISH_VERSION"
-          go mod edit -require "github.com/axonops/audit/webhook@$PUBLISH_VERSION"
-          GOWORK=off GOPROXY=direct GONOSUMCHECK=github.com/axonops/audit GONOSUMDB=github.com/axonops/audit go mod tidy
-          echo "  ✓ Tidied."
-          cd "$GITHUB_WORKSPACE"
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
 
-          git add examples/17-capstone/go.mod examples/17-capstone/go.sum
-          if git diff --cached --quiet; then
-            echo "No example changes"
-          else
-            git commit -m "release: update example deps to $PUBLISH_VERSION"
-            git push origin main
-            echo "✓ Pushed example go.mod updates"
-          fi
+      - name: make check-release-invariants
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
+        run: make check-release-invariants VERSION="$PUBLISH_VERSION"
 
   # =====================================================================
-  # Summary (always runs)
+  # Job: summary
   # =====================================================================
   summary:
     name: Summary
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    needs: [ci, tag-tier0, goreleaser, tag-tier1, tag-tier2, tag-tier3, verify]
+    needs:
+      - preflight
+      - ci
+      - fuzz-long
+      - bench-advisory
+      - api-check
+      - update-deps-pr
+      - wait-for-pr-merge
+      - tag-all
+      - goreleaser
+      - verify
+      - invariants
     if: always()
     steps:
+      - name: Checkout (for make print-publish-modules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
       - name: Generate summary
+        env:
+          PUBLISH_VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          cat >> "$GITHUB_STEP_SUMMARY" << EOF
-          ## Release: $PUBLISH_VERSION
-
-          | Step | Status |
-          |------|--------|
-          | CI Gate | ${{ needs.ci.result }} |
-          | Tag Tier 0 (core + secrets) | ${{ needs.tag-tier0.result }} |
-          | GoReleaser | ${{ needs.goreleaser.result }} |
-          | Tag Tier 1 (core-dependent) | ${{ needs.tag-tier1.result }} |
-          | Tag Tier 2 (outputconfig, outputs) | ${{ needs.tag-tier2.result }} |
-          | Tag Tier 3 (cmd/audit-validate) | ${{ needs.tag-tier3.result }} |
-          | Verify Release | ${{ needs.verify.result }} |
-
-          **Modules:**
-
-          | Module | proxy | docs |
-          |--------|-------|------|
-          EOF
-
-          for mod in $PUBLISH_MODULES; do
-            proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
-            proxy="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
-            pkgdev="https://pkg.go.dev/${mod}@${PUBLISH_VERSION}"
-            echo "| \`$mod\` | [proxy]($proxy) | [docs]($pkgdev) |" >> "$GITHUB_STEP_SUMMARY"
-          done
-
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**GoReleaser** completed as part of this workflow." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Release: $PUBLISH_VERSION"
+            echo
+            echo '| Step | Status |'
+            echo '|------|--------|'
+            echo "| Preflight | ${{ needs.preflight.result }} |"
+            echo "| CI Gate | ${{ needs.ci.result }} |"
+            echo "| Long Fuzz | ${{ needs.fuzz-long.result }} |"
+            echo "| Bench (advisory) | ${{ needs.bench-advisory.result }} |"
+            echo "| API Check | ${{ needs.api-check.result }} |"
+            echo "| Open release PR | ${{ needs.update-deps-pr.result }} |"
+            echo "| Wait for merge | ${{ needs.wait-for-pr-merge.result }} |"
+            echo "| Tag all modules | ${{ needs.tag-all.result }} |"
+            echo "| GoReleaser | ${{ needs.goreleaser.result }} |"
+            echo "| Verify | ${{ needs.verify.result }} |"
+            echo "| Invariants | ${{ needs.invariants.result }} |"
+            echo
+            echo '### Modules'
+            echo
+            echo '| Module | proxy | docs |'
+            echo '|--------|-------|------|'
+            while IFS='|' read -r dir mod prefix; do
+              [ -z "$mod" ] && continue
+              proxy_path=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
+              proxy="https://proxy.golang.org/${proxy_path}/@v/${PUBLISH_VERSION}.info"
+              pkgdev="https://pkg.go.dev/${mod}@${PUBLISH_VERSION}"
+              echo "| \`$mod\` | [proxy]($proxy) | [docs]($pkgdev) |"
+            done < <(make -s --no-print-directory print-publish-modules)
+          } >> "$GITHUB_STEP_SUMMARY"

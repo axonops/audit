@@ -234,15 +234,27 @@ auditor's introspection primitives:
 
 The introspection primitives (`Auditor.QueueLen()`,
 `Auditor.QueueCap()`, `Auditor.OutputNames()`,
-`Auditor.IsDisabled()`) drive these checks without coupling the
-consumer to a specific HTTP framework.
+`Auditor.LastDeliveryAge(name)`, `Auditor.IsDisabled()`) drive
+these checks without coupling the consumer to a specific HTTP
+framework.
 
 ### `/healthz` — liveness
 
-Return 503 when the queue saturation exceeds 90 % (a jammed
-queue is non-recoverable from inside the process — Kubernetes
-will restart the pod). The 90 % threshold is a default; tune for
-your workload using the
+Return 503 when EITHER queue saturation exceeds 90 % OR any
+output's last successful delivery is older than the staleness
+threshold (default 30 s). Both failure modes are
+non-recoverable from inside the process — Kubernetes will
+restart the pod.
+
+The two checks address different failure modes:
+
+| Failure mode | Caught by |
+|---|---|
+| Slow drain — queue fills because an output's `Write` blocks the drain goroutine | Queue saturation |
+| Silent output stall — `Write` enqueues fine; the output's batch goroutine fails to deliver to the remote endpoint (TCP half-open, retries exhausted) | Per-output staleness |
+
+The 90 % saturation threshold is a default; tune for your
+workload using the
 [Capacity Planning tier table](deployment.md#capacity-planning).
 A worked example: with `queue_size: 10000` and a sustained drain
 rate of 5000 events/s, 90 % saturation = 9000 events ≈ 1.8 s of
@@ -250,8 +262,19 @@ backlog. Pick a threshold that exceeds your Kubernetes probe's
 `failureThreshold × periodSeconds` so transient spikes do not
 flap the probe.
 
+The 30 s staleness threshold MUST exceed your quietest expected
+gap between events plus the worst-case retry-backoff window, or
+healthy-but-idle outputs will spuriously trip the probe.
+`LastDeliveryAge` returns `0` both for an output that has never
+delivered and for an output that does not implement
+`LastDeliveryReporter`; both are treated as healthy here, since
+staleness can only be diagnosed once a positive baseline exists.
+
 ```go
-const healthzSaturationThreshold = 0.90
+const (
+    healthzSaturationThreshold = 0.90
+    healthzStaleThreshold      = 30 * time.Second
+)
 
 func healthzHandler(a *audit.Auditor) http.HandlerFunc {
     return func(w http.ResponseWriter, _ *http.Request) {
@@ -264,13 +287,23 @@ func healthzHandler(a *audit.Auditor) http.HandlerFunc {
         w.Header().Set("Content-Type", "application/json")
         if saturation > healthzSaturationThreshold {
             w.WriteHeader(http.StatusServiceUnavailable)
-            fmt.Fprintf(w,
-                `{"status":"unhealthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",
+            _, _ = fmt.Fprintf(w,
+                `{"status":"unhealthy","reason":"queue_saturated","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",
                 queueLen, queueCap, saturation)
             return
         }
+        for _, name := range a.OutputNames() {
+            age := a.LastDeliveryAge(name)
+            if age > 0 && age > healthzStaleThreshold {
+                w.WriteHeader(http.StatusServiceUnavailable)
+                _, _ = fmt.Fprintf(w,
+                    `{"status":"unhealthy","reason":"output_stale","output":%q,"age_seconds":%.1f}`+"\n",
+                    name, age.Seconds())
+                return
+            }
+        }
         w.WriteHeader(http.StatusOK)
-        fmt.Fprintf(w,
+        _, _ = fmt.Fprintf(w,
             `{"status":"healthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",
             queueLen, queueCap, saturation)
     }
@@ -290,12 +323,12 @@ func readyzHandler(a *audit.Auditor) http.HandlerFunc {
         w.Header().Set("Content-Type", "application/json")
         if a.IsDisabled() {
             w.WriteHeader(http.StatusServiceUnavailable)
-            fmt.Fprintln(w, `{"status":"not-ready","reason":"auditor is disabled"}`)
+            _, _ = fmt.Fprintln(w, `{"status":"not-ready","reason":"auditor is disabled"}`)
             return
         }
         if len(a.OutputNames()) == 0 {
             w.WriteHeader(http.StatusServiceUnavailable)
-            fmt.Fprintln(w, `{"status":"not-ready","reason":"no outputs configured"}`)
+            _, _ = fmt.Fprintln(w, `{"status":"not-ready","reason":"no outputs configured"}`)
             return
         }
         w.WriteHeader(http.StatusOK)
@@ -318,15 +351,6 @@ operator-correctable belongs in `/readyz`.
 
 A complete runnable implementation lives at
 [examples/18-health-endpoint](../examples/18-health-endpoint/).
-
-> Per-output staleness — failing liveness when a single output
-> has not delivered for N seconds — needs a new public API
-> (`Auditor.LastDeliveryAge(name)`) and is tracked under
-> [#753](https://github.com/axonops/audit/issues/753). Until it
-> lands, the queue-saturation check above catches the
-> slow-output case via backpressure, because a stalled output
-> blocks the drain goroutine and the intake queue starts to
-> fill.
 
 ## 🔀 Per-Output Metrics (`OutputMetrics`)
 

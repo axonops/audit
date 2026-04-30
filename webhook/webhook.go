@@ -128,12 +128,18 @@ type Output struct {
 	drops         dropLimiter // rate-limits buffer-full warnings
 	flushIvl      time.Duration
 	timeout       time.Duration
-	mu            sync.Mutex
-	batchSize     int
-	maxBatchBytes int
-	maxEventBytes int
-	maxRetries    int
-	closed        atomic.Bool
+	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
+	// HTTP 2xx response (post-retry). Webhook is async — Write only
+	// enqueues — so the timestamp updates from the batch goroutine
+	// after the server confirms receipt. Powers
+	// [audit.Auditor.LastDeliveryAge] (#753).
+	lastDeliveryNanos atomic.Int64
+	mu                sync.Mutex
+	batchSize         int
+	maxBatchBytes     int
+	maxEventBytes     int
+	maxRetries        int
+	closed            atomic.Bool
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -332,6 +338,15 @@ func (w *Output) ReportsDelivery() bool { return true }
 // SetOutputMetrics receives the per-output metrics instance.
 func (w *Output) SetOutputMetrics(m audit.OutputMetrics) {
 	w.outputMetrics.Store(&m)
+}
+
+// LastDeliveryNanos returns the wall-clock UnixNano of the most recent
+// HTTP 2xx response, or 0 if no batch has yet been delivered. Updated
+// from the batch goroutine after the server confirms receipt — failed
+// batches (network errors, 4xx, retries-exhausted) leave the timestamp
+// frozen. Implements [audit.LastDeliveryReporter] (#753).
+func (w *Output) LastDeliveryNanos() int64 {
+	return w.lastDeliveryNanos.Load()
 }
 
 // Name returns the human-readable identifier for this output.

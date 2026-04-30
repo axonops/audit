@@ -86,6 +86,11 @@ type DestinationKeyer interface {
 // returns true, the core auditor skips its default per-event
 // [Metrics.RecordDelivery] calls for that output — the output is
 // responsible for calling them after actual delivery.
+//
+// Not to be confused with [LastDeliveryReporter] — that interface
+// reports a single timestamp for /healthz staleness probes; this
+// one controls per-event metrics dispatch (success / error /
+// filtered).
 type DeliveryReporter interface {
 	ReportsDelivery() bool
 }
@@ -207,6 +212,41 @@ type DiagnosticLoggerReceiver interface {
 // outputconfig.WithOutputMetrics.
 type OutputMetricsReceiver interface {
 	SetOutputMetrics(m OutputMetrics)
+}
+
+// LastDeliveryReporter is an optional interface that [Output]
+// implementations may satisfy to expose the timestamp of their most
+// recent successful delivery. Outputs implementing this interface
+// enable [Auditor.LastDeliveryAge], used by /healthz handlers to
+// detect silently-failing async outputs whose own buffer is dropping
+// events while the core auditor queue stays low.
+//
+// Not to be confused with [DeliveryReporter] — that interface
+// controls per-event metrics dispatch (success / error / filtered);
+// this one reports a single timestamp for staleness probes.
+//
+// LastDeliveryNanos returns the wall-clock nanos of the last
+// successful end-to-end delivery (NOT the moment [Output.Write]
+// returned — for async outputs that distinction is the whole
+// point), or 0 if no delivery has yet succeeded. Wall-clock means
+// the value can jump on system time changes; /healthz thresholds
+// SHOULD be ≥ 10 s to absorb sub-second NTP slews. The reference
+// example in [examples/18-health-endpoint] uses 30 s — see that
+// example's README for picking a threshold for your workload.
+//
+// The returned value is NOT guaranteed monotonic across calls —
+// wall-clock time can step backwards on NTP correction, daylight
+// saving transitions, or operator clock changes. Callers reading
+// two successive values MUST NOT assume `b >= a`. The canonical
+// consumer ([Auditor.LastDeliveryAge]) computes [time.Since] which
+// already absorbs negative differences as zero.
+//
+// Concurrency: implementations MUST be safe for concurrent use
+// from any goroutine. The canonical implementation is a single
+// [sync/atomic.Int64] updated on every successful delivery and
+// loaded on every [LastDeliveryNanos] call.
+type LastDeliveryReporter interface {
+	LastDeliveryNanos() int64
 }
 
 // MaxOutputNameLength is the maximum allowed length for an output name.

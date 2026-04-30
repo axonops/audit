@@ -125,6 +125,12 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 	logger        atomic.Pointer[slog.Logger] // swapped atomically post-construction (#474)
 	drops         dropLimiter                 // rate-limits buffer-full warnings
 	maxEventBytes int                         // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
+	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
+	// HTTP 2xx push response. Loki is async — Write only enqueues —
+	// so the timestamp updates from the batch goroutine after the
+	// push API confirms receipt. Powers
+	// [audit.Auditor.LastDeliveryAge] (#753).
+	lastDeliveryNanos atomic.Int64
 
 	// Flush-path state — owned exclusively by batchLoop goroutine.
 	streams        map[string]*lokiStream // reused across flushes
@@ -363,6 +369,16 @@ func (o *Output) ReportsDelivery() bool { return true }
 // SetOutputMetrics receives the per-output metrics instance.
 func (o *Output) SetOutputMetrics(m audit.OutputMetrics) {
 	o.outputMetrics.Store(&m)
+}
+
+// LastDeliveryNanos returns the wall-clock UnixNano of the most recent
+// HTTP 2xx push response, or 0 if no batch has yet been delivered.
+// Updated from the batch goroutine after the push API confirms
+// receipt — failed pushes (network errors, 4xx, retries-exhausted)
+// leave the timestamp frozen. Implements
+// [audit.LastDeliveryReporter] (#753).
+func (o *Output) LastDeliveryNanos() int64 {
+	return o.lastDeliveryNanos.Load()
 }
 
 // Name returns the human-readable identifier for this output.

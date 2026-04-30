@@ -226,6 +226,10 @@ func (o *Output) applyRequestHeaders(req *http.Request, compressed bool) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
+	// Record the wall-clock delivery timestamp for #753
+	// LastDeliveryReporter. Updated AFTER the push API returns 2xx
+	// so retry-exhausted batches leave the timestamp frozen.
+	o.lastDeliveryNanos.Store(time.Now().UnixNano())
 	if omp := o.outputMetrics.Load(); omp != nil {
 		(*omp).RecordFlush(batchSize, dur)
 	}

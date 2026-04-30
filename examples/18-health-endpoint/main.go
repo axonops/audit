@@ -18,9 +18,14 @@
 // Demonstrates how to expose Kubernetes-style liveness and
 // readiness probes for a service that uses the audit library:
 //
-//   - /healthz (liveness): returns 503 when the audit queue is
-//     more than 90 % saturated. A jammed queue is non-recoverable
-//     from inside the process; a failing liveness probe tells the
+//   - /healthz (liveness): returns 503 when EITHER the audit
+//     queue is more than 90 % saturated OR any output's last
+//     successful delivery is older than the staleness threshold
+//     (default 30 s). The two checks together catch both core
+//     pipeline jams (queue saturation) and silent per-output
+//     stalls (TCP half-open, retries exhausted) that leave the
+//     queue draining cleanly to one output while another drops
+//     every event. A failing liveness probe tells the
 //     orchestrator to restart the pod.
 //
 //   - /readyz (readiness): returns 503 when the auditor is
@@ -29,8 +34,8 @@
 //     does NOT restart it.
 //
 // The handlers query Auditor.QueueLen, QueueCap, OutputNames,
-// IsDisabled — all part of the public introspection surface
-// (audit/introspect.go).
+// LastDeliveryAge, IsDisabled — all part of the public
+// introspection surface (audit/introspect.go).
 //
 // Run:
 //
@@ -68,6 +73,18 @@ var taxonomyYAML []byte
 // docs recommend; tune for your workload — a larger queue
 // tolerates a higher absolute backlog before declaring a fault.
 const healthzSaturationThreshold = 0.90
+
+// healthzStaleThreshold is the maximum age of an output's most
+// recent successful delivery before /healthz returns 503. Catches
+// silently-failing async outputs (TCP half-open, retries
+// exhausted) where Write enqueues succeed but no events ever land
+// downstream. 30 s leaves headroom for sub-second NTP slews and
+// idle periods between bursts of audit traffic; tune to your
+// expected event cadence — shorter for high-volume systems,
+// longer for sporadic auditors. The threshold MUST exceed your
+// quietest expected gap between events plus retry-backoff window
+// or healthy-but-idle outputs will spuriously fail.
+const healthzStaleThreshold = 30 * time.Second
 
 func main() {
 	auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml")
@@ -115,10 +132,17 @@ func main() {
 }
 
 // healthzHandler returns the /healthz liveness handler. It
-// reports 503 when queue saturation exceeds
-// healthzSaturationThreshold; otherwise 200. The body in both
-// cases is small JSON so log-aggregating probes can record the
-// observed depth.
+// reports 503 when EITHER queue saturation exceeds
+// healthzSaturationThreshold OR any output's last successful
+// delivery is older than healthzStaleThreshold. Either failure
+// mode means events are not reaching their destination and the
+// pod cannot self-recover.
+//
+// LastDeliveryAge returns 0 when the output has never delivered
+// (boot, no traffic) and when the output does not implement
+// LastDeliveryReporter. Both cases are treated as healthy here
+// — staleness can only be diagnosed once a positive baseline
+// exists.
 func healthzHandler(a *audit.Auditor) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		queueLen := a.QueueLen()
@@ -132,10 +156,24 @@ func healthzHandler(a *audit.Auditor) http.HandlerFunc {
 		if saturation > healthzSaturationThreshold {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = fmt.Fprintf(w,
-				`{"status":"unhealthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f,"threshold":%.2f}`+"\n",
+				`{"status":"unhealthy","reason":"queue_saturated","queue_len":%d,"queue_cap":%d,"saturation":%.2f,"threshold":%.2f}`+"\n",
 				queueLen, queueCap, saturation, healthzSaturationThreshold)
 			return
 		}
+
+		// Per-output staleness — catches the silently-failing
+		// async output that QueueLen alone cannot detect.
+		for _, name := range a.OutputNames() {
+			age := a.LastDeliveryAge(name)
+			if age > 0 && age > healthzStaleThreshold {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = fmt.Fprintf(w,
+					`{"status":"unhealthy","reason":"output_stale","output":%q,"age_seconds":%.1f,"threshold_seconds":%.0f}`+"\n",
+					name, age.Seconds(), healthzStaleThreshold.Seconds())
+				return
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintf(w,
 			`{"status":"healthy","queue_len":%d,"queue_cap":%d,"saturation":%.2f}`+"\n",

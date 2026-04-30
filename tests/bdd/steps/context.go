@@ -37,13 +37,15 @@ import (
 // A fresh context is created for every scenario in BeforeScenario.
 type AuditTestContext struct { //nolint:govet // fieldalignment: readability preferred over packing
 	// Auditor state.
-	Auditor           *audit.Auditor
-	EventHandle       *audit.EventHandle
-	LastEvent         audit.Event // captured by NewEvent / NewEventKV scenarios (#597)
-	LastErr           error
-	LastAuditDuration time.Duration // measured by `I audit event ... with required fields` (#549 sync timing)
-	Taxonomy          *audit.Taxonomy
-	Options           []audit.Option
+	Auditor             *audit.Auditor
+	EventHandle         *audit.EventHandle
+	LastEvent           audit.Event // captured by NewEvent / NewEventKV scenarios (#597)
+	LastErr             error
+	LastAuditDuration   time.Duration // measured by `I audit event ... with required fields` (#549 sync timing)
+	LastDeliveryAge     time.Duration // captured by `I read LastDeliveryAge for ...` (#753)
+	LastDeliveryAgeName string        // associated output name for the staleness assertion (#753)
+	Taxonomy            *audit.Taxonomy
+	Options             []audit.Option
 
 	// Output capture.
 	StdoutBuf         *bytes.Buffer     // in-memory output for non-Docker scenarios
@@ -121,6 +123,8 @@ func (tc *AuditTestContext) Reset() {
 	tc.EventHandle = nil
 	tc.LastErr = nil
 	tc.LastAuditDuration = 0
+	tc.LastDeliveryAge = 0
+	tc.LastDeliveryAgeName = ""
 	tc.Taxonomy = nil
 	tc.Options = nil
 	tc.StdoutBuf = nil
@@ -226,4 +230,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerAsyncEdgesSteps(ctx, tc)
 	registerSyncDeliverySteps(ctx, tc)
 	registerMissingCoverageSteps(ctx, tc)
+	registerLastDeliveryAgeSteps(ctx, tc)
 }

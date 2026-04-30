@@ -15,11 +15,17 @@ test hooks.
 - The difference between liveness and readiness, and what each
   should mean for an audit-using service.
 - How to drive `/healthz` from `Auditor.QueueLen()` /
-  `Auditor.QueueCap()`.
+  `Auditor.QueueCap()` AND `Auditor.LastDeliveryAge(name)` for
+  per-output staleness.
 - How to drive `/readyz` from `Auditor.IsDisabled()` and
   `Auditor.OutputNames()`.
-- Why the queue-saturation threshold (90 % by default) is a
-  tuning knob and not a contract — and how to choose it.
+- Why the queue-saturation threshold (90 % by default) and
+  staleness threshold (30 s by default) are tuning knobs, not
+  contracts — and how to choose them.
+- Why per-output staleness catches failure modes that queue
+  saturation alone cannot — e.g., a webhook output silently
+  exhausting retries while a stdout output drains the queue
+  cleanly.
 
 ## Liveness vs readiness
 
@@ -96,6 +102,12 @@ saturation in the body.
 
 ### `/healthz` — liveness
 
+The handler combines two checks: queue saturation (catches the
+core pipeline jamming up) and per-output staleness (catches an
+async output whose retry-exhausted batches stop reaching the
+remote endpoint, even though the queue continues to drain
+cleanly into the other outputs).
+
 ```go
 func healthzHandler(a *audit.Auditor) http.HandlerFunc {
     return func(w http.ResponseWriter, _ *http.Request) {
@@ -107,8 +119,20 @@ func healthzHandler(a *audit.Auditor) http.HandlerFunc {
         }
         if saturation > 0.90 {
             w.WriteHeader(http.StatusServiceUnavailable)
-            // ... error body ...
+            // ... queue-saturated body ...
             return
+        }
+        // Per-output staleness — only meaningful once an output
+        // has delivered at least once. LastDeliveryAge returns 0
+        // for never-delivered or for outputs that don't implement
+        // LastDeliveryReporter; both are treated as healthy here.
+        for _, name := range a.OutputNames() {
+            age := a.LastDeliveryAge(name)
+            if age > 0 && age > 30*time.Second {
+                w.WriteHeader(http.StatusServiceUnavailable)
+                // ... output-stale body, includes name + age ...
+                return
+            }
         }
         w.WriteHeader(http.StatusOK)
         // ... healthy body ...
@@ -116,17 +140,40 @@ func healthzHandler(a *audit.Auditor) http.HandlerFunc {
 }
 ```
 
-The 90 % threshold is the default the docs recommend. **Tune
-for your workload.** A larger queue tolerates a higher absolute
-backlog before declaring a fault; a smaller queue trips earlier.
+The 90 % saturation threshold is the default the docs recommend.
+**Tune for your workload.** A larger queue tolerates a higher
+absolute backlog before declaring a fault; a smaller queue trips
+earlier.
 
-**Worked example.** With `queue_size: 10000` and a sustained
-drain rate of 5000 events/s, 90 % saturation = 9000 events ≈
-1.8 s of backlog. Choose the threshold so that the absolute
-backlog exceeds your Kubernetes probe's `failureThreshold ×
-periodSeconds` — otherwise transient spikes will flap the probe.
-The [Capacity Planning tier table](../../docs/deployment.md#capacity-planning)
+**Worked saturation example.** With `queue_size: 10000` and a
+sustained drain rate of 5000 events/s, 90 % saturation = 9000
+events ≈ 1.8 s of backlog. Choose the threshold so that the
+absolute backlog exceeds your Kubernetes probe's
+`failureThreshold × periodSeconds` — otherwise transient spikes
+will flap the probe. The
+[Capacity Planning tier table](../../docs/deployment.md#capacity-planning)
 gives concrete `queue_size` values per event-rate tier.
+
+**Picking a staleness threshold.** The threshold MUST exceed
+your quietest expected gap between events plus the worst-case
+retry-backoff window for your slowest output, or healthy-but-idle
+outputs will spuriously trip the probe. 30 s is conservative for
+most workloads:
+
+| Workload pattern | Suggested threshold |
+|---|---|
+| Continuous traffic, high event rate | 5 × the probe interval (e.g., 50 s for a 10 s probe) |
+| Sporadic traffic with idle gaps under 1 minute | 30 s (default) |
+| Truly bursty traffic (idle for minutes) | The longest plausible idle gap, plus retry-backoff window |
+
+`LastDeliveryAge` returns `0` both for an output that has never
+delivered (newly-started auditor) and for an output that does
+not implement `LastDeliveryReporter`. The handler treats `0` as
+healthy — a baseline must exist before staleness can be
+diagnosed. Once an output produces its first successful
+delivery, the timestamp advances on every subsequent success and
+freezes on every failure, so the age grows unbounded only when
+deliveries stop.
 
 ### `/readyz` — readiness
 
@@ -153,9 +200,10 @@ are safe to call concurrently from any goroutine.
 auditor construction (in `outputconfig.New`); it does not flip
 back to empty if a downstream output starts failing later. So
 `/readyz` mostly catches the "auditor was disabled" or
-"`outputs.yaml` was missing or empty at startup" case. To detect
-a runtime delivery stall on a specific output, you need
-`Auditor.LastDeliveryAge(name)` — see "What's NOT here" below.
+"`outputs.yaml` was missing or empty at startup" case. Runtime
+per-output delivery stalls are caught by `/healthz` via
+`Auditor.LastDeliveryAge(name)` — see the staleness check
+above.
 
 ## Production checklist
 
@@ -203,25 +251,22 @@ for simplicity. Three things to change before deploying:
 
 ## What's NOT here
 
-- **Per-output staleness**. A real production probe would also
-  fail liveness if an output has not delivered an event in N
-  seconds — a hung downstream syslog server, for example.
-  Per-output staleness needs a new public API
-  (`Auditor.LastDeliveryAge(outputName)`) that is tracked under
-  [#753](https://github.com/axonops/audit/issues/753). Until
-  that lands, the queue-saturation check catches the case where
-  the slow output blocks the drain goroutine and the queue
-  starts to fill.
-
 - **Authentication on the probe endpoint**. Production probes
   typically run on a separate listener bound to localhost (or
   the pod IP only) so probe traffic doesn't hit the public
   authentication path. See the Production checklist above.
 
-- **Runtime-configurable threshold.** This example uses a
-  package-level `const` for the saturation threshold. Real
-  services should expose this as a flag or env var so operators
-  can tune without redeploying.
+- **Runtime-configurable thresholds.** This example uses
+  package-level `const` values for the saturation and staleness
+  thresholds. Real services should expose them as flags or env
+  vars so operators can tune without redeploying.
+
+- **Per-output thresholds.** The example uses one staleness
+  threshold for every output. A consumer that mixes a busy
+  Loki output (events every few seconds) with an archival file
+  output (events possibly minutes apart) may want different
+  thresholds per output — keep a `map[string]time.Duration` and
+  look up the per-output threshold inside the loop.
 
 ## Files
 

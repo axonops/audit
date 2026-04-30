@@ -181,6 +181,10 @@ func (w *Output) doPost(ctx context.Context, body []byte) (bool, error) {
 
 // recordSuccess records successful delivery metrics for a batch.
 func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
+	// Record the wall-clock delivery timestamp for #753
+	// LastDeliveryReporter. Updated AFTER an HTTP 2xx response
+	// returns so retry-exhausted batches leave the timestamp frozen.
+	w.lastDeliveryNanos.Store(time.Now().UnixNano())
 	if omp := w.outputMetrics.Load(); omp != nil {
 		(*omp).RecordFlush(batchSize, dur)
 	}

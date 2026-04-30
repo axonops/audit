@@ -20,6 +20,8 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // StdoutFactory returns an [OutputFactory] that creates a
@@ -69,8 +71,13 @@ type StdoutConfig struct {
 // StdoutOutput is safe for concurrent use.
 type StdoutOutput struct {
 	writer io.Writer
-	mu     sync.Mutex
-	closed bool
+	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
+	// successful Write. Stdout is synchronous — Write success equals
+	// delivery success — so the timestamp updates inside Write before
+	// returning nil. Powers [Auditor.LastDeliveryAge] (#753).
+	lastDeliveryNanos atomic.Int64
+	mu                sync.Mutex
+	closed            bool
 }
 
 // NewStdout returns a [StdoutOutput] that writes to [os.Stdout].
@@ -120,7 +127,22 @@ func (s *StdoutOutput) Write(data []byte) error {
 	if _, err := s.writer.Write(data); err != nil {
 		return fmt.Errorf("audit: stdout output write: %w", err)
 	}
+	// Synchronous output: Write success == delivery success (#753).
+	s.lastDeliveryNanos.Store(time.Now().UnixNano())
 	return nil
+}
+
+// LastDeliveryNanos returns the wall-clock UnixNano of the most
+// recent successful [StdoutOutput.Write], or 0 if no write has yet
+// succeeded. Implements [LastDeliveryReporter] (#753).
+//
+// The Load is intentionally lock-free even though [StdoutOutput.Write]
+// stores while holding s.mu — atomic.Int64 provides the
+// happens-before relationship; the mutex on the Write side is for
+// the closed-flag check and the underlying writer call, not for
+// the timestamp.
+func (s *StdoutOutput) LastDeliveryNanos() int64 {
+	return s.lastDeliveryNanos.Load()
 }
 
 // Close marks the output as closed. Subsequent calls to [Write] return

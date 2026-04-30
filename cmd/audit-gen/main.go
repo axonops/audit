@@ -128,20 +128,9 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 	}, exitCodeContinue
 }
 
-// maxInputSize is the maximum taxonomy file size (matches audit.MaxTaxonomyInputSize).
-const maxInputSize = 1 << 20 // 1 MiB
-
 func execute(cfg *cliConfig, stdout, stderr io.Writer) int {
-	info, err := os.Stat(cfg.input)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "audit-gen: read input: %v\n", err)
-		return exitYAMLError
-	}
-	if info.Size() > maxInputSize {
-		_, _ = fmt.Fprintf(stderr, "audit-gen: input file size %d exceeds maximum %d bytes\n", info.Size(), maxInputSize)
-		return exitYAMLError
-	}
-
+	// No input-size cap: taxonomy is developer-trusted at both
+	// library and CLI boundaries (#646).
 	data, err := os.ReadFile(cfg.input)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: read input: %v\n", err)

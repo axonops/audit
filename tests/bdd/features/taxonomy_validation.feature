@@ -80,12 +80,12 @@ Feature: Taxonomy Validation
       audit: invalid input: input is empty
       """
 
-  Scenario: Oversized YAML input is rejected
-    When I try to parse taxonomy from YAML exceeding 1 MiB
-    Then the taxonomy parse should fail with exact error:
-      """
-      audit: invalid input: input size 1048577 exceeds maximum 1048576 bytes
-      """
+  Scenario: Large taxonomy YAML parses successfully without a size cap
+    # Cap removal #646 — taxonomy YAML is developer-trusted input.
+    # A YAML alias bomb amplifies regardless of input size, so a byte
+    # cap is not a defense; ParseTaxonomyYAML imposes none.
+    When I try to parse a valid taxonomy that exceeds 1 MiB
+    Then the taxonomy parse should succeed
 
   Scenario: Invalid YAML syntax is rejected
     When I try to parse taxonomy from YAML:

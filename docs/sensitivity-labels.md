@@ -103,9 +103,9 @@ Framework fields are never stripped, regardless of label configuration:
 - `severity` — resolved severity (0-10)
 - `duration_ms` — request duration (middleware events)
 - `event_category` — which category triggered delivery
-- `app_name` — application identifier (when configured)
-- `host` — hostname (when configured)
-- `timezone` — timezone context (when configured)
+- `app_name` — application identifier (required at construction; `audit.New()` returns `ErrAppNameRequired` if unset)
+- `host` — hostname (required at construction; `audit.New()` returns `ErrHostRequired` if unset)
+- `timezone` — timezone context (always populated; defaults to `time.Now().Location().String()` if `WithTimezone` is not provided)
 - `pid` — process ID (always present)
 
 This ensures every output receives a structurally valid, identifiable audit event.

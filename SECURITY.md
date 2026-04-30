@@ -384,3 +384,28 @@ The supply-chain primitives we DO provide are stronger for both audiences:
 
 See [`docs/releasing.md` "Software Bill of Materials"](docs/releasing.md#software-bill-of-materials-sbom)
 for the full rationale and operator workflow.
+
+## Artifact Signing (Sigstore Keyless)
+
+Every release publishes a Sigstore-keyless signature over
+`checksums.txt` alongside the existing build-provenance attestation
+(#516). The two mechanisms protect different properties:
+
+- **Cosign signature** (`checksums.txt.sig` + `checksums.txt.pem`)
+  proves the checksum file came from the `axonops/audit`
+  GitHub Actions workflow at the tagged ref. There is no long-lived
+  private key — each signature is bound to the OIDC identity of the
+  workflow run via Sigstore's Fulcio CA, and the signature is
+  recorded in the public Rekor transparency log.
+- **Build provenance** (`gh attestation verify ...`) proves the
+  artifact was built from a specific commit SHA by that workflow.
+
+Verify both for a complete chain of custody. The exact `cosign
+verify-blob` command is in
+[`docs/releasing.md` "Verify a Release with Cosign"](docs/releasing.md#verify-a-release-with-cosign).
+
+Signing identity:
+`https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/<tag>`.
+Issuer: `https://token.actions.githubusercontent.com`. A signature
+that does not match this identity-issuer pair MUST be treated as
+untrusted.

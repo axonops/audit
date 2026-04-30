@@ -114,6 +114,150 @@ If a release contains a serious bug, the correct response is:
 
 ---
 
+## Verify a Release with Cosign
+
+Every release publishes two artifacts alongside the usual binaries
+and `checksums.txt`:
+
+- `checksums.txt.sig` — Sigstore-keyless signature of the checksum
+  file.
+- `checksums.txt.pem` — short-lived X.509 certificate issued by
+  Fulcio, binding the signature to the GitHub Actions identity that
+  produced this release.
+
+The signing flow uses Sigstore [keyless OIDC] — there is no
+long-lived private key. Each release identity is the workflow file
+that produced it; the certificate's lifetime is ten minutes; the
+signature is recorded in the public Rekor transparency log.
+
+[keyless OIDC]: https://docs.sigstore.dev/cosign/signing/overview/
+
+### Required tools
+
+- [`cosign`](https://docs.sigstore.dev/cosign/installation/) ≥ v2.5
+  — earlier versions do not support the
+  `--certificate-github-workflow-repository` flag used below for
+  defence-in-depth identity verification.
+
+### Verify the checksum file
+
+Download `checksums.txt`, `checksums.txt.sig`, and `checksums.txt.pem`
+from the release page, then run:
+
+```bash
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-repository axonops/audit \
+  checksums.txt
+```
+
+The regex is anchored on both ends with literal dots escaped — an
+unanchored regex (`...v.*`) would also match a malicious identity
+like `https://github.com/evil/axonops/audit/.github/workflows/release.yml@refs/tags/v9.9.9-pwn`
+because `verify-blob` does substring/regex matching, not exact
+equality. The trailing `v.+$` requires at least one character after
+`v` so the regex cannot match a non-version path. The
+`--certificate-github-workflow-repository` flag is defence-in-depth
+— even if the regex anchors were bypassed, cosign rejects the
+verification when the workflow's source repository does not match.
+
+A successful run prints `Verified OK` and confirms three things:
+
+1. The checksum file was signed by a workflow run on the
+   `axonops/audit` repository (the anchored
+   `--certificate-identity-regexp` matches the GitHub Actions OIDC
+   subject and `--certificate-github-workflow-repository` matches
+   the source repo).
+2. The certificate was issued by Fulcio for a GHA OIDC token from
+   `token.actions.githubusercontent.com`.
+3. The signature is recorded in the Rekor public transparency log;
+   this command queries Rekor as part of verification.
+
+### Verify a binary against the verified checksum file
+
+Once `checksums.txt` is verified, every binary listed inside it can
+be authenticated by recomputing its hash:
+
+```bash
+sha256sum -c checksums.txt --ignore-missing
+```
+
+`--ignore-missing` lets you check a single binary without
+downloading the rest. The `Verified OK` line from `cosign` plus an
+`OK` line from `sha256sum` is the full chain of custody from
+`axonops/audit`'s GitHub Actions run to the local file.
+
+### Failure modes
+
+- **`Verified OK` not printed.** The signature does not verify
+  against the published certificate — consumers MUST NOT use the
+  artifact. Possible causes: wrong file pair (downloading `.sig`
+  from one release with `checksums.txt` from another), corrupted
+  download, or active tampering. Re-download from
+  `https://github.com/axonops/audit/releases` over HTTPS and retry.
+- **Identity-regex mismatch.** The certificate identity does not
+  match the anchored regex above. This is the strongest red flag
+  — someone signed the release from a different repository or
+  workflow file. Consumers MUST treat the artifact as untrusted
+  and not use it.
+- **`tlog entry not found`.** The release was signed but the
+  signature is not present in the Rekor public transparency log.
+  Real `axonops/audit` releases always record an entry; consumers
+  SHOULD treat a missing tlog entry as suspicious and refuse to
+  use the artifact.
+
+### Automating verification in CI
+
+The same `cosign verify-blob` command is suitable for a pre-deploy
+gate in any CI system. Minimal GitHub Actions example:
+
+```yaml
+- name: Verify audit-gen release
+  run: |
+    set -euo pipefail
+    VERSION=v1.0.0
+    URL="https://github.com/axonops/audit/releases/download/${VERSION}"
+    curl -fsSLO "${URL}/checksums.txt"
+    curl -fsSLO "${URL}/checksums.txt.sig"
+    curl -fsSLO "${URL}/checksums.txt.pem"
+    curl -fsSLO "${URL}/audit-gen_${VERSION#v}_linux_amd64.tar.gz"
+
+    cosign verify-blob \
+      --certificate checksums.txt.pem \
+      --signature checksums.txt.sig \
+      --certificate-identity-regexp '^https://github\.com/axonops/audit/\.github/workflows/release\.yml@refs/tags/v.+$' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      --certificate-github-workflow-repository axonops/audit \
+      checksums.txt
+
+    sha256sum -c checksums.txt --ignore-missing
+```
+
+Pin `cosign` to a specific version via
+`sigstore/cosign-installer@<sha>` in the workflow.
+
+### Composition with build provenance
+
+Every release also publishes a GitHub build-provenance attestation
+(`gh attestation verify ...`). The two mechanisms protect different
+properties:
+
+- The **cosign signature** proves `checksums.txt` was signed by a
+  workflow run on `axonops/audit` at the tagged ref. After
+  verifying the checksum file, `sha256sum -c checksums.txt`
+  extends that trust to every binary listed inside it.
+- The **build-provenance attestation** proves a specific binary
+  was built by that workflow from a specific source commit SHA,
+  recorded in the Rekor transparency log.
+
+Verify both for a complete supply-chain check from source commit
+to local file.
+
+---
+
 ## For Maintainers: Repository Protection Configuration
 
 The repository's release contract depends on three layers of GitHub

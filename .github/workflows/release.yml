@@ -638,6 +638,14 @@ jobs:
       - name: Set up go.work for inter-module resolution
         run: make workspace
 
+      # Sigstore keyless signing (#516). Installs the cosign binary
+      # so the GoReleaser `signs:` stanza can call `cosign sign-blob`
+      # against the GHA OIDC token (id-token: write above) for
+      # keyless certificate issuance from Fulcio. Pinned to the v4.1.1
+      # commit SHA per repository action-pin policy.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
@@ -654,6 +662,8 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/checksums.txt.sig
+            dist/checksums.txt.pem
 
   # =====================================================================
   # Job: verify

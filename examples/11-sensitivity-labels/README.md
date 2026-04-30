@@ -161,9 +161,9 @@ Nine framework fields can never be labeled or stripped:
 - `severity` — how important it is
 - `duration_ms` — how long it took (middleware events)
 - `event_category` — which category triggered delivery
-- `app_name` — application identifier (when configured)
-- `host` — hostname (when configured)
-- `timezone` — timezone context (when configured)
+- `app_name` — application identifier (required at construction; `audit.New()` returns `ErrAppNameRequired` if unset)
+- `host` — hostname (required at construction; `audit.New()` returns `ErrHostRequired` if unset)
+- `timezone` — timezone context (always populated; defaults to `time.Now().Location().String()` if `WithTimezone` is not provided)
 - `pid` — process ID (always present)
 
 These are always present in every output regardless of exclusion rules.

@@ -116,9 +116,9 @@ Framework extensions are always present (not configurable via `FieldMapping`):
 | timestamp | `rt` | Receipt time (Unix milliseconds) |
 | event_type | `act` | Device action |
 | duration_ms | `cn1` / `cn1Label` | Duration in ms / label "durationMs" (middleware events only) |
-| app_name | `deviceProcessName` | Application name (when configured) |
-| host | `dvchost` | Device hostname (when configured) |
-| timezone | `dtz` | Device timezone (when configured) |
+| app_name | `deviceProcessName` | Application name (required at construction) |
+| host | `dvchost` | Device hostname (required at construction) |
+| timezone | `dtz` | Device timezone (always populated) |
 | pid | `dvcpid` | Device process ID (always present) |
 | event_category | `cat` | Event category (when categorised) |
 

@@ -25,11 +25,6 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// MaxTaxonomyInputSize is the maximum YAML input size accepted by
-// [ParseTaxonomyYAML]. Inputs exceeding this limit are rejected
-// with [ErrInvalidInput].
-const MaxTaxonomyInputSize = 1 << 20 // 1 MiB
-
 // yamlTaxonomy is the intermediate representation of a YAML taxonomy
 // document. Field names use snake_case yaml tags matching the schema.
 type yamlTaxonomy struct {
@@ -288,18 +283,32 @@ func sanitizeParserErrorMsg(err error) string {
 // precomputed. Passing it to [WithTaxonomy] skips redundant
 // re-validation.
 //
-// Input errors (empty, oversized, multi-document, invalid syntax) wrap
+// Input errors (empty, multi-document, invalid syntax) wrap
 // [ErrInvalidInput]. Taxonomy validation errors wrap
 // [ErrTaxonomyInvalid]. On error, nil is returned.
 //
 // ParseTaxonomyYAML accepts []byte only — no file paths, no readers.
 // Use [embed.FS] or [os.ReadFile] in the caller to load from disk.
+//
+// # Trust model
+//
+// The taxonomy is developer-owned input. Callers typically embed it
+// at compile time via [embed.FS] or load it from a path the developer
+// controls; the library treats the document as trusted. ParseTaxonomyYAML
+// imposes no input-size cap because, at the developer-trust boundary,
+// such a cap would be ceremony rather than defense — a YAML alias bomb
+// amplifies regardless of input size, and `goccy/go-yaml` does not
+// expose an alias-budget guard. Memory usage scales linearly with the
+// number of event types, field definitions, and sensitivity patterns.
+//
+// Sensitivity precompute is O(events × fields × labels × patterns):
+// taxonomies with many events AND many sensitivity patterns AND many
+// fields per event will see noticeable parse-time cost. This is a
+// per-load cost, not a per-event cost — the precomputed Taxonomy is
+// then read in O(1) on the hot path.
 func ParseTaxonomyYAML(data []byte) (*Taxonomy, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: input is empty", ErrInvalidInput)
-	}
-	if len(data) > MaxTaxonomyInputSize {
-		return nil, fmt.Errorf("%w: input size %d exceeds maximum %d bytes", ErrInvalidInput, len(data), MaxTaxonomyInputSize)
 	}
 
 	dec := yaml.NewDecoder(bytes.NewReader(data), yaml.DisallowUnknownField())

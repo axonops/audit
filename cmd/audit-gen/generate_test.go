@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/internal/testhelper"
 )
 
 // failWriter returns an error on every Write call.
@@ -450,23 +451,31 @@ func TestRun_VersionFlag(t *testing.T) {
 	assert.Contains(t, stdout.String(), "audit-gen")
 }
 
-func TestRun_OversizedInput(t *testing.T) {
+// TestRun_LargeTaxonomyAccepted locks audit-gen's end-to-end behaviour
+// after the cap removal in #646. A taxonomy larger than the old 1 MiB
+// limit must succeed, exit 0, and produce non-empty generated Go code.
+// Symmetric with the library-level TestParseTaxonomyYAML_NearBoundary
+// TaxonomyAccepted: the audit-gen wrapper goes through file I/O +
+// parse + codegen, a separate path the library test does not exercise.
+func TestRun_LargeTaxonomyAccepted(t *testing.T) {
 	t.Parallel()
+
+	const eventCount = 20000
+	data := testhelper.BuildLargeTaxonomyYAML(eventCount, false)
+	require.Greater(t, len(data), 1<<20, "fixture must exceed the old 1 MiB cap")
+
 	big := filepath.Join(t.TempDir(), "big.yaml")
-	data := make([]byte, maxInputSize+1)
-	for i := range data {
-		data[i] = 'x'
-	}
 	require.NoError(t, os.WriteFile(big, data, 0o600))
 
+	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	code := run([]string{
 		"-input", big,
 		"-output", "-",
 		"-package", "mypkg",
-	}, &bytes.Buffer{}, &stderr)
-	assert.Equal(t, exitYAMLError, code)
-	assert.Contains(t, stderr.String(), "exceeds maximum")
+	}, &stdout, &stderr)
+	assert.Equal(t, exitSuccess, code, "stderr: %s", stderr.String())
+	assert.Greater(t, stdout.Len(), 1<<20, "generated output should reflect the large taxonomy")
 }
 
 func TestRun_UnwritableOutput(t *testing.T) {

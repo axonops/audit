@@ -482,12 +482,40 @@ tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)
 ```
 
 **Constraints:**
-- Input is limited to 1 MiB. Inputs exceeding this are rejected
-  with `ErrInvalidInput`.
 - The input must be a single YAML document. Multi-document YAML
   (separated by `---`) is rejected.
 - Unknown YAML keys are rejected. A typo like `sevrity` instead
   of `severity` produces a parse error, not a silently ignored field.
+
+## 📐 Size and Scale
+
+`ParseTaxonomyYAML` imposes **no input-size cap**. The taxonomy is
+developer-owned input — typically embedded at compile time via
+`embed.FS` or loaded from a file path the developer controls — so
+the library treats the document as trusted. A YAML alias bomb
+amplifies regardless of input size; bounding the byte length would
+not defend against amplification, and `goccy/go-yaml` does not
+expose an alias-budget guard. The cap was retired in #646.
+
+Memory usage scales linearly with the number of event types, field
+definitions, and sensitivity patterns. There is no fixed ceiling —
+a large enterprise taxonomy with thousands of microservice event
+types loads correctly.
+
+**Parse-time cost.** Sensitivity precompute is
+O(events × fields × labels × patterns): taxonomies that combine
+many events, many fields per event, AND many sensitivity patterns
+will see noticeable parse-time cost. This is a one-shot cost paid
+at `ParseTaxonomyYAML` time; the precomputed `*Taxonomy` is then
+consulted in O(1) on the audit hot path. Operators running
+`audit-validate` against very large CI-supplied taxonomies should
+ensure their CI sandbox has a memory limit configured.
+
+**Outputs YAML is a different surface.** The
+`outputconfig.MaxOutputConfigSize` cap on `outputs.yaml` (1 MiB)
+remains in place — outputs config is ops-controlled (Kubernetes
+ConfigMap, env-substituted templates) and crosses a different trust
+boundary.
 
 ## 📚 Further Reading
 

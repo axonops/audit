@@ -22,6 +22,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/internal/testhelper"
 )
 
 func registerTaxonomySteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
@@ -102,12 +103,13 @@ events:
 		return nil
 	})
 
-	ctx.Step(`^I try to parse taxonomy from YAML exceeding 1 MiB$`, func() error {
-		oversized := make([]byte, 1<<20+1)
-		for i := range oversized {
-			oversized[i] = 'x'
-		}
-		_, err := audit.ParseTaxonomyYAML(oversized)
+	ctx.Step(`^I try to parse a valid taxonomy that exceeds 1 MiB$`, func() error {
+		// Build a syntactically valid taxonomy that crosses the old
+		// 1 MiB ceiling by a margin (#646). Locks the post-cap-
+		// removal contract: large taxonomies parse, no "exceeds
+		// maximum" error is produced.
+		data := testhelper.BuildLargeTaxonomyYAML(20000, false)
+		_, err := audit.ParseTaxonomyYAML(data)
 		tc.LastErr = err
 		return nil
 	})

@@ -122,9 +122,9 @@ var (
 	ErrInvalidTaxonomyName = errors.New("audit: invalid taxonomy name")
 
 	// ErrInvalidInput is returned by [ParseTaxonomyYAML] when the input
-	// is structurally unsuitable — empty, larger than [MaxTaxonomyInputSize],
-	// a multi-document YAML stream, or syntactically invalid. Taxonomy
-	// content validation errors wrap [ErrTaxonomyInvalid] instead.
+	// is structurally unsuitable — empty, a multi-document YAML stream,
+	// or syntactically invalid. Taxonomy content validation errors wrap
+	// [ErrTaxonomyInvalid] instead.
 	ErrInvalidInput = errors.New("audit: invalid input")
 
 	// ErrValidation is the parent sentinel for all [Auditor.AuditEvent]

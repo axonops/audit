@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -149,16 +150,49 @@ func TestParseTaxonomyYAML_EmptyInput(t *testing.T) {
 	assert.Contains(t, err.Error(), "input is empty")
 }
 
-func TestParseTaxonomyYAML_OversizedInput(t *testing.T) {
+func TestParseTaxonomyYAML_NearBoundaryTaxonomyAccepted(t *testing.T) {
 	t.Parallel()
-	data := make([]byte, audit.MaxTaxonomyInputSize+1)
-	for i := range data {
-		data[i] = ' '
-	}
-	_, err := audit.ParseTaxonomyYAML(data)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, audit.ErrInvalidInput)
-	assert.Contains(t, err.Error(), "exceeds maximum")
+
+	// Locks the immediate post-cap-removal regression: a taxonomy
+	// just above the OLD 1 MiB ceiling must parse successfully (#646).
+	const eventCount = 20000
+	data := testhelper.BuildLargeTaxonomyYAML(eventCount, false)
+	require.Greater(t, len(data), 1<<20, "fixture must exceed the old 1 MiB cap")
+
+	tax, err := audit.ParseTaxonomyYAML(data)
+	require.NoError(t, err)
+	require.NotNil(t, tax)
+	assert.Len(t, tax.Events, eventCount)
+}
+
+func TestParseTaxonomyYAML_LargeTaxonomyAccepted(t *testing.T) {
+	t.Parallel()
+
+	// AC #2 of #646: a 10 MiB taxonomy with many event types must
+	// load and validate successfully. This test exists at exactly
+	// 10 MiB on purpose — the legacy cap was 1 MiB; reducing the
+	// size here would weaken the AC. The smaller
+	// TestParseTaxonomyYAML_NearBoundaryTaxonomyAccepted above is
+	// the fast cousin for general regression coverage; this test
+	// guards the AC's specific 10 MiB number.
+	//
+	// withSensitivity=true forces precomputeSensitivity to walk
+	// every event's fields against the (single) regex pattern,
+	// exercising the O(events × fields × labels × patterns) path
+	// the godoc warns about. A regression that turned that walk
+	// quadratic in event count would manifest as a test timeout.
+	const (
+		targetSize = 10 << 20 // 10 MiB
+		eventCount = 150000
+	)
+	data := testhelper.BuildLargeTaxonomyYAML(eventCount, true)
+	require.Greater(t, len(data), targetSize, "test fixture is smaller than target")
+
+	tax, err := audit.ParseTaxonomyYAML(data)
+	require.NoError(t, err)
+	require.NotNil(t, tax)
+	assert.Equal(t, 1, tax.Version)
+	assert.Len(t, tax.Events, eventCount)
 }
 
 func TestParseTaxonomyYAML_InvalidYAMLSyntax(t *testing.T) {
@@ -405,24 +439,6 @@ events: {}
 }
 
 // --- Additional edge cases from deep review ---
-
-func TestParseTaxonomyYAML_ExactMaxInputSize(t *testing.T) {
-	t.Parallel()
-	// Build a valid YAML that is exactly MaxInputSize bytes.
-	base := "version: 1\ncategories:\n  ops:\n    - deploy\nevents:\n  deploy:\n"
-	padding := audit.MaxTaxonomyInputSize - len(base) - 1 // -1 for the newline
-	data := make([]byte, 0, audit.MaxTaxonomyInputSize)
-	data = append(data, []byte(base)...)
-	data = append(data, '\n')
-	for range padding {
-		data = append(data, ' ')
-	}
-	require.Equal(t, audit.MaxTaxonomyInputSize, len(data))
-
-	tax, err := audit.ParseTaxonomyYAML(data)
-	require.NoError(t, err)
-	assert.Equal(t, 1, tax.Version)
-}
 
 func TestParseTaxonomyYAML_WhitespaceOnly(t *testing.T) {
 	t.Parallel()

@@ -439,7 +439,7 @@ audit: invalid input
 | **When** | `ParseTaxonomyYAML()` is called with input that cannot be parsed as valid YAML |
 | **Meaning** | The input is structurally invalid — not a YAML problem with your taxonomy, but a YAML syntax or input problem |
 | **Transient?** | No — permanent. Fix the input. |
-| **What to do** | Common causes: input exceeds 1 MiB limit, input contains multiple YAML documents (separated by `---`), YAML syntax error (bad indentation, tabs instead of spaces), unknown YAML key (typo in field name — the parser rejects unknown keys). The wrapped error message gives the specific parse error. |
+| **What to do** | Common causes: input contains multiple YAML documents (separated by `---`), YAML syntax error (bad indentation, tabs instead of spaces), unknown YAML key (typo in field name — the parser rejects unknown keys). The wrapped error message gives the specific parse error. |
 
 ### `ErrHandleNotFound`
 

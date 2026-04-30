@@ -15,7 +15,6 @@
 package audit_test
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -23,10 +22,11 @@ import (
 )
 
 // FuzzParseTaxonomyYAML drives [audit.ParseTaxonomyYAML] with
-// arbitrary bytes and asserts the parser never panics, always
-// returns either a valid taxonomy OR an error (never both nil),
-// and never accepts an input that violates the documented
-// [audit.MaxTaxonomyInputSize] cap (#481).
+// arbitrary bytes and asserts the parser never panics and always
+// returns either a valid taxonomy OR an error (never both nil).
+// The library no longer enforces an input-size cap (#646) — taxonomy
+// is developer-trusted input — so the fuzzer no longer asserts a
+// size-cap invariant.
 //
 //nolint:cyclop // invariants are intentionally linear; splitting would hurt readability
 func FuzzParseTaxonomyYAML(f *testing.F) {
@@ -93,21 +93,7 @@ bogus_unknown_field: yes
 			t.Fatalf("impossible state: nil taxonomy and nil error")
 		}
 
-		// Invariant 2 — size cap is authoritative.
-		// Any input larger than MaxTaxonomyInputSize must be rejected
-		// with ErrInvalidInput. Accepting a >1MiB input would let a
-		// consumer blow past the documented bound.
-		if len(data) > audit.MaxTaxonomyInputSize {
-			if err == nil {
-				t.Fatalf("accepted input of %d bytes; cap is %d",
-					len(data), audit.MaxTaxonomyInputSize)
-			}
-			if !errors.Is(err, audit.ErrInvalidInput) {
-				t.Fatalf("oversized input rejected but wrong sentinel: %v", err)
-			}
-		}
-
-		// Invariant 3 — on accept, the taxonomy must be internally
+		// Invariant 2 — on accept, the taxonomy must be internally
 		// consistent: every event listed in a category must exist
 		// in Events. ValidateTaxonomy runs inside ParseTaxonomyYAML,
 		// so this SHOULD hold — this invariant catches a future
@@ -147,7 +133,7 @@ bogus_unknown_field: yes
 			}
 		}
 
-		// Invariant 4 — an error containing "\x00" (raw null) in
+		// Invariant 3 — an error containing "\x00" (raw null) in
 		// its string representation would corrupt log output. The
 		// parser's error messages must never embed raw nulls.
 		if err != nil && strings.ContainsRune(err.Error(), 0) {

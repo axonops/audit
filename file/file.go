@@ -155,9 +155,15 @@ type Output struct {
 	name             string
 	path             string
 	writeCount       uint64
-	drops            dropLimiter
-	closed           atomic.Bool
-	mu               sync.Mutex
+	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
+	// successful flush from writeLoop (#753). Async output: Write
+	// just enqueues; this timestamp tracks actual disk writes so
+	// [audit.Auditor.LastDeliveryAge] surfaces silently-failing
+	// outputs whose channel keeps draining via drops.
+	lastDeliveryNanos atomic.Int64
+	drops             dropLimiter
+	closed            atomic.Bool
+	mu                sync.Mutex
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -470,9 +476,20 @@ func (f *Output) writeBatch(batch [][]byte) {
 		}
 		return
 	}
+	// Successful flush: record the delivery timestamp for #753
+	// LastDeliveryReporter. Updated AFTER Writev returns nil so a
+	// failing flush leaves the timestamp frozen.
+	f.lastDeliveryNanos.Store(time.Now().UnixNano())
 	if om != nil {
 		om.RecordFlush(len(batch), time.Since(start))
 	}
+}
+
+// LastDeliveryNanos returns the wall-clock UnixNano of the most
+// recent successful disk flush, or 0 if no flush has yet succeeded.
+// Implements [audit.LastDeliveryReporter] (#753).
+func (f *Output) LastDeliveryNanos() int64 {
+	return f.lastDeliveryNanos.Load()
 }
 
 // drainRemaining reads all remaining events from the channel after

@@ -159,6 +159,19 @@
 //
 //   - [Metrics] — optional instrumentation interface; track deliveries, drops, and errors
 //
+// # Introspection
+//
+// The auditor exposes runtime introspection primitives for operators:
+//
+//   - [Auditor.QueueLen], [Auditor.QueueCap] — core queue saturation
+//   - [Auditor.OutputNames] — names of configured outputs
+//   - [Auditor.IsDisabled] — whether the auditor is a no-op
+//   - [Auditor.LastDeliveryAge] — duration since each output last
+//     delivered successfully; use in /healthz handlers to detect
+//     silently-stalled async outputs (TCP half-open, retries
+//     exhausted) where Write enqueues succeed but no events ever land.
+//     See examples/18-health-endpoint for a runnable /healthz pattern.
+//
 // # Error Discrimination
 //
 // Validation errors returned by [Auditor.AuditEvent] wrap [ErrValidation]

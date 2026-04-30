@@ -146,6 +146,7 @@ var (
 	_ FrameworkFieldReceiver   = (*namedOutput)(nil)
 	_ DiagnosticLoggerReceiver = (*namedOutput)(nil)
 	_ OutputMetricsReceiver    = (*namedOutput)(nil)
+	_ LastDeliveryReporter     = (*namedOutput)(nil)
 )
 
 // namedOutput wraps an [Output] to override its [Output.Name] method
@@ -223,6 +224,19 @@ func (n *namedOutput) SetOutputMetrics(m OutputMetrics) {
 	}
 }
 
+// LastDeliveryNanos forwards to the inner output if it implements
+// [LastDeliveryReporter]. Inner outputs that don't implement the
+// interface return 0 — same sentinel as never-delivered, which
+// [Auditor.LastDeliveryAge] interprets as "no telemetry". Required
+// because namedOutput sits between the core auditor's type-assert
+// and the actual output (#753).
+func (n *namedOutput) LastDeliveryNanos() int64 {
+	if r, ok := n.Output.(LastDeliveryReporter); ok {
+		return r.LastDeliveryNanos()
+	}
+	return 0
+}
+
 // WrapOutput wraps an [Output] with a consumer-chosen name. The
 // returned output delegates all methods to the inner output except
 // [Output.Name], which returns the provided name. This function is
@@ -231,12 +245,13 @@ func (n *namedOutput) SetOutputMetrics(m OutputMetrics) {
 //
 // The returned output always satisfies [DestinationKeyer],
 // [DeliveryReporter], [MetadataWriter], [FrameworkFieldReceiver],
-// [DiagnosticLoggerReceiver], and [OutputMetricsReceiver] regardless of the
-// inner output. When the inner
-// output does not implement these interfaces, the wrapper returns
-// zero-value behaviour: empty string for DestinationKey, false for
-// ReportsDelivery, delegation to Write for WriteWithMetadata, and
-// no-op for SetFrameworkFields and SetDiagnosticLogger.
+// [DiagnosticLoggerReceiver], [OutputMetricsReceiver], and
+// [LastDeliveryReporter] regardless of the inner output. When the
+// inner output does not implement these interfaces, the wrapper
+// returns zero-value behaviour: empty string for DestinationKey,
+// false for ReportsDelivery, delegation to Write for
+// WriteWithMetadata, no-op for SetFrameworkFields and
+// SetDiagnosticLogger, and 0 for LastDeliveryNanos.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

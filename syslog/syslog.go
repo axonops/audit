@@ -197,8 +197,15 @@ type Output struct {
 	// validated Config and is therefore always within
 	// [MinTLSHandshakeTimeout, MaxTLSHandshakeTimeout] when set.
 	tlsHandshakeTimeout time.Duration
-	facility            srslog.Priority // facility bits only (no severity)
-	closed              atomic.Bool
+	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
+	// successful syslog write (#753). Async output: Write just
+	// enqueues; this timestamp tracks actual remote delivery so
+	// [audit.Auditor.LastDeliveryAge] surfaces silently-failing
+	// outputs whose retry/drop loop drains the channel without
+	// reaching the server.
+	lastDeliveryNanos atomic.Int64
+	facility          srslog.Priority // facility bits only (no severity)
+	closed            atomic.Bool
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -696,7 +703,7 @@ var errSyslogNotConnected = errors.New("audit/syslog: writer not connected")
 
 // writeEntry writes a single event to the syslog server with panic
 // recovery and reconnection handling.
-func (s *Output) writeEntry(entry syslogEntry) { //nolint:gocyclo,cyclop // event write with recovery and reconnection
+func (s *Output) writeEntry(entry syslogEntry) {
 	// Load metrics once per event for consistent snapshot.
 	var om audit.OutputMetrics
 	if omp := s.outputMetrics.Load(); omp != nil {
@@ -749,14 +756,36 @@ func (s *Output) writeEntry(entry syslogEntry) { //nolint:gocyclo,cyclop // even
 
 	if writeErr == nil {
 		s.failures = 0
-		if om != nil {
-			om.RecordFlush(1, time.Since(start))
-		}
+		// Three-site invariant: successful arms call
+		// recordSuccess so the LastDeliveryReporter
+		// timestamp (#753) and OutputMetrics.RecordFlush stay
+		// in lockstep. Stays frozen on the failure arm.
+		s.recordSuccess(om, 1, time.Since(start))
 		return
 	}
 
 	// Write failed — attempt reconnection with backoff.
 	s.handleWriteFailure(entry, writeErr, om)
+}
+
+// LastDeliveryNanos returns the wall-clock UnixNano of the most
+// recent successful syslog write, or 0 if no write has yet
+// succeeded. Implements [audit.LastDeliveryReporter] (#753).
+func (s *Output) LastDeliveryNanos() int64 {
+	return s.lastDeliveryNanos.Load()
+}
+
+// recordSuccess is the single point where successful
+// syslog writes record their telemetry: the [LastDeliveryReporter]
+// timestamp (#753) and the per-output [audit.OutputMetrics] flush
+// counter. Three success arms call this — writeEntry, the
+// retry-after-reconnect path, and drainOne — so the timestamp and
+// the flush-count metric can never drift apart.
+func (s *Output) recordSuccess(om audit.OutputMetrics, batch int, dur time.Duration) {
+	s.lastDeliveryNanos.Store(time.Now().UnixNano())
+	if om != nil {
+		om.RecordFlush(batch, dur)
+	}
 }
 
 // handleWriteFailure attempts reconnection with bounded exponential
@@ -838,9 +867,9 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 
 	s.failures = 0
-	if om != nil {
-		om.RecordFlush(1, 0) // duration not meaningful after reconnect
-	}
+	// Successful retry-after-reconnect — duration is not
+	// meaningful here because the reconnect dwarfs the write.
+	s.recordSuccess(om, 1, 0)
 }
 
 // drainBatchNoRetry flushes pending batch entries to the syslog
@@ -905,7 +934,7 @@ func (s *Output) drainOne(entry syslogEntry) {
 		if om != nil {
 			om.RecordError()
 		}
-	} else if om != nil {
-		om.RecordFlush(1, time.Since(start))
+		return
 	}
+	s.recordSuccess(om, 1, time.Since(start))
 }

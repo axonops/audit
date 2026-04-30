@@ -266,6 +266,39 @@ func TestWrapOutput_NonDiagnosticLoggerReceiver_NoOp(t *testing.T) {
 	lr.SetDiagnosticLogger(slog.Default())
 }
 
+// TestWrapOutput_PreservesLastDeliveryReporter verifies that when the
+// inner output implements [LastDeliveryReporter], the wrapper forwards
+// LastDeliveryNanos to the inner. Without delegation,
+// [Auditor.LastDeliveryAge] would always see 0 for YAML-named outputs
+// (#753).
+func TestWrapOutput_PreservesLastDeliveryReporter(t *testing.T) {
+	inner := &mockLastDeliveryReporter{
+		MockOutput: *testhelper.NewMockOutput("syslog:localhost:514"),
+		nanos:      1_700_000_000_000_000_000,
+	}
+	wrapped := audit.WrapOutput(inner, "my_syslog")
+
+	r, ok := wrapped.(audit.LastDeliveryReporter)
+	require.True(t, ok, "wrapped output should implement LastDeliveryReporter")
+	assert.Equal(t, int64(1_700_000_000_000_000_000), r.LastDeliveryNanos(),
+		"wrapper must forward the inner reporter's timestamp")
+}
+
+// TestWrapOutput_NonLastDeliveryReporter_ReturnsZero verifies the
+// inner-does-not-implement branch: the wrapper itself satisfies the
+// interface (via the compile-time assertion), but reports 0 because
+// the inner output cannot answer (#753).
+func TestWrapOutput_NonLastDeliveryReporter_ReturnsZero(t *testing.T) {
+	// MockOutput does NOT implement LastDeliveryReporter.
+	inner := testhelper.NewMockOutput("plain")
+	wrapped := audit.WrapOutput(inner, "my_output")
+
+	r, ok := wrapped.(audit.LastDeliveryReporter)
+	require.True(t, ok, "namedOutput always implements LastDeliveryReporter")
+	assert.Equal(t, int64(0), r.LastDeliveryNanos(),
+		"non-reporter inner must surface as 0 (no telemetry)")
+}
+
 // --- Test helper types ---
 
 // mockDestKeyer wraps MockOutput with DestinationKeyer.
@@ -321,3 +354,13 @@ type mockDiagnosticLoggerReceiver struct { //nolint:govet // fieldalignment: tes
 func (m *mockDiagnosticLoggerReceiver) SetDiagnosticLogger(l *slog.Logger) {
 	m.logger = l
 }
+
+// mockLastDeliveryReporter wraps MockOutput with LastDeliveryReporter,
+// returning a fixed timestamp so the test asserts forwarding rather
+// than wall-clock semantics.
+type mockLastDeliveryReporter struct {
+	testhelper.MockOutput
+	nanos int64
+}
+
+func (m *mockLastDeliveryReporter) LastDeliveryNanos() int64 { return m.nanos }

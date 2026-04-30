@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/axonops/audit"
 	"github.com/stretchr/testify/assert"
@@ -155,4 +156,38 @@ func TestStdoutOutput_WriteLargePayload(t *testing.T) {
 	payload := strings.Repeat("x", 1<<20) + "\n"
 	require.NoError(t, out.Write([]byte(payload)))
 	assert.Equal(t, len(payload), buf.Len())
+}
+
+// TestStdoutOutput_LastDeliveryNanos_AdvancesOnSuccess verifies the
+// LastDeliveryReporter implementation (#753).
+func TestStdoutOutput_LastDeliveryNanos_AdvancesOnSuccess(t *testing.T) {
+	var buf bytes.Buffer
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), out.LastDeliveryNanos(),
+		"never-delivered output must report 0")
+
+	require.NoError(t, out.Write([]byte("event 1\n")))
+	first := out.LastDeliveryNanos()
+	assert.Greater(t, first, int64(0), "successful Write must advance timestamp")
+
+	time.Sleep(2 * time.Millisecond)
+	require.NoError(t, out.Write([]byte("event 2\n")))
+	second := out.LastDeliveryNanos()
+	assert.GreaterOrEqual(t, second, first,
+		"successive successful Writes must monotonically advance")
+}
+
+// TestStdoutOutput_LastDeliveryNanos_FrozenOnFailure verifies that a
+// failing Write does NOT advance the delivery timestamp (#753 AC #3).
+func TestStdoutOutput_LastDeliveryNanos_FrozenOnFailure(t *testing.T) {
+	out, err := audit.NewStdoutOutput(audit.StdoutConfig{
+		Writer: &failWriter{err: errors.New("disk full")},
+	})
+	require.NoError(t, err)
+
+	require.Error(t, out.Write([]byte("doomed")))
+	assert.Equal(t, int64(0), out.LastDeliveryNanos(),
+		"Write failure must not advance the delivery timestamp")
 }

@@ -16,13 +16,38 @@ package audit_test
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/axonops/audit"
 	"github.com/axonops/audit/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// reportingMockOutput is a minimal audit.Output that also implements
+// audit.LastDeliveryReporter — used to drive the LastDeliveryAge
+// introspection tests against a controllable timestamp source (#753).
+type reportingMockOutput struct {
+	name              string
+	lastDeliveryNanos atomic.Int64
+}
+
+func (m *reportingMockOutput) Name() string                 { return m.name }
+func (m *reportingMockOutput) Write([]byte) error           { return nil }
+func (m *reportingMockOutput) Close() error                 { return nil }
+func (m *reportingMockOutput) LastDeliveryNanos() int64     { return m.lastDeliveryNanos.Load() }
+func (m *reportingMockOutput) setLastDeliveryNanos(v int64) { m.lastDeliveryNanos.Store(v) }
+
+// nonReportingMockOutput is a minimal audit.Output that does NOT
+// implement audit.LastDeliveryReporter — drives the "type-assert
+// fails → return 0" code path in Auditor.LastDeliveryAge.
+type nonReportingMockOutput struct{ name string }
+
+func (m *nonReportingMockOutput) Name() string       { return m.name }
+func (m *nonReportingMockOutput) Write([]byte) error { return nil }
+func (m *nonReportingMockOutput) Close() error       { return nil }
 
 func TestQueueCap_ReturnsConfiguredSize(t *testing.T) {
 	t.Parallel()
@@ -170,4 +195,91 @@ func TestIntrospection_ConcurrentWithAuditEvent_NoRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestLastDeliveryAge_UnknownOutputReturnsZero(t *testing.T) {
+	t.Parallel()
+	out := &reportingMockOutput{name: "mock"}
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	assert.Equal(t, time.Duration(0), auditor.LastDeliveryAge("not-configured"),
+		"unknown output name must return zero duration")
+}
+
+func TestLastDeliveryAge_NeverDeliveredReturnsZero(t *testing.T) {
+	t.Parallel()
+	out := &reportingMockOutput{name: "mock"}
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Output exists, but lastDeliveryNanos is still zero — the
+	// "no successful delivery yet" arm.
+	assert.Equal(t, time.Duration(0), auditor.LastDeliveryAge(out.Name()),
+		"never-delivered output must return zero duration")
+}
+
+func TestLastDeliveryAge_NonReporterOutputReturnsZero(t *testing.T) {
+	t.Parallel()
+	// Output exists but doesn't implement LastDeliveryReporter —
+	// telemetry unavailable, signal is zero (the "no info" sentinel).
+	out := &nonReportingMockOutput{name: "plain"}
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	assert.Equal(t, time.Duration(0), auditor.LastDeliveryAge(out.Name()),
+		"non-reporter output must return zero duration")
+}
+
+func TestLastDeliveryAge_AdvancesWithRecentDelivery(t *testing.T) {
+	t.Parallel()
+	out := &reportingMockOutput{name: "mock"}
+	auditor, err := audit.New(
+		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
+		audit.WithAppName("test-app"),
+		audit.WithHost("test-host"),
+		audit.WithOutputs(out),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	// Set delivery to 50ms ago.
+	out.setLastDeliveryNanos(time.Now().Add(-50 * time.Millisecond).UnixNano())
+	age := auditor.LastDeliveryAge(out.Name())
+	// Age should be ≥ 50ms and within a tight window — a bug that
+	// returns a constant value of any kind would fail the upper
+	// bound, and a bug that returns an off-by-orders-of-magnitude
+	// value (e.g., time.Since(time.Unix(0, 0))) would also fail.
+	assert.GreaterOrEqual(t, age, 50*time.Millisecond,
+		"age must be at least the elapsed time since recorded delivery")
+	assert.Less(t, age, 500*time.Millisecond,
+		"age must be approximately the elapsed time, not stale")
+}
+
+func TestLastDeliveryAge_DisabledAuditorReturnsZero(t *testing.T) {
+	t.Parallel()
+	auditor, err := audit.New(audit.WithDisabled())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	assert.Equal(t, time.Duration(0), auditor.LastDeliveryAge("anything"),
+		"disabled auditor must return zero duration regardless of name")
 }

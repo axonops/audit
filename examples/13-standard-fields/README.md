@@ -57,9 +57,15 @@ fields** that identify the deployment:
 
 Framework fields are:
 - Set once at logger construction (not per-event)
-- Always present in serialised output when configured
+- Always present in serialised output (`app_name` and `host` are required at construction; `timezone` and `pid` are auto-populated when not set)
 - Cannot be stripped by sensitivity label exclusions
 - Cannot be declared as user fields in the taxonomy
+
+Because these four fields are guaranteed present in every serialised
+event, your SIEM index mappings, dashboard queries, and alert rules
+can reference them without null-handling — there is no path through
+the auditor that emits an event missing `app_name`, `host`, `timezone`,
+or `pid`.
 
 ## Taxonomy
 
@@ -117,7 +123,7 @@ outputs:
 ```
 
 - `app_name` and `host` are **required** — every deployment must identify itself.
-- `timezone` is optional in YAML — auto-detected from the system when absent.
+- `timezone` is optional in YAML — auto-detected from the system when absent, but always present in serialised output.
 - `standard_fields` maps reserved standard field names to default values.
   Environment variables are supported. Per-event values always override defaults.
 

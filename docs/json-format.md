@@ -33,9 +33,9 @@ Fields are emitted in a deterministic order:
    - `event_type` — the taxonomy event type name
    - `severity` — resolved severity (0-10)
    - `duration_ms` — only present if the event includes a duration
-   - `app_name` — application name (when configured via `WithAppName` or outputs YAML)
-   - `host` — hostname (when configured via `WithHost` or outputs YAML)
-   - `timezone` — timezone name (auto-detected from system, or set via `WithTimezone` / outputs YAML)
+   - `app_name` — application name (required at construction via `WithAppName` or outputs YAML; `audit.New()` returns `ErrAppNameRequired` if unset)
+   - `host` — hostname (required at construction via `WithHost` or outputs YAML; `audit.New()` returns `ErrHostRequired` if unset)
+   - `timezone` — timezone name (always populated; auto-detected from system as `time.Now().Location().String()` when `WithTimezone` / outputs YAML is not provided)
    - `pid` — process ID (always present, auto-captured at auditor construction)
 
 2. **Required fields** — sorted alphabetically

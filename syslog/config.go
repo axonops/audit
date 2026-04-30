@@ -99,6 +99,27 @@ const (
 	// MaxMaxEventBytes is the upper bound for MaxEventBytes.
 	MaxMaxEventBytes = 10 << 20 // 10 MiB
 
+	// DefaultTLSHandshakeTimeout is the default total budget for the
+	// TCP dial + TLS handshake on `network: tcp+tls` connections.
+	// Matches [net/http.DefaultTransport.TLSHandshakeTimeout]. Without
+	// a bound, a server that completes the TCP three-way handshake
+	// but never sends ServerHello would wedge [New] indefinitely
+	// (#746).
+	DefaultTLSHandshakeTimeout = 10 * time.Second
+
+	// MinTLSHandshakeTimeout is the lower bound for TLSHandshakeTimeout.
+	// 100ms is the practical floor — typical TLS 1.3 handshakes on a
+	// LAN complete in 5–20ms but cold-start handshakes (cert verify
+	// with stapled OCSP, key derivation) can hit ~80ms on slow
+	// hardware. Production deployments SHOULD use ≥1s.
+	MinTLSHandshakeTimeout = 100 * time.Millisecond
+
+	// MaxTLSHandshakeTimeout is the upper bound for TLSHandshakeTimeout.
+	// 60s is the absolute ceiling; any single handshake taking longer
+	// is almost certainly a wedged connection that benefits from
+	// being failed and retried.
+	MaxTLSHandshakeTimeout = 60 * time.Second
+
 	// syslogBaseBackoff is the initial backoff duration for reconnection.
 	syslogBaseBackoff = 100 * time.Millisecond
 
@@ -151,6 +172,26 @@ type Config struct {
 	// When empty, [os.Hostname] is used at construction time. Set this
 	// to match the auditor-wide host value from [audit.WithHost].
 	Hostname string
+
+	// TLSHandshakeTimeout bounds the total time spent on the TCP dial
+	// plus the TLS handshake during [New] and on every reconnect.
+	// Without this bound, a server that completes the TCP three-way
+	// handshake but never sends ServerHello would wedge [New]
+	// indefinitely (#746).
+	//
+	// Zero defaults to [DefaultTLSHandshakeTimeout] (10s — matches
+	// [net/http.DefaultTransport.TLSHandshakeTimeout]). Values
+	// outside [MinTLSHandshakeTimeout]–[MaxTLSHandshakeTimeout]
+	// (100ms–60s) cause [New] to return an error wrapping
+	// [audit.ErrConfigInvalid].
+	//
+	// On non-TLS networks (`tcp`, `udp`) this field is silently
+	// ignored: it has no effect and is not validated.
+	//
+	// A handshake that exceeds this budget at runtime returns a
+	// transient error containing the substring "tls handshake
+	// timeout"; the existing reconnect path retries the connection.
+	TLSHandshakeTimeout time.Duration
 
 	// MaxRetries is the maximum number of consecutive reconnection
 	// attempts before giving up. Zero defaults to
@@ -249,7 +290,7 @@ func (c Config) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, c.String()) }
 // what is already an easy-to-read sequence of guard clauses, so the
 // cyclop threshold is relaxed here.
 //
-//nolint:cyclop // linear guard sequence; see comment above.
+//nolint:cyclop,gocyclo // linear guard sequence; see comment above.
 func validateSyslogConfig(cfg *Config) error {
 	if cfg.Address == "" {
 		return fmt.Errorf("%w: syslog address must not be empty", audit.ErrConfigInvalid)
@@ -288,7 +329,46 @@ func validateSyslogConfig(cfg *Config) error {
 		return err
 	}
 
+	if err := validateTLSHandshakeTimeout(cfg); err != nil {
+		return err
+	}
+
 	return validateSyslogTLSFiles(cfg)
+}
+
+// validateTLSHandshakeTimeout normalises and bounds Config.TLSHandshakeTimeout.
+// Zero is silently defaulted to [DefaultTLSHandshakeTimeout]. On non-TLS
+// networks the field is ignored entirely — neither validated nor defaulted —
+// because there is no handshake to bound.
+//
+// Note: the YAML key for this field is `tls_handshake_timeout`; error
+// messages use that snake_case spelling so operators can grep their
+// outputs.yaml.
+func validateTLSHandshakeTimeout(cfg *Config) error {
+	if cfg.Network != "tcp+tls" {
+		// Field is a no-op on plain TCP / UDP. Do not normalise so
+		// the resolved value remains the caller's literal input —
+		// useful when an operator inspects a Config marshalled
+		// from YAML.
+		return nil
+	}
+	if cfg.TLSHandshakeTimeout < 0 {
+		return fmt.Errorf("%w: syslog tls_handshake_timeout %s must not be negative",
+			audit.ErrConfigInvalid, cfg.TLSHandshakeTimeout)
+	}
+	if cfg.TLSHandshakeTimeout == 0 {
+		cfg.TLSHandshakeTimeout = DefaultTLSHandshakeTimeout
+		return nil
+	}
+	if cfg.TLSHandshakeTimeout < MinTLSHandshakeTimeout {
+		return fmt.Errorf("%w: syslog tls_handshake_timeout %s below minimum %s",
+			audit.ErrConfigInvalid, cfg.TLSHandshakeTimeout, MinTLSHandshakeTimeout)
+	}
+	if cfg.TLSHandshakeTimeout > MaxTLSHandshakeTimeout {
+		return fmt.Errorf("%w: syslog tls_handshake_timeout %s exceeds maximum %s",
+			audit.ErrConfigInvalid, cfg.TLSHandshakeTimeout, MaxTLSHandshakeTimeout)
+	}
+	return nil
 }
 
 // validateSyslogBatchingConfig normalises zero values to defaults and

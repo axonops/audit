@@ -20,10 +20,12 @@ package syslog
 // release support and supply chain control (see #147).
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"runtime"
 	"sync"
@@ -189,8 +191,14 @@ type Output struct {
 	// maxEventBytes is the per-event size cap enforced at Write()
 	// entry to bound consumer-controlled memory pressure (#688).
 	maxEventBytes int
-	facility      srslog.Priority // facility bits only (no severity)
-	closed        atomic.Bool
+	// tlsHandshakeTimeout bounds the total dial+handshake budget on
+	// every TLS connect (initial and reconnect, #746). Zero on
+	// non-TLS networks; the resolved value is captured from the
+	// validated Config and is therefore always within
+	// [MinTLSHandshakeTimeout, MaxTLSHandshakeTimeout] when set.
+	tlsHandshakeTimeout time.Duration
+	facility            srslog.Priority // facility bits only (no severity)
+	closed              atomic.Bool
 }
 
 // SetDiagnosticLogger receives the library's diagnostic logger.
@@ -258,21 +266,22 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 	}
 
 	s := &Output{
-		tlsCfg:        tlsCfg,
-		ch:            make(chan syslogEntry, bufSize),
-		closeCh:       make(chan struct{}),
-		done:          make(chan struct{}),
-		name:          "syslog:" + cfg.Address,
-		address:       cfg.Address,
-		network:       cfg.Network,
-		appName:       cfg.AppName,
-		hostname:      hostname,
-		facility:      priority, // parseFacility returns facility bits only
-		maxRetry:      maxRetry,
-		batchSize:     cfg.BatchSize,     // resolved to default by validateSyslogBatchingConfig
-		flushInterval: cfg.FlushInterval, // resolved to default by validateSyslogBatchingConfig
-		maxBatchBytes: cfg.MaxBatchBytes, // resolved to default by validateSyslogBatchingConfig
-		maxEventBytes: cfg.MaxEventBytes, // resolved to default by validateMaxEventBytes (#688)
+		tlsCfg:              tlsCfg,
+		ch:                  make(chan syslogEntry, bufSize),
+		closeCh:             make(chan struct{}),
+		done:                make(chan struct{}),
+		name:                "syslog:" + cfg.Address,
+		address:             cfg.Address,
+		network:             cfg.Network,
+		appName:             cfg.AppName,
+		hostname:            hostname,
+		facility:            priority, // parseFacility returns facility bits only
+		maxRetry:            maxRetry,
+		batchSize:           cfg.BatchSize,           // resolved to default by validateSyslogBatchingConfig
+		flushInterval:       cfg.FlushInterval,       // resolved to default by validateSyslogBatchingConfig
+		maxBatchBytes:       cfg.MaxBatchBytes,       // resolved to default by validateSyslogBatchingConfig
+		maxEventBytes:       cfg.MaxEventBytes,       // resolved to default by validateMaxEventBytes (#688)
+		tlsHandshakeTimeout: cfg.TLSHandshakeTimeout, // resolved to default by validateTLSHandshakeTimeout (#746); zero on non-TLS
 	}
 	// Publish the initial logger BEFORE starting the write goroutine.
 	// resolveOptions already replaced nil with slog.Default.
@@ -415,14 +424,31 @@ func (s *Output) DestinationKey() string {
 }
 
 // connect establishes a connection to the syslog server.
+//
+// For TLS connections, the dial + handshake is wrapped in a single
+// context-bounded operation (#746). srslog.DialWithTLSConfig has no
+// handshake timeout, so a server that completes the TCP three-way
+// handshake but never sends ServerHello would wedge connect()
+// indefinitely. We replace it with srslog.DialWithCustomDialer,
+// passing a custom dialer that pre-dials the TCP layer with
+// net.Dialer.DialContext, wraps with tls.Client, and bounds the
+// handshake via tls.Conn.HandshakeContext.
+//
+// Note: srslog routes to its built-in TLS dialer based on the
+// `network` argument string. We MUST pass "custom" here for srslog
+// to invoke our custom dialer; the actual TLS layering happens
+// inside the custom dialer (it captures s.tlsCfg). The output's
+// own s.network field stays "tcp+tls" — that drives our framer
+// selection and only-once-per-Output bookkeeping.
 func (s *Output) connect() error {
 	var w *srslog.Writer
 	var err error
 
 	defaultPriority := s.facility | srslog.LOG_INFO
 	if s.tlsCfg != nil {
-		w, err = srslog.DialWithTLSConfig(
-			"tcp+tls", s.address, defaultPriority, s.appName, s.tlsCfg)
+		w, err = srslog.DialWithCustomDialer(
+			"custom", s.address, defaultPriority, s.appName,
+			s.boundedTLSDialer(s.tlsHandshakeTimeout))
 	} else {
 		w, err = srslog.Dial(s.network, s.address, defaultPriority, s.appName)
 	}
@@ -439,6 +465,69 @@ func (s *Output) connect() error {
 	w.SetHostname(s.hostname)
 	s.writer = w
 	return nil
+}
+
+// boundedTLSDialer returns a srslog.DialFunc that bounds the total
+// TCP-dial-plus-TLS-handshake time to handshakeTimeout (#746). The
+// returned closure captures s.tlsCfg by pointer; tls.Client treats
+// the *tls.Config as read-only after first use, so reuse across
+// reconnects is safe.
+//
+// On handshake timeout the closure returns an error containing the
+// substring "tls handshake timeout" so operators can recognise the
+// failure mode in diagnostic logs. The error is wrapped through
+// connect()'s "audit/syslog: connect ..." prefix and surfaces as a
+// transient (non-ErrConfigInvalid) error so the existing reconnect
+// loop in writeLoop retries.
+func (s *Output) boundedTLSDialer(handshakeTimeout time.Duration) srslog.DialFunc {
+	return func(network, raddr string) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), handshakeTimeout)
+		defer cancel()
+
+		// One context governs the whole budget. DialContext (rather
+		// than DialTimeout) ensures a slow TCP dial does not get its
+		// own timeout — it eats into the same budget as the handshake.
+		var dialer net.Dialer
+		rawConn, err := dialer.DialContext(ctx, "tcp", raddr)
+		if err != nil {
+			return nil, fmt.Errorf("audit/syslog: tcp dial: %w", err)
+		}
+		// Defensive: if anything below this returns an error, close
+		// the raw conn before returning so a wedged peer cannot
+		// keep the FD open via a lingering goroutine.
+		closeOnErr := true
+		defer func() {
+			if closeOnErr {
+				_ = rawConn.Close()
+			}
+		}()
+
+		// tls.Client requires either ServerName or InsecureSkipVerify
+		// in the config (unlike tls.Dial, which infers ServerName from
+		// the address). Clone the cached config and populate
+		// ServerName from the dialled address when not already set,
+		// mirroring tls.Dial's behaviour. The cached config remains
+		// untouched and shareable across reconnects.
+		tlsCfg := s.tlsCfg
+		if tlsCfg.ServerName == "" {
+			host, _, splitErr := net.SplitHostPort(raddr)
+			if splitErr != nil {
+				host = raddr
+			}
+			tlsCfg = tlsCfg.Clone()
+			tlsCfg.ServerName = host
+		}
+
+		tlsConn := tls.Client(rawConn, tlsCfg)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return nil, fmt.Errorf("audit/syslog: tls handshake timeout: %w", err)
+		}
+		// Clear any deadline that may have been inherited; subsequent
+		// reads/writes must not be deadline-bounded.
+		_ = tlsConn.SetDeadline(time.Time{})
+		closeOnErr = false
+		return tlsConn, nil
+	}
 }
 
 // writeLoop is the background goroutine that reads events from the

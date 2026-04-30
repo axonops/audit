@@ -460,6 +460,10 @@ func registerSyslogThenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			return nil
 		})
 
+	ctx.Step(`^I try to construct a syslog output to that stalling listener with TLSHandshakeTimeout (\d+)ms within (\d+) seconds$`,
+		func(handshakeMS, deadlineSec int) error {
+			return constructSyslogToStallingListenerBounded(tc, handshakeMS, deadlineSec)
+		})
 	ctx.Step(`^the syslog metrics should have recorded at least (\d+) reconnect$`, func(minCount int) error {
 		if tc.SyslogMetrics == nil {
 			return fmt.Errorf("no syslog metrics configured")
@@ -722,5 +726,34 @@ func assertSyslogIntField(tc *AuditTestContext, fieldName string, want int) erro
 	if got != want {
 		return fmt.Errorf("RFC 5424 %s: got %d, want %d (parsed message: %+v)", fieldName, got, want, parsed)
 	}
+	return nil
+}
+
+// constructSyslogToStallingListenerBounded drives the BDD step that
+// constructs a syslog output to a stalling TCP listener with
+// TLSHandshakeTimeout set, and asserts the failure happens inside
+// the configured deadline. Used by the "stalled TLS handshake" #746
+// scenario in syslog_output.feature. Companion to the webhook/loki
+// "I close ... within N seconds" steps in tls_handshake_steps.go.
+func constructSyslogToStallingListenerBounded(tc *AuditTestContext, handshakeMS, deadlineSec int) error {
+	cfg := &syslog.Config{
+		Network:             "tcp+tls",
+		Address:             tc.BadReceiverAddr,
+		TLSCA:               tc.BadCerts.caPath,
+		TLSHandshakeTimeout: time.Duration(handshakeMS) * time.Millisecond,
+	}
+	start := time.Now()
+	out, err := syslog.New(cfg)
+	elapsed := time.Since(start)
+	if out != nil {
+		_ = out.Close()
+	}
+	if elapsed > time.Duration(deadlineSec)*time.Second {
+		return fmt.Errorf(
+			"syslog.New took %v; expected within %d s — "+
+				"a stalled TLS handshake must respect TLSHandshakeTimeout",
+			elapsed, deadlineSec)
+	}
+	tc.LastErr = err
 	return nil
 }

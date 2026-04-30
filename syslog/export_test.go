@@ -14,8 +14,35 @@
 
 package syslog
 
+import (
+	"crypto/tls"
+	"net"
+	"time"
+)
+
 // BackoffDuration is exported for testing only.
 var BackoffDuration = backoffDuration
+
+// ValidateConfig is exported for testing only — exposes the package-
+// internal validateSyslogConfig so tests can verify validator
+// behaviour (defaulting, range checks) without dialling. Mutates cfg
+// in place to fill defaulted values.
+var ValidateConfig = validateSyslogConfig
+
+// NewOutputForTesting constructs a minimal Output suitable for
+// driving boundedTLSDialer directly without going through New —
+// avoids the connect() round-trip on construction (#746). The
+// returned Output is NOT safe to use for Write/Close.
+func NewOutputForTesting(tlsCfg *tls.Config) *Output {
+	return &Output{tlsCfg: tlsCfg}
+}
+
+// BoundedTLSDialer exposes the package-internal Output.boundedTLSDialer
+// for tests that need to verify each invocation independently
+// honours the configured handshake timeout (#746 AC #10).
+func (s *Output) BoundedTLSDialer(handshakeTimeout time.Duration) func(network, raddr string) (net.Conn, error) {
+	return s.boundedTLSDialer(handshakeTimeout)
+}
 
 // CloseWriterForReconnect is exported for testing only — lets tests
 // drive the Close-error logging path without needing an interface

@@ -14,6 +14,17 @@ on:
 permissions:
   contents: read
 
+# Shared concurrency group with release.yml (#516 devops review).
+# release.yml uses `release-${{ inputs.version || github.ref_name }}`
+# at the workflow level. The goreleaser.yml manual-rerun trigger
+# matches the same group so both workflows queue behind one another
+# rather than racing on the same GitHub Release / Sigstore identity.
+# cancel-in-progress: false so a manual rerun queues behind an
+# automated tag run rather than killing it mid-flight.
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Release
@@ -47,6 +58,11 @@ jobs:
       - name: Set up go.work
         run: make workspace
 
+      # Sigstore keyless signing (#516). Installs cosign for the
+      # GoReleaser `signs:` stanza. Pinned to v4.1.1 commit SHA.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
       - name: Run GoReleaser
         id: goreleaser
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
@@ -61,7 +77,11 @@ jobs:
         with:
           # SBOM publishing intentionally removed (#514). Build provenance
           # attestations cover the binary distribution artifacts directly.
+          # Cosign signature artifacts (#516) are also attested so the
+          # build-provenance chain covers the signing material itself.
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/checksums.txt.sig
+            dist/checksums.txt.pem

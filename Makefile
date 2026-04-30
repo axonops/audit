@@ -531,6 +531,21 @@ security-one:
 release-check: api-check
 	$(GOBIN)/goreleaser check
 
+# release-snapshot runs a local goreleaser snapshot dry-run that
+# validates the entire release pipeline EXCEPT the `signs:` block
+# and the GitHub publish step. Snapshot mode skips signing by
+# design (cosign keyless requires real GHA OIDC; offline emulation
+# is not supported). Maintainers SHOULD run this before tagging a
+# release to catch build/archive/checksum errors locally; signing
+# itself is verified at release time when `release.yml` runs the
+# real GoReleaser invocation against the tag.
+#
+# The `signs:` YAML structure is independently validated by
+# `goreleaser check` (already wired into `make release-check`).
+release-snapshot:
+	rm -rf dist
+	$(GOBIN)/goreleaser release --snapshot --skip=publish --skip=sign --clean
+
 # api-check runs gorelease for every published module, comparing
 # the module's current public surface against its most recent
 # release tag. gorelease exits non-zero on incompatible changes;

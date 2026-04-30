@@ -91,6 +91,37 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
+# Sigstore keyless signing of the checksums file (#516).
+#
+# We sign checksums.txt — not every binary — because the checksum
+# file is the cryptographic root of trust for every artifact in the
+# release: a verified checksums.txt plus `sha256sum -c` extends the
+# guarantee to every binary listed inside it. One signature pair
+# (.sig + .pem) protects the entire release manifest.
+#
+# Identity: https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/<tag>
+# Issuer:   https://token.actions.githubusercontent.com
+# Rekor:    https://search.sigstore.dev/?logIndex=<index> — cosign
+#           prints the index after signing; consumers can audit the
+#           transparency-log entry independently of GitHub.
+# Verify:   docs/releasing.md "Verify a Release with Cosign".
+#
+# `--yes` skips the keyless interactive prompt; cosign-installer
+# in the release workflow makes the cosign binary available before
+# this stanza runs.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - '--yes'
+      - '--oidc-issuer=https://token.actions.githubusercontent.com'
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+
 release:
   github:
     owner: axonops

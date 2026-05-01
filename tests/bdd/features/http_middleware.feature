@@ -189,6 +189,21 @@ Feature: HTTP Middleware
     And I close the auditor
     Then the file should have no events
 
+  Scenario: Builder panic forces skip=true and the HTTP response is unaffected
+    # F-20 — explicitly pin the contract: when an EventBuilder panics,
+    # the middleware's recover() handler forces skip=true so no audit
+    # event is emitted, AND the downstream HTTP response is unaffected
+    # (200 OK passes through to the client). The panic occurs in the
+    # middleware's deferred post-handler audit emission, not the
+    # request path. The earlier "Builder panic is recovered and logged"
+    # scenario asserts no events; this scenario adds the response-side
+    # invariant (the client never sees the panic).
+    Given an HTTP test server with panicking builder and audit middleware
+    When I send a GET request to "/api/resource"
+    And I close the auditor
+    Then the response status should be 200
+    And the file should have no events
+
   Scenario: Concurrent requests get independent audit events
     Given an HTTP test server with audit middleware
     When I send 10 concurrent GET requests to "/api/resource"

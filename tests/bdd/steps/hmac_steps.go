@@ -95,6 +95,28 @@ func registerHMACPresenceSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 	ctx.Step(`^the output should not contain "_hmac_version" field$`, func() error { return assertNoHMACVersionField(tc) })
 	ctx.Step(`^the captured output should contain field "([^"]*)" with value "([^"]*)"$`,
 		func(field, want string) error { return assertCapturedFieldValue(tc, field, want) })
+	ctx.Step(`^the output should not contain the raw salt "([^"]*)"$`,
+		func(salt string) error { return assertCapturedDoesNotContainLiteral(tc, salt) })
+}
+
+// assertCapturedDoesNotContainLiteral verifies that no captured event
+// contains the literal string. Used to confirm that a configured
+// secret (e.g., the HMAC salt) never leaks into the emitted payload —
+// the HMAC field is the salt's hashed projection, not the salt itself.
+func assertCapturedDoesNotContainLiteral(tc *AuditTestContext, literal string) error {
+	if literal == "" {
+		return fmt.Errorf("refusing to assert absence of empty string")
+	}
+	events := tc.CaptureOutput.Events()
+	if len(events) == 0 {
+		return fmt.Errorf("no events captured")
+	}
+	for i, raw := range events {
+		if strings.Contains(string(raw), literal) {
+			return fmt.Errorf("captured event %d contains the literal that should be absent (event=%s)", i, string(raw))
+		}
+	}
+	return nil
 }
 
 // assertCapturedFieldValue asserts every captured event contains a

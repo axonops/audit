@@ -1039,6 +1039,7 @@ headers:
 
 ## Further Reading
 
+- [Writing Custom Secret Providers](writing-custom-secret-providers.md) -- worked example, registration, security checklist for backends without a built-in provider
 - [Output Configuration YAML](output-configuration.md) -- full YAML schema reference
 - [HMAC Integrity](hmac-integrity.md) -- per-output HMAC with salt management
 - [Error Reference](error-reference.md) -- all audit error sentinels

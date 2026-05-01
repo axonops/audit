@@ -130,3 +130,11 @@ release:
   prerelease: auto
   replace_existing_artifacts: true
   name_template: '{{ .Tag }}'
+  # Ship the Grafana dashboards (#612) as release artefacts so ops
+  # teams can `gh release download v1.x.y -p 'audit-*.json'` without
+  # cloning the repo. The README is the import recipe.
+  extra_files:
+    - glob: deploy/grafana/audit-events.json
+    - glob: deploy/grafana/audit-metrics.json
+    - glob: deploy/grafana/README.md
+      name_template: 'grafana-dashboards-README.md'

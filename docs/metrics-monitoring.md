@@ -464,3 +464,4 @@ assert.Equal(t, 0, metrics.BufferDrops())
 - [Async Delivery](async-delivery.md) — buffer sizing and backpressure
 - [Testing](testing.md) — asserting on metrics in tests
 - [API Reference: Metrics](https://pkg.go.dev/github.com/axonops/audit#Metrics)
+- [Grafana Dashboards](../deploy/grafana/) — Loki-sourced events + Prometheus-sourced pipeline-health dashboards published as release artefacts; ready to import via Grafana UI or the provisioning directory.

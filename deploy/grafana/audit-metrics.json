@@ -1,0 +1,184 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Events Delivered",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(audit_events_total{status=\"success\"})", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "title": "Delivery Errors",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(audit_events_total{status=\"error\"}) or vector(0)", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "title": "Buffer Drops",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "audit_buffer_drops_total or vector(0)", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "title": "Validation Errors",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(audit_validation_errors_total) or vector(0)", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "title": "Goroutines",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "go_goroutines", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] } }, "overrides": [] }
+    },
+
+    {
+      "title": "Events/sec by Output",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (output) (rate(audit_events_total{status=\"success\"}[1m]))", "legendFormat": "{{output}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } }, "overrides": [] }
+    },
+    {
+      "title": "Events by Output (stacked)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (output) (increase(audit_events_total{status=\"success\"}[1m]))", "legendFormat": "{{output}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 40, "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+
+    {
+      "title": "Filtered Events by Output",
+      "description": "Events filtered by per-output routing rules. The security_feed output filters heavily (only security+compliance, severity >= 7).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (output) (rate(audit_output_filtered_total[1m]))", "legendFormat": "{{output}} filtered", "refId": "A" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } }, "overrides": [] }
+    },
+    {
+      "title": "Errors/sec by Output",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (output) (rate(audit_events_total{status=\"error\"}[1m]))", "legendFormat": "{{output}} errors", "refId": "A" }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } }, "overrides": [] }
+    },
+
+    {
+      "title": "File Rotations",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 20 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(audit_file_rotations_total) or vector(0)", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] }
+    },
+    {
+      "title": "File Rotations by Path",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 20 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (path) (increase(audit_file_rotations_total[5m]))", "legendFormat": "{{path}}", "refId": "A" }]
+    },
+
+    {
+      "title": "Loki Flush Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 12, "y": 20 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(audit_loki_flush_duration_seconds_bucket[5m]))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, rate(audit_loki_flush_duration_seconds_bucket[5m]))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, rate(audit_loki_flush_duration_seconds_bucket[5m]))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineInterpolation": "smooth" } }, "overrides": [] }
+    },
+    {
+      "title": "Loki Drops",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 20 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "audit_loki_drops_total or vector(0)", "refId": "A" }],
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "title": "Loki Retries",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 24 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (status_code) (rate(audit_loki_retries_total[1m]))", "legendFormat": "HTTP {{status_code}}", "refId": "A" }]
+    },
+    {
+      "title": "Loki Errors",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 24 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (status_code) (rate(audit_loki_errors_total[1m]))", "legendFormat": "HTTP {{status_code}}", "refId": "A" }]
+    },
+
+    {
+      "title": "Go Runtime",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "Goroutines Over Time",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 29 },
+          "datasource": "Prometheus",
+          "targets": [{ "expr": "go_goroutines", "legendFormat": "goroutines", "refId": "A" }]
+        },
+        {
+          "title": "Heap Memory",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 29 },
+          "datasource": "Prometheus",
+          "targets": [{ "expr": "go_memstats_heap_alloc_bytes", "legendFormat": "heap", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+        },
+        {
+          "title": "GC Pause Duration",
+          "type": "timeseries",
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 29 },
+          "datasource": "Prometheus",
+          "targets": [{ "expr": "go_gc_duration_seconds{quantile=\"0.75\"}", "legendFormat": "p75", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["audit", "prometheus", "inventory-demo"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Audit Pipeline Metrics (Prometheus)",
+  "uid": "audit-metrics",
+  "version": 1
+}

@@ -93,10 +93,113 @@ events:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | Yes | Must be `1`. Schema version for future migration. |
+| `version` | Yes | Must be `1`. Schema version for future migration. See [Taxonomy Schema Versioning](#-taxonomy-schema-versioning) below. |
 | `categories` | Yes | Map of category name to event list or struct. |
 | `events` | Yes | Map of event type name to event definition. |
 | `sensitivity` | No | Sensitivity label configuration for field classification. |
+
+## 🔄 Taxonomy Schema Versioning
+
+The taxonomy YAML carries a top-level `version:` field so the
+library can recognise the shape of the document and apply
+migrations when a future schema change lands.
+
+### What `version: 1` means today
+
+`version: 1` is the only currently-defined schema version. Every
+taxonomy MUST set `version: 1` explicitly:
+
+```yaml
+version: 1
+categories:
+  ...
+events:
+  ...
+```
+
+A missing or zero `version:` is rejected at parse time with:
+
+```
+audit: taxonomy validation failed: taxonomy version is required: set version to 1
+```
+
+A `version:` value the library does not recognise is rejected
+with one of the two messages below, depending on whether the
+value is from the future or from a no-longer-supported past:
+
+```
+audit: taxonomy validation failed: taxonomy version 2 is not supported by this library version (max: 1), upgrade the library
+audit: taxonomy validation failed: taxonomy version 0 is no longer supported, minimum supported is 1
+```
+
+All three errors wrap the [`audit.ErrTaxonomyInvalid`](https://pkg.go.dev/github.com/axonops/audit#ErrTaxonomyInvalid)
+sentinel; consumers can match with `errors.Is(err, audit.ErrTaxonomyInvalid)`
+without coupling to the message text.
+
+The parse path lives in [`audit.MigrateTaxonomy`](https://pkg.go.dev/github.com/axonops/audit#MigrateTaxonomy),
+auto-invoked by [`audit.ParseTaxonomyYAML`](https://pkg.go.dev/github.com/axonops/audit#ParseTaxonomyYAML).
+
+### Schema version is independent of library release version
+
+The schema version (`version: 1` in YAML) is **not** the library
+release version (e.g., v1.0.0, v1.5.0, v2.0.0). They evolve
+independently:
+
+- A v1.5 library MAY still use schema `version: 1` — operators
+  upgrading the library do NOT need to touch their YAML.
+- The schema version bumps only when the YAML shape itself
+  changes in a way that older libraries cannot interpret (new
+  required field, removed field, or restructured nesting). This
+  is a maintainer-side decision; consumers do not need to touch
+  the version field on routine library upgrades.
+- A library release version bumps for any release reason — bug
+  fix, new feature, performance improvement — even when the
+  schema is unchanged.
+
+For the lifetime of v1.x of the library, `version: 1` will remain
+accepted. Schema-breaking changes are themselves library-major
+events: a `version: 2` schema would land in v2.x of the library
+(or earlier, with `version: 1` still accepted alongside it).
+
+### Future migration contract
+
+When `version: 2` is introduced, the library will:
+
+1. Accept both `version: 1` and `version: 2` configs side-by-side
+   for at least one tagged library release; the deprecation
+   timeline for `version: 1` will be announced via the
+   `CHANGELOG.md` `### Deprecated` section.
+2. Silently upgrade `version: 1` configs to the new internal
+   shape — operators do not need to rewrite their YAML.
+3. Reject `version: N+1` from a library that only knows up to
+   `N`, with a clear "upgrade the library" error (the message
+   above).
+4. Reject `version: K-M` once support for `K-M` is dropped, with
+   a clear "no longer supported, minimum supported is N" error
+   that names the lowest still-accepted version.
+
+Migrations land inline inside `MigrateTaxonomy` — the function
+already has the structure (version check, future migration
+hook). There is no public `RegisterMigration` API today, by
+design: migrations are library-implementation detail, not a
+consumer extension point.
+
+### When the maintainer adds `version: 2`
+
+The schema-bump workflow is:
+
+1. Bump `currentTaxonomyVersion` in `migrate.go` and add a
+   migration step (`if t.Version == 1 { ... }`) that
+   transforms the old shape into the new one.
+2. Update the YAML examples under `examples/`,
+   `tests/bdd/features/`, and `outputconfig/testdata/` to use the
+   new version where appropriate (keeping at least one
+   `version: 1` example to lock the migration path).
+3. Add a regression BDD scenario that loads a `version: 1`
+   document, runs migration, and asserts the in-memory shape
+   matches a hand-written `version: 2` equivalent.
+4. Update this section with the new version literal and the
+   shape change.
 
 ## 📂 Categories
 

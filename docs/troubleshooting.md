@@ -302,6 +302,7 @@ audit/secrets: secret resolution failed: loopback address 127.0.0.1 blocked
 
 ## 📚 Further Reading
 
+- [Outputs § Failure Mode Matrix](outputs.md#-failure-mode-matrix) — concrete behaviour per output × failure mode (down, slow, auth, disk full, TLS expired, DNS, rate-limited)
 - [Error Reference](error-reference.md) — all sentinel errors with recovery guidance
 - [Async Delivery](async-delivery.md) — buffering, drain, shutdown
 - [Metrics & Monitoring](metrics-monitoring.md) — tracking drops and errors

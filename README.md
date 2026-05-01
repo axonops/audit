@@ -25,33 +25,131 @@ minor versions until v1.0.0. Pin your dependency version.
 
 ## 🔍 Overview
 
-audit is an audit logging library for Go. Audit logging is different
-from application logging — application logs record technical details
-for debugging (`log/slog`, `zap`), while audit logs record **who did
-what, when, and to which resource** for compliance, forensics, and
-accountability. If your application handles user data, authentication,
-or financial transactions, regulations like SOX, HIPAA, and GDPR
-require structured audit trails that application loggers don't enforce.
+audit logs **who did what, when, and to which resource** — for
+compliance, forensics, and accountability. Unlike `log/slog` or `zap`,
+audit events are schema-enforced: a code generator turns your YAML
+taxonomy into typed Go builders, so missing required fields and
+typo'd event names are compile errors. Output destinations (file,
+syslog, webhook, Loki) are configured separately at runtime; the
+bundled `audittest` package gives in-memory event capture for unit
+tests with the same validation path as production.
 
-The library splits audit configuration into two layers:
+---
 
-- **Compile-time (taxonomy):** Your event schema — which event types
-  exist, which fields are required, what's optional — is defined in a
-  YAML file and embedded into your binary with `go:embed`. A code
-  generator (`audit-gen`) produces typed Go builders from this schema,
-  so invalid event names and missing required fields are caught by the
-  compiler, not at runtime. The taxonomy is your audit contract — it
-  ships with the binary and cannot be changed without recompiling.
+## 💡 Why audit?
 
-- **Runtime (outputs):** Where events go — files, syslog, webhooks —
-  is configured in a separate YAML file loaded at startup. Output
-  destinations, routing filters, formatters, and sensitivity label
-  exclusions can all change per environment without rebuilding.
+- 📋 **Schema enforcement** — every event validated against your taxonomy; missing required fields rejected at compile time
+- 🛡️ **SIEM-native output** — [CEF](docs/cef-format.md) understood by Splunk, ArcSight, QRadar; [JSON](docs/json-format.md) for log aggregators
+- 📡 **Multi-output fan-out** — [files, syslog, webhooks, Loki, stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
+- 🔒 **Sensitive field stripping** — [classify fields as PII/financial](docs/sensitivity-labels.md); strip per-output for GDPR/PCI compliance
+- ⚡ **Non-blocking** — sub-microsecond `AuditEvent()`; [async delivery](docs/async-delivery.md) with completeness monitoring
+- 🧪 **Production-grade testing** — [`audittest`](docs/testing.md) recorder shares the production validation path — no mock drift
 
-The library validates events against the compiled taxonomy, delivers
-them asynchronously to multiple outputs simultaneously, and supports
-both [JSON](docs/json-format.md) and
-[CEF (Common Event Format)](docs/cef-format.md) for SIEM integration.
+---
+
+## 🚀 Quick Start
+
+YAML-first: define events in a taxonomy, configure outputs, generate type-safe Go code.
+
+### 1️⃣ Define your taxonomy (`taxonomy.yaml`)
+
+```yaml
+version: 1
+categories:
+  write:
+    severity: 3
+    events: [user_create]
+events:
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:  { required: true }
+      actor_id: { required: true }
+```
+
+### 2️⃣ Configure outputs (`outputs.yaml`)
+
+```yaml
+version: 1
+app_name: my-service
+host: "${HOSTNAME:-localhost}"
+outputs:
+  console:
+    type: stdout
+```
+
+### 3️⃣ Generate type-safe code
+
+```bash
+go run github.com/axonops/audit/cmd/audit-gen \
+  -input taxonomy.yaml -output audit_generated.go -package main
+```
+
+### 4️⃣ Wire it up and emit events (`main.go`)
+
+```go
+package main
+
+import (
+    "context"
+    _ "embed"
+    "log"
+
+    "github.com/axonops/audit/outputconfig"
+    _ "github.com/axonops/audit/outputs"
+)
+
+//go:embed taxonomy.yaml
+var taxonomyYAML []byte
+
+func main() {
+    auditor, err := outputconfig.New(context.Background(), taxonomyYAML, "outputs.yaml")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer func() { _ = auditor.Close() }()
+
+    if err := auditor.AuditEvent(
+        NewUserCreateEvent("alice", "success").SetTargetID("user-42"),
+    ); err != nil {
+        log.Printf("audit: %v", err)
+    }
+}
+```
+
+`go run .` prints one JSON event to stdout — see [Output](#output) below for the wire format and [examples/02-code-generation/](examples/02-code-generation/) for the full project.
+
+### 5️⃣ Test your audited code (`main_test.go`)
+
+```go
+package main
+
+import (
+    "testing"
+
+    "github.com/axonops/audit/audittest"
+)
+
+func TestCreateUser_EmitsAudit(t *testing.T) {
+    auditor, events, _ := audittest.NewQuick(t, "user_create")
+    _ = auditor.AuditEvent(NewUserCreateEvent("alice", "success"))
+    events.RequireEvent(t, "user_create")
+}
+```
+
+`audittest.NewQuick` shares the production validation path — full reference at [docs/testing.md](docs/testing.md) and [examples/04-testing/](examples/04-testing/).
+
+### Output
+
+`go run .` prints one JSON event to stdout (default formatter):
+
+```json
+{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"<your-host>","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
+```
+
+> 📐 **Field order is deterministic** — framework fields first, then required and optional fields (alphabetical), then extra fields, then `event_category`. See [JSON format → Field Order](docs/json-format.md#field-order).
+
+> 💡 `app_name` and `host` are **framework fields** set once in `outputs.yaml`; `pid` is auto-captured from `os.Getpid()`. For SIEM-native [CEF output](docs/cef-format.md), add a `formatter: { type: cef, vendor: …, product: … }` block to your output — Splunk, ArcSight, and QRadar parse it natively.
 
 ---
 
@@ -80,10 +178,10 @@ both [JSON](docs/json-format.md) and
 
 ---
 
-## ❓ Why Audit Logging?
+## ❓ Audit logging vs application logging
 
-Audit logging is not application logging. They serve fundamentally
-different purposes:
+If you're wondering whether audit logging differs from application
+logging, here's the comparison:
 
 | | 🔧 Application Logging | 📋 Audit Logging |
 |---|---|---|
@@ -102,136 +200,9 @@ delivery guarantees that compliance demands.
 
 ---
 
-## 💡 Why audit?
+## 🌐 Building an HTTP service?
 
-No existing Go library provides schema-enforced audit logging with
-multi-output fan-out and SIEM-native format support:
-
-- 📋 **Schema enforcement** — every event validated against your taxonomy; missing required fields are rejected, not silently dropped
-- 🛡️ **SIEM-native output** — [CEF format](docs/cef-format.md) understood by Splunk, ArcSight, QRadar out of the box, alongside [JSON](docs/json-format.md) for log aggregators
-- 📡 **Multi-output fan-out** — send events to [files, syslog, webhooks, Loki, and stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
-- 🔒 **Sensitive field stripping** — [classify fields as PII or financial](docs/sensitivity-labels.md); strip them per-output for GDPR/PCI compliance
-- ⚡ **Non-blocking** — sub-microsecond `AuditEvent()` calls; [async delivery](docs/async-delivery.md) via a background drain goroutine with completeness monitoring
-- 🔌 **No vendor lock-in** — [pluggable metrics interface](docs/metrics-monitoring.md); no Prometheus, OpenTelemetry, or logging framework dependency in core
-
----
-
-## 🚀 Quick Start
-
-The library uses a YAML-first workflow: define your events in a taxonomy
-file, configure outputs in another, and generate type-safe Go code.
-
-> **Building an HTTP service?** Skip ahead to the
-> [HTTP Service Quickstart](docs/quickstart-http-service.md) — a
-> self-contained ~10-minute walkthrough from `go get` to an audited
-> POST endpoint with stdout output, no clicking through other docs.
-
-### 1️⃣ Define your taxonomy (`taxonomy.yaml`) - This is your source code. 
-
-```yaml
-version: 1
-
-categories:
-  write:
-    severity: 3
-    events:
-      - user_create
-  security:
-    severity: 8
-    events:
-      - auth_failure
-
-events:
-  user_create:
-    description: "A new user account was created"
-    fields:
-      outcome:  { required: true }
-      actor_id: { required: true }
-
-  auth_failure:
-    description: "An authentication attempt failed"
-    fields:
-      outcome:  { required: true }
-      actor_id: { required: true }
-```
-
-> 💡 Fields like `target_id`, `source_ip`, and `reason` are **reserved standard
-> fields** — 31 framework-defined fields (actor_id, outcome, target_id,
-> source_ip, reason, error_code, request_id, session_id, trace_id,
-> latency_ms, …) that are always available on every event without
-> declaration in the YAML. Generated builders expose them as typed
-> setters: `.SetTargetID(string)`, `.SetSourceIP(string)`,
-> `.SetReason(string)`, `.SetLatencyMS(int64)`, etc. The library
-> rejects taxonomies that re-declare a reserved name. See
-> [docs/taxonomy-validation.md#reserved-field-names](docs/taxonomy-validation.md#-reserved-field-names)
-> for the full table of 31 names, types, and CEF mappings.
-
-### 2️⃣ Configure outputs (`outputs.yaml`) - This is your config. 
-
-```yaml
-version: 1
-app_name: my-service
-host: "${HOSTNAME:-localhost}"
-
-outputs:
-  console:
-    type: stdout
-
-  siem_log:
-    type: file
-    file:
-      path: "./audit-cef.log"
-    formatter:
-      type: cef
-      vendor: "MyCompany"
-      product: "MyApp"
-      version: "1.0"
-```
-
-### 3️⃣ Generate type-safe code 
-
-```bash
-go run github.com/axonops/audit/cmd/audit-gen \
-  -input taxonomy.yaml \
-  -output audit_generated.go \
-  -package main
-```
-
-> 💡 `go run` fetches the tool automatically — no separate install needed.
-
-### 4️⃣ Use the generated builders
-
-```go
-// Required fields are constructor parameters — typos are compile errors
-err := auditor.AuditEvent(
-    NewUserCreateEvent("alice", "success").
-        SetTargetID("user-42"),
-)
-```
-
-> 📚 For the complete runnable application (taxonomy loading, output
-> configuration, auditor creation), see
-> [examples/02-code-generation](examples/02-code-generation/).
-
-### Output
-
-**📄 JSON** (default formatter):
-```json
-{"timestamp":"...","event_type":"user_create","severity":3,"app_name":"my-service","host":"prod-01","timezone":"UTC","pid":12345,"actor_id":"alice","outcome":"success","target_id":"user-42","event_category":"write"}
-```
-
-**🛡️ CEF** (SIEM formatter):
-```
-CEF:0|MyCompany|MyApp|1.0|user_create|A new user account was created|3|rt=... act=user_create deviceProcessName=my-service dvchost=prod-01 dvcpid=12345 suser=alice outcome=success cat=write
-```
-
-> `app_name`, `host`, and `pid` are **framework fields** — set once in your
-> outputs.yaml and automatically included in every event. The `host`,
-> `timezone`, and `pid` values reflect your system — they will differ
-> from the example above. `app_name` is set in `outputs.yaml` and stays
-> constant across deployments. SIEMs use the CEF extension keys
-> (`deviceProcessName`, `dvchost`, `dvcpid`) for automatic host-level
-> correlation.
+Skip ahead to the [HTTP Service Quickstart](docs/quickstart-http-service.md) — a self-contained ~10-minute walkthrough from `go get` to an audited POST endpoint with stdout output, no clicking through other docs.
 
 ---
 
@@ -326,11 +297,27 @@ See [Example 4](examples/04-testing/) and [Testing docs](docs/testing.md) for mo
 
 ---
 
+## 📋 Reserved Standard Fields
+
+Fields like `target_id`, `source_ip`, and `reason` are **reserved
+standard fields** — 31 framework-defined fields (`actor_id`,
+`outcome`, `target_id`, `source_ip`, `reason`, `request_id`,
+`session_id`, `role`, `dest_port`, `start_time`, …) that are always
+available on every event without declaration in YAML. Generated
+builders expose them as typed setters:
+`.SetTargetID(string)`, `.SetSourceIP(string)`, `.SetReason(string)`,
+`.SetDestPort(int)`, `.SetStartTime(time.Time)`, etc. The library
+rejects taxonomies that re-declare a reserved name. See
+[`docs/reserved-standard-fields.md`](docs/reserved-standard-fields.md)
+for the full table of 31 names, types, and CEF mappings.
+
+---
+
 ## 📚 Documentation
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 17 examples from "hello world" to a [complete inventory demo](examples/17-capstone/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 18 examples from "hello world" to a [complete inventory demo](examples/17-capstone/) and an [/healthz endpoint](examples/18-health-endpoint/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

@@ -28,6 +28,7 @@ Each example introduces one new concept and builds on the previous.
 | 17 | [capstone](17-capstone/) | Complete inventory demo with web UI, Postgres, four outputs, Grafana |
 | 18 | [health-endpoint](18-health-endpoint/) | `/healthz` and `/readyz` HTTP handlers driven by Auditor introspection |
 | 19 | [migration](19-migration/) | Coexistence pattern — `log/slog` and the audit library running side-by-side in an HTTP service |
+| 20 | [prometheus-reference](20-prometheus-reference/) | Drop-in `audit.Metrics` + `audit.OutputMetricsFactory` adapter for Prometheus, with `/metrics` HTTP handler |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

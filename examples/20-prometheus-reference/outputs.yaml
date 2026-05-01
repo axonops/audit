@@ -1,0 +1,7 @@
+version: 1
+app_name: prometheus-reference
+host: "${HOSTNAME:-localhost}"
+
+outputs:
+  console:
+    type: stdout

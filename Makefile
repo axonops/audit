@@ -32,7 +32,7 @@ SHELL      := bash
 .SHELLFLAGS := -e -o pipefail -c
 
 MODULES           := . file iouring syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault
-WORKSPACE_MODULES := $(MODULES) examples/17-capstone
+WORKSPACE_MODULES := $(MODULES) examples/17-capstone examples/20-prometheus-reference
 GOBIN             := $(shell go env GOPATH)/bin
 GO_TOOLCHAIN      := go1.26.2
 
@@ -256,7 +256,7 @@ test-examples:
 	            examples/13-standard-fields examples/14-loki-output \
 	            examples/15-tls-policy examples/16-buffering \
 	            examples/17-capstone examples/18-health-endpoint \
-	            examples/19-migration; do \
+	            examples/19-migration examples/20-prometheus-reference; do \
 		echo "=== build $$dir ==="; \
 		(cd $$dir && go build -o /dev/null .) || exit 1; \
 	done

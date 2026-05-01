@@ -1,0 +1,239 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Audit Events Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "sum by (event_category) (count_over_time({job=\"inventory-demo-audit\", event_category=~\"$event_category\", event_type=~\"$event_type\", severity=~\"$severity\"} [1m]))",
+          "legendFormat": "{{event_category}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "pointSize": 5,
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Events by Category",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "sum by (event_category) (count_over_time({job=\"inventory-demo-audit\", event_category=~\"$event_category\", event_type=~\"$event_type\", severity=~\"$severity\"} [24h]))",
+          "legendFormat": "{{event_category}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Events by Severity",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "sum by (severity) (count_over_time({job=\"inventory-demo-audit\", event_category=~\"$event_category\", event_type=~\"$event_type\", severity=~\"$severity\"} [24h]))",
+          "legendFormat": "severity {{severity}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "title": "Auth Failures",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "count_over_time({event_type=\"auth_failure\"} [24h])",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Rate Limit Events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "count_over_time({event_type=\"rate_limit_exceeded\"} [24h])",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Top Event Types",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "topk(10, sum by (event_type) (count_over_time({job=\"inventory-demo-audit\", event_category=~\"$event_category\", event_type=~\"$event_type\", severity=~\"$severity\"} [24h])))",
+          "legendFormat": "{{event_type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Security Events Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "sum by (event_type) (count_over_time({job=\"inventory-demo-audit\", event_category=~\"security|compliance\"} [$__interval]))",
+          "legendFormat": "{{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal" } }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "PII Stripping — user_create without email/phone",
+      "description": "These events have PII fields (email, phone) stripped by sensitivity labels before delivery to Loki. Compare with: docker compose logs app | grep user_create",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{job=\"inventory-demo-audit\", event_type=\"user_create\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
+    },
+    {
+      "title": "Recent Audit Events",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{job=\"inventory-demo-audit\", event_category=~\"$event_category\", event_type=~\"$event_type\", severity=~\"$severity\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["audit", "inventory-demo"],
+  "templating": {
+    "list": [
+      {
+        "name": "event_category",
+        "type": "query",
+        "datasource": "Loki",
+        "query": "label_values({job=\"inventory-demo-audit\"}, event_category)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      },
+      {
+        "name": "event_type",
+        "type": "query",
+        "datasource": "Loki",
+        "query": "label_values({job=\"inventory-demo-audit\"}, event_type)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      },
+      {
+        "name": "severity",
+        "type": "query",
+        "datasource": "Loki",
+        "query": "label_values({job=\"inventory-demo-audit\"}, severity)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Audit Events (Loki)",
+  "uid": "audit-events",
+  "version": 1
+}

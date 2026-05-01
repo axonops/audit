@@ -566,6 +566,10 @@ for the recipe.
   — worked example, registration, and security checklist for
   backends not covered by the built-in providers (Vault,
   OpenBao, file, env).
+- [deploy/grafana/](../deploy/grafana/) — production-ready Grafana
+  dashboards (Loki-sourced events + Prometheus-sourced pipeline
+  health) shipped as release artefacts; import via Grafana UI
+  upload or the provisioning directory.
 - [docs/validation.md](validation.md) — `audit-validate` CLI.
 - [docs/metrics-monitoring.md § Health Endpoint](metrics-monitoring.md#health-endpoint)
   — `/healthz` and `/readyz` handler patterns for Kubernetes

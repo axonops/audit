@@ -11,6 +11,7 @@ are compressed with gzip and retained up to a configured count and age.
 - [How It Works](#how-it-works)
 - [Complete Configuration Reference](#complete-configuration-reference)
 - [File Rotation](#file-rotation)
+- [Coexistence with logrotate](#coexistence-with-logrotate)
 - [Permissions and Security](#permissions-and-security)
 - [Metrics and Monitoring](#metrics-and-monitoring)
 - [Production Configuration](#production-configuration)
@@ -221,8 +222,116 @@ Two retention mechanisms work together:
 Both run after each rotation. A backup is deleted if EITHER condition
 is met.
 
-Setting `max_backups: 0` keeps all backups (no count limit). Setting
-`max_age_days: 0` disables age-based deletion.
+Zero values do NOT disable a retention dimension — they fall back
+to the documented default (`max_backups: 0` → 5, `max_age_days: 0`
+→ 30). Set the value explicitly to control retention. The library
+does not currently support "keep all backups forever" or "ignore
+age entirely"; the maximum allowed values are `max_backups: 100`
+and `max_age_days: 365`.
+
+## Coexistence with logrotate
+
+The audit library has its own built-in rotator (see
+[File Rotation](#file-rotation) above). On Linux, operators often
+also run [logrotate(8)](https://man7.org/linux/man-pages/man8/logrotate.8.html)
+system-wide. **The two rotators MUST NOT both manage the same log
+file** — pick one. This section explains why and helps you decide.
+
+### Recommendation: prefer the built-in rotator
+
+Use the audit library's built-in rotation and remove (or never
+add) any `/etc/logrotate.d/` entry that targets the audit log
+path. The built-in rotator:
+
+- Owns the file descriptor end-to-end, so there is no race between
+  rotation and writes.
+- Is configured through the same `outputs.yaml` block as the rest
+  of the file output — operators get a single pane of glass for
+  retention policy.
+- Is cross-platform — the same configuration works on Linux,
+  macOS, and Windows.
+- Compresses backups asynchronously with gzip and applies both
+  count-based and age-based retention without an external cron job.
+
+Mixing two rotators always introduces a window where one tool
+moves the file out from under the other. The next two subsections
+describe what happens when both are active, so operators can
+recognise the symptoms.
+
+### What goes wrong if both rotators are active
+
+The audit library rotates by **rename + recreate**: it closes the
+active file descriptor, renames the file to a timestamped backup,
+then opens a fresh file at the original path. logrotate, by default,
+uses a similar pattern — but the library does not get notified
+when logrotate fires, and vice versa.
+
+**Without `copytruncate`** (logrotate's default behaviour):
+logrotate renames `events.log` → `events.log.1` and creates a
+fresh empty `events.log` (when configured with `create`, which is
+typical). The library still holds an open file descriptor on the
+renamed inode and keeps writing to it — events flow into
+`events.log.1`, not the new `events.log`. Operators see this as
+"logrotate broke audit logging" because the active file appears
+empty. To make matters worse, when the library's own size
+threshold eventually fires, it renames the new `events.log`
+(possibly empty, possibly partially written-to depending on
+ordering) to ITS own timestamped backup and opens yet another
+file at the original path. The result is two competing rotation
+chains and unpredictable backup naming.
+
+**With `copytruncate`**: logrotate copies `events.log` to
+`events.log.1`, then truncates the original file in place. The
+library's descriptor still points at the truncated file.
+Subsequent writes append from offset 0. No events are lost, but
+the library's internal size counter is now out of sync with the
+on-disk file size, so size-based rotation may fire late or seem
+to "skip" until the counter catches up.
+
+In both cases the practical impact is operator surprise rather
+than data loss. Avoid the surprise by avoiding the dual-rotator
+configuration.
+
+### If organisational policy mandates logrotate
+
+Some organisations require all log files under a single rotation
+policy administered by logrotate. To accept that constraint
+safely:
+
+1. Set `max_size_mb: 10240` (the maximum allowed value, 10 GB)
+   so the built-in rotator effectively never fires under any
+   reasonable workload.
+2. Set `max_backups` and `max_age_days` to their lowest valid
+   values (`max_backups: 1`, `max_age_days: 1`). The library
+   does NOT support fully disabling its own retention — zero
+   values fall back to the documented defaults (5 backups,
+   30 days). The library will keep at least one of its own
+   timestamped backups per cycle; logrotate's retention policy
+   needs to allow for that.
+3. Configure logrotate with `copytruncate` so file descriptors
+   stay valid across rotations.
+4. Accept the post-rotation size-counter drift documented above
+   as the price of policy compliance.
+
+A future SIGHUP-driven file reopen — the cleanest way to make
+the audit library cooperate with logrotate `postrotate` — is
+NOT yet tracked by a dedicated issue, and is post-v1.0 in any
+case. The closely-related but distinct
+[#174](https://github.com/axonops/audit/issues/174) tracks
+config-file hot-reload (a file-system watcher for `outputs.yaml`),
+not signal-driven file reopen. Until a SIGHUP-rotate hook
+lands, the configuration above is the recommended workaround
+for environments that cannot disable logrotate.
+
+### Non-Linux platforms
+
+`logrotate` is a Linux-specific tool. Windows and macOS
+deployments have no equivalent and rely entirely on the library's
+built-in rotator. The cross-platform write semantics (rename and
+recreate via `os.Rename` + `os.OpenFile`) are identical across
+platforms, so the configuration documented in
+[File Rotation](#file-rotation) above is the only rotation
+mechanism on these systems.
 
 ## Permissions and Security
 

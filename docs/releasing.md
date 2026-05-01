@@ -239,6 +239,23 @@ gate in any CI system. Minimal GitHub Actions example:
 Pin `cosign` to a specific version via
 `sigstore/cosign-installer@<sha>` in the workflow.
 
+### Verifying the audit-gen container image (#610)
+
+Each tagged release also publishes a multi-arch OCI image at
+`ghcr.io/axonops/audit-gen` with three tags (`vX.Y.Z`, `vX.Y`,
+`latest`). Image manifests are signed under the same Sigstore
+keyless identity as `checksums.txt`:
+
+```bash
+cosign verify \
+  --certificate-identity 'https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/v1.0.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/axonops/audit-gen:v1.0.0
+```
+
+See [docs/code-generation.md § Container Image](code-generation.md#-container-image)
+for usage and CI-pipeline guidance.
+
 ### Composition with build provenance
 
 Every release also publishes a GitHub build-provenance attestation

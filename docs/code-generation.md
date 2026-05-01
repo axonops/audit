@@ -212,6 +212,54 @@ Unknown type values are rejected at taxonomy parse time with the
 valid-set listed in the error message (e.g. `unknown type "strng"
 (valid: string, int, int64, float64, bool, time, duration)`).
 
+## 🐳 Container Image
+
+Each tagged release publishes a multi-arch (amd64 + arm64) OCI
+image at `ghcr.io/axonops/audit-gen` with three tags:
+
+| Tag | Updates | When to use |
+|---|---|---|
+| `:vX.Y.Z` (e.g. `:v1.0.0`) | Pinned to the exact release | CI pipelines (recommended — reproducible builds) |
+| `:vX.Y` (e.g. `:v1.0`) | Floats over patch releases | Adopters who want patch-level updates without minor surprises |
+| `:latest` | Floats over every release | Local dev / quick experiments only |
+
+The image runs `audit-gen` as a non-root user from a
+[`distroless/static`](https://github.com/GoogleContainerTools/distroless)
+base — no shell, no package manager, ~5 MB compressed. Mount your
+source tree into `/src` and the binary's working directory matches:
+
+```bash
+docker run --rm \
+  -v "$PWD":/src \
+  ghcr.io/axonops/audit-gen:v1.0.0 \
+  -input /src/taxonomy.yaml \
+  -output /src/audit_generated.go \
+  -package main
+```
+
+For CI that runs `go generate ./...`, prefer the binary release
+tarball over the image — `go generate` invokes `go run`, not
+`docker run`. The image is for pipelines that explicitly call out
+to a containerised codegen step (e.g., language-agnostic CI
+runners that don't have a Go toolchain).
+
+### Verifying the image signature
+
+Every image manifest is signed via Sigstore keyless OIDC against
+the same identity as the release tarball checksum (#516):
+
+```bash
+cosign verify \
+  --certificate-identity 'https://github.com/axonops/audit/.github/workflows/release.yml@refs/tags/v1.0.0' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/axonops/audit-gen:v1.0.0
+```
+
+The verification proves the image was produced by the audit
+project's published release workflow at the named tag, with a
+transparency-log entry recorded in Rekor. See
+[docs/releasing.md](releasing.md) for the full verification model.
+
 ## ⌨️ CLI Flags
 
 | Flag | Default | Description |

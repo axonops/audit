@@ -35,7 +35,9 @@ timezone: "${TZ:-UTC}"               # optional in YAML — auto-detected from s
 # ── Standard Field Defaults (optional) ────────────────────
 # Deployment-wide default values for reserved standard fields.
 # Applied to every event unless the event sets its own value.
-# Keys must be reserved standard field names (actor_id, source_ip, etc.).
+# Keys must be reserved standard field names (actor_id, source_ip,
+# etc.) — see docs/reserved-standard-fields.md for the full list
+# of 31 names plus their Go types and CEF mappings.
 
 standard_fields:
   source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
@@ -172,7 +174,7 @@ outputs:
 | `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
-| `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be [reserved standard field names](../examples/13-standard-fields/#the-solution-reserved-standard-fields). |
+| `standard_fields` | No | Map of reserved standard field names to deployment-wide default values. Keys must be one of the 31 names listed in [Reserved standard fields](reserved-standard-fields.md). |
 | `secrets` | No | Secret provider configuration. Constructs providers from YAML instead of programmatic setup. See [Secrets Configuration](#secrets-configuration). |
 | `auditor` | No | Auditor configuration. All fields optional; defaults applied if omitted. |
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |

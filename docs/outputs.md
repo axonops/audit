@@ -294,7 +294,7 @@ The matrix references these counters from the
 - **Disk full** — for file output, free space immediately; rotation cleanup is opportunistic, not a substitute. For stdout pointed at a full filesystem, redirect stdout elsewhere.
 - **TLS expired** — renew certificates and **restart the process**. Add cert-expiry alerting upstream of the audit library.
 - **DNS failure** — `nslookup` / `dig` the destination; check `/etc/resolv.conf`. Persistent DNS failure is usually a network-team escalation. The audit library will keep retrying.
-- **Rate-limited** — reduce per-instance load (lower `batch_size`, increase `flush_interval`, add jitter at startup if a fleet-wide spike causes synchronised retries). Webhook and Loki respect `Retry-After`; aggressive operator action is rarely needed.
+- **Rate-limited** — reduce per-instance load (lower `batch_size`, increase `flush_interval`, add jitter at startup if a fleet-wide spike causes synchronised retries). Loki respects the `Retry-After` header (capped at 30s); webhook retries on its own exponential backoff and ignores the header. Aggressive operator action is rarely needed beyond load tuning.
 
 For a deeper failure-mode walkthrough by *symptom*, see
 [Troubleshooting](troubleshooting.md). For deployment-level

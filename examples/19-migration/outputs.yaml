@@ -1,0 +1,7 @@
+version: 1
+app_name: migration-demo
+host: "${HOSTNAME:-localhost}"
+
+outputs:
+  console:
+    type: stdout

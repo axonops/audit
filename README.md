@@ -317,7 +317,7 @@ for the full table of 31 names, types, and CEF mappings.
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 18 examples from "hello world" to a [complete inventory demo](examples/17-capstone/) and an [/healthz endpoint](examples/18-health-endpoint/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 19 examples from "hello world" to a [complete inventory demo](examples/17-capstone/), an [/healthz endpoint](examples/18-health-endpoint/), and a [slog-coexistence migration demo](examples/19-migration/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

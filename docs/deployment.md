@@ -552,6 +552,10 @@ for the recipe.
 - [SECURITY.md](../SECURITY.md) — disclosure policy, scope.
 - [docs/threat-model.md](threat-model.md) — actors, assets, trust
   boundaries, guarantees, non-guarantees.
+- [docs/outputs.md § Failure Mode Matrix](outputs.md#-failure-mode-matrix)
+  — concrete behaviour per output × failure mode (down, slow, auth
+  failure, disk full, TLS expired, DNS, rate-limited) with the
+  metric counter and operator action for every cell.
 - [docs/output-configuration.md](output-configuration.md) — full
   `outputs.yaml` reference.
 - [docs/async-delivery.md](async-delivery.md) — buffering

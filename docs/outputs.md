@@ -255,9 +255,58 @@ immediately from `Write()`, so a stalled destination does not delay
 delivery to other outputs. See
 [Buffering and Delivery Model](#-buffering-and-delivery-model) above.
 
+## 🚨 Failure Mode Matrix
+
+How does each output behave when the destination misbehaves? The
+matrix below documents the concrete behaviour, the metric counter
+that increments, and the recommended operator action. The
+behaviours have been verified against the per-output BDD scenarios
+in [`tests/bdd/features/`](../tests/bdd/features/) (#562).
+
+| Failure | Stdout | File | Syslog | Webhook | Loki |
+|---|---|---|---|---|---|
+| **Destination down** (TCP refused, file path missing, 502) | Synchronous write to `os.Stdout`; on FD-closed-by-OS the drain goroutine logs the error and continues. | `Writev` returns an I/O error (e.g. `ENOENT`, `EIO`); `RecordError` once per failed batch; the entire batch (up to 256 events) is dropped; the drain loop continues. | TCP dial fails; reconnect with exponential backoff (100ms→30s, capped by `max_retries`); `RecordRetry` per attempt; on exhaustion `RecordError` and drop **that event** (the remaining entries in the batch continue processing). | HTTP 5xx / connect-refused: retry with exponential backoff (100ms→5s, `max_retries`); `RecordRetry`; on exhaustion `RecordError` and `RecordDrop` per event in the batch. | Identical to webhook (HTTP). |
+| **Destination slow** (TCP send-window stall, slow read, multi-second response) | Blocks the drain goroutine — every event waits for stdout. **Avoid stdout in production hot paths**. | `writev` blocks on kernel page cache; per-output goroutine isolates the drain loop; if buffer fills, `RecordDrop`. | Per-output goroutine queues messages; if buffer fills, `RecordDrop`. Reconnect logic is non-blocking on the drain goroutine. | Per-output goroutine; `Timeout` (default `10s`) caps total per-batch latency; `ResponseHeaderTimeout` caps slow reads; on buffer full `RecordDrop`. | Identical to webhook with the additional gzip-compressed batch. |
+| **Auth failure** (401/403, bad token, bad client cert) | N/A — stdout has no auth. | N/A — file has no auth (use POSIX permissions). | TLS handshake fails on reconnect → treated as a transient network error; retry exhausts; `RecordError` and drop. Cert reload requires process restart. | 401/403 are **non-retryable**; single attempt, immediate `RecordError` and drop. | Identical to webhook. |
+| **Disk full** (`ENOSPC`) | If the stdout FD points to a filesystem at capacity, the write blocks the drain goroutine; same risk as "destination slow". | `writev` returns `ENOSPC`; `RecordError`; event dropped from internal buffer; rotation cleanup may reclaim space on next eligible rotation. | N/A — network-only. | N/A — no on-disk spool. | N/A — no on-disk spool. |
+| **TLS expired** (peer or client cert past notAfter) | N/A — stdout has no TLS. | N/A — file has no TLS. | TLS handshake fails on next reconnect; retried as a transient network error (100ms→30s, `max_retries`); `RecordError` on exhaustion. **Certs are loaded once at startup — operators MUST restart the process after certificate renewal.** | TLS handshake error returned from `client.Do`; classified retryable (the webhook treats every non-redirect, non-cancelled `client.Do` error as transient); retried 100ms→5s up to `max_retries`; then `RecordError` and `RecordDrop` per event. **Restart required after certificate renewal.** | Identical to webhook. |
+| **DNS failure** (NXDOMAIN, resolver timeout) | N/A — stdout has no DNS. | N/A — file has no DNS. | Treated as a transient dial error; retry with backoff (100ms→30s, `max_retries`); `RecordRetry` per attempt; `RecordError` on exhaustion. | Treated as transient (Go `net` error); retry 100ms→5s, `max_retries`; `RecordRetry` / `RecordError`. | Identical to webhook. |
+| **Rate-limited** (HTTP 429 / 503 with `Retry-After`) | N/A — stdout has no rate-limiting. | N/A — file has no rate-limiting. | N/A — RFC 5424 syslog has no rate-limit response; transport-level errors fold into "destination slow". | 429 and 5xx are both **retryable**; the webhook output retries with its standard exponential backoff (100ms→5s, `max_retries`) and **does not parse the `Retry-After` header**. `RecordRetry`; `RecordError` on exhaustion. | 429 is retryable; loki **parses the `Retry-After` header** (capped at 30s) and waits whichever is longer — the parsed value or the computed backoff. 5xx is retryable on backoff only (no header parsing). `RecordRetry`; `RecordError` on exhaustion. |
+
+### Metric counters
+
+The matrix references these counters from the
+`OutputMetrics` interface (see [Metrics & Monitoring](metrics-monitoring.md)):
+
+| Counter call | Increments when |
+|---|---|
+| `RecordDrop()` | The output's internal buffer is full and an event cannot be queued; for webhook and loki, also called per event when retries are exhausted |
+| `RecordError()` | A non-retryable delivery failure occurred (e.g., 401/403, retry budget exhausted) |
+| `RecordFlush(batchSize, dur)` | A batch was successfully delivered |
+| `RecordRetry(attempt)` | A retry attempt is starting (1-indexed) |
+| `RecordQueueDepth(depth, capacity)` | Sampled per-output buffer pressure |
+
+### Operator actions by failure mode
+
+- **Destination down** — verify the destination is running and the network path is open. Check `RecordError` rate; for syslog/webhook/loki, raise `max_retries` only if you can tolerate the additional latency; for file, ensure the parent directory exists and the process has write permission.
+- **Destination slow** — watch `RecordQueueDepth` trending toward `capacity`; raise `buffer_size`, lower `batch_size`, or move the destination closer (separate NIC, dedicated network path). For stdout in particular, redirect to a fast sink (a file, a pipe to `journald`) before production.
+- **Auth failure** — check the credential source. For Vault/OpenBao secrets, verify the lease is still valid. After cert renewal, **restart the process** — the audit library does not hot-reload TLS material.
+- **Disk full** — for file output, free space immediately; rotation cleanup is opportunistic, not a substitute. For stdout pointed at a full filesystem, redirect stdout elsewhere.
+- **TLS expired** — renew certificates and **restart the process**. Add cert-expiry alerting upstream of the audit library.
+- **DNS failure** — `nslookup` / `dig` the destination; check `/etc/resolv.conf`. Persistent DNS failure is usually a network-team escalation. The audit library will keep retrying.
+- **Rate-limited** — reduce per-instance load (lower `batch_size`, increase `flush_interval`, add jitter at startup if a fleet-wide spike causes synchronised retries). Loki respects the `Retry-After` header (capped at 30s); webhook retries on its own exponential backoff and ignores the header. Aggressive operator action is rarely needed beyond load tuning.
+
+For a deeper failure-mode walkthrough by *symptom*, see
+[Troubleshooting](troubleshooting.md). For deployment-level
+recovery topology (separate `RetentionWriter`, dual-output
+strategies, K8s liveness wiring) see
+[Deployment](deployment.md).
+
 ## 📚 Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/)
 - [Progressive Example: Multi-Output](../examples/09-multi-output/)
 - [Progressive Example: Capstone](../examples/17-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
+- [Troubleshooting](troubleshooting.md) — failure symptoms and recovery
+- [Metrics & Monitoring](metrics-monitoring.md) — full metric reference

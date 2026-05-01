@@ -77,9 +77,15 @@ Why the nine-method shape won:
   `file.RotationRecorder`, `syslog.ReconnectRecorder`). Consumers
   embedding `NoOpMetrics` retain no-op defaults for every method.
 
-The real cost — consumer boilerplate — is addressed by shipping a
-compact Prometheus adapter pattern (~35 lines of significant code;
-see the capstone example at `examples/17-capstone/metrics.go`).
+The real cost — consumer boilerplate — is addressed by shipping
+a complete, drop-in Prometheus adapter at
+[`examples/20-prometheus-reference/`](../examples/20-prometheus-reference/).
+Copy [`metrics.go`](../examples/20-prometheus-reference/metrics.go)
+into your project to wire pipeline-wide and per-output metrics
+into a Prometheus registry. The capstone example
+([`examples/17-capstone/metrics.go`](../examples/17-capstone/metrics.go))
+shows the same pattern in a full production-grade context with
+Postgres, Loki, HMAC, and Grafana dashboards.
 
 ## 🔍 What to Monitor
 
@@ -107,54 +113,26 @@ see the capstone example at `examples/17-capstone/metrics.go`).
 
 ## Prometheus Example
 
-A complete Prometheus adapter fits in about 35 lines of significant
-code using a small `vec()` helper and `NoOpMetrics` embedding. The
-capstone example (`examples/17-capstone/metrics.go`) ships the full
-implementation; the core shape is:
+A complete, tested Prometheus adapter ships at
+[`examples/20-prometheus-reference/`](../examples/20-prometheus-reference/).
+Copy [`metrics.go`](../examples/20-prometheus-reference/metrics.go)
+into your project — it's the drop-in artefact. It implements
+both the pipeline-wide `audit.Metrics` interface and the
+per-output `audit.OutputMetricsFactory`, exposes nine `audit_*`
+counters and two histograms (full table in the example
+[README](../examples/20-prometheus-reference/README.md)), and
+embeds `audit.NoOpMetrics` / `audit.NoOpOutputMetrics` for
+forward-compatibility (new methods added to those interfaces in
+future releases default to no-ops without breaking your build).
 
-```go
-type prometheusMetrics struct {
-    audit.NoOpMetrics // forward-compat: new Metrics methods default to no-op
+The companion [`main.go`](../examples/20-prometheus-reference/main.go)
+demonstrates wiring the adapter into `outputconfig.NewWithLoad`
+via `WithCoreMetrics` + `WithOutputMetrics`, and exposing
+`/metrics` over HTTP.
 
-    delivery, outputErr, outputFilt       *prometheus.CounterVec
-    valErr, filt, serErr                  *prometheus.CounterVec
-    bufferDrops                           prometheus.Counter
-}
-
-func vec(name, help string, labels ...string) *prometheus.CounterVec {
-    return promauto.NewCounterVec(prometheus.CounterOpts{Name: name, Help: help}, labels)
-}
-
-func newMetrics() *prometheusMetrics {
-    return &prometheusMetrics{
-        delivery:    vec("audit_events_total", "Audit deliveries.", "output", "status"),
-        outputErr:   vec("audit_output_errors_total", "Output write errors.", "output"),
-        outputFilt:  vec("audit_output_filtered_total", "Events filtered per output.", "output"),
-        valErr:      vec("audit_validation_errors_total", "Validation errors.", "event_type"),
-        filt:        vec("audit_filtered_total", "Globally filtered events.", "event_type"),
-        serErr:      vec("audit_serialization_errors_total", "Serialization errors.", "event_type"),
-        bufferDrops: promauto.NewCounter(prometheus.CounterOpts{
-            Name: "audit_buffer_drops_total", Help: "Events dropped due to full buffer.",
-        }),
-    }
-}
-
-// EventStatus is a typed string so string(status) is a zero-cost
-// conversion — pass it straight to WithLabelValues.
-func (m *prometheusMetrics) RecordDelivery(output string, status audit.EventStatus) {
-    m.delivery.WithLabelValues(output, string(status)).Inc()
-}
-func (m *prometheusMetrics) RecordOutputError(output string)    { m.outputErr.WithLabelValues(output).Inc() }
-func (m *prometheusMetrics) RecordOutputFiltered(output string) { m.outputFilt.WithLabelValues(output).Inc() }
-func (m *prometheusMetrics) RecordValidationError(ev string)    { m.valErr.WithLabelValues(ev).Inc() }
-func (m *prometheusMetrics) RecordFiltered(ev string)           { m.filt.WithLabelValues(ev).Inc() }
-func (m *prometheusMetrics) RecordSerializationError(ev string) { m.serErr.WithLabelValues(ev).Inc() }
-func (m *prometheusMetrics) RecordBufferDrop()                  { m.bufferDrops.Inc() }
-```
-
-`RecordSubmitted` and `RecordQueueDepth` are inherited no-ops from the
-embedded `audit.NoOpMetrics`; wire them yourself if you want those
-counters on your dashboard.
+`RecordSubmitted` and `RecordQueueDepth` are inherited no-ops from
+the embedded `audit.NoOpMetrics`; wire them yourself in
+`metrics.go` if you want those counters on your dashboard.
 
 ### Cardinality guidance
 

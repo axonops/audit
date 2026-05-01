@@ -170,7 +170,7 @@ outputs:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | Yes | Must be `1`. Schema version for future migration. |
+| `version` | Yes | Must be `1`. Schema version for future migration. See [Config Schema Versioning](#-config-schema-versioning) below. |
 | `app_name` | Yes | Application name. Emitted as a framework field in every event. Max 255 bytes. |
 | `host` | Yes | Hostname/environment. Emitted as a framework field. Max 255 bytes. Env vars supported. |
 | `timezone` | No | Timezone name (e.g. `UTC`, `America/New_York`). Max 64 bytes. Auto-detected from system when absent. |
@@ -180,6 +180,110 @@ outputs:
 | `outputs` | Yes | Map of named outputs. At least one must be defined. Maximum: 100. |
 
 > ⚠️ **No root-level `tls_policy` key.** TLS policy is configured inside each output (under `syslog:`, `webhook:`, `loki:`) and each secret provider (under `vault:`, `openbao:`). Setting `tls_policy:` at the root fails at startup with an "unknown top-level key" error. See [Per-Output TLS Policy](#-per-output-tls-policy) below.
+
+## 🔄 Config Schema Versioning
+
+The outputs YAML carries a top-level `version:` field so the
+library can recognise the shape of the document and apply
+migrations when a future schema change lands.
+
+### What `version: 1` means today
+
+`version: 1` is the only currently-defined schema version. Every
+outputs config MUST set `version: 1` explicitly:
+
+```yaml
+version: 1
+app_name: my-service
+host: my-host
+outputs:
+  ...
+```
+
+A missing or wrong `version:` value is rejected at load time
+with:
+
+```
+audit/outputconfig: output config validation failed: audit: config invalid: unsupported version 0 (expected 1)
+audit/outputconfig: output config validation failed: audit: config invalid: unsupported version 2 (expected 1)
+```
+
+These errors wrap both
+[`outputconfig.ErrOutputConfigInvalid`](https://pkg.go.dev/github.com/axonops/audit/outputconfig#pkg-variables)
+and the parent
+[`audit.ErrConfigInvalid`](https://pkg.go.dev/github.com/axonops/audit#pkg-variables);
+consumers can match either via `errors.Is` without coupling to
+the message text.
+
+### Schema version is independent of library release version
+
+The schema version (`version: 1` in YAML) is **not** the library
+release version (e.g., v1.0.0, v1.5.0, v2.0.0). They evolve
+independently:
+
+- A v1.5 library MAY still use schema `version: 1` — operators
+  upgrading the library do NOT need to touch their YAML.
+- The schema version bumps only when the YAML shape itself
+  changes in a way that older libraries cannot interpret (new
+  required field, removed field, or restructured nesting). This
+  is a maintainer-side decision; consumers do not need to touch
+  the version field on routine library upgrades.
+- A library release version bumps for any release reason — bug
+  fix, new feature, performance improvement — even when the
+  schema is unchanged.
+
+For the lifetime of v1.x of the library, `version: 1` will remain
+accepted. Schema-breaking changes are themselves library-major
+events: a `version: 2` schema would land in v2.x of the library
+(or earlier, with `version: 1` still accepted alongside it).
+
+### Future migration contract
+
+When `version: 2` is introduced, the library will:
+
+1. Accept both `version: 1` and `version: 2` configs side-by-side
+   for at least one tagged library release; the deprecation
+   timeline for `version: 1` will be announced via the
+   `CHANGELOG.md` `### Deprecated` section.
+2. Silently upgrade `version: 1` configs to the new internal
+   shape — operators do not need to rewrite their YAML.
+3. Reject `version: N+1` from a library that only knows up to
+   `N`, with a clear "upgrade the library" error.
+4. Reject `version: K-M` once support for `K-M` is dropped, with
+   a clear "no longer supported" error that names the lowest
+   still-accepted version.
+
+The current code path in `outputconfig.Load` performs a single
+hardcoded equality check against `1`. When the second schema
+version arrives, that check will be replaced with a migration
+mechanism analogous to the taxonomy's
+[`MigrateTaxonomy`](https://pkg.go.dev/github.com/axonops/audit#MigrateTaxonomy)
+— inline version handling rather than a public `RegisterMigration`
+API. This keeps migrations as library-implementation detail
+rather than a consumer extension point.
+
+The taxonomy schema versioning model is documented in parallel at
+[`docs/taxonomy-validation.md` "Taxonomy Schema Versioning"](taxonomy-validation.md#-taxonomy-schema-versioning).
+The two schemas (taxonomy + outputs) version independently — a
+taxonomy bump does not require an outputs config bump and vice
+versa.
+
+### When the maintainer adds `version: 2`
+
+The schema-bump workflow for the outputs config is:
+
+1. Replace the hardcoded equality check in `outputconfig.Load`
+   with a migration switch (`switch version { case 1: ...; case
+   2: ...; default: reject }`).
+2. Update the YAML examples under `outputconfig/testdata/` and
+   `examples/*/outputs.yaml` to use the new version where
+   appropriate (keeping at least one `version: 1` example to
+   lock the migration path).
+3. Add a regression BDD scenario that loads a `version: 1`
+   outputs config and asserts the in-memory `Loaded` shape
+   matches a hand-written `version: 2` equivalent.
+4. Update this section with the new version literal and the
+   shape change.
 
 ## ⚙️ Auditor Configuration
 

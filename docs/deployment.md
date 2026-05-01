@@ -562,6 +562,10 @@ for the recipe.
   architecture, drop semantics, shutdown.
 - [docs/secrets.md](secrets.md) — secret-provider authentication and
   rotation.
+- [docs/writing-custom-secret-providers.md](writing-custom-secret-providers.md)
+  — worked example, registration, and security checklist for
+  backends not covered by the built-in providers (Vault,
+  OpenBao, file, env).
 - [docs/validation.md](validation.md) — `audit-validate` CLI.
 - [docs/metrics-monitoring.md § Health Endpoint](metrics-monitoring.md#health-endpoint)
   — `/healthz` and `/readyz` handler patterns for Kubernetes

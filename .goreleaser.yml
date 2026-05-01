@@ -138,3 +138,70 @@ release:
     - glob: deploy/grafana/audit-metrics.json
     - glob: deploy/grafana/README.md
       name_template: 'grafana-dashboards-README.md'
+
+# audit-gen OCI image (#610).
+#
+# Two per-architecture builds (amd64, arm64) feed into a single
+# multi-arch manifest published as ghcr.io/axonops/audit-gen with
+# three tags: full version (e.g. v1.0.0), short major.minor
+# (e.g. v1.0), and `latest`. Each manifest is Cosign-signed via
+# the same keyless OIDC identity as the release-tarball checksum
+# (#516), so consumers verify with the documented identity in
+# docs/releasing.md.
+#
+# The Dockerfile at cmd/audit-gen/Dockerfile copies the
+# pre-compiled audit-gen binary from the GoReleaser build output
+# (audit-gen build entry above), so the image binary is
+# byte-identical to the binary in the GitHub-release tarball.
+dockers:
+  - id: audit-gen-amd64
+    ids: [audit-gen]
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: cmd/audit-gen/Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+  - id: audit-gen-arm64
+    ids: [audit-gen]
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
+    use: buildx
+    dockerfile: cmd/audit-gen/Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/axonops/audit-gen:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/axonops/audit-gen:{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/axonops/audit-gen:latest"
+    image_templates:
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-amd64"
+      - "ghcr.io/axonops/audit-gen:{{ .Version }}-arm64"
+
+# Cosign-sign every published manifest under the same keyless
+# OIDC identity as the checksum signature.
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    output: true
+    args:
+      - sign
+      - --yes
+      - "${artifact}@${digest}"

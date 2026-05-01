@@ -9,6 +9,24 @@ route events per-output, and which sensitive fields to strip.
 This is a complete reference for everything that can go in an
 `outputs.yaml` file.
 
+> ⚠️ **Loaded from the filesystem at runtime — not embedded.**
+> Unlike the taxonomy (which is typically `go:embed`-ed into the
+> binary), the outputs configuration is intended to be read from
+> disk every time the auditor starts so operators can change
+> destinations, credentials, and routing without rebuilding the
+> application. The file path passed to
+> `outputconfig.New(ctx, taxonomyYAML, path)` is passed directly to
+> `os.ReadFile` — if relative, it resolves against the process CWD
+> at the moment `New` is called (not at program start). Under
+> systemd without an explicit `WorkingDirectory=` directive the CWD
+> is `/`, and under Docker or Kubernetes the CWD depends on the
+> image's `WORKDIR` and any `workingDir:` override. For production
+> deployments you SHOULD use an absolute path
+> (e.g., `/etc/myapp/outputs.yaml`) or a path resolved against the
+> binary's own directory. See
+> [Loading Output Configuration](#-loading-output-configuration)
+> below for the supported loaders.
+
 ## 📋 Complete Schema
 
 ```yaml
@@ -284,6 +302,62 @@ The schema-bump workflow for the outputs config is:
    matches a hand-written `version: 2` equivalent.
 4. Update this section with the new version literal and the
    shape change.
+
+## 🏷️ Standard Field Defaults
+
+The optional `standard_fields:` block sets deployment-wide default
+values for one or more **reserved standard fields** — the 31
+predeclared, library-fixed fields that every taxonomy can use
+without redeclaring. The block is keyed by reserved standard field
+name; values are applied to every emitted event unless the event
+itself sets the same field.
+
+```yaml
+standard_fields:
+  source_ip: "${DEFAULT_SOURCE_IP:-10.0.0.1}"
+  actor_id: "${SERVICE_ACCOUNT:-system}"
+```
+
+**Keys** must be one of the 31 reserved standard field names —
+attempting to use a custom field name fails at startup with the
+following error (wrapped through `outputconfig.ErrOutputConfigInvalid`
+and `audit.ErrConfigInvalid`):
+
+```
+audit/outputconfig: output config validation failed: audit: config
+validation failed: standard_fields: unknown field "your_field" --
+only reserved standard field names are accepted
+```
+
+Use `errors.Is(err, outputconfig.ErrOutputConfigInvalid)` for
+programmatic handling. Empty string values are rejected the same
+way (a deployment-time empty default is always a configuration
+mistake).
+
+**Values** must match the reserved field's declared Go type as
+reported by `audit.ReservedStandardFieldType`. For the current 31
+reserved fields, the types in use are: `string` (26 fields), `int`
+(`dest_port`, `file_size`, `source_port`), and `time.Time`
+(`start_time`, `end_time`). The YAML loader accepts the natural
+YAML scalar (string for string fields, integer for `int` fields,
+RFC 3339 timestamp string for `time.Time` fields) and coerces it
+to the declared Go type at load time. Environment-variable
+substitution is supported in all string values via `${VAR}` and
+`${VAR:-default}`.
+
+**Precedence.**
+
+| Source | Wins when |
+|---|---|
+| Event setter (`SetActorID(...)`, etc.) | The event sets the field |
+| `standard_fields:` default | The event does not set the field |
+| Absent (or zero-valued under `omit_empty: false`) | Neither event nor default sets the field |
+
+> 📖 **Reference.** For the canonical list of all 31 reserved
+> standard field names, their Go types, and their CEF extension
+> keys, see **[`docs/reserved-standard-fields.md`](reserved-standard-fields.md)**.
+> That page is the single source of truth for the reserved-field
+> contract.
 
 ## ⚙️ Auditor Configuration
 

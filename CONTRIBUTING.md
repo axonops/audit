@@ -31,6 +31,39 @@ incorporates `check-static` plus `vet-all`, `lint-all`,
 
 Requires **Go 1.26+**.
 
+### Go Version Support
+
+The library targets the Go release declared in `go.mod` (currently
+`go 1.26+`). CI validates the build, vet, lint, and full test suite
+against that single toolchain version on every PR.
+
+The project's policy goal — pre-v1.0 — is to be compatible with the
+Go release in `go.mod` AND the immediately preceding minor release,
+mirroring the upstream Go release policy. A multi-version CI matrix
+that enforces this is part of the v1.0 prep; until then, treat the
+N-1 minor as best-effort.
+
+**Lifecycle rules:**
+
+- **Adding** support for a newer Go release is a non-breaking change
+  and MAY land in any minor or patch release.
+- **Dropping** support for a Go release is a **breaking change** from
+  `v1.0` onward. It bumps the `go` directive in every module's
+  `go.mod` and requires a `CHANGELOG.md` entry under `### Removed`.
+  From `v1.0`, drops MUST land in a major-version release
+  (e.g., `v1.x → v2.0`). While the library is pre-release (`v0.x`),
+  Go-version drops MAY land in any `v0.x` minor release but MUST
+  appear in `### Removed` in the CHANGELOG.
+- A Go minor release receives security fixes until two newer minor
+  releases have shipped — at that point it goes out of upstream
+  support (see [Go release policy](https://go.dev/doc/devel/release)).
+  The library will not retain a `go` directive pinned to an
+  upstream-unsupported release.
+
+Consumers tracking minor or patch releases never need to upgrade
+their toolchain. Consumers tracking a major release upgrade (e.g.,
+`v1` → `v2`) should expect the `go` directive to advance.
+
 ### Supported Platforms
 
 The library is tested in CI on:

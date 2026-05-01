@@ -128,6 +128,51 @@ stress-test: ## Run flake-prone tests STRESS_COUNT times under -race (default 10
 	cd webhook && go test -race -count=$(STRESS_COUNT) -run 'TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200|TestWebhookOutput_TLS_WrongCA|TestMockMetrics_|TestMockOutputMetrics_' ./...
 	go test -race -count=$(STRESS_COUNT) -run 'TestProcessEntry_ConcurrentSubmission_NoRace' .
 
+# --- Soak benchmark (#573) ---
+#
+# `make soak` runs the long-running mixed-output workload that
+# exercises the audit hot path for SOAK_DURATION (default 12h)
+# before each release tag. Drives 4 outputs concurrently (file +
+# in-process syslog mock + httptest webhook + drain to discard) at
+# SOAK_RATE events/sec across SOAK_PRODUCERS goroutines, sampling
+# runtime memory + goroutine count every SOAK_SAMPLE_INTERVAL.
+#
+# Output:
+#   $(SOAK_OUTPUT_DIR)/soak-samples-<timestamp>.csv  per-sample state
+#   $(SOAK_OUTPUT_DIR)/soak-summary-<timestamp>.json start/end/peak
+#
+# Maintainers paste the summary into BENCHMARKS.md "Release
+# Soak-Test Summary" before tagging a release. See
+# `docs/releasing.md` pre-release checklist for the full workflow.
+#
+# `make soak-quick` runs a 1-minute smoke test for harness
+# verification (used by maintainers before kicking off the 12-hour
+# run).
+#
+# Override variables on the command line:
+#   make soak SOAK_DURATION=2h SOAK_RATE=10000
+
+SOAK_DURATION ?= 12h
+SOAK_PRODUCERS ?= 8
+SOAK_RATE ?= 5000
+SOAK_SAMPLE_INTERVAL ?= 1m
+SOAK_OUTPUT_DIR ?= ./soak-output
+
+soak: ## Run the 12-hour soak benchmark (overridable via SOAK_DURATION)
+	@mkdir -p $(SOAK_OUTPUT_DIR)
+	SOAK_DURATION=$(SOAK_DURATION) \
+	SOAK_PRODUCERS=$(SOAK_PRODUCERS) \
+	SOAK_RATE=$(SOAK_RATE) \
+	SOAK_SAMPLE_INTERVAL=$(SOAK_SAMPLE_INTERVAL) \
+	SOAK_OUTPUT_DIR=$(SOAK_OUTPUT_DIR) \
+	go test -tags=soak -timeout=0 -count=1 -run='^$$' \
+		-bench=BenchmarkSoak_MixedOutputs \
+		-benchtime=$(SOAK_DURATION) \
+		./tests/soak/...
+
+soak-quick: ## Run a 1-minute soak smoke test (verifies harness)
+	@$(MAKE) soak SOAK_DURATION=1m SOAK_SAMPLE_INTERVAL=10s
+
 # --- Fuzz targets (#481) ---
 #
 # fuzz-short runs each Fuzz* function's SEED CORPUS only (no

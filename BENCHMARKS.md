@@ -30,6 +30,43 @@ The CI pipeline runs `make bench` on every PR and compares against `bench-baseli
 > end. See [`docs/performance.md`](docs/performance.md) for the full
 > ownership model and methodology.
 
+## Release Soak-Test Summary
+
+The 12-hour soak (`make soak`) is run on consistent hardware before
+each release tag (#573 / Track F-52). It exercises the audit hot
+path with file + syslog + webhook outputs simultaneously at 5000
+events/sec across 8 producer goroutines. Results MUST show bounded
+heap allocation and goroutine counts over the run. Maintainers
+paste values from `$SOAK_OUTPUT_DIR/soak-summary-*.json` into the
+table below before tagging a release.
+
+See [`tests/soak/README.md`](tests/soak/README.md) for the full
+workflow.
+
+### Template (copy for each release)
+
+```
+### vX.Y.Z soak (YYYY-MM-DD)
+
+- **CPU:** <model, threads>
+- **OS:** <kernel>
+- **Hardware notes:** <isolation, no other load, etc.>
+- **Sample CSV:** `<artifact path or attached>`
+
+| Metric | Start | End | Peak | Bound |
+|--------|------:|----:|-----:|------:|
+| heap_alloc_mb | N | N | N | < 2 × start |
+| numGoroutine | N | N | N | < 2 × start |
+| total_events | — | N | — | — |
+| total_drops | — | 0 | — | 0 |
+| goleak failures | — | 0 | — | 0 |
+```
+
+### Pre-v1.0.0 baseline soak
+
+_To be populated on the v1.0.0 release-prep run. Do not tag
+v1.0.0 without a green soak entry here._
+
 ### Core Audit Path
 
 | Benchmark | ns/op | B/op | allocs/op | Notes |

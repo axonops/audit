@@ -586,6 +586,25 @@ cannot be undone.
       that introduces a benchmark name to `bench-baseline.txt` that no
       longer exists in the source tree — catching renames at lint time.
 
+- [ ] **Soak benchmark complete** (`make soak`). The 12-hour
+      mixed-output soak (#573) is run on stable hardware before
+      every release tag. After completion, paste start / end / peak
+      values from `$SOAK_OUTPUT_DIR/soak-summary-*.json` into
+      `BENCHMARKS.md` "Release Soak-Test Summary" under a new dated
+      entry for the pending release. Do not tag if heap or
+      goroutine count grows unboundedly, if `goleak` reports
+      failures, or if `total_drops` is non-zero.
+
+      ```bash
+      # On the release-prep machine (no other load).
+      make soak-quick                     # 1-min smoke first
+      make soak                           # 12-hour run
+      # paste summary into BENCHMARKS.md, commit, push
+      ```
+
+      See [`tests/soak/README.md`](../tests/soak/README.md) for
+      result interpretation.
+
 ### Creating a Release
 
 > **Warning:** Once tags are pushed, they are permanent. Complete the

@@ -403,6 +403,28 @@ func (s *mockSyslogServer) waitForData(timeout time.Duration) bool {
 	}
 }
 
+// waitForMarkerCount polls until the server has received at least
+// `want` event markers (`"n":` substrings — one per event written
+// by TestWriteLoop_*), or the timeout expires. Required because
+// TCP coalescing means the writeLoop's batch may arrive across
+// multiple Reads on the server side; a single waitForData +
+// countEventMarkers snapshot races the second-and-onwards Reads
+// (#763). Counts via strings.Count over the joined buffer so chunk
+// boundaries do not affect the result.
+func (s *mockSyslogServer) waitForMarkerCount(want int, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		if countEventMarkers(s.getMessages()) >= want {
+			return true
+		}
+		select {
+		case <-deadline:
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 // waitForContent polls until the joined message buffer contains all
 // specified substrings, or the timeout expires. Unlike waitForData
 // (which returns after the first chunk), this is safe for multi-message

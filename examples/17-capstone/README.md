@@ -362,18 +362,60 @@ See [Example 04 — Testing](../04-testing/) for the fundamentals of
 
 ## Running Without Docker
 
-If you prefer to run the app directly (for development):
+If you prefer to run the app directly on your host (for IDE
+debugging, faster `go run` cycles, or attaching a profiler), the
+backing services still need to be available somewhere — the app
+itself talks to Postgres, Loki, and OpenBao. The simplest pattern
+is to keep those four containers running while the application
+runs on your host:
 
 ```bash
-# Start infrastructure only:
-docker compose up -d postgres loki grafana
+# 0. Run all subsequent commands from the capstone directory — the
+#    app reads outputs.yaml relative to the current working dir.
+cd examples/17-capstone
 
-# Wait for services:
+# 1. Start infrastructure only (postgres + loki + grafana + openbao + seeder).
+#    The seeder populates the HMAC salts that outputs.yaml resolves
+#    via ref+openbao:// URIs; without it, auditor startup fails.
+docker compose up -d postgres loki grafana openbao openbao-seed
+
+# 2. Wait for postgres and the openbao seeder to finish.
 docker compose exec postgres pg_isready -U demo -d audit_demo
+docker compose wait openbao-seed
 
-# Run the app:
+# 3. Export the env vars the app would otherwise inherit from the
+#    Docker Compose `app` service. Defaults that work in-container
+#    (e.g., APP_LOG_PATH=/data/app.log, BAO_ADDR=http://openbao:8200)
+#    are wrong on the host — override them explicitly.
+export APP_LOG_PATH="$(pwd)/app.log"           # default /data/app.log is Docker-only
+export DATABASE_URL="postgres://demo:demo@localhost:5432/audit_demo?sslmode=disable"
+export BAO_ADDR="http://localhost:8200"        # default is set inside the compose network
+export BAO_TOKEN="demo-root-token"             # matches BAO_DEV_ROOT_TOKEN_ID in compose
+export LOKI_URL="http://localhost:3100/loki/api/v1/push"
+export LISTEN_ADDR=":8080"
+
+# 4. Run the app on the host. Press Ctrl+C to exit; auditor flushes
+#    pending events on shutdown.
 go run .
 ```
+
+The bare-metal run writes three files into the capstone directory:
+`app.log` (application logs), `audit.log` (CEF compliance archive
+with HMAC v1), and `security.log` (JSON security feed with HMAC v2).
+The defaults `AUDIT_LOG_PATH=./audit.log` and
+`SECURITY_LOG_PATH=./security.log` apply unless you override them.
+Loki ingests audit events directly via the HTTP push URL, so events
+land in Grafana the same way they do under Compose.
+
+> ⚠️ **Why `openbao-seed` is required.** The HMAC integrity
+> configuration in `outputs.yaml` references secrets via
+> `ref+openbao://secret/data/audit/hmac-v1#...` URIs. Without the
+> seed step, OpenBao has an empty KV store and the app fails at
+> startup with a ref+ resolution error. The Compose service
+> `openbao-seed` runs `openbao-seed.sh`, exits cleanly, and is
+> referenced by the `app` service via `depends_on`. Outside Compose
+> you must run the seeder yourself or seed the same paths manually
+> with `bao kv put`.
 
 ## Further Reading
 

@@ -15,6 +15,9 @@ Feature: HMAC Integrity Verification
     And I close the auditor
     Then the output should contain "_hmac" field
     And the output should contain "_hmac_version" field with value "v1"
+    # The raw salt MUST NOT appear in the emitted payload — _hmac is
+    # the salted hash, not the salt itself. (#557 / F-15)
+    And the output should not contain the raw salt "test-salt-sixteen-b!"
 
   Scenario: HMAC fields absent when not configured
     Given an auditor with stdout output

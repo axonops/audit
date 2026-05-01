@@ -9,7 +9,7 @@ Feature: Auditor Configuration
     When I create an auditor
     Then the auditor should be created successfully
 
-  Scenario: BufferSize defaults to 10000 when zero
+  Scenario: QueueSize defaults to 10000 when zero
     Given a standard test taxonomy
     When I create an auditor with buffer size 0
     Then the auditor should be created successfully

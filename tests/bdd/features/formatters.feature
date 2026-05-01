@@ -320,13 +320,35 @@ Feature: Event Formatters
     Then the CEF line should contain "<cef_key>=<value>"
 
     Examples:
-      | field      | cef_key                  | value          |
-      | source_ip  | src                      | 10.0.0.1       |
-      | dest_ip    | dst                      | 192.168.1.1    |
-      | protocol   | app                      | HTTPS          |
-      | request_id | externalId               | req-123        |
-      | file_name  | fname                    | report.pdf     |
-      | message    | msg                      | User_created   |
-      | reason     | reason                   | valid_creds    |
-      | role       | spriv                    | admin          |
-      | target_id  | duser                    | user-42        |
+      # String-typed reserved standard fields with CEF mappings.
+      # outcome and actor_id are excluded because they are pre-set
+      # by the fixed rows of the scenario template; testing them here
+      # would be a no-op rather than coverage.
+      | field         | cef_key                   | value             |
+      | actor_uid     | suid                      | uid-1001          |
+      | dest_host     | dhost                     | db.example.com    |
+      | dest_ip       | dst                       | 192.168.1.1       |
+      | file_hash     | fileHash                  | abc123def456      |
+      | file_name     | fname                     | report.pdf        |
+      | file_path     | filePath                  | etc-config-yaml   |
+      | message       | msg                       | User_created      |
+      | method        | requestMethod             | POST              |
+      | path          | request                   | apiv1users        |
+      | protocol      | app                       | HTTPS             |
+      | reason        | reason                    | valid_creds       |
+      | referrer      | requestContext            | refexamplecom     |
+      | request_id    | externalId                | req-123           |
+      | role          | spriv                     | admin             |
+      | source_host   | shost                     | client.example    |
+      | source_ip     | src                       | 10.0.0.1          |
+      | target_id     | duser                     | user-42           |
+      | target_role   | dpriv                     | reader            |
+      | target_uid    | duid                      | uid-2002          |
+      | transport     | proto                     | tcp               |
+      | user_agent    | requestClientApplication  | curl-7.88         |
+      # Reserved standard fields without a built-in CEF mapping —
+      # the library falls back to the field name as the extension key
+      # (see docs/reserved-standard-fields.md and format_cef.go).
+      | action        | action                    | create            |
+      | session_id    | session_id                | sess-abc          |
+      | target_type   | target_type               | bucket            |

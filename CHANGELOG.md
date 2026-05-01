@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+> See [`docs/v1-changes.md`](docs/v1-changes.md) for a consolidated
+> Before/After reference table of every public-API rename, YAML
+> field rename, signature change, removal, and new error sentinel
+> introduced during v1.0 work. Useful for anyone who experimented
+> with a pre-v1.0 build informally — the per-issue entries below
+> remain the authoritative source of rationale and behaviour notes.
+
 ### Added
 
 - **`make soak` — 12-hour pre-release soak benchmark** (#573 / Track F-52). New `tests/soak/` package contains `BenchmarkSoak_MixedOutputs`, gated by the `soak` build tag so it never runs under `go test ./...`. The driver wires file + in-process syslog (TCP) + httptest webhook outputs simultaneously, drives 8 producer goroutines at 5000 events/sec aggregate (`SOAK_RATE`), and samples `runtime.MemStats.HeapAlloc`, `runtime.NumGoroutine()`, GC counters, audit queue depth, and total events / drops every `SOAK_SAMPLE_INTERVAL` (default 1 minute) for `SOAK_DURATION` (default 12 hours). Output: `$SOAK_OUTPUT_DIR/soak-samples-*.csv` (per-sample state) and `soak-summary-*.json` (start / end / peak). End-of-run assertion guards heap and goroutine bounds at 2× start; `goleak.VerifyTestMain` catches leaked goroutines at process exit. `make soak-quick` runs a 1-minute smoke for harness verification before committing to a 12-hour run on the release-prep machine. `BENCHMARKS.md` gains a "Release Soak-Test Summary" section with a per-release template that maintainers populate from the JSON summary; `docs/releasing.md` pre-release checklist mandates the soak run before tagging. CI does NOT run the 12-hour soak — minute budgets and the lack of self-hosted runners make it impractical; the run is operator-owned.

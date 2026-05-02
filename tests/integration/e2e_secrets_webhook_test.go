@@ -64,14 +64,17 @@ const (
 
 // extractOpenbaoCA copies the dev-tls CA cert from the OpenBao
 // container into a temp file and returns its path. Mirrors the
-// pattern used by secrets/openbao/tests/integration.
+// pattern used by secrets/openbao/tests/integration/openbao_test.go:
+// the dev-tls server writes its self-signed CA under
+// /tmp/vault-tls*/vault-ca.pem (with a per-run subdirectory). The
+// glob-shell-cat dance handles the random subdirectory name.
 func extractOpenbaoCA(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	caPath := filepath.Join(dir, "openbao-ca.pem")
 
 	out, err := exec.Command("docker", "exec", "bdd-openbao-1", //nolint:gosec // hard-coded container name from compose
-		"sh", "-c", "cat /opt/openbao/tls/tls-ca.pem").Output()
+		"sh", "-c", "cat /tmp/vault-tls*/vault-ca.pem").Output()
 	require.NoError(t, err, "extract openbao CA cert from bdd-openbao-1 container")
 	require.NotEmpty(t, out, "openbao CA cert must not be empty")
 

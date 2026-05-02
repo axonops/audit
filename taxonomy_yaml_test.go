@@ -840,6 +840,7 @@ events:
 `, tc.reserved, tc.declared))
 			_, err := audit.ParseTaxonomyYAML(yaml)
 			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrValidation)
 			assert.Contains(t, err.Error(), tc.reserved)
 			assert.Contains(t, err.Error(), "reserved standard field cannot declare a `type:`")
 		})

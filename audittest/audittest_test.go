@@ -92,6 +92,7 @@ func TestNew_ValidationError(t *testing.T) {
 		"outcome": "success",
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), "missing required")
 	require.NoError(t, auditor.Close())
 

@@ -125,6 +125,7 @@ func TestValidateEventRoute(t *testing.T) {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
+				assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 				assert.Contains(t, err.Error(), tt.wantErr)
 			}
 		})

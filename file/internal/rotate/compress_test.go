@@ -187,6 +187,7 @@ func TestCompressFile_SourceMissing(t *testing.T) {
 
 	err := compressFile(src, dst, 0o600)
 	assert.Error(t, err)
+	// text-only: compress.go:50 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "compress open source")
 }
 
@@ -201,6 +202,7 @@ func TestCompressFile_DestDirMissing(t *testing.T) {
 
 	err := compressFile(src, dst, 0o600)
 	assert.Error(t, err)
+	// text-only: compress.go:58 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "create dest")
 
 	// Source should be left intact on error.
@@ -224,6 +226,7 @@ func TestCompressFile_SourceSymlink(t *testing.T) {
 
 	err := compressFile(link, dst, 0o600)
 	assert.Error(t, err)
+	// text-only: compress.go:50 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "compress open source")
 
 	// Destination should not have been created.
@@ -253,5 +256,6 @@ func TestCompressFile_RemoveSourceFails_ErrorReturned(t *testing.T) {
 
 	err := compressFile(src, dst, 0o600)
 	require.Error(t, err)
+	// text-only: compress.go:73 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "remove source")
 }

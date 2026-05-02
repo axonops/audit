@@ -62,6 +62,7 @@ func TestExpandEnv_UnsetNoDefault_Error(t *testing.T) {
 
 	_, err := outputconfig.ExpandEnvInValueForTest(m, "config")
 	require.Error(t, err)
+	// text-only: envsubst.go:131 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "UNSET_HOST_NO_DEFAULT")
 	assert.Contains(t, err.Error(), "not set")
 }
@@ -143,6 +144,7 @@ func TestExpandEnv_UnclosedBrace_Error(t *testing.T) {
 
 	_, err := outputconfig.ExpandEnvInValueForTest(m, "test")
 	require.Error(t, err)
+	// text-only: envsubst.go:114 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "unclosed")
 }
 

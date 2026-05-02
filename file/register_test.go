@@ -54,6 +54,7 @@ func TestFileFactory_InvalidConfig_ReturnsError(t *testing.T) {
 
 	_, err := factory("bad_file", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: file.go:222 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "bad_file")
 }
 
@@ -65,6 +66,7 @@ func TestFileFactory_UnknownYAMLField_Rejected(t *testing.T) {
 
 	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:98 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "unknown_field")
 }
 
@@ -74,6 +76,7 @@ func TestFileFactory_EmptyConfig_ReturnsError(t *testing.T) {
 
 	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:92 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
 }
 

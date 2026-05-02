@@ -104,6 +104,7 @@ func TestNew_InvalidTaxonomy(t *testing.T) {
 
 	_, err := outputconfig.New(context.Background(), []byte("not: valid: taxonomy"), path)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
 
@@ -113,6 +114,7 @@ func TestNew_InvalidOutputConfig(t *testing.T) {
 
 	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, path)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "load")
 }
 
@@ -122,6 +124,7 @@ func TestNew_EmptyTaxonomy(t *testing.T) {
 
 	_, err := outputconfig.New(context.Background(), nil, path)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrInvalidInput)
 	assert.Contains(t, err.Error(), "taxonomy")
 }
 
@@ -146,6 +149,7 @@ func TestNew_NotRegularFile(t *testing.T) {
 	// Directories are not regular files.
 	_, err := outputconfig.New(context.Background(), facadeTaxonomyYAML, dir)
 	require.Error(t, err)
+	// text-only: readConfigFile (facade.go:165) returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "not a regular file")
 }
 

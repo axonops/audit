@@ -582,6 +582,8 @@ func TestNewSyslogOutput_InvalidPEMCA(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	// text-only: tls.go:49 returns raw fmt.Errorf for invalid PEM (no
+	// sentinel wrap). The "parse" substring is the contract.
 	assert.Contains(t, err.Error(), "parse")
 }
 
@@ -1039,6 +1041,7 @@ func TestParseFacility_Unknown(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown syslog facility")
 }
 
@@ -2020,6 +2023,9 @@ func TestNewSyslogOutput_TLSConfig_InvalidCAPEM(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	// text-only: tls.go:45,49 return raw fmt.Errorf for read/parse CA
+	// failures (no sentinel wrap). The "ca certificate" substring is
+	// the contract.
 	assert.Contains(t, err.Error(), "ca certificate",
 		"error should mention CA certificate when PEM parsing fails")
 }
@@ -2041,6 +2047,7 @@ func TestNewSyslogOutput_TLSCert_IsDirectory(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "directory",
 		"error should report that the TLS path is a directory")
 }
@@ -2083,6 +2090,8 @@ func TestNewSyslogOutput_TCP_ConnectFailure(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	// text-only: syslog.go:298,500 return raw fmt.Errorf for dial
+	// failures (no sentinel wrap). The "dial" substring is the contract.
 	assert.Contains(t, err.Error(), "dial",
 		"error should describe the dial failure")
 }
@@ -2109,6 +2118,9 @@ func TestNewSyslogOutput_TLSConfig_InvalidClientCert(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	// text-only: syslog.go:261 returns raw fmt.Errorf for TLS config
+	// failures (no sentinel wrap). The "tls config" substring is the
+	// contract.
 	assert.Contains(t, err.Error(), "tls config",
 		"error should indicate a TLS configuration failure")
 }
@@ -2148,6 +2160,8 @@ func TestNewSyslogOutput_TLSConfig_UnreadableCAFile(t *testing.T) {
 		FlushInterval: 5 * time.Millisecond,
 	})
 	require.Error(t, err)
+	// text-only: tls.go:45 returns raw fmt.Errorf for read CA failures
+	// (no sentinel wrap). The "ca certificate" substring is the contract.
 	assert.Contains(t, err.Error(), "ca certificate",
 		"error should mention CA certificate when ReadFile is denied")
 }

@@ -67,6 +67,7 @@ func TestStdoutFactory_RejectsConfig(t *testing.T) {
 
 	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
+	// text-only: stdout.go:41 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "does not accept configuration")
 	assert.Contains(t, err.Error(), "bad_stdout")
 }

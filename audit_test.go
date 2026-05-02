@@ -273,6 +273,8 @@ func TestLogger_Audit_ReservedStandardField_StillRejectsUnknown(t *testing.T) {
 		"foobar":    "unknown",
 	}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownField)
 	assert.Contains(t, err.Error(), "unknown fields")
 	assert.Contains(t, err.Error(), "foobar")
 	assert.NotContains(t, err.Error(), "source_ip")
@@ -286,6 +288,7 @@ func TestWithAppName_Empty_ReturnsError(t *testing.T) {
 		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "app_name must not be empty")
 }
 
@@ -298,6 +301,7 @@ func TestWithAppName_ExceedsMaxLength(t *testing.T) {
 		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "app_name exceeds maximum length of 255 bytes")
 }
 
@@ -324,6 +328,7 @@ func TestWithHost_Empty_ReturnsError(t *testing.T) {
 		audit.WithAppName("test-app"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "host must not be empty")
 }
 
@@ -336,6 +341,7 @@ func TestWithHost_ExceedsMaxLength(t *testing.T) {
 		audit.WithAppName("test-app"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "host exceeds maximum length of 255 bytes")
 }
 
@@ -363,6 +369,7 @@ func TestWithTimezone_Empty_ReturnsError(t *testing.T) {
 		audit.WithTimezone(""),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "timezone must not be empty")
 }
 
@@ -376,6 +383,7 @@ func TestWithTimezone_ExceedsMaxLength(t *testing.T) {
 		audit.WithTimezone(strings.Repeat("Z", 65)),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "timezone exceeds maximum length of 64 bytes")
 }
 
@@ -404,6 +412,7 @@ func TestWithStandardFieldDefaults_InvalidKey(t *testing.T) {
 		audit.WithStandardFieldDefaults(map[string]any{"bogus": "value"}),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "bogus")
 	assert.Contains(t, err.Error(), "not a reserved standard field")
 }
@@ -595,6 +604,8 @@ func TestLogger_Audit_NilFields(t *testing.T) {
 	// means all are missing.
 	err := auditor.AuditEvent(audit.NewEvent("schema_register", nil))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), "missing required fields")
 }
 
@@ -1081,6 +1092,10 @@ func TestLogger_Close_OutputError(t *testing.T) {
 
 	err = auditor.Close()
 	require.Error(t, err)
+	// text-only: the underlying error is errorOutput.closeErr (a test-
+	// injected errors.New), so there is no library sentinel to assert
+	// against here. The contract is that Close surfaces the wrapped
+	// underlying error verbatim and prefixes it with the output name.
 	assert.Contains(t, err.Error(), "close failed")
 	assert.Contains(t, err.Error(), "bad", "error should include output name")
 }
@@ -1237,6 +1252,9 @@ func TestLogger_Filter_InvalidCategory(t *testing.T) {
 
 	err := auditor.EnableCategory("nonexistent")
 	assert.Error(t, err)
+	// text-only: EnableCategory/DisableCategory return raw fmt.Errorf
+	// without a sentinel wrap (audit.go:793,809). The category-name
+	// substring is the only stable contract.
 	assert.Contains(t, err.Error(), "unknown category")
 
 	err = auditor.DisableCategory("nonexistent")
@@ -1489,6 +1507,9 @@ func TestLogger_Filter_InvalidEvent(t *testing.T) {
 
 	err := auditor.EnableEvent("nonexistent")
 	assert.Error(t, err)
+	// text-only: EnableEvent/DisableEvent return raw fmt.Errorf without
+	// a sentinel wrap (audit.go:825,842). The Auditor.AuditEvent path
+	// uses ErrUnknownEventType, but the runtime-toggle methods don't.
 	assert.Contains(t, err.Error(), "unknown event type")
 
 	err = auditor.DisableEvent("nonexistent")
@@ -1670,6 +1691,7 @@ func TestNew_QueueSizeExceedsMax(t *testing.T) {
 		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
@@ -1681,6 +1703,7 @@ func TestNew_ShutdownTimeoutExceedsMax(t *testing.T) {
 		audit.WithHost("test-host"),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 }
 
@@ -3682,6 +3705,8 @@ func TestAuditEvent_UnknownEventType(t *testing.T) {
 
 	err = auditor.AuditEvent(audit.NewEvent("nonexistent", audit.Fields{}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrValidation)
+	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.Contains(t, err.Error(), "unknown event type")
 }
 
@@ -3697,6 +3722,8 @@ func TestAuditEvent_NilEvent(t *testing.T) {
 
 	err = auditor.AuditEvent(nil)
 	require.Error(t, err)
+	// text-only: nil-event guard at audit.go:378 returns raw fmt.Errorf
+	// without a sentinel wrap. The contract is the error message.
 	assert.Contains(t, err.Error(), "event must not be nil")
 }
 
@@ -4134,6 +4161,7 @@ func TestHMAC_ReservedFieldNames(t *testing.T) {
 			}
 			err := audit.ValidateTaxonomy(*tax)
 			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrTaxonomyInvalid)
 			assert.Contains(t, err.Error(), "reserved framework field")
 		})
 	}

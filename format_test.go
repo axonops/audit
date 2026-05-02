@@ -742,6 +742,7 @@ func TestCEFFormatter_RejectsInvalidFieldMappingAtConstruction(t *testing.T) {
 				audit.Fields{"outcome": "ok"}, def, nil)
 			require.Error(t, err,
 				"invalid extension key %q must be rejected at construction", tc.bad)
+			// text-only: format_cef.go:463 returns raw fmt.Errorf without an audit sentinel wrap.
 			assert.Contains(t, err.Error(), "invalid extension key")
 			// A second call must return the SAME error (resolveErr is
 			// captured once, not re-computed).
@@ -981,6 +982,7 @@ func TestLogger_WithFormatter_Nil(t *testing.T) {
 		audit.WithFormatter(nil),
 	)
 	require.Error(t, err)
+	// text-only: options.go:264 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "formatter must not be nil")
 }
 
@@ -1037,6 +1039,7 @@ func TestJSONFormatter_WriteFieldError(t *testing.T) {
 		Optional: []string{"bad"},
 	}, nil)
 	require.Error(t, err)
+	// text-only: format_json.go:169 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "json format")
 }
 
@@ -2182,6 +2185,7 @@ func TestCEFFormatter_RejectsLongVendor(t *testing.T) {
 	}
 	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
 	assert.Error(t, err)
+	// text-only: format_cef.go:280 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "vendor")
 }
 
@@ -2194,6 +2198,7 @@ func TestCEFFormatter_RejectsLongProduct(t *testing.T) {
 	}
 	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
 	assert.Error(t, err)
+	// text-only: format_cef.go:283 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "product")
 }
 
@@ -2206,6 +2211,7 @@ func TestCEFFormatter_RejectsLongVersion(t *testing.T) {
 	}
 	_, err := f.Format(testTime, "ev", audit.Fields{"outcome": "ok"}, &audit.EventDef{Required: []string{"outcome"}}, nil)
 	assert.Error(t, err)
+	// text-only: format_cef.go:286 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "version")
 }
 

@@ -418,6 +418,7 @@ outputs:
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), []byte(yamlConfig), tax)
 	require.Error(t, err)
+	// text-only: envsubst.go:131 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "NONEXISTENT_BAO_ADDR")
 }
 

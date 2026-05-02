@@ -1020,6 +1020,7 @@ events:
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
+	// text-only: taxonomy_yaml.go:133 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "unknown field")
 }
 
@@ -1036,6 +1037,7 @@ events:
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
+	// text-only: taxonomy_yaml.go:123 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "expected a YAML sequence")
 	assert.Contains(t, err.Error(), "or mapping")
 }

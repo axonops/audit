@@ -293,6 +293,7 @@ func TestLoad_WithSecretProvider_DuplicateSchemeErrors(t *testing.T) {
 		outputconfig.WithSecretProvider(mock2),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "duplicate")
 }
 
@@ -849,6 +850,7 @@ func TestLoad_WithSecretProvider_NilProviderErrors(t *testing.T) {
 		outputconfig.WithSecretProvider(nil),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -913,6 +915,7 @@ outputs:
 	require.Error(t, err)
 	// Should get a clear error about no provider, not a toBool error
 	// leaking the ref URI.
+	// text-only: hmac.go:136 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "no provider")
 }
 
@@ -1467,6 +1470,7 @@ func TestLoad_WithSecretProvider_SameInstanceTwice_Error(t *testing.T) {
 		outputconfig.WithSecretProvider(mock), // same instance
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "duplicate")
 }
 
@@ -1535,5 +1539,6 @@ outputs:
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secretPassword,
 		"resolved secret value must not leak in error message")
+	// text-only: hmac.go:163 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "not a valid boolean")
 }

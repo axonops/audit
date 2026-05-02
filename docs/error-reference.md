@@ -115,10 +115,11 @@ audit: config validation failed
 
 | | |
 |---|---|
-| **When** | `New()` is called with an invalid `Config` struct |
+| **When** | `New()` is called with an invalid `Config` struct, an out-of-range option value, or an `EventRoute` that does not validate against the taxonomy |
 | **Meaning** | Auditor creation failed — one or more config values are out of range |
 | **Transient?** | No — permanent configuration error |
-| **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `ShutdownTimeout` exceeds 60 seconds, `Version` is not 1. The wrapped error message tells you which field is invalid. |
+| **What to do** | Check the error message for details. Common causes: `QueueSize` exceeds 1,000,000, `ShutdownTimeout` exceeds 60 seconds, `Version` is not 1, an empty/over-length `WithAppName` / `WithHost` / `WithTimezone` value, an `EventRoute` that mixes include and exclude or references unknown taxonomy entries. The wrapped error message tells you which field is invalid. |
+| **Sentinel coverage** (#556) | Wrapped via `%w` by every option-validator that fails: `WithAppName` empty / over-length, `WithHost` empty / over-length, `WithTimezone` empty / over-length, `WithStandardFieldDefaults` invalid key, `EventRoute` include/exclude mix, `EventRoute` severity out-of-range, `EventRoute` references unknown taxonomy entries. Use `errors.Is(err, audit.ErrConfigInvalid)` to discriminate any of these from `ErrTaxonomyRequired` / `ErrAppNameRequired` / `ErrHostRequired` (which mark missing-option failures, distinct from invalid-value failures). |
 
 ### `ErrTaxonomyRequired`
 

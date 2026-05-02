@@ -35,6 +35,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/axonops/audit"
 	"github.com/axonops/audit/secrets"
 	"github.com/axonops/audit/secrets/vault"
 )
@@ -83,6 +84,7 @@ func TestNew_RequiresHTTPS(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Address: "http://vault.example.com", Token: "t"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "https")
 	assert.Contains(t, err.Error(), "AllowInsecureHTTP")
 }
@@ -116,6 +118,7 @@ func TestNew_RequiresAddress(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Token: "t"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "address")
 }
 
@@ -123,6 +126,7 @@ func TestNew_RequiresToken(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Address: "https://vault.example.com"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "token")
 }
 
@@ -130,6 +134,7 @@ func TestNew_RejectsEmbeddedCredentials(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Address: "https://user:pass@vault.example.com", Token: "t"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "credentials")
 }
 
@@ -137,6 +142,7 @@ func TestNew_RejectsEmptyHost(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Address: "https://", Token: "t"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "empty host")
 }
 
@@ -144,6 +150,7 @@ func TestNew_RejectsMismatchedTLSCertKey(t *testing.T) {
 	t.Parallel()
 	_, err := vault.New(&vault.Config{Address: "https://vault.example.com", Token: "t", TLSCert: "/some/cert.pem"})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "both be set")
 }
 
@@ -783,6 +790,7 @@ func TestNew_CustomCA_FileNotFound(t *testing.T) {
 		TLSCA:   "/nonexistent/ca.pem",
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "ca certificate")
 }
 
@@ -798,6 +806,7 @@ func TestNew_CustomCA_InvalidPEM(t *testing.T) {
 		TLSCA:   caPath,
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "parse ca")
 }
 
@@ -832,6 +841,7 @@ func TestNew_mTLS_InvalidCertPath(t *testing.T) {
 		TLSKey:  keyPath,
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "client certificate")
 }
 
@@ -839,6 +849,7 @@ func TestNewWithHTTPClient_NilConfig(t *testing.T) {
 	t.Parallel()
 	_, err := vault.NewWithHTTPClient(nil, http.DefaultClient)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -849,6 +860,7 @@ func TestNewWithHTTPClient_NilClient(t *testing.T) {
 		Token:   "token",
 	}, nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -859,6 +871,7 @@ func TestNewWithHTTPClient_RequiresHTTPS(t *testing.T) {
 		Token:   "token",
 	}, http.DefaultClient)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "https")
 	assert.Contains(t, err.Error(), "AllowInsecureHTTP")
 }

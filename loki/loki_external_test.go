@@ -192,5 +192,6 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := loki.New(nil, nil)
 	require.Error(t, err)
+	// text-only: loki.go:162 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config must not be nil")
 }

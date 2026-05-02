@@ -206,6 +206,7 @@ func TestSyslog_InvalidCert_Rejected(t *testing.T) {
 		TLSCA:    filepath.Join(certs, "invalid.crt"),
 	})
 	assert.Error(t, err, "construction with invalid CA should fail TLS handshake")
+	// text-only: error originates from crypto/tls handshake; no audit sentinel in the chain.
 	assert.Contains(t, err.Error(), "certificate")
 }
 

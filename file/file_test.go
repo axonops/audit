@@ -329,6 +329,8 @@ func TestFileOutput_InvalidConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := file.New(&tt.cfg)
 			require.Error(t, err)
+			// text-only: mixed table — empty path, parent, permissions cases use bare fmt.Errorf in file.go;
+			// only max_*/buffer_size cases wrap audit.ErrConfigInvalid (file.go:567+).
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
@@ -352,6 +354,7 @@ func TestFileOutput_Permissions0000_Rejected(t *testing.T) {
 	})
 	// "0000" is valid octal but the rotation library rejects zero mode.
 	require.Error(t, err)
+	// text-only: rotate/writer.go:411 errors.New, wrapped by file.go:292 — no audit sentinel in the chain.
 	assert.Contains(t, err.Error(), "non-zero")
 }
 
@@ -1113,6 +1116,7 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := file.New(nil)
 	require.Error(t, err)
+	// text-only: file.go:212 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config must not be nil")
 }
 

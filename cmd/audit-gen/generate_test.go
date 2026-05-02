@@ -1052,6 +1052,7 @@ func TestBuildLabelConstants_NamingCollision(t *testing.T) {
 	}
 	_, err := buildLabelConstantsFromConfig(sc)
 	require.Error(t, err)
+	// text-only: generate.go:308 returns raw fmt.Errorf without an audit sentinel wrap (cmd module).
 	assert.Contains(t, err.Error(), "naming collision")
 }
 

@@ -293,6 +293,7 @@ outputs:
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "default_formatter has been removed")
 }
 
@@ -1013,6 +1014,7 @@ outputs:
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "min_severity 11 out of range 0-10")
 }
 
@@ -1030,6 +1032,7 @@ outputs:
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "max_severity -1 out of range 0-10")
 }
 
@@ -1048,6 +1051,7 @@ outputs:
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "min_severity 8 exceeds max_severity 3")
 }
 
@@ -1666,6 +1670,7 @@ outputs:
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "at least")
 }
 
@@ -1688,6 +1693,7 @@ outputs:
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown")
 }
 
@@ -1707,6 +1713,7 @@ outputs:
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "salt")
 }
 
@@ -1728,6 +1735,7 @@ outputs:
 	tax := testTaxonomy(t)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
 	assert.Contains(t, err.Error(), "algorithm")
 }
 
@@ -2623,12 +2631,18 @@ func TestToInt_Float64_Zero(t *testing.T) {
 func TestToInt_Float64_Fractional_ReturnsError(t *testing.T) {
 	_, err := outputconfig.ToIntForTest(float64(10.7))
 	require.Error(t, err)
+	// text-only: toInt is an internal type-coercion helper; its raw
+	// fmt.Errorf returns are wrapped at higher layers (parseAuditorConfig,
+	// parseRoute, etc.) where the parent Load test asserts ErrorIs against
+	// outputconfig.ErrOutputConfigInvalid. At this leaf level the message
+	// content is the contract.
 	assert.Contains(t, err.Error(), "fractional")
 }
 
 func TestToInt_Float64_NegativeFractional_ReturnsError(t *testing.T) {
 	_, err := outputconfig.ToIntForTest(float64(-3.5))
 	require.Error(t, err)
+	// text-only: same as TestToInt_Float64_Fractional_ReturnsError above.
 	assert.Contains(t, err.Error(), "fractional")
 }
 
@@ -2820,6 +2834,7 @@ func TestToInt_Float64Fractional(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToIntForTest(42.5)
 	require.Error(t, err)
+	// text-only: toInt helper, see TestToInt_Float64_Fractional_ReturnsError.
 	assert.Contains(t, err.Error(), "fractional")
 }
 
@@ -2834,6 +2849,7 @@ func TestToInt_InvalidString(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToIntForTest("not-a-number")
 	require.Error(t, err)
+	// text-only: toInt helper, see TestToInt_Float64_Fractional_ReturnsError.
 	assert.Contains(t, err.Error(), "invalid integer")
 }
 
@@ -2841,6 +2857,7 @@ func TestToInt_UnsupportedType(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToIntForTest([]string{"nope"})
 	require.Error(t, err)
+	// text-only: toInt helper, see TestToInt_Float64_Fractional_ReturnsError.
 	assert.Contains(t, err.Error(), "expected integer")
 }
 
@@ -2848,6 +2865,8 @@ func TestToBool_UnsupportedType(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToBoolForTest(42)
 	require.Error(t, err)
+	// text-only: toBool helper, parallels toInt — wrap chain established
+	// by parseAuditorConfig at the Load layer.
 	assert.Contains(t, err.Error(), "expected boolean")
 }
 
@@ -2855,6 +2874,7 @@ func TestToBool_InvalidString(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToBoolForTest("not-bool")
 	require.Error(t, err)
+	// text-only: see TestToBool_UnsupportedType.
 	assert.Contains(t, err.Error(), "invalid boolean")
 }
 
@@ -2862,6 +2882,7 @@ func TestToStringSlice_NonStringElement(t *testing.T) {
 	t.Parallel()
 	_, err := outputconfig.ToStringSliceForTest([]any{"a", 42})
 	require.Error(t, err)
+	// text-only: toStringSlice helper, parallels toInt.
 	assert.Contains(t, err.Error(), "expected string")
 }
 
@@ -3038,6 +3059,8 @@ outputs:
 `)
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid,
+		"unknown-output-type error must wrap ErrOutputConfigInvalid")
 	assert.Contains(t, err.Error(), `unknown output type "not-a-real-output"`,
 		"diagnostic must name the bad type")
 	assert.Contains(t, err.Error(), "registered:",
@@ -3075,6 +3098,8 @@ outputs:
 		outputconfig.WithFactory("nil-factory", nilFactory),
 	)
 	require.Error(t, err, "Load must fail when a factory returns nil output and nil error")
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid,
+		"factory misbehaviour must surface as a config-invalid error")
 	// The exact wording is implementation detail; the diagnostic
 	// must at minimum reference the bad output and indicate the
 	// factory misbehaviour (or the symptom — nil output).

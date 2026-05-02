@@ -160,6 +160,7 @@ func TestWithTaxonomy_PostConstructionMutation_DoesNotAffectAuditor(t *testing.T
 		"x": "y",
 	}))
 	require.Error(t, err, "hacked_event should not be in the auditor's taxonomy")
+	assert.ErrorIs(t, err, audit.ErrUnknownEventType)
 	assert.Contains(t, err.Error(), "unknown event type")
 
 	require.NoError(t, auditor.Close())

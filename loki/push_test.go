@@ -577,5 +577,6 @@ func TestMaybeCompress_GzipError_ReturnsError(t *testing.T) {
 
 	_, _, err = o.MaybeCompressForTest()
 	require.Error(t, err, "maybeCompress should return error with failing writer")
+	// text-only: push.go:313 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "gzip write")
 }

@@ -84,6 +84,9 @@ func TestBuildFormatter_JSON_InvalidTimestamp_Error(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\ntimestamp: epoch_seconds\n")
 	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
+	// text-only: buildFormatter helpers (formatter.go:73,77,86,93,104,115)
+	// return raw fmt.Errorf without a sentinel wrap. The ErrOutputConfigInvalid
+	// wrap is added by Load() upstream (outputconfig.go).
 	assert.Contains(t, err.Error(), "unknown timestamp format")
 	assert.Contains(t, err.Error(), "epoch_seconds")
 }
@@ -140,6 +143,7 @@ func TestBuildFormatter_CEF_RejectsTimestamp(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\ntimestamp: unix_ms\nvendor: Test\n")
 	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
+	// text-only: buildFormatter helper, see TestBuildFormatter_JSON_InvalidTimestamp_Error.
 	assert.Contains(t, err.Error(), "cef does not support timestamp")
 }
 
@@ -147,6 +151,7 @@ func TestBuildFormatter_JSON_RejectsVendorProductVersion(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\nvendor: AxonOps\n")
 	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
+	// text-only: buildFormatter helper, see TestBuildFormatter_JSON_InvalidTimestamp_Error.
 	assert.Contains(t, err.Error(), "json does not support vendor")
 }
 
@@ -154,6 +159,7 @@ func TestBuildFormatter_UnknownType_Error(t *testing.T) {
 	v := parseFormatterValue(t, "type: protobuf\n")
 	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
+	// text-only: buildFormatter helper, see TestBuildFormatter_JSON_InvalidTimestamp_Error.
 	assert.Contains(t, err.Error(), "unknown type")
 	assert.Contains(t, err.Error(), "protobuf")
 }
@@ -163,6 +169,7 @@ func TestBuildFormatter_InvalidStructure_Error(t *testing.T) {
 	v := []any{"item"}
 	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
+	// text-only: buildFormatter helper, see TestBuildFormatter_JSON_InvalidTimestamp_Error.
 	assert.Contains(t, err.Error(), "formatter")
 }
 

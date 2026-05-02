@@ -163,6 +163,8 @@ func TestFanout_DuplicateOutputName_Error(t *testing.T) {
 		audit.WithOutputs(out1, out2),
 	)
 	require.Error(t, err)
+	// text-only: options.go:295 returns raw fmt.Errorf without a sentinel
+	// wrap. The duplicate-name guard is internal to WithOutputs.
 	assert.Contains(t, err.Error(), "duplicate output name")
 }
 
@@ -177,6 +179,8 @@ func TestFanout_WithOutputs_AfterWithNamedOutput_Error(t *testing.T) {
 		audit.WithOutputs(out2), // should error
 	)
 	require.Error(t, err)
+	// text-only: options.go:284 returns raw fmt.Errorf without a sentinel
+	// wrap (mutual-exclusion guard between WithOutputs / WithNamedOutput).
 	assert.Contains(t, err.Error(), "cannot be used with WithNamedOutput")
 }
 
@@ -191,6 +195,8 @@ func TestFanout_WithNamedOutput_AfterWithOutputs_Error(t *testing.T) {
 		audit.WithNamedOutput(out2, audit.WithRoute(&audit.EventRoute{})), // should error
 	)
 	require.Error(t, err)
+	// text-only: options.go:383 returns raw fmt.Errorf without a sentinel
+	// wrap (mutual-exclusion guard between WithOutputs / WithNamedOutput).
 	assert.Contains(t, err.Error(), "cannot be used with WithOutputs")
 }
 
@@ -205,6 +211,7 @@ func TestFanout_BootstrapValidation_UnknownCategory(t *testing.T) {
 		})),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown taxonomy entries")
 }
 
@@ -220,6 +227,7 @@ func TestFanout_BootstrapValidation_MixedMode(t *testing.T) {
 		})),
 	)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "either include or exclude")
 }
 
@@ -288,6 +296,8 @@ func TestFanout_SetOutputRoute_UnknownOutput(t *testing.T) {
 
 	err = auditor.SetOutputRoute("nonexistent", &audit.EventRoute{})
 	require.Error(t, err)
+	// text-only: audit.go:862,879,891 return raw fmt.Errorf without a
+	// sentinel wrap. The output-name substring is the contract.
 	assert.Contains(t, err.Error(), "unknown output")
 }
 
@@ -306,6 +316,7 @@ func TestFanout_SetOutputRoute_InvalidRoute(t *testing.T) {
 		IncludeCategories: []string{"bogus"},
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "unknown taxonomy entries")
 }
 
@@ -342,6 +353,8 @@ func TestFanout_ClearOutputRoute_UnknownOutput(t *testing.T) {
 
 	err = auditor.ClearOutputRoute("nonexistent")
 	require.Error(t, err)
+	// text-only: audit.go:862,879,891 return raw fmt.Errorf without a
+	// sentinel wrap. The output-name substring is the contract.
 	assert.Contains(t, err.Error(), "unknown output")
 }
 
@@ -379,6 +392,8 @@ func TestFanout_OutputRoute_UnknownOutput(t *testing.T) {
 
 	_, err = auditor.OutputRoute("nonexistent")
 	require.Error(t, err)
+	// text-only: audit.go:862,879,891 return raw fmt.Errorf without a
+	// sentinel wrap. The output-name substring is the contract.
 	assert.Contains(t, err.Error(), "unknown output")
 }
 

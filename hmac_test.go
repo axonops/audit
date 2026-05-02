@@ -180,6 +180,7 @@ func TestComputeHMAC_EmptyPayload(t *testing.T) {
 	t.Parallel()
 	_, err := audit.ComputeHMAC(nil, []byte("salt-value-16bytes"), "HMAC-SHA-256")
 	require.Error(t, err)
+	// text-only: hmac.go:232 returns raw errors.New without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "payload")
 }
 
@@ -187,6 +188,7 @@ func TestComputeHMAC_EmptySalt(t *testing.T) {
 	t.Parallel()
 	_, err := audit.ComputeHMAC([]byte("payload"), nil, "HMAC-SHA-256")
 	require.Error(t, err)
+	// text-only: hmac.go:235 returns raw errors.New without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "salt")
 }
 
@@ -194,6 +196,7 @@ func TestComputeHMAC_UnknownAlgorithm(t *testing.T) {
 	t.Parallel()
 	_, err := audit.ComputeHMAC([]byte("payload"), []byte("salt-value-16bytes"), "MD5")
 	require.Error(t, err)
+	// text-only: hmac.go:239 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "unknown")
 }
 

@@ -60,7 +60,7 @@ func (r *yamlCategoriesResult) UnmarshalYAML(data []byte) error {
 	// First pass: unmarshal into a raw map to iterate keys.
 	var raw yaml.MapSlice
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("categories must be a YAML mapping")
+		return fmt.Errorf("taxonomy: categories must be a YAML mapping — declare like:\n  categories:\n    read:\n      events: [user_view]")
 	}
 
 	r.categories = make(yamlCategories, len(raw))
@@ -68,12 +68,12 @@ func (r *yamlCategoriesResult) UnmarshalYAML(data []byte) error {
 	for _, item := range raw {
 		catName, ok := item.Key.(string)
 		if !ok {
-			return fmt.Errorf("category key must be a string")
+			return fmt.Errorf("categories: category key must be a string (got %T) — use bare strings like 'read:'", item.Key)
 		}
 		if catName == "emit_event_category" {
 			v, vOK := item.Value.(bool)
 			if !vOK {
-				return fmt.Errorf("emit_event_category: expected boolean")
+				return fmt.Errorf("categories: emit_event_category: expected boolean (got %T) — use true or false", item.Value)
 			}
 			r.emitEventCategory = &v
 			continue
@@ -109,7 +109,7 @@ func parseCategoryValue(catName string, value any) (*yamlCategoryDef, error) {
 		for _, item := range v {
 			s, ok := item.(string)
 			if !ok {
-				return nil, fmt.Errorf("category %q: event name must be a string", catName)
+				return nil, fmt.Errorf("category %q: event name must be a string (got %T) — use bare strings like '- user_create'", catName, item)
 			}
 			events = append(events, s)
 		}
@@ -120,7 +120,7 @@ func parseCategoryValue(catName string, value any) (*yamlCategoryDef, error) {
 		return parseCategoryMap(catName, v)
 
 	default:
-		return nil, fmt.Errorf("category %q: expected a sequence or mapping", catName)
+		return nil, fmt.Errorf("category %q: expected a YAML sequence (e.g. '- user_create') or mapping (e.g. 'events: [...]'), got %T", catName, value)
 	}
 }
 
@@ -130,14 +130,14 @@ func parseCategoryMap(catName string, m map[string]any) (*yamlCategoryDef, error
 	allowed := map[string]struct{}{"severity": {}, "events": {}}
 	for key := range m {
 		if _, ok := allowed[key]; !ok {
-			return nil, fmt.Errorf("category %q: unknown field %q", catName, key)
+			return nil, fmt.Errorf("category %q: unknown field %q (valid: events, severity)", catName, key)
 		}
 	}
 	var def yamlCategoryDef
 	if sv, ok := m["severity"]; ok {
 		s, err := toInt(sv)
 		if err != nil {
-			return nil, fmt.Errorf("category %q: severity must be an integer", catName)
+			return nil, fmt.Errorf("category %q: severity must be an integer 0-7 (got %T)", catName, sv)
 		}
 		def.Severity = &s
 	}
@@ -169,7 +169,7 @@ func toInt(v any) (int, error) {
 func toStringSlice(v any) ([]string, error) {
 	list, ok := v.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected a sequence")
+		return nil, fmt.Errorf("expected a YAML sequence, got %T", v)
 	}
 	result := make([]string, 0, len(list))
 	for _, item := range list {

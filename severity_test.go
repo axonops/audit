@@ -1036,7 +1036,8 @@ events:
 `
 	_, err := audit.ParseTaxonomyYAML([]byte(yml))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected a sequence or mapping")
+	assert.Contains(t, err.Error(), "expected a YAML sequence")
+	assert.Contains(t, err.Error(), "or mapping")
 }
 
 func TestEventDef_ResolvedSeverity_Unprecomputed(t *testing.T) {

@@ -15,17 +15,25 @@
 package audit
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/goccy/go-yaml"
 )
 
-// WrapUnknownFieldError checks if err contains "unknown field" (the
-// error text from goccy/go-yaml's DisallowUnknownField option) and,
-// if so, appends a "(valid: ...)" suffix listing the sorted YAML
-// field names from the target struct. Returns err unchanged if it
-// does not contain "unknown field".
+// WrapUnknownFieldError checks if err is (or wraps) a
+// [yaml.UnknownFieldError] from goccy/go-yaml's DisallowUnknownField
+// option and, if so, appends a "(valid: ...)" suffix listing the
+// sorted YAML field names from target. Returns err unchanged when
+// the error is not an unknown-field error.
+//
+// Discrimination uses [errors.As] against the public type re-exported
+// by github.com/goccy/go-yaml (v1.18.0+) — not string matching against
+// upstream wording — so an upstream message rephrasing cannot cause
+// silent regression.
 //
 // target must be a struct or pointer to struct. The function extracts
 // YAML tag names via reflection — no manual field lists needed.
@@ -33,8 +41,8 @@ func WrapUnknownFieldError(err error, target any) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "unknown field") {
+	var unknownField *yaml.UnknownFieldError
+	if !errors.As(err, &unknownField) {
 		return err
 	}
 	names := yamlFieldNames(target)

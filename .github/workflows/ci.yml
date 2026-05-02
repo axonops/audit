@@ -221,6 +221,12 @@ jobs:
           - module: secrets
             target: test-secrets
             flag: secrets
+          - module: secrets/env
+            target: test-secrets-env
+            flag: secrets-env
+          - module: secrets/file
+            target: test-secrets-file
+            flag: secrets-file
           - module: secrets/openbao
             target: test-secrets-openbao
             flag: secrets-openbao
@@ -483,6 +489,8 @@ jobs:
           - cmd/audit-gen
           - cmd/audit-validate
           - secrets
+          - secrets/env
+          - secrets/file
           - secrets/openbao
           - secrets/vault
     steps:

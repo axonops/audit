@@ -837,6 +837,8 @@ PUBLISH_MODULES := \
   cmd/audit-gen|github.com/axonops/audit/cmd/audit-gen|cmd/audit-gen/ \
   cmd/audit-validate|github.com/axonops/audit/cmd/audit-validate|cmd/audit-validate/ \
   secrets|github.com/axonops/audit/secrets|secrets/ \
+  secrets/env|github.com/axonops/audit/secrets/env|secrets/env/ \
+  secrets/file|github.com/axonops/audit/secrets/file|secrets/file/ \
   secrets/openbao|github.com/axonops/audit/secrets/openbao|secrets/openbao/ \
   secrets/vault|github.com/axonops/audit/secrets/vault|secrets/vault/
 

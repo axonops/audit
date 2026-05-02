@@ -60,6 +60,8 @@ removing a module:
 | `cmd/audit-gen` | `github.com/axonops/audit/cmd/audit-gen` | `cmd/audit-gen/v*` |
 | `cmd/audit-validate` | `github.com/axonops/audit/cmd/audit-validate` | `cmd/audit-validate/v*` |
 | `secrets` | `github.com/axonops/audit/secrets` | `secrets/v*` |
+| `secrets/env` | `github.com/axonops/audit/secrets/env` | `secrets/env/v*` |
+| `secrets/file` | `github.com/axonops/audit/secrets/file` | `secrets/file/v*` |
 | `secrets/openbao` | `github.com/axonops/audit/secrets/openbao` | `secrets/openbao/v*` |
 | `secrets/vault` | `github.com/axonops/audit/secrets/vault` | `secrets/vault/v*` |
 <!-- END PUBLISH_MODULES TABLE -->

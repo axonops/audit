@@ -48,7 +48,7 @@ jobs:
 
       - name: Save pre-update go.mod files
         run: |
-          for mod in . file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/openbao secrets/vault; do
+          for mod in . file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault; do
             cp "$mod/go.mod" "$mod/go.mod.before"
           done
 
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/openbao secrets/vault"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault"
           CORE_MODULE="github.com/axonops/audit"
           FAILED=""
 
@@ -83,6 +83,8 @@ jobs:
               "$CORE_MODULE/cmd/audit-gen" \
               "$CORE_MODULE/cmd/audit-validate" \
               "$CORE_MODULE/secrets" \
+              "$CORE_MODULE/secrets/env" \
+              "$CORE_MODULE/secrets/file" \
               "$CORE_MODULE/secrets/openbao" \
               "$CORE_MODULE/secrets/vault"; do
               # `grep` returns 1 when the dep is not present in go.mod
@@ -135,7 +137,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/openbao secrets/vault"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault"
           HAS_CHANGES="false"
 
           for mod in $MODULES; do
@@ -196,7 +198,7 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/openbao secrets/vault"
+          MODULES=". file syslog webhook loki outputconfig outputs cmd/audit-gen cmd/audit-validate secrets secrets/env secrets/file secrets/openbao secrets/vault"
           BODY=""
 
           for mod in $MODULES; do

@@ -1326,7 +1326,12 @@ outputs:
 	_, err := outputconfig.Load(context.Background(), data, tax)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	// Pinned by #541: error must explain what the consumer typed,
+	// what shape was expected, and which fields are valid.
 	assert.Contains(t, err.Error(), "auditor")
+	assert.Contains(t, err.Error(), "expected YAML mapping")
+	assert.Contains(t, err.Error(), "got string")
+	assert.Contains(t, err.Error(), "queue_size")
 }
 
 func TestLoad_LoggerConfig_UnknownField(t *testing.T) {

@@ -43,7 +43,7 @@ type auditorConfigResult struct { //nolint:govet // fieldalignment: readability 
 func parseAuditorConfig(raw any) (auditorConfigResult, error) { //nolint:gocyclo,gocognit,cyclop // YAML field dispatch
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return auditorConfigResult{}, fmt.Errorf("expected mapping, got %T", raw)
+		return auditorConfigResult{}, fmt.Errorf("expected YAML mapping, got %T — auditor must be a mapping with fields like queue_size, validation_mode, shutdown_timeout", raw)
 	}
 	var result auditorConfigResult
 	for key, val := range m {

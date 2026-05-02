@@ -130,6 +130,68 @@ Feature: Taxonomy Validation
       """
     Then the taxonomy parse should fail wrapping "ErrInvalidInput"
 
+  # --- YAML shape errors (#541) ---
+  # Each scenario in this group pins the rewritten error text from the
+  # systematic YAML error-message audit. The text follows the gold
+  # standard: path context, what happened, what is valid, and how to
+  # fix it. If you change the wording, update docs/error-reference.md
+  # in the same PR — the consumer-facing error contract lives in both.
+
+  Scenario: Categories declared as a YAML sequence rather than mapping returns helpful error
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        - read
+      events: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+    And the taxonomy parse should fail with an error containing "taxonomy: categories must be a YAML mapping"
+    And the taxonomy parse should fail with an error containing "events: [user_view]"
+
+  Scenario: Category event name as integer returns helpful error
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        read:
+          - 42
+      events: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+    And the taxonomy parse should fail with an error containing "event name must be a string"
+    And the taxonomy parse should fail with an error containing "got uint64"
+    And the taxonomy parse should fail with an error containing "use bare strings like '- user_create'"
+
+  Scenario: Unknown field on category returns valid-list hint
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        read:
+          severity: 6
+          bogus: 1
+      events: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+    And the taxonomy parse should fail with an error containing "unknown field"
+    And the taxonomy parse should fail with an error containing "bogus"
+    And the taxonomy parse should fail with an error containing "valid: events, severity"
+
+  Scenario: emit_event_category as string returns helpful error
+    When I try to parse taxonomy from YAML:
+      """
+      version: 1
+      categories:
+        emit_event_category: "yes"
+        read:
+          - user_view
+      events: {}
+      """
+    Then the taxonomy parse should fail wrapping "ErrInvalidInput"
+    And the taxonomy parse should fail with an error containing "categories: emit_event_category: expected boolean"
+    And the taxonomy parse should fail with an error containing "use true or false"
+
   # --- Structural validation ---
 
   Scenario: Missing version is rejected

@@ -173,6 +173,24 @@ audit/outputconfig: output config validation failed
 | **Transient?** | No — permanent configuration error |
 | **What to do** | Check the error message for details. Common causes: unknown output type (forgot a blank import), invalid YAML syntax, missing required fields (e.g., `url` for webhook, `path` for file), unknown YAML keys (check for typos), using removed `default_formatter` key (set `formatter:` on each output instead), non-JSON `formatter` on a Loki output. See [Output Configuration YAML](output-configuration.md). |
 
+#### Representative wrapped error strings
+
+Every YAML shape error follows the gold-standard pattern: **path context · what happened · what is valid · how to fix**. Operators searching logs for an `outputconfig` failure will see one of:
+
+```
+audit/outputconfig: output config validation failed: audit: config validation failed: auditor: expected YAML mapping, got string — auditor must be a mapping with fields like queue_size, validation_mode, shutdown_timeout
+```
+
+```
+audit/outputconfig: output config validation failed: audit: config validation failed: standard_fields: unknown field "..." -- only reserved standard field names are accepted
+```
+
+```
+audit/outputconfig: output config validation failed: audit: config validation failed: output "siem": unknown output type "websocket" (registered: [stdout, file, syslog, webhook, loki]); add import _ "github.com/axonops/audit/outputs" for all built-in types (or import _ "github.com/axonops/audit/websocket" for only this one)
+```
+
+The full chain is preserved so `grep`-friendly searches work end to end.
+
 ---
 
 ## 📡 Output Errors
@@ -440,6 +458,43 @@ audit: invalid input
 | **Meaning** | The input is structurally invalid — not a YAML problem with your taxonomy, but a YAML syntax or input problem |
 | **Transient?** | No — permanent. Fix the input. |
 | **What to do** | Common causes: input contains multiple YAML documents (separated by `---`), YAML syntax error (bad indentation, tabs instead of spaces), unknown YAML key (typo in field name — the parser rejects unknown keys). The wrapped error message gives the specific parse error. |
+
+#### Representative wrapped error strings
+
+YAML shape errors raised inside taxonomy parsing follow the gold-standard pattern: **path context · what happened · what is valid · how to fix**. Operators searching for a `ParseTaxonomyYAML` failure will see one of:
+
+```
+audit: invalid input: taxonomy: categories must be a YAML mapping — declare like:
+  categories:
+    read:
+      events: [user_view]
+```
+
+```
+audit: invalid input: category "read": event name must be a string (got uint64) — use bare strings like '- user_create'
+```
+
+```
+audit: invalid input: category "read": expected a YAML sequence (e.g. '- user_create') or mapping (e.g. 'events: [...]'), got bool
+```
+
+```
+audit: invalid input: category "read": unknown field "bogus" (valid: events, severity)
+```
+
+```
+audit: invalid input: category "read": severity must be an integer 0-7 (got string)
+```
+
+```
+audit: invalid input: categories: emit_event_category: expected boolean (got string) — use true or false
+```
+
+```
+audit: invalid input: unknown field "..." (valid: categories, events, sensitivity, version)
+```
+
+The last form is produced by `ParseTaxonomyYAML` when a typo at the top level reaches `goccy/go-yaml`'s `DisallowUnknownField` — the library appends the `(valid: ...)` suffix via `WrapUnknownFieldError`, which uses typed-error discrimination against `yaml.UnknownFieldError` rather than fragile substring matching, so an upstream rephrasing cannot silently break detection.
 
 ### `ErrHandleNotFound`
 

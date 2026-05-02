@@ -360,6 +360,26 @@ Feature: YAML Output Configuration
     And the config load error should contain "vault, openbao"
     And the config load error should contain "#476"
 
+  # --- YAML shape errors (#541) ---
+
+  Scenario: auditor declared as scalar rather than mapping returns helpful error
+    Given a test taxonomy
+    And the following output configuration YAML:
+      """
+      version: 1
+      app_name: test
+      host: test
+      auditor: "not a mapping"
+      outputs:
+        console:
+          type: stdout
+      """
+    When I try to create an auditor from the YAML config
+    Then the config load should fail with an error containing "auditor"
+    And the config load error should contain "expected YAML mapping"
+    And the config load error should contain "got string"
+    And the config load error should contain "queue_size"
+
   # --- Syslog app_name injection (#237) ---
 
   Scenario: Global app_name injected into syslog output config

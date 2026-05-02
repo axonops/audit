@@ -845,3 +845,100 @@ events:
 		})
 	}
 }
+
+// TestParseTaxonomyYAML_ErrorMessages pins the rewritten error texts from
+// the YAML-error audit (#541). Each case feeds malformed YAML, asserts the
+// returned error wraps ErrInvalidInput, and asserts the message contains
+// path context, what happened, and a fix hint.
+//
+// The substrings are intentionally specific. If a future change reshapes
+// the wording, update both this table and docs/error-reference.md so the
+// public-facing contract stays in sync.
+func TestParseTaxonomyYAML_ErrorMessages(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		yaml     string
+		contains []string
+	}{
+		{
+			name: "categories declared as scalar",
+			yaml: "version: 1\ncategories: 5\nevents: {}\n",
+			contains: []string{
+				"taxonomy: categories must be a YAML mapping",
+				"declare like:",
+				"events: [user_view]",
+			},
+		},
+		{
+			name: "categories declared as sequence",
+			yaml: "version: 1\ncategories:\n  - read\nevents: {}\n",
+			contains: []string{
+				"taxonomy: categories must be a YAML mapping",
+			},
+		},
+		{
+			name: "category event name as integer",
+			yaml: "version: 1\ncategories:\n  read:\n    - 42\nevents: {}\n",
+			contains: []string{
+				`category "read": event name must be a string`,
+				"got uint64",
+				"use bare strings like '- user_create'",
+			},
+		},
+		{
+			name: "category as scalar (not sequence or mapping)",
+			yaml: "version: 1\ncategories:\n  read: 7\nevents: {}\n",
+			contains: []string{
+				`category "read": expected a YAML sequence`,
+				"or mapping",
+				"got uint64",
+			},
+		},
+		{
+			name: "unknown field on category",
+			yaml: "version: 1\ncategories:\n  read:\n    severity: 6\n    bogus: 1\nevents: {}\n",
+			contains: []string{
+				`category "read": unknown field "bogus"`,
+				"valid: events, severity",
+			},
+		},
+		{
+			name: "category severity wrong type",
+			yaml: "version: 1\ncategories:\n  read:\n    severity: high\n    events: [user_view]\nevents: {}\n",
+			contains: []string{
+				`category "read": severity must be an integer 0-7`,
+				"got string",
+			},
+		},
+		{
+			name: "emit_event_category as string",
+			yaml: "version: 1\ncategories:\n  emit_event_category: \"yes\"\n  read:\n    - user_view\nevents: {}\n",
+			contains: []string{
+				"categories: emit_event_category: expected boolean",
+				"got string",
+				"use true or false",
+			},
+		},
+		{
+			name: "category events not a sequence",
+			yaml: "version: 1\ncategories:\n  read:\n    events: \"user_view\"\nevents: {}\n",
+			contains: []string{
+				`category "read"`,
+				"expected a YAML sequence, got string",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := audit.ParseTaxonomyYAML([]byte(tc.yaml))
+			require.Error(t, err)
+			require.ErrorIs(t, err, audit.ErrInvalidInput,
+				"every YAML parse error must wrap ErrInvalidInput")
+			for _, want := range tc.contains {
+				assert.Contains(t, err.Error(), want, "error text missing required fragment")
+			}
+		})
+	}
+}

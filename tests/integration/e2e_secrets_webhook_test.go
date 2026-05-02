@@ -191,6 +191,7 @@ events:
     fields:
       outcome: { required: true }
       actor_id: { required: true }
+      marker: { required: false }
 `)
 
 	tax, err := audit.ParseTaxonomyYAML(taxonomyYAML)

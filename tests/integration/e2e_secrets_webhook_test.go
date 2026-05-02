@@ -59,7 +59,15 @@ const (
 	openbaoRootTok  = "test-root-token"
 	openbaoSecPath  = "secret/data/audit/integration/webhook-bearer"
 	openbaoBearer   = "trIp1e-1nt3gr@ti0n-bearer-32by!" // 32-byte bearer the test seeds
-	openbaoSecField = "token"
+	openbaoSecField = "authorization"
+	// fullAuthorization is the literal value the secret stores AND
+	// the literal value the webhook receiver MUST observe in the
+	// Authorization header. The secret-resolver requires ref+ to be
+	// at the start of the YAML string (see docs/secrets.md
+	// "Embedding Refs in Larger Strings"), so the "Bearer " prefix
+	// is part of the stored secret rather than being concatenated
+	// at YAML-load time.
+	fullAuthorization = "Bearer " + openbaoBearer
 )
 
 // extractOpenbaoCA copies the dev-tls CA cert from the OpenBao
@@ -101,7 +109,7 @@ func seedBearerSecret(t *testing.T, caPath string) {
 	}
 
 	payload, err := json.Marshal(map[string]any{
-		"data": map[string]string{openbaoSecField: openbaoBearer},
+		"data": map[string]string{openbaoSecField: fullAuthorization},
 	})
 	require.NoError(t, err)
 
@@ -165,7 +173,7 @@ outputs:
       timeout: "5s"
       max_retries: 1
       headers:
-        Authorization: "Bearer ref+openbao://%s#%s"
+        Authorization: "ref+openbao://%s#%s"
 `, webhookURL+"/events", openbaoSecPath, openbaoSecField))
 
 	// Embed a minimal taxonomy so outputconfig.Load has a schema
@@ -227,9 +235,8 @@ events:
 	got, ok := hdrs["Authorization"].(string)
 	require.Truef(t, ok, "events[0].headers.Authorization should decode as a string (raw=%v)", hdrs["Authorization"])
 
-	want := "Bearer " + openbaoBearer
-	assert.Equalf(t, want, got,
-		"webhook receiver should observe the openbao-resolved bearer literally in Authorization (got=%q want=%q)", got, want)
+	assert.Equalf(t, fullAuthorization, got,
+		"webhook receiver should observe the openbao-resolved Authorization value literally (got=%q want=%q)", got, fullAuthorization)
 
 	// Pin the join: the body MUST also contain our marker so we
 	// know we're inspecting the right event.

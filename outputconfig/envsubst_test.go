@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package outputconfig
+package outputconfig_test
 
 import (
 	"testing"
@@ -20,6 +20,8 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/axonops/audit/outputconfig"
 )
 
 func parseToMap(t *testing.T, s string) map[string]any {
@@ -33,7 +35,7 @@ func TestExpandEnv_Simple(t *testing.T) {
 	t.Setenv("TEST_HOST", "syslog.example.com")
 	m := parseToMap(t, "address: ${TEST_HOST}:514\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "syslog.example.com:514", m["address"])
 }
@@ -42,7 +44,7 @@ func TestExpandEnv_WithDefault(t *testing.T) {
 	t.Setenv("TEST_PORT", "6514")
 	m := parseToMap(t, "port: ${TEST_PORT:-514}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "6514", m["port"])
 }
@@ -50,7 +52,7 @@ func TestExpandEnv_WithDefault(t *testing.T) {
 func TestExpandEnv_UnsetWithDefault_UsesDefault(t *testing.T) {
 	m := parseToMap(t, "port: ${UNSET_PORT_VAR:-514}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "514", m["port"])
 }
@@ -58,7 +60,7 @@ func TestExpandEnv_UnsetWithDefault_UsesDefault(t *testing.T) {
 func TestExpandEnv_UnsetNoDefault_Error(t *testing.T) {
 	m := parseToMap(t, "host: ${UNSET_HOST_NO_DEFAULT}\n")
 
-	_, err := expandEnvInValue(m, "config")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "config")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "UNSET_HOST_NO_DEFAULT")
 	assert.Contains(t, err.Error(), "not set")
@@ -67,7 +69,7 @@ func TestExpandEnv_UnsetNoDefault_Error(t *testing.T) {
 func TestExpandEnv_EscapedDollar(t *testing.T) {
 	m := parseToMap(t, "literal: $${NOT_A_VAR}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "${NOT_A_VAR}", m["literal"])
 }
@@ -76,7 +78,7 @@ func TestExpandEnv_NoRecursive(t *testing.T) {
 	t.Setenv("TEST_INNER", "${SHOULD_NOT_EXPAND}")
 	m := parseToMap(t, "value: ${TEST_INNER}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "${SHOULD_NOT_EXPAND}", m["value"])
 }
@@ -85,7 +87,7 @@ func TestExpandEnv_OnlyStringValues_NotKeys(t *testing.T) {
 	t.Setenv("TEST_KEY_VAR", "injected")
 	m := parseToMap(t, "${TEST_KEY_VAR}: some_value\naddress: ${TEST_KEY_VAR}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 
 	// Key remains literal (map keys are not expanded).
@@ -99,7 +101,7 @@ func TestExpandEnv_NestedYAML(t *testing.T) {
 	t.Setenv("TEST_NESTED_HOST", "deep.example.com")
 	m := parseToMap(t, "output:\n  syslog:\n    address: ${TEST_NESTED_HOST}:514\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 
 	output, ok := m["output"].(map[string]any)
@@ -112,7 +114,7 @@ func TestExpandEnv_NestedYAML(t *testing.T) {
 func TestExpandEnv_EmptyString(t *testing.T) {
 	m := parseToMap(t, "value: \"\"\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "", m["value"])
 }
@@ -122,7 +124,7 @@ func TestExpandEnv_MultipleVarsInOneValue(t *testing.T) {
 	t.Setenv("TEST_ADDR", "syslog.local")
 	m := parseToMap(t, "url: ${TEST_PROTO}://${TEST_ADDR}:514\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "tcp+tls://syslog.local:514", m["url"])
 }
@@ -131,7 +133,7 @@ func TestExpandEnv_EmptyDefault(t *testing.T) {
 	// ${VAR:-} with variable unset should produce empty string (not error).
 	m := parseToMap(t, "value: ${UNSET_EMPTY_DEFAULT_VAR:-}\n")
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 	assert.Equal(t, "", m["value"])
 }
@@ -139,7 +141,7 @@ func TestExpandEnv_EmptyDefault(t *testing.T) {
 func TestExpandEnv_UnclosedBrace_Error(t *testing.T) {
 	m := parseToMap(t, "bad: ${UNCLOSED\n")
 
-	_, err := expandEnvInValue(m, "test")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "test")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unclosed")
 }
@@ -152,7 +154,7 @@ func TestExpandEnv_YAMLAnchorAlias(t *testing.T) {
 	yamlDoc := "defaults: &defaults\n  host: ${TEST_ALIAS_HOST}\noutput:\n  <<: *defaults\n  port: 514\n"
 	m := parseToMap(t, yamlDoc)
 
-	_, err := expandEnvInValue(m, "")
+	_, err := outputconfig.ExpandEnvInValueForTest(m, "")
 	require.NoError(t, err)
 
 	// The anchor's value should be expanded.

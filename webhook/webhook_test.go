@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package webhook
+package webhook_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/webhook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,43 +32,43 @@ func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		wantErr string
-		cfg     Config
+		cfg     webhook.Config
 	}{
 		{
 			name:    "empty URL",
-			cfg:     Config{},
+			cfg:     webhook.Config{},
 			wantErr: "must not be empty",
 		},
 		{
 			name: "HTTP without AllowInsecureHTTP",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL: "http://example.com/webhook",
 			},
 			wantErr: "must be https",
 		},
 		{
 			name: "HTTP with AllowInsecureHTTP",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:               "http://example.com/webhook",
 				AllowInsecureHTTP: true,
 			},
 		},
 		{
 			name: "HTTPS valid",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL: "https://example.com/webhook",
 			},
 		},
 		{
 			name: "invalid URL scheme",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL: "ftp://example.com/data",
 			},
 			wantErr: "scheme must be http or https",
 		},
 		{
 			name: "CRLF in header name",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:     "https://example.com/webhook",
 				Headers: map[string]string{"Bad\r\nHeader": "value"},
 			},
@@ -75,7 +76,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "cert without key",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:     "https://example.com/webhook",
 				TLSCert: "/tmp/cert.pem",
 			},
@@ -83,7 +84,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "key without cert",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:    "https://example.com/webhook",
 				TLSKey: "/tmp/key.pem",
 			},
@@ -91,31 +92,31 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "batch size exceeds max",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:       "https://example.com/webhook",
-				BatchSize: MaxBatchSize + 1,
+				BatchSize: webhook.MaxBatchSize + 1,
 			},
 			wantErr: "batch_size",
 		},
 		{
 			name: "buffer size exceeds max",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:        "https://example.com/webhook",
-				BufferSize: MaxBufferSize + 1,
+				BufferSize: webhook.MaxBufferSize + 1,
 			},
 			wantErr: "buffer_size",
 		},
 		{
 			name: "max retries exceeds max",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:        "https://example.com/webhook",
-				MaxRetries: MaxMaxRetries + 1,
+				MaxRetries: webhook.MaxMaxRetries + 1,
 			},
 			wantErr: "max_retries",
 		},
 		{
 			name: "negative flush interval",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:           "https://example.com/webhook",
 				FlushInterval: -1 * time.Second,
 			},
@@ -123,7 +124,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "negative timeout",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:     "https://example.com/webhook",
 				Timeout: -1 * time.Second,
 			},
@@ -133,7 +134,7 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateWebhookConfig(&tt.cfg)
+			err := webhook.ValidateConfigForTest(&tt.cfg)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 			} else {
@@ -147,45 +148,45 @@ func TestValidateConfig(t *testing.T) {
 }
 
 func TestValidateConfig_Defaults(t *testing.T) {
-	cfg := Config{URL: "https://example.com/webhook"}
-	require.NoError(t, validateWebhookConfig(&cfg))
+	cfg := webhook.Config{URL: "https://example.com/webhook"}
+	require.NoError(t, webhook.ValidateConfigForTest(&cfg))
 
-	assert.Equal(t, DefaultBatchSize, cfg.BatchSize)
-	assert.Equal(t, DefaultFlushInterval, cfg.FlushInterval)
-	assert.Equal(t, DefaultTimeout, cfg.Timeout)
-	assert.Equal(t, DefaultMaxRetries, cfg.MaxRetries)
-	assert.Equal(t, DefaultBufferSize, cfg.BufferSize)
-	assert.Equal(t, DefaultMaxBatchBytes, cfg.MaxBatchBytes)
+	assert.Equal(t, webhook.DefaultBatchSize, cfg.BatchSize)
+	assert.Equal(t, webhook.DefaultFlushInterval, cfg.FlushInterval)
+	assert.Equal(t, webhook.DefaultTimeout, cfg.Timeout)
+	assert.Equal(t, webhook.DefaultMaxRetries, cfg.MaxRetries)
+	assert.Equal(t, webhook.DefaultBufferSize, cfg.BufferSize)
+	assert.Equal(t, webhook.DefaultMaxBatchBytes, cfg.MaxBatchBytes)
 }
 
 func TestValidateConfig_BoundaryValues(t *testing.T) {
-	cfg := Config{
+	cfg := webhook.Config{
 		URL:           "https://example.com/webhook",
-		BatchSize:     MaxBatchSize,
-		BufferSize:    MaxBufferSize,
-		MaxRetries:    MaxMaxRetries,
-		MaxBatchBytes: MaxMaxBatchBytes,
+		BatchSize:     webhook.MaxBatchSize,
+		BufferSize:    webhook.MaxBufferSize,
+		MaxRetries:    webhook.MaxMaxRetries,
+		MaxBatchBytes: webhook.MaxMaxBatchBytes,
 	}
-	require.NoError(t, validateWebhookConfig(&cfg))
+	require.NoError(t, webhook.ValidateConfigForTest(&cfg))
 }
 
 // TestValidateConfig_MaxBatchBytesDefaults verifies zero-value
 // MaxBatchBytes is normalised to DefaultMaxBatchBytes (#687 AC #1).
 func TestValidateConfig_MaxBatchBytesDefaults(t *testing.T) {
-	cfg := Config{URL: "https://example.com/webhook"}
-	require.NoError(t, validateWebhookConfig(&cfg))
-	assert.Equal(t, DefaultMaxBatchBytes, cfg.MaxBatchBytes,
+	cfg := webhook.Config{URL: "https://example.com/webhook"}
+	require.NoError(t, webhook.ValidateConfigForTest(&cfg))
+	assert.Equal(t, webhook.DefaultMaxBatchBytes, cfg.MaxBatchBytes,
 		"zero MaxBatchBytes must normalise to DefaultMaxBatchBytes")
 }
 
 // TestValidateConfig_MaxBatchBytesNegative verifies a negative
 // MaxBatchBytes value is rejected with ErrConfigInvalid (#687 AC #1).
 func TestValidateConfig_MaxBatchBytesNegative(t *testing.T) {
-	cfg := Config{
+	cfg := webhook.Config{
 		URL:           "https://example.com/webhook",
 		MaxBatchBytes: -1,
 	}
-	err := validateWebhookConfig(&cfg)
+	err := webhook.ValidateConfigForTest(&cfg)
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -193,11 +194,11 @@ func TestValidateConfig_MaxBatchBytesNegative(t *testing.T) {
 // TestValidateConfig_MaxBatchBytesBelowMin verifies a value below
 // MinMaxBatchBytes is rejected with ErrConfigInvalid.
 func TestValidateConfig_MaxBatchBytesBelowMin(t *testing.T) {
-	cfg := Config{
+	cfg := webhook.Config{
 		URL:           "https://example.com/webhook",
 		MaxBatchBytes: 512, // below 1 KiB minimum
 	}
-	err := validateWebhookConfig(&cfg)
+	err := webhook.ValidateConfigForTest(&cfg)
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -205,11 +206,11 @@ func TestValidateConfig_MaxBatchBytesBelowMin(t *testing.T) {
 // TestValidateConfig_MaxBatchBytesOverRange verifies a value above
 // MaxMaxBatchBytes is rejected with ErrConfigInvalid.
 func TestValidateConfig_MaxBatchBytesOverRange(t *testing.T) {
-	cfg := Config{
+	cfg := webhook.Config{
 		URL:           "https://example.com/webhook",
-		MaxBatchBytes: MaxMaxBatchBytes + 1,
+		MaxBatchBytes: webhook.MaxMaxBatchBytes + 1,
 	}
-	err := validateWebhookConfig(&cfg)
+	err := webhook.ValidateConfigForTest(&cfg)
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -218,11 +219,11 @@ func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 	tests := []struct {
 		name    string
 		wantErr string
-		cfg     Config
+		cfg     webhook.Config
 	}{
 		{
 			name: "nonexistent CA",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:   "https://example.com/webhook",
 				TLSCA: "/nonexistent/ca.pem",
 			},
@@ -230,7 +231,7 @@ func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 		},
 		{
 			name: "nonexistent cert and key",
-			cfg: Config{
+			cfg: webhook.Config{
 				URL:     "https://example.com/webhook",
 				TLSCert: "/nonexistent/cert.pem",
 				TLSKey:  "/nonexistent/key.pem",
@@ -240,7 +241,7 @@ func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := New(&tt.cfg, nil)
+			_, err := webhook.New(&tt.cfg, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})

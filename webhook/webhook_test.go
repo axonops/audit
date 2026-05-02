@@ -243,6 +243,7 @@ func TestValidateConfig_NonexistentTLSFiles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := webhook.New(&tt.cfg, nil)
 			require.Error(t, err)
+			assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}

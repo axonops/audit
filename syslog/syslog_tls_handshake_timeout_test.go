@@ -168,7 +168,7 @@ func TestNew_TLSHandshakeTimeout_Validation(t *testing.T) {
 			err := syslog.ValidateConfig(cfg)
 			if tc.wantErrInvalid {
 				require.Error(t, err)
-				assert.True(t, errors.Is(err, audit.ErrConfigInvalid),
+				assert.ErrorIs(t, err, audit.ErrConfigInvalid,
 					"expected ErrConfigInvalid, got: %v", err)
 				assert.Contains(t, err.Error(), "tls_handshake_timeout",
 					"validator error must mention the YAML key (snake_case)")
@@ -277,6 +277,7 @@ func TestReconnect_TLSHandshakeTimeout_RespectedOnRetry(t *testing.T) {
 
 		require.Error(t, err, "attempt %d: stalled handshake must error", attempt)
 		assert.Nil(t, conn, "attempt %d: no connection returned on timeout", attempt)
+		// text-only: syslog.go:530 returns raw fmt.Errorf without an audit sentinel wrap.
 		assert.Contains(t, err.Error(), "tls handshake timeout",
 			"attempt %d: error must signal handshake timeout", attempt)
 		assert.Less(t, elapsed, 1*time.Second,

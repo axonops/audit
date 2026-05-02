@@ -734,6 +734,7 @@ events:
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("pii")),
 	)
 	require.Error(t, err)
+	// text-only: audit.go:762 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "no sensitivity config")
 }
 
@@ -766,6 +767,7 @@ events:
 		audit.WithNamedOutput(stdout, audit.WithExcludeLabels("nonexistent")),
 	)
 	require.Error(t, err)
+	// text-only: audit.go:767 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "undefined sensitivity label")
 }
 

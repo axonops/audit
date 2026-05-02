@@ -90,6 +90,7 @@ func TestNew_Validation(t *testing.T) {
 			w, err := rotate.New(tc.filename, tc.cfg)
 			assert.Nil(t, w)
 			require.Error(t, err)
+			// text-only: rotate package errors.New returns no audit sentinel (internal package).
 			assert.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
@@ -113,6 +114,7 @@ func TestNew_SymlinkPath(t *testing.T) {
 
 	_, err = w.Write([]byte("test"))
 	assert.Error(t, err)
+	// text-only: rotate package returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 	assert.Contains(t, err.Error(), "symlink")
 	require.NoError(t, w.Close())
 }
@@ -819,6 +821,7 @@ func TestWriter_NoMkdirAll(t *testing.T) {
 	w, err := rotate.New(path, rotate.Config{MaxSize: 1024, Mode: 0o600})
 	assert.Nil(t, w)
 	assert.Error(t, err)
+	// text-only: writer.go:399 returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 	assert.Contains(t, err.Error(), "parent directory")
 }
 

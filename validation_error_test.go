@@ -207,6 +207,7 @@ func TestValidationError_MessageTextUnchanged(t *testing.T) {
 	// Missing required — text starts with expected prefix.
 	err = auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{}))
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), `audit: event "auth_failure" missing required fields:`)
 }
 

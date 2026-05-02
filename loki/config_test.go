@@ -763,6 +763,7 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		}
 		_, _, err := loki.BuildLokiTLSConfig(cfg)
 		require.Error(t, err)
+		// text-only: config.go:549 returns raw fmt.Errorf without an audit sentinel wrap.
 		assert.Contains(t, err.Error(), "load client certificate")
 	})
 
@@ -775,6 +776,7 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		}
 		_, _, err := loki.BuildLokiTLSConfig(cfg)
 		require.Error(t, err)
+		// text-only: config.go:557 returns raw fmt.Errorf without an audit sentinel wrap.
 		assert.Contains(t, err.Error(), "read ca certificate")
 	})
 
@@ -792,6 +794,7 @@ func TestBuildLokiTLSConfig(t *testing.T) {
 		}
 		_, _, err := loki.BuildLokiTLSConfig(cfg)
 		require.Error(t, err)
+		// text-only: config.go:561 returns raw fmt.Errorf without an audit sentinel wrap.
 		assert.Contains(t, err.Error(), "no valid pem blocks")
 	})
 }

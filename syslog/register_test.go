@@ -45,6 +45,7 @@ func TestSyslogFactory_ValidConfig(t *testing.T) {
 	if err != nil {
 		// Connection failure is expected without Docker — verify it
 		// got past YAML parsing (error should be about connection).
+		// text-only: register.go wraps the dial error from syslog.go:298 — no audit sentinel in the chain.
 		assert.Contains(t, err.Error(), "siem_syslog")
 		return
 	}
@@ -60,6 +61,7 @@ func TestSyslogFactory_InvalidConfig_EmptyAddress(t *testing.T) {
 
 	_, err := factory("bad_syslog", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "bad_syslog")
 }
 
@@ -71,6 +73,7 @@ func TestSyslogFactory_UnknownYAMLField_Rejected(t *testing.T) {
 
 	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:111 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "bogus")
 }
 
@@ -80,6 +83,7 @@ func TestSyslogFactory_EmptyConfig_ReturnsError(t *testing.T) {
 
 	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:105 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
 }
 
@@ -92,6 +96,7 @@ func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
 	// Will fail to connect without Docker, but should parse YAML OK.
 	_, err := factory("tls_syslog", yaml, nil, nil, audit.FrameworkContext{})
 	if err != nil {
+		// text-only: register.go wraps the dial error from syslog.go — no audit sentinel in the chain.
 		assert.Contains(t, err.Error(), "tls_syslog")
 	}
 }

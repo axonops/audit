@@ -111,6 +111,7 @@ func TestOldLogFiles_BadDir(t *testing.T) {
 
 	_, err := w.oldLogFiles()
 	assert.Error(t, err)
+	// text-only: mill.go:148 returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 	assert.Contains(t, err.Error(), "read dir")
 }
 
@@ -339,6 +340,7 @@ func TestCloseFile_ClosedFd_ReturnsError(t *testing.T) {
 	err = w.closeFile()
 
 	require.Error(t, err)
+	// text-only: writer.go:680 returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 	assert.Contains(t, err.Error(), "close file")
 	// File handle must be cleared even after Close error.
 	assert.Nil(t, w.file)
@@ -369,6 +371,7 @@ func TestRotate_CloseFileError_ReturnsError(t *testing.T) {
 
 	err = w.rotate()
 	require.Error(t, err)
+	// text-only: writer.go:680 returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 	assert.Contains(t, err.Error(), "close file")
 }
 
@@ -535,6 +538,7 @@ func TestMillRunOnce_OnError_RemoveError(t *testing.T) {
 	w.millRunOnce()
 	assert.NotEmpty(t, received, "should receive remove errors")
 	for _, err := range received {
+		// text-only: mill.go:94 returns raw fmt.Errorf without an audit sentinel wrap (internal package).
 		assert.Contains(t, err.Error(), "remove")
 	}
 }

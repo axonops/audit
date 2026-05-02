@@ -106,7 +106,7 @@ func (r *EventRoute) isExcludeMode() bool {
 // exist in the taxonomy.
 func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 	if route.isIncludeMode() && route.isExcludeMode() {
-		return fmt.Errorf("audit: EventRoute must use either include or exclude, not both")
+		return fmt.Errorf("%w: EventRoute must use either include or exclude, not both", ErrConfigInvalid)
 	}
 	if err := validateSeverityRange(route); err != nil {
 		return err
@@ -118,16 +118,16 @@ func ValidateEventRoute(route *EventRoute, taxonomy *Taxonomy) error {
 // within [MinSeverity, MaxSeverity] and that min does not exceed max.
 func validateSeverityRange(route *EventRoute) error {
 	if route.MinSeverity != nil && (*route.MinSeverity < MinSeverity || *route.MinSeverity > MaxSeverity) {
-		return fmt.Errorf("audit: EventRoute min_severity %d out of range %d-%d",
-			*route.MinSeverity, MinSeverity, MaxSeverity)
+		return fmt.Errorf("%w: EventRoute min_severity %d out of range %d-%d",
+			ErrConfigInvalid, *route.MinSeverity, MinSeverity, MaxSeverity)
 	}
 	if route.MaxSeverity != nil && (*route.MaxSeverity < MinSeverity || *route.MaxSeverity > MaxSeverity) {
-		return fmt.Errorf("audit: EventRoute max_severity %d out of range %d-%d",
-			*route.MaxSeverity, MinSeverity, MaxSeverity)
+		return fmt.Errorf("%w: EventRoute max_severity %d out of range %d-%d",
+			ErrConfigInvalid, *route.MaxSeverity, MinSeverity, MaxSeverity)
 	}
 	if route.MinSeverity != nil && route.MaxSeverity != nil && *route.MinSeverity > *route.MaxSeverity {
-		return fmt.Errorf("audit: EventRoute min_severity %d exceeds max_severity %d",
-			*route.MinSeverity, *route.MaxSeverity)
+		return fmt.Errorf("%w: EventRoute min_severity %d exceeds max_severity %d",
+			ErrConfigInvalid, *route.MinSeverity, *route.MaxSeverity)
 	}
 	return nil
 }
@@ -143,8 +143,8 @@ func validateRouteEntries(route *EventRoute, taxonomy *Taxonomy) error {
 
 	if len(unknown) > 0 {
 		slices.Sort(unknown)
-		return fmt.Errorf("audit: EventRoute references unknown taxonomy entries: [%s]",
-			strings.Join(unknown, ", "))
+		return fmt.Errorf("%w: EventRoute references unknown taxonomy entries: [%s]",
+			ErrConfigInvalid, strings.Join(unknown, ", "))
 	}
 	return nil
 }

@@ -87,6 +87,7 @@ func TestWebhookFactory_UnknownYAMLField_Rejected(t *testing.T) {
 
 	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:126 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "unknown_field")
 }
 
@@ -110,6 +111,7 @@ func TestWebhookFactory_AllowInsecureHTTP_DefaultFalse_RejectsHTTPURL(t *testing
 
 	_, err := factory("no_insecure", rawYAML, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err, "HTTP URL without allow_insecure_http should be rejected")
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must be https")
 }
 
@@ -121,6 +123,7 @@ func TestWebhookFactory_AllowInsecureHTTP_ExplicitFalse_RejectsHTTPURL(t *testin
 
 	_, err := factory("explicit_false", rawYAML, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err, "allow_insecure_http: false should still reject HTTP URLs")
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must be https")
 }
 
@@ -154,6 +157,7 @@ func TestWebhookFactory_EmptyConfig_ReturnsError(t *testing.T) {
 
 	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
 	assert.Error(t, err)
+	// text-only: register.go:120 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
 }
 
@@ -223,6 +227,7 @@ func TestWebhookFactory_ExplicitZeroMaxRetries_Rejected(t *testing.T) {
 
 	_, err := factory("zero_retries", yaml, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "max_retries must be at least 1")
 }
 
@@ -234,6 +239,7 @@ func TestWebhookFactory_ExplicitZeroBatchSize_Rejected(t *testing.T) {
 
 	_, err := factory("zero_batch", yaml, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "batch_size must be at least 1")
 }
 

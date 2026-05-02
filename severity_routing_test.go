@@ -269,6 +269,7 @@ func TestValidateEventRoute_MinSeverityOutOfRange(t *testing.T) {
 			err := audit.ValidateEventRoute(&route, tax)
 			require.Error(t, err,
 				"min_severity %d must be rejected", tt.minSev)
+			assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 			assert.Contains(t, err.Error(), tt.wantErr,
 				"error message must identify the out-of-range value")
 		})
@@ -305,6 +306,7 @@ func TestValidateEventRoute_MaxSeverityOutOfRange(t *testing.T) {
 			err := audit.ValidateEventRoute(&route, tax)
 			require.Error(t, err,
 				"max_severity %d must be rejected", tt.maxSev)
+			assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 			assert.Contains(t, err.Error(), tt.wantErr,
 				"error message must identify the out-of-range value")
 		})
@@ -324,6 +326,7 @@ func TestValidateEventRoute_MinGreaterThanMax(t *testing.T) {
 	}
 	err := audit.ValidateEventRoute(&route, tax)
 	require.Error(t, err, "min_severity 8 > max_severity 3 must be rejected")
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "min_severity 8 exceeds max_severity 3",
 		"error message must name both values")
 }
@@ -794,6 +797,7 @@ func TestValidateEventRoute_SeverityWithMixedIncludeExclude(t *testing.T) {
 	err := audit.ValidateEventRoute(&route, tax)
 	require.Error(t, err,
 		"mixed include+exclude route with valid severity must still be rejected")
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "either include or exclude, not both",
 		"error message must identify the include/exclude conflict")
 }

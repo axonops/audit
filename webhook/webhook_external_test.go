@@ -532,6 +532,7 @@ func TestNewWebhookOutput_Valid(t *testing.T) {
 func TestNewWebhookOutput_InvalidConfig(t *testing.T) {
 	_, err := webhook.New(&webhook.Config{}, nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must not be empty")
 }
 
@@ -1112,6 +1113,7 @@ func TestNewWebhookOutput_EmbeddedCredentials_Rejected(t *testing.T) {
 		URL: "https://user:pass@example.com/webhook",
 	}, nil)
 	require.Error(t, err)
+	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must not contain credentials")
 }
 
@@ -2097,6 +2099,7 @@ func TestNew_NilConfig_ReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := webhook.New(nil, nil)
 	require.Error(t, err)
+	// text-only: webhook.go:169 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config must not be nil")
 }
 

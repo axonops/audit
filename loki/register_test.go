@@ -52,6 +52,7 @@ func TestLokiFactory_EmptyConfig(t *testing.T) {
 
 	_, err := factory("my_loki", nil, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
+	// text-only: register.go:132 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required",
 		"empty config should produce 'config is required' error, got: %q", err.Error())
 }
@@ -68,6 +69,7 @@ func TestLokiFactory_UnknownField(t *testing.T) {
 	rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\nunknown_field: oops\n")
 	_, err := factory("strict_loki", rawYAML, nil, nil, audit.FrameworkContext{})
 	require.Error(t, err)
+	// text-only: register.go:154 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "unknown_field",
 		"strict YAML decode should name the unexpected field, got: %q", err.Error())
 }
@@ -132,6 +134,7 @@ func TestLokiFactory_DurationParsing(t *testing.T) {
 			out, err := factory("dur_test", []byte(tt.yaml), nil, nil, audit.FrameworkContext{})
 			if tt.wantErr {
 				require.Error(t, err, "expected a parse error for YAML: %s", tt.yaml)
+				// text-only: register.go:104/108 returns raw fmt.Errorf without a sentinel wrap.
 				assert.Contains(t, err.Error(), "duration",
 					"error for invalid duration should mention 'duration', got: %q", err.Error())
 			} else {

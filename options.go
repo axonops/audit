@@ -107,10 +107,10 @@ func WithMetrics(m Metrics) Option {
 func WithAppName(name string) Option {
 	return func(a *Auditor) error {
 		if name == "" {
-			return fmt.Errorf("audit: app_name must not be empty")
+			return fmt.Errorf("%w: app_name must not be empty", ErrConfigInvalid)
 		}
 		if len(name) > 255 {
-			return fmt.Errorf("audit: app_name exceeds maximum length of 255 bytes")
+			return fmt.Errorf("%w: app_name exceeds maximum length of 255 bytes", ErrConfigInvalid)
 		}
 		a.appName = name
 		return nil
@@ -126,10 +126,10 @@ func WithAppName(name string) Option {
 func WithHost(host string) Option {
 	return func(a *Auditor) error {
 		if host == "" {
-			return fmt.Errorf("audit: host must not be empty")
+			return fmt.Errorf("%w: host must not be empty", ErrConfigInvalid)
 		}
 		if len(host) > 255 {
-			return fmt.Errorf("audit: host exceeds maximum length of 255 bytes")
+			return fmt.Errorf("%w: host exceeds maximum length of 255 bytes", ErrConfigInvalid)
 		}
 		a.host = host
 		return nil
@@ -152,10 +152,10 @@ func WithHost(host string) Option {
 func WithTimezone(tz string) Option {
 	return func(a *Auditor) error {
 		if tz == "" {
-			return fmt.Errorf("audit: timezone must not be empty")
+			return fmt.Errorf("%w: timezone must not be empty", ErrConfigInvalid)
 		}
 		if len(tz) > 64 {
-			return fmt.Errorf("audit: timezone exceeds maximum length of 64 bytes")
+			return fmt.Errorf("%w: timezone exceeds maximum length of 64 bytes", ErrConfigInvalid)
 		}
 		a.timezone = tz
 		return nil

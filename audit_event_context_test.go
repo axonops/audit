@@ -71,6 +71,7 @@ func TestAuditEventContext_NilEvent_ReturnsError(t *testing.T) {
 	a, _ := newCtxAuditor(t)
 	err := a.AuditEventContext(context.Background(), nil)
 	require.Error(t, err)
+	// text-only: audit.go:378 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "must not be nil")
 }
 

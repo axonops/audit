@@ -40,6 +40,20 @@ var DeepCopyValueForTest = deepCopyValue
 // while allowing the fuzz harness to run from the _test package.
 var ExpandEnvStringForTest = expandEnvString
 
+// ExpandEnvInValueForTest exposes expandEnvInValue for envsubst_test.go
+// (#555 black-box test conversion). The function recursively walks
+// a parsed YAML value and substitutes ${VAR} / ${VAR:-default}.
+var ExpandEnvInValueForTest = expandEnvInValue
+
+// BuildFormatterForTest exposes buildFormatter for formatter_test.go
+// (#555 black-box test conversion). Production callers reach the
+// same code path via outputconfig.Load.
+var BuildFormatterForTest = buildFormatter
+
+// ExtractFormatterTypeForTest exposes extractFormatterType for
+// formatter_test.go (#555 black-box test conversion).
+var ExtractFormatterTypeForTest = extractFormatterType
+
 // NewResolverForTest exposes newResolver for tests that need to drive
 // the resolver directly — used by [TestClearCaches_EmptiesBothMaps]
 // to verify clearCaches() empties both maps (#479).

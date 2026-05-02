@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package outputconfig
+package outputconfig_test
 
 import (
 	"testing"
@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/axonops/audit"
+	"github.com/axonops/audit/outputconfig"
 )
 
 // parseFormatterValue parses a YAML string into the value type that
@@ -34,20 +35,20 @@ func parseFormatterValue(t *testing.T, yamlStr string) any {
 }
 
 func TestBuildFormatter_Nil_ReturnsNil(t *testing.T) {
-	f, err := buildFormatter(nil)
+	f, err := outputconfig.BuildFormatterForTest(nil)
 	assert.NoError(t, err)
 	assert.Nil(t, f)
 }
 
 func TestBuildFormatter_EmptyString_ReturnsNil(t *testing.T) {
-	f, err := buildFormatter("")
+	f, err := outputconfig.BuildFormatterForTest("")
 	assert.NoError(t, err)
 	assert.Nil(t, f)
 }
 
 func TestBuildFormatter_JSON_Default(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 
@@ -59,7 +60,7 @@ func TestBuildFormatter_JSON_Default(t *testing.T) {
 
 func TestBuildFormatter_JSON_EmptyType_DefaultsToJSON(t *testing.T) {
 	v := parseFormatterValue(t, "timestamp: unix_ms\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 	require.NotNil(t, f)
 
@@ -70,7 +71,7 @@ func TestBuildFormatter_JSON_EmptyType_DefaultsToJSON(t *testing.T) {
 
 func TestBuildFormatter_JSON_UnixMs(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\ntimestamp: unix_ms\nomit_empty: true\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 
 	jf, ok := f.(*audit.JSONFormatter)
@@ -81,7 +82,7 @@ func TestBuildFormatter_JSON_UnixMs(t *testing.T) {
 
 func TestBuildFormatter_JSON_InvalidTimestamp_Error(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\ntimestamp: epoch_seconds\n")
-	_, err := buildFormatter(v)
+	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown timestamp format")
 	assert.Contains(t, err.Error(), "epoch_seconds")
@@ -89,7 +90,7 @@ func TestBuildFormatter_JSON_InvalidTimestamp_Error(t *testing.T) {
 
 func TestBuildFormatter_CEF_WithVendorProduct(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\nvendor: AxonOps\nproduct: SchemaRegistry\nversion: \"1.0\"\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -101,7 +102,7 @@ func TestBuildFormatter_CEF_WithVendorProduct(t *testing.T) {
 
 func TestBuildFormatter_CEF_OmitEmpty(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\nomit_empty: true\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -111,7 +112,7 @@ func TestBuildFormatter_CEF_OmitEmpty(t *testing.T) {
 
 func TestBuildFormatter_CEF_NoSeverityFunc(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\nvendor: Test\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -121,7 +122,7 @@ func TestBuildFormatter_CEF_NoSeverityFunc(t *testing.T) {
 
 func TestBuildFormatter_CEF_Defaults(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\n")
-	f, err := buildFormatter(v)
+	f, err := outputconfig.BuildFormatterForTest(v)
 	require.NoError(t, err)
 
 	cf, ok := f.(*audit.CEFFormatter)
@@ -137,21 +138,21 @@ func TestBuildFormatter_CEF_Defaults(t *testing.T) {
 
 func TestBuildFormatter_CEF_RejectsTimestamp(t *testing.T) {
 	v := parseFormatterValue(t, "type: cef\ntimestamp: unix_ms\nvendor: Test\n")
-	_, err := buildFormatter(v)
+	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cef does not support timestamp")
 }
 
 func TestBuildFormatter_JSON_RejectsVendorProductVersion(t *testing.T) {
 	v := parseFormatterValue(t, "type: json\nvendor: AxonOps\n")
-	_, err := buildFormatter(v)
+	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json does not support vendor")
 }
 
 func TestBuildFormatter_UnknownType_Error(t *testing.T) {
 	v := parseFormatterValue(t, "type: protobuf\n")
-	_, err := buildFormatter(v)
+	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown type")
 	assert.Contains(t, err.Error(), "protobuf")
@@ -160,7 +161,7 @@ func TestBuildFormatter_UnknownType_Error(t *testing.T) {
 func TestBuildFormatter_InvalidStructure_Error(t *testing.T) {
 	// Pass a slice where a mapping is expected.
 	v := []any{"item"}
-	_, err := buildFormatter(v)
+	_, err := outputconfig.BuildFormatterForTest(v)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "formatter")
 }
@@ -183,11 +184,11 @@ func TestExtractFormatterType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.yaml == "" {
-				assert.Equal(t, "", extractFormatterType(nil))
+				assert.Equal(t, "", outputconfig.ExtractFormatterTypeForTest(nil))
 				return
 			}
 			v := parseFormatterValue(t, tt.yaml)
-			assert.Equal(t, tt.want, extractFormatterType(v))
+			assert.Equal(t, tt.want, outputconfig.ExtractFormatterTypeForTest(v))
 		})
 	}
 }

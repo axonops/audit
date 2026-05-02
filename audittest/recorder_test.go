@@ -438,7 +438,11 @@ func TestRecorder_WaitForN_ZeroTimeoutEmpty(t *testing.T) {
 	ok := rec.WaitForN(t, 1, 0)
 	elapsed := time.Since(start)
 	assert.False(t, ok, "empty recorder with zero timeout returns false")
-	assert.Less(t, elapsed, 10*time.Millisecond, "zero-timeout miss must not spin")
+	// A real spin would take seconds (loop on a millisecond ticker).
+	// The 250 ms ceiling proves the no-spin contract while tolerating
+	// scheduling jitter on slow CI runners (macos-latest GHA observed
+	// up to ~12 ms here under -race + -parallel load).
+	assert.Less(t, elapsed, 250*time.Millisecond, "zero-timeout miss must not spin")
 }
 
 func TestRecorder_WaitForN_AsyncConcurrentEmit(t *testing.T) {

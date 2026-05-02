@@ -7,6 +7,7 @@ require (
 	github.com/axonops/audit/loki v0.1.11
 	github.com/axonops/audit/outputconfig v0.1.11
 	github.com/axonops/audit/outputs v0.1.9
+	github.com/axonops/audit/secrets/openbao v0.1.11
 	github.com/axonops/audit/syslog v0.1.11
 	github.com/axonops/audit/webhook v0.1.11
 	github.com/cucumber/godog v0.15.1
@@ -18,7 +19,6 @@ require (
 
 require (
 	github.com/axonops/audit/secrets v0.1.11 // indirect
-	github.com/axonops/audit/secrets/openbao v0.1.11 // indirect
 	github.com/axonops/audit/secrets/vault v0.1.11 // indirect
 	github.com/axonops/srslog v1.0.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect

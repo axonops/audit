@@ -68,6 +68,10 @@ func newTLSWebhookReceiver() *tlsWebhookReceiver {
 		r.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	})
+	// httptest exemption (#559): the production webhook-receiver
+	// container is HTTP-only; this fixture exercises the webhook
+	// output's TLS path (CA pinning, server-cert handshake) which
+	// the container cannot serve without a TLS rebuild.
 	r.server = httptest.NewTLSServer(mux)
 	return r
 }
@@ -143,6 +147,10 @@ func newLocalWebhookReceiver(redirect bool) *localWebhookReceiver {
 		r.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	})
+	// httptest exemption (#559): tests redirect (301) handling and
+	// large-3xx-body delivery cap (#484). Adversarial responses no
+	// real receiver would emit; precise control of redirect target
+	// and chunked 3xx body is the contract under test.
 	r.server = httptest.NewServer(mux)
 	return r
 }
@@ -542,6 +550,9 @@ func registerWebhookWhenAuditSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		auditWebhookOversizedEventStep(tc))
 
 	ctx.Step(`^I wait (\d+) seconds for retries to exhaust$`, func(secs int) error {
+		// scenario-control delay (#559): the step IS the wait. There is
+		// no observable predicate to poll on — the contract is "wait N
+		// seconds, then evaluate the post-conditions."
 		time.Sleep(time.Duration(secs) * time.Second)
 		return nil
 	})
@@ -796,14 +807,13 @@ func registerWebhookThenMetricsAndErrorSteps(ctx *godog.ScenarioContext, tc *Aud
 		if tc.WebhookMetrics == nil {
 			return fmt.Errorf("no webhook metrics configured")
 		}
-		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-		for time.Now().Before(deadline) {
-			if tc.WebhookMetrics.DropCount() >= minDrops {
-				return nil
-			}
-			time.Sleep(200 * time.Millisecond)
+		ok := pollUntil(time.Duration(timeout)*time.Second, 200*time.Millisecond, func() bool {
+			return tc.WebhookMetrics.DropCount() >= minDrops
+		})
+		if !ok {
+			return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.DropCount(), timeout)
 		}
-		return fmt.Errorf("wanted >= %d webhook drops, got %d after %ds", minDrops, tc.WebhookMetrics.DropCount(), timeout)
+		return nil
 	})
 
 	ctx.Step(`^the webhook construction should fail with an error containing "([^"]*)"$`, func(substr string) error {
@@ -1024,13 +1034,12 @@ func assertWebhookAnyError(tc *AuditTestContext) error {
 }
 
 func assertWebhookEventCount(tc *AuditTestContext, minCount int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	ok := pollUntil(timeout, 200*time.Millisecond, func() bool {
 		events, err := getWebhookEvents(tc.WebhookURL)
-		if err == nil && len(events) >= minCount {
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+		return err == nil && len(events) >= minCount
+	})
+	if ok {
+		return nil
 	}
 	events, _ := getWebhookEvents(tc.WebhookURL)
 	return fmt.Errorf("wanted >= %d webhook events, got %d after %v", minCount, len(events), timeout)
@@ -1038,16 +1047,20 @@ func assertWebhookEventCount(tc *AuditTestContext, minCount int, timeout time.Du
 
 func assertWebhookExactCount(tc *AuditTestContext, exactCount int, timeout time.Duration) error {
 	// Wait for events to arrive, then verify exact count.
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	var reached int
+	ok := pollUntil(timeout, 200*time.Millisecond, func() bool {
 		events, err := getWebhookEvents(tc.WebhookURL)
-		if err == nil && len(events) >= exactCount {
-			if len(events) == exactCount {
-				return nil
-			}
-			return fmt.Errorf("wanted exactly %d webhook events, got %d", exactCount, len(events))
+		if err != nil || len(events) < exactCount {
+			return false
 		}
-		time.Sleep(200 * time.Millisecond)
+		reached = len(events)
+		return true
+	})
+	if ok {
+		if reached == exactCount {
+			return nil
+		}
+		return fmt.Errorf("wanted exactly %d webhook events, got %d", exactCount, reached)
 	}
 	events, _ := getWebhookEvents(tc.WebhookURL)
 	return fmt.Errorf("wanted exactly %d webhook events, got %d after %v", exactCount, len(events), timeout)
@@ -1140,14 +1153,13 @@ func mapKeys(m map[string]any) []string {
 }
 
 func pollReceiverCount(label string, countFn func() int, minCount, timeoutSecs int) error {
-	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
-	for time.Now().Before(deadline) {
-		if countFn() >= minCount {
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+	ok := pollUntil(time.Duration(timeoutSecs)*time.Second, 200*time.Millisecond, func() bool {
+		return countFn() >= minCount
+	})
+	if !ok {
+		return fmt.Errorf("wanted >= %d %s webhook events, got %d after %ds", minCount, label, countFn(), timeoutSecs)
 	}
-	return fmt.Errorf("wanted >= %d %s webhook events, got %d after %ds", minCount, label, countFn(), timeoutSecs)
+	return nil
 }
 
 // pollReceiverExactCount waits up to timeoutSecs for the count to
@@ -1155,16 +1167,20 @@ func pollReceiverCount(label string, countFn func() int, minCount, timeoutSecs i
 // by #554 non-retry happy-path scenarios where duplicate delivery
 // is a regression.
 func pollReceiverExactCount(label string, countFn func() int, exactCount, timeoutSecs int) error {
-	deadline := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
-	for time.Now().Before(deadline) {
+	var reached int
+	ok := pollUntil(time.Duration(timeoutSecs)*time.Second, 200*time.Millisecond, func() bool {
 		got := countFn()
-		if got >= exactCount {
-			if got == exactCount {
-				return nil
-			}
-			return fmt.Errorf("wanted exactly %d %s webhook events, got %d", exactCount, label, got)
+		if got < exactCount {
+			return false
 		}
-		time.Sleep(200 * time.Millisecond)
+		reached = got
+		return true
+	})
+	if ok {
+		if reached == exactCount {
+			return nil
+		}
+		return fmt.Errorf("wanted exactly %d %s webhook events, got %d", exactCount, label, reached)
 	}
 	return fmt.Errorf("wanted exactly %d %s webhook events, got %d after %ds", exactCount, label, countFn(), timeoutSecs)
 }

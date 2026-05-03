@@ -136,10 +136,11 @@ func registerTLSNegativeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		if tc.BadReceiverHits == nil {
 			return fmt.Errorf("no HTTPS receiver was started")
 		}
-		// Give the async webhook/loki delivery goroutine time to
-		// attempt the handshake and fail. The handshake fails fast
-		// (well under 100 ms locally); 500 ms is comfortable for
-		// CI under load. If TLS rejection is broken, the request
+		// scenario-control delay (#559): we MUST wait the full window
+		// before asserting absence — early-exit polling cannot prove
+		// "the bad-cert receiver was never reached." The handshake
+		// fails fast (well under 100 ms locally); 500 ms is comfortable
+		// for CI under load. If TLS rejection is broken, the request
 		// reaches the receiver in this window.
 		time.Sleep(500 * time.Millisecond)
 		hits := atomic.LoadUint32(tc.BadReceiverHits)
@@ -387,6 +388,9 @@ func startSyslogReceiver(tc *AuditTestContext, cfg *tls.Config) error {
 func startHTTPSReceiver(tc *AuditTestContext, cfg *tls.Config) error {
 	tc.BadReceiverHits = new(uint32)
 	hits := tc.BadReceiverHits
+	// httptest exemption (#559): asserts the audit client refuses a
+	// deliberately-broken server cert; per-test cert generation gives
+	// the precise PKI control no real container can offer.
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddUint32(hits, 1)
 		w.WriteHeader(http.StatusNoContent)

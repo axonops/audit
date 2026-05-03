@@ -165,19 +165,17 @@ func registerLokiFanoutCountSteps(ctx *godog.ScenarioContext, tc *AuditTestConte
 	ctx.Step(`^the loki fanout server should have at least (\d+) events within (\d+) seconds$`,
 		func(minEvents, timeoutSec int) error {
 			logql := `{app_name="bdd-audit", test_suite="bdd"}`
-			deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
-			for time.Now().Before(deadline) {
+			ok := pollUntil(time.Duration(timeoutSec)*time.Second, 500*time.Millisecond, func() bool {
 				result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 				if err != nil {
-					time.Sleep(500 * time.Millisecond)
-					continue
+					return false
 				}
-				if countLokiLines(result) >= minEvents {
-					return nil
-				}
-				time.Sleep(500 * time.Millisecond)
+				return countLokiLines(result) >= minEvents
+			})
+			if !ok {
+				return fmt.Errorf("expected at least %d events within %ds", minEvents, timeoutSec)
 			}
-			return fmt.Errorf("expected at least %d events within %ds", minEvents, timeoutSec)
+			return nil
 		})
 
 	ctx.Step(`^I audit (\d+) uniquely marked "([^"]*)" events with actor "([^"]*)" and outcome "([^"]*)"$`,
@@ -419,23 +417,24 @@ func assertFileAndLokiHMACMatch(tc *AuditTestContext) error {
 
 func assertLokiLabelQueryReturnsMarker(tc *AuditTestContext, label, value, marker string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{%s=%q, app_name="bdd-audit"}`, label, value)
-	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
 	var lastErr error
-	for time.Now().Before(deadline) {
+	ok := pollUntil(time.Duration(timeoutSec)*time.Second, 500*time.Millisecond, func() bool {
 		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 		if err != nil {
 			lastErr = err
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return false
 		}
 		for _, stream := range result.Data.Result {
 			for _, v := range stream.Values {
 				if len(v) >= 2 && strings.Contains(v[1], marker) {
-					return nil
+					return true
 				}
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		return false
+	})
+	if ok {
+		return nil
 	}
 	if lastErr != nil {
 		return fmt.Errorf("loki query failed: %w", lastErr)
@@ -448,6 +447,8 @@ func assertLokiLabelQueryReturnsMarker(tc *AuditTestContext, label, value, marke
 // which queries by label and can find stale data from previous runs.
 func assertLokiMarkerAbsent(tc *AuditTestContext, marker string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{app_name="bdd-audit"} |= %q`, marker)
+	// scenario-control delay (#559): wait the full window before
+	// asserting absence — early-exit polling cannot prove never-arrived.
 	time.Sleep(time.Duration(timeoutSec) * time.Second)
 	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 	if err != nil {
@@ -462,7 +463,8 @@ func assertLokiMarkerAbsent(tc *AuditTestContext, marker string, timeoutSec int)
 
 func assertLokiLabelQueryReturnsNoEvents(tc *AuditTestContext, label, value string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{%s=%q, app_name="bdd-audit"}`, label, value)
-	// Wait the full timeout, then check — events may still be ingesting.
+	// scenario-control delay (#559): wait the full window before
+	// asserting absence — events may still be ingesting under this label.
 	time.Sleep(time.Duration(timeoutSec) * time.Second)
 	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 	if err != nil {

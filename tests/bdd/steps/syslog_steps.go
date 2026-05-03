@@ -263,16 +263,18 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 
 	ctx.Step(`^I wait for syslog-ng to be ready$`, func() error {
 		// Poll until syslog-ng accepts TCP connections on port 5514.
-		deadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(deadline) {
+		ok := pollUntil(15*time.Second, 500*time.Millisecond, func() bool {
 			conn, err := net.DialTimeout("tcp", "localhost:5514", 1*time.Second)
-			if err == nil {
-				_ = conn.Close()
-				return nil
+			if err != nil {
+				return false
 			}
-			time.Sleep(500 * time.Millisecond)
+			_ = conn.Close()
+			return true
+		})
+		if !ok {
+			return fmt.Errorf("syslog-ng not ready after 15 seconds")
 		}
-		return fmt.Errorf("syslog-ng not ready after 15 seconds")
+		return nil
 	})
 
 	ctx.Step(`^I audit a second uniquely marked "([^"]*)" event$`, func(eventType string) error {
@@ -282,6 +284,9 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		fields["marker"] = m
 		// The first write after restart may fail and trigger reconnect.
 		// Retry a few times to allow reconnection.
+		// scenario-control delay (#559): fixed-iteration retry with a
+		// half-second backoff between attempts — bounded retry loop, not
+		// a deadline busy-poll that pollUntil would express better.
 		for range 10 {
 			err := tc.Auditor.AuditEvent(audit.NewEvent(eventType, fields))
 			if err == nil {
@@ -310,19 +315,20 @@ func registerSyslogWhenReconnectSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 func stopSyslogAndScheduleRestart(tc *AuditTestContext) error {
 	_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
 		"sh", "-c", "kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null").CombinedOutput()
+	// scenario-control delay (#559): give the kernel a moment to tear
+	// down the listening socket before the cleanup attempts a restart.
 	time.Sleep(200 * time.Millisecond)
 	tc.AddCleanup(func() {
 		_, _ = exec.Command("docker", "exec", "bdd-syslog-ng-1",
 			"sh", "-c", "syslog-ng --no-caps -F &").CombinedOutput()
-		deadline := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadline) {
+		_ = pollUntil(10*time.Second, 200*time.Millisecond, func() bool {
 			conn, err := net.DialTimeout("tcp", "localhost:5514", 500*time.Millisecond)
-			if err == nil {
-				_ = conn.Close()
-				return
+			if err != nil {
+				return false
 			}
-			time.Sleep(200 * time.Millisecond)
-		}
+			_ = conn.Close()
+			return true
+		})
 	})
 	return nil
 }
@@ -618,14 +624,13 @@ func readSyslogLogFromDocker() string {
 
 // assertSyslogContains polls syslog until text appears or timeout.
 func assertSyslogContains(text string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if strings.Contains(readSyslogLogFromDocker(), text) {
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+	ok := pollUntil(timeout, 200*time.Millisecond, func() bool {
+		return strings.Contains(readSyslogLogFromDocker(), text)
+	})
+	if !ok {
+		return fmt.Errorf("syslog does not contain %q after %v", text, timeout)
 	}
-	return fmt.Errorf("syslog does not contain %q after %v", text, timeout)
+	return nil
 }
 
 // assertSyslogMarkerLineContains finds the syslog line with the default

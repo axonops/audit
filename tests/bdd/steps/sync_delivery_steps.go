@@ -37,6 +37,8 @@ type slowMockOutput struct {
 }
 
 func (s *slowMockOutput) Write(_ []byte) error {
+	// scenario-control delay (#559): deliberate per-write delay to
+	// exercise sync-delivery blocking semantics — not synchronisation.
 	time.Sleep(s.delay)
 	return nil
 }

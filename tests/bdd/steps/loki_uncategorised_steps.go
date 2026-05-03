@@ -100,23 +100,24 @@ func assertLokiMarkerEventFieldAbsent(tc *AuditTestContext, markerVal, field str
 // pollLokiForNamedMarker polls Loki for a specific marker value.
 func pollLokiForNamedMarker(tc *AuditTestContext, markerVal string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{test_suite="bdd"} |= %q`, markerVal)
-	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
-	for time.Now().Before(deadline) {
+	ok := pollUntil(time.Duration(timeoutSec)*time.Second, 500*time.Millisecond, func() bool {
 		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 		if err != nil {
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return false
 		}
 		for _, stream := range result.Data.Result {
 			for _, v := range stream.Values {
 				if len(v) >= 2 && strings.Contains(v[1], markerVal) {
-					return nil
+					return true
 				}
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		return false
+	})
+	if !ok {
+		return fmt.Errorf("named marker %q not found in Loki within %ds", markerVal, timeoutSec)
 	}
-	return fmt.Errorf("named marker %q not found in Loki within %ds", markerVal, timeoutSec)
+	return nil
 }
 
 // assertLokiLabelQueryExcludesMarker verifies that a label query does
@@ -124,6 +125,9 @@ func pollLokiForNamedMarker(tc *AuditTestContext, markerVal string, timeoutSec i
 // be sure (events may still be ingesting).
 func assertLokiLabelQueryExcludesMarker(tc *AuditTestContext, label, value, markerVal string, timeoutSec int) error {
 	logql := fmt.Sprintf(`{test_suite="bdd",%s=%q} |= %q`, label, value, markerVal)
+	// scenario-control delay (#559): we MUST wait the full window
+	// before asserting absence — early-exit polling cannot prove
+	// "marker never arrived under this label."
 	time.Sleep(time.Duration(timeoutSec) * time.Second)
 	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 	if err != nil {
@@ -143,29 +147,32 @@ func assertLokiLabelQueryExcludesMarker(tc *AuditTestContext, label, value, mark
 // event_category labels and verifies the marker IS found.
 func assertLokiNegationQueryReturnsMarker(tc *AuditTestContext, categories, markerVal string, timeoutSec int) error {
 	logql := buildNegationQuery(categories, markerVal)
-	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
-	for time.Now().Before(deadline) {
+	ok := pollUntil(time.Duration(timeoutSec)*time.Second, 500*time.Millisecond, func() bool {
 		result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 		if err != nil {
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return false
 		}
 		for _, stream := range result.Data.Result {
 			for _, v := range stream.Values {
 				if len(v) >= 2 && strings.Contains(v[1], markerVal) {
-					return nil
+					return true
 				}
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		return false
+	})
+	if !ok {
+		return fmt.Errorf("marker %q not found in negation query within %ds", markerVal, timeoutSec)
 	}
-	return fmt.Errorf("marker %q not found in negation query within %ds", markerVal, timeoutSec)
+	return nil
 }
 
 // assertLokiNegationQueryExcludesMarker queries Loki with negated
 // event_category labels and verifies the marker is NOT found.
 func assertLokiNegationQueryExcludesMarker(tc *AuditTestContext, categories, markerVal string, timeoutSec int) error {
 	logql := buildNegationQuery(categories, markerVal)
+	// scenario-control delay (#559): we MUST wait the full window
+	// before asserting absence; see assertLokiLabelQueryExcludesMarker.
 	time.Sleep(time.Duration(timeoutSec) * time.Second)
 	result, err := queryLokiBDD(tc, logql, defaultLokiTenant)
 	if err != nil {

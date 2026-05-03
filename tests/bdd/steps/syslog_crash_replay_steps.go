@@ -66,6 +66,9 @@ func registerSyslogCrashReplaySteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 					"sh", "-c",
 					"kill $(cat /var/run/syslog-ng.pid 2>/dev/null) 2>/dev/null; "+
 						"syslog-ng --no-caps -F &").CombinedOutput()
+				// scenario-control delay (#559): half-interval pause
+				// between the kill and the next restart to scatter
+				// crashes deterministically across the deadline window.
 				time.Sleep(interval / 2)
 			}
 			// Final restart so the remainder of the scenario has a
@@ -188,14 +191,15 @@ func registerSyslogCrashReplaySteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 // accepts a connection or the deadline expires. Used after rapid
 // restarts to guarantee the next steps see a running daemon.
 func waitForSyslogReady(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	if pollUntil(timeout, 500*time.Millisecond, func() bool {
 		conn, err := net.DialTimeout("tcp", "localhost:5514", 1*time.Second)
-		if err == nil {
-			_ = conn.Close()
-			return nil
+		if err != nil {
+			return false
 		}
-		time.Sleep(500 * time.Millisecond)
+		_ = conn.Close()
+		return true
+	}) {
+		return nil
 	}
 	return fmt.Errorf("syslog-ng not ready after %s", timeout)
 }

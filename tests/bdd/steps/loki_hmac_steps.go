@@ -403,22 +403,25 @@ func defaultLokiTestConfig(tc *AuditTestContext) *loki.Config {
 func queryLokiForMarkerEvent(tc *AuditTestContext, marker string) ([]byte, error) {
 	logql := fmt.Sprintf(`{app_name="bdd-audit"} |= %q`, marker)
 	var lastErr error
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
+	var found []byte
+	ok := pollUntil(10*time.Second, 500*time.Millisecond, func() bool {
 		result, err := queryLokiBDD(tc, logql, "")
 		if err != nil {
 			lastErr = err
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return false
 		}
 		for _, stream := range result.Data.Result {
 			for _, v := range stream.Values {
 				if len(v) >= 2 && strings.Contains(v[1], marker) {
-					return []byte(v[1]), nil
+					found = []byte(v[1])
+					return true
 				}
 			}
 		}
-		time.Sleep(500 * time.Millisecond)
+		return false
+	})
+	if ok {
+		return found, nil
 	}
 	if lastErr != nil {
 		return nil, fmt.Errorf("loki query failed: %w", lastErr)

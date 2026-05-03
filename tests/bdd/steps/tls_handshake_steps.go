@@ -178,12 +178,10 @@ func registerTLSHandshakeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 
 	ctx.Step(`^the flapping receiver should eventually receive at least one successful request$`,
 		func() error {
-			deadline := time.Now().Add(5 * time.Second)
-			for time.Now().Before(deadline) {
-				if atomic.LoadUint32(tc.BadReceiverHits) >= 1 {
-					return nil
-				}
-				time.Sleep(50 * time.Millisecond)
+			if pollUntil(5*time.Second, 50*time.Millisecond, func() bool {
+				return atomic.LoadUint32(tc.BadReceiverHits) >= 1
+			}) {
+				return nil
 			}
 			return fmt.Errorf(
 				"flapping receiver got 0 successful requests after 5 s — "+
@@ -215,6 +213,11 @@ func startFlappingReceiver(tc *AuditTestContext, n int) error {
 		return fmt.Errorf("flapping cert: %w", err)
 	}
 
+	// httptest exemption (#559): rotates between valid/expired certs and
+	// hijacks the TCP connection mid-batch to test connection-flapping
+	// retry semantics. The per-connection serial handler model lets the
+	// scenario script exact failure timing — no real container offers
+	// this mid-batch certificate-flip.
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Drain to keep the request body fully consumed before we
 		// hijack — avoids a premature TCP RST that masks the drop as

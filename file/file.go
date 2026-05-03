@@ -31,10 +31,9 @@ import (
 
 // Compile-time assertions.
 var (
-	_ audit.Output                = (*Output)(nil)
-	_ audit.DestinationKeyer      = (*Output)(nil)
-	_ audit.DeliveryReporter      = (*Output)(nil)
-	_ audit.OutputMetricsReceiver = (*Output)(nil)
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.DeliveryReporter = (*Output)(nil)
 )
 
 const (
@@ -67,10 +66,11 @@ const (
 // RotationRecorder is an OPTIONAL extension interface for file-output
 // rotation telemetry. A consumer's [audit.OutputMetrics] implementation
 // MAY also implement RotationRecorder. When the file output receives
-// per-output metrics via [audit.OutputMetricsReceiver.SetOutputMetrics],
-// it type-asserts for RotationRecorder and invokes RecordRotation on
-// every log-file rotation. Precedent: [net/http.Flusher] as an
-// optional extension on [http.ResponseWriter].
+// per-output metrics via [WithOutputMetrics] (or factory wiring via
+// outputconfig.WithOutputMetricsFactory), it type-asserts for
+// RotationRecorder and invokes RecordRotation on every log-file
+// rotation. Precedent: [net/http.Flusher] as an optional extension
+// on [http.ResponseWriter].
 //
 // Consumers who do not care about rotation telemetry need not
 // implement this interface — the base [audit.OutputMetrics] contract
@@ -146,9 +146,9 @@ const dropWarnInterval = 10 * time.Second
 // to [Output.Write] and [Output.Close].
 type Output struct {
 	writer           *rotate.Writer
-	logger           atomic.Pointer[slog.Logger] // diagnostic logger; swapped atomically post-construction (#474)
-	outputMetrics    atomic.Pointer[audit.OutputMetrics]
-	rotationRecorder atomic.Pointer[RotationRecorder]
+	logger           *slog.Logger        // diagnostic logger; immutable after New (#696)
+	outputMetrics    audit.OutputMetrics // immutable after New (#696)
+	rotationRecorder RotationRecorder    // optional; nil when outputMetrics does not implement it
 	ch               chan []byte
 	closeCh          chan struct{}
 	done             chan struct{}
@@ -164,18 +164,6 @@ type Output struct {
 	drops             dropLimiter
 	closed            atomic.Bool
 	mu                sync.Mutex
-}
-
-// SetDiagnosticLogger receives the library's diagnostic logger.
-//
-// Safe for concurrent use with the background write goroutine and any
-// active [Output.Write] caller — the logger field is an
-// [atomic.Pointer] so readers always see a fully-published value.
-func (f *Output) SetDiagnosticLogger(l *slog.Logger) {
-	if l == nil {
-		l = slog.Default()
-	}
-	f.logger.Store(l)
 }
 
 // resolvePath normalises the path to an absolute form, resolving
@@ -197,11 +185,8 @@ func resolvePath(path string) (string, error) {
 // path, permissions, and parent directory existence, then starts a
 // background goroutine for async event delivery.
 //
-// Per-output metrics arrive later via
-// [audit.OutputMetricsReceiver.SetOutputMetrics] — the auditor wires
-// them in after construction when an [audit.OutputMetricsFactory] is
-// registered. An [*Output] silently discards telemetry until
-// SetOutputMetrics is called.
+// Per-output metrics may be supplied at construction via
+// [WithOutputMetrics]. When omitted, telemetry calls become no-ops.
 //
 // Callers MUST NOT mutate cfg.Compress via the pointer after New
 // returns — the defensive copy is shallow, so caller and Output share
@@ -257,15 +242,18 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 	}
 
 	out := &Output{
-		path:    cfg.Path,
-		name:    "file:" + cfg.Path,
-		ch:      make(chan []byte, cfg.BufferSize),
-		closeCh: make(chan struct{}),
-		done:    make(chan struct{}),
+		path:          cfg.Path,
+		name:          "file:" + cfg.Path,
+		ch:            make(chan []byte, cfg.BufferSize),
+		closeCh:       make(chan struct{}),
+		done:          make(chan struct{}),
+		logger:        logger,
+		outputMetrics: o.outputMetrics,
 	}
-	// Publish the initial logger BEFORE any goroutine starts reading
-	// it. resolveOptions has already replaced nil with slog.Default.
-	out.logger.Store(logger)
+	// Detect optional RotationRecorder via structural typing.
+	if rr, ok := o.outputMetrics.(RotationRecorder); ok {
+		out.rotationRecorder = rr
+	}
 
 	logPath := cfg.Path // capture for closure
 	rotCfg := rotate.Config{
@@ -275,17 +263,14 @@ func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocyclo,cyclop
 		MaxBackups: cfg.MaxBackups,
 		Compress:   compress,
 		OnError: func(err error) {
-			out.logger.Load().Warn("audit/file: output background error",
+			out.logger.Warn("audit/file: output background error",
 				"path", logPath, "error", err)
 		},
 	}
-	// Always install OnRotate — reads from the struct field so that
-	// SetOutputMetrics can provide a RotationRecorder implementation
-	// after construction.
-	rotCfg.OnRotate = func(path string) {
-		if rrp := out.rotationRecorder.Load(); rrp != nil {
-			(*rrp).RecordRotation(path)
-		}
+	// Install OnRotate when a recorder is wired at construction.
+	if out.rotationRecorder != nil {
+		rr := out.rotationRecorder
+		rotCfg.OnRotate = func(path string) { rr.RecordRotation(path) }
 	}
 	rw, err := rotate.New(cfg.Path, rotCfg)
 	if err != nil {
@@ -315,13 +300,11 @@ func (f *Output) Write(data []byte) error {
 		return nil
 	default:
 		f.drops.record(dropWarnInterval, func(dropped int64) {
-			f.logger.Load().Warn("audit: output file: event dropped (buffer full)",
+			f.logger.Warn("audit: output file: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(f.ch))
 		})
-		if omp := f.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		f.outputMetrics.RecordDrop()
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -349,7 +332,7 @@ func (f *Output) Close() error {
 	case <-f.done:
 	case <-timer.C:
 		remaining := len(f.ch)
-		f.logger.Load().Error("audit: output file: shutdown timeout, events lost",
+		f.logger.Error("audit: output file: shutdown timeout, events lost",
 			"timeout", shutdownTimeout,
 			"events_lost", remaining)
 	}
@@ -366,23 +349,6 @@ func (f *Output) Close() error {
 // own delivery metrics from the background writeLoop after actual
 // file I/O, not from the Write enqueue path.
 func (f *Output) ReportsDelivery() bool { return true }
-
-// SetOutputMetrics receives the per-output metrics instance created
-// by the [audit.OutputMetricsFactory]. Typically called once after
-// construction and before the first Write call, but repeat calls are
-// safe: the rotation-recorder slot is always reset from the new m so
-// a replacement value cannot accidentally keep firing against the old
-// recorder. If m also implements [RotationRecorder], rotation telemetry
-// is wired up automatically via structural typing (pattern mirrors
-// [net/http.Flusher] detection on [net/http.ResponseWriter]).
-func (f *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	f.outputMetrics.Store(&m)
-	if rr, ok := m.(RotationRecorder); ok {
-		f.rotationRecorder.Store(&rr)
-	} else {
-		f.rotationRecorder.Store(nil)
-	}
-}
 
 // maxBatch is the upper bound on events coalesced into a single
 // Writev call. Sized to 256 per the #510 performance review: 1024
@@ -435,12 +401,8 @@ func (f *Output) writeLoop() {
 // than per-event recovery — because a panic in writev is either
 // per-batch (unlikely) or per-process (worse than unlikely).
 func (f *Output) writeBatch(batch [][]byte) {
-	// Load metrics and logger once per batch.
-	var om audit.OutputMetrics
-	if omp := f.outputMetrics.Load(); omp != nil {
-		om = *omp
-	}
-	logger := f.logger.Load()
+	logger := f.logger
+	om := f.outputMetrics
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -449,9 +411,7 @@ func (f *Output) writeBatch(batch [][]byte) {
 			logger.Error("audit: output file: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
-			if om != nil {
-				om.RecordError()
-			}
+			om.RecordError()
 		}
 	}()
 
@@ -460,29 +420,20 @@ func (f *Output) writeBatch(batch [][]byte) {
 	// need to sub-sample further — the per-batch cost is one
 	// atomic increment plus one metric call.
 	f.writeCount++
-	if om != nil {
-		om.RecordQueueDepth(len(f.ch), cap(f.ch))
-	}
+	om.RecordQueueDepth(len(f.ch), cap(f.ch))
 
-	var start time.Time
-	if om != nil {
-		start = time.Now()
-	}
+	start := time.Now()
 	if _, err := f.writer.Writev(batch); err != nil {
 		logger.Error("audit: output file: delivery failed",
 			"error", err, "batch_size", len(batch))
-		if om != nil {
-			om.RecordError()
-		}
+		om.RecordError()
 		return
 	}
 	// Successful flush: record the delivery timestamp for #753
 	// LastDeliveryReporter. Updated AFTER Writev returns nil so a
 	// failing flush leaves the timestamp frozen.
 	f.lastDeliveryNanos.Store(time.Now().UnixNano())
-	if om != nil {
-		om.RecordFlush(len(batch), time.Since(start))
-	}
+	om.RecordFlush(len(batch), time.Since(start))
 }
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most

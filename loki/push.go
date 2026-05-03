@@ -108,10 +108,11 @@ type dynamicField struct { //nolint:govet // fieldalignment: readability preferr
 // for a single event.
 //
 // Per-event allocations: none. `fw.pidStr` is pre-computed at
-// [Output.SetFrameworkFields] time (one-shot; framework fields are
-// auditor-wide constants). `strconv.Itoa(meta.Severity)` falls into
-// Go's small-integer intern table (values 0..99) which covers every
-// [audit.Severity] constant, so no heap allocation per event (#494).
+// construction time from the [WithFrameworkContext] option (one-shot;
+// framework fields are auditor-wide constants). `strconv.Itoa(meta.Severity)`
+// falls into Go's small-integer intern table (values 0..99) which
+// covers every [audit.Severity] constant, so no heap allocation per
+// event (#494).
 func (o *Output) resolveDynamicFields(meta audit.EventMetadata, fw *frameworkFields) []dynamicField {
 	dl := &o.cfg.Labels.Dynamic
 	fields := o.dynFields[:0] // reuse backing array

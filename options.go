@@ -198,9 +198,9 @@ func WithSynchronousDelivery() Option {
 // Optional. When not set or when l is nil, [slog.Default] is used.
 // Pass slog.New(slog.DiscardHandler) to silence all library output.
 //
-// The logger may be replaced at runtime via [Auditor.SetLogger] (#601).
-// The pointer is stored atomically so concurrent emissions and a
-// SetLogger call do not race.
+// The logger is fixed at construction; runtime swap is not supported
+// (the prior Auditor.SetLogger API was removed in #696). To redirect
+// diagnostics later, rebuild the auditor.
 func WithDiagnosticLogger(l *slog.Logger) Option {
 	return func(a *Auditor) error {
 		if l != nil {

@@ -190,17 +190,15 @@ func TestWrite_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		MaxEventBytes: 1024,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// Single oversized event — must drop exactly once.
 	werr := out.Write([]byte(strings.Repeat("z", 2048)))
@@ -225,18 +223,16 @@ func TestWrite_OversizedEmitsRateLimitedWarn(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	buf := &syncBuf{}
+	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		MaxEventBytes: 1024,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithDiagnosticLogger(logger))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	buf := &syncBuf{}
-	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	out.SetDiagnosticLogger(logger)
 
 	oversized := []byte(strings.Repeat("q", 2048))
 	for range 5 {

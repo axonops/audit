@@ -41,7 +41,7 @@ func TestSyslogFactory_ValidConfig(t *testing.T) {
 
 	// syslog.New eagerly connects — this may fail without a server.
 	// We test parsing separately from connectivity.
-	out, err := factory("siem_syslog", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("siem_syslog", yaml, audit.FrameworkContext{})
 	if err != nil {
 		// Connection failure is expected without Docker — verify it
 		// got past YAML parsing (error should be about connection).
@@ -59,7 +59,7 @@ func TestSyslogFactory_InvalidConfig_EmptyAddress(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_syslog", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_syslog", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "bad_syslog")
@@ -71,7 +71,7 @@ func TestSyslogFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("test", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:111 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "bogus")
@@ -81,7 +81,7 @@ func TestSyslogFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
+	_, err := factory("empty", nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:105 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
@@ -94,7 +94,7 @@ func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
 	require.NotNil(t, factory)
 
 	// Will fail to connect without Docker, but should parse YAML OK.
-	_, err := factory("tls_syslog", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("tls_syslog", yaml, audit.FrameworkContext{})
 	if err != nil {
 		// text-only: register.go wraps the dial error from syslog.go — no audit sentinel in the chain.
 		assert.Contains(t, err.Error(), "tls_syslog")
@@ -117,7 +117,7 @@ func TestSyslogFactory_BatchingKeys(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	out, err := factory("batched", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("batched", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "batching keys must parse cleanly")
 	require.NotNil(t, out)
 	t.Cleanup(func() { _ = out.Close() })
@@ -131,7 +131,7 @@ func TestSyslogFactory_FlushIntervalInvalid(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_flush", rawYAML, nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_flush", rawYAML, audit.FrameworkContext{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -142,7 +142,7 @@ func TestSyslogFactory_InsecureSkipVerify_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)
 
-	_, err := factory("insecure", rawYAML, nil, nil, audit.FrameworkContext{})
+	_, err := factory("insecure", rawYAML, audit.FrameworkContext{})
 	assert.Error(t, err, "insecure_skip_verify must not be settable via YAML")
 	assert.Contains(t, err.Error(), "insecure_skip_verify")
 }
@@ -159,7 +159,7 @@ func TestSyslogNewFactory_WithMetricsFactory(t *testing.T) {
 	factory := syslog.NewFactory(mf)
 
 	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
-	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("with_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "with_metrics", out.Name())
@@ -174,7 +174,7 @@ func TestSyslogNewFactory_NilFactory(t *testing.T) {
 	factory := syslog.NewFactory(nil)
 
 	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
-	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "nil_metrics", out.Name())
@@ -193,7 +193,7 @@ func TestSyslogNewFactory_FactoryReturnsNil(t *testing.T) {
 	})
 
 	rawYAML := []byte("network: tcp\naddress: " + srv.addr() + "\n")
-	out, err := factory("nil_return", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_return", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "nil_return", out.Name())
@@ -202,7 +202,8 @@ func TestSyslogNewFactory_FactoryReturnsNil(t *testing.T) {
 // factoryMockSyslogMetrics is a minimal audit.OutputMetrics scoped
 // to the NewFactory tests. It does NOT implement
 // [syslog.ReconnectRecorder], which exercises the structural-typing
-// "base-only metrics" branch in SetOutputMetrics.
+// "base-only metrics" branch in the constructor (#696:
+// WithOutputMetrics structural typing).
 type factoryMockSyslogMetrics struct {
 	audit.NoOpOutputMetrics
 }

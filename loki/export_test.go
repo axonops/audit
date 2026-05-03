@@ -93,12 +93,15 @@ func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntr
 	tb.Helper()
 
 	cfg := buildTestConfig(input)
-	o, err := New(cfg, nil)
+	o, err := New(cfg, nil, WithFrameworkContext(audit.FrameworkContext{
+		AppName:  input.AppName,
+		Host:     input.Host,
+		Timezone: "UTC",
+		PID:      input.PID,
+	}))
 	if err != nil {
 		tb.Fatalf("New() failed: %v", err)
 	}
-
-	o.SetFrameworkFields(input.AppName, input.Host, "UTC", input.PID)
 
 	batch := make([]lokiEntry, len(input.Events))
 	for i, e := range input.Events {
@@ -108,8 +111,9 @@ func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntr
 }
 
 // BuildTestPayload constructs a Loki push payload from test inputs.
-// It creates a temporary Output, sets framework fields, groups events,
-// builds the payload, and returns the raw (uncompressed) JSON bytes.
+// It creates a temporary Output with the supplied framework context,
+// groups events, builds the payload, and returns the raw (uncompressed)
+// JSON bytes. Framework fields are now construction-time only (#696).
 func BuildTestPayload(tb testing.TB, input TestPayloadInput) []byte { //nolint:gocritic // hugeParam: test helper, readability preferred
 	tb.Helper()
 

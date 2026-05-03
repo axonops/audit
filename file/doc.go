@@ -32,7 +32,7 @@
 // are 0600.
 //
 // To observe rotation events, wire an [audit.OutputMetrics] value via
-// [Output.SetOutputMetrics]. If the value also implements
+// [WithOutputMetrics] at construction. If the value also implements
 // [RotationRecorder] its RecordRotation method is called on every
 // rotation (structural typing — no explicit registration needed).
 //

@@ -425,7 +425,7 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 		}
 		seen[name] = struct{}{}
 
-		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.appName, top.host, lo.coreMetrics, lo.factories, lo.diagnosticLogger, secretResolver)
+		no, err := buildOutput(secretCtx, name, item.Value, taxonomy, top.appName, top.host, top.timezone, lo.coreMetrics, lo.outputMetricsFactory, lo.factories, lo.diagnosticLogger, secretResolver)
 		if err != nil {
 			closeAll(outputs)
 			return nil, fmt.Errorf("%w: %w", ErrOutputConfigInvalid, err)
@@ -439,15 +439,6 @@ func Load(ctx context.Context, data []byte, taxonomy *audit.Taxonomy, opts ...Lo
 	if len(outputs) == 0 {
 		return nil, fmt.Errorf("%w: all outputs are disabled; at least one enabled output is required",
 			ErrOutputConfigInvalid)
-	}
-
-	// Phase 7b: Wire per-output metrics via OutputMetricsReceiver.
-	if lo.outputMetricsFactory != nil {
-		for i := range outputs {
-			if recv, ok := outputs[i].Output.(audit.OutputMetricsReceiver); ok {
-				recv.SetOutputMetrics(lo.outputMetricsFactory(outputs[i].Type, outputs[i].Name))
-			}
-		}
 	}
 
 	// Phase 8: Build Options slice.

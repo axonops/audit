@@ -154,7 +154,7 @@ type MetadataWriter interface {
 // Introduced in #583 to solve the sequencing problem where framework
 // fields were propagated to outputs AFTER the initial dial in
 // [syslog.New], so the first syslog session used the wrong APP-NAME.
-type FrameworkContext struct {
+type FrameworkContext struct { //nolint:govet // fieldalignment: readability preferred (constructor-time value type, not on hot path)
 	// AppName is the auditor-wide application name. Used as the
 	// default RFC 5424 APP-NAME when the syslog per-output config
 	// omits `app_name`. May be empty — outputs fall back to their
@@ -165,53 +165,47 @@ type FrameworkContext struct {
 	// `hostname`. May be empty.
 	Host string
 	// Timezone is the auditor-wide timezone label (e.g. "UTC",
-	// "Europe/London"). Not yet populated by outputconfig.Load;
-	// reserved for future use.
+	// "Europe/London"). Populated by outputconfig.Load from the
+	// auditor's WithTimezone option (or [time.Local] default).
+	// May be empty.
 	Timezone string
 	// PID is the process ID at auditor construction time.
-	// Not yet populated by outputconfig.Load; reserved for future
-	// use.
+	// Populated by outputconfig.Load from os.Getpid(). Cached values
+	// (e.g. Loki's pre-formatted pid label) should be derived once at
+	// construction.
 	PID int
-}
 
-// FrameworkFieldReceiver is an optional interface that [Output]
-// implementations may satisfy to receive auditor-wide framework fields
-// (app_name, host, timezone, pid) POST-construction. The library
-// calls SetFrameworkFields once after all options are applied and
-// before the first Write or WriteWithMetadata call.
-//
-// Since #583, framework fields are also passed to output constructors
-// via [FrameworkContext]; this interface remains for outputs that
-// need to update fields mid-lifetime or that prefer a post-
-// construction hook for other reasons (e.g., Loki stream labels
-// cached at SetFrameworkFields time).
-//
-// This is the output-side analogue of [FrameworkFieldSetter] for
-// formatters. Outputs that do not implement it are silently skipped.
-type FrameworkFieldReceiver interface {
-	SetFrameworkFields(appName, host, timezone string, pid int)
-}
-
-// DiagnosticLoggerReceiver is an optional interface that [Output] implementations
-// may satisfy to receive the library's [log/slog.Logger] for diagnostic
-// output. The library calls SetDiagnosticLogger once after all options are applied.
-// Outputs that do not implement it use the package-level [slog.Default].
-type DiagnosticLoggerReceiver interface {
-	SetDiagnosticLogger(l *slog.Logger)
-}
-
-// OutputMetricsReceiver is an optional interface that [Output]
-// implementations may satisfy to receive per-output metrics. The
-// library calls SetOutputMetrics once after construction, before the
-// first Write call. Outputs that do not implement it operate without
-// per-output metrics.
-//
-// This is the output-side analogue of [DiagnosticLoggerReceiver] and
-// [FrameworkFieldReceiver]. The [OutputMetrics] value is created by
-// the [OutputMetricsFactory] registered via
-// outputconfig.WithOutputMetrics.
-type OutputMetricsReceiver interface {
-	SetOutputMetrics(m OutputMetrics)
+	// DiagnosticLogger receives operational warnings emitted by the
+	// output (TLS handshake failures, retry exhaustion, drop-rate
+	// limit triggers, etc.). When nil, output authors fall back to
+	// [slog.Default] at use site:
+	//
+	//	lg := fctx.DiagnosticLogger
+	//	if lg == nil { lg = slog.Default() }
+	//
+	// Do NOT mutate fctx to backfill defaults — FrameworkContext is a
+	// value type and mutation is a footgun. The nil-default contract
+	// is applied at every call site.
+	//
+	// Replaces the post-construction DiagnosticLoggerReceiver
+	// interface dropped in #696.
+	DiagnosticLogger *slog.Logger
+	// OutputMetrics receives per-output delivery counters
+	// (RecordSuccess / RecordError / RecordDrop / RecordBufferDrop /
+	// RecordRetry). When nil, output authors fall back to
+	// [NoOpOutputMetrics] at use site (zero-value-safe).
+	//
+	// Replaces the post-construction OutputMetricsReceiver interface
+	// dropped in #696.
+	OutputMetrics OutputMetrics
+	// CoreMetrics receives auditor-wide counters (queue depth,
+	// drop rate). When nil, output authors fall back to [NoOpMetrics]
+	// at use site (zero-value-safe).
+	//
+	// Distinct from OutputMetrics: CoreMetrics is the metrics value
+	// the auditor itself uses; OutputMetrics is per-output and
+	// provided by outputconfig.WithOutputMetricsFactory.
+	CoreMetrics Metrics
 }
 
 // LastDeliveryReporter is an optional interface that [Output]

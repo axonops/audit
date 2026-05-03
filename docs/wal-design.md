@@ -380,7 +380,7 @@ The WAL instance ID is treated as a **framework field** attached to every emitte
 - **Framework events** — startup, shutdown, corrupted_record, event_dropped, faulted, all consumer_* events, recovery_inconsistency. Framework events have always had framework fields; `wal_instance_id` is no different. (Note: framework events that already include a `wal:` block with `instance_id` continue to do so for structured access; `wal_instance_id` at the top level is the framework-field treatment that mirrors `host`, `app_name`, etc.)
 - **HMAC coverage** — because `wal_instance_id` is in the canonical payload before formatting, it ends up in the formatted bytes that go on the wire, and is therefore covered by HMAC on every output that has HMAC enabled. Tampering with `wal_instance_id` invalidates the HMAC. This is the same property `sequence_number` has.
 
-**Implementation hook**: The audit core has an existing mechanism for propagating framework fields to outputs and formatters via `FrameworkContext` and `FrameworkFieldReceiver` (see `output.go`). The WAL instance ID joins this mechanism. `FrameworkContext` gains a `WALInstanceID string` field. Outputs / formatters that already implement `FrameworkFieldReceiver` get the value through the existing call. New formatter signatures may need a small extension — the existing `propagateFrameworkFields()` flow is the natural place to add this.
+**Implementation hook**: The audit core propagates framework fields to outputs at construction via `FrameworkContext` (see `output.go`; setter interfaces collapsed in #696). The WAL instance ID joins this mechanism. `FrameworkContext` gains a `WALInstanceID string` field that outputs read at construction; formatters receive it via the still-live `FrameworkFieldSetter` interface (formatter-side, distinct from the deleted output-side receivers).
 
 **Why as a framework field rather than only inside the event ID**: The composite event ID (`<host>:<app_name>:<wal_instance_id>:<sequence_number>`) embeds the instance ID in a compound string. That is sufficient for record-level identity but inconvenient for SIEM queries — a rule writer who wants "show me everything from instance X" needs to parse the composite ID to filter. With `wal_instance_id` as a top-level field, SIEM queries become trivial: `wal_instance_id == "01957d8a-..."`. This is consistent with how operators already query by `host` or `app_name` — first-class field, not a substring of another field.
 
@@ -2513,7 +2513,7 @@ Tracked as separate post-v1 issue. Capabilities:
 
 The audit library uses Go's standard `log/slog` for diagnostic logging. This is **distinct from audit events** — slog logs go to the operator's application log (typically stdout, stderr, journald, or a log aggregator) and are intended for live debugging, troubleshooting, and operational monitoring of the audit library itself. Audit events go through the WAL and outputs as configured.
 
-The existing audit core already uses `slog` extensively (see `audit.go`: `a.logger.Load().Info("audit: auditor created", ...)`). Outputs receive the logger via the `DiagnosticLoggerReceiver` interface and use it for their own diagnostic output. The WAL participates in the same logger plumbing.
+The existing audit core already uses `slog` extensively (see `audit.go`: `a.logger.Load().Info("audit: auditor created", ...)`). Outputs receive the logger at construction via `FrameworkContext.DiagnosticLogger` (the runtime-swap setter interface was removed in #696). The WAL participates in the same logger plumbing.
 
 ### Logger Propagation
 
@@ -3031,7 +3031,7 @@ Plus:
 | `TestFrameworkField_WALInstanceIDInAllOutputs` | file, syslog, webhook, loki, and stdout all see the field on delivered events |
 | `TestFrameworkField_WALInstanceIDStableAcrossEvents` | Within a single auditor lifetime, all events carry the same `wal_instance_id` value |
 | `TestFrameworkField_WALInstanceIDChangesAcrossWipe` | After WAL directory wipe and restart, `wal_instance_id` differs from pre-wipe events |
-| `TestFrameworkField_WALInstanceIDPropagatedViaFrameworkContext` | `FrameworkContext.WALInstanceID` is set at construction; `FrameworkFieldReceiver` outputs receive it |
+| `TestFrameworkField_WALInstanceIDPropagatedViaFrameworkContext` | `FrameworkContext.WALInstanceID` is set at construction; outputs read it from `fctx` (post-#696, the prior `FrameworkFieldReceiver` interface no longer exists) |
 | `TestFrameworkField_TamperingInvalidatesHMAC` | When HMAC is enabled, modifying `wal_instance_id` in the formatted bytes causes HMAC verification to fail |
 
 ### Standard Out Tests
@@ -3168,7 +3168,7 @@ For audit, P999 latency matters more than median throughput.
 - [ ] CHANGELOG entries for format-affecting changes call out compatibility implications
 
 ### Framework Field: wal_instance_id
-- [ ] `wal_instance_id` propagated as a framework field via the same mechanism as `host`/`app_name` (FrameworkContext / FrameworkFieldReceiver)
+- [ ] `wal_instance_id` propagated as a framework field via the same mechanism as `host`/`app_name` — set on `FrameworkContext` and consumed by outputs at construction (post-#696 the runtime setter interfaces no longer exist; formatters use the still-live `FrameworkFieldSetter`)
 - [ ] Field present at top level of every event in Mode B (user events AND framework events)
 - [ ] Field absent in Mode A (no placeholder, no synthetic value)
 - [ ] All formatters (JSON, CEF, CloudEvents) emit the field

@@ -327,7 +327,9 @@ For testing custom outputs that use `audit.OutputMetrics`, use
 
 ```go
 om := audittest.NewOutputMetricsRecorder()
-// Pass om to your output via SetOutputMetrics.
+// Pass om to your output via fctx.OutputMetrics in your factory,
+// or via the per-module WithOutputMetrics option for direct-Go
+// construction (e.g. file.WithOutputMetrics(om)).
 
 om.DropCount()   // recorded drops
 om.FlushCount()  // recorded flushes

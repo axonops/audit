@@ -38,7 +38,7 @@ func TestFileFactory_ValidConfig(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	out, err := factory("compliance_file", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("compliance_file", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -52,7 +52,7 @@ func TestFileFactory_InvalidConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_file", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_file", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: file.go:222 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "bad_file")
@@ -64,7 +64,7 @@ func TestFileFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("test", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:98 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "unknown_field")
@@ -74,7 +74,7 @@ func TestFileFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("file")
 	require.NotNil(t, factory)
 
-	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
+	_, err := factory("empty", nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:92 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
@@ -92,7 +92,7 @@ func TestFileNewFactory_WithMetricsFactory(t *testing.T) {
 	}
 	factory := file.NewFactory(mf)
 
-	out, err := factory("with_metrics", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("with_metrics", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -108,7 +108,7 @@ func TestFileNewFactory_NilFactory(t *testing.T) {
 
 	factory := file.NewFactory(nil)
 
-	out, err := factory("nil_metrics", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_metrics", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -128,7 +128,7 @@ func TestFileNewFactory_FactoryReturnsNil(t *testing.T) {
 		return nil
 	})
 
-	out, err := factory("nil_return", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_return", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -138,8 +138,8 @@ func TestFileNewFactory_FactoryReturnsNil(t *testing.T) {
 // factoryMockMetrics is a minimal audit.OutputMetrics scoped to the
 // NewFactory tests so it does not collide with mockOutputMetrics in
 // file_test.go. It does NOT implement [file.RotationRecorder], which
-// exercises the structural-typing "base-only metrics" branch in
-// SetOutputMetrics.
+// exercises the structural-typing "base-only metrics" branch in the
+// constructor (#696: WithOutputMetrics structural typing).
 type factoryMockMetrics struct {
 	audit.NoOpOutputMetrics
 }

@@ -41,15 +41,13 @@ func TestSyslogOutput_Property_ConservationInvariant(t *testing.T) {
 		srv := newMockSyslogServer(t)
 		t.Cleanup(srv.close)
 
+		om := &mockOutputMetrics{}
 		out, err := syslog.New(&syslog.Config{
 			Network:    "tcp",
 			Address:    srv.addr(),
 			BufferSize: 500, // >> max N of 200
-		})
+		}, syslog.WithOutputMetrics(om))
 		require.NoError(rt, err)
-
-		om := &mockOutputMetrics{}
-		out.SetOutputMetrics(om)
 
 		for i := range n {
 			data := []byte(`{"seq":` + itoa(i) + `}` + "\n")
@@ -193,15 +191,13 @@ func TestSyslogOutput_Property_DropConservation(t *testing.T) {
 		srv := newMockSyslogServer(t)
 		t.Cleanup(srv.close)
 
+		om := &mockOutputMetrics{}
 		out, err := syslog.New(&syslog.Config{
 			Network:    "tcp",
 			Address:    srv.addr(),
 			BufferSize: bufSize,
-		})
+		}, syslog.WithOutputMetrics(om))
 		require.NoError(rt, err)
-
-		om := &mockOutputMetrics{}
-		out.SetOutputMetrics(om)
 
 		for i := range n {
 			data := []byte(`{"seq":` + itoa(i) + `}` + "\n")

@@ -74,6 +74,16 @@ func marker(t *testing.T) string {
 // newLokiOutput creates a Loki output pointing at the test container.
 func newLokiOutput(t *testing.T, opts ...func(*loki.Config)) *loki.Output {
 	t.Helper()
+	return newLokiOutputWithFC(t, audit.FrameworkContext{}, opts...)
+}
+
+// newLokiOutputWithFC creates a Loki output and seeds the framework
+// context (AppName, Host, Timezone, PID) at construction time. After
+// #696, the SetFrameworkFields runtime API was removed; tests that
+// previously called SetFrameworkFields after construction now thread
+// the values via this helper.
+func newLokiOutputWithFC(t *testing.T, fctx audit.FrameworkContext, opts ...func(*loki.Config)) *loki.Output {
+	t.Helper()
 	cfg := &loki.Config{
 		URL:                lokiURL,
 		AllowInsecureHTTP:  true,
@@ -89,7 +99,7 @@ func newLokiOutput(t *testing.T, opts ...func(*loki.Config)) *loki.Output {
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(fctx))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out
@@ -192,11 +202,9 @@ func containsMarker(line, m string) bool {
 // ---------------------------------------------------------------------------
 
 func TestLoki_BasicDelivery(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "testapp", Host: "test-host", Timezone: "UTC", PID: 9999}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "go_audit_test"}
 	})
-	out.SetFrameworkFields("testapp", "test-host", "UTC", 9999)
-
 	m := marker(t)
 	meta := audit.EventMetadata{
 		EventType: "user_login",
@@ -221,11 +229,9 @@ func TestLoki_BasicDelivery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_StreamLabels(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "labelapp", Host: "label-host", Timezone: "UTC", PID: 42}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"environment": "integration_test"}
 	})
-	out.SetFrameworkFields("labelapp", "label-host", "UTC", 42)
-
 	m := marker(t)
 	meta := audit.EventMetadata{
 		EventType: "resource_create",
@@ -257,11 +263,9 @@ func TestLoki_StreamLabels(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_MultiStream(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "msapp", Host: "ms-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "multi_stream_test"}
 	})
-	out.SetFrameworkFields("msapp", "ms-host", "UTC", 1)
-
 	m := marker(t)
 	ts := time.Now()
 
@@ -288,13 +292,11 @@ func TestLoki_MultiStream(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_BatchDelivery(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "batchapp", Host: "batch-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "batch_test"}
 		c.BatchSize = 5
 		c.FlushInterval = 100 * time.Millisecond
 	})
-	out.SetFrameworkFields("batchapp", "batch-host", "UTC", 1)
-
 	m := marker(t)
 	ts := time.Now()
 
@@ -323,13 +325,11 @@ func TestLoki_BatchDelivery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_ShutdownFlush(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "shutapp", Host: "shut-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "shutdown_test"}
 		c.BatchSize = 100             // large — won't trigger size flush
 		c.FlushInterval = time.Minute // long — won't trigger timer
 	})
-	out.SetFrameworkFields("shutapp", "shut-host", "UTC", 1)
-
 	m := marker(t)
 	for i := 0; i < 3; i++ {
 		require.NoError(t, out.WriteWithMetadata(
@@ -356,11 +356,10 @@ func TestLoki_MultiTenancy(t *testing.T) {
 	m := marker(t)
 
 	// Push to tenant A.
-	outA := newLokiOutput(t, func(c *loki.Config) {
+	outA := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "app", Host: "host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.TenantID = tenantA
 		c.Labels.Static = map[string]string{"job": "tenant_test"}
 	})
-	outA.SetFrameworkFields("app", "host", "UTC", 1)
 	require.NoError(t, outA.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"tenant":"A","marker":"%s"}`, m)),
 		audit.EventMetadata{EventType: "tenant_event", Severity: 6, Timestamp: time.Now()},
@@ -368,11 +367,10 @@ func TestLoki_MultiTenancy(t *testing.T) {
 	require.NoError(t, outA.Close())
 
 	// Push to tenant B.
-	outB := newLokiOutput(t, func(c *loki.Config) {
+	outB := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "app", Host: "host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.TenantID = tenantB
 		c.Labels.Static = map[string]string{"job": "tenant_test"}
 	})
-	outB.SetFrameworkFields("app", "host", "UTC", 1)
 	require.NoError(t, outB.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"tenant":"B","marker":"%s"}`, m)),
 		audit.EventMetadata{EventType: "tenant_event", Severity: 6, Timestamp: time.Now()},
@@ -455,11 +453,9 @@ func TestLoki_MultiTenancy(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_EventDataIntegrity(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "intapp", Host: "int-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "integrity_test"}
 	})
-	out.SetFrameworkFields("intapp", "int-host", "UTC", 1)
-
 	m := marker(t)
 	eventJSON := fmt.Sprintf(`{"actor_id":"bob","action":"delete","resource_id":"res-123","marker":"%s","nested":{"key":"value"}}`, m)
 	require.NoError(t, out.WriteWithMetadata(
@@ -492,12 +488,10 @@ func TestLoki_EventDataIntegrity(t *testing.T) {
 
 func TestLoki_GzipCompression(t *testing.T) {
 	// Gzip enabled (default in newLokiOutput).
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "gzapp", Host: "gz-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "gzip_test"}
 		c.Gzip = true
 	})
-	out.SetFrameworkFields("gzapp", "gz-host", "UTC", 1)
-
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"gzip":"enabled","marker":"%s"}`, m)),
@@ -515,12 +509,10 @@ func TestLoki_GzipCompression(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_UncompressedDelivery(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "noapp", Host: "no-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "nogzip_test"}
 		c.Gzip = false
 	})
-	out.SetFrameworkFields("noapp", "no-host", "UTC", 1)
-
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"gzip":"disabled","marker":"%s"}`, m)),
@@ -538,11 +530,9 @@ func TestLoki_UncompressedDelivery(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_DuplicateTimestamps(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "tsapp", Host: "ts-host", Timezone: "UTC", PID: 1}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "timestamp_test"}
 	})
-	out.SetFrameworkFields("tsapp", "ts-host", "UTC", 1)
-
 	m := marker(t)
 	// Send 5 events with the exact same timestamp — the library should
 	// bump each by 1ns to ensure monotonic ordering within the stream.
@@ -565,13 +555,11 @@ func TestLoki_DuplicateTimestamps(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoki_DynamicLabelExclusion(t *testing.T) {
-	out := newLokiOutput(t, func(c *loki.Config) {
+	out := newLokiOutputWithFC(t, audit.FrameworkContext{AppName: "exapp", Host: "ex-host", Timezone: "UTC", PID: 42}, func(c *loki.Config) {
 		c.Labels.Static = map[string]string{"job": "exclusion_test"}
 		c.Labels.Dynamic.ExcludeSeverity = true
 		c.Labels.Dynamic.ExcludePID = true
 	})
-	out.SetFrameworkFields("exapp", "ex-host", "UTC", 42)
-
 	m := marker(t)
 	require.NoError(t, out.WriteWithMetadata(
 		[]byte(fmt.Sprintf(`{"marker":"%s"}`, m)),

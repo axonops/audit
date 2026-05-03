@@ -196,12 +196,12 @@ func TestBuildPayload_EscapeKeyValue_Backslash(t *testing.T) {
 		`static label values "a\\b" and "a|b" must produce different streams`)
 }
 
-// TestBuildPayload_NegativePID_IncludesLabel pins the SetFrameworkFields
-// contract added in #494: pid==0 means "unset" (label excluded);
-// pid!=0 (including negative values) is included verbatim. The
-// pre-computed pidStr cache MUST handle negative pid the same way as
-// positive — if a deployment passes a negative sentinel, the label
-// surfaces in the wire payload.
+// TestBuildPayload_NegativePID_IncludesLabel pins the framework
+// context contract added in #494 and preserved by #696: pid==0 means
+// "unset" (label excluded); pid!=0 (including negative values) is
+// included verbatim. The pre-computed pidStr cache MUST handle
+// negative pid the same way as positive — if a deployment passes a
+// negative sentinel, the label surfaces in the wire payload.
 func TestBuildPayload_NegativePID_IncludesLabel(t *testing.T) {
 	t.Parallel()
 

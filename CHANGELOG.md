@@ -13,6 +13,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 > with a pre-v1.0 build informally — the per-issue entries below
 > remain the authoritative source of rationale and behaviour notes.
 
+### Breaking Changes
+
+- **Collapse output setter interfaces into `audit.FrameworkContext`** (#696).
+  The `OutputFactory` signature drops `coreMetrics` and `logger`
+  positional parameters and gains all construction-time data via the
+  unified context value. The optional setter interfaces
+  (`FrameworkFieldReceiver`, `DiagnosticLoggerReceiver`,
+  `OutputMetricsReceiver`) and the `Auditor.SetLogger` runtime swap
+  API are removed.
+
+  **Before**
+
+  ```go
+  type OutputFactory func(name string, rawConfig []byte,
+      coreMetrics audit.Metrics, logger *slog.Logger,
+      fctx audit.FrameworkContext) (audit.Output, error)
+
+  // Output then implemented one or more of:
+  //   SetFrameworkFields(appName, host, timezone string, pid int)
+  //   SetDiagnosticLogger(l *slog.Logger)
+  //   SetOutputMetrics(m audit.OutputMetrics)
+  // and outputconfig/audit invoked them post-construction.
+  ```
+
+  **After**
+
+  ```go
+  type OutputFactory func(name string, rawConfig []byte,
+      fctx audit.FrameworkContext) (audit.Output, error)
+
+  // FrameworkContext now carries every construction-time value:
+  //   AppName, Host, Timezone, PID
+  //   DiagnosticLogger *slog.Logger
+  //   OutputMetrics    audit.OutputMetrics
+  //   CoreMetrics      audit.Metrics
+  //
+  // Outputs accept these via their own constructor (e.g.
+  // file.New(cfg, file.WithOutputMetrics(m), file.WithDiagnosticLogger(l)))
+  // and store them as immutable fields. There is no post-
+  // construction setter and no atomic indirection on the hot path.
+  ```
+
+  **Migration**
+  - Custom factories: drop the `coreMetrics, logger` parameters; read
+    `fctx.CoreMetrics`, `fctx.DiagnosticLogger`, `fctx.OutputMetrics`,
+    `fctx.AppName`, `fctx.Host`, `fctx.Timezone`, `fctx.PID` from the
+    `FrameworkContext` instead. Apply nil defaults either at use site
+    (`if l := fctx.DiagnosticLogger; l == nil { l = slog.Default() }`)
+    or once at construction inside your `New` (e.g. inside the option
+    resolution function). The built-in outputs use the latter pattern
+    — both are valid; do NOT mutate `fctx` to backfill defaults.
+  - Custom outputs: replace `SetFrameworkFields` /
+    `SetDiagnosticLogger` / `SetOutputMetrics` methods with new
+    `WithFrameworkContext` / `WithDiagnosticLogger` /
+    `WithOutputMetrics` Options on your constructor, and store the
+    resolved values as plain immutable fields.
+  - Direct-Go consumers calling `Auditor.SetLogger(l)` after
+    construction must rebuild the auditor to redirect diagnostics —
+    `WithDiagnosticLogger` is the only entry point.
+
 ### Added
 
 - **`make soak` — 12-hour pre-release soak benchmark** (#573 / Track F-52). New `tests/soak/` package contains `BenchmarkSoak_MixedOutputs`, gated by the `soak` build tag so it never runs under `go test ./...`. The driver wires file + in-process syslog (TCP) + httptest webhook outputs simultaneously, drives 8 producer goroutines at 5000 events/sec aggregate (`SOAK_RATE`), and samples `runtime.MemStats.HeapAlloc`, `runtime.NumGoroutine()`, GC counters, audit queue depth, and total events / drops every `SOAK_SAMPLE_INTERVAL` (default 1 minute) for `SOAK_DURATION` (default 12 hours). Output: `$SOAK_OUTPUT_DIR/soak-samples-*.csv` (per-sample state) and `soak-summary-*.json` (start / end / peak). End-of-run assertion guards heap and goroutine bounds at 2× start; `goleak.VerifyTestMain` catches leaked goroutines at process exit. `make soak-quick` runs a 1-minute smoke for harness verification before committing to a 12-hour run on the release-prep machine. `BENCHMARKS.md` gains a "Release Soak-Test Summary" section with a per-release template that maintainers populate from the JSON summary; `docs/releasing.md` pre-release checklist mandates the soak run before tagging. CI does NOT run the 12-hour soak — minute budgets and the lack of self-hosted runners make it impractical; the run is operator-owned.

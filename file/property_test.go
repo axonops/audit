@@ -54,14 +54,12 @@ func TestFileOutput_Property_ConservationInvariant(t *testing.T) {
 		// Buffer larger than the maximum N so no event is ever dropped
 		// due to backpressure. This isolates the conservation property
 		// from the drop policy.
+		om := &mockOutputMetrics{}
 		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: 1000, // >> max N of 500
-		})
+		}, file.WithOutputMetrics(om))
 		require.NoError(rt, err)
-
-		om := &mockOutputMetrics{}
-		out.SetOutputMetrics(om)
 
 		for i := range n {
 			// Each event is a distinct JSON line. The content is
@@ -170,14 +168,12 @@ func TestFileOutput_Property_DropConservation(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "audit.log")
 
+		om := &mockOutputMetrics{}
 		out, err := file.New(&file.Config{
 			Path:       path,
 			BufferSize: bufSize,
-		})
+		}, file.WithOutputMetrics(om))
 		require.NoError(rt, err)
-
-		om := &mockOutputMetrics{}
-		out.SetOutputMetrics(om)
 
 		for i := range n {
 			data := []byte(`{"seq":` + itoa(i) + `}` + "\n")

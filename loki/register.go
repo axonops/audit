@@ -17,7 +17,6 @@ package loki
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/axonops/audit"
@@ -29,29 +28,30 @@ func init() {
 }
 
 // defaultFactory creates a Loki output from YAML config. Core metrics
-// are forwarded for delivery reporting. Per-output metrics are
-// injected via OutputMetricsReceiver after construction.
-// The logger is plumbed through to construction-time TLS warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, nil, logger)
+// from fctx are forwarded for delivery reporting; per-output metrics
+// from fctx.OutputMetrics are honoured at construction. The diagnostic
+// logger and framework context from fctx are plumbed through to
+// construction-time TLS warnings and stream-label computation.
+func defaultFactory(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) { //nolint:gocritic // hugeParam: signature fixed by audit.OutputFactory (#696)
+	return buildOutput(name, rawConfig, fctx.OutputMetrics, fctx)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates Loki
 // outputs from YAML configuration and wires per-output metrics via
 // the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
 // the returned [audit.Output] receives its per-output
-// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
-// at construction time. Pass nil to disable per-output metrics.
+// [audit.OutputMetrics] via [WithOutputMetrics] at construction time.
+// Pass nil to disable per-output metrics.
 //
 // Signature is identical to the other output modules'
 // `NewFactory` (file, syslog, webhook) for consistency (#581).
 func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
-	return func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	return func(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) {
 		var om audit.OutputMetrics
 		if factory != nil {
 			om = factory("loki", name)
 		}
-		return buildOutput(name, rawConfig, coreMetrics, om, logger)
+		return buildOutput(name, rawConfig, om, fctx)
 	}
 }
 
@@ -127,7 +127,7 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
-func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
+func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx audit.FrameworkContext) (audit.Output, error) { //nolint:gocritic // hugeParam: fctx mirrors audit.FrameworkContext (constructor-time)
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit/loki: output %q: config is required", name)
 	}
@@ -137,12 +137,17 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 		return nil, err
 	}
 
-	output, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
-	if err != nil {
-		return nil, fmt.Errorf("audit/loki: output %q: %w", name, err)
+	opts := []Option{
+		WithDiagnosticLogger(fctx.DiagnosticLogger),
+		WithFrameworkContext(fctx),
 	}
 	if om != nil {
-		output.SetOutputMetrics(om)
+		opts = append(opts, WithOutputMetrics(om))
+	}
+
+	output, err := New(cfg, fctx.CoreMetrics, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("audit/loki: output %q: %w", name, err)
 	}
 	return audit.WrapOutput(output, name), nil
 }

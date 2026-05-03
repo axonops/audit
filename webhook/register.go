@@ -29,29 +29,30 @@ func init() {
 }
 
 // defaultFactory creates a webhook output from YAML config. Core
-// metrics are forwarded for delivery reporting. Per-output metrics
-// are injected via OutputMetricsReceiver after construction.
-// The logger is plumbed through to construction-time TLS warnings.
-func defaultFactory(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	return buildOutput(name, rawConfig, coreMetrics, nil, logger)
+// metrics from fctx are forwarded for delivery reporting; per-output
+// metrics from fctx.OutputMetrics are honoured at construction. The
+// diagnostic logger from fctx is plumbed through to construction-time
+// TLS warnings.
+func defaultFactory(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) { //nolint:gocritic // hugeParam: signature fixed by audit.OutputFactory (#696)
+	return buildOutput(name, rawConfig, fctx.CoreMetrics, fctx.OutputMetrics, fctx.DiagnosticLogger)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates webhook
 // outputs from YAML configuration and wires per-output metrics via
 // the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
 // the returned [audit.Output] receives its per-output
-// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
-// at construction time. Pass nil to disable per-output metrics.
+// [audit.OutputMetrics] via [WithOutputMetrics] at construction time.
+// Pass nil to disable per-output metrics.
 //
 // Signature is identical to the other output modules'
 // `NewFactory` (file, syslog, loki) for consistency (#581).
 func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
-	return func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	return func(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) {
 		var om audit.OutputMetrics
 		if factory != nil {
 			om = factory("webhook", name)
 		}
-		return buildOutput(name, rawConfig, coreMetrics, om, logger)
+		return buildOutput(name, rawConfig, fctx.CoreMetrics, om, fctx.DiagnosticLogger)
 	}
 }
 
@@ -149,12 +150,14 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 		}
 	}
 
-	out, err := New(cfg, coreMetrics, WithDiagnosticLogger(logger))
+	opts := []Option{WithDiagnosticLogger(logger)}
+	if om != nil {
+		opts = append(opts, WithOutputMetrics(om))
+	}
+
+	out, err := New(cfg, coreMetrics, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("audit/webhook: output %q: %w", name, err)
-	}
-	if om != nil {
-		out.SetOutputMetrics(om)
 	}
 	return audit.WrapOutput(out, name), nil
 }

@@ -16,6 +16,7 @@ package webhook_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -360,6 +361,12 @@ func (m *mockOutputMetrics) getRetries() int {
 	return m.retries
 }
 
+func (m *mockOutputMetrics) getErrors() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.errors
+}
+
 // waitForDrops blocks until at least n drops have been recorded
 // or timeout expires. Requires the cond to be initialised via
 // newMockOutputMetrics. Replaces require.Eventually with a
@@ -493,6 +500,15 @@ func (s *webhookTestServer) requestCount() int {
 // AllowInsecureHTTP and AllowPrivateRanges (httptest uses http://127.0.0.1).
 func newTestWebhookOutput(t *testing.T, rawURL string, opts ...func(*webhook.Config)) *webhook.Output {
 	t.Helper()
+	return newTestWebhookOutputWithOpts(t, rawURL, opts, nil)
+}
+
+// newTestWebhookOutputWithOpts is the extended form: in addition to
+// the cfg-mutator hooks that newTestWebhookOutput accepts, it also
+// takes a slice of [webhook.Option] for the new construction-time
+// wiring (#696: WithDiagnosticLogger, WithOutputMetrics).
+func newTestWebhookOutputWithOpts(t *testing.T, rawURL string, cfgOpts []func(*webhook.Config), wOpts []webhook.Option) *webhook.Output {
+	t.Helper()
 	cfg := &webhook.Config{
 		URL:                rawURL,
 		AllowInsecureHTTP:  true,
@@ -503,10 +519,10 @@ func newTestWebhookOutput(t *testing.T, rawURL string, opts ...func(*webhook.Con
 		MaxRetries:         2,
 		BufferSize:         100,
 	}
-	for _, opt := range opts {
+	for _, opt := range cfgOpts {
 		opt(cfg)
 	}
-	out, err := webhook.New(cfg, nil)
+	out, err := webhook.New(cfg, nil, wOpts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out
@@ -635,9 +651,8 @@ func TestWebhookOutput_BufferOverflow_NonBlocking(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         3, // tiny buffer
-	}, metrics)
+	}, metrics, webhook.WithOutputMetrics(om))
 	require.NoError(t, err)
-	out.SetOutputMetrics(om)
 
 	// First event triggers flush (blocks on slow server).
 	// Subsequent writes fill buffer and overflow.
@@ -960,9 +975,8 @@ func TestWebhookOutput_RetryExhausted_Metrics(t *testing.T) {
 		MaxRetries:         2,
 		Timeout:            5 * time.Second,
 		BufferSize:         100,
-	}, metrics)
+	}, metrics, webhook.WithOutputMetrics(om))
 	require.NoError(t, err)
-	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"exhaust"}`+"\n")))
 	// Close blocks until batch goroutine exits (retries complete or cancelled).
@@ -1063,9 +1077,8 @@ func TestWebhookOutput_RequestTimeout(t *testing.T) {
 		Timeout:            100 * time.Millisecond, // very short
 		MaxRetries:         1,
 		BufferSize:         100,
-	}, metrics)
+	}, metrics, webhook.WithOutputMetrics(om))
 	require.NoError(t, err)
-	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"timeout"}`+"\n")))
 	// Close blocks until batch goroutine exits (timeout + retries complete).
@@ -1337,9 +1350,8 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         100,
-	}, metrics)
+	}, metrics, webhook.WithOutputMetrics(om))
 	require.NoError(t, err)
-	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"wrong_ca"}`+"\n")))
 
@@ -1917,51 +1929,10 @@ func TestWebhook_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 		"warning should carry output=webhook attribute: %q", logged)
 }
 
-// TestWebhook_SetDiagnosticLoggerUnderEventLoad drives SetDiagnosticLogger
-// and Write concurrently to prove the logger field is safe under the
-// race detector. Closes #474 AC #3.
-func TestWebhook_SetDiagnosticLoggerUnderEventLoad(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	out, err := webhook.New(&webhook.Config{
-		URL:                srv.URL,
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      10 * time.Millisecond,
-		Timeout:            1 * time.Second,
-		BufferSize:         100,
-	}, nil)
-	require.NoError(t, err)
-
-	// 100 concurrent SetDiagnosticLogger calls against a hot Write path.
-	// Run under -race; any unsynchronised read/write will fail here.
-	var wg sync.WaitGroup
-	const iters = 100
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for range iters {
-			out.SetDiagnosticLogger(slog.New(slog.NewTextHandler(io.Discard, nil)))
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for range iters {
-			_ = out.Write([]byte(`{"event":"race"}`))
-		}
-	}()
-	wg.Wait()
-
-	// Close BEFORE per-test goleak so webhook's async batch/flush
-	// goroutines AND the httptest server's accept loop have exited by
-	// the time we assert no leaks (#474).
-	require.NoError(t, out.Close())
-	srv.Close()
-	goleak.VerifyNone(t)
-}
+// TestWebhook_SetDiagnosticLoggerUnderEventLoad was removed in #696
+// along with the post-construction SetDiagnosticLogger API. The
+// diagnostic logger is now fixed at construction via
+// [webhook.WithDiagnosticLogger].
 
 // TestWebhook_NilDiagnosticLoggerFallsBackToDefault verifies that
 // WithDiagnosticLogger(nil) does not nil-deref and falls back to
@@ -2182,4 +2153,116 @@ func TestWebhookOutput_NDJSON_MultiLinePayloadRejected(t *testing.T) {
 		"body must parse as a single JSON document; embedded \\n must remain escaped")
 	assert.Equal(t, "line1\nline2", decoded["msg"],
 		"the embedded newline must round-trip as a single string value")
+}
+
+// ---------------------------------------------------------------------------
+// Issue #696 acceptance criteria — factory FrameworkContext plumbing
+// ---------------------------------------------------------------------------
+
+// TestOutputFactory_ZeroContext_NoPanic verifies the webhook factory
+// tolerates a zero-value [audit.FrameworkContext]. Construct via
+// factory pointing at a test server; write once; no panic.
+func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	yaml := []byte("url: " + srv.url() + "\nallow_insecure_http: true\nallow_private_ranges: true\nbatch_size: 1\nflush_interval: 50ms\ntimeout: 5s\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("zero", yaml, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"zero"}`)))
+}
+
+// webhookCaptureHandler records every slog Record passed through
+// Handle for assertion in factory plumbing tests.
+type webhookCaptureHandler struct {
+	records []slog.Record
+	mu      sync.Mutex
+}
+
+func (h *webhookCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *webhookCaptureHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler interface contract
+	h.mu.Lock()
+	h.records = append(h.records, r)
+	h.mu.Unlock()
+	return nil
+}
+func (h *webhookCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *webhookCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *webhookCaptureHandler) anyContains(s string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.records {
+		if strings.Contains(h.records[i].Message, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOutputFactory_LoggerReachesOutput verifies the webhook output
+// uses the diagnostic logger from FrameworkContext. Provoke a TLS
+// policy warning at construction (allow_tls12 + allow_weak_ciphers
+// against an HTTPS URL) and assert the captured handler observed it.
+func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
+	t.Parallel()
+	h := &webhookCaptureHandler{}
+	logger := slog.New(h)
+
+	yaml := []byte(
+		"url: https://example.com/events\n" +
+			"tls_policy:\n" +
+			"  allow_tls12: true\n" +
+			"  allow_weak_ciphers: true\n" +
+			"batch_size: 1\nflush_interval: 1s\ntimeout: 5s\n",
+	)
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("logger", yaml, audit.FrameworkContext{DiagnosticLogger: logger})
+	if err == nil {
+		t.Cleanup(func() { _ = out.Close() })
+	}
+
+	assert.True(t, h.anyContains("weak"),
+		"injected logger must capture the weak-cipher TLS warning emitted in New")
+}
+
+// TestOutputFactory_OutputMetricsReachesOutput verifies that the
+// per-output metrics value supplied via
+// [audit.FrameworkContext.OutputMetrics] reaches the webhook output.
+func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
+	t.Parallel()
+	om := newMockOutputMetrics()
+
+	// Server that 500s every request so the retry/error path runs.
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	yaml := []byte("url: " + srv.url() +
+		"\nallow_insecure_http: true\nallow_private_ranges: true" +
+		"\nbatch_size: 1\nflush_interval: 5ms\ntimeout: 1s\nmax_retries: 1\n")
+
+	factory := audit.LookupOutputFactory("webhook")
+	require.NotNil(t, factory)
+
+	out, err := factory("metrics", yaml, audit.FrameworkContext{OutputMetrics: om})
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"err"}`)))
+	require.NoError(t, out.Close())
+
+	// Either errors (delivery failure) or drops (buffer full) must
+	// have been recorded — the contract is "the metrics value
+	// reached the output".
+	total := om.getDrops() + om.getErrors()
+	assert.Positive(t, total,
+		"per-output metrics value supplied via FrameworkContext must record drops or errors")
 }

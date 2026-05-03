@@ -45,7 +45,7 @@ func newLokiTestServerForSize(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func newTestLokiOutputForSize(t *testing.T, maxEventBytes int) *loki.Output {
+func newTestLokiOutputForSize(t *testing.T, maxEventBytes int, opts ...loki.Option) *loki.Output {
 	t.Helper()
 	srv := newLokiTestServerForSize(t)
 	out, err := loki.New(&loki.Config{
@@ -53,7 +53,7 @@ func newTestLokiOutputForSize(t *testing.T, maxEventBytes int) *loki.Output {
 		MaxEventBytes:      maxEventBytes,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	}, nil, opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = out.Close()
@@ -162,10 +162,8 @@ func TestValidateConfig_MaxEventBytesOverRange(t *testing.T) {
 // a single rejected oversized event increments RecordDrop exactly
 // once. Covers the test-analyst HIGH gap: drop metric not verified.
 func TestWrite_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
-	out := newTestLokiOutputForSize(t, 1024)
-
 	m := &testOutputMetrics{}
-	out.SetOutputMetrics(m)
+	out := newTestLokiOutputForSize(t, 1024, loki.WithOutputMetrics(m))
 
 	werr := out.Write([]byte(strings.Repeat("z", 2048)))
 	require.Error(t, werr)
@@ -185,11 +183,9 @@ func TestWrite_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
 // rate-limited on subsequent drops within the warn window. Covers
 // the test-analyst HIGH gap: drop-limiter gated warn log untested.
 func TestWrite_OversizedEmitsRateLimitedWarn(t *testing.T) {
-	out := newTestLokiOutputForSize(t, 1024)
-
 	buf := &lokiSyncBuf{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	out.SetDiagnosticLogger(logger)
+	out := newTestLokiOutputForSize(t, 1024, loki.WithDiagnosticLogger(logger))
 
 	oversized := []byte(strings.Repeat("q", 2048))
 	for range 5 {

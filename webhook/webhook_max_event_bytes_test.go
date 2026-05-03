@@ -168,13 +168,14 @@ func TestWebhookOutput_OversizedIncrementsDropCounterExactlyOnce(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
-		cfg.MaxEventBytes = 1024
-		cfg.FlushInterval = 5 * time.Millisecond
-	})
-
 	m := newMockOutputMetrics()
-	out.SetOutputMetrics(m)
+	out := newTestWebhookOutputWithOpts(t, srv.url(),
+		[]func(*webhook.Config){func(cfg *webhook.Config) {
+			cfg.MaxEventBytes = 1024
+			cfg.FlushInterval = 5 * time.Millisecond
+		}},
+		[]webhook.Option{webhook.WithOutputMetrics(m)},
+	)
 
 	werr := out.Write([]byte(strings.Repeat("z", 2048)))
 	require.Error(t, werr)
@@ -197,14 +198,15 @@ func TestWebhookOutput_OversizedEmitsRateLimitedWarn(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)
 	})
-	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
-		cfg.MaxEventBytes = 1024
-		cfg.FlushInterval = 5 * time.Millisecond
-	})
-
 	buf := &webhookSyncBuf{}
 	logger := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	out.SetDiagnosticLogger(logger)
+	out := newTestWebhookOutputWithOpts(t, srv.url(),
+		[]func(*webhook.Config){func(cfg *webhook.Config) {
+			cfg.MaxEventBytes = 1024
+			cfg.FlushInterval = 5 * time.Millisecond
+		}},
+		[]webhook.Option{webhook.WithDiagnosticLogger(logger)},
+	)
 
 	oversized := []byte(strings.Repeat("q", 2048))
 	for range 5 {

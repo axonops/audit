@@ -47,10 +47,9 @@ const dropWarnInterval = 10 * time.Second
 
 // Compile-time assertions.
 var (
-	_ audit.Output                = (*Output)(nil)
-	_ audit.DeliveryReporter      = (*Output)(nil)
-	_ audit.DestinationKeyer      = (*Output)(nil)
-	_ audit.OutputMetricsReceiver = (*Output)(nil)
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DeliveryReporter = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
 )
 
 // errRedirectBlocked is returned by the http.Client's CheckRedirect
@@ -115,8 +114,8 @@ func responseHeaderTimeout(t time.Duration) time.Duration {
 // Output is safe for concurrent use.
 type Output struct {
 	metrics       audit.Metrics
-	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	logger        atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
+	outputMetrics audit.OutputMetrics // immutable after New (#696)
+	logger        *slog.Logger        // immutable after New (#696)
 	client        *http.Client
 	cancel        context.CancelFunc
 	done          chan struct{}
@@ -142,28 +141,15 @@ type Output struct {
 	closed            atomic.Bool
 }
 
-// SetDiagnosticLogger receives the library's diagnostic logger.
-//
-// Safe for concurrent use with the background batch goroutine and any
-// active [Output.Write] caller — the logger field is an
-// [atomic.Pointer] so readers always see a fully-published value.
-func (w *Output) SetDiagnosticLogger(l *slog.Logger) {
-	if l == nil {
-		l = slog.Default()
-	}
-	w.logger.Store(l)
-}
-
 // New creates a new [Output] from the given config.
 // It validates the config, builds an SSRF-safe HTTP client, and starts
 // the background batch goroutine. The metrics parameter is optional
-// (may be nil). Per-output metrics are injected via
-// [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
+// (may be nil). Per-output metrics may be supplied at construction
+// via [WithOutputMetrics].
 //
 // Optional [Option] arguments tune construction-time behaviour. Pass
-// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
-// the auditor's diagnostic logger is propagated post-construction) to
-// a custom logger.
+// [WithDiagnosticLogger] to route TLS-policy warnings to a custom
+// logger.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("audit/webhook: config must not be nil")
@@ -232,10 +218,9 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		maxRetries:    cfg.MaxRetries,
 		flushIvl:      cfg.FlushInterval,
 		timeout:       cfg.Timeout,
+		logger:        o.logger,
+		outputMetrics: o.outputMetrics,
 	}
-	// Publish the initial logger BEFORE starting the batch goroutine
-	// so the goroutine's first read observes a non-nil pointer.
-	w.logger.Store(o.logger)
 
 	go w.batchLoop(ctx)
 	return w, nil
@@ -254,7 +239,7 @@ func (w *Output) Write(data []byte) error {
 
 	if len(data) > w.maxEventBytes {
 		w.drops.record(dropWarnInterval, func(dropped int64) {
-			w.logger.Load().Warn("audit: output webhook: event rejected (exceeds max_event_bytes)",
+			w.logger.Warn("audit: output webhook: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", w.maxEventBytes,
 				"dropped", dropped)
@@ -263,9 +248,7 @@ func (w *Output) Write(data []byte) error {
 		// only — not via pipeline-level Metrics.RecordDelivery. This
 		// matches file + syslog behaviour for consistency across all
 		// self-reporting outputs (B-25).
-		if omp := w.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		w.outputMetrics.RecordDrop()
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
 	}
@@ -278,15 +261,13 @@ func (w *Output) Write(data []byte) error {
 		return nil
 	default:
 		w.drops.record(dropWarnInterval, func(dropped int64) {
-			w.logger.Load().Warn("audit: output webhook: event dropped (buffer full)",
+			w.logger.Warn("audit: output webhook: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(w.ch))
 		})
 		// Drops are counted via per-output OutputMetrics.RecordDrop
 		// only — see B-25 note above.
-		if omp := w.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		w.outputMetrics.RecordDrop()
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -319,7 +300,7 @@ func (w *Output) Close() error {
 	select {
 	case <-w.done:
 	case <-timer.C:
-		w.logger.Load().Error("audit/webhook: batch goroutine did not exit",
+		w.logger.Error("audit/webhook: batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -334,11 +315,6 @@ func (w *Output) Close() error {
 // its own delivery metrics from the batch goroutine after actual HTTP
 // delivery, not from the Write enqueue path.
 func (w *Output) ReportsDelivery() bool { return true }
-
-// SetOutputMetrics receives the per-output metrics instance.
-func (w *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	w.outputMetrics.Store(&m)
-}
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx response, or 0 if no batch has yet been delivered. Updated

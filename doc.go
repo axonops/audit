@@ -106,7 +106,7 @@
 //   - [Event] — interface for typed audit events; pass to [Auditor.AuditEvent]
 //   - [Auditor.AuditEvent] — emit an event with [context.Background] (convenience wrapper)
 //   - [Auditor.AuditEventContext] — emit with a request-scoped [context.Context] for cancellation / deadline propagation (#600)
-//   - [Auditor.SetLogger] / [Auditor.Logger] — atomically swap or read the diagnostic logger at runtime (#601)
+//   - [Auditor.Logger] — read the diagnostic logger configured via [WithDiagnosticLogger] (runtime swap dropped in #696)
 //   - [EventHandle] — pre-validated handle for zero-caller-side-allocation audit calls; see [Auditor.Handle] and [Auditor.MustHandle]
 //   - [EventHandle.Audit] / [EventHandle.AuditContext] — handle-side ctx-aware variants
 //   - [EventHandle.AuditEvent] / [EventHandle.AuditEventContext] — handle-side event-typed variants

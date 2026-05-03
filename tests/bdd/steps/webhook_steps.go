@@ -437,14 +437,19 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
 		}
-		out, err := webhook.New(cfg, nil)
+		var oOpts []webhook.Option
+
+		if tc.WebhookMetrics != nil {
+
+			oOpts = append(oOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
+
+		}
+
+		out, err := webhook.New(cfg, nil, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
-		if tc.WebhookMetrics != nil {
-			out.SetOutputMetrics(tc.WebhookMetrics)
-		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -474,14 +479,19 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			Timeout:            5 * time.Second,
 			BufferSize:         bufSize,
 		}
-		out, err := webhook.New(cfg, nil)
+		var oOpts []webhook.Option
+
+		if tc.WebhookMetrics != nil {
+
+			oOpts = append(oOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
+
+		}
+
+		out, err := webhook.New(cfg, nil, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
-		if tc.WebhookMetrics != nil {
-			out.SetOutputMetrics(tc.WebhookMetrics)
-		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -660,14 +670,19 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			Timeout:            2 * time.Second,
 			MaxRetries:         1,
 		}
-		out, err := webhook.New(cfg, nil)
+		var oOpts []webhook.Option
+
+		if tc.WebhookMetrics != nil {
+
+			oOpts = append(oOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
+
+		}
+
+		out, err := webhook.New(cfg, nil, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
-		if tc.WebhookMetrics != nil {
-			out.SetOutputMetrics(tc.WebhookMetrics)
-		}
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -822,17 +837,16 @@ func createWebhookAuditorWithWebhookMetrics(tc *AuditTestContext, batchSize int)
 		Timeout:            5 * time.Second,
 	}
 
-	out, err := webhook.New(cfg, nil)
+	var wOpts []webhook.Option
+	if tc.WebhookMetrics != nil {
+		wOpts = append(wOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
+	}
+	out, err := webhook.New(cfg, nil, wOpts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
-
-	// Inject per-output metrics via OutputMetricsReceiver.
-	if tc.WebhookMetrics != nil {
-		out.SetOutputMetrics(tc.WebhookMetrics)
-	}
 
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
@@ -1165,15 +1179,19 @@ func createWebhookAuditorSSRF(tc *AuditTestContext, url string, allowPrivate boo
 		Timeout:            2 * time.Second,
 		MaxRetries:         1,
 	}
-	out, err := webhook.New(cfg, nil)
+	var oOpts []webhook.Option
+
+	if tc.WebhookMetrics != nil {
+
+		oOpts = append(oOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
+
+	}
+
+	out, err := webhook.New(cfg, nil, oOpts...)
 	if err != nil {
-		tc.LastErr = err
-		return nil //nolint:nilerr // scenario may assert on tc.LastErr
+		return fmt.Errorf("create webhook output: %w", err)
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
-	if tc.WebhookMetrics != nil {
-		out.SetOutputMetrics(tc.WebhookMetrics)
-	}
 	opts := []audit.Option{
 		audit.WithTaxonomy(tc.Taxonomy),
 		audit.WithAppName("test-app"),

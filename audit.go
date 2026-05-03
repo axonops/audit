@@ -134,11 +134,13 @@ type Auditor struct {
 	// nil-check + one bool check on the [auditInternalDonatedFlagsCtx]
 	// parameter). Set via [WithSanitizer].
 	sanitizer Sanitizer
-	// logger is the library diagnostics logger. Stored via
-	// atomic.Pointer so [Auditor.SetLogger] (#601) can swap the
-	// logger atomically while events are emitting on other
-	// goroutines. Construction never stores a nil pointer — readers
-	// always observe at minimum [slog.Default].
+	// logger is the library diagnostics logger. Set once via
+	// [WithDiagnosticLogger]; runtime swap was removed in #696 along
+	// with the Auditor.SetLogger API. The atomic.Pointer is retained
+	// for zero-value readability and so [Auditor.Logger] returns the
+	// fully-published initial value without copying. Construction
+	// never stores a nil pointer — readers always observe at minimum
+	// [slog.Default].
 	logger     atomic.Pointer[slog.Logger]
 	drops      dropLimiter // rate-limits buffer-full warnings
 	drainCount uint64      // events processed by drain loop; for sampling RecordQueueDepth
@@ -252,7 +254,10 @@ func (a *Auditor) applyDevTaxonomyOverrides() {
 }
 
 // applyConstructionDefaults sets formatter, PID, timezone, and propagates
-// framework fields. Called once during New after all options are applied.
+// framework fields to formatters. Called once during New after all
+// options are applied. Outputs receive logger / metrics / framework
+// fields at construction via [FrameworkContext]; no post-construction
+// propagation is required.
 func (a *Auditor) applyConstructionDefaults() {
 	if a.formatter == nil {
 		a.formatter = &JSONFormatter{OmitEmpty: a.cfg.OmitEmpty}
@@ -262,61 +267,16 @@ func (a *Auditor) applyConstructionDefaults() {
 		a.timezone = time.Now().Location().String()
 	}
 	a.propagateFrameworkFields()
-	a.propagateLogger()
 }
 
-// propagateLogger forwards the library's slog.Logger to outputs that
-// implement [DiagnosticLoggerReceiver]. Loads the current logger
-// atomically so it is safe to call from [Auditor.SetLogger] while
-// events are emitting on other goroutines (#601).
-func (a *Auditor) propagateLogger() {
-	l := a.logger.Load()
-	for _, oe := range a.entries {
-		if recv, ok := oe.output.(DiagnosticLoggerReceiver); ok {
-			recv.SetDiagnosticLogger(l)
-		}
-	}
-}
-
-// SetLogger swaps the diagnostic logger atomically and propagates
-// the new logger to every output that implements
-// [DiagnosticLoggerReceiver]. Safe to call concurrently with event
-// emission.
+// Logger returns the diagnostic logger configured via
+// [WithDiagnosticLogger], or [slog.Default] if none was supplied.
+// Useful for library wrappers that want to share the auditor's
+// logger across components.
 //
-// Passing nil substitutes [slog.Default] — readers never observe a
-// nil pointer. The new logger takes effect for subsequent log
-// messages; in-flight messages may still use the previous logger
-// because each diagnostic-log call performs an independent atomic
-// load.
-//
-// SetLogger is a no-op success on closed or disabled auditors —
-// the pointer is updated but there is no observable effect because
-// closed auditors stop emitting diagnostic messages. Matches the
-// stdlib precedent set by [slog.SetDefault] which also has no
-// notion of "closed".
-//
-// Cross-references the [atomic.Pointer] migration of output logger
-// fields in #474.
-func (a *Auditor) SetLogger(l *slog.Logger) {
-	if l == nil {
-		l = slog.Default()
-	}
-	a.logger.Store(l)
-	a.propagateLogger()
-}
-
-// Logger returns the current diagnostic logger. Returns the value
-// stored by the most recent [Auditor.SetLogger] / [WithDiagnosticLogger]
-// call, or [slog.Default] if neither has been called. Useful for
-// library wrappers that want to share the auditor's logger across
-// components — when the consumer later calls [Auditor.SetLogger],
-// every wrapper that called Logger gets the new value at its next
-// invocation.
-//
-// The returned *slog.Logger is the live pointer; callers should
-// not store it for long-lived use if they want to observe future
-// SetLogger swaps. Call Logger() each time, or wrap behind a
-// helper that does the load.
+// The logger is fixed at construction; runtime swap is not supported
+// (the prior SetLogger API was removed in #696 — direct-Go consumers
+// who want to redirect diagnostics should rebuild the auditor).
 func (a *Auditor) Logger() *slog.Logger {
 	return a.logger.Load()
 }

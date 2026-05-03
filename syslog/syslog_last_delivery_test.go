@@ -78,9 +78,8 @@ func TestSyslogOutput_LastDeliveryNanos_FrozenAfterServerKill(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1, // fail fast,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"first"}`)))
 	require.True(t, srv.waitForData(2*time.Second))

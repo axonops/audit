@@ -77,7 +77,8 @@ func TestMetricsRecorder_PerOutputMetrics(t *testing.T) {
 
 	// Webhook metrics.
 	// Per-output metrics (webhook/loki) are now handled via
-	// audit.OutputMetrics and OutputMetricsReceiver — see #455.
+	// audit.OutputMetrics, supplied at construction via the
+	// WithOutputMetrics option — see #455 / #696.
 }
 
 func TestMetricsRecorder_PerOutputMetrics_ZeroValues(t *testing.T) {

@@ -569,13 +569,14 @@ func createSyslogAuditorWithMetrics(tc *AuditTestContext, cfg *syslog.Config) er
 	if cfg.Facility == "" {
 		cfg.Facility = "local0"
 	}
-	out, err := syslog.New(cfg)
+	var sOpts []syslog.Option
+	if tc.SyslogMetrics != nil {
+		sOpts = append(sOpts, syslog.WithOutputMetrics(tc.SyslogMetrics))
+	}
+	out, err := syslog.New(cfg, sOpts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
-	}
-	if tc.SyslogMetrics != nil {
-		out.SetOutputMetrics(tc.SyslogMetrics)
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
 

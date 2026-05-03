@@ -147,6 +147,33 @@ func (fw *failWriter) Write(_ []byte) (int, error) {
 	return 0, fw.err
 }
 
+// TestOutputFactory_ZeroContext_NoPanic verifies the stdout factory
+// tolerates a zero-value [audit.FrameworkContext] (#696 AC).
+func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
+	t.Parallel()
+	out, err := audit.StdoutFactory()("zero", nil, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+	require.NoError(t, out.Write([]byte("hello\n")))
+}
+
+// TestOutputFactory_LoggerReachesOutput is a no-op for the stdout
+// factory: the stdout output performs no operational warnings, so the
+// diagnostic logger has no observable effect. The contract is locked
+// for the other built-in outputs (file/syslog/webhook/loki).
+func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
+	t.Parallel()
+	t.Skip("stdout output emits no diagnostic warnings; covered by file/syslog/webhook/loki")
+}
+
+// TestOutputFactory_OutputMetricsReachesOutput is a no-op for the
+// stdout factory: stdout has no per-output metrics. The contract is
+// locked for the other built-in outputs (file/syslog/webhook/loki).
+func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
+	t.Parallel()
+	t.Skip("stdout output exposes no OutputMetrics surface; covered by file/syslog/webhook/loki")
+}
+
 func TestStdoutOutput_WriteLargePayload(t *testing.T) {
 	var buf bytes.Buffer
 	out, err := audit.NewStdoutOutput(audit.StdoutConfig{Writer: &buf})

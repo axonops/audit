@@ -54,14 +54,11 @@ func sanitiseClientError(err error) error {
 }
 
 // doPostWithRetry attempts HTTP POST with exponential backoff retry.
-func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint:gocognit // retry loop with metrics recording
+func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) {
 	start := time.Now()
 	body := buildNDJSON(batch)
-	// Cache the logger pointer once per batch so repeated warn/error
-	// calls inside the retry loop pay a single atomic.Load. The field
-	// is atomic.Pointer (#474) — a concurrent SetDiagnosticLogger
-	// will only be visible on the next batch, which is fine.
-	logger := w.logger.Load()
+	logger := w.logger
+	om := w.outputMetrics
 
 	for attempt := range w.maxRetries {
 		if attempt > 0 {
@@ -86,9 +83,7 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 			logger.Error("audit: output webhook: non-retryable error",
 				"error", sanitiseClientError(err),
 				"batch_size", len(batch))
-			if omp := w.outputMetrics.Load(); omp != nil {
-				(*omp).RecordError()
-			}
+			om.RecordError()
 			w.recordDrop(len(batch))
 			return
 		}
@@ -97,18 +92,14 @@ func (w *Output) doPostWithRetry(ctx context.Context, batch [][]byte) { //nolint
 			"attempt", attempt+1,
 			"max_retries", w.maxRetries,
 			"error", sanitiseClientError(err))
-		if omp := w.outputMetrics.Load(); omp != nil {
-			(*omp).RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
-		}
+		om.RecordRetry(attempt + 1) // 1-indexed: attempt+1 = first retry
 	}
 
 	// All retries exhausted.
 	logger.Error("audit: output webhook: retries exhausted, dropping batch",
 		"batch_size", len(batch),
 		"max_retries", w.maxRetries)
-	if omp := w.outputMetrics.Load(); omp != nil {
-		(*omp).RecordError()
-	}
+	om.RecordError()
 	w.recordDrop(len(batch))
 }
 
@@ -185,9 +176,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 	// LastDeliveryReporter. Updated AFTER an HTTP 2xx response
 	// returns so retry-exhausted batches leave the timestamp frozen.
 	w.lastDeliveryNanos.Store(time.Now().UnixNano())
-	if omp := w.outputMetrics.Load(); omp != nil {
-		(*omp).RecordFlush(batchSize, dur)
-	}
+	w.outputMetrics.RecordFlush(batchSize, dur)
 	if w.metrics != nil {
 		name := w.Name()
 		for range batchSize {
@@ -203,9 +192,7 @@ func (w *Output) recordSuccess(batchSize int, dur time.Duration) {
 func (w *Output) recordDrop(count int) {
 	name := w.Name()
 	for range count {
-		if omp := w.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		w.outputMetrics.RecordDrop()
 		if w.metrics != nil {
 			w.metrics.RecordDelivery(name, audit.EventError)
 		}

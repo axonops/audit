@@ -15,8 +15,11 @@
 package loki_test
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -159,21 +162,25 @@ func TestOutput_ImplementsInterfaces(t *testing.T) {
 	assert.Implements(t, (*audit.MetadataWriter)(nil), out)
 	assert.Implements(t, (*audit.DeliveryReporter)(nil), out)
 	assert.Implements(t, (*audit.DestinationKeyer)(nil), out)
-	assert.Implements(t, (*audit.FrameworkFieldReceiver)(nil), out)
 }
 
-// ---------------------------------------------------------------------------
-// SetFrameworkFields()
-// ---------------------------------------------------------------------------
+// TestOutput_SetFrameworkFields was removed in #696 along with the
+// SetFrameworkFields API. Framework fields are now baked into the
+// Output at construction via [loki.WithFrameworkContext].
 
-func TestOutput_SetFrameworkFields(t *testing.T) {
+// TestOutput_FrameworkContextOption verifies that WithFrameworkContext
+// is honoured at construction without panicking — replaces the prior
+// SetFrameworkFields no-panic smoke test.
+func TestOutput_FrameworkContextOption(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig(), nil, loki.WithFrameworkContext(audit.FrameworkContext{
+		AppName:  "myapp",
+		Host:     "prod-01",
+		Timezone: "UTC",
+		PID:      12345,
+	}))
 	require.NoError(t, err)
-
-	// SetFrameworkFields should not panic with any values.
-	out.SetFrameworkFields("myapp", "prod-01", "UTC", 12345)
 	require.NoError(t, out.Close())
 }
 
@@ -287,9 +294,8 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
 	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	// Write from multiple goroutines to overwhelm the buffer faster
 	// than the batch goroutine can drain it.
@@ -328,9 +334,8 @@ func TestOutput_BufferFull_DoesNotRecordCoreEventError(t *testing.T) {
 	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
 	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
 
-	out, err := loki.New(cfg, coreMetrics)
+	out, err := loki.New(cfg, coreMetrics, loki.WithOutputMetrics(outMetrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(outMetrics)
 
 	data := []byte(`{"event":"fill"}`)
 	var wg sync.WaitGroup
@@ -366,9 +371,8 @@ func TestOutput_FlushOnClose(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	// Write a few events, then close.
 	for i := 0; i < 5; i++ {
@@ -390,9 +394,8 @@ func TestOutput_FlushOnBatchSize(t *testing.T) {
 	cfg.BatchSize = 5
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	// Write exactly BatchSize events to trigger a flush.
 	for i := 0; i < cfg.BatchSize; i++ {
@@ -414,9 +417,8 @@ func TestOutput_FlushOnTimer(t *testing.T) {
 	cfg.BatchSize = 10000                      // large, prevent size-based flush
 	cfg.FlushInterval = 200 * time.Millisecond // short timer
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"timer_test"}`)))
 
@@ -436,9 +438,8 @@ func TestOutput_FlushOnMaxBatchBytes(t *testing.T) {
 	cfg.MaxBatchBytes = loki.MinMaxBatchBytes // smallest allowed byte threshold (1024)
 	cfg.FlushInterval = 10 * time.Second      // prevent timer flush
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	// Each event is ~22 bytes; 1024 / 22 ≈ 46 events to trigger.
 	// Write enough to trigger at least one mid-batch flush.
@@ -520,4 +521,151 @@ func (m *testOutputMetrics) waitForDrops(n int, timeout time.Duration) bool {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #696 acceptance criteria — factory FrameworkContext plumbing
+// ---------------------------------------------------------------------------
+
+// TestOutputFactory_ZeroContext_NoPanic verifies the loki factory
+// tolerates a zero-value [audit.FrameworkContext]. Construct via
+// factory pointing at the test server; write once; no panic.
+func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
+	srv := lokiTestServer(t)
+	yaml := []byte("url: " + srv.URL + "/loki/api/v1/push" +
+		"\nallow_insecure_http: true\nallow_private_ranges: true" +
+		"\nbatch_size: 1\nflush_interval: 100ms\ntimeout: 5s\n")
+
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+
+	out, err := factory("zero", yaml, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"zero"}`)))
+}
+
+// lokiCaptureHandler records every slog Record passed through Handle
+// for assertion in factory plumbing tests.
+type lokiCaptureHandler struct {
+	records []slog.Record
+	mu      sync.Mutex
+}
+
+func (h *lokiCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *lokiCaptureHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler interface contract
+	h.mu.Lock()
+	h.records = append(h.records, r)
+	h.mu.Unlock()
+	return nil
+}
+func (h *lokiCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *lokiCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *lokiCaptureHandler) anyContains(s string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.records {
+		if strings.Contains(h.records[i].Message, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOutputFactory_LoggerReachesOutput verifies the loki output
+// uses the diagnostic logger from FrameworkContext. Provoke a TLS
+// policy warning by combining allow_tls12 + allow_weak_ciphers
+// against an HTTPS URL; the warning is emitted by buildLokiTLSConfig
+// during construction.
+func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
+	t.Parallel()
+	h := &lokiCaptureHandler{}
+	logger := slog.New(h)
+
+	yaml := []byte(
+		"url: https://loki.example.com/loki/api/v1/push\n" +
+			"tls_policy:\n" +
+			"  allow_tls12: true\n" +
+			"  allow_weak_ciphers: true\n" +
+			"batch_size: 1\nflush_interval: 1s\ntimeout: 5s\n",
+	)
+
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+
+	out, err := factory("logger", yaml, audit.FrameworkContext{DiagnosticLogger: logger})
+	if err == nil {
+		t.Cleanup(func() { _ = out.Close() })
+	}
+
+	assert.True(t, h.anyContains("weak"),
+		"injected logger must capture the weak-cipher TLS warning")
+}
+
+// TestOutputFactory_OutputMetricsReachesOutput verifies that the
+// per-output metrics value supplied via
+// [audit.FrameworkContext.OutputMetrics] reaches the loki output.
+func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
+	t.Parallel()
+	om := newOutputMetricsCollector()
+
+	// Server that 500s every request so the retry/error path runs.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	yaml := []byte("url: " + srv.URL + "/loki/api/v1/push" +
+		"\nallow_insecure_http: true\nallow_private_ranges: true" +
+		"\nbatch_size: 1\nflush_interval: 100ms\ntimeout: 1s\nmax_retries: 1\n")
+
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+
+	out, err := factory("metrics", yaml, audit.FrameworkContext{OutputMetrics: om})
+	require.NoError(t, err)
+
+	require.NoError(t, out.Write([]byte(`{"event":"err"}`)))
+	require.NoError(t, out.Close())
+
+	total := om.drops() + om.errors()
+	assert.Positive(t, total,
+		"per-output metrics value supplied via FrameworkContext must record drops or errors")
+}
+
+// outputMetricsCollector implements audit.OutputMetrics for the AC
+// tests. Distinct from the existing http_test.go mocks; standalone so
+// the AC tests are self-contained.
+type outputMetricsCollector struct {
+	audit.NoOpOutputMetrics
+	mu        sync.Mutex
+	dropCount int
+	errCount  int
+}
+
+func newOutputMetricsCollector() *outputMetricsCollector {
+	return &outputMetricsCollector{}
+}
+
+func (m *outputMetricsCollector) RecordDrop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dropCount++
+}
+func (m *outputMetricsCollector) RecordError() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.errCount++
+}
+func (m *outputMetricsCollector) drops() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.dropCount
+}
+func (m *outputMetricsCollector) errors() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.errCount
 }

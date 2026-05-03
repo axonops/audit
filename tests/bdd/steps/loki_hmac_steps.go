@@ -241,7 +241,10 @@ func registerLokiHMACVerificationSteps(ctx *godog.ScenarioContext, tc *AuditTest
 func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string, excludeLabels []string) error {
 	cfg := defaultLokiTestConfig(tc)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{
+		AppName: "bdd-audit",
+		Host:    "bdd-host",
+	}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -293,7 +296,10 @@ func createLokiAuditorWithHMAC(tc *AuditTestContext, salt, version, hash string,
 func createLokiAuditorWithHMACAndCapture(tc *AuditTestContext, lokiSalt, lokiVersion string) error {
 	cfg := defaultLokiTestConfig(tc)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{
+		AppName: "bdd-audit",
+		Host:    "bdd-host",
+	}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

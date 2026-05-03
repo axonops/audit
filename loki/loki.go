@@ -40,12 +40,10 @@ const dropWarnInterval = 10 * time.Second
 
 // Compile-time interface assertions.
 var (
-	_ audit.Output                 = (*Output)(nil)
-	_ audit.MetadataWriter         = (*Output)(nil)
-	_ audit.DeliveryReporter       = (*Output)(nil)
-	_ audit.DestinationKeyer       = (*Output)(nil)
-	_ audit.FrameworkFieldReceiver = (*Output)(nil)
-	_ audit.OutputMetricsReceiver  = (*Output)(nil)
+	_ audit.Output           = (*Output)(nil)
+	_ audit.MetadataWriter   = (*Output)(nil)
+	_ audit.DeliveryReporter = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
 )
 
 // errRedirectBlocked is returned by the HTTP client's CheckRedirect
@@ -80,23 +78,25 @@ type lokiEntry struct { //nolint:govet // fieldalignment: readability preferred
 }
 
 // frameworkFields holds auditor-wide constant metadata used for Loki
-// stream labels. Stored atomically to avoid data races between the
-// core library's SetFrameworkFields call and the batchLoop goroutine.
+// stream labels. Populated once at construction from the
+// [audit.FrameworkContext] supplied via [WithFrameworkContext]. Held
+// in an atomic.Pointer so the batchLoop goroutine reads a fully-
+// published snapshot without a fresh atomic load per stream-label
+// path.
 type frameworkFields struct { //nolint:govet // fieldalignment: readability preferred
 	appName  string
 	host     string
 	timezone string
 	pid      int
-	// pidStr is strconv.Itoa(pid) pre-computed at SetFrameworkFields
-	// time so the per-event resolveDynamicFields path does not
-	// allocate a fresh string on every call (#494). Empty when pid==0.
+	// pidStr is strconv.Itoa(pid) pre-computed at construction so the
+	// per-event resolveDynamicFields path does not allocate a fresh
+	// string on every call (#494). Empty when pid==0.
 	pidStr string
 }
 
 // Output pushes audit events to a Grafana Loki instance via the HTTP
 // Push API. It implements [audit.Output], [audit.MetadataWriter],
-// [audit.DeliveryReporter], [audit.DestinationKeyer], and
-// [audit.FrameworkFieldReceiver].
+// [audit.DeliveryReporter], and [audit.DestinationKeyer].
 //
 // Events are buffered and flushed in batches based on count, byte
 // size, or time interval — whichever threshold is reached first.
@@ -111,20 +111,24 @@ type frameworkFields struct { //nolint:govet // fieldalignment: readability pref
 // (64 KiB) of traffic per retry. See issue #484.
 type Output struct { //nolint:govet // fieldalignment: readability preferred
 	cfg           *Config
-	metrics       audit.Metrics                       // core pipeline metrics (optional)
-	outputMetrics atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	ch            chan lokiEntry                      // buffered input channel
-	done          chan struct{}                       // signals batch goroutine exit
-	closeCh       chan struct{}                       // signals batchLoop to drain and exit
+	metrics       audit.Metrics       // core pipeline metrics (optional)
+	outputMetrics audit.OutputMetrics // immutable after New (#696)
+	ch            chan lokiEntry      // buffered input channel
+	done          chan struct{}       // signals batch goroutine exit
+	closeCh       chan struct{}       // signals batchLoop to drain and exit
 	cancel        context.CancelFunc
 	client        *http.Client
 	name          string // "loki:<host>", cached at construction
 	mu            sync.Mutex
 	closed        atomic.Bool
+	// fw caches the framework-field snapshot used as Loki stream
+	// labels. Populated once in New (#696); the atomic.Pointer
+	// indirection is kept because push.go reads on every event and
+	// benefits from a single load over a multi-string copy.
 	fw            atomic.Pointer[frameworkFields]
-	logger        atomic.Pointer[slog.Logger] // swapped atomically post-construction (#474)
-	drops         dropLimiter                 // rate-limits buffer-full warnings
-	maxEventBytes int                         // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
+	logger        *slog.Logger // immutable after New (#696)
+	drops         dropLimiter  // rate-limits buffer-full warnings
+	maxEventBytes int          // snapshot of cfg.MaxEventBytes — immutable post-construction (#688)
 	// lastDeliveryNanos is the wall-clock UnixNano of the most recent
 	// HTTP 2xx push response. Loki is async — Write only enqueues —
 	// so the timestamp updates from the batch goroutine after the
@@ -150,13 +154,13 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // New creates a new Loki [Output] from the given config. It validates
 // the config, builds an SSRF-safe HTTP client, and starts the
 // background batch goroutine. The metrics parameter is optional
-// (may be nil). Per-output metrics are injected via
-// [audit.OutputMetricsReceiver.SetOutputMetrics] after construction.
+// (may be nil). Per-output metrics may be supplied at construction
+// via [WithOutputMetrics].
 //
 // Optional [Option] arguments tune construction-time behaviour. Pass
-// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
-// the auditor's diagnostic logger is propagated post-construction) to
-// a custom logger.
+// [WithDiagnosticLogger] to route TLS-policy warnings to a custom
+// logger; [WithFrameworkContext] to seed the auditor-wide framework
+// metadata used as Loki stream labels.
 func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("audit/loki: config must not be nil")
@@ -226,43 +230,27 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		name:          lokiName(cfg.URL),
 		streams:       make(map[string]*lokiStream),
 		maxEventBytes: cfg.MaxEventBytes,
+		logger:        resolved.logger,
+		outputMetrics: resolved.outputMetrics,
 	}
-	// Publish the initial logger BEFORE starting the batch goroutine.
-	o.logger.Store(resolved.logger)
+	// Pre-compute the framework-field cache from the supplied
+	// FrameworkContext (#696). Always store a non-nil pointer so
+	// push.go's atomic load is a single, branchless dereference.
+	var pidStr string
+	if resolved.fctx.PID != 0 {
+		pidStr = strconv.Itoa(resolved.fctx.PID)
+	}
+	o.fw.Store(&frameworkFields{
+		appName:  resolved.fctx.AppName,
+		host:     resolved.fctx.Host,
+		timezone: resolved.fctx.Timezone,
+		pid:      resolved.fctx.PID,
+		pidStr:   pidStr,
+	})
 	o.compressDest = &o.compressBuf // default; overridden in tests
 
 	go o.batchLoop(ctx)
 	return o, nil
-}
-
-// SetFrameworkFields receives auditor-wide framework metadata for use
-// as Loki stream labels. Called once by the core library at auditor
-// construction time. The data is stored atomically, safe for
-// concurrent access from the batchLoop goroutine.
-func (o *Output) SetFrameworkFields(appName, host, timezone string, pid int) {
-	var pidStr string
-	if pid != 0 {
-		pidStr = strconv.Itoa(pid)
-	}
-	o.fw.Store(&frameworkFields{
-		appName:  appName,
-		host:     host,
-		timezone: timezone,
-		pid:      pid,
-		pidStr:   pidStr,
-	})
-}
-
-// SetDiagnosticLogger receives the library's diagnostic logger.
-//
-// Safe for concurrent use with the background batch goroutine and any
-// active [Output.WriteWithMetadata] caller — the logger field is an
-// [atomic.Pointer] so readers always see a fully-published value.
-func (o *Output) SetDiagnosticLogger(l *slog.Logger) {
-	if l == nil {
-		l = slog.Default()
-	}
-	o.logger.Store(l)
 }
 
 // WriteWithMetadata enqueues a serialised audit event with per-event
@@ -278,7 +266,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 
 	if len(data) > o.maxEventBytes {
 		o.drops.record(dropWarnInterval, func(dropped int64) {
-			o.logger.Load().Warn("audit: output loki: event rejected (exceeds max_event_bytes)",
+			o.logger.Warn("audit: output loki: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", o.maxEventBytes,
 				"dropped", dropped)
@@ -289,9 +277,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		// consistency across all self-reporting outputs (B-25).
 		// RecordDelivery(EventError) remains for retries-exhausted
 		// failures in http.go where delivery WAS attempted.
-		if omp := o.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		o.outputMetrics.RecordDrop()
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
 	}
@@ -304,15 +290,13 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		return nil
 	default:
 		o.drops.record(dropWarnInterval, func(dropped int64) {
-			o.logger.Load().Warn("audit: output loki: event dropped (buffer full)",
+			o.logger.Warn("audit: output loki: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(o.ch))
 		})
 		// Buffer drops counted via OutputMetrics.RecordDrop only — see
 		// B-25 note above.
-		if omp := o.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		o.outputMetrics.RecordDrop()
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -350,7 +334,7 @@ func (o *Output) Close() error {
 	select {
 	case <-o.done:
 	case <-timer.C:
-		o.logger.Load().Error("audit/loki: batch goroutine did not exit",
+		o.logger.Error("audit/loki: batch goroutine did not exit",
 			"timeout", shutdownTimeout)
 	}
 
@@ -365,11 +349,6 @@ func (o *Output) Close() error {
 // its own delivery metrics from the batch goroutine after actual HTTP
 // delivery, not from the Write enqueue path.
 func (o *Output) ReportsDelivery() bool { return true }
-
-// SetOutputMetrics receives the per-output metrics instance.
-func (o *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	o.outputMetrics.Store(&m)
-}
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx push response, or 0 if no batch has yet been delivered.
@@ -475,7 +454,7 @@ func (o *Output) flush(ctx context.Context, batch []lokiEntry) {
 
 	body, compressed, err := o.maybeCompress()
 	if err != nil {
-		o.logger.Load().Warn("audit/loki: compression failed, sending uncompressed",
+		o.logger.Warn("audit/loki: compression failed, sending uncompressed",
 			"error", err, "batch_size", len(batch))
 		body = o.payloadBuf.Bytes()
 		compressed = false

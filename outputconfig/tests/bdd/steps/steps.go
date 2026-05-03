@@ -19,7 +19,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +43,7 @@ func init() {
 	// inspect what reached the output. The original os.Stdout target
 	// from audit.StdoutFactory() is irrelevant here — tests assert on
 	// captured bytes, not console visibility.
-	audit.MustRegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("stdout", func(name string, rawConfig []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		if len(rawConfig) > 0 {
 			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
 		}
@@ -58,12 +57,12 @@ func init() {
 	// outputconfig formatter behaviour without depending on the real
 	// Loki module. The stub ignores the raw config and returns a
 	// minimal output.
-	audit.MustRegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("loki", func(_ string, _ []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		return &lokiStub{}, nil
 	})
 	// Stub webhook factory — captures raw config bytes so #487
 	// envsubst-string-semantics scenarios can inspect them.
-	audit.MustRegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	audit.MustRegisterOutputFactory("webhook", func(_ string, rawConfig []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		capturedWebhookRawConfig = append(capturedWebhookRawConfig[:0], rawConfig...)
 		return &webhookStub{}, nil
 	})

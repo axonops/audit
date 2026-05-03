@@ -76,14 +76,13 @@ func registerEventMetricsGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestCon
 		path := filepath.Join(dir, "drops.log")
 		tc.FilePaths["default"] = path
 
-		fileOut, err := file.New(&file.Config{Path: path, BufferSize: bufSize})
+		om := &MockOutputMetrics{}
+		fileOut, err := file.New(&file.Config{Path: path, BufferSize: bufSize}, file.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create file: %w", err)
 		}
 		tc.AddCleanup(func() { _ = fileOut.Close() })
 
-		om := &MockOutputMetrics{}
-		fileOut.SetOutputMetrics(om)
 		tc.OutputMetricsMock = om
 
 		tc.Options = append(tc.Options, audit.WithNamedOutput(fileOut))
@@ -211,19 +210,18 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^a syslog output with buffer_size (\d+) and mock output metrics$`, func(bufSize int) error {
+		om := &MockOutputMetrics{}
 		out, err := syslog.New(&syslog.Config{
 			Network:    "tcp",
 			Address:    "localhost:5514",
 			Facility:   "local0",
 			BufferSize: bufSize,
-		})
+		}, syslog.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create syslog: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
 
-		om := &MockOutputMetrics{}
-		out.SetOutputMetrics(om)
 		tc.OutputMetricsMock = om
 
 		tc.Options = append(tc.Options, audit.WithNamedOutput(out))
@@ -231,6 +229,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^a webhook output with buffer_size (\d+) and mock output metrics$`, func(bufSize int) error {
+		om := &MockOutputMetrics{}
 		out, err := webhook.New(&webhook.Config{
 			URL:                tc.WebhookURL + "/events",
 			AllowInsecureHTTP:  true,
@@ -239,14 +238,12 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            5 * time.Second,
 			BufferSize:         bufSize,
-		}, nil)
+		}, nil, webhook.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
 
-		om := &MockOutputMetrics{}
-		out.SetOutputMetrics(om)
 		tc.OutputMetricsMock = om
 
 		tc.Options = append(tc.Options, audit.WithNamedOutput(out))
@@ -254,6 +251,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 	})
 
 	ctx.Step(`^a loki output with buffer_size (\d+) and mock output metrics$`, func(bufSize int) error {
+		om := &MockOutputMetrics{}
 		out, err := loki.New(&loki.Config{
 			URL:                tc.LokiURL + "/loki/api/v1/push",
 			AllowInsecureHTTP:  true,
@@ -262,14 +260,12 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			FlushInterval:      200 * time.Millisecond,
 			Gzip:               true,
 			BufferSize:         bufSize,
-		}, nil)
+		}, nil, loki.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create loki: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
 
-		om := &MockOutputMetrics{}
-		out.SetOutputMetrics(om)
 		tc.OutputMetricsMock = om
 
 		tc.Options = append(tc.Options, audit.WithNamedOutput(out))

@@ -17,7 +17,6 @@ package audit
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -36,7 +35,7 @@ import (
 // via an init() in this package; that was dropped to eliminate hidden
 // global mutation at import time.
 func StdoutFactory() OutputFactory {
-	return func(name string, rawConfig []byte, _ Metrics, _ *slog.Logger, _ FrameworkContext) (Output, error) {
+	return func(name string, rawConfig []byte, _ FrameworkContext) (Output, error) {
 		if len(rawConfig) > 0 {
 			return nil, fmt.Errorf("audit: stdout output %q: stdout does not accept configuration", name)
 		}

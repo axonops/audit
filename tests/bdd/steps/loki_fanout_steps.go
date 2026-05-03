@@ -223,7 +223,7 @@ func createFileAndLokiAuditor(tc *AuditTestContext, hmacCfg *audit.HMACConfig, l
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
-	lokiOut, err := loki.New(lokiCfg, nil)
+	lokiOut, err := loki.New(lokiCfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{AppName: "bdd-audit", Host: "bdd-host"}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -275,7 +275,7 @@ func createFileAndLokiAuditorWithExclusion(tc *AuditTestContext, excludeLabel st
 
 	lokiCfg := defaultLokiTestConfig(tc)
 
-	lokiOut, err := loki.New(lokiCfg, nil)
+	lokiOut, err := loki.New(lokiCfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{AppName: "bdd-audit", Host: "bdd-host"}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
@@ -328,7 +328,7 @@ func createFileAndLokiAuditorUnreachable(tc *AuditTestContext) error {
 		Gzip:               false,
 	}
 
-	lokiOut, err := loki.New(lokiCfg, nil)
+	lokiOut, err := loki.New(lokiCfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{AppName: "bdd-audit", Host: "bdd-host"}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

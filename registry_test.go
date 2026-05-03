@@ -15,8 +15,6 @@
 package audit_test
 
 import (
-	"io"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +27,7 @@ import (
 func TestRegisterOutputFactory_Success(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	factory := func(name string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	factory := func(name string, _ []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		return testhelper.NewMockOutput(name), nil
 	}
 	require.NoError(t, audit.RegisterOutputFactory("test", factory))
@@ -41,10 +39,10 @@ func TestRegisterOutputFactory_Success(t *testing.T) {
 func TestRegisterOutputFactory_Overwrite(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	first := func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	first := func(_ string, _ []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		return testhelper.NewMockOutput("first"), nil
 	}
-	second := func(_ string, _ []byte, _ audit.Metrics, _ *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	second := func(_ string, _ []byte, _ audit.FrameworkContext) (audit.Output, error) {
 		return testhelper.NewMockOutput("second"), nil
 	}
 
@@ -55,7 +53,7 @@ func TestRegisterOutputFactory_Overwrite(t *testing.T) {
 	require.NotNil(t, got)
 
 	// Verify the second factory is the one registered.
-	out, err := got("check", nil, nil, nil, audit.FrameworkContext{})
+	out, err := got("check", nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	assert.Equal(t, "second", out.Name())
 }
@@ -70,7 +68,7 @@ func TestLookupOutputFactory_NotRegistered_ReturnsNil(t *testing.T) {
 func TestRegisteredOutputTypes_Sorted(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	dummy := func(string, []byte, audit.Metrics, *slog.Logger, audit.FrameworkContext) (audit.Output, error) {
+	dummy := func(string, []byte, audit.FrameworkContext) (audit.Output, error) {
 		return nil, nil
 	}
 	require.NoError(t, audit.RegisterOutputFactory("webhook", dummy))
@@ -90,7 +88,7 @@ func TestRegisteredOutputTypes_Sorted(t *testing.T) {
 func TestRegisterOutputFactory_EmptyName_ReturnsError(t *testing.T) {
 	t.Cleanup(audit.SaveAndResetRegistryForTest())
 
-	err := audit.RegisterOutputFactory("", func(string, []byte, audit.Metrics, *slog.Logger, audit.FrameworkContext) (audit.Output, error) {
+	err := audit.RegisterOutputFactory("", func(string, []byte, audit.FrameworkContext) (audit.Output, error) {
 		return nil, nil
 	})
 	require.Error(t, err)
@@ -214,57 +212,15 @@ func TestWrapOutput_NonMetadataWriter_FallsBackToWrite(t *testing.T) {
 	assert.Equal(t, 1, inner.EventCount(), "should fall back to Write")
 }
 
-func TestWrapOutput_PreservesFrameworkFieldReceiver(t *testing.T) {
-	inner := &mockFrameworkFieldReceiver{
-		MockOutput: *testhelper.NewMockOutput("loki:localhost:3100"),
-	}
-	wrapped := audit.WrapOutput(inner, "my_loki")
+// TestWrapOutput_PreservesFrameworkFieldReceiver was removed in #696
+// along with the FrameworkFieldReceiver interface. Framework fields
+// now arrive at outputs via [audit.FrameworkContext] at construction
+// time; the wrapper has no per-output forwarding to perform.
 
-	fr, ok := wrapped.(audit.FrameworkFieldReceiver)
-	require.True(t, ok, "wrapped output should implement FrameworkFieldReceiver")
-
-	fr.SetFrameworkFields("my-app", "my-host", "UTC", 12345)
-	assert.Equal(t, "my-app", inner.appName, "appName should be forwarded")
-	assert.Equal(t, "my-host", inner.host, "host should be forwarded")
-	assert.Equal(t, "UTC", inner.timezone, "timezone should be forwarded")
-	assert.Equal(t, 12345, inner.pid, "pid should be forwarded")
-}
-
-func TestWrapOutput_NonFrameworkFieldReceiver_NoOp(t *testing.T) {
-	inner := testhelper.NewMockOutput("file:/tmp/test.log")
-	wrapped := audit.WrapOutput(inner, "my_file")
-
-	fr, ok := wrapped.(audit.FrameworkFieldReceiver)
-	require.True(t, ok, "namedOutput always implements FrameworkFieldReceiver")
-
-	// Should not panic.
-	fr.SetFrameworkFields("app", "host", "UTC", 1)
-}
-
-func TestWrapOutput_PreservesDiagnosticLoggerReceiver(t *testing.T) {
-	inner := &mockDiagnosticLoggerReceiver{
-		MockOutput: *testhelper.NewMockOutput("syslog:localhost:514"),
-	}
-	wrapped := audit.WrapOutput(inner, "my_syslog")
-
-	lr, ok := wrapped.(audit.DiagnosticLoggerReceiver)
-	require.True(t, ok, "wrapped output should implement DiagnosticLoggerReceiver")
-
-	customLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	lr.SetDiagnosticLogger(customLogger)
-	assert.Same(t, customLogger, inner.logger, "auditor should be forwarded to inner")
-}
-
-func TestWrapOutput_NonDiagnosticLoggerReceiver_NoOp(t *testing.T) {
-	inner := testhelper.NewMockOutput("file:/tmp/test.log")
-	wrapped := audit.WrapOutput(inner, "my_file")
-
-	lr, ok := wrapped.(audit.DiagnosticLoggerReceiver)
-	require.True(t, ok, "namedOutput always implements DiagnosticLoggerReceiver")
-
-	// Should not panic.
-	lr.SetDiagnosticLogger(slog.Default())
-}
+// TestWrapOutput_PreservesDiagnosticLoggerReceiver was removed in #696
+// along with the DiagnosticLoggerReceiver interface. The diagnostic
+// logger arrives at outputs via [audit.FrameworkContext] at
+// construction time.
 
 // TestWrapOutput_PreservesLastDeliveryReporter verifies that when the
 // inner output implements [LastDeliveryReporter], the wrapper forwards
@@ -327,32 +283,6 @@ func (m *mockMetadataWriter) WriteWithMetadata(data []byte, meta audit.EventMeta
 	m.metadataCalls++
 	m.lastMeta = meta
 	return m.Write(data)
-}
-
-// mockFrameworkFieldReceiver wraps MockOutput with FrameworkFieldReceiver.
-type mockFrameworkFieldReceiver struct { //nolint:govet // fieldalignment: test struct
-	testhelper.MockOutput
-	appName  string
-	host     string
-	timezone string
-	pid      int
-}
-
-func (m *mockFrameworkFieldReceiver) SetFrameworkFields(appName, host, timezone string, pid int) {
-	m.appName = appName
-	m.host = host
-	m.timezone = timezone
-	m.pid = pid
-}
-
-// mockDiagnosticLoggerReceiver wraps MockOutput with DiagnosticLoggerReceiver.
-type mockDiagnosticLoggerReceiver struct { //nolint:govet // fieldalignment: test struct, readability preferred
-	testhelper.MockOutput
-	logger *slog.Logger
-}
-
-func (m *mockDiagnosticLoggerReceiver) SetDiagnosticLogger(l *slog.Logger) {
-	m.logger = l
 }
 
 // mockLastDeliveryReporter wraps MockOutput with LastDeliveryReporter,

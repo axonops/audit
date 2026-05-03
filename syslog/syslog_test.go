@@ -16,6 +16,7 @@ package syslog_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -799,16 +800,14 @@ func TestSyslogOutput_BufferFull_Drops(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		BufferSize:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// Flood the buffer. Some writes will be dropped.
 	const writes = 200
@@ -828,16 +827,14 @@ func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		BufferSize:    1000,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	const n = 20
 	for range n {
@@ -876,22 +873,10 @@ func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
 	assert.True(t, dr.ReportsDelivery(), "syslog output must self-report delivery")
 }
 
-func TestSyslogOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
-	srv := newMockSyslogServer(t)
-	defer srv.close()
-
-	out, err := syslog.New(&syslog.Config{
-		Network:       "tcp",
-		Address:       srv.addr(),
-		FlushInterval: 5 * time.Millisecond,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	var o audit.Output = out
-	_, ok := o.(audit.OutputMetricsReceiver)
-	assert.True(t, ok, "syslog output must implement OutputMetricsReceiver")
-}
+// TestSyslogOutput_ImplementsOutputMetricsReceiver was removed in
+// #696 along with the OutputMetricsReceiver interface. Per-output
+// metrics are now plumbed in at construction via
+// [syslog.WithOutputMetrics].
 
 func TestSyslogOutput_CopySafety(t *testing.T) {
 	srv := newMockSyslogServer(t)
@@ -1356,9 +1341,8 @@ func TestSyslogOutput_ReconnectRecorder_RecordReconnect_FailureOnPermanentServer
 		Address:       addr,
 		MaxRetries:    2, // allow 2 reconnection attempts,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Establish the connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1409,9 +1393,8 @@ func TestSyslogOutput_ReconnectRecorder_RecordReconnect_SuccessPath(t *testing.T
 		Address:       addr,
 		MaxRetries:    10, // enough headroom for reconnect,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1599,9 +1582,8 @@ func TestSyslogOutput_HandleWriteFailure_WriteFailsAfterReconnect(t *testing.T) 
 		Address:       addr,
 		MaxRetries:    20, // Maximum allowed; ample for the ticker-paced retry loop below.
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Establish a live connection with a successful write.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -1658,52 +1640,15 @@ func TestSyslogOutput_ReconnectRecorder_InterfaceAssertion(t *testing.T) {
 		Network:       "tcp",
 		Address:       srv.addr(),
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 	require.NoError(t, out.Close())
 }
 
-// TestSyslogOutput_SetOutputMetrics_ReplaceClearsReconnectRecorder
-// verifies the idempotency contract on SetOutputMetrics: a second call
-// with an OutputMetrics value that does NOT implement
-// ReconnectRecorder must clear the previously-wired reconnect recorder
-// rather than leaving it stale.
-func TestSyslogOutput_SetOutputMetrics_ReplaceClearsReconnectRecorder(t *testing.T) {
-	srv := newMockSyslogServer(t)
-	addr := srv.addr()
-
-	first := &syslogOnlyMetrics{}
-	out, err := syslog.New(&syslog.Config{
-		Network:       "tcp",
-		Address:       addr,
-		MaxRetries:    2,
-		FlushInterval: 5 * time.Millisecond,
-	})
-	require.NoError(t, err)
-	out.SetOutputMetrics(first)
-
-	// Replace with a plain audit.OutputMetrics that does NOT satisfy
-	// ReconnectRecorder.
-	plain := &audit.NoOpOutputMetrics{}
-	out.SetOutputMetrics(plain)
-
-	require.NoError(t, out.Write([]byte(`{"n":1}`)))
-
-	// Bring the server down to force reconnect attempts; the old
-	// recorder must not see any callbacks.
-	srv.close()
-	for range 5 {
-		_ = out.Write([]byte(`{"n":2}`))
-	}
-	require.NoError(t, out.Close())
-
-	first.mu.Lock()
-	successes, failures := first.successes, first.failures
-	first.mu.Unlock()
-	assert.Zero(t, successes, "successes must be 0: old recorder should have been cleared on replacement")
-	assert.Zero(t, failures, "failures must be 0: old recorder should have been cleared on replacement")
-}
+// TestSyslogOutput_SetOutputMetrics_ReplaceClearsReconnectRecorder was
+// removed in #696 along with the post-construction SetOutputMetrics
+// API. Output metrics are now wired once at construction via
+// [syslog.WithOutputMetrics]; runtime swap is not supported.
 
 // ---------------------------------------------------------------------------
 // Backoff calculation
@@ -2299,9 +2244,8 @@ func TestSyslogOutput_MaxRetriesExceeded_DropsEvent(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Establish the connection.
 	require.NoError(t, out.Write([]byte(`{"n":0}`)))
@@ -2595,17 +2539,15 @@ func TestSyslogOutput_OutputMetrics_RecordFlush(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		Facility:      "local0",
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	const n = 10
 	for range n {
@@ -2621,17 +2563,15 @@ func TestSyslogOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		Facility:      "local0",
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// Write 200 events and wait for writeLoop to process them
 	// (not during drain). RecordQueueDepth samples every 64 events.
@@ -2655,6 +2595,7 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
@@ -2662,12 +2603,9 @@ func TestSyslogOutput_NilWriter_RecordsRetry(t *testing.T) {
 		BufferSize:    100,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// SimulateWriteFailure sets writer to nil, triggering
 	// handleWriteFailure which calls RecordRetry during reconnection.
@@ -2906,9 +2844,8 @@ func TestSyslogOutput_ReconnectInBackground_Exhausted(t *testing.T) {
 		Address:       addr,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Establish connection.
 	require.NoError(t, out.Write([]byte(`{"n":1}`)))
@@ -2933,16 +2870,14 @@ func TestOutputMetrics_RecordDrop_CalledOnBufferFull(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		BufferSize:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	for range 100 {
 		_ = out.Write([]byte(`{"event":"flood"}`))
@@ -2958,16 +2893,14 @@ func TestOutputMetrics_RecordFlush_CalledOnSuccessfulWrite(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		BufferSize:    10_000,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	require.NoError(t, out.Write([]byte(`{"event":"flush"}`)))
 	require.NoError(t, out.Close())
@@ -2980,18 +2913,16 @@ func TestOutputMetrics_RecordRetry_CalledOnRetryableError(t *testing.T) {
 	srv := newMockSyslogServer(t)
 	defer srv.close()
 
+	om := &mockOutputMetrics{}
 	out, err := syslog.New(&syslog.Config{
 		Network:       "tcp",
 		Address:       srv.addr(),
 		BufferSize:    100,
 		MaxRetries:    1,
 		FlushInterval: 5 * time.Millisecond,
-	})
+	}, syslog.WithOutputMetrics(om))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// SimulateWriteFailure sets writer to nil, triggering reconnect
 	// which calls RecordRetry.
@@ -3271,4 +3202,129 @@ func TestSyslogOutput_AppName_Empty_DefaultsToAuditConstant(t *testing.T) {
 			"APP-NAME field must default to the documented constant %q",
 			syslog.DefaultAppName)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Issue #696 acceptance criteria — factory FrameworkContext plumbing
+// ---------------------------------------------------------------------------
+
+// TestOutputFactory_ZeroContext_NoPanic verifies the syslog factory
+// tolerates a zero-value [audit.FrameworkContext]. Construct via
+// factory pointing at the test mock server; write once; no panic.
+func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
+	srv := newMockSyslogServer(t)
+	defer srv.close()
+
+	yaml := []byte("network: tcp\naddress: " + srv.addr() + "\nflush_interval: 5ms\n")
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("zero", yaml, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"zero"}`)))
+}
+
+// syslogCaptureHandler records every slog Record passed through
+// Handle for assertion in factory plumbing tests.
+type syslogCaptureHandler struct {
+	records []slog.Record
+	mu      sync.Mutex
+}
+
+func (h *syslogCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *syslogCaptureHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler interface contract
+	h.mu.Lock()
+	h.records = append(h.records, r)
+	h.mu.Unlock()
+	return nil
+}
+func (h *syslogCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *syslogCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *syslogCaptureHandler) anyContains(s string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.records {
+		if strings.Contains(h.records[i].Message, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOutputFactory_LoggerReachesOutput verifies that a logger
+// supplied via [audit.FrameworkContext.DiagnosticLogger] reaches the
+// syslog output. Trigger a TLS warning by passing a tls_policy with
+// allow_tls12 + allow_weak_ciphers (which logs a WARNING) and assert
+// the captured handler observed it.
+func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
+	t.Parallel()
+	h := &syslogCaptureHandler{}
+	logger := slog.New(h)
+
+	// Use real test certs so config validation passes and we reach
+	// buildSyslogTLSConfig where the warning fires. Construction
+	// fails at the dial step (no TLS server listening on the
+	// reserved port) — that's fine, the assertion is on the captured
+	// warning record, not on construction success.
+	certs := generateTestCerts(t)
+	yaml := []byte(
+		"network: tcp+tls\n" +
+			"address: 127.0.0.1:65530\n" +
+			"tls_ca: " + certs.caPath + "\n" +
+			"tls_policy:\n" +
+			"  allow_tls12: true\n" +
+			"  allow_weak_ciphers: true\n",
+	)
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("tls-warn", yaml, audit.FrameworkContext{DiagnosticLogger: logger})
+	if err == nil {
+		t.Cleanup(func() { _ = out.Close() })
+	}
+
+	assert.True(t, h.anyContains("weak"),
+		"injected logger must capture the weak-cipher warning emitted in New")
+}
+
+// TestOutputFactory_OutputMetricsReachesOutput verifies that the
+// per-output metrics value supplied via
+// [audit.FrameworkContext.OutputMetrics] reaches the syslog output.
+// Point at a port with no listener so writes drain into the retry
+// path that records errors against the per-output metrics.
+func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
+	t.Parallel()
+
+	om := &mockOutputMetrics{}
+	// Pick a high port unlikely to have a listener; New will surface
+	// a dial error before returning, so we instead build via a
+	// reachable mock then break the connection.
+	srv := newMockSyslogServer(t)
+	addr := srv.addr()
+
+	yaml := []byte("network: tcp\naddress: " + addr +
+		"\nbuffer_size: 1\nflush_interval: 5ms\nmax_retries: 1\n")
+	factory := audit.LookupOutputFactory("syslog")
+	require.NotNil(t, factory)
+
+	out, err := factory("metrics", yaml, audit.FrameworkContext{OutputMetrics: om})
+	require.NoError(t, err)
+
+	// Close the server to force write failures, then flood the tiny
+	// buffer to guarantee both retries and channel-full drops.
+	srv.close()
+	for range 200 {
+		_ = out.Write([]byte(`{"event":"flood"}`))
+	}
+	require.NoError(t, out.Close())
+
+	// Either drops (channel full) or errors (writes failing) must be
+	// recorded — the contract is "the metrics value reached the
+	// output". Both paths confirm it.
+	total := om.drops.Load() + om.errors.Load()
+	assert.Positive(t, total,
+		"per-output metrics value supplied via FrameworkContext must record drops or errors")
 }

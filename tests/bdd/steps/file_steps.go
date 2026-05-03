@@ -522,13 +522,14 @@ func createFileAuditorImpl(tc *AuditTestContext, fileCfg file.Config, fileMetric
 	}
 	tc.FilePaths["default"] = fileCfg.Path
 
-	fileOut, err := file.New(&fileCfg)
+	var fileOpts []file.Option
+	if fileMetrics != nil {
+		fileOpts = append(fileOpts, file.WithOutputMetrics(fileMetrics))
+	}
+	fileOut, err := file.New(&fileCfg, fileOpts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
-	}
-	if fileMetrics != nil {
-		fileOut.SetOutputMetrics(fileMetrics)
 	}
 	tc.AddCleanup(func() { _ = fileOut.Close() })
 

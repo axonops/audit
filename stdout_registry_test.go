@@ -38,7 +38,7 @@ func TestStdoutFactory_NewReturnsWorkingOutput(t *testing.T) {
 	factory := audit.StdoutFactory()
 	require.NotNil(t, factory, "audit.StdoutFactory() must return a non-nil factory")
 
-	out, err := factory("my_stdout", nil, nil, nil, audit.FrameworkContext{})
+	out, err := factory("my_stdout", nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -51,12 +51,12 @@ func TestStdoutFactory_AcceptsNoConfig(t *testing.T) {
 	factory := audit.StdoutFactory()
 
 	// nil config — accepted (the normal case)
-	out, err := factory("no_config", nil, nil, nil, audit.FrameworkContext{})
+	out, err := factory("no_config", nil, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
 	// empty byte slice — also accepted
-	out2, err := factory("empty_config", []byte{}, nil, nil, audit.FrameworkContext{})
+	out2, err := factory("empty_config", []byte{}, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out2.Close() })
 }
@@ -65,7 +65,7 @@ func TestStdoutFactory_RejectsConfig(t *testing.T) {
 	t.Parallel()
 	factory := audit.StdoutFactory()
 
-	_, err := factory("bad_stdout", []byte("some_option: true\n"), nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_stdout", []byte("some_option: true\n"), audit.FrameworkContext{})
 	require.Error(t, err)
 	// text-only: stdout.go:41 returns raw fmt.Errorf without an audit sentinel wrap.
 	assert.Contains(t, err.Error(), "does not accept configuration")

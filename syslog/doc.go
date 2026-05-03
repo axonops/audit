@@ -37,7 +37,7 @@
 // UDP MTU are silently truncated by the network.
 //
 // To observe reconnect events, wire an [audit.OutputMetrics] value via
-// [Output.SetOutputMetrics]. If the value also implements
+// [WithOutputMetrics] at construction. If the value also implements
 // [ReconnectRecorder] its RecordReconnect method is called on each
 // reconnect attempt (structural typing — no explicit registration
 // needed).

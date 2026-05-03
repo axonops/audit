@@ -35,7 +35,7 @@ func TestWebhookFactory_ValidConfig(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("splunk_hec", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("splunk_hec", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -50,7 +50,7 @@ func TestWebhookFactory_MaxBatchBytesKey(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("sized", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("sized", yaml, audit.FrameworkContext{})
 	require.NoError(t, err, "max_batch_bytes key must parse cleanly")
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -63,7 +63,7 @@ func TestWebhookFactory_MaxBatchBytesInvalid(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_bytes", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_bytes", yaml, audit.FrameworkContext{})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -74,7 +74,7 @@ func TestWebhookFactory_InvalidConfig_EmptyURL(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("bad_webhook", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("bad_webhook", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "bad_webhook")
 }
@@ -85,7 +85,7 @@ func TestWebhookFactory_UnknownYAMLField_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("test", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("test", yaml, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:126 wraps yaml.UnknownFieldError via WrapUnknownFieldError, not an audit sentinel.
 	assert.Contains(t, err.Error(), "unknown_field")
@@ -97,7 +97,7 @@ func TestWebhookFactory_AllowInsecureHTTP_AcceptsHTTPURL(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("insecure", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("insecure", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "allow_insecure_http: true should accept HTTP URLs")
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "insecure", out.Name())
@@ -109,7 +109,7 @@ func TestWebhookFactory_AllowInsecureHTTP_DefaultFalse_RejectsHTTPURL(t *testing
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("no_insecure", rawYAML, nil, nil, audit.FrameworkContext{})
+	_, err := factory("no_insecure", rawYAML, audit.FrameworkContext{})
 	assert.Error(t, err, "HTTP URL without allow_insecure_http should be rejected")
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must be https")
@@ -121,7 +121,7 @@ func TestWebhookFactory_AllowInsecureHTTP_ExplicitFalse_RejectsHTTPURL(t *testin
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("explicit_false", rawYAML, nil, nil, audit.FrameworkContext{})
+	_, err := factory("explicit_false", rawYAML, audit.FrameworkContext{})
 	assert.Error(t, err, "allow_insecure_http: false should still reject HTTP URLs")
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "must be https")
@@ -133,7 +133,7 @@ func TestWebhookFactory_AllowPrivateRanges_Accepted(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("private", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("private", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "allow_private_ranges: true should be accepted")
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "private", out.Name())
@@ -145,7 +145,7 @@ func TestWebhookFactory_BothInsecureFields_Accepted(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("both", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("both", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err, "both insecure fields should be accepted together")
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "both", out.Name())
@@ -155,7 +155,7 @@ func TestWebhookFactory_EmptyConfig_ReturnsError(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("empty", nil, nil, nil, audit.FrameworkContext{})
+	_, err := factory("empty", nil, audit.FrameworkContext{})
 	assert.Error(t, err)
 	// text-only: register.go:120 returns raw fmt.Errorf without a sentinel wrap.
 	assert.Contains(t, err.Error(), "config is required")
@@ -167,7 +167,7 @@ func TestWebhookFactory_WithHeaders(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("with_headers", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("with_headers", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	assert.Equal(t, "with_headers", out.Name())
@@ -179,7 +179,7 @@ func TestWebhookFactory_WithTLSPolicy(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("tls_webhook", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("tls_webhook", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -203,7 +203,7 @@ func TestWebhookFactory_DurationParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out, err := factory("dur_test", []byte(tt.yaml), nil, nil, audit.FrameworkContext{})
+			out, err := factory("dur_test", []byte(tt.yaml), audit.FrameworkContext{})
 			if out != nil {
 				t.Cleanup(func() { _ = out.Close() })
 			}
@@ -225,7 +225,7 @@ func TestWebhookFactory_ExplicitZeroMaxRetries_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("zero_retries", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("zero_retries", yaml, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "max_retries must be at least 1")
@@ -237,7 +237,7 @@ func TestWebhookFactory_ExplicitZeroBatchSize_Rejected(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	_, err := factory("zero_batch", yaml, nil, nil, audit.FrameworkContext{})
+	_, err := factory("zero_batch", yaml, audit.FrameworkContext{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 	assert.Contains(t, err.Error(), "batch_size must be at least 1")
@@ -249,7 +249,7 @@ func TestWebhookFactory_OmittedMaxRetries_DefaultsTo3(t *testing.T) {
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)
 
-	out, err := factory("default_retries", yaml, nil, nil, audit.FrameworkContext{})
+	out, err := factory("default_retries", yaml, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -263,7 +263,7 @@ func TestWebhookNewFactory_WithMetricsFactory(t *testing.T) {
 	factory := webhook.NewFactory(mf)
 
 	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
-	out, err := factory("with_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("with_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -276,7 +276,7 @@ func TestWebhookNewFactory_NilFactory(t *testing.T) {
 	factory := webhook.NewFactory(nil)
 
 	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
-	out, err := factory("nil_metrics", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_metrics", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -293,7 +293,7 @@ func TestWebhookNewFactory_FactoryReturnsNil(t *testing.T) {
 	})
 
 	rawYAML := []byte("url: https://example.com/events\nbatch_size: 10\nflush_interval: 1s\ntimeout: 5s\n")
-	out, err := factory("nil_return", rawYAML, nil, nil, audit.FrameworkContext{})
+	out, err := factory("nil_return", rawYAML, audit.FrameworkContext{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

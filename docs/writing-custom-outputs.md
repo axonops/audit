@@ -20,23 +20,26 @@ optional interfaces add capabilities:
 
 ```
 Output (required)
-├── MetadataWriter         — receive structured event metadata (type, severity, category)
-├── FrameworkFieldReceiver — receive app_name, host, timezone, pid at startup
-├── DiagnosticLoggerReceiver         — receive the library's slog.Logger for diagnostics
-├── DestinationKeyer       — prevent duplicate outputs to the same destination
-├── OutputMetricsReceiver  — receive per-output delivery metrics
-└── DeliveryReporter       — signal that delivery metrics are recorded after actual I/O
+├── MetadataWriter      — receive structured event metadata (type, severity, category)
+├── DestinationKeyer    — prevent duplicate outputs to the same destination
+└── DeliveryReporter    — signal that delivery metrics are recorded after actual I/O
 ```
+
+Construction-time data (auditor app_name/host/timezone/pid, the
+library's diagnostic logger, per-output metrics, and the auditor-wide
+core metrics value) flows into the factory via `audit.FrameworkContext`
+— there are no setter interfaces for these. See the factory signature
+under [Minimal Output](#minimal-output).
 
 ## Decision Tree
 
-| Question | Interface |
+| Question | What to do |
 |----------|-----------|
 | Do you need event type, severity, or category? | Implement `MetadataWriter` |
-| Do you need app_name/host for labelling? | Implement `FrameworkFieldReceiver` |
-| Do you want the library's diagnostic logger? | Implement `DiagnosticLoggerReceiver` |
+| Do you need app_name/host/timezone/pid for labelling? | Read `fctx.AppName`, `fctx.Host`, `fctx.Timezone`, `fctx.PID` in your factory |
+| Do you want the library's diagnostic logger? | Read `fctx.DiagnosticLogger` in your factory; fall back to `slog.Default` if nil |
 | Can two outputs point to the same destination? | Implement `DestinationKeyer` |
-| Does your output want per-output drop/flush/error metrics? | Implement `OutputMetricsReceiver` |
+| Does your output want per-output drop/flush/error metrics? | Read `fctx.OutputMetrics` in your factory; fall back to `audit.NoOpOutputMetrics{}` if nil |
 | Does your output use a background goroutine that records delivery outcomes after actual I/O? | Implement `DeliveryReporter` |
 
 ## Minimal Output
@@ -74,17 +77,26 @@ Register it via a factory:
 
 ```go
 func init() {
-    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, fctx audit.FrameworkContext) (audit.Output, error) {
-        // coreMetrics is the pipeline-level Metrics instance (may be nil).
-        // Per-output metrics are injected separately via SetOutputMetrics —
-        // see "Receiving Per-Output Metrics" below.
+    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) {
+        // fctx carries every construction-time value the output needs:
         //
-        // logger is the auditor's diagnostic logger, threaded through
-        // outputconfig.WithDiagnosticLogger / audit.WithDiagnosticLogger.
-        // Route construction-time warnings here (TLS policy, permission
-        // mode) so they reach the consumer's configured handler rather
-        // than slog.Default. A nil logger is valid; treat it as
-        // slog.Default.
+        //   fctx.AppName, fctx.Host, fctx.Timezone, fctx.PID
+        //                            — auditor-wide framework metadata.
+        //   fctx.DiagnosticLogger    — auditor's diagnostic logger,
+        //                              threaded through
+        //                              outputconfig.WithDiagnosticLogger
+        //                              / audit.WithDiagnosticLogger.
+        //                              Falls back to slog.Default if nil.
+        //   fctx.OutputMetrics       — per-output metrics sink, scoped
+        //                              to this output's identity. Falls
+        //                              back to audit.NoOpOutputMetrics
+        //                              if nil.
+        //   fctx.CoreMetrics         — auditor-wide pipeline metrics
+        //                              (may be nil for outputs that do
+        //                              not need it).
+        //
+        // The zero value is valid; apply nil-defaults at use site
+        // rather than mutating fctx.
         return audit.WrapOutput(&MyOutput{name: name}, name), nil
     })
 }
@@ -294,36 +306,22 @@ func (o *AsyncOutput) Close() error {
 // writeLoop.
 func (o *AsyncOutput) ReportsDelivery() bool { return true }
 
-// SetOutputMetrics receives the per-output metrics instance from
-// outputconfig.Load when WithOutputMetrics is configured.
-func (o *AsyncOutput) SetOutputMetrics(m audit.OutputMetrics) {
-    o.outputMetrics.Store(&m)
-}
 ```
 
 ## Receiving Per-Output Metrics
 
 Outputs that want delivery metrics (drops, flushes, errors, retries,
-queue depth) implement `OutputMetricsReceiver`:
+queue depth) read them from `fctx.OutputMetrics` in their factory and
+hold them as an immutable field on the output struct.
 
-```go
-type OutputMetricsReceiver interface {
-    SetOutputMetrics(m OutputMetrics)
-}
-```
+### Where the Value Comes From
 
-### When It Is Called
-
-`outputconfig.Load` calls `SetOutputMetrics` once per output after
-all outputs are constructed, before `Load` returns. The output's
-background goroutine may already be running at this point (started
-in the output constructor). The `atomic.Pointer` storage pattern
-ensures safe handoff: the goroutine checks for nil before using
-`outputMetrics`, and `SetOutputMetrics` stores atomically. Because
-`New` is not called until after `Load` returns, no `Write`
-calls are made before `SetOutputMetrics` completes. This happens
-only when the consumer passes `WithOutputMetrics(factory)` as a
-load option:
+The auditor (or `outputconfig.Load` when `WithOutputMetricsFactory` is
+configured) populates `fctx.OutputMetrics` with a per-output
+`audit.OutputMetrics` instance. The factory passes the value into the
+output constructor — typically via a `WithOutputMetrics` option —
+which stores it as a regular field. There is no post-construction
+swap and no atomic indirection on the hot path.
 
 ```go
 factory := func(outputType, outputName string) audit.OutputMetrics {
@@ -334,23 +332,22 @@ factory := func(outputType, outputName string) audit.OutputMetrics {
 }
 
 result, err := outputconfig.Load(ctx, yamlData, taxonomy,
-    outputconfig.WithOutputMetrics(factory),
+    outputconfig.WithOutputMetricsFactory(factory),
 )
 ```
 
-Without `WithOutputMetrics`, no metrics are injected.
+Without `WithOutputMetricsFactory`, the auditor passes a
+`audit.NoOpOutputMetrics{}` value — every metric call is a no-op.
 
 ### The OutputMetrics Interface
 
-The injected value satisfies `audit.OutputMetrics`:
-
 ```go
 type OutputMetrics interface {
-    RecordDrop()                              // event dropped (buffer full)
+    RecordDrop()                                  // event dropped (buffer full)
     RecordFlush(batchSize int, dur time.Duration) // batch/event delivered
-    RecordError()                             // non-retryable delivery error
-    RecordRetry(attempt int)                  // retry attempt (1-indexed)
-    RecordQueueDepth(depth, capacity int)     // buffer pressure gauge
+    RecordError()                                 // non-retryable delivery error
+    RecordRetry(attempt int)                      // retry attempt (1-indexed)
+    RecordQueueDepth(depth, capacity int)         // buffer pressure gauge
 }
 ```
 
@@ -361,54 +358,47 @@ signal that delivery succeeded.
 
 ### Storage Pattern
 
-Store the `OutputMetrics` value using `atomic.Pointer` for safe
-concurrent access between `SetOutputMetrics` (called during
-`outputconfig.Load`) and the background write goroutine (which reads
-it on every event):
+Store the `OutputMetrics` value as a normal field; with the new
+construction-time API there is no concurrent-swap hazard. Defaulting
+to `audit.NoOpOutputMetrics{}` at the use site keeps the hot path
+free of nil checks:
 
 ```go
 type MyOutput struct {
-    outputMetrics atomic.Pointer[audit.OutputMetrics]
+    outputMetrics audit.OutputMetrics // immutable after New
     // ...
 }
 
-func (o *MyOutput) SetOutputMetrics(m audit.OutputMetrics) {
-    o.outputMetrics.Store(&m)
+func New(cfg *Config, opts ...Option) (*MyOutput, error) {
+    o := resolveOptions(opts) // e.g. options{outputMetrics: audit.NoOpOutputMetrics{}}
+    return &MyOutput{outputMetrics: o.outputMetrics, /* ... */}, nil
 }
 
 // In your write loop:
 func (o *MyOutput) writeLoop() {
     // ...
-    if omp := o.outputMetrics.Load(); omp != nil {
-        (*omp).RecordFlush(1, elapsed)
-    }
+    o.outputMetrics.RecordFlush(1, elapsed)
 }
 ```
 
 ### Extension Interfaces
 
 The `OutputMetrics` value MAY also implement output-specific extension
-interfaces for metrics beyond the common five. Each output type can
-detect extensions via type assertion in `SetOutputMetrics`:
+interfaces for metrics beyond the common five. Detect extensions via
+type assertion at construction time:
 
 ```go
-type MyOutput struct {
-    outputMetrics atomic.Pointer[audit.OutputMetrics]
-    extMetrics    atomic.Pointer[myExtMetrics] // output-specific extension
-    // ...
-}
-
 type myExtMetrics interface {
     RecordReconnect(addr string, ok bool)
 }
 
-func (o *MyOutput) SetOutputMetrics(m audit.OutputMetrics) {
-    o.outputMetrics.Store(&m)
-
-    // Detect extension interface via type assertion.
-    if em, ok := m.(myExtMetrics); ok {
-        o.extMetrics.Store(&em)
+func New(cfg *Config, opts ...Option) (*MyOutput, error) {
+    o := resolveOptions(opts)
+    out := &MyOutput{outputMetrics: o.outputMetrics, /* ... */}
+    if em, ok := o.outputMetrics.(myExtMetrics); ok {
+        out.ext = em
     }
+    return out, nil
 }
 ```
 
@@ -494,7 +484,7 @@ forwarding for all optional interfaces:
 
 ```go
 func init() {
-    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, coreMetrics audit.Metrics, logger *slog.Logger, fctx audit.FrameworkContext) (audit.Output, error) {
+    audit.RegisterOutputFactory("my-output", func(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) {
         inner := &MyAsyncOutput{/* ... */}
         return audit.WrapOutput(inner, name), nil
     })

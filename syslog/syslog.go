@@ -38,11 +38,10 @@ import (
 
 // Compile-time assertions.
 var (
-	_ audit.Output                = (*Output)(nil)
-	_ audit.DestinationKeyer      = (*Output)(nil)
-	_ audit.MetadataWriter        = (*Output)(nil)
-	_ audit.DeliveryReporter      = (*Output)(nil)
-	_ audit.OutputMetricsReceiver = (*Output)(nil)
+	_ audit.Output           = (*Output)(nil)
+	_ audit.DestinationKeyer = (*Output)(nil)
+	_ audit.MetadataWriter   = (*Output)(nil)
+	_ audit.DeliveryReporter = (*Output)(nil)
 )
 
 // dropWarnInterval is the minimum interval between slog.Warn calls
@@ -96,10 +95,10 @@ func mapSeverity(auditSeverity int) srslog.Priority {
 // ReconnectRecorder is an OPTIONAL extension interface for syslog
 // reconnection telemetry. A consumer's [audit.OutputMetrics]
 // implementation MAY also implement ReconnectRecorder. When the
-// syslog output receives per-output metrics via
-// [audit.OutputMetricsReceiver.SetOutputMetrics], it type-asserts
-// for ReconnectRecorder and invokes RecordReconnect on every
-// connect attempt. Precedent: [net/http.Flusher] as an optional
+// syslog output receives per-output metrics via [WithOutputMetrics]
+// (or factory wiring via outputconfig.WithOutputMetricsFactory), it
+// type-asserts for ReconnectRecorder and invokes RecordReconnect on
+// every connect attempt. Precedent: [net/http.Flusher] as an optional
 // extension on [http.ResponseWriter].
 //
 // Consumers who do not care about reconnection telemetry need not
@@ -155,10 +154,10 @@ type syslogEntry struct {
 // Output is safe for concurrent use.
 type Output struct {
 	writer            *srslog.Writer
-	tlsCfg            *tls.Config                         // cached for reconnection; nil for non-TLS
-	reconnectRecorder atomic.Pointer[ReconnectRecorder]   // extension: RecordReconnect (may be nil)
-	outputMetrics     atomic.Pointer[audit.OutputMetrics] // unified per-output metrics (may be nil)
-	logger            atomic.Pointer[slog.Logger]         // diagnostic logger; swapped atomically post-construction (#474)
+	tlsCfg            *tls.Config         // cached for reconnection; nil for non-TLS
+	reconnectRecorder ReconnectRecorder   // optional: nil when outputMetrics does not implement it
+	outputMetrics     audit.OutputMetrics // immutable after New (#696)
+	logger            *slog.Logger        // immutable after New (#696)
 	// testOnFlush, if non-nil, is invoked after every successful
 	// batch flush from writeLoop. The callback receives the flushed
 	// batch size and a string identifying the trigger reason
@@ -208,32 +207,16 @@ type Output struct {
 	closed            atomic.Bool
 }
 
-// SetDiagnosticLogger receives the library's diagnostic logger.
-//
-// Safe for concurrent use with the background write goroutine and any
-// active [Output.Write] caller — the logger field is an
-// [atomic.Pointer] so readers always see a fully-published value.
-func (s *Output) SetDiagnosticLogger(l *slog.Logger) {
-	if l == nil {
-		l = slog.Default()
-	}
-	s.logger.Store(l)
-}
-
 // New creates a new [Output] from the given config. It validates the
 // config, establishes the initial connection, and starts the
 // background writeLoop goroutine.
 //
-// Per-output metrics arrive later via
-// [audit.OutputMetricsReceiver.SetOutputMetrics] — the auditor wires
-// them in after construction when an [audit.OutputMetricsFactory] is
-// registered. An [*Output] silently discards telemetry until
-// SetOutputMetrics is called.
+// Per-output metrics may be supplied at construction via
+// [WithOutputMetrics]. When omitted, telemetry calls become no-ops.
 //
 // Optional [Option] arguments tune construction-time behaviour. Pass
-// [WithDiagnosticLogger] to route TLS-policy warnings (emitted before
-// the auditor's diagnostic logger is propagated post-construction) to
-// a custom logger.
+// [WithDiagnosticLogger] to route TLS-policy warnings to a custom
+// logger.
 func New(cfg *Config, opts ...Option) (*Output, error) {
 	o := resolveOptions(opts)
 
@@ -289,10 +272,13 @@ func New(cfg *Config, opts ...Option) (*Output, error) {
 		maxBatchBytes:       cfg.MaxBatchBytes,       // resolved to default by validateSyslogBatchingConfig
 		maxEventBytes:       cfg.MaxEventBytes,       // resolved to default by validateMaxEventBytes (#688)
 		tlsHandshakeTimeout: cfg.TLSHandshakeTimeout, // resolved to default by validateTLSHandshakeTimeout (#746); zero on non-TLS
+		logger:              o.logger,
+		outputMetrics:       o.outputMetrics,
 	}
-	// Publish the initial logger BEFORE starting the write goroutine.
-	// resolveOptions already replaced nil with slog.Default.
-	s.logger.Store(o.logger)
+	// Detect optional ReconnectRecorder via structural typing.
+	if rr, ok := o.outputMetrics.(ReconnectRecorder); ok {
+		s.reconnectRecorder = rr
+	}
 
 	if err := s.connect(); err != nil {
 		return nil, fmt.Errorf("audit/syslog: dial %s://%s: %w",
@@ -329,14 +315,12 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 
 	if len(data) > s.maxEventBytes {
 		s.drops.record(dropWarnInterval, func(dropped int64) {
-			s.logger.Load().Warn("audit: output syslog: event rejected (exceeds max_event_bytes)",
+			s.logger.Warn("audit: output syslog: event rejected (exceeds max_event_bytes)",
 				"event_bytes", len(data),
 				"max_event_bytes", s.maxEventBytes,
 				"dropped", dropped)
 		})
-		if omp := s.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		s.outputMetrics.RecordDrop()
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), s.maxEventBytes)
 	}
@@ -349,13 +333,11 @@ func (s *Output) enqueue(data []byte, priority srslog.Priority) error {
 		return nil
 	default:
 		s.drops.record(dropWarnInterval, func(dropped int64) {
-			s.logger.Load().Warn("audit: output syslog: event dropped (buffer full)",
+			s.logger.Warn("audit: output syslog: event dropped (buffer full)",
 				"dropped", dropped,
 				"buffer_size", cap(s.ch))
 		})
-		if omp := s.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		s.outputMetrics.RecordDrop()
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -383,7 +365,7 @@ func (s *Output) Close() error {
 	case <-s.done:
 	case <-timer.C:
 		remaining := len(s.ch)
-		s.logger.Load().Error("audit: output syslog: shutdown timeout, events lost",
+		s.logger.Error("audit: output syslog: shutdown timeout, events lost",
 			"timeout", shutdownTimeout,
 			"events_lost", remaining)
 	}
@@ -401,23 +383,6 @@ func (s *Output) Close() error {
 // own delivery metrics from the background writeLoop after actual
 // syslog delivery, not from the Write enqueue path.
 func (s *Output) ReportsDelivery() bool { return true }
-
-// SetOutputMetrics receives the per-output metrics instance.
-// Typically called once after construction and before the first Write
-// call, but repeat calls are safe: the reconnect-recorder slot is
-// always reset from the new m so a replacement value cannot
-// accidentally keep firing against the old recorder. If m also
-// implements [ReconnectRecorder], reconnection telemetry is wired up
-// automatically via structural typing (pattern mirrors
-// [net/http.Flusher] detection on [net/http.ResponseWriter]).
-func (s *Output) SetOutputMetrics(m audit.OutputMetrics) {
-	s.outputMetrics.Store(&m)
-	if rr, ok := m.(ReconnectRecorder); ok {
-		s.reconnectRecorder.Store(&rr)
-	} else {
-		s.reconnectRecorder.Store(nil)
-	}
-}
 
 // Name returns the human-readable identifier for this output.
 func (s *Output) Name() string {
@@ -704,35 +669,26 @@ var errSyslogNotConnected = errors.New("audit/syslog: writer not connected")
 // writeEntry writes a single event to the syslog server with panic
 // recovery and reconnection handling.
 func (s *Output) writeEntry(entry syslogEntry) {
-	// Load metrics once per event for consistent snapshot.
-	var om audit.OutputMetrics
-	if omp := s.outputMetrics.Load(); omp != nil {
-		om = *omp
-	}
+	om := s.outputMetrics
 
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			s.logger.Load().Error("audit: output syslog: panic recovered",
+			s.logger.Error("audit: output syslog: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
-			if om != nil {
-				om.RecordError()
-			}
+			om.RecordError()
 		}
 	}()
 
 	// Sample queue depth every 64 events.
 	s.writeCount++
-	if om != nil && s.writeCount&63 == 0 {
+	if s.writeCount&63 == 0 {
 		om.RecordQueueDepth(len(s.ch), cap(s.ch))
 	}
 
-	var start time.Time
-	if om != nil {
-		start = time.Now()
-	}
+	start := time.Now()
 
 	// Attempt write. If the writer is nil (previous reconnect failed),
 	// treat as a write failure.
@@ -783,44 +739,38 @@ func (s *Output) LastDeliveryNanos() int64 {
 // the flush-count metric can never drift apart.
 func (s *Output) recordSuccess(om audit.OutputMetrics, batch int, dur time.Duration) {
 	s.lastDeliveryNanos.Store(time.Now().UnixNano())
-	if om != nil {
-		om.RecordFlush(batch, dur)
-	}
+	om.RecordFlush(batch, dur)
 }
 
 // handleWriteFailure attempts reconnection with bounded exponential
 // backoff. Called from writeLoop (single goroutine — no mutex needed).
 // On success, retries the original write. On exhaustion, drops the
 // event.
-func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.OutputMetrics) { //nolint:gocyclo,cyclop // reconnection with backoff
+func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.OutputMetrics) {
 	s.failures++
 
 	if s.failures > s.maxRetry {
-		s.logger.Load().Error("audit: output syslog: retries exhausted, dropping event",
+		s.logger.Error("audit: output syslog: retries exhausted, dropping event",
 			"address", s.address,
 			"failures", s.failures,
 			"last_error", writeErr)
-		if om != nil {
-			om.RecordError()
-		}
+		om.RecordError()
 		return
 	}
 
 	// Close the old writer before reconnecting.
 	if s.writer != nil {
-		closeWriterForReconnect(s.writer.Close, s.logger.Load(), s.address)
+		closeWriterForReconnect(s.writer.Close, s.logger, s.address)
 		s.writer = nil
 	}
 
 	backoff := backoffDuration(s.failures)
-	s.logger.Load().Warn("audit: output syslog: reconnecting",
+	s.logger.Warn("audit: output syslog: reconnecting",
 		"address", s.address,
 		"attempt", s.failures,
 		"backoff", backoff)
 
-	if om != nil {
-		om.RecordRetry(s.failures)
-	}
+	om.RecordRetry(s.failures)
 
 	// Sleep with closeCh interrupt — no mutex to release since the
 	// writeLoop goroutine owns the connection exclusively.
@@ -834,14 +784,10 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 	}
 	timer.Stop()
 
-	// Load the optional ReconnectRecorder extension (may be nil).
-	var rr ReconnectRecorder
-	if rrp := s.reconnectRecorder.Load(); rrp != nil {
-		rr = *rrp
-	}
+	rr := s.reconnectRecorder
 
 	if err := s.connect(); err != nil {
-		s.logger.Load().Error("audit: output syslog: reconnect failed",
+		s.logger.Error("audit: output syslog: reconnect failed",
 			"address", s.address,
 			"attempt", s.failures,
 			"error", err)
@@ -851,18 +797,16 @@ func (s *Output) handleWriteFailure(entry syslogEntry, writeErr error, om audit.
 		return
 	}
 
-	s.logger.Load().Info("audit/syslog: reconnected", "address", s.address)
+	s.logger.Info("audit/syslog: reconnected", "address", s.address)
 	if rr != nil {
 		rr.RecordReconnect(s.address, true)
 	}
 
 	// Retry the write on the new connection.
 	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-		s.logger.Load().Error("audit: output syslog: delivery failed after reconnect",
+		s.logger.Error("audit: output syslog: delivery failed after reconnect",
 			"error", err)
-		if om != nil {
-			om.RecordError()
-		}
+		om.RecordError()
 		return
 	}
 
@@ -902,21 +846,16 @@ func (s *Output) drainRemainingNoRetry() int {
 // and metrics recording. No reconnection is attempted — if the write
 // fails, the event is dropped.
 func (s *Output) drainOne(entry syslogEntry) {
-	var om audit.OutputMetrics
-	if omp := s.outputMetrics.Load(); omp != nil {
-		om = *omp
-	}
+	om := s.outputMetrics
 
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
-			s.logger.Load().Error("audit: output syslog: panic recovered during drain",
+			s.logger.Error("audit: output syslog: panic recovered during drain",
 				"panic", r,
 				"stack", string(buf[:n]))
-			if om != nil {
-				om.RecordError()
-			}
+			om.RecordError()
 		}
 	}()
 
@@ -924,16 +863,11 @@ func (s *Output) drainOne(entry syslogEntry) {
 		return
 	}
 
-	var start time.Time
-	if om != nil {
-		start = time.Now()
-	}
+	start := time.Now()
 	if _, err := s.writer.WriteWithPriority(entry.priority, entry.data); err != nil {
-		s.logger.Load().Error("audit: output syslog: delivery failed during drain",
+		s.logger.Error("audit: output syslog: delivery failed during drain",
 			"error", err)
-		if om != nil {
-			om.RecordError()
-		}
+		om.RecordError()
 		return
 	}
 	s.recordSuccess(om, 1, time.Since(start))

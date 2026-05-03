@@ -15,6 +15,7 @@
 package file_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -107,12 +108,10 @@ func TestFileOutput_BufferFull_Drops(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	// Tiny buffer to trigger drops.
-	out, err := file.New(&file.Config{Path: path, BufferSize: 1})
-	require.NoError(t, err)
-
 	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
+	// Tiny buffer to trigger drops.
+	out, err := file.New(&file.Config{Path: path, BufferSize: 1}, file.WithOutputMetrics(om))
+	require.NoError(t, err)
 
 	// Flood the buffer. Some writes will succeed, some will be dropped.
 	const writes = 200
@@ -407,19 +406,9 @@ func TestFileOutput_ImplementsDeliveryReporter(t *testing.T) {
 	assert.True(t, dr.ReportsDelivery(), "file output must self-report delivery")
 }
 
-func TestFileOutput_ImplementsOutputMetricsReceiver(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	out, err := file.New(&file.Config{Path: path})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	// Type assertion through audit.Output interface.
-	var o audit.Output = out
-	_, ok := o.(audit.OutputMetricsReceiver)
-	assert.True(t, ok, "file output must implement OutputMetricsReceiver")
-}
+// TestFileOutput_ImplementsOutputMetricsReceiver was removed in #696
+// along with the OutputMetricsReceiver interface. Per-output metrics
+// are now plumbed in at construction via [file.WithOutputMetrics].
 
 func TestFileOutput_MultipleWrites(t *testing.T) {
 	dir := t.TempDir()
@@ -537,8 +526,8 @@ func TestFileOutput_CompressFalse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // fileOnlyMetrics implements audit.OutputMetrics (via NoOp embed)
-// plus file.RotationRecorder so the file output's SetOutputMetrics
-// wires both contracts.
+// plus file.RotationRecorder so the file output's WithOutputMetrics
+// constructor wires both contracts via structural typing.
 //
 // rotated is an optional buffered channel that receives every
 // rotated path. It enables tests to wait for rotation events
@@ -596,9 +585,8 @@ func TestFileOutput_FileMetrics_RecordRotation_CalledOnRotation(t *testing.T) {
 	out, err := file.New(&file.Config{
 		Path:      path,
 		MaxSizeMB: 1,
-	})
+	}, file.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	// Write 1 MB + 1 byte to cross the rotation threshold.
 	payload := make([]byte, 1024*1024+1)
@@ -648,9 +636,8 @@ func TestFileOutput_FileMetrics_MultipleRotations(t *testing.T) {
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 10,
-	})
+	}, file.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	payload := make([]byte, 1024*1024+1)
 	for i := range payload {
@@ -697,9 +684,8 @@ func TestFileOutput_RapidWrites_RotatesAtLeastOnce(t *testing.T) {
 		Path:       path,
 		MaxSizeMB:  1,
 		MaxBackups: 10,
-	})
+	}, file.WithOutputMetrics(m))
 	require.NoError(t, err)
-	out.SetOutputMetrics(m)
 
 	payload := make([]byte, 1024*1024+1)
 	for i := range payload {
@@ -723,51 +709,19 @@ func TestFileOutput_RotationRecorder_InterfaceAssertion(t *testing.T) {
 	path := filepath.Join(dir, "audit.log")
 
 	m := &fileOnlyMetrics{}
-	out, err := file.New(&file.Config{Path: path})
+	// Per #581/#696: RotationRecorder is detected via type assertion
+	// inside [file.New] when the OutputMetrics implementation also
+	// satisfies RotationRecorder. Pass the concrete *fileOnlyMetrics
+	// so the same mock exercises both interfaces.
+	out, err := file.New(&file.Config{Path: path}, file.WithOutputMetrics(m))
 	require.NoError(t, err)
-	// Per #581: RotationRecorder is detected via type assertion inside
-	// SetOutputMetrics when the OutputMetrics implementation also
-	// satisfies RotationRecorder. Pass the concrete *fileOnlyMetrics so
-	// the same mock exercises both interfaces.
-	out.SetOutputMetrics(m)
 	require.NoError(t, out.Close())
 }
 
-// TestFileOutput_SetOutputMetrics_ReplaceClearsRotationRecorder
-// verifies the idempotency contract documented on SetOutputMetrics: a
-// second call with an OutputMetrics value that does NOT implement
-// RotationRecorder must clear the previously-wired rotation recorder
-// rather than leaving it stale. Guards against a footgun that surfaces
-// if consumers swap metric implementations.
-func TestFileOutput_SetOutputMetrics_ReplaceClearsRotationRecorder(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "audit.log")
-
-	// First recorder: implements RotationRecorder.
-	first := &fileOnlyMetrics{}
-	out, err := file.New(&file.Config{Path: path, MaxSizeMB: 1})
-	require.NoError(t, err)
-	out.SetOutputMetrics(first)
-
-	// Replace with a plain audit.OutputMetrics that does NOT implement
-	// RotationRecorder. After the swap, the old recorder must not
-	// receive any further rotation callbacks.
-	plain := &audit.NoOpOutputMetrics{}
-	out.SetOutputMetrics(plain)
-
-	// Force a rotation.
-	payload := make([]byte, 1024*1024+1)
-	for i := range payload {
-		payload[i] = 'x'
-	}
-	require.NoError(t, out.Write(payload))
-	require.NoError(t, out.Close())
-
-	assert.Equal(t, 0, first.rotationCount(),
-		"replacing the OutputMetrics must clear the previously wired "+
-			"rotation recorder — the first recorder received stale "+
-			"callbacks after the swap")
-}
+// TestFileOutput_SetOutputMetrics_ReplaceClearsRotationRecorder was
+// removed in #696 along with the post-construction SetOutputMetrics
+// API. Output metrics are now wired once at construction via
+// [file.WithOutputMetrics]; runtime swap is not supported.
 
 func TestFileOutput_SymlinkRejected(t *testing.T) {
 	dir := t.TempDir()
@@ -840,11 +794,9 @@ func TestFileOutput_OutputMetrics_RecordFlush(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000})
-	require.NoError(t, err)
-
 	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000}, file.WithOutputMetrics(om))
+	require.NoError(t, err)
 
 	const n = 10
 	for range n {
@@ -860,11 +812,9 @@ func TestFileOutput_OutputMetrics_RecordQueueDepth(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000})
-	require.NoError(t, err)
-
 	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
+	out, err := file.New(&file.Config{Path: path, BufferSize: 10_000}, file.WithOutputMetrics(om))
+	require.NoError(t, err)
 
 	// 65 events guarantees writeCount hits 64 at least once.
 	for range 65 {
@@ -880,12 +830,10 @@ func TestFileOutput_PanicRecovery_RecordsError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(&file.Config{Path: path, BufferSize: 100})
+	om := &mockOutputMetrics{}
+	out, err := file.New(&file.Config{Path: path, BufferSize: 100}, file.WithOutputMetrics(om))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// Simulate a panic inside writeEvent — the deferred recovery
 	// catches it. Called synchronously, not through the channel.
@@ -947,12 +895,10 @@ func TestOutputMetrics_RecordError_CalledOnNonRetryableError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
 
-	out, err := file.New(&file.Config{Path: path, BufferSize: 100})
+	om := &mockOutputMetrics{}
+	out, err := file.New(&file.Config{Path: path, BufferSize: 100}, file.WithOutputMetrics(om))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
-
-	om := &mockOutputMetrics{}
-	out.SetOutputMetrics(om)
 
 	// SimulatePanicOnNextWrite triggers a nil-pointer panic inside
 	// writeEvent — the deferred recovery catches it and calls RecordError.
@@ -1139,19 +1085,18 @@ func TestFileOutput_WriteToReadOnlyDirectory(t *testing.T) {
 	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit.log")
+	m := &errorCountingMetrics{}
 	// Make the parent directory read-only AFTER constructing the
 	// audit output but BEFORE the first write. New() only os.Stats
 	// the parent (rotate/writer.go:resolveAndValidatePath); the
 	// actual OpenFile happens inside the writeLoop on first write,
 	// where chmod 0o555 forces EACCES.
-	out, err := file.New(&file.Config{Path: path})
+	out, err := file.New(&file.Config{Path: path}, file.WithOutputMetrics(m))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chmod(dir, 0o755)
 	})
 	require.NoError(t, os.Chmod(dir, 0o555))
-	m := &errorCountingMetrics{}
-	out.SetOutputMetrics(m)
 
 	// Write should not block; the lazy file open inside the
 	// writeLoop fails with EACCES and surfaces as an error metric.
@@ -1221,3 +1166,107 @@ func TestFileOutput_Write_LargePayload(t *testing.T) {
 // G3) is already covered by
 // TestFileOutput_FileMetrics_RecordRotation_CalledOnRotation
 // above (file_test.go:559). Not duplicated.
+
+// ---------------------------------------------------------------------------
+// Issue #696 acceptance criteria — factory FrameworkContext plumbing
+// ---------------------------------------------------------------------------
+
+// TestOutputFactory_ZeroContext_NoPanic verifies the file factory
+// tolerates a zero-value [audit.FrameworkContext]. Construct via
+// factory, write once, no panic.
+func TestOutputFactory_ZeroContext_NoPanic(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "zero-ctx.log")
+	yaml := []byte("path: " + path + "\n")
+
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+
+	out, err := factory("zero", yaml, audit.FrameworkContext{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	require.NoError(t, out.Write([]byte(`{"event":"zero"}`+"\n")))
+}
+
+// captureHandler records every slog Record passed through Handle for
+// assertion in factory plumbing tests.
+type captureHandler struct {
+	records []slog.Record
+	mu      sync.Mutex
+}
+
+func (h *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error { //nolint:gocritic // hugeParam: slog.Handler interface contract
+	h.mu.Lock()
+	h.records = append(h.records, r)
+	h.mu.Unlock()
+	return nil
+}
+func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *captureHandler) anyContains(s string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.records {
+		if strings.Contains(h.records[i].Message, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOutputFactory_LoggerReachesOutput verifies that a logger
+// supplied via [audit.FrameworkContext.DiagnosticLogger] reaches the
+// file output and is used to emit the permission-mode warning during
+// construction.
+func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
+	t.Parallel()
+	h := &captureHandler{}
+	logger := slog.New(h)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "logger-reaches.log")
+	// 0644 grants group/world read → triggers the permission warning.
+	yaml := []byte("path: " + path + "\npermissions: \"0644\"\n")
+
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+
+	out, err := factory("logger", yaml, audit.FrameworkContext{DiagnosticLogger: logger})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = out.Close() })
+
+	assert.True(t, h.anyContains("permissions grant group/world access"),
+		"injected logger must capture the permission-mode warning emitted in New")
+}
+
+// TestOutputFactory_OutputMetricsReachesOutput verifies that the
+// per-output metrics value supplied via
+// [audit.FrameworkContext.OutputMetrics] reaches the file output and
+// receives the buffer-full RecordDrop call.
+func TestOutputFactory_OutputMetricsReachesOutput(t *testing.T) {
+	t.Parallel()
+	om := &mockOutputMetrics{}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "metrics-reaches.log")
+	yaml := []byte("path: " + path + "\nbuffer_size: 1\n")
+
+	factory := audit.LookupOutputFactory("file")
+	require.NotNil(t, factory)
+
+	out, err := factory("metrics", yaml, audit.FrameworkContext{OutputMetrics: om})
+	require.NoError(t, err)
+
+	// Flood the tiny buffer to provoke at least one drop.
+	for range 200 {
+		_ = out.Write([]byte(`{"event":"flood"}` + "\n"))
+	}
+	require.NoError(t, out.Close())
+
+	assert.Positive(t, om.drops.Load(),
+		"per-output metrics value supplied via FrameworkContext must record drops")
+}

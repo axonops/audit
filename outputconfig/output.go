@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/axonops/audit"
@@ -35,7 +36,7 @@ type outputFields struct { //nolint:govet // fieldalignment: readability preferr
 
 // buildOutput constructs a single named output from its raw YAML value.
 // Returns nil (not error) when the output is disabled (enabled: false).
-func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*namedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
+func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxonomy, globalAppName, globalHost, globalTimezone string, coreMetrics audit.Metrics, omf audit.OutputMetricsFactory, factories map[string]audit.OutputFactory, logger *slog.Logger, r *resolver) (*namedOutput, error) { //nolint:gocyclo,cyclop // linear pipeline with secret resolution added
 	fields, err := extractOutputFields(name, raw)
 	if err != nil {
 		return nil, err
@@ -60,7 +61,7 @@ func buildOutput(ctx context.Context, name string, raw any, taxonomy *audit.Taxo
 		return nil, fmtErr
 	}
 
-	output, err := invokeFactory(name, fields, globalAppName, globalHost, coreMetrics, factories, logger)
+	output, err := invokeFactory(name, fields, globalAppName, globalHost, globalTimezone, coreMetrics, omf, factories, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +244,7 @@ type yamlTLSPolicy struct {
 	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
 }
 
-func invokeFactory(name string, f *outputFields, globalAppName, globalHost string, coreMetrics audit.Metrics, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {
+func invokeFactory(name string, f *outputFields, globalAppName, globalHost, globalTimezone string, coreMetrics audit.Metrics, omf audit.OutputMetricsFactory, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {
 	// Per-call factory overrides take precedence over global registry.
 	factory := factories[f.typeName]
 	if factory == nil {
@@ -270,11 +271,25 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost strin
 			return nil, fmt.Errorf("output %q: marshal %q config: %w", name, f.typeName, err)
 		}
 	}
-	fctx := audit.FrameworkContext{
-		AppName: globalAppName,
-		Host:    globalHost,
+	// Invoke the per-output metrics factory ONLY after the type
+	// lookup succeeds (#696). The pre-#696 wiring deferred this to a
+	// post-construction phase that ran after all outputs validated;
+	// this gates the call against the same checks (unknown type ->
+	// no call) so the contract is preserved.
+	var outputMetrics audit.OutputMetrics
+	if omf != nil {
+		outputMetrics = omf(f.typeName, name)
 	}
-	output, err := factory(name, rawConfig, coreMetrics, logger, fctx)
+	fctx := audit.FrameworkContext{
+		AppName:          globalAppName,
+		Host:             globalHost,
+		Timezone:         globalTimezone,
+		PID:              os.Getpid(),
+		DiagnosticLogger: logger,
+		OutputMetrics:    outputMetrics,
+		CoreMetrics:      coreMetrics,
+	}
+	output, err := factory(name, rawConfig, fctx)
 	if err != nil {
 		return nil, fmt.Errorf("output %q: %w", name, err)
 	}

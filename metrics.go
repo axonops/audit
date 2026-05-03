@@ -219,8 +219,10 @@ func (NoOpMetrics) RecordQueueDepth(int, int) {}
 
 // OutputMetrics is an optional per-output instrumentation interface
 // for async buffer telemetry. Each output receives its own instance
-// via [OutputMetricsReceiver.SetOutputMetrics], scoped to that
-// output's identity by the [OutputMetricsFactory].
+// at construction via [FrameworkContext.OutputMetrics] (typically
+// produced per-output by an [OutputMetricsFactory] supplied to
+// outputconfig.WithOutputMetricsFactory), scoped to that output's
+// identity.
 //
 // Unlike [Metrics] (which tracks pipeline-level events), OutputMetrics
 // tracks per-output buffer operations: drops, flushes, retries, errors,

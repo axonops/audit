@@ -73,10 +73,7 @@ const maxResponseBody = 64 << 10 // 64 KiB
 // buffers that are safe to use because flush() is synchronous.
 func (o *Output) doPostWithRetry(ctx context.Context, body []byte, batchSize int, compressed bool) {
 	start := time.Now()
-	// Cache the logger pointer once per batch so repeated warn/error
-	// calls inside the retry loop pay a single atomic.Load. Matches
-	// the webhook doPostWithRetry pattern (#474).
-	logger := o.logger.Load()
+	logger := o.logger
 	o.retryHint = 0 // clear stale hint from previous batch
 
 	for attempt := range o.cfg.MaxRetries {
@@ -230,9 +227,7 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 	// LastDeliveryReporter. Updated AFTER the push API returns 2xx
 	// so retry-exhausted batches leave the timestamp frozen.
 	o.lastDeliveryNanos.Store(time.Now().UnixNano())
-	if omp := o.outputMetrics.Load(); omp != nil {
-		(*omp).RecordFlush(batchSize, dur)
-	}
+	o.outputMetrics.RecordFlush(batchSize, dur)
 	if o.metrics != nil {
 		name := o.Name()
 		for range batchSize {
@@ -245,9 +240,7 @@ func (o *Output) recordSuccess(batchSize int, dur time.Duration) {
 func (o *Output) recordDrop(count int) {
 	name := o.Name()
 	for range count {
-		if omp := o.outputMetrics.Load(); omp != nil {
-			(*omp).RecordDrop()
-		}
+		o.outputMetrics.RecordDrop()
 		if o.metrics != nil {
 			o.metrics.RecordDelivery(name, audit.EventError)
 		}
@@ -256,16 +249,12 @@ func (o *Output) recordDrop(count int) {
 
 // recordRetry records a retry attempt in output metrics.
 func (o *Output) recordRetry(attempt int) {
-	if omp := o.outputMetrics.Load(); omp != nil {
-		(*omp).RecordRetry(attempt)
-	}
+	o.outputMetrics.RecordRetry(attempt)
 }
 
 // recordError records a non-retryable error in output metrics.
 func (o *Output) recordError() {
-	if omp := o.outputMetrics.Load(); omp != nil {
-		(*omp).RecordError()
-	}
+	o.outputMetrics.RecordError()
 }
 
 // parseRetryAfter parses a Retry-After header value (delta-seconds

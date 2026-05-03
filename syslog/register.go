@@ -28,32 +28,34 @@ func init() {
 	audit.MustRegisterOutputFactory("syslog", defaultFactory)
 }
 
-// defaultFactory creates a syslog output from YAML config without
-// consumer-supplied per-output metrics. Use [NewFactory] to wire an
-// [audit.OutputMetricsFactory] for reconnection telemetry and async
-// buffer metrics.
-func defaultFactory(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
-	return buildOutput(name, rawConfig, nil, logger)
+// defaultFactory creates a syslog output from YAML config. Reads the
+// diagnostic logger and per-output metrics from fctx; the framework
+// AppName is honoured as the RFC 5424 APP-NAME default when the
+// per-output `app_name` is omitted. Use [NewFactory] when
+// constructing outside outputconfig and you want to wire an
+// [audit.OutputMetricsFactory] directly.
+func defaultFactory(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) { //nolint:gocritic // hugeParam: signature fixed by audit.OutputFactory (#696)
+	return buildOutput(name, rawConfig, fctx.OutputMetrics, fctx.DiagnosticLogger)
 }
 
 // NewFactory returns an [audit.OutputFactory] that creates syslog
 // outputs from YAML configuration and wires per-output metrics via
 // the supplied [audit.OutputMetricsFactory]. When factory is non-nil,
 // the returned [audit.Output] receives its per-output
-// [audit.OutputMetrics] via [audit.OutputMetricsReceiver.SetOutputMetrics]
-// at construction time; if the returned metrics also implement
-// [ReconnectRecorder], reconnection telemetry is wired in
-// automatically. Pass nil to disable per-output metrics.
+// [audit.OutputMetrics] via [WithOutputMetrics] at construction time;
+// if the returned metrics also implement [ReconnectRecorder],
+// reconnection telemetry is wired in automatically. Pass nil to
+// disable per-output metrics.
 //
 // Signature is identical to the other output modules'
 // `NewFactory` (file, webhook, loki) for consistency (#581).
 func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
-	return func(name string, rawConfig []byte, _ audit.Metrics, logger *slog.Logger, _ audit.FrameworkContext) (audit.Output, error) {
+	return func(name string, rawConfig []byte, fctx audit.FrameworkContext) (audit.Output, error) {
 		var om audit.OutputMetrics
 		if factory != nil {
 			om = factory("syslog", name)
 		}
-		return buildOutput(name, rawConfig, om, logger)
+		return buildOutput(name, rawConfig, om, fctx.DiagnosticLogger)
 	}
 }
 
@@ -140,12 +142,14 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, logger *
 		}
 	}
 
-	out, err := New(cfg, WithDiagnosticLogger(logger))
+	opts := []Option{WithDiagnosticLogger(logger)}
+	if om != nil {
+		opts = append(opts, WithOutputMetrics(om))
+	}
+
+	out, err := New(cfg, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("audit/syslog: output %q: %w", name, err)
-	}
-	if om != nil {
-		out.SetOutputMetrics(om)
 	}
 	return audit.WrapOutput(out, name), nil
 }

@@ -49,9 +49,8 @@ func TestHTTP_Success_204(t *testing.T) {
 	metrics := &testOutputMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"success_204"}`)))
 	require.NoError(t, out.Close())
@@ -72,9 +71,8 @@ func TestHTTP_Success_200(t *testing.T) {
 	metrics := &testOutputMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"success_200"}`)))
 	require.NoError(t, out.Close())
@@ -104,9 +102,8 @@ func TestHTTP_429_Retried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_429"}`)))
 	require.NoError(t, out.Close())
@@ -133,9 +130,8 @@ func TestHTTP_5xx_Retried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 5
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_5xx"}`)))
 	require.NoError(t, out.Close())
@@ -156,9 +152,8 @@ func TestHTTP_RetriesExhausted_Drops(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 2
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"exhausted"}`)))
 	require.NoError(t, out.Close())
@@ -189,9 +184,8 @@ func TestHTTP_4xx_NotRetried(t *testing.T) {
 			cfg := validConfigWithURL(srv.URL)
 			cfg.MaxRetries = 3
 
-			out, err := loki.New(cfg, nil)
+			out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 			require.NoError(t, err)
-			out.SetOutputMetrics(metrics)
 
 			require.NoError(t, out.Write([]byte(`{"event":"no_retry"}`)))
 			require.NoError(t, out.Close())
@@ -398,9 +392,8 @@ func TestHTTP_RetryAfter_Respected(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_after"}`)))
 	require.NoError(t, out.Close())
@@ -598,9 +591,8 @@ func TestHTTP_Redirect_NotRetried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
-	out.SetOutputMetrics(metrics)
 
 	require.NoError(t, out.Write([]byte(`{"event":"redirect"}`)))
 	require.NoError(t, out.Close())

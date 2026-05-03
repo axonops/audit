@@ -24,9 +24,9 @@ import (
 var _ audit.OutputMetrics = (*OutputMetricsRecorder)(nil)
 
 // OutputMetricsRecorder implements [audit.OutputMetrics] and captures
-// all per-output metric calls for assertion. Use with
-// [audit.OutputMetricsReceiver.SetOutputMetrics] when testing custom
-// outputs. It is safe for concurrent use.
+// all per-output metric calls for assertion. Pass it to an output's
+// `WithOutputMetrics` constructor option when testing custom outputs.
+// It is safe for concurrent use.
 type OutputMetricsRecorder struct { //nolint:govet // fieldalignment: readability preferred
 	mu       sync.Mutex
 	drops    int

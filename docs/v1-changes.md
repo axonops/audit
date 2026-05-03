@@ -105,14 +105,14 @@ convention; only the JSON wire form changed in #582).
 | Before | After | Issue |
 |---|---|---|
 | `file.New(Config, ...Option)` (value receiver) | `file.New(*Config, ...Option)` (pointer receiver) | #580 |
-| `file.New(cfg, metrics, opts...)` (positional Metrics) | `file.New(cfg, opts...)` + `out.SetOutputMetrics(m)` post-construction | #579 |
-| `syslog.New(cfg, metrics, opts...)` (positional Metrics) | `syslog.New(cfg, opts...)` + `out.SetOutputMetrics(m)` post-construction | #579 |
+| `file.New(cfg, metrics, opts...)` (positional Metrics) | `file.New(cfg, opts...)` + `file.WithOutputMetrics(m)` option | #579, superseded by #696 |
+| `syslog.New(cfg, metrics, opts...)` (positional Metrics) | `syslog.New(cfg, opts...)` + `syslog.WithOutputMetrics(m)` option | #579, superseded by #696 |
 
 ### Output factory contract
 
 | Before | After | Issue |
 |---|---|---|
-| `OutputFactory func(name string, raw []byte, m audit.Metrics, l *slog.Logger) (Output, error)` (post-#490 form; the original pre-#490 signature had no `*slog.Logger` parameter) | `OutputFactory func(name string, raw []byte, m audit.Metrics, l *slog.Logger, fctx audit.FrameworkContext) (Output, error)` | #583 |
+| `OutputFactory func(name string, raw []byte, m audit.Metrics, l *slog.Logger) (Output, error)` (post-#490 form; the original pre-#490 signature had no `*slog.Logger` parameter) | `OutputFactory func(name string, raw []byte, fctx audit.FrameworkContext) (Output, error)` (#696 collapses `coreMetrics` and `logger` onto `fctx.CoreMetrics` and `fctx.DiagnosticLogger` alongside `OutputMetrics`/`AppName`/`Host`/`Timezone`/`PID`) | #583, collapsed in #696 |
 | `audit.RegisterOutputFactory(typeName, factory)` (panicked on bad input) | Returns `error` wrapping `audit.ErrValidation`. New `MustRegisterOutputFactory` retains the panic contract for `init()` callers. | #590 |
 
 ### Per-output factory wiring
@@ -222,7 +222,8 @@ option in the library.
 | Top-level `tls_policy:` YAML at root | Configure per-output (under `syslog:`, `webhook:`, `loki:`) and per secret-provider | #476 |
 | `audit.Stdout()` (panic-on-error helper) | `audit.NewStdout() (*StdoutOutput, error)` | #578 |
 | stdout auto-registration via `init()` | Blank-import `_ "github.com/axonops/audit/outputs"` or explicit `audit.RegisterOutputFactory(...)` | #578 |
-| Positional `Metrics` parameter on `file.New` / `syslog.New` | `out.SetOutputMetrics(m)` post-construction (matches webhook / loki) | #579 |
+| Positional `Metrics` parameter on `file.New` / `syslog.New` | `file.WithOutputMetrics(m)` / `syslog.WithOutputMetrics(m)` option (matches webhook / loki) | #579, superseded by #696 |
+| `FrameworkFieldReceiver`, `DiagnosticLoggerReceiver`, `OutputMetricsReceiver` interfaces + per-output `SetX` methods + `Auditor.SetLogger` runtime swap | All construction-time metadata flows through `audit.FrameworkContext` (extended with `DiagnosticLogger`, `OutputMetrics`, `CoreMetrics`); per-module `WithDiagnosticLogger` / `WithOutputMetrics` options for direct-Go construction | #696 |
 
 ## New error sentinels
 

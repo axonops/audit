@@ -177,7 +177,7 @@ func registerLokiGivenValidationSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 		if factory == nil {
 			return fmt.Errorf("loki factory not registered")
 		}
-		_, err := factory("test", []byte(yamlCfg), nil, nil, audit.FrameworkContext{})
+		_, err := factory("test", []byte(yamlCfg), audit.FrameworkContext{})
 		tc.LastErr = err
 		return nil
 	})
@@ -488,7 +488,10 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 func createLokiAuditor(tc *AuditTestContext, cfg *loki.Config) error {
 	applyLokiTestDefaults(tc, cfg)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{
+		AppName: "bdd-audit",
+		Host:    "bdd-host",
+	}))
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

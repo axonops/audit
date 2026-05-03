@@ -234,15 +234,15 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		cfg.AllowInsecureHTTP = true
 		cfg.AllowPrivateRanges = true
 
-		out, err := loki.New(cfg, nil)
+		var oOpts []loki.Option
+		if tc.LokiMetrics != nil {
+			oOpts = append(oOpts, loki.WithOutputMetrics(tc.LokiMetrics))
+		}
+		out, err := loki.New(cfg, nil, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create loki output: %w", err)
 		}
 		tc.AddCleanup(func() { _ = out.Close() })
-
-		if tc.LokiMetrics != nil {
-			out.SetOutputMetrics(tc.LokiMetrics)
-		}
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -480,16 +480,15 @@ func createLokiAuditorFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 		cfg.BufferSize = 100
 	}
 
-	out, err := loki.New(cfg, nil)
+	var lOpts []loki.Option
+	if tc.LokiMetrics != nil {
+		lOpts = append(lOpts, loki.WithOutputMetrics(tc.LokiMetrics))
+	}
+	out, err := loki.New(cfg, nil, lOpts...)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}
 	tc.AddCleanup(func() { _ = out.Close() })
-
-	// Inject per-output metrics via OutputMetricsReceiver if configured.
-	if tc.LokiMetrics != nil {
-		out.SetOutputMetrics(tc.LokiMetrics)
-	}
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(tc.Taxonomy),

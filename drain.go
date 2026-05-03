@@ -313,8 +313,9 @@ func (a *Auditor) prepareOutputEntries() {
 }
 
 // propagateFrameworkFields propagates auditor-wide framework
-// metadata to all formatters that implement [FrameworkFieldSetter]
-// and all outputs that implement [FrameworkFieldReceiver].
+// metadata to all formatters that implement [FrameworkFieldSetter].
+// Outputs receive framework fields at construction via
+// [FrameworkContext]; this propagation only covers formatters.
 func (a *Auditor) propagateFrameworkFields() {
 	set := func(f Formatter) {
 		if setter, ok := f.(FrameworkFieldSetter); ok {
@@ -325,9 +326,6 @@ func (a *Auditor) propagateFrameworkFields() {
 	for _, oe := range a.entries {
 		if oe.formatter != nil {
 			set(oe.formatter)
-		}
-		if recv, ok := oe.output.(FrameworkFieldReceiver); ok {
-			recv.SetFrameworkFields(a.appName, a.host, a.timezone, a.pid)
 		}
 	}
 }

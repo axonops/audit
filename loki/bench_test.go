@@ -191,11 +191,18 @@ func BenchmarkLokiOutput_MetadataWriter(b *testing.B) {
 	cfg.BufferSize = 100000
 	cfg.BatchSize = 1000
 	cfg.FlushInterval = 60 * time.Second // don't flush by timer during bench
-	out, err := loki.New(cfg, nil, loki.WithDiagnosticLogger(silentLokiBenchLogger()))
+	out, err := loki.New(cfg, nil,
+		loki.WithDiagnosticLogger(silentLokiBenchLogger()),
+		loki.WithFrameworkContext(audit.FrameworkContext{
+			AppName:  "bench-app",
+			Host:     "bench-host",
+			Timezone: "UTC",
+			PID:      12345,
+		}),
+	)
 	if err != nil {
 		b.Fatal(err)
 	}
-	out.SetFrameworkFields("bench-app", "bench-host", "UTC", 12345)
 	defer func() { _ = out.Close() }()
 
 	// Realistic audit event payload (~200 bytes).

@@ -124,7 +124,7 @@ Feature: OutputMetrics Factory
     And the output metrics factory should have been called 1 time
     And the output metrics factory should have been called with type "file" and name "active_log"
 
-  Scenario: Created OutputMetrics wired to output via SetOutputMetrics
+  Scenario: Created OutputMetrics wired to output at construction via FrameworkContext
     Given the following outputs YAML:
       """
       version: 1

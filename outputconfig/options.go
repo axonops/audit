@@ -79,9 +79,11 @@ func WithCoreMetrics(m audit.Metrics) LoadOption {
 // per output with the output type name and YAML key name. Pass nil to
 // disable per-output metrics.
 //
-// The factory is called after output construction. Each output's
-// [audit.OutputMetricsReceiver.SetOutputMetrics] is invoked with the
-// scoped [audit.OutputMetrics] returned by the factory.
+// The factory is invoked BEFORE output construction (#696). The
+// resulting [audit.OutputMetrics] value is threaded into the output's
+// constructor via [audit.FrameworkContext], which means rotation /
+// reconnect telemetry sees the correct sink from the very first
+// event onward.
 func WithOutputMetrics(factory audit.OutputMetricsFactory) LoadOption {
 	return func(o *loadOptions) {
 		o.outputMetricsFactory = factory

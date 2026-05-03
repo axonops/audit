@@ -16,13 +16,12 @@ package audit
 
 import (
 	"fmt"
-	"log/slog"
 	"slices"
 	"sync"
 )
 
 // OutputFactory creates a named [Output] from raw YAML configuration
-// bytes, core pipeline metrics, and an optional diagnostic logger.
+// bytes and a [FrameworkContext].
 //
 // name is the consumer-chosen output name from the YAML config (e.g.
 // "compliance_file"). The factory SHOULD use this to set the output's
@@ -32,30 +31,18 @@ import (
 // (e.g. the content under the "file:" key). The factory MUST NOT
 // retain rawConfig after returning.
 //
-// coreMetrics is the auditor-level [Metrics] recorder (may be nil).
-// Forwarded to outputs that need it (e.g. webhook for delivery
-// reporting). Per-output extension events (rotation, reconnect) are
-// recorded when the output's [OutputMetrics] value, supplied via
-// [OutputMetricsReceiver.SetOutputMetrics] or [OutputMetricsFactory],
-// also implements the output-specific extension interface (e.g.
-// file.RotationRecorder, syslog.ReconnectRecorder) — detected via
-// structural typing.
+// fctx carries every construction-time value the output needs:
+// AppName / Host / Timezone / PID for framework field defaults,
+// DiagnosticLogger for operational warnings, OutputMetrics for
+// per-output delivery counters, and CoreMetrics for the auditor-wide
+// recorder. Each field documents its zero-value default — factories
+// MUST tolerate a zero-value FrameworkContext and apply nil defaults
+// at use site rather than mutating fctx.
 //
-// logger is the auditor's diagnostic logger, plumbed through from
-// [outputconfig.WithDiagnosticLogger] or [audit.WithDiagnosticLogger]
-// so that construction-time warnings (TLS policy, file permission
-// mode) reach the consumer's configured handler. Factories SHOULD
-// pass it via the output module's WithDiagnosticLogger option. A nil
-// logger is valid and is treated as [slog.Default].
-//
-// fctx is the auditor-wide framework context ([FrameworkContext]),
-// plumbed through from [outputconfig.WithFrameworkContext]. Factories
-// SHOULD pass it to the output module's New constructor so that
-// construction-time cascades (syslog RFC 5424 APP-NAME defaulting from
-// the top-level app_name, etc.) apply to the first connection / first
-// request. The zero value is valid and disables the cascade; outputs
-// then fall back to their own defaults (#583).
-type OutputFactory func(name string, rawConfig []byte, coreMetrics Metrics, logger *slog.Logger, fctx FrameworkContext) (Output, error)
+// The 3-parameter shape (collapsed in #696 from the prior 5-parameter
+// signature) places all construction-time inputs in fctx so the public
+// surface stays stable as new construction-time data is added.
+type OutputFactory func(name string, rawConfig []byte, fctx FrameworkContext) (Output, error)
 
 // registry is a global mutable map protected by registryMu. This is an
 // intentional exception to the "no global mutable state" convention in
@@ -142,18 +129,15 @@ func RegisteredOutputTypes() []string {
 // Compile-time assertions: namedOutput satisfies all optional output
 // interfaces so the wrapper is transparent to the core auditor.
 var (
-	_ MetadataWriter           = (*namedOutput)(nil)
-	_ FrameworkFieldReceiver   = (*namedOutput)(nil)
-	_ DiagnosticLoggerReceiver = (*namedOutput)(nil)
-	_ OutputMetricsReceiver    = (*namedOutput)(nil)
-	_ LastDeliveryReporter     = (*namedOutput)(nil)
+	_ MetadataWriter       = (*namedOutput)(nil)
+	_ LastDeliveryReporter = (*namedOutput)(nil)
 )
 
 // namedOutput wraps an [Output] to override its [Output.Name] method
 // with a consumer-chosen name from the YAML config. All other methods
-// delegate to the inner output, including optional interfaces
-// ([MetadataWriter], [FrameworkFieldReceiver], [DiagnosticLoggerReceiver],
-// [OutputMetricsReceiver], [DestinationKeyer], [DeliveryReporter]).
+// delegate to the inner output, including the optional interfaces
+// [MetadataWriter], [DestinationKeyer], [DeliveryReporter], and
+// [LastDeliveryReporter].
 type namedOutput struct {
 	Output
 	outputName string
@@ -195,35 +179,6 @@ func (n *namedOutput) WriteWithMetadata(data []byte, meta EventMetadata) error {
 	return n.Write(data)
 }
 
-// SetFrameworkFields forwards to the inner output if it implements
-// [FrameworkFieldReceiver]. This preserves framework field injection
-// for outputs like Loki that use app_name, host, timezone, and pid
-// as stream labels.
-func (n *namedOutput) SetFrameworkFields(appName, host, timezone string, pid int) {
-	if fr, ok := n.Output.(FrameworkFieldReceiver); ok {
-		fr.SetFrameworkFields(appName, host, timezone, pid)
-	}
-}
-
-// SetDiagnosticLogger forwards to the inner output if it implements
-// [DiagnosticLoggerReceiver]. This ensures the library's diagnostic logger
-// propagates through the name wrapper to outputs created via YAML
-// config.
-func (n *namedOutput) SetDiagnosticLogger(l *slog.Logger) {
-	if lr, ok := n.Output.(DiagnosticLoggerReceiver); ok {
-		lr.SetDiagnosticLogger(l)
-	}
-}
-
-// SetOutputMetrics forwards to the inner output if it implements
-// [OutputMetricsReceiver]. This ensures per-output metrics propagate
-// through the name wrapper to outputs created via YAML config.
-func (n *namedOutput) SetOutputMetrics(m OutputMetrics) {
-	if omr, ok := n.Output.(OutputMetricsReceiver); ok {
-		omr.SetOutputMetrics(m)
-	}
-}
-
 // LastDeliveryNanos forwards to the inner output if it implements
 // [LastDeliveryReporter]. Inner outputs that don't implement the
 // interface return 0 — same sentinel as never-delivered, which
@@ -244,14 +199,12 @@ func (n *namedOutput) LastDeliveryNanos() int64 {
 // [WithOutputs] or [WithNamedOutput] directly.
 //
 // The returned output always satisfies [DestinationKeyer],
-// [DeliveryReporter], [MetadataWriter], [FrameworkFieldReceiver],
-// [DiagnosticLoggerReceiver], [OutputMetricsReceiver], and
-// [LastDeliveryReporter] regardless of the inner output. When the
-// inner output does not implement these interfaces, the wrapper
-// returns zero-value behaviour: empty string for DestinationKey,
-// false for ReportsDelivery, delegation to Write for
-// WriteWithMetadata, no-op for SetFrameworkFields and
-// SetDiagnosticLogger, and 0 for LastDeliveryNanos.
+// [DeliveryReporter], [MetadataWriter], and [LastDeliveryReporter]
+// regardless of the inner output. When the inner output does not
+// implement these interfaces, the wrapper returns zero-value
+// behaviour: empty string for DestinationKey, false for
+// ReportsDelivery, delegation to Write for WriteWithMetadata, and 0
+// for LastDeliveryNanos.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

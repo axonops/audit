@@ -14,7 +14,11 @@
 
 package loki
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/axonops/audit"
+)
 
 // Option configures a Loki [Output] at construction time. Options
 // are passed as variadic arguments to [New] and applied in order
@@ -24,7 +28,9 @@ type Option func(*options)
 // options holds resolved construction-time settings. Zero value is
 // valid — all fields receive sensible defaults inside [New].
 type options struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	outputMetrics audit.OutputMetrics
+	fctx          audit.FrameworkContext
 }
 
 // WithDiagnosticLogger routes construction-time and runtime warnings
@@ -44,9 +50,44 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 	return func(o *options) { o.logger = l }
 }
 
+// WithOutputMetrics sets the [audit.OutputMetrics] sink for this
+// output. When omitted or nil, metrics calls become no-ops via
+// [audit.NoOpOutputMetrics]. Mirrors [WithDiagnosticLogger] in usage
+// and zero-value semantics.
+//
+// Consumers normally do not call this directly when using
+// [github.com/axonops/audit/outputconfig.Load] — outputconfig wires
+// per-output metrics through the [audit.OutputMetricsFactory]
+// supplied via outputconfig.WithOutputMetricsFactory.
+func WithOutputMetrics(m audit.OutputMetrics) Option {
+	return func(o *options) {
+		if m == nil {
+			m = audit.NoOpOutputMetrics{}
+		}
+		o.outputMetrics = m
+	}
+}
+
+// WithFrameworkContext seeds the auditor-wide framework metadata
+// (AppName, Host, Timezone, PID) used as Loki stream labels. The
+// values are baked into a pre-computed cache at construction time so
+// every push reuses the same labels without per-event allocations.
+//
+// Consumers normally do not call this directly when using
+// [github.com/axonops/audit/outputconfig.Load] — outputconfig
+// populates the equivalent values from the auditor configuration.
+// Use this option when constructing a Loki output programmatically
+// (for example in integration tests).
+//
+// Replaces the SetFrameworkFields API dropped in #696.
+func WithFrameworkContext(fctx audit.FrameworkContext) Option { //nolint:gocritic // hugeParam: shape mirrors audit.FrameworkContext (constructor-time, not on hot path)
+	return func(o *options) { o.fctx = fctx }
+}
+
 // resolveOptions applies the given options over a defaulted value.
 // A nil logger (either absent or explicitly WithDiagnosticLogger(nil))
-// falls back to [slog.Default].
+// falls back to [slog.Default]. A nil outputMetrics falls back to
+// [audit.NoOpOutputMetrics].
 func resolveOptions(opts []Option) options {
 	o := options{}
 	for _, opt := range opts {
@@ -54,6 +95,9 @@ func resolveOptions(opts []Option) options {
 	}
 	if o.logger == nil {
 		o.logger = slog.Default()
+	}
+	if o.outputMetrics == nil {
+		o.outputMetrics = audit.NoOpOutputMetrics{}
 	}
 	return o
 }

@@ -214,11 +214,12 @@ func TestFormatters_RoundTrip_OnArbitraryFields(t *testing.T) {
 }
 
 // propertyFields generates an audit.Fields map with constrained keys
-// (taxonomy name pattern, never a framework name) and a small mix of
-// scalar value types. The string value regex is the same shape for
-// both formatters — printable ASCII excluding the CEF/JSON
-// metacharacters, sufficient for the round-trip property without
-// chasing the lossy C0 contract documented in TestCEFEscape_LossyC0.
+// (taxonomy name pattern, never a framework name, never a CEF
+// reserved extension key) and a small mix of scalar value types. The
+// string value regex is the same shape for both formatters —
+// printable ASCII excluding the CEF/JSON metacharacters, sufficient
+// for the round-trip property without chasing the lossy C0 contract
+// documented in TestCEFEscape_LossyC0.
 func propertyFields(rt *rapid.T) audit.Fields {
 	// Framework-name set as documented in audit/format.go::isFrameworkField.
 	// We test against this set directly because the package-level helper
@@ -228,10 +229,33 @@ func propertyFields(rt *rapid.T) audit.Fields {
 		"timestamp": {}, "event_type": {}, "severity": {}, "event_category": {},
 		"app_name": {}, "host": {}, "timezone": {}, "pid": {}, "duration_ms": {},
 	}
+	// CEF formatter built-in extension keys (format_cef.go:338,341,343
+	// + framework-key emission lines 517-530). The formatter emits
+	// these unconditionally; if the generator picks a key that
+	// collides, the parser sees the formatter's value instead of the
+	// generated one.
+	cefReserved := map[string]struct{}{
+		"act": {}, "rt": {},
+		"deviceProcessName": {}, "dvchost": {}, "dtz": {}, "dvcpid": {},
+		"cn1": {}, "cn1Label": {},
+	}
+	// CEF mapping target keys: if the generator picks a name like
+	// "actor_id", the formatter rewrites it to "suser", and the
+	// parser finds "suser" not "actor_id". Reserved standard fields
+	// are also filtered to avoid this remapping.
+	cefMapping := audit.DefaultCEFFieldMapping()
 	keyGen := rapid.StringMatching(`^[a-z][a-z0-9_]{0,15}$`).
 		Filter(func(s string) bool {
-			_, isFramework := frameworkNames[s]
-			return !isFramework
+			if _, isFramework := frameworkNames[s]; isFramework {
+				return false
+			}
+			if _, isCEFReserved := cefReserved[s]; isCEFReserved {
+				return false
+			}
+			if _, isMapped := cefMapping[s]; isMapped {
+				return false
+			}
+			return true
 		})
 
 	const stringValRegex = `^[a-zA-Z0-9 _\-./@:]{0,32}$`

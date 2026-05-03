@@ -28,6 +28,14 @@ import (
 	"github.com/axonops/audit"
 )
 
+// httptest exemption (#559): every httptest.New*Server in this file
+// is an audit.Middleware test fixture. The middleware wraps a USER
+// http.Handler — that handler is the test fixture (TLS server, panic
+// builder, recovery middleware, etc.), not an external service. The
+// CLAUDE.md "no mocks for external services" rule does not apply: we
+// are exercising the audit library's HTTP middleware, and the wrapped
+// handler IS the system under test's host environment.
+
 // middlewareTaxonomyYAML extends the standard taxonomy with an HTTP
 // event type for middleware scenarios.
 const middlewareTaxonomyYAML = `

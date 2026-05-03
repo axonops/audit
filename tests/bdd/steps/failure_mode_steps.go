@@ -189,13 +189,9 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 				// Wait for the request to land on the server, then
 				// close. The test asserts "client doesn't OOM and
 				// Close returns within deadline".
-				deadline := time.Now().Add(time.Duration(deadlineSec) * time.Second)
-				for time.Now().Before(deadline) {
-					if atomic.LoadUint32(tc.BadReceiverHits) >= 1 {
-						break
-					}
-					time.Sleep(50 * time.Millisecond)
-				}
+				_ = pollUntil(time.Duration(deadlineSec)*time.Second, 50*time.Millisecond, func() bool {
+					return atomic.LoadUint32(tc.BadReceiverHits) >= 1
+				})
 				if closeErr := out.Close(); closeErr != nil {
 					tc.LastErr = closeErr
 				}
@@ -233,13 +229,9 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 				}
 				tc.AddCleanup(func() { _ = out.Close() })
 				_ = out.Write([]byte(`{"streams":[{"stream":{"x":"1"},"values":[]}]}` + "\n"))
-				deadline := time.Now().Add(time.Duration(deadlineSec) * time.Second)
-				for time.Now().Before(deadline) {
-					if atomic.LoadUint32(tc.BadReceiverHits) >= 1 {
-						break
-					}
-					time.Sleep(50 * time.Millisecond)
-				}
+				_ = pollUntil(time.Duration(deadlineSec)*time.Second, 50*time.Millisecond, func() bool {
+					return atomic.LoadUint32(tc.BadReceiverHits) >= 1
+				})
 				if closeErr := out.Close(); closeErr != nil {
 					tc.LastErr = closeErr
 				}
@@ -275,6 +267,8 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 func startGiantBodyReceiver(tc *AuditTestContext, n int) error {
 	tc.BadReceiverHits = new(uint32)
 	hits := tc.BadReceiverHits
+	// httptest exemption (#559): tests drainCap with body 4× the cap;
+	// adversarial response shape no real receiver would emit.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddUint32(hits, 1)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", n))
@@ -306,6 +300,9 @@ func startGiantBodyReceiver(tc *AuditTestContext, n int) error {
 func startConnectionResetReceiver(tc *AuditTestContext) error {
 	tc.BadReceiverHits = new(uint32)
 	hits := tc.BadReceiverHits
+	// httptest exemption (#559): hijacks the TCP connection to test
+	// connection-reset retry semantics; cannot be reproduced by a
+	// container that always serves a normal HTTP response.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddUint32(hits, 1)
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -333,6 +330,9 @@ func startChunkedStallReceiver(tc *AuditTestContext) error {
 	tc.BadReceiverHits = new(uint32)
 	hits := tc.BadReceiverHits
 	stall := make(chan struct{})
+	// httptest exemption (#559): writes one chunk then blocks under test
+	// control to exercise the chunked-encoding stall timeout — a real
+	// container cannot suspend mid-response on demand.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddUint32(hits, 1)
 		w.Header().Set("Transfer-Encoding", "chunked")
@@ -363,6 +363,9 @@ func startChunkedStallReceiver(tc *AuditTestContext) error {
 func startTenantNotFoundReceiver(tc *AuditTestContext) error {
 	tc.BadReceiverHits = new(uint32)
 	hits := tc.BadReceiverHits
+	// httptest exemption (#559): emits a Loki-shaped 404 to test the
+	// non-retryable-status branch; the real loki container always serves
+	// 204/400 against valid/invalid pushes, never 404 for tenant misses.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddUint32(hits, 1)
 		w.Header().Set("Content-Type", "application/json")

@@ -414,3 +414,33 @@ func (f *MockOutputMetricsFactory) MetricsFor(outputType, outputName string) *Mo
 	defer f.mu.Unlock()
 	return f.Metrics[outputType+":"+outputName]
 }
+
+// pollUntil invokes check at interval until it returns true or the
+// timeout elapses. Returns true if check ever returned true.
+//
+// Used by error-returning BDD step functions that cannot use
+// testify's [require.Eventually] (which needs *testing.T). Per the
+// CLAUDE.md "no time.Sleep as synchronisation" rule (#559), the
+// inter-poll wait is driven by a [time.Ticker] rather than a
+// [time.Sleep] — same observable timing, no busy-wait sleep in step
+// code. The first check fires before the timer starts so a check
+// that's already true returns immediately without waiting one tick.
+func pollUntil(timeout, interval time.Duration, check func() bool) bool {
+	if check() {
+		return true
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-deadline.C:
+			return false
+		case <-tick.C:
+			if check() {
+				return true
+			}
+		}
+	}
+}

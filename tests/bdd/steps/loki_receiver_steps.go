@@ -48,6 +48,11 @@ type localLokiReceiver struct { //nolint:govet // fieldalignment: readability pr
 func newLocalLokiReceiver(status int) *localLokiReceiver {
 	r := &localLokiReceiver{}
 	r.status.Store(int32(status)) //nolint:gosec // G115: test code, HTTP status codes fit int32
+	// httptest exemption (#559): tests SSRF block, retry semantics, and
+	// drainCap (#484) — the receiver streams arbitrary 3xx bodies in 4 KiB
+	// chunks under precise test control. The real loki container cannot
+	// produce these adversarial responses; precise byte-level streaming
+	// behaviour is the contract under test.
 	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if r.redirect {
 			http.Redirect(w, req, "http://evil.example.com/", http.StatusFound)
@@ -109,6 +114,9 @@ func (r *localLokiReceiver) handleLarge3xx(w http.ResponseWriter, req *http.Requ
 
 func newRedirectLokiReceiver() *localLokiReceiver {
 	r := &localLokiReceiver{redirect: true}
+	// httptest exemption (#559): tests SSRF protection by emitting a
+	// 302 to an off-host target — no real Loki container would emit
+	// this redirect; the SSRF guard is the contract under test.
 	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		http.Redirect(w, req, "http://evil.example.com/", http.StatusFound)
 	}))

@@ -320,8 +320,9 @@ func assertSyslogMarkerLineContainsPRI(searchMarker, expectedPRI string) error {
 // the given text within the timeout. This is used for routing exclusion
 // tests where we need to confirm an event was NOT delivered.
 func assertSyslogNotContains(text string, timeout time.Duration) error {
-	// Wait the full timeout, then check. We can't return early because
-	// the event might arrive late.
+	// scenario-control delay (#559): we MUST wait the full timeout
+	// before asserting absence — early-exit polling cannot prove "did
+	// not arrive". This is a deliberate-delay site, not a busy-poll.
 	time.Sleep(timeout)
 	log := readSyslogLogFromDocker()
 	if strings.Contains(log, text) {

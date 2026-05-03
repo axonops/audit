@@ -1,0 +1,51 @@
+# gremlins configuration — mutation testing for the audit library.
+#
+# Scope: invoked by `make mutation-test*` targets. The Makefile chooses
+# which file to mutate via --exclude-files arguments at run time, and
+# enforces the per-file threshold via --threshold-efficacy/mcover CLI
+# flags (belt-and-braces in addition to the YAML thresholds below). This
+# file carries the operator selection and default thresholds.
+#
+# Defaults rationale (issue #571):
+#   - The five default operators stay enabled (gremlins applies them by
+#     default; we list nothing for them so the project tracks gremlins'
+#     evolving defaults).
+#   - The six remaining operators are explicitly disabled below: they
+#     produce a high rate of equivalent mutants on this codebase's
+#     short-circuit boolean chains, loop-control idioms, bitwise paths
+#     (none in scope), and self-assignment idioms.
+#   - threshold.efficacy / threshold.mutant-coverage = 80; below either
+#     gremlins exits non-zero (10 / 11) and the Makefile recipe fails.
+#   - workers: 0 is the gremlins default (auto = NumCPU); the Makefile
+#     overrides it at invocation time with --workers=2 to avoid
+#     resource-contention timeouts. Do not change `workers:` here — the
+#     Makefile flag takes precedence.
+#
+# Schema reference:
+#   github.com/go-gremlins/gremlins@v0.6.0/internal/configuration/configuration.go
+#   threshold.efficacy / threshold.mutant-coverage are NESTED under
+#   unleash; mutants is TOP-LEVEL (NOT under unleash).
+#
+# Refresh procedure: see MUTATION_TESTING.md.
+
+silent: false
+
+unleash:
+  workers: 0
+  threshold:
+    efficacy: 80
+    mutant-coverage: 80
+
+mutants:
+  invert-assignments:
+    enabled: false
+  invert-bitwise:
+    enabled: false
+  invert-bwassign:
+    enabled: false
+  invert-logical:
+    enabled: false
+  invert-loopctrl:
+    enabled: false
+  remove-self-assignments:
+    enabled: false

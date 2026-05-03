@@ -1209,3 +1209,36 @@ This project does **not** publish SBOMs as release artifacts. Rationale (#514):
 For development convenience, `make sbom` produces a source-level SBOM in
 both CycloneDX and SPDX formats inside `sbom/` — useful for inspecting
 the project's own dependency graph but not a release artifact.
+
+## Language-Neutral Schema Artifacts (#548)
+
+Every tagged release publishes two extra release files describing the
+audit event wire shape for non-Go consumers (SIEM rule authors,
+Python/Java services, compliance teams):
+
+- `audit-event.framework.schema.json` — JSON Schema (Draft 2020-12)
+  for a single audit event JSON document. Framework-only — covers
+  the always-present framework fields and the reserved standard
+  fields that ship with the library, no taxonomy events.
+- `audit-event.framework.cef.template` — CEF mapping documentation
+  for the Common Event Format the library's `audit.CEFFormatter`
+  emits. SIEM rule authors read it to align field-extraction rules.
+
+Both are committed under `deploy/schemas/` and ride along with every
+GitHub release. Download with:
+
+```bash
+gh release download v0.1.x \
+  --pattern 'audit-event.framework.schema.json' \
+  --pattern 'audit-event.framework.cef.template'
+```
+
+Consumers who want a schema covering their own taxonomy's custom
+fields run `audit-gen -format json-schema -input my_taxonomy.yaml -output my-schema.json` themselves — see
+[`docs/schema-artifacts.md`](schema-artifacts.md) for usage examples
+(Python, Java, TypeScript validators; SIEM rule patterns).
+
+The framework-only artifacts are regenerated on every change to the
+framework field set, the reserved standard field list, or the CEF
+mapping. The `make regen-schema-artifacts-check` CI guard rejects
+stale artifacts on every PR.

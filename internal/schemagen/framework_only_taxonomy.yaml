@@ -1,0 +1,21 @@
+# framework_only_taxonomy.yaml
+#
+# Drives the framework-only schema artifacts published with every
+# release (#548). Contains no events and no custom fields, so the
+# generated JSON Schema and CEF template document only the framework
+# fields plus the reserved standard fields available across every
+# audit instance regardless of consumer taxonomy.
+#
+# Consumers who want a schema covering their custom fields must run
+# audit-gen against their own taxonomy YAML — see
+# docs/schema-artifacts.md.
+
+version: 1
+
+# At least one category is required by ParseTaxonomyYAML even when
+# no events declare membership. The placeholder category is empty so
+# nothing depends on it.
+categories:
+  framework_only: []
+
+events: {}

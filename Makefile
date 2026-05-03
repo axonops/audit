@@ -9,7 +9,9 @@
        build build-all bench bench-save bench-compare bench-baseline-check coverage \
        tidy tidy-check verify check-replace check-todos check-example-links check-bdd-strict check-insecure-skip-verify check-static \
        security release-check api-check check-release-invariants \
-       regen-release-docs regen-release-docs-check print-publish-modules \
+       regen-release-docs regen-release-docs-check \
+       regen-schema-artifacts regen-schema-artifacts-check \
+       print-publish-modules \
        check clean \
        install-tools install-benchstat install-govulncheck workspace generate-certs \
        test-infra-up test-infra-down test-infra-logs \
@@ -691,6 +693,48 @@ regen-release-docs:
 regen-release-docs-check:
 	@bash scripts/release/regen-docs.sh --check docs/releasing.md
 
+# regen-schema-artifacts rewrites the framework-only language-neutral
+# schema artifacts shipped with every release (#548). The artifacts
+# are committed under deploy/schemas/ so consumers can fetch them
+# from a release tag without running audit-gen themselves. Run this
+# whenever the framework field set, reserved standard fields, or
+# CEF mapping changes — and add the regenerated files to the same
+# commit so the check target stays clean.
+.PHONY: regen-schema-artifacts
+regen-schema-artifacts:
+	@mkdir -p deploy/schemas
+	@go run ./cmd/audit-gen -format json-schema \
+		-input internal/schemagen/framework_only_taxonomy.yaml \
+		-output deploy/schemas/audit-event.framework.schema.json
+	@go run ./cmd/audit-gen -format cef-template \
+		-input internal/schemagen/framework_only_taxonomy.yaml \
+		-output deploy/schemas/audit-event.framework.cef.template
+	@echo "regenerated deploy/schemas/audit-event.framework.{schema.json,cef.template}"
+
+# regen-schema-artifacts-check verifies deploy/schemas/* are in sync
+# with the framework-only taxonomy and the current library state.
+# Wired into check-static so stale artifacts fail CI.
+.PHONY: regen-schema-artifacts-check
+regen-schema-artifacts-check:
+	@TMP=$$(mktemp -d); \
+	go run ./cmd/audit-gen -format json-schema \
+		-input internal/schemagen/framework_only_taxonomy.yaml \
+		-output "$$TMP/audit-event.framework.schema.json" >/dev/null && \
+	go run ./cmd/audit-gen -format cef-template \
+		-input internal/schemagen/framework_only_taxonomy.yaml \
+		-output "$$TMP/audit-event.framework.cef.template" >/dev/null && \
+	if ! diff -q "$$TMP/audit-event.framework.schema.json" deploy/schemas/audit-event.framework.schema.json >/dev/null; then \
+		echo "deploy/schemas/audit-event.framework.schema.json is stale; run 'make regen-schema-artifacts'"; \
+		diff -u deploy/schemas/audit-event.framework.schema.json "$$TMP/audit-event.framework.schema.json" || true; \
+		rm -rf "$$TMP"; exit 1; \
+	fi; \
+	if ! diff -q "$$TMP/audit-event.framework.cef.template" deploy/schemas/audit-event.framework.cef.template >/dev/null; then \
+		echo "deploy/schemas/audit-event.framework.cef.template is stale; run 'make regen-schema-artifacts'"; \
+		diff -u deploy/schemas/audit-event.framework.cef.template "$$TMP/audit-event.framework.cef.template" || true; \
+		rm -rf "$$TMP"; exit 1; \
+	fi; \
+	rm -rf "$$TMP"
+
 # Aggregate every static-analysis guard the CI hygiene job runs,
 # in a single shell loop with `||`-guarded error collection so
 # operators see every static failure on a single push (rather
@@ -701,7 +745,7 @@ check-static:
 	for target in fmt-check tidy-check check-todos check-replace \
 	              check-insecure-skip-verify check-example-links \
 	              check-bdd-strict bench-baseline-check \
-	              regen-release-docs-check; do \
+	              regen-release-docs-check regen-schema-artifacts-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
 	done; \

@@ -12,13 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// audit-gen reads a YAML taxonomy file and generates type-safe Go
-// constants for event types, categories, and field names. Run it as
-// a go generate step or Makefile target.
+// audit-gen reads a YAML taxonomy file and emits one of three
+// artifact types:
 //
-// Usage:
+//   - Go source — type-safe Go constants for event types,
+//     categories, fields, and typed event builders. The default
+//     and the most common use; consume from a `go generate` step
+//     or a Makefile rule.
+//
+//   - JSON Schema (Draft 2020-12) — a language-neutral validator
+//     for the audit event JSON shape. Use it from non-Go consumers
+//     (Python, Java, SIEM rule authors) to validate events
+//     produced by [audit.JSONFormatter] (#548).
+//
+//   - CEF template — a documentation artifact describing the
+//     CEF mapping the library applies. SIEM rule authors read it
+//     to align field-extraction rules with the library's CEF
+//     output (#548).
+//
+// Usage (Go source — default):
 //
 //	audit-gen -input taxonomy.yaml -output audit_generated.go -package mypackage
+//
+// Usage (JSON Schema):
+//
+//	audit-gen -format json-schema -input taxonomy.yaml -output audit-event.schema.json
+//
+// Usage (CEF template):
+//
+//	audit-gen -format cef-template -input taxonomy.yaml -output audit-event.cef.template
 //
 // Exit codes:
 //
@@ -67,15 +89,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 type cliConfig struct {
 	input, output, pkg, header string
 	standardSetters            string // "all" | "explicit"
+	format                     string // "go" | "json-schema" | "cef-template"
 	types, fields, categories  bool
 	labels, builders           bool
 }
+
+// Output formats supported by audit-gen.
+const (
+	formatGo          = "go"
+	formatJSONSchema  = "json-schema"
+	formatCEFTemplate = "cef-template"
+)
 
 // exitCodeContinue signals that parseFlags completed successfully
 // and the caller should proceed with code generation (not exit).
 const exitCodeContinue = -1
 
-func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCode int) {
+func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCode int) { //nolint:gocyclo,cyclop // CLI flag dispatch is naturally branchy; per-flag validations are independent
 	fs := flag.NewFlagSet("audit-gen", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
@@ -93,6 +123,10 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		stdSetters = fs.String("standard-setters", "all",
 			"reserved standard field setters: all (every builder gets every reserved setter) "+
 				"| explicit (only taxonomy-declared reserved fields produce setters)")
+		format = fs.String("format", formatGo,
+			"output format: go (typed Go source for the package, default) "+
+				"| json-schema (JSON Schema 2020-12 validator) "+
+				"| cef-template (CEF mapping documentation)")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -104,15 +138,32 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		return cliConfig{}, exitSuccess
 	}
 
-	if *input == "" || *output == "" || *pkg == "" {
-		_, _ = fmt.Fprintln(stderr, "audit-gen: -input, -output, and -package are required")
+	switch *format {
+	case formatGo, formatJSONSchema, formatCEFTemplate:
+		// valid
+	default:
+		_, _ = fmt.Fprintf(stderr, "audit-gen: -format=%q invalid (valid: go, json-schema, cef-template)\n", *format)
+		return cliConfig{}, exitInvalidArgs
+	}
+
+	if *input == "" || *output == "" {
+		_, _ = fmt.Fprintln(stderr, "audit-gen: -input and -output are required")
 		fs.Usage()
 		return cliConfig{}, exitInvalidArgs
 	}
 
-	if !token.IsIdentifier(*pkg) {
-		_, _ = fmt.Fprintf(stderr, "audit-gen: invalid package name %q\n", *pkg)
-		return cliConfig{}, exitInvalidArgs
+	// -package is only required for the Go output format. Schema and
+	// CEF artifacts have no Go package binding.
+	if *format == formatGo {
+		if *pkg == "" {
+			_, _ = fmt.Fprintln(stderr, "audit-gen: -package is required for -format=go")
+			fs.Usage()
+			return cliConfig{}, exitInvalidArgs
+		}
+		if !token.IsIdentifier(*pkg) {
+			_, _ = fmt.Fprintf(stderr, "audit-gen: invalid package name %q\n", *pkg)
+			return cliConfig{}, exitInvalidArgs
+		}
 	}
 
 	if *stdSetters != "all" && *stdSetters != "explicit" {
@@ -123,12 +174,13 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 	return cliConfig{
 		input: *input, output: *output, pkg: *pkg, header: *header,
 		standardSetters: *stdSetters,
+		format:          *format,
 		types:           *types, fields: *fields, categories: *categories,
 		labels: *labels, builders: *builders,
 	}, exitCodeContinue
 }
 
-func execute(cfg *cliConfig, stdout, stderr io.Writer) int {
+func execute(cfg *cliConfig, stdout, stderr io.Writer) int { //nolint:gocyclo,cyclop // format-dispatch + write paths are linear; refactoring to helpers obscures the flow
 	// No input-size cap: taxonomy is developer-trusted at both
 	// library and CLI boundaries (#646).
 	data, err := os.ReadFile(cfg.input)
@@ -143,25 +195,37 @@ func execute(cfg *cliConfig, stdout, stderr io.Writer) int {
 		return exitYAMLError
 	}
 
-	opts := generateOptions{
-		Package:             cfg.pkg,
-		Header:              cfg.header,
-		InputFile:           filepath.Base(cfg.input),
-		StandardSettersMode: cfg.standardSetters,
-		Types:               cfg.types,
-		Fields:              cfg.fields,
-		Categories:          cfg.categories,
-		Labels:              cfg.labels,
-		Builders:            cfg.builders,
-	}
-	if cfg.header != "" {
-		opts.InputFile = "" // custom header overrides auto-generated one
-	}
-
 	var buf bytes.Buffer
-	if err := generate(&buf, *tax, opts); err != nil {
-		_, _ = fmt.Fprintf(stderr, "audit-gen: generate: %v\n", err)
-		return exitWriteError
+	switch cfg.format {
+	case formatGo:
+		opts := generateOptions{
+			Package:             cfg.pkg,
+			Header:              cfg.header,
+			InputFile:           filepath.Base(cfg.input),
+			StandardSettersMode: cfg.standardSetters,
+			Types:               cfg.types,
+			Fields:              cfg.fields,
+			Categories:          cfg.categories,
+			Labels:              cfg.labels,
+			Builders:            cfg.builders,
+		}
+		if cfg.header != "" {
+			opts.InputFile = "" // custom header overrides auto-generated one
+		}
+		if err := generate(&buf, *tax, opts); err != nil {
+			_, _ = fmt.Fprintf(stderr, "audit-gen: generate: %v\n", err)
+			return exitWriteError
+		}
+	case formatJSONSchema:
+		if err := generateJSONSchema(&buf, *tax); err != nil {
+			_, _ = fmt.Fprintf(stderr, "audit-gen: generate json-schema: %v\n", err)
+			return exitWriteError
+		}
+	case formatCEFTemplate:
+		if err := generateCEFTemplate(&buf, *tax); err != nil {
+			_, _ = fmt.Fprintf(stderr, "audit-gen: generate cef-template: %v\n", err)
+			return exitWriteError
+		}
 	}
 
 	if cfg.output == "-" {

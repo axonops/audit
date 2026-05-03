@@ -93,6 +93,15 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	OutputMetricsFactoryMock *MockOutputMetricsFactory // factory mock for outputconfig BDD scenarios
 	AuditDuration            time.Duration             // measured duration for timing assertions
 
+	// Schema-artifact scenario state (#548). The compiled schema is
+	// stored as `any` so this struct does not transitively pull
+	// `github.com/santhosh-tekuri/jsonschema/v5` into the non-test
+	// build graph — the schema_artifacts_steps.go file is gated by
+	// the `integration` build tag and performs the type assertion
+	// at use site.
+	GeneratedSchema any   // *jsonschema.Schema when set
+	LastSchemaErr   error // result of the most recent schema validation call
+
 	// Cleanup functions run in AfterScenario (LIFO order).
 	cleanups []func()
 	mu       sync.Mutex
@@ -230,4 +239,5 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSyncDeliverySteps(ctx, tc)
 	registerMissingCoverageSteps(ctx, tc)
 	registerLastDeliveryAgeSteps(ctx, tc)
+	registerSchemaArtifactsStepsIfBuilt(ctx, tc)
 }

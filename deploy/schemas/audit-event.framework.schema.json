@@ -1,0 +1,153 @@
+{
+  "$id": "https://github.com/axonops/audit/schema/audit-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Framework-only audit event schema. Permissive: additionalProperties is true so consumer custom fields validate without re-derivation. For strict validation that pins per-event custom-field types, generate a taxonomy-aware schema with `audit-gen -format json-schema -input \u003cyour-taxonomy.yaml\u003e`.",
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "actor_id": {
+      "type": "string"
+    },
+    "actor_uid": {
+      "type": "string"
+    },
+    "app_name": {
+      "description": "Application name supplied via WithAppName.",
+      "type": "string"
+    },
+    "dest_host": {
+      "type": "string"
+    },
+    "dest_ip": {
+      "type": "string"
+    },
+    "dest_port": {
+      "type": "integer"
+    },
+    "duration_ms": {
+      "description": "Optional event duration in milliseconds.",
+      "type": "integer"
+    },
+    "end_time": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "event_category": {
+      "description": "Taxonomy category for this delivery pass; absent for uncategorised events.",
+      "type": "string"
+    },
+    "event_type": {
+      "description": "Taxonomy-defined event type name (e.g. 'user_create').",
+      "type": "string"
+    },
+    "file_hash": {
+      "type": "string"
+    },
+    "file_name": {
+      "type": "string"
+    },
+    "file_path": {
+      "type": "string"
+    },
+    "file_size": {
+      "type": "integer"
+    },
+    "host": {
+      "description": "Host identifier supplied via WithHost.",
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "pid": {
+      "description": "Process ID at auditor construction time.",
+      "type": "integer"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "referrer": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "severity": {
+      "description": "Resolved severity (0=emerg, 7=debug, library cap 10).",
+      "maximum": 10,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source_host": {
+      "type": "string"
+    },
+    "source_ip": {
+      "type": "string"
+    },
+    "source_port": {
+      "type": "integer"
+    },
+    "start_time": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "target_role": {
+      "type": "string"
+    },
+    "target_type": {
+      "type": "string"
+    },
+    "target_uid": {
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "RFC 3339 timestamp at which the event was emitted.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "timezone": {
+      "description": "Timezone label supplied via WithTimezone (defaults to time.Local).",
+      "type": "string"
+    },
+    "transport": {
+      "type": "string"
+    },
+    "user_agent": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "timestamp",
+    "event_type",
+    "severity",
+    "app_name",
+    "host",
+    "timezone",
+    "pid"
+  ],
+  "title": "Audit event",
+  "type": "object"
+}

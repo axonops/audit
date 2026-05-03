@@ -1,0 +1,108 @@
+# CEF mapping — github.com/axonops/audit
+#
+# This file documents the Common Event Format (CEF) v0 wire format
+# emitted by audit.CEFFormatter for events produced from the
+# taxonomy used to generate this artifact. SIEM rule authors and
+# integrators reference it to align field extraction with the
+# library's output.
+#
+# This is documentation — not an executable template. CEF generation
+# in production is performed by audit.CEFFormatter; consumers do not
+# render this template themselves.
+#
+# CEF v0 header (one line per event):
+#
+#   CEF:0|<vendor>|<product>|<version>|<event_type>|<event_type_label>|<cef_severity>|<extension>
+#
+# Where:
+#
+#   vendor / product / version  — supplied via CEFFormatter config.
+#   event_type                  — taxonomy event name (e.g. user_create).
+#   event_type_label            — same as event_type by default; may
+#                                 be overridden via DescriptionFunc.
+#   cef_severity                — audit severity (0-10) translated
+#                                 to CEF severity (0-10) via
+#                                 DefaultCEFSeverity:
+#                                   audit 0-3  → CEF 0-3
+#                                   audit 4-6  → CEF 4-6
+#                                   audit 7-10 → CEF 7-10
+#                                 (identity for the reserved 0-7
+#                                 syslog range; clamped at 10).
+#   extension                   — space-separated key=value pairs
+#                                 (see field mappings below).
+#
+# Escape rules in the extension section:
+#   backslash      \\
+#   equals sign    \=
+#   pipe           \|
+#   newline        \n
+#   carriage return \r
+#
+# Framework fields (always emitted):
+#
+#   timestamp        → rt                  (millis since Unix epoch)
+#   event_type       → header field 5      (event class id)
+#   severity         → header field 7      (cef_severity, see translation above)
+#   app_name         → deviceProcessName
+#   host             → dvchost
+#   timezone         → dtz
+#   pid              → dvcpid
+
+# Reserved standard fields (emitted when present on the event):
+#
+#   actor_id    → suser
+#   actor_uid   → suid
+#   dest_host   → dhost
+#   dest_ip     → dst
+#   dest_port   → dpt
+#   end_time    → end
+#   file_hash   → fileHash
+#   file_name   → fname
+#   file_path   → filePath
+#   file_size   → fsize
+#   message     → msg
+#   method      → requestMethod
+#   outcome     → outcome
+#   path        → request
+#   protocol    → app
+#   reason      → reason
+#   referrer    → requestContext
+#   request_id  → externalId
+#   role        → spriv
+#   source_host → shost
+#   source_ip   → src
+#   source_port → spt
+#   start_time  → start
+#   target_id   → duser
+#   target_role → dpriv
+#   target_uid  → duid
+#   transport   → proto
+#   user_agent  → requestClientApplication
+
+# Custom fields (per-event):
+#
+#   No taxonomy events declared. Custom fields are allocated to
+#   cs1..cs6 (with paired cs<N>Label) in the order they appear in
+#   the event's Required + Optional lists.
+#
+
+# Notes for SIEM rule authors:
+#
+#   - Custom string slots cs1..cs6 are the CEF idiom for non-standard
+#     fields. Each cs<N> is paired with cs<N>Label so the receiving
+#     SIEM can render the field name without out-of-band knowledge.
+#     The library assigns slots in the order custom fields appear in
+#     the Required + Optional lists for each event.
+#
+#   - Reserved standard field mappings are stable across the library
+#     v1.0 line. New reserved fields land in minor releases; CEF
+#     mappings for them are added at the same time.
+#
+#   - Framework fields are always present. Reserved standard and
+#     custom fields are present only when the consumer supplies them.
+#
+#   - For events with multiple categories, the library emits one CEF
+#     line per (event, category) tuple. The category appears in the
+#     extension section under the cs<N>Label slot reserved for
+#     event_category by the library (see custom-field allocation
+#     above).

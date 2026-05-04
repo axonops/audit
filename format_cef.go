@@ -42,6 +42,11 @@ var cefBufPool = sync.Pool{
 
 // putCEFBuf returns buf to [cefBufPool] with defensive zeroing and
 // outlier rejection.
+//
+// MUTATION-EQUIV(#571): both the nil-check and cap-threshold mutations
+// here are documented equivalent in MUTATION_TESTING.md — pool put is
+// allocation-only behaviour, the produced output is already complete
+// and unaffected.
 func putCEFBuf(buf *bytes.Buffer) {
 	if buf == nil || buf.Cap() > maxPooledBufCap {
 		return
@@ -625,6 +630,12 @@ func validateExtKey(key string) error {
 // Uses [writeEscapedExtValueString] for the value so pre-formatted
 // string values from framework/header callers write in place without
 // allocating an intermediate escaped string (#496).
+//
+// MUTATION-EQUIV(#571): the `b.Len() > extStart` boundary mutant
+// (>= variant) is exempt because the unconditional `rt=` write at
+// formatBuf line 334 makes b.Len() strictly greater than extStart at
+// every call site. A future refactor that makes `rt=` optional must
+// revisit MUTATION_TESTING.md.
 func writeExtField(b *bytes.Buffer, extStart int, key, value string) {
 	if b.Len() > extStart {
 		b.WriteByte(' ')
@@ -664,6 +675,10 @@ func writeExtFieldInt64(b *bytes.Buffer, extStart int, key string, v int64) {
 // Note: passing an int/int64/uint/float value here boxes the value
 // on the heap to satisfy the `any` parameter. Use
 // [writeExtFieldInt64] for the int64 hot path to avoid that alloc.
+//
+// MUTATION-EQUIV(#571): same exemption rationale as writeExtField —
+// the unconditional `rt=` write at formatBuf line 334 makes
+// b.Len() > extStart strictly true at every call site.
 func writeExtFieldValue(b *bytes.Buffer, extStart int, key string, v any) {
 	if b.Len() > extStart {
 		b.WriteByte(' ')

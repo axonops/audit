@@ -13,7 +13,9 @@
        regen-schema-artifacts regen-schema-artifacts-check \
        print-publish-modules \
        check clean \
-       install-tools install-benchstat install-govulncheck workspace generate-certs \
+       install-tools install-benchstat install-govulncheck install-gremlins workspace generate-certs \
+       mutation-test mutation-test-validate-fields mutation-test-validate-taxonomy \
+       mutation-test-hmac mutation-test-filter mutation-test-format-cef mutation-test-sensitivity \
        test-infra-up test-infra-down test-infra-logs \
        test-infra-syslog-up test-infra-syslog-down \
        test-infra-webhook-up test-infra-webhook-down \
@@ -55,12 +57,18 @@ install-tools:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/exp/cmd/gorelease@$(GORELEASE_VER)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VER)
 	@echo "Tools installed to $(GOBIN)"
 
 install-benchstat:
 	@echo "Installing benchstat with GOTOOLCHAIN=$(GO_TOOLCHAIN)..."
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install golang.org/x/perf/cmd/benchstat@$(BENCHSTAT_VER)
 	@echo "benchstat installed to $(GOBIN)"
+
+install-gremlins:
+	@echo "Installing gremlins with GOTOOLCHAIN=$(GO_TOOLCHAIN)..."
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go install github.com/go-gremlins/gremlins/cmd/gremlins@$(GREMLINS_VER)
+	@echo "gremlins installed to $(GOBIN)"
 
 # --- Workspace ---
 
@@ -373,6 +381,117 @@ bench-baseline-check:
 		exit 1; \
 	fi
 	@bash scripts/bench-baseline-check.sh
+
+# --- Mutation testing (#571) ---
+#
+# Mutation testing measures whether the test suite verifies behaviour or
+# merely traverses lines. gremlins applies mutation operators (boundary
+# inversions, conditional negations, arithmetic flips) to source code and
+# reports which mutants survive — a survivor reveals a test that doesn't
+# actually verify the contract for that branch.
+#
+# We mutation-test 6 security-critical files in the root pkg. Because
+# gremlins operates per-package, per-file scoring requires a separate
+# invocation per file with --exclude-files set to all OTHER package
+# sources. Threshold (≥80% efficacy) is enforced via gremlins' exit code
+# 10. See MUTATION_TESTING.md for the per-file baseline and exemptions.
+
+# 6 mutation targets — mirrors AC#3 of #571.
+MUTATION_TARGETS := validate_fields.go validate_taxonomy.go hmac.go filter.go format_cef.go sensitivity.go
+
+# Worker count for gremlins. Default 2 to avoid resource-contention
+# timeouts (every gremlins worker compiles + runs the full root-pkg
+# test suite; on this codebase 4+ workers cause spurious TIMED OUT
+# classifications). CI shards or beefier hardware can override:
+# `make mutation-test-hmac GREMLINS_WORKERS=4`.
+GREMLINS_WORKERS ?= 2
+
+# Root-pkg non-test sources NOT in MUTATION_TARGETS — gremlins must not
+# mutate these during a per-file run. Computed via recursive `=` (NOT
+# `:=`) so $(wildcard *.go) re-evaluates per recipe call, auto-excluding
+# any new root-pkg .go file a future contributor adds — keeping the
+# baseline scope honest without requiring a Makefile edit.
+MUTATION_OTHER_FILES = $(filter-out $(MUTATION_TARGETS),$(filter-out $(wildcard *_test.go),$(wildcard *.go)))
+
+# Regex passed to --exclude-files: matches any file with a directory
+# component. Combined with the per-file anchored excludes below it
+# leaves exactly one root-pkg file in scope per invocation.
+MUTATION_EXCLUDE_SUBDIRS := ^.+/.+
+
+# Per-file recipe: mutate exactly $(1), exclude all other root-pkg
+# sources (the 5 sibling targets + everything else) AND every file with
+# a directory path component (every workspace sub-module). Gremlins
+# prints its own structured output to stdout; on failure we append a
+# remediation footer pointing at MUTATION_TESTING.md (precedent:
+# check-todos / check-replace pattern).
+#
+# --coverpkg=github.com/axonops/audit scopes the coverage profile to the
+# root package; without it, `go test ./...` would attempt to build
+# coverage instrumentation for every example sub-package and race on the
+# `covdata` tool build (Go cmd/covdata is built lazily into the build
+# cache and parallel builds fail with "go: no such tool covdata"). The
+# example packages contribute nothing to mutation testing of the 6
+# target files.
+#
+# --workers caps gremlins parallelism. The default (auto = NumCPU)
+# causes mutated test runs to time out under resource contention — each
+# worker compiles + runs the full root-pkg test suite, so 8 workers on
+# an 8-core box trigger spurious TIMED OUT classifications that mask
+# LIVED mutants. GREMLINS_WORKERS=2 gives stable kills on this codebase
+# at acceptable wall-clock cost (~10 minutes per file).
+#
+# --threshold-efficacy=80 / --threshold-mcover=80 are passed on the CLI
+# in addition to the .gremlins.yaml settings: gremlins exit codes 10
+# and 11 fire below these thresholds, so the recipe fails fast even if
+# the YAML schema drifts in a future gremlins release.
+#
+# Excludes use Go regexp syntax with `^...$` anchors so file basenames
+# don't accidentally match substring siblings (e.g., `hmac.go` would
+# unanchored-match `hmac_anything.go`). The `$$` in the foreach below
+# is a literal `$` regex anchor escaped for Make (NOT a Make variable).
+define MUTATION_RECIPE
+	@echo "=== mutation-test $(1) ==="
+	@$(GOBIN)/gremlins unleash . \
+		--coverpkg=github.com/axonops/audit \
+		--workers=$(GREMLINS_WORKERS) \
+		--threshold-efficacy=80 \
+		--threshold-mcover=80 \
+		--exclude-files='$(MUTATION_EXCLUDE_SUBDIRS)' \
+		$(foreach f,$(filter-out $(1),$(MUTATION_TARGETS)),--exclude-files='^$(f)$$') \
+		$(foreach f,$(MUTATION_OTHER_FILES),--exclude-files='^$(f)$$') \
+		|| { \
+			echo ""; \
+			echo "FAILED: mutation efficacy below threshold for $(1)."; \
+			echo "Next steps:"; \
+			echo "  1. Kill the surviving mutant: add a test in the matching *_test.go that"; \
+			echo "     fails when the mutated branch flips."; \
+			echo "  2. OR document an equivalent mutant in MUTATION_TESTING.md (file:line,"; \
+			echo "     operator, rationale)."; \
+			echo "  3. OR justify lowering threshold in .gremlins.yaml (PR review required)."; \
+			exit 1; \
+		}
+endef
+
+mutation-test-validate-fields:
+	$(call MUTATION_RECIPE,validate_fields.go)
+
+mutation-test-validate-taxonomy:
+	$(call MUTATION_RECIPE,validate_taxonomy.go)
+
+mutation-test-hmac:
+	$(call MUTATION_RECIPE,hmac.go)
+
+mutation-test-filter:
+	$(call MUTATION_RECIPE,filter.go)
+
+mutation-test-format-cef:
+	$(call MUTATION_RECIPE,format_cef.go)
+
+mutation-test-sensitivity:
+	$(call MUTATION_RECIPE,sensitivity.go)
+
+mutation-test: mutation-test-validate-fields mutation-test-validate-taxonomy mutation-test-hmac mutation-test-filter mutation-test-format-cef mutation-test-sensitivity
+	@echo "All mutation targets passed (efficacy ≥ threshold)."
 
 # --- Coverage ---
 

@@ -210,6 +210,71 @@ Refresh with `make bench-save` on consistent local hardware, update
 `BENCHMARKS.md` with the new headline numbers, and commit both files
 together in a `chore: refresh bench-baseline ...` commit.
 
+### Running mutation tests (#571)
+
+Mutation testing checks whether the test suite verifies behaviour or
+merely traverses lines. `gremlins` applies mutation operators (boundary
+inversions, conditional negations, arithmetic flips) to the source and
+re-runs the tests; a surviving mutant reveals a test that doesn't
+actually verify the contract for that branch.
+
+We run mutation testing against six security-critical files in the root
+package:
+
+- `validate_fields.go` — runtime field validation
+- `validate_taxonomy.go` — taxonomy structural validation
+- `hmac.go` — HMAC computation and salt-version handling
+- `filter.go` — event routing and severity range checks
+- `format_cef.go` — CEF wire-format escaping
+- `sensitivity.go` — sensitivity label resolution
+
+**Targets:**
+```bash
+make mutation-test                 # all six files (~60 min total)
+make mutation-test-hmac            # one file (~10 min)
+make mutation-test-validate-fields
+make mutation-test-validate-taxonomy
+make mutation-test-filter
+make mutation-test-format-cef
+make mutation-test-sensitivity
+```
+
+Each target invokes `gremlins` once with `--exclude-files` set so that
+exactly one file is mutated. Configuration lives in `.gremlins.yaml`
+(thresholds, mutation operators); the Makefile chooses the file scope.
+Threshold (efficacy ≥ 80%) is enforced via gremlins' exit code.
+
+The current per-file baseline is recorded in `MUTATION_TESTING.md`
+along with any equivalent-mutant exemptions. Refresh before any
+milestone release.
+
+**When a target fails.** gremlins prints `LIVED <operator> at
+<file>:<line>:<col>` for each surviving mutant. Three responses, in
+order of preference:
+
+1. **Kill the mutant.** Add a test in the matching `*_test.go` whose
+   assertion fails when the mutated branch flips. Test the contract
+   bidirectionally — at-boundary AND just-past-boundary — so the
+   symmetric mutant is also caught. Don't write a `TestKillMutantN`
+   test; re-derive the case from the spec the mutated line implements.
+2. **Document an equivalent mutant.** If the mutation produces
+   functionally identical behaviour (e.g., a redundant defensive
+   nil-check, an allocation-only difference), add an entry to
+   `MUTATION_TESTING.md` with the file:line, mutant operator, and a
+   one-or-two-sentence justification. If you can't articulate why it's
+   equivalent in plain English in 30 seconds, it's not equivalent —
+   you have a missing test.
+3. **Lower the threshold (last resort).** Contributors MUST exhaust
+   options 1 and 2 before considering this. Update `.gremlins.yaml`
+   thresholds with a code comment explaining why the bar moved, and
+   open a PR for explicit review. Rolling the threshold back is a
+   non-trivial regression of test quality and MUST NOT be used to
+   make a flaky run pass.
+
+`make install-tools` installs the pinned gremlins version
+(`scripts/tool-versions.txt`). For a local-only install, run
+`make install-gremlins`.
+
 ## Code Standards
 
 The [Google Go Style Guide](https://google.github.io/styleguide/go/)

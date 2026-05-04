@@ -177,6 +177,12 @@ func buildRouteSets(r *EventRoute) {
 }
 
 // toSet converts a string slice to a set. Returns nil for empty slices.
+//
+// MUTATION-EQUIV(#571): the `len(ss) == 0` early-return mutant
+// (NEGATION variant) is exempt because [inSet] always falls back to
+// slices.Contains on the original slice when the pre-computed set is
+// nil — the populated-map vs nil distinction is invisible to callers.
+// See MUTATION_TESTING.md.
 func toSet(ss []string) map[string]struct{} {
 	if len(ss) == 0 {
 		return nil

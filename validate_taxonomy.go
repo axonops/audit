@@ -367,6 +367,12 @@ func globalLabeledFields(t Taxonomy) map[string]struct{} {
 
 // isBareReservedStandardField reports whether a reserved standard field
 // in Optional has no per-event annotations and no global labels.
+//
+// MUTATION-EQUIV(#571): the `len(annotations) > 0` boundary mutant is
+// exempt because the only path that populates def.fieldAnnotations
+// (taxonomy_yaml.go line 461) gates on `len(fieldDef.Labels) > 0`, so
+// an entry with zero annotations cannot exist; the mutation differs
+// only on the unreachable empty-slice state. See MUTATION_TESTING.md.
 func isBareReservedStandardField(f string, def *EventDef, globalLabeled map[string]struct{}) bool {
 	if annotations, ok := def.fieldAnnotations[f]; ok && len(annotations) > 0 {
 		return false

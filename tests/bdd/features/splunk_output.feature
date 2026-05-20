@@ -186,3 +186,34 @@ Feature: Splunk HEC Output
     Given an auditor with splunk output and AckMode "required" and 100 unconfirmed batches
     When I audit 500 more events
     Then the buffer-full drop metric should be at least 1 within 10 seconds
+
+  # --- Splunk TA generator (#55 PR 3) ---
+
+  Scenario: audit-gen --format=splunk-ta generates the expected directory tree
+    When I run audit-gen with splunk-ta format against the reference taxonomy
+    Then the output directory should contain "default/app.conf"
+    And the output directory should contain "default/props.conf"
+    And the output directory should contain "default/eventtypes.conf"
+    And the output directory should contain "default/tags.conf"
+    And the output directory should contain "default/data/ui/views/audit_events.xml"
+    And the output directory should contain "metadata/default.meta"
+
+  Scenario: The generated TA emits INDEXED_EXTRACTIONS=json + EVAL constants (FIELDALIAS bridge)
+    When I run audit-gen with splunk-ta format against the reference taxonomy
+    Then the file "default/props.conf" should contain "INDEXED_EXTRACTIONS = json"
+    And the file "default/props.conf" should contain "EVAL-vendor_product"
+    And the file "default/props.conf" should contain "EVAL-dvc"
+
+  Scenario: The generated TA contains CIM tags applied per category as declared in the taxonomy
+    When I run audit-gen with splunk-ta format against the reference taxonomy
+    Then the file "default/tags.conf" should contain "[eventtype=account_user_create]"
+    And the file "default/tags.conf" should contain "[eventtype=security_login_success]"
+    And the file "default/tags.conf" should contain the line "change = enabled" at least 8 times
+    And the file "default/tags.conf" should contain the line "authentication = enabled" at least 4 times
+
+  @appinspect
+  Scenario: The generated TA passes splunk-appinspect --mode precert with zero failures
+    Given splunk-appinspect is available on PATH
+    When I run audit-gen with splunk-ta format against the reference taxonomy
+    And I run splunk-appinspect on the output
+    Then splunk-appinspect should report zero failures

@@ -1,14 +1,15 @@
 # Grafana Dashboards for the audit Library
 
-Two production-ready dashboards for visualising and monitoring an
+Three production-ready dashboards for visualising and monitoring an
 audited Go service:
 
 | File | Source | Audience | What it shows |
 |---|---|---|---|
 | [`audit-events.json`](audit-events.json) | Loki | Security teams, auditors | Audit-event content: who did what, when, to which resource. Per-category counts, top actors, denied-access timeline, sensitive-event filter. |
 | [`audit-metrics.json`](audit-metrics.json) | Prometheus | SREs, platform engineers | Audit-pipeline health: events delivered, output errors, buffer drops, validation errors, per-output flush latency. |
+| [`splunk-output-dashboard.json`](splunk-output-dashboard.json) | Prometheus | SREs running the Splunk output | Per-output Splunk HEC delivery health: flush rate, drops by reason, ACK pending / confirmed / timed-out, output errors. Pair with the in-Splunk `Audit Events` dashboard from the [reference TA](../splunk-ta-axonops-audit/). |
 
-Both dashboards are derived from the production-grade
+The first two dashboards are derived from the production-grade
 [capstone example](../../examples/20-capstone/grafana/dashboards/)
 and are released as artefacts on every tagged release so ops teams
 can import them in minutes without replicating the full capstone

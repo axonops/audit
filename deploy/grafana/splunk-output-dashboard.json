@@ -1,0 +1,166 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Splunk Output documentation",
+      "url": "https://github.com/axonops/audit/blob/main/docs/splunk-output.md",
+      "type": "link",
+      "icon": "external link",
+      "targetBlank": true
+    }
+  ],
+  "panels": [
+    {
+      "title": "Events Delivered Per Second (per output)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (output) (rate(audit_output_flushes_total{output=~\"splunk:.*\"}[1m]))",
+          "legendFormat": "{{output}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "events/sec",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20
+          }
+        }
+      },
+      "description": "Rate of successful flushes per second. A flush = one HTTP request to /services/collector/event or /raw, regardless of batch size. Use `audit_output_events_delivered_total` (if exposed) for per-event rates."
+    },
+    {
+      "title": "Drops Per Second (by reason)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (output, reason) (rate(audit_output_drops_total{output=~\"splunk:.*\"}[1m]))",
+          "legendFormat": "{{output}} / {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "drops/sec",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20
+          }
+        }
+      },
+      "description": "Drop rate by reason: oversize, buffer_full, ack_buffer_full, retries_exhausted, hec_rejected. Any non-zero rate warrants investigation — events are being lost."
+    },
+    {
+      "title": "ACK Pending (in-flight batches)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "audit_splunk_ack_pending{output=~\"splunk:.*\"}",
+          "legendFormat": "{{output}} pending",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "batches",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "fillOpacity": 20
+          }
+        }
+      },
+      "description": "Number of batches awaiting indexer acknowledgement. Only AckModeBestEffort and AckModeRequired emit this. A growing pending count is a leading indicator of Splunk indexer lag — when it reaches BufferSize in Required mode, new events drop with reason=ack_buffer_full."
+    },
+    {
+      "title": "ACK Confirmations + Timeouts (cumulative)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (output) (rate(audit_splunk_ack_confirmed_total{output=~\"splunk:.*\"}[1m]))",
+          "legendFormat": "{{output}} confirmed/s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (output) (rate(audit_splunk_ack_timed_out_total{output=~\"splunk:.*\"}[1m]))",
+          "legendFormat": "{{output}} timed-out/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "batches/sec",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20
+          }
+        }
+      },
+      "description": "ACK confirmation rate vs resend-timeout rate. A high timeout rate means events are being re-sent — Splunk is not confirming fast enough. Consider increasing AckResendWindow or scaling the indexer tier."
+    },
+    {
+      "title": "Output Errors (cumulative)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (output) (rate(audit_output_errors_total{output=~\"splunk:.*\"}[5m]))",
+          "legendFormat": "{{output}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "errors/sec",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20
+          }
+        }
+      },
+      "description": "Per-output error rate. Persistent non-zero values indicate token/network/TLS issues. Cross-reference with the diagnostic log for the underlying audit/splunk: ... message."
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["audit", "splunk", "hec"],
+  "templating": {
+    "list": [
+      {
+        "name": "output",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(audit_output_flushes_total{output=~\"splunk:.*\"}, output)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Audit — Splunk Output",
+  "uid": "audit-splunk-output",
+  "version": 1,
+  "weekStart": ""
+}

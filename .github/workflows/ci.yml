@@ -953,6 +953,13 @@ jobs:
           path: appinspect.json
           retention-days: 14
 
+      - name: Run @appinspect BDD scenario
+        # Runs the godog scenario that exercises the same path
+        # from the BDD layer. The scenario is tagged @appinspect so
+        # it's excluded from the default `make test-bdd-splunk`
+        # local runs (where splunk-appinspect may not be installed).
+        run: make test-bdd-splunk-appinspect
+
   ci-pass:
     name: Test - CI Pass
     runs-on: ubuntu-latest

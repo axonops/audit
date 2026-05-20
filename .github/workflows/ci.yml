@@ -908,8 +908,11 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install splunk-appinspect
-        run: pip install splunk-appinspect
+      - name: Install splunk-appinspect (pinned)
+        # Pinned for supply-chain safety. Bump deliberately when a
+        # new Splunkbase rule release requires it; do not float to
+        # the unpinned `pip install splunk-appinspect` form.
+        run: pip install splunk-appinspect==4.2.0
 
       - name: Set up audit workspace
         uses: ./.github/actions/setup-audit
@@ -923,26 +926,90 @@ jobs:
         # --mode precert is the Splunkbase publishing gate. Scoped
         # to the `cloud` tag to focus on the rules that matter for
         # Splunk Cloud customers — the most restrictive deployment
-        # target. JSON output lets us pin "zero failures, warnings
-        # allowed" without scraping stdout.
+        # target. --data-format json explicit (do not rely on the
+        # output-file extension to infer the format).
         run: |
           splunk-appinspect inspect \
             --mode precert \
             --included-tags cloud \
+            --data-format json \
             --output-file appinspect.json \
             deploy/splunk-ta-axonops-audit
 
-      - name: Assert zero AppInspect failures
-        # The report's `summary.failure` counter is the load-bearing
-        # gate. Warnings are allowed (AC 65). Use `jq` to parse the
-        # JSON so a future report format change surfaces clearly.
+      - name: Assert zero AppInspect failures or execution errors
+        # Two gates are load-bearing here:
+        # - `summary.failure` — check ran and the TA failed it.
+        # - `summary.error` — check could not execute (Python
+        #   exception, file I/O bug). Without this gate, an
+        #   exception storm where every check errors would silently
+        #   pass (failure=0). The // 0 defaulting treats absence as
+        #   zero rather than null-comparison error.
         run: |
           FAILURES=$(jq '.summary.failure // 0' appinspect.json)
+          ERRORS=$(jq '.summary.error // 0' appinspect.json)
           echo "AppInspect failures: $FAILURES"
-          if [ "$FAILURES" != "0" ]; then
-            echo "AppInspect reported $FAILURES failure(s)"
-            jq '.reports[].groups[].checks[] | select(.result == "failure")' appinspect.json
+          echo "AppInspect errors: $ERRORS"
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "AppInspect reported $FAILURES failure(s), $ERRORS error(s)"
+            echo "=== Failures ==="
+            jq '.reports[].groups[].checks[] | select(.result == "failure" or .result == "error") | {check_id, name, description, messages}' appinspect.json
             exit 1
+          fi
+
+      - name: Assert no Splunkbase publishing-blocker warnings
+        # The blocker list is maintained at
+        # deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
+        # — keep it in sync with Splunkbase's dev.splunk.com rules.
+        # The file is also used by the docs (docs/splunk-ta.md cites
+        # it) so a single source of truth.
+        run: |
+          BLOCKERS_FILE=deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
+          # Build a jq-friendly array of check IDs from the file.
+          # `tr -d '\r'` strips Windows-style line endings (defence
+          # against contributors editing the file on a CRLF system —
+          # without this, a `\r`-terminated check_id silently misses
+          # the equality check against AppInspect's `\r`-free output
+          # and the assertion passes when it shouldn't).
+          BLOCKER_IDS=$(grep -v '^#' "$BLOCKERS_FILE" | tr -d '\r' | grep -v '^[[:space:]]*$' | sed 's/[[:space:]]*$//' | jq -R . | jq -s .)
+          echo "Configured blocker check IDs:"
+          echo "$BLOCKER_IDS" | jq -r '.[]'
+          # Defend against the silent-skip case: a blocker check that
+          # isn't tagged `cloud` won't execute under
+          # `--included-tags cloud`, produce no result in
+          # appinspect.json, and the warning-filter below would
+          # vacuously pass. Verify every blocker_id is present in
+          # the executed-checks set first.
+          EXECUTED=$(jq '[.reports[].groups[].checks[].check_id]' appinspect.json)
+          MISSING=$(jq -n --argjson blockers "$BLOCKER_IDS" --argjson executed "$EXECUTED" '$blockers - $executed')
+          if [ "$(echo "$MISSING" | jq 'length')" != "0" ]; then
+            echo "Blocker IDs declared in appinspect-blocker-checks.txt but NOT executed under --included-tags cloud:"
+            echo "$MISSING" | jq -r '.[]'
+            echo "Fix: drop --included-tags cloud OR remove the un-executed ID from the blocker file with a note."
+            exit 1
+          fi
+          # Filter warnings whose check_id is in the blocker list.
+          TRIPPED=$(jq --argjson blockers "$BLOCKER_IDS" \
+            '[.reports[].groups[].checks[] | select(.result == "warning" and (.check_id as $cid | $blockers | index($cid)))]' \
+            appinspect.json)
+          TRIPPED_COUNT=$(echo "$TRIPPED" | jq 'length')
+          echo "Blocker warnings tripped: $TRIPPED_COUNT"
+          if [ "$TRIPPED_COUNT" != "0" ]; then
+            echo "=== Tripped blocker warnings ==="
+            echo "$TRIPPED" | jq '.[] | {check_id, name, description, messages}'
+            exit 1
+          fi
+
+      - name: Print AppInspect summary
+        # Always print so warning counts trend visibly over time —
+        # the summary block lands in the job log on every run,
+        # passing or failing.
+        if: always()
+        run: |
+          if [ -f appinspect.json ]; then
+            echo "=== AppInspect summary ==="
+            jq '.summary' appinspect.json
+          else
+            echo "appinspect.json not produced — inspect step did not run."
           fi
 
       - name: Upload AppInspect report

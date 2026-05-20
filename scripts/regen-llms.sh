@@ -79,6 +79,8 @@ LLMS_SOURCES=(
   docs/syslog-output.md
   docs/webhook-output.md
   docs/loki-output.md
+  docs/splunk-output.md
+  docs/splunk-ta.md
   # How-to: integration features
   docs/http-middleware.md
   docs/event-routing.md

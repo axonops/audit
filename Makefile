@@ -1132,9 +1132,9 @@ ta-diff-check:
 	go run ./cmd/audit-gen --format=splunk-ta \
 		--input internal/schemagen/reference_ta_taxonomy.yaml \
 		--output "$$TMP/ta" >/dev/null && \
-	if ! diff -qr --exclude=README.md "$$TMP/ta" deploy/splunk-ta-axonops-audit >/dev/null; then \
+	if ! diff -qr --exclude=README.md --exclude=appinspect-blocker-checks.txt "$$TMP/ta" deploy/splunk-ta-axonops-audit >/dev/null; then \
 		echo "deploy/splunk-ta-axonops-audit/ is stale; run 'make ta'"; \
-		diff -ur --exclude=README.md deploy/splunk-ta-axonops-audit "$$TMP/ta" || true; \
+		diff -ur --exclude=README.md --exclude=appinspect-blocker-checks.txt deploy/splunk-ta-axonops-audit "$$TMP/ta" || true; \
 		rm -rf "$$TMP"; exit 1; \
 	fi; \
 	rm -rf "$$TMP"

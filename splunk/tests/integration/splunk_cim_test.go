@@ -55,18 +55,18 @@ func TestSplunkIntegration_CIMJSON_SearchableAsCIMChange(t *testing.T) {
 	// emits this shape; the integration test bypasses the auditor
 	// and writes raw CIM JSON to assert the wire-level contract.
 	cimEvent := map[string]any{
-		"_time":          float64(time.Now().UnixMilli()) / 1000.0,
-		"action":         "user_create",
-		"change_type":    "account",
-		"user_id":        m,
-		"user_name":      "Alice CIM Test",
-		"object_id":      "topic-" + m,
+		"_time":           float64(time.Now().UnixMilli()) / 1000.0,
+		"action":          "user_create",
+		"change_type":     "account",
+		"user_id":         m,
+		"user_name":       "Alice CIM Test",
+		"object_id":       "topic-" + m,
 		"object_category": "topic",
-		"status":         "success",
-		"outcome":        "success", // preserved alongside status
-		"vendor_product": "AxonOps:Audit",
-		"src":            "10.0.0.42",
-		"dvc":            "host-cim-1",
+		"status":          "success",
+		"outcome":         "success", // preserved alongside status
+		"vendor_product":  "AxonOps:Audit",
+		"src":             "10.0.0.42",
+		"dvc":             "host-cim-1",
 	}
 	payload, err := json.Marshal(cimEvent)
 	require.NoError(t, err)

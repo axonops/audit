@@ -1,0 +1,33 @@
+# Splunk AppInspect publishing-blocker check IDs.
+#
+# Any warning whose check_id appears in this file fails the
+# splunk-ta-appinspect CI job, in addition to the unconditional
+# `summary.failure > 0` / `summary.error > 0` gates.
+#
+# Derived from Splunkbase's app-publishing rules at
+# https://dev.splunk.com/enterprise/docs/releaseapps/
+# (last reviewed 2026-05-20). When AppInspect changes the check IDs
+# upstream OR Splunkbase changes the blocker list, update this file
+# AND the dev.splunk.com citation date above.
+#
+# Format: one check_id per line. Lines starting with # are comments.
+# Trailing whitespace is ignored.
+
+# TA must have metadata/default.meta declaring export rules.
+check_for_missing_default_meta
+
+# TA must have a valid app icon at static/appIcon.png
+# (Splunkbase listing displays this).
+check_for_missing_app_icon
+
+# default.meta must parse — malformed stanzas can break Splunk's
+# knowledge-object loading for other apps installed alongside.
+check_for_invalid_default_meta
+
+# Scripted inputs / search command implementations must declare a
+# dispatch user. Authentication-gap risk if omitted.
+check_for_no_default_dispatch_user
+
+# app.conf [package] id must match the TA directory name and be
+# absent of conflicting dependency declarations.
+check_for_dependencies_in_app_conf

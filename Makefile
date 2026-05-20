@@ -331,8 +331,23 @@ test-bdd-webhook:
 test-bdd-loki:
 	BDD_TAGS="@loki && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
+# test-bdd-splunk runs the @docker-tagged Splunk scenarios against
+# the real Splunk Enterprise test container — `make test-infra-splunk-up`
+# MUST be running. Excludes @stub (in-process httptest stub, runs
+# under test-bdd-splunk-stub) and @appinspect (requires
+# splunk-appinspect via pip — see test-bdd-splunk-appinspect).
+# Untagged construction-only scenarios run too (URL validation,
+# splunkcloud:// expansion, TA generator file checks) — they don't
+# need a receiver.
 test-bdd-splunk:
-	BDD_TAGS="@splunk && ~@fanout && ~@appinspect" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+	BDD_TAGS="@splunk && ~@fanout && ~@stub && ~@appinspect" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+# test-bdd-splunk-stub runs the @stub-tagged scenarios against the
+# in-process httptest stub — no Splunk container required. The stub
+# is the ONLY way to exercise HEC response codes (4/7/9/24/413)
+# deterministically; the real container can't produce them on demand.
+test-bdd-splunk-stub:
+	BDD_TAGS="@splunk && @stub" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 # test-bdd-splunk-appinspect runs ONLY the @appinspect scenario,
 # which requires splunk-appinspect on PATH (pip install splunk-appinspect).

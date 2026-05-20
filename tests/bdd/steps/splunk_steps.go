@@ -18,6 +18,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -225,6 +228,18 @@ type splunkBDDState struct {
 	taOutputDir      string
 	appinspectOutput string
 	appinspectErr    error
+
+	// Real-container scenarios (#889 AC 1).
+	// realSplunk = true switches splunkConstruct() to use the
+	// containerised Splunk HEC at splunkBaseURL instead of the
+	// in-process stub. splunkToken is the HEC token the test
+	// container pre-provisions. eventMarker is set when a scenario
+	// audits a uniquely marked event, then used by the "Splunk
+	// should have indexed N events with the marker" assertions.
+	realSplunk      bool
+	splunkBaseURL   string
+	splunkToken     string
+	eventMarker     string
 }
 
 // splunkLogBuf is a concurrency-safe bytes.Buffer wrapper used as
@@ -287,6 +302,33 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^a splunk HEC stub server$`, func() error {
 		state.stub = newSplunkStub()
+		state.realSplunk = false
+		return nil
+	})
+
+	ctx.Step(`^a real Splunk HEC receiver$`, func() error {
+		// The test container is brought up via
+		// `make test-infra-splunk-up` (HEC at localhost:8088,
+		// pre-provisioned token "bdd-test-hec-token"). The CI matrix
+		// entry for @docker scenarios sets infra-up; locally,
+		// developers must run the make target first or scenarios
+		// will fail at construction time when the health probe
+		// can't reach the container.
+		state.realSplunk = true
+		state.splunkBaseURL = "http://localhost:8088"
+		state.splunkToken = "bdd-test-hec-token"
+		// Quick reachability check so a missing container produces
+		// a clear error at the Given step rather than a downstream
+		// "search returned nothing" mystery.
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get(state.splunkBaseURL + "/services/collector/health")
+		if err != nil {
+			return fmt.Errorf("real Splunk container unreachable at %s: %w (run 'make test-infra-splunk-up'?)", state.splunkBaseURL, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("real Splunk container returned HTTP %d on /services/collector/health (expected 200)", resp.StatusCode)
+		}
 		return nil
 	})
 
@@ -847,6 +889,131 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		return nil
 	})
+
+	// --- Real-Splunk-container assertions (#889 AC 1) ---
+
+	ctx.Step(`^Splunk should have indexed exactly (\d+) events? with the marker within (\d+) seconds$`, func(want, secs int) error {
+		if state.eventMarker == "" {
+			return errors.New("no event marker set — preceding 'I audit a uniquely marked' step missing")
+		}
+		// Close the auditor so any buffered events flush before
+		// we start polling. The "Close flushes" scenario already
+		// has an explicit close step; for other scenarios this
+		// guarantees the events are on the wire.
+		if state.output != nil {
+			_ = state.output.Close()
+			state.output = nil
+		}
+		query := fmt.Sprintf(`index=main sourcetype="audit:event" mark=%q`, state.eventMarker)
+		deadline := time.Now().Add(time.Duration(secs) * time.Second)
+		var lastCount int
+		for time.Now().Before(deadline) {
+			count, err := splunkSearchCount(state.splunkBaseURL, query)
+			if err == nil {
+				lastCount = count
+				if count >= want {
+					return nil
+				}
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		return fmt.Errorf("Splunk indexed %d events matching marker %q; wanted exactly %d within %ds",
+			lastCount, state.eventMarker, want, secs)
+	})
+
+	ctx.Step(`^the indexed event should have field "([^"]+)" = "([^"]+)"$`, func(field, value string) error {
+		if state.eventMarker == "" {
+			return errors.New("no event marker set — preceding 'I audit a uniquely marked' step missing")
+		}
+		query := fmt.Sprintf(`index=main sourcetype="audit:event" mark=%q %s=%q`, state.eventMarker, field, value)
+		count, err := splunkSearchCount(state.splunkBaseURL, query)
+		if err != nil {
+			return fmt.Errorf("splunk search: %w", err)
+		}
+		if count < 1 {
+			return fmt.Errorf("no indexed event has %s=%q (marker=%q)", field, value, state.eventMarker)
+		}
+		return nil
+	})
+}
+
+// insecureSearchTLS returns a TLS config that skips verification.
+// ONLY used by the BDD test harness's search client to talk to
+// Splunkd's management port (which serves a self-signed cert).
+// The audit output's own HTTP client NEVER uses this —
+// InsecureSkipVerify is forbidden on the hot path per project
+// rules. This is the same pattern used by
+// splunk/tests/integration/splunk_test.go's insecureTLS().
+func insecureSearchTLS() *tls.Config {
+	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec // BDD search client; documented above
+}
+
+// splunkSearchCount queries Splunk's management API for events
+// matching the given SPL and returns the count. The test container
+// runs Splunkd's management port on 8089 (separate from HEC's 8088)
+// with self-signed TLS. Uses a per-call HTTP client with TLS-skip
+// because the management port serves a self-signed cert — search
+// API only, never used for the audit output's hot path.
+func splunkSearchCount(baseURL, spl string) (int, error) {
+	// baseURL is http://localhost:8088 (HEC); search lives on
+	// :8089 with https + self-signed cert.
+	parsed, err := neturl.Parse(baseURL)
+	if err != nil {
+		return 0, fmt.Errorf("parse base URL: %w", err)
+	}
+	mgmt := neturl.URL{
+		Scheme: "https",
+		Host:   parsed.Hostname() + ":8089",
+		Path:   "/services/search/jobs/export",
+	}
+	q := mgmt.Query()
+	q.Set("search", "search "+spl+" | stats count")
+	q.Set("output_mode", "json")
+	q.Set("earliest_time", "-1h")
+	q.Set("latest_time", "now")
+	mgmt.RawQuery = q.Encode()
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: insecureSearchTLS(),
+		},
+	}
+	req, err := http.NewRequest(http.MethodGet, mgmt.String(), nil) //nolint:gosec // test-only HTTP client
+	if err != nil {
+		return 0, fmt.Errorf("build request: %w", err)
+	}
+	req.SetBasicAuth("admin", "ChangeMeForRealUse123!")
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("search: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("search HTTP %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// The search/jobs/export endpoint streams one JSON object per
+	// result line. The `stats count` result has shape
+	// {"preview":false,"offset":0,"result":{"count":"<n>"}}.
+	var n int
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec struct {
+			Result struct {
+				Count string `json:"count"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(line, &rec); err != nil {
+			continue
+		}
+		if rec.Result.Count != "" {
+			fmt.Sscanf(rec.Result.Count, "%d", &n)
+		}
+	}
+	return n, nil
 }
 
 // parseAckMode maps the BDD string form to the typed enum.
@@ -882,26 +1049,38 @@ func requestHeader(req splunkStubRequest, name string) string {
 }
 
 // splunkConstruct builds a splunk output pointed at the scenario's
-// stub, applying the optional mutator.
+// receiver (real Splunk container OR in-process stub, depending on
+// state.realSplunk), applying the optional mutator.
 func splunkConstruct(state *splunkBDDState, mutate func(*splunk.Config)) error {
-	if state.stub == nil {
-		return errors.New("stub not initialised; preceding Given missing")
+	if !state.realSplunk && state.stub == nil {
+		return errors.New("neither stub nor real Splunk receiver initialised; preceding Given missing (need 'a splunk HEC stub server' or 'a real Splunk HEC receiver')")
 	}
 	gz := false
 	state.logBuf = &splunkLogBuf{}
 	state.stopMetricCounts = &recordingOutputMetrics{}
+	url := ""
+	token := "bdd-token"
+	if state.realSplunk {
+		url = state.splunkBaseURL
+		token = state.splunkToken
+	} else {
+		url = state.stub.server.URL
+	}
 	cfg := &splunk.Config{
-		URL:                        state.stub.server.URL,
-		Token:                      "bdd-token",
+		URL:                        url,
+		Token:                      token,
 		AllowInsecureHTTP:          true,
 		AllowPrivateRanges:         true,
 		Gzip:                       &gz,
 		BatchSize:                  100,
 		FlushInterval:              100 * time.Millisecond,
-		Timeout:                    2 * time.Second,
+		Timeout:                    10 * time.Second,
 		MaxRetries:                 3,
 		BufferSize:                 1000,
 		DisableStartupVerification: false,
+		Sourcetype:                 "audit:event",
+		Source:                     "audit",
+		Index:                      "main",
 	}
 	if mutate != nil {
 		mutate(cfg)
@@ -917,16 +1096,34 @@ func splunkConstruct(state *splunkBDDState, mutate func(*splunk.Config)) error {
 	return nil
 }
 
-// splunkWriteEvent writes one event with a unique marker.
+// splunkWriteEvent writes one event with a unique marker. The
+// per-scenario marker is generated once via crypto/rand and stored
+// in state.eventMarker so subsequent "Splunk should have indexed N
+// events with the marker" assertions can search for events
+// belonging to THIS scenario.
 func splunkWriteEvent(state *splunkBDDState, eventType, suffix string) error {
 	if state.output == nil {
 		return errors.New("output not constructed; preceding Given missing")
 	}
+	if state.eventMarker == "" {
+		var b [8]byte
+		if _, err := cryptoRandFor(b[:]); err != nil {
+			return fmt.Errorf("generate marker: %w", err)
+		}
+		state.eventMarker = "bdd-marker-" + hex.EncodeToString(b[:])
+	}
 	event := []byte(fmt.Sprintf(
-		`{"timestamp":"%s","event_type":%q,"actor_id":"alice","outcome":"success","mark":%q}`,
-		time.Now().UTC().Format(time.RFC3339Nano), eventType, suffix))
+		`{"timestamp":%q,"event_type":%q,"actor_id":%q,"outcome":"success","mark":%q}`,
+		time.Now().UTC().Format(time.RFC3339Nano), eventType, state.eventMarker, suffix))
 	state.lastWriteErr = state.output.Write(event)
 	return nil
+}
+
+// cryptoRandFor is a thin wrapper around crypto/rand.Read so the
+// tests can swap entropy sources if they need to (currently only
+// used for marker generation — no test override path).
+func cryptoRandFor(b []byte) (int, error) {
+	return rand.Read(b)
 }
 
 // lookupRequestHeader returns the named header value from the most

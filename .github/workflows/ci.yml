@@ -592,13 +592,23 @@ jobs:
             infra-down: test-infra-loki-down
           - suite: splunk
             target: test-bdd-splunk
-            # Splunk BDD scenarios drive the output against an
-            # in-process httptest stub, not a real container, so no
-            # infra is required. Real-Splunk round-trip behaviour is
-            # covered by the integration matrix entry above.
+            # @docker-tagged Splunk scenarios drive the real
+            # container — the stub-only happy paths violated the
+            # `feedback_bdd_real_containers` project rule (see #889
+            # AC 1). HEC error-code scenarios stay on the stub in
+            # the splunk-stub suite below — the real container
+            # cannot produce codes 4/7/9/24/413 on demand.
+            infra-up: test-infra-splunk-up
+            infra-down: test-infra-splunk-down
+            timeout: 15
+          - suite: splunk-stub
+            target: test-bdd-splunk-stub
+            # @stub-tagged Splunk scenarios — in-process httptest
+            # stub for deterministic HEC response codes. No
+            # infrastructure required.
             infra-up: ""
             infra-down: ""
-            timeout: 10
+            timeout: 8
           # Fan-out: needs all containers (syslog + webhook + loki)
           - suite: fanout
             target: test-bdd-fanout

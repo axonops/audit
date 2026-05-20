@@ -19,14 +19,17 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"regexp"
-	"strconv"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,11 +69,11 @@ type splunkStub struct {
 	failCount  atomic.Int32
 
 	// ACK support (#55 PR 2).
-	ackEnabled         atomic.Bool
-	ackIDCounter       atomic.Int64
-	ackPollHits        atomic.Int64
-	ackConfirmAll      atomic.Bool // when true, /ack returns true for every queried ID
-	ackResponsesByID   map[int64]bool
+	ackEnabled       atomic.Bool
+	ackIDCounter     atomic.Int64
+	ackPollHits      atomic.Int64
+	ackConfirmAll    atomic.Bool // when true, /ack returns true for every queried ID
+	ackResponsesByID map[int64]bool
 }
 
 // newSplunkStub returns a stub server that responds with HTTP 200 +
@@ -217,6 +220,11 @@ type splunkBDDState struct {
 	constructionErr  error
 	scenarioStart    time.Time
 	stopMetricCounts *recordingOutputMetrics
+
+	// TA generator scenarios (#55 PR 3).
+	taOutputDir      string
+	appinspectOutput string
+	appinspectErr    error
 }
 
 // splunkLogBuf is a concurrency-safe bytes.Buffer wrapper used as
@@ -758,6 +766,87 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		return nil
 	})
+
+	// --- Splunk TA generator scenarios (#55 PR 3) ---
+
+	ctx.Step(`^I run audit-gen with splunk-ta format against the reference taxonomy$`, func() error {
+		dir, err := os.MkdirTemp("", "bdd-ta-*")
+		if err != nil {
+			return fmt.Errorf("create temp dir: %w", err)
+		}
+		state.taOutputDir = dir
+		// Resolve repo root so the test can run from any cwd.
+		repoRoot, err := splunkBDDRepoRoot()
+		if err != nil {
+			return err
+		}
+		cmd := exec.Command("go", "run", "./cmd/audit-gen", //nolint:gosec // test-only subprocess; arguments are static
+			"--format=splunk-ta",
+			"--input", filepath.Join(repoRoot, "internal", "schemagen", "reference_ta_taxonomy.yaml"),
+			"--output", dir,
+		)
+		cmd.Dir = repoRoot
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("audit-gen failed: %w\n%s", err, out)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the output directory should contain "([^"]+)"$`, func(rel string) error {
+		path := filepath.Join(state.taOutputDir, rel)
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("expected file %s missing: %w", rel, err)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the file "([^"]+)" should contain "([^"]+)"$`, func(rel, needle string) error {
+		b, err := os.ReadFile(filepath.Join(state.taOutputDir, rel)) //nolint:gosec // test-only; rel is a hard-coded relative path from the feature file
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		if !strings.Contains(string(b), needle) {
+			return fmt.Errorf("file %s does not contain %q", rel, needle)
+		}
+		return nil
+	})
+
+	ctx.Step(`^the file "([^"]+)" should contain the line "([^"]+)" at least (\d+) times$`, func(rel, line string, n int) error {
+		b, err := os.ReadFile(filepath.Join(state.taOutputDir, rel)) //nolint:gosec // test-only; rel is a hard-coded relative path from the feature file
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		count := strings.Count(string(b), line)
+		if count < n {
+			return fmt.Errorf("file %s contains %q %d time(s); expected at least %d", rel, line, count, n)
+		}
+		return nil
+	})
+
+	ctx.Step(`^splunk-appinspect is available on PATH$`, func() error {
+		if _, err := exec.LookPath("splunk-appinspect"); err != nil {
+			return fmt.Errorf("splunk-appinspect not installed; install via 'pip install splunk-appinspect' or skip this scenario (tag @appinspect)")
+		}
+		return nil
+	})
+
+	ctx.Step(`^I run splunk-appinspect on the output$`, func() error {
+		out, err := exec.Command("splunk-appinspect", "inspect", //nolint:gosec // test-only subprocess; output dir is a t.TempDir
+			"--mode", "precert",
+			"--included-tags", "cloud",
+			state.taOutputDir).CombinedOutput()
+		state.appinspectOutput = string(out)
+		state.appinspectErr = err
+		return nil
+	})
+
+	ctx.Step(`^splunk-appinspect should report zero failures$`, func() error {
+		if state.appinspectErr != nil {
+			return fmt.Errorf("splunk-appinspect reported failure:\n%s", state.appinspectOutput)
+		}
+		return nil
+	})
 }
 
 // parseAckMode maps the BDD string form to the typed enum.
@@ -858,6 +947,32 @@ func lookupRequestHeader(state *splunkBDDState, name string) (string, bool) {
 		return req.contentType, true
 	default:
 		return "", false
+	}
+}
+
+// splunkBDDRepoRoot returns the repository root by walking up from
+// the current working directory until it finds a go.mod with the
+// expected module path. Used by the TA-generator scenarios so the
+// `go run ./cmd/audit-gen ...` invocation works regardless of the
+// godog runner's working directory.
+func splunkBDDRepoRoot() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	dir := cwd
+	for {
+		modPath := filepath.Join(dir, "go.mod")
+		if b, err := os.ReadFile(modPath); err == nil {
+			if strings.Contains(string(b), "module github.com/axonops/audit\n") {
+				return dir, nil
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("repo root not found from cwd %s", cwd)
+		}
+		dir = parent
 	}
 }
 

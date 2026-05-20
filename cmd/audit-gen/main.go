@@ -56,7 +56,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 type cliConfig struct {
 	input, output, pkg, header string
 	standardSetters            string // "all" | "explicit"
-	format                     string // "go" | "json-schema" | "cef-template"
+	format                     string // "go" | "json-schema" | "cef-template" | "splunk-ta"
+	vendorProduct              string // CIM vendor_product for the splunk-ta format
+	splunkTAAppName            string // package id for the splunk-ta format
+	splunkTAAppVersion         string // version stamped in app.conf for the splunk-ta format
 	types, fields, categories  bool
 	labels, builders           bool
 }
@@ -66,6 +69,7 @@ const (
 	formatGo          = "go"
 	formatJSONSchema  = "json-schema"
 	formatCEFTemplate = "cef-template"
+	formatSplunkTA    = "splunk-ta"
 )
 
 // exitCodeContinue signals that parseFlags completed successfully
@@ -93,7 +97,14 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 		format = fs.String("format", formatGo,
 			"output format: go (typed Go source for the package, default) "+
 				"| json-schema (JSON Schema 2020-12 validator) "+
-				"| cef-template (CEF mapping documentation)")
+				"| cef-template (CEF mapping documentation) "+
+				"| splunk-ta (Splunk Technology Add-on directory tree)")
+		vendorProduct = fs.String("vendor-product", "AxonOps:Audit",
+			"CIM vendor_product identifier baked into the splunk-ta output (default: AxonOps:Audit)")
+		splunkTAAppName = fs.String("splunk-ta-name", "TA-axonops-audit",
+			"Splunk app id for the splunk-ta output (must match the output directory's basename for AppInspect)")
+		splunkTAAppVersion = fs.String("splunk-ta-version", "0.1.0",
+			"Version stamped into the generated app.conf for the splunk-ta output")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -106,10 +117,10 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 	}
 
 	switch *format {
-	case formatGo, formatJSONSchema, formatCEFTemplate:
+	case formatGo, formatJSONSchema, formatCEFTemplate, formatSplunkTA:
 		// valid
 	default:
-		_, _ = fmt.Fprintf(stderr, "audit-gen: -format=%q invalid (valid: go, json-schema, cef-template)\n", *format)
+		_, _ = fmt.Fprintf(stderr, "audit-gen: -format=%q invalid (valid: go, json-schema, cef-template, splunk-ta)\n", *format)
 		return cliConfig{}, exitInvalidArgs
 	}
 
@@ -140,14 +151,17 @@ func parseFlags(args []string, stdout, stderr io.Writer) (cfg cliConfig, exitCod
 
 	return cliConfig{
 		input: *input, output: *output, pkg: *pkg, header: *header,
-		standardSetters: *stdSetters,
-		format:          *format,
-		types:           *types, fields: *fields, categories: *categories,
+		standardSetters:    *stdSetters,
+		format:             *format,
+		vendorProduct:      *vendorProduct,
+		splunkTAAppName:    *splunkTAAppName,
+		splunkTAAppVersion: *splunkTAAppVersion,
+		types:              *types, fields: *fields, categories: *categories,
 		labels: *labels, builders: *builders,
 	}, exitCodeContinue
 }
 
-func execute(cfg *cliConfig, stdout, stderr io.Writer) int { //nolint:gocyclo,cyclop // format-dispatch + write paths are linear; refactoring to helpers obscures the flow
+func execute(cfg *cliConfig, stdout, stderr io.Writer) int { //nolint:gocyclo,cyclop,gocognit // format-dispatch + write paths are linear; refactoring to helpers obscures the flow
 	// No input-size cap: taxonomy is developer-trusted at both
 	// library and CLI boundaries (#646).
 	data, err := os.ReadFile(cfg.input)
@@ -160,6 +174,25 @@ func execute(cfg *cliConfig, stdout, stderr io.Writer) int { //nolint:gocyclo,cy
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "audit-gen: parse taxonomy: %v\n", err)
 		return exitYAMLError
+	}
+
+	// splunk-ta is a multi-file directory output; handle it separately
+	// before the buffer-then-file path used by the single-file formats.
+	if cfg.format == formatSplunkTA {
+		if cfg.output == "-" {
+			_, _ = fmt.Fprintln(stderr, "audit-gen: -output=- is not supported for -format=splunk-ta (use a directory path)")
+			return exitInvalidArgs
+		}
+		opts := splunkTAOptions{
+			AppName:       cfg.splunkTAAppName,
+			AppVersion:    cfg.splunkTAAppVersion,
+			VendorProduct: cfg.vendorProduct,
+		}
+		if err := generateSplunkTA(cfg.output, *tax, opts); err != nil {
+			_, _ = fmt.Fprintf(stderr, "audit-gen: generate splunk-ta: %v\n", err)
+			return exitWriteError
+		}
+		return exitSuccess
 	}
 
 	var buf bytes.Buffer

@@ -48,6 +48,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **PR 3 of #55 — Splunk TA generator + reference TA + docs:** new
+  `audit-gen --format=splunk-ta` output mode that emits a minimal
+  Splunk Technology Add-on from a taxonomy YAML. Six files
+  generated per TA: `default/{app,props,eventtypes,tags}.conf`,
+  `default/data/ui/views/audit_events.xml` (starter dashboard), and
+  `metadata/default.meta`. New flags `--vendor-product`,
+  `--splunk-ta-name`, `--splunk-ta-version`. CIM Change tagging is
+  automatic on every eventtype; CIM Authentication tagging is
+  inferred from category names (`auth`/`authentication`/`security`/
+  `access`). Output is deterministic so the committed reference TA
+  at `deploy/splunk-ta-axonops-audit/` stays in sync via `make
+  ta-diff-check`. New CI job `splunk-ta-appinspect` validates the
+  reference TA against `splunk-appinspect --mode precert
+  --included-tags cloud` with zero failures (warnings allowed).
+  New user-facing docs: `docs/splunk-output.md` (end-to-end
+  consumer guide) and `docs/splunk-ta.md` (TA generator operator
+  walkthrough).
+- **PR 2 of #55 — ACK + CIM Change + splunkcloud://:** indexer
+  acknowledgement state machine (`AckModeBestEffort` and
+  `AckModeRequired`) with crypto/rand UUID v4 channel GUID,
+  feature-detect probe (HEC code 14 → `ErrAckDisabled`), pollLoop
+  goroutine, AckResendWindow on the required mode, and a
+  non-blocking buffer-gating policy (`reason=ack_buffer_full`
+  drops). CIM Change formatter (`format: cim_change`) maps audit
+  fields to the Splunk CIM 6.1 Change data model with outcome
+  preservation, `severity_id` extension, and configurable
+  `vendor_product`. `splunkcloud://<stack>` URL shortcut expands
+  to `https://http-inputs-<stack>.splunkcloud.com:443` with strict
+  stack-name validation and mTLS rejection.
 - New `github.com/axonops/audit/splunk` sub-module providing a
   Splunk HTTP Event Collector (HEC) output. PR 1 of three for #55
   ships the scaffolding: `Splunk.Output` posts to

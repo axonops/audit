@@ -1,0 +1,124 @@
+# reference_ta_taxonomy.yaml
+#
+# Drives the reference Splunk TA shipped at
+# deploy/splunk-ta-axonops-audit/. The taxonomy is a representative
+# starting point for operators evaluating the splunk output —
+# realistic enough to demonstrate per-category CIM tagging
+# (authentication=enabled on security events) without being so
+# elaborate that operators have to delete entries before installing.
+#
+# Consumers' production deployments will replace this with their
+# own taxonomy YAML — run:
+#
+#   audit-gen --format=splunk-ta \
+#     --input <your-taxonomy.yaml> \
+#     --output <your-ta-dir>
+#
+# See docs/splunk-ta.md for the full operator-facing walkthrough.
+
+version: 1
+
+categories:
+  # CRUD-style account management. Tagged with CIM Change only.
+  account:
+    severity: 3
+    events:
+      - user_create
+      - user_update
+      - user_delete
+
+  # Configuration changes. Tagged with CIM Change.
+  configuration:
+    severity: 4
+    events:
+      - config_update
+
+  # Security-related events. Tagged with BOTH CIM Change and CIM
+  # Authentication (the TA generator infers this from the category
+  # name being one of: auth, authentication, security, access).
+  security:
+    severity: 8
+    events:
+      - login_success
+      - login_failure
+      - logout
+      - permission_denied
+
+events:
+  user_create:
+    description: "A new user account was created"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+        required: true
+
+  user_update:
+    description: "An existing user account was modified"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+        required: true
+
+  user_delete:
+    description: "A user account was deleted"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+        required: true
+
+  config_update:
+    description: "A configuration setting was changed"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target:
+        required: true
+
+  login_success:
+    description: "A user authenticated successfully"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      source_ip:
+        required: true
+
+  login_failure:
+    description: "An authentication attempt failed"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      source_ip:
+        required: true
+
+  logout:
+    description: "A user explicitly ended their session"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  permission_denied:
+    description: "A user attempted an action without sufficient privileges"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target:
+        required: true

@@ -1,0 +1,49 @@
+<form theme="light" version="1.1">
+  <label>Audit Events</label>
+  <description>Starter view for events ingested via the TA-axonops-audit TA. Customise as needed.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_window">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Events by Type (last 24h)</title>
+      <chart>
+        <search>
+          <query>sourcetype="axonops:audit" | stats count by action</query>
+          <earliest>$time_window.earliest$</earliest>
+          <latest>$time_window.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Failure Rate (CIM Change status)</title>
+      <chart>
+        <search>
+          <query>sourcetype="axonops:audit" | stats count by status</query>
+          <earliest>$time_window.earliest$</earliest>
+          <latest>$time_window.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Audit Events</title>
+      <table>
+        <search>
+          <query>sourcetype="axonops:audit" | table _time action user_name object object_category status src dvc</query>
+          <earliest>$time_window.earliest$</earliest>
+          <latest>$time_window.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

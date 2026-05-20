@@ -40,7 +40,7 @@ tests with the same validation path as production.
 
 - 📋 **Schema enforcement** — every event validated against your taxonomy; missing required fields rejected at compile time
 - 🛡️ **SIEM-native output** — [CEF](docs/cef-format.md) understood by Splunk, ArcSight, QRadar; [JSON](docs/json-format.md) for log aggregators
-- 📡 **Multi-output fan-out** — [files, syslog, webhooks, Loki, stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
+- 📡 **Multi-output fan-out** — [files, syslog, webhooks, Loki, Splunk, stdout](docs/outputs.md) simultaneously, each with its own formatter and filters
 - 🔒 **Sensitive field stripping** — [classify fields as PII/financial](docs/sensitivity-labels.md); strip per-output for GDPR/PCI compliance
 - ⚡ **Non-blocking** — sub-microsecond `AuditEvent()`; [async delivery](docs/async-delivery.md) with completeness monitoring
 - 🧪 **Production-grade testing** — [`audittest`](docs/testing.md) recorder shares the production validation path — no mock drift
@@ -184,7 +184,7 @@ func TestCreateUser_EmitsAudit(t *testing.T) {
 | ✅ **Pre-deploy Validator** | `audit-validate` validates `outputs.yaml` in CI; distinct exit codes per failure class | [Learn more](docs/validation.md) |
 | 🛡️ **CEF Format** | Common Event Format for SIEM platforms (Splunk, ArcSight, QRadar) | [Learn more](docs/cef-format.md) |
 | 📄 **JSON Format** | Line-delimited JSON with deterministic field order | [Learn more](docs/json-format.md) |
-| 📡 **5 Output Types** | File (rotation), syslog (RFC 5424), webhook (NDJSON), Loki (stream labels), stdout — fan-out to all simultaneously | [Learn more](docs/outputs.md) |
+| 📡 **6 Output Types** | File (rotation), syslog (RFC 5424), webhook (NDJSON), Loki (stream labels), Splunk (HEC + ACK + CIM), stdout — fan-out to all simultaneously | [Learn more](docs/outputs.md) |
 | 🔀 **Event Routing** | Route events by category or severity to specific outputs | [Learn more](docs/event-routing.md) |
 | 🔒 **Sensitivity Labels** | Classify fields as PII/financial; strip per-output for compliance | [Learn more](docs/sensitivity-labels.md) |
 | ⚡ **Async Delivery** | Sub-microsecond enqueue; background drain goroutine | [Learn more](docs/async-delivery.md) |
@@ -236,6 +236,7 @@ go get github.com/axonops/audit/file         # file output with rotation
 go get github.com/axonops/audit/syslog       # RFC 5424 syslog (TCP/UDP/TLS/mTLS)
 go get github.com/axonops/audit/webhook      # batched HTTP webhook with SSRF protection
 go get github.com/axonops/audit/loki         # Grafana Loki with stream labels and gzip
+go get github.com/axonops/audit/splunk       # Splunk HEC with ACK + CIM Change formatter
 go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 ```
 
@@ -265,6 +266,7 @@ go get github.com/axonops/audit/outputconfig # YAML-based output configuration
 | `github.com/axonops/audit/syslog` | RFC 5424 syslog output (TCP/UDP/TLS/mTLS) |
 | `github.com/axonops/audit/webhook` | Batched HTTP webhook with retry and SSRF protection |
 | `github.com/axonops/audit/loki` | Grafana Loki output with stream labels, gzip, multi-tenancy |
+| `github.com/axonops/audit/splunk` | Splunk HEC output with ACK + CIM Change formatter + `splunkcloud://` URL expansion |
 | `github.com/axonops/audit/outputconfig` | YAML-based output configuration with env var substitution |
 | `github.com/axonops/audit/outputs` | **Recommended default** — single blank import registers all output factories |
 | `github.com/axonops/audit/secrets` | Secret provider interface for `ref+` URI resolution in YAML config |

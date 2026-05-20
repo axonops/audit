@@ -8,6 +8,7 @@
 - [Syslog Output](#syslog-output)
 - [Webhook Output](#webhook-output)
 - [Loki Output](#loki-output)
+- [Splunk Output](#splunk-output)
 - [Stdout Output](#stdout-output)
 - [Per-Output Features](#per-output-features)
 - [Fan-Out Architecture](#fan-out-architecture)
@@ -170,6 +171,40 @@ production examples, performance tuning, and troubleshooting.
 **[→ Progressive example with real query output](../examples/08-loki-output/)**
 
 Install: `go get github.com/axonops/audit/loki`
+
+---
+
+## Splunk Output
+
+Sends events to Splunk via the HTTP Event Collector (HEC) `/event`
+or `/raw` endpoints. Supports the full 28-entry HEC error code
+table, indexer acknowledgement (best-effort or required modes), the
+Splunk Cloud URL shortcut, and the `cim_change` formatter for
+Common Information Model alignment.
+
+**[→ Full Splunk Output Reference](splunk-output.md)** — complete
+configuration, ACK modes, CIM mapping, Splunk Cloud specifics,
+troubleshooting.
+
+### Key Features
+
+- **Native HEC auth scheme** (`Authorization: Splunk <token>`) and
+  per-event envelope wrapping
+- **`splunkcloud://` URL shortcut** expands to the canonical
+  Splunk Cloud HEC URL with stack-name validation
+- **Indexer acknowledgement** with three modes (off / best-effort /
+  required) for end-to-end durability — required mode keeps events
+  in-flight until ACK confirms, with non-blocking buffer gating
+- **CIM Change formatter** (`cim_change`) maps audit fields to the
+  Splunk Common Information Model out of the box
+- **Reference TA** at [`deploy/splunk-ta-axonops-audit/`](../deploy/splunk-ta-axonops-audit/)
+  configures the Splunk side automatically
+- **TA generator** (`audit-gen --format=splunk-ta`) emits a custom
+  TA from your own taxonomy — see [docs/splunk-ta.md](splunk-ta.md)
+- **AppInspect CI gate** verifies the reference TA against
+  Splunkbase publishing rules on every commit
+
+Install: `go get github.com/axonops/audit/splunk`
 
 ---
 

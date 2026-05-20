@@ -19,14 +19,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"regexp"
-	"strconv"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,11 +66,11 @@ type splunkStub struct {
 	failCount  atomic.Int32
 
 	// ACK support (#55 PR 2).
-	ackEnabled         atomic.Bool
-	ackIDCounter       atomic.Int64
-	ackPollHits        atomic.Int64
-	ackConfirmAll      atomic.Bool // when true, /ack returns true for every queried ID
-	ackResponsesByID   map[int64]bool
+	ackEnabled       atomic.Bool
+	ackIDCounter     atomic.Int64
+	ackPollHits      atomic.Int64
+	ackConfirmAll    atomic.Bool // when true, /ack returns true for every queried ID
+	ackResponsesByID map[int64]bool
 }
 
 // newSplunkStub returns a stub server that responds with HTTP 200 +

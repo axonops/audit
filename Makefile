@@ -13,6 +13,7 @@
        security release-check api-check check-release-invariants \
        regen-release-docs regen-release-docs-check \
        regen-schema-artifacts regen-schema-artifacts-check \
+       ta ta-diff-check ta-appinspect \
        print-publish-modules \
        check clean \
        install-tools install-benchstat install-govulncheck install-gremlins workspace generate-certs \
@@ -1097,6 +1098,54 @@ regen-llms:
 regen-llms-check:
 	@bash scripts/regen-llms.sh --check
 
+# ta regenerates the reference Splunk Technology Add-on at
+# deploy/splunk-ta-axonops-audit/ from
+# internal/schemagen/reference_ta_taxonomy.yaml. Idempotent — the
+# audit-gen splunk-ta format produces byte-deterministic output.
+# Run this whenever the reference taxonomy changes; commit the
+# regenerated tree so the ta-diff-check stays clean.
+.PHONY: ta
+ta:
+	@go run ./cmd/audit-gen --format=splunk-ta \
+		--input internal/schemagen/reference_ta_taxonomy.yaml \
+		--output deploy/splunk-ta-axonops-audit
+	@echo "regenerated deploy/splunk-ta-axonops-audit/"
+
+# ta-diff-check verifies deploy/splunk-ta-axonops-audit/ is in sync
+# with the source taxonomy. Wired into check-static so a stale
+# reference TA fails CI alongside the schema artefacts.
+#
+# README.md is excluded from the diff — it's a hand-authored
+# operator-facing file (the generator emits TA config files, not
+# documentation). A future change that DOES want the generator to
+# emit a README would have to drop this exclusion.
+.PHONY: ta-diff-check
+ta-diff-check:
+	@TMP=$$(mktemp -d); \
+	go run ./cmd/audit-gen --format=splunk-ta \
+		--input internal/schemagen/reference_ta_taxonomy.yaml \
+		--output "$$TMP/ta" >/dev/null && \
+	if ! diff -qr --exclude=README.md "$$TMP/ta" deploy/splunk-ta-axonops-audit >/dev/null; then \
+		echo "deploy/splunk-ta-axonops-audit/ is stale; run 'make ta'"; \
+		diff -ur --exclude=README.md deploy/splunk-ta-axonops-audit "$$TMP/ta" || true; \
+		rm -rf "$$TMP"; exit 1; \
+	fi; \
+	rm -rf "$$TMP"
+
+# ta-appinspect runs splunk-appinspect against the reference TA.
+# Requires Python 3 + pip + splunk-appinspect. Local developers may
+# skip this if the toolchain is unavailable; CI installs it on
+# every run.
+.PHONY: ta-appinspect
+ta-appinspect:
+	@if ! command -v splunk-appinspect >/dev/null 2>&1; then \
+		echo "splunk-appinspect not installed; install with 'pip install splunk-appinspect'"; \
+		exit 1; \
+	fi
+	@splunk-appinspect inspect --mode precert \
+		--included-tags cloud \
+		deploy/splunk-ta-axonops-audit
+
 # Aggregate every static-analysis guard the CI hygiene job runs,
 # in a single shell loop with `||`-guarded error collection so
 # operators see every static failure on a single push (rather
@@ -1110,7 +1159,7 @@ check-static:
 	              check-license-headers check-release-scripts \
 	              check-skip-tidy-check-scope \
 	              regen-release-docs-check regen-schema-artifacts-check \
-	              regen-llms-check; do \
+	              regen-llms-check ta-diff-check; do \
 	  echo "==> make $$target"; \
 	  $(MAKE) "$$target" || FAILED="$$FAILED $$target"; \
 	done; \

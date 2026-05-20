@@ -267,7 +267,6 @@ func TestNew_SplunkCloudScheme_ExpandsAndConstructs(t *testing.T) {
 		"Name() must reflect the expanded splunkcloud URL host")
 }
 
-
 func TestNew_HealthCheckFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

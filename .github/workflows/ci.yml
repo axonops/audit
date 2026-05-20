@@ -890,13 +890,76 @@ jobs:
   # `dependency-review` is deliberately NOT in `needs:` — it has
   # `if: github.event_name == 'pull_request'` so on push events it
   # would always be `skipped`, which is fine but adds noise.
+  splunk-ta-appinspect:
+    name: Test - Splunk TA AppInspect
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    needs: [hygiene, changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v6.0.0
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install splunk-appinspect
+        run: pip install splunk-appinspect
+
+      - name: Set up audit workspace
+        uses: ./.github/actions/setup-audit
+        with:
+          install-tools: 'false'
+
+      - name: Generate reference TA from canonical taxonomy
+        run: make ta
+
+      - name: Run splunk-appinspect
+        # --mode precert is the Splunkbase publishing gate. Scoped
+        # to the `cloud` tag to focus on the rules that matter for
+        # Splunk Cloud customers — the most restrictive deployment
+        # target. JSON output lets us pin "zero failures, warnings
+        # allowed" without scraping stdout.
+        run: |
+          splunk-appinspect inspect \
+            --mode precert \
+            --included-tags cloud \
+            --output-file appinspect.json \
+            deploy/splunk-ta-axonops-audit
+
+      - name: Assert zero AppInspect failures
+        # The report's `summary.failure` counter is the load-bearing
+        # gate. Warnings are allowed (AC 65). Use `jq` to parse the
+        # JSON so a future report format change surfaces clearly.
+        run: |
+          FAILURES=$(jq '.summary.failure // 0' appinspect.json)
+          echo "AppInspect failures: $FAILURES"
+          if [ "$FAILURES" != "0" ]; then
+            echo "AppInspect reported $FAILURES failure(s)"
+            jq '.reports[].groups[].checks[] | select(.result == "failure")' appinspect.json
+            exit 1
+          fi
+
+      - name: Upload AppInspect report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appinspect-report
+          path: appinspect.json
+          retention-days: 14
+
   ci-pass:
     name: Test - CI Pass
     runs-on: ubuntu-latest
     permissions:
       contents: read
     timeout-minutes: 5
-    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release, mutation-test]
+    needs: [changes, hygiene, lint, test, test-cross-platform, integration, bdd, bdd-verify, security, security-verify, cross-build, examples-build, validate-release, mutation-test, splunk-ta-appinspect]
     if: always()
     steps:
       - name: Check all jobs passed

@@ -590,15 +590,26 @@ jobs:
             target: test-bdd-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+            timeout: 10
           - suite: splunk
             target: test-bdd-splunk
-            # Splunk BDD scenarios drive the output against an
-            # in-process httptest stub, not a real container, so no
-            # infra is required. Real-Splunk round-trip behaviour is
-            # covered by the integration matrix entry above.
+            # @docker-tagged Splunk scenarios drive the real
+            # container — the stub-only happy paths violated the
+            # `feedback_bdd_real_containers` project rule (see #889
+            # AC 1). HEC error-code scenarios stay on the stub in
+            # the splunk-stub suite below — the real container
+            # cannot produce codes 4/7/9/24/413 on demand.
+            infra-up: test-infra-splunk-up
+            infra-down: test-infra-splunk-down
+            timeout: 15
+          - suite: splunk-stub
+            target: test-bdd-splunk-stub
+            # @stub-tagged Splunk scenarios — in-process httptest
+            # stub for deterministic HEC response codes. No
+            # infrastructure required.
             infra-up: ""
             infra-down: ""
-            timeout: 10
+            timeout: 8
           # Fan-out: needs all containers (syslog + webhook + loki)
           - suite: fanout
             target: test-bdd-fanout
@@ -688,7 +699,9 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 5
-    needs: [bdd, changes]
+    # splunk-ta-appinspect uploads its @appinspect scenario count too;
+    # bdd-verify must wait for it so the per-shard-count sum is complete.
+    needs: [bdd, splunk-ta-appinspect, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
@@ -906,10 +919,17 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v6.0.0
         with:
           python-version: '3.11'
-          cache: 'pip'
+          # No cache: 'pip' here — that requires a requirements.txt
+          # or pyproject.toml file as the cache key, and we have
+          # neither. The single pinned `pip install` below is fast
+          # enough that caching it adds maintenance burden without
+          # measurable benefit.
 
-      - name: Install splunk-appinspect
-        run: pip install splunk-appinspect
+      - name: Install splunk-appinspect (pinned)
+        # Pinned for supply-chain safety. Bump deliberately when a
+        # new Splunkbase rule release requires it; do not float to
+        # the unpinned `pip install splunk-appinspect` form.
+        run: pip install splunk-appinspect==4.2.0
 
       - name: Set up audit workspace
         uses: ./.github/actions/setup-audit
@@ -923,26 +943,72 @@ jobs:
         # --mode precert is the Splunkbase publishing gate. Scoped
         # to the `cloud` tag to focus on the rules that matter for
         # Splunk Cloud customers — the most restrictive deployment
-        # target. JSON output lets us pin "zero failures, warnings
-        # allowed" without scraping stdout.
+        # target. --data-format json explicit (do not rely on the
+        # output-file extension to infer the format).
         run: |
           splunk-appinspect inspect \
             --mode precert \
             --included-tags cloud \
+            --data-format json \
             --output-file appinspect.json \
             deploy/splunk-ta-axonops-audit
 
-      - name: Assert zero AppInspect failures
-        # The report's `summary.failure` counter is the load-bearing
-        # gate. Warnings are allowed (AC 65). Use `jq` to parse the
-        # JSON so a future report format change surfaces clearly.
+      - name: Assert zero AppInspect failures or execution errors
+        # Two gates are load-bearing here:
+        # - `summary.failure` — check ran and the TA failed it.
+        # - `summary.error` — check could not execute (Python
+        #   exception, file I/O bug). Without this gate, an
+        #   exception storm where every check errors would silently
+        #   pass (failure=0). The // 0 defaulting treats absence as
+        #   zero rather than null-comparison error.
         run: |
           FAILURES=$(jq '.summary.failure // 0' appinspect.json)
+          ERRORS=$(jq '.summary.error // 0' appinspect.json)
           echo "AppInspect failures: $FAILURES"
-          if [ "$FAILURES" != "0" ]; then
-            echo "AppInspect reported $FAILURES failure(s)"
-            jq '.reports[].groups[].checks[] | select(.result == "failure")' appinspect.json
+          echo "AppInspect errors: $ERRORS"
+          if [ "$FAILURES" != "0" ] || [ "$ERRORS" != "0" ]; then
+            echo "AppInspect reported $FAILURES failure(s), $ERRORS error(s)"
+            echo "=== Failures ==="
+            jq '.reports[].groups[].checks[] | select(.result == "failure" or .result == "error") | {check_id, name, description, messages}' appinspect.json
             exit 1
+          fi
+
+      - name: Assert no AppInspect warnings under the cloud tag
+        # Under `--included-tags cloud` (the Splunkbase-publishing
+        # scope), ANY warning is a publishing-blocker — Splunkbase's
+        # review pipeline treats warnings as gating, not advisory.
+        # The strictest interpretation auto-tracks future Splunk
+        # rule additions without needing a manually-maintained
+        # blocker-ID list.
+        #
+        # Note: deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
+        # is kept as documentation of which checks are the publishing
+        # blockers; it is no longer consumed by this CI step because
+        # the broader "fail on any warning" rule is both stricter
+        # and easier to maintain.
+        run: |
+          WARNINGS=$(jq '.summary.warning // 0' appinspect.json)
+          echo "AppInspect warnings: $WARNINGS"
+          if [ "$WARNINGS" != "0" ]; then
+            echo "=== Warnings ==="
+            jq '.reports[].groups[].checks[] | select(.result == "warning") | {check_id, name, description, messages}' appinspect.json
+            echo
+            echo "Splunkbase publishing under --included-tags cloud treats every warning as gating."
+            echo "Fix the TA generator template or update appinspect-blocker-checks.txt with a justification."
+            exit 1
+          fi
+
+      - name: Print AppInspect summary
+        # Always print so warning counts trend visibly over time —
+        # the summary block lands in the job log on every run,
+        # passing or failing.
+        if: always()
+        run: |
+          if [ -f appinspect.json ]; then
+            echo "=== AppInspect summary ==="
+            jq '.summary' appinspect.json
+          else
+            echo "appinspect.json not produced — inspect step did not run."
           fi
 
       - name: Upload AppInspect report
@@ -959,6 +1025,23 @@ jobs:
         # it's excluded from the default `make test-bdd-splunk`
         # local runs (where splunk-appinspect may not be installed).
         run: make test-bdd-splunk-appinspect
+
+      - name: Record @appinspect scenario count for bdd-verify
+        # The @appinspect scenario runs here rather than in the bdd
+        # matrix, so the bdd-verify gate that sums per-shard counts
+        # needs to see this job's contribution too — otherwise the
+        # total comes up 1 scenario short.
+        if: always()
+        run: |
+          echo "1" > /tmp/bdd-count.txt
+
+      - name: Upload @appinspect scenario count
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bdd-count-splunk-appinspect
+          path: /tmp/bdd-count.txt
+          retention-days: 1
 
   ci-pass:
     name: Test - CI Pass

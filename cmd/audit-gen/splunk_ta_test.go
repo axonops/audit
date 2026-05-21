@@ -77,18 +77,23 @@ func TestSplunkTA_GeneratesAllExpectedFiles(t *testing.T) {
 }
 
 // TestSplunkTA_PropsConf_FieldAliasesMatchCIMChange anchors the
-// props.conf contract: INDEXED_EXTRACTIONS=json, TIMESTAMP_FIELDS,
-// TIME_FORMAT, EVAL-vendor_product, EVAL-dvc.
+// props.conf contract: KV_MODE=json (search-time JSON KV extraction
+// — works for both forwarder ingest and HEC direct ingest, unlike
+// INDEXED_EXTRACTIONS which Splunk does not evaluate on the indexer
+// side for HEC-sourced events), TIMESTAMP_FIELDS, TIME_FORMAT,
+// EVAL-vendor_product, EVAL-dvc.
 func TestSplunkTA_PropsConf_FieldAliasesMatchCIMChange(t *testing.T) {
 	dir := runSplunkTA(t, splunkTAOptions{VendorProduct: "TestVendor:Product"})
 	body := mustRead(t, filepath.Join(dir, "default", "props.conf"))
 
 	assert.Contains(t, body, "[axonops:audit]",
 		"sourcetype stanza must use the default axonops:audit name")
-	assert.Contains(t, body, "INDEXED_EXTRACTIONS = json",
-		"INDEXED_EXTRACTIONS = json is the load-bearing CIM extraction directive")
-	assert.Contains(t, body, "KV_MODE = none",
-		"KV_MODE = none avoids double-extraction (mutually exclusive with INDEXED_EXTRACTIONS)")
+	assert.Contains(t, body, "KV_MODE = json",
+		"KV_MODE = json runs JSON KV extraction at search time — required for HEC-sourced events")
+	assert.NotContains(t, body, "INDEXED_EXTRACTIONS = json",
+		"INDEXED_EXTRACTIONS does not fire for HEC direct ingest; KV_MODE=json is the load-bearing rule")
+	assert.NotContains(t, body, "KV_MODE = none",
+		"KV_MODE must be json (not none) so HEC-indexed JSON fields are searchable")
 	assert.Contains(t, body, "TIMESTAMP_FIELDS = _time")
 	assert.Contains(t, body, "TIME_FORMAT = %s.%3N",
 		"epoch seconds with ms precision (CIM canonical timestamp)")
@@ -117,9 +122,13 @@ func TestSplunkTA_EventtypesConf_OnePerCategory(t *testing.T) {
 		assert.Contains(t, body, stanza,
 			"eventtypes.conf must contain stanza %s", stanza)
 	}
-	// And each stanza's search line targets the right event_type.
-	assert.Contains(t, body, `search = sourcetype="axonops:audit" event_type="login"`)
-	assert.Contains(t, body, `search = sourcetype="axonops:audit" event_type="user_create"`)
+	// Each stanza's search line accepts either `action="<event_type>"`
+	// (the CIM-canonical key emitted by CIMChangeFormatter) or
+	// `event_type="<event_type>"` (the audit-canonical key emitted
+	// by JSONFormatter), so the same TA works regardless of which
+	// formatter the operator chose.
+	assert.Contains(t, body, `search = sourcetype="axonops:audit" (action="login" OR event_type="login")`)
+	assert.Contains(t, body, `search = sourcetype="axonops:audit" (action="user_create" OR event_type="user_create")`)
 
 	// Verify exactly 4 stanzas — count the lines starting with `[`.
 	stanzaCount := strings.Count(body, "\n[") + 1 // +1 for the first stanza (no preceding newline)
@@ -154,14 +163,14 @@ func TestSplunkTA_TagsConf_CIMTagsAppliedCorrectly(t *testing.T) {
 }
 
 // TestSplunkTA_FieldsConf_OmittedForJSONExtractions — fields.conf is
-// NOT generated because INDEXED_EXTRACTIONS=json supplies all field
-// extractions automatically. Test pins the omission so a future
+// NOT generated because KV_MODE=json supplies all field extractions
+// automatically at search time. Test pins the omission so a future
 // refactor can't silently start emitting it without a code review.
 func TestSplunkTA_FieldsConf_OmittedForJSONExtractions(t *testing.T) {
 	dir := runSplunkTA(t, splunkTAOptions{})
 	_, err := os.Stat(filepath.Join(dir, "default", "fields.conf"))
 	assert.True(t, os.IsNotExist(err),
-		"fields.conf must NOT be generated — INDEXED_EXTRACTIONS=json handles all field extractions")
+		"fields.conf must NOT be generated — KV_MODE=json handles all field extractions")
 }
 
 // TestSplunkTA_SavedSearches_OmittedForMinimalTA — savedsearches.conf
@@ -180,6 +189,7 @@ func TestSplunkTA_SavedSearches_OmittedForMinimalTA(t *testing.T) {
 func TestSplunkTA_AppConf_Skeleton(t *testing.T) {
 	dir := runSplunkTA(t, splunkTAOptions{
 		AppName:     "TA-test-app",
+		PackageID:   "ta-test-app",
 		AppVersion:  "1.2.3",
 		Author:      "Test Author",
 		Description: "Test description",
@@ -189,10 +199,18 @@ func TestSplunkTA_AppConf_Skeleton(t *testing.T) {
 	for _, stanza := range []string{"[install]", "[ui]", "[launcher]", "[package]", "[id]"} {
 		assert.Contains(t, body, stanza, "app.conf must contain %s stanza", stanza)
 	}
-	// Configurable fields reflect the options.
+	// Configurable fields reflect the options. PackageID is what
+	// Splunkbase's check_for_valid_package_id matches against the
+	// uncompressed directory name; AppName is the human-facing label.
 	assert.Contains(t, body, "version = 1.2.3")
-	assert.Contains(t, body, "id = TA-test-app")
-	assert.Contains(t, body, "name = TA-test-app")
+	assert.Contains(t, body, "label = TA-test-app",
+		"app.conf [ui] label must use AppName")
+	assert.Contains(t, body, "id = ta-test-app",
+		"app.conf [package] id must use PackageID")
+	assert.Contains(t, body, "name = ta-test-app",
+		"app.conf [id] name must use PackageID")
+	assert.Contains(t, body, "is_configured = false",
+		"Splunkbase publishing requires is_configured = false")
 	assert.Contains(t, body, "author = Test Author")
 	assert.Contains(t, body, "description = Test description")
 	// TAs ship as non-visible UI elements (no [ui] is_visible=true).
@@ -242,7 +260,13 @@ func TestSplunkTA_DeterministicOutput(t *testing.T) {
 	tax := taTestTaxonomy()
 	d1 := t.TempDir()
 	d2 := t.TempDir()
-	opts := splunkTAOptions{VendorProduct: "Determinism:Test"}
+	// Fix PackageID explicitly so two different t.TempDir() basenames
+	// don't make the test compare different package ids — we are
+	// testing template stability, not the basename-derived default.
+	opts := splunkTAOptions{
+		VendorProduct: "Determinism:Test",
+		PackageID:     "determinism-test-ta",
+	}
 	require.NoError(t, generateSplunkTA(d1, tax, opts))
 	require.NoError(t, generateSplunkTA(d2, tax, opts))
 

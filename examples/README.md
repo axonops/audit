@@ -48,6 +48,10 @@ and read in order within it.
   REST API composing every prior concept — web UI, Postgres, four
   outputs, Grafana dashboards, Prometheus metrics, OpenBao
   secrets.
+- **Splunk reference** → [21-splunk-output](21-splunk-output/).
+  HTTP Event Collector delivery with the CIM Change formatter and
+  the reference Splunk TA — published as a separate output sub-
+  module so it can ship on its own release cadence.
 
 ## Examples
 
@@ -73,6 +77,7 @@ and read in order within it.
 | 18 | [migration](18-migration/) | Coexistence pattern — `log/slog` and the audit library running side-by-side in an HTTP service |
 | 19 | [prometheus-reference](19-prometheus-reference/) | Drop-in `audit.Metrics` + `audit.OutputMetricsFactory` adapter for Prometheus, with `/metrics` HTTP handler |
 | 20 | [capstone](20-capstone/) | Complete inventory demo with web UI, Postgres, four outputs, Grafana, Prometheus |
+| 21 | [splunk-output](21-splunk-output/) | Splunk HEC output with CIM Change formatter, indexer acknowledgement, and reference TA |
 
 The **basic** example uses the programmatic API to show how the library
 works. Every example after that uses YAML files for configuration —

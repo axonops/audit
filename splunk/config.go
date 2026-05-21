@@ -299,7 +299,7 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred (gr
 
 // applyDefaults fills in zero-valued fields with their package
 // defaults. Mutates the receiver. Called by [Validate] and [New].
-func (c *Config) applyDefaults() {
+func (c *Config) applyDefaults() { //nolint:gocognit,gocyclo,cyclop // one-pass defaulter; each block is independent
 	if c.BatchSize == 0 {
 		c.BatchSize = DefaultBatchSize
 	}
@@ -388,7 +388,7 @@ func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen,gocognit // l
 	}
 	u, err := url.Parse(c.URL)
 	if err != nil {
-		return fmt.Errorf("%w: URL parse: %v", ErrConfigInvalid, err)
+		return fmt.Errorf("%w: URL parse: %w", ErrConfigInvalid, err)
 	}
 	if u.User != nil {
 		return fmt.Errorf("%w: URL must not contain user-info credentials", ErrConfigInvalid)
@@ -559,15 +559,18 @@ func (c Config) String() string {
 	)
 }
 
-// GoString is the verbose-formatter form (%#v); also redacts.
-func (c Config) GoString() string {
+// GoString is the verbose-formatter form (%#v); also redacts. Uses
+// a value receiver to match the consumer-side ergonomics of the
+// other String/Format methods — Config is most commonly passed by
+// value in user code.
+func (c Config) GoString() string { //nolint:gocritic // value receiver matches String/Format consumer ergonomics
 	return c.String()
 }
 
 // Format implements [fmt.Formatter] so both %v and %+v produce the
 // redacted form. Without this, fmt's default reflection-based
 // formatter would print every field including the token.
-func (c Config) Format(f fmt.State, _ rune) {
+func (c Config) Format(f fmt.State, _ rune) { //nolint:gocritic // value receiver matches String/GoString consumer ergonomics
 	_, _ = fmt.Fprint(f, c.String())
 }
 

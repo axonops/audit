@@ -22,6 +22,22 @@ services:
     ports:
       - "127.0.0.1:8000:8000" # Web UI
       - "127.0.0.1:8088:8088" # HEC
+      - "127.0.0.1:8089:8089" # Splunkd management API (search REST for integration + BDD post-search verification)
+    volumes:
+      # Mount the reference TA into Splunk's apps directory. Splunk
+      # auto-loads anything in etc/apps/ at startup, applying
+      # eventtypes.conf, tags.conf, and props.conf transparently —
+      # no `splunk restart` needed when the TA is mounted at
+      # container-create time. Required by the AC 2 integration
+      # tests in splunk/tests/integration/splunk_ta_install_test.go.
+      #
+      # The mount source is a staging copy under tests/bdd/.tmp/
+      # (gitignored) populated by `make stage-splunk-ta`. We do NOT
+      # bind-mount the source `deploy/splunk-ta-axonops-audit` directly
+      # because docker-splunk's Ansible bootstrap recursively chowns
+      # everything under etc/apps/, which would mutate the host's
+      # source tree on every container start.
+      - ./.tmp/splunk-ta:/opt/splunk/etc/apps/TA-axonops-audit
     environment:
       - SPLUNK_START_ARGS=--accept-license
       - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com

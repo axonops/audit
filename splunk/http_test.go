@@ -28,10 +28,10 @@ import (
 func TestParseRetryAfter(t *testing.T) { //nolint:funlen // table-driven enumeration
 	now := time.Now()
 	tests := []struct {
+		check  func(t *testing.T, got time.Duration)
 		name   string
 		input  string
-		check  func(t *testing.T, got time.Duration)
-		expect time.Duration // when 0, use check; when non-zero, exact equal (±1s tolerance for HTTP-date)
+		expect time.Duration
 	}{
 		{
 			name:   "empty header — no delay",
@@ -67,6 +67,7 @@ func TestParseRetryAfter(t *testing.T) { //nolint:funlen // table-driven enumera
 			name:  "HTTP-date in the future — honoured",
 			input: now.Add(30 * time.Second).UTC().Format(time.RFC1123),
 			check: func(t *testing.T, got time.Duration) {
+				t.Helper()
 				// Allow 1s wiggle for the time.Until() call drift.
 				assert.InDelta(t, 30*time.Second, got, float64(2*time.Second))
 			},
@@ -80,6 +81,7 @@ func TestParseRetryAfter(t *testing.T) { //nolint:funlen // table-driven enumera
 			name:  "HTTP-date very far in the future — capped at maxRetryAfter",
 			input: now.Add(1 * time.Hour).UTC().Format(time.RFC1123),
 			check: func(t *testing.T, got time.Duration) {
+				t.Helper()
 				assert.Equal(t, maxRetryAfter, got)
 			},
 		},

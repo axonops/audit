@@ -30,9 +30,9 @@ output + `cim_change` formatter.
 
 The TA generator is intentionally minimal. It does NOT generate:
 
-- `fields.conf` — `INDEXED_EXTRACTIONS = json` automatically extracts
-  every JSON key, so a static field declaration is unnecessary for
-  CIM compliance.
+- `fields.conf` — `KV_MODE = json` automatically extracts every
+  JSON key at search time, so a static field declaration is
+  unnecessary for CIM compliance.
 - `savedsearches.conf` — risk modifiers and scheduled searches are
   consumer-specific. Add them in your own app's `local/` directory.
 - `transforms.conf` — required only for non-JSON field extractions.
@@ -99,19 +99,20 @@ The load-bearing file. Configures the sourcetype:
 
 ```ini
 [axonops:audit]
-INDEXED_EXTRACTIONS = json
-KV_MODE = none
+KV_MODE = json
 TIMESTAMP_FIELDS = _time
 TIME_FORMAT = %s.%3N
 EVAL-vendor_product = "AxonOps:Audit"
 EVAL-dvc = if(isnotnull(dvc), dvc, host)
 ```
 
-- `INDEXED_EXTRACTIONS = json` extracts every JSON key at index
-  time — no FIELDALIAS rules needed because the `cim_change`
-  formatter already emits CIM-named keys.
-- `KV_MODE = none` prevents Splunk from running a second
-  search-time extraction over the same fields.
+- `KV_MODE = json` runs JSON KV extraction at SEARCH time. This
+  works uniformly for both forwarder ingest AND HEC direct ingest.
+  (`INDEXED_EXTRACTIONS = json` would only fire for forwarder
+  ingest — Splunk does not evaluate it on the indexer side for
+  HEC-sourced events, so we use `KV_MODE` instead to guarantee
+  the same field-extraction semantics regardless of how the data
+  reached the indexer.)
 - `TIMESTAMP_FIELDS = _time` + `TIME_FORMAT = %s.%3N` consumes
   the CIM canonical epoch-seconds-with-ms-precision timestamp.
 - `EVAL-vendor_product` stamps a per-TA constant so operator-
@@ -125,11 +126,14 @@ One stanza per `(category, event_type)` pair in the taxonomy:
 
 ```ini
 [account_user_create]
-search = sourcetype="axonops:audit" event_type="user_create"
+search = sourcetype="axonops:audit" (action="user_create" OR event_type="user_create")
 ```
 
 The stanza name is `<category>_<event_type>` (sanitised to
-ASCII-safe characters).
+ASCII-safe characters). The search matches `action="..."` (the
+CIM-canonical key emitted by `CIMChangeFormatter`) OR
+`event_type="..."` (the audit-canonical key kept by `JSONFormatter`),
+so the same TA works with either formatter.
 
 ### `default/tags.conf`
 
@@ -237,17 +241,77 @@ sudo /opt/splunk/bin/splunk restart
 is the Splunkbase publishing gate. Run it locally:
 
 ```bash
-pip install splunk-appinspect
-splunk-appinspect inspect --mode precert --included-tags cloud ./my-ta
+pip install splunk-appinspect==4.2.0  # pin to match the library's CI
+splunk-appinspect inspect --mode precert --included-tags cloud --data-format json --output-file appinspect.json ./my-ta
 ```
 
 - `--mode precert` — the Splunkbase publishing gate (stricter than
   `--mode test`).
 - `--included-tags cloud` — focuses on rules that matter for Splunk
   Cloud (the most restrictive deployment target).
+- `--data-format json` + `--output-file` — produce a machine-readable
+  report so the CI gate can assert on specific keys.
 
-The library's CI runs this against the reference TA on every
-commit. Any failure blocks merge.
+### What the library's CI gate checks
+
+The `splunk-ta-appinspect` CI job in `.github/workflows/ci.yml`
+MUST fail the build when ANY of the following is true:
+
+1. `summary.failure > 0` — a check ran and the TA failed it.
+2. `summary.error > 0` — a check could not execute (Python exception
+   in AppInspect or file-I/O failure). Treated as a hard failure
+   because the `failure` counter remains zero when checks themselves
+   error out — without this gate, an exception storm in AppInspect
+   would silently pass.
+3. Any `warning` whose `check_id` is listed in
+   [`deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt`](../deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt).
+   The file is co-located with the TA so a Splunkbase rule change
+   surfaces in code review when the list is updated.
+4. Any `check_id` declared in `appinspect-blocker-checks.txt` is
+   ABSENT from the set of checks AppInspect actually executed under
+   `--included-tags cloud`. This prevents a blocker check silently
+   becoming a no-op if AppInspect re-tags or removes a rule between
+   versions. Fix: remove the ID from the blocker file (with a
+   commit message documenting why) OR drop the `--included-tags
+   cloud` scope so the un-executed check runs.
+
+The current blocker list:
+
+| check_id | Why it's a blocker |
+|---|---|
+| `check_for_missing_default_meta` | TA must have `metadata/default.meta` declaring export rules. |
+| `check_for_missing_app_icon` | TA must have a valid app icon at `static/appIcon.png` (Splunkbase listing displays this). |
+| `check_for_invalid_default_meta` | Malformed `default.meta` can break Splunk's knowledge-object loading for other apps installed alongside. |
+| `check_for_no_default_dispatch_user` | Scripted inputs / search commands must declare a dispatch user. |
+| `check_for_dependencies_in_app_conf` | `app.conf [package] id` must match the TA directory name and be absent of conflicting dependency declarations. |
+
+When AppInspect or Splunkbase publishes new blocker rules, update
+`appinspect-blocker-checks.txt` AND its citation date in the file
+header. The CI job reads the file at runtime, so adding an entry
+is sufficient to enforce it.
+
+### Diagnosing AppInspect failures
+
+The CI job produces two conditional diagnostic blocks on failure
+and one always-on summary, in the order they land in the CI log:
+
+1. **Failures + errors** (conditional, when condition 1 or 2 fires)
+   — full check details (`check_id`, `name`, `description`,
+   `messages`) for every check with `result = "failure"` or
+   `"error"`. The `messages` field carries the file:line that
+   triggered the check.
+2. **Tripped blocker warnings** (conditional, when condition 3
+   fires) — the warnings whose `check_id` is in the blocker list,
+   with the same shape as above. The blocker-ID-absent diagnostic
+   (condition 4) prints the missing IDs and an inline fix hint
+   before this block.
+3. **Summary** (always) — `jq '.summary'` showing counts per result
+   category (success / failure / error / warning / manual_check /
+   skipped). Runs even on a passing build so warning counts trend
+   visibly over time.
+
+The full JSON report is uploaded as a CI artefact (`appinspect-report`,
+14-day retention) for forensic review.
 
 ---
 

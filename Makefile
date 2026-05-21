@@ -331,8 +331,23 @@ test-bdd-webhook:
 test-bdd-loki:
 	BDD_TAGS="@loki && ~@fanout" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
+# test-bdd-splunk runs the @docker-tagged Splunk scenarios against
+# the real Splunk Enterprise test container — `make test-infra-splunk-up`
+# MUST be running. Excludes @stub (in-process httptest stub, runs
+# under test-bdd-splunk-stub) and @appinspect (requires
+# splunk-appinspect via pip — see test-bdd-splunk-appinspect).
+# Untagged construction-only scenarios run too (URL validation,
+# splunkcloud:// expansion, TA generator file checks) — they don't
+# need a receiver.
 test-bdd-splunk:
-	BDD_TAGS="@splunk && ~@fanout && ~@appinspect" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+	BDD_TAGS="@splunk && ~@fanout && ~@stub && ~@appinspect" go test -race -v -count=1 -tags=integration ./tests/bdd/...
+
+# test-bdd-splunk-stub runs the @stub-tagged scenarios against the
+# in-process httptest stub — no Splunk container required. The stub
+# is the ONLY way to exercise HEC response codes (4/7/9/24/413)
+# deterministically; the real container can't produce them on demand.
+test-bdd-splunk-stub:
+	BDD_TAGS="@splunk && @stub" go test -race -v -count=1 -tags=integration ./tests/bdd/...
 
 # test-bdd-splunk-appinspect runs ONLY the @appinspect scenario,
 # which requires splunk-appinspect on PATH (pip install splunk-appinspect).
@@ -1128,13 +1143,18 @@ ta:
 # emit a README would have to drop this exclusion.
 .PHONY: ta-diff-check
 ta-diff-check:
+	@# Generate into a temp subdir named splunk-ta-axonops-audit so
+	@# the PackageID (derived from filepath.Base(outDir)) matches
+	@# the committed reference TA exactly. Without the canonical
+	@# basename the package id stanza would diff against the deploy
+	@# tree even when everything else is byte-identical.
 	@TMP=$$(mktemp -d); \
 	go run ./cmd/audit-gen --format=splunk-ta \
 		--input internal/schemagen/reference_ta_taxonomy.yaml \
-		--output "$$TMP/ta" >/dev/null && \
-	if ! diff -qr --exclude=README.md "$$TMP/ta" deploy/splunk-ta-axonops-audit >/dev/null; then \
+		--output "$$TMP/splunk-ta-axonops-audit" >/dev/null && \
+	if ! diff -qr --exclude=README.md --exclude=appinspect-blocker-checks.txt "$$TMP/splunk-ta-axonops-audit" deploy/splunk-ta-axonops-audit >/dev/null; then \
 		echo "deploy/splunk-ta-axonops-audit/ is stale; run 'make ta'"; \
-		diff -ur --exclude=README.md deploy/splunk-ta-axonops-audit "$$TMP/ta" || true; \
+		diff -ur --exclude=README.md --exclude=appinspect-blocker-checks.txt deploy/splunk-ta-axonops-audit "$$TMP/splunk-ta-axonops-audit" || true; \
 		rm -rf "$$TMP"; exit 1; \
 	fi; \
 	rm -rf "$$TMP"
@@ -1311,10 +1331,28 @@ test-infra-loki-up:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml up -d --build --wait
 	@echo "Loki infrastructure is ready."
 
-test-infra-splunk-up:
+test-infra-splunk-up: stage-splunk-ta
 	docker network create audit-test 2>/dev/null || true
 	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml up -d --build --wait
 	@echo "Splunk infrastructure is ready (HEC token: bdd-test-hec-token)."
+
+# stage-splunk-ta copies the reference TA from deploy/ to a gitignored
+# staging directory under tests/bdd/.tmp/splunk-ta. The container
+# bind-mounts the staging copy, NOT the source, so docker-splunk's
+# Ansible chown of /opt/splunk/etc/apps/ does not mutate the host's
+# tracked source tree.
+stage-splunk-ta:
+	@# docker-splunk's Ansible bootstrap chowns the mounted dir to
+	@# splunk:splunk (UID 41812 inside the container), which means a
+	@# subsequent `rm -rf` from the host fails with permission errors.
+	@# Use a docker one-shot to clean the staged copy with root privs.
+	@if [ -d $(COMPOSE_DIR)/.tmp/splunk-ta ]; then \
+		docker run --rm -v "$(CURDIR)/$(COMPOSE_DIR)/.tmp:/tmp/stage" alpine:3 \
+			sh -c 'rm -rf /tmp/stage/splunk-ta'; \
+	fi
+	@mkdir -p $(COMPOSE_DIR)/.tmp/splunk-ta
+	@cp -R deploy/splunk-ta-axonops-audit/. $(COMPOSE_DIR)/.tmp/splunk-ta/
+	@echo "Staged reference TA to $(COMPOSE_DIR)/.tmp/splunk-ta"
 
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v

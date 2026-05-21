@@ -56,6 +56,9 @@ MAIN_RUNNERS=(
     "webhook|@webhook, @routing"
     "loki|@loki && ~@fanout"
     "fanout|@fanout"
+    "splunk|@splunk && ~@fanout && ~@stub && ~@appinspect"
+    "splunk-stub|@splunk && @stub"
+    "splunk-appinspect|@appinspect"
 )
 
 # The outputconfig suite runs all scenarios (no tag filter) in its own module.

@@ -1,0 +1,63 @@
+# Splunk HEC output configuration for the audit example.
+#
+# Pushes audit events to a local Splunk Enterprise instance via the
+# HTTP Event Collector. Events are batched, gzip-compressed, and
+# enriched with CIM Change data-model fields.
+#
+# To run Splunk locally (x86 only — Splunk does not publish an arm64
+# container image):
+#   docker run -d --name splunk -p 8000:8000 -p 8088:8088 -p 8089:8089 \
+#     -e SPLUNK_PASSWORD=ChangeMeForRealUse123! \
+#     -e SPLUNK_START_ARGS=--accept-license \
+#     -e SPLUNK_HEC_TOKEN=example-hec-token \
+#     -e SPLUNK_HEC_SSL=False \
+#     splunk/splunk:10.4-rhel9
+#
+# Wait for the health endpoint to report ready:
+#   curl -s http://localhost:8088/services/collector/health
+#
+# Then run this example:
+#   go run .
+
+version: 1
+
+# Framework fields — appear in every event.
+app_name: "audit-example-splunk"
+host: "dev-machine"
+
+outputs:
+  splunk_audit:
+    type: splunk
+    splunk:
+      url: "http://localhost:8088"      # HEC endpoint (no path — library appends /services/collector/event)
+      token: "example-hec-token"        # HEC token from container env or Splunk UI
+      sourcetype: "axonops:audit"       # Matches the reference TA's props.conf stanza
+      source: "audit"
+      index: "main"
+      allow_insecure_http: true         # local dev only — production should use HTTPS
+      allow_private_ranges: true        # local dev only — SSRF protection blocks 127.0.0.1 by default
+
+      # Batching — events are buffered and pushed in batches.
+      batch_size: 10                    # push after 10 events (default: 100)
+      max_batch_bytes: 819200           # cap a single POST at ~800 KB
+      max_event_bytes: 1048576          # reject any single event > 1 MiB at Write time
+      flush_interval: "1s"              # or push after 1 second, whichever comes first
+      timeout: "10s"                    # HTTP request timeout
+      max_retries: 5                    # retry transient HEC 5xx with exponential backoff
+      gzip: true                        # compress push payloads
+      buffer_size: 1000                 # internal channel cap
+
+      # Optional: CIM Change formatter for Splunk's CIM-compliant
+      # search experience. Pair this with the reference TA at
+      # deploy/splunk-ta-axonops-audit/ to get every CIM Change
+      # field auto-extracted and `tag=change` set on every event.
+      formatter:
+        type: cim_change
+        vendor_product: "AxonOps:Audit"
+
+      # Optional: indexer acknowledgement. Off by default —
+      # set to `best_effort` for delivery telemetry without
+      # gating the producer, or `required` for at-least-once
+      # delivery semantics (#55 PR 2). Requires the HEC token
+      # to have ACK enabled in Splunk's HEC settings.
+      ack_mode: "off"

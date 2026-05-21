@@ -59,11 +59,11 @@ func newStub(t *testing.T) (*httptest.Server, *hecStub) {
 // hecStub records the requests the test received and provides
 // helpers to assert on them.
 type hecStub struct {
-	mu        sync.Mutex
 	requests  []recordedRequest
-	respCode  int
 	respBody  []byte
+	respCode  int
 	respDelay time.Duration
+	mu        sync.Mutex
 }
 
 type recordedRequest struct {
@@ -168,7 +168,7 @@ func (s *hecStub) setResponse(code int, body []byte) {
 // accepted; AllowPrivateRanges so the SSRF dial control doesn't block
 // 127.0.0.1.
 func validCfg(serverURL string) *splunk.Config {
-	gzip := false // disable gzip in tests so we can assert raw envelope bytes
+	gzipOff := false // disable gzip in tests so we can assert raw envelope bytes
 	return &splunk.Config{
 		URL:                        serverURL,
 		Token:                      "test-token-abc",
@@ -178,7 +178,7 @@ func validCfg(serverURL string) *splunk.Config {
 		MaxEventBytes:              1024,
 		FlushInterval:              100 * time.Millisecond,
 		Timeout:                    1 * time.Second,
-		Gzip:                       &gzip,
+		Gzip:                       &gzipOff,
 		AllowInsecureHTTP:          true,
 		AllowPrivateRanges:         true,
 		DisableStartupVerification: false,
@@ -310,12 +310,12 @@ func TestOutput_EventEnvelope_Format(t *testing.T) {
 
 	// Decode the envelope and assert structure.
 	var env struct {
-		Event      json.RawMessage `json:"event"`
-		Time       float64         `json:"time"`
 		Host       string          `json:"host"`
 		Source     string          `json:"source"`
 		Sourcetype string          `json:"sourcetype"`
 		Index      string          `json:"index"`
+		Event      json.RawMessage `json:"event"`
+		Time       float64         `json:"time"`
 	}
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	require.NoError(t, dec.Decode(&env))

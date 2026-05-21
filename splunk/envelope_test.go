@@ -120,12 +120,12 @@ func TestWrapEvent_ProducesValidEnvelope(t *testing.T) {
 
 	// Decode as a single JSON object.
 	var env struct {
-		Event      json.RawMessage `json:"event"`
-		Time       float64         `json:"time"`
 		Host       string          `json:"host"`
 		Source     string          `json:"source"`
 		Sourcetype string          `json:"sourcetype"`
 		Index      string          `json:"index"`
+		Event      json.RawMessage `json:"event"`
+		Time       float64         `json:"time"`
 	}
 	dec := json.NewDecoder(&buf)
 	require.NoError(t, dec.Decode(&env))

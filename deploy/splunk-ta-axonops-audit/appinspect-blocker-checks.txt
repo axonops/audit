@@ -13,21 +13,24 @@
 # Format: one check_id per line. Lines starting with # are comments.
 # Trailing whitespace is ignored.
 
-# TA must have metadata/default.meta declaring export rules.
-check_for_missing_default_meta
-
-# TA must have a valid app icon at static/appIcon.png
-# (Splunkbase listing displays this).
-check_for_missing_app_icon
-
-# default.meta must parse — malformed stanzas can break Splunk's
-# knowledge-object loading for other apps installed alongside.
-check_for_invalid_default_meta
+# Only IDs that are EXECUTED under `--included-tags cloud` belong
+# in this list — a check that does not execute cannot be tripped,
+# so listing it here gives false security. The CI gate enforces
+# this with a presence assertion (every blocker_id must appear in
+# the executed set or the job fails). Add an ID below only after
+# confirming it shows up in appinspect.json's executed-checks set.
 
 # Scripted inputs / search command implementations must declare a
-# dispatch user. Authentication-gap risk if omitted.
+# dispatch user. Authentication-gap risk if omitted. Executes under
+# the `cloud` tag.
 check_for_no_default_dispatch_user
 
 # app.conf [package] id must match the TA directory name and be
-# absent of conflicting dependency declarations.
+# absent of conflicting dependency declarations. Executes under the
+# `cloud` tag.
 check_for_dependencies_in_app_conf
+
+# default.meta must parse — malformed stanzas can break Splunk's
+# knowledge-object loading for other apps installed alongside.
+# Executes under the `cloud` tag.
+check_for_invalid_default_meta

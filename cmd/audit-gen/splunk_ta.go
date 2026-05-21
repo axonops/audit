@@ -376,7 +376,9 @@ var defaultMetaTmpl = template.Must(template.New("default.meta").Parse(`# Genera
 # global write access is declared.
 
 []
-access = read : [ * ], write : [ admin ]
+# Include sc_admin alongside admin so the TA is usable on Splunk
+# Cloud, where customers do not have the admin role.
+access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
 [eventtypes]

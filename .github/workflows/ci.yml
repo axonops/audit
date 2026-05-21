@@ -970,46 +970,28 @@ jobs:
             exit 1
           fi
 
-      - name: Assert no Splunkbase publishing-blocker warnings
-        # The blocker list is maintained at
-        # deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
-        # — keep it in sync with Splunkbase's dev.splunk.com rules.
-        # The file is also used by the docs (docs/splunk-ta.md cites
-        # it) so a single source of truth.
+      - name: Assert no AppInspect warnings under the cloud tag
+        # Under `--included-tags cloud` (the Splunkbase-publishing
+        # scope), ANY warning is a publishing-blocker — Splunkbase's
+        # review pipeline treats warnings as gating, not advisory.
+        # The strictest interpretation auto-tracks future Splunk
+        # rule additions without needing a manually-maintained
+        # blocker-ID list.
+        #
+        # Note: deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
+        # is kept as documentation of which checks are the publishing
+        # blockers; it is no longer consumed by this CI step because
+        # the broader "fail on any warning" rule is both stricter
+        # and easier to maintain.
         run: |
-          BLOCKERS_FILE=deploy/splunk-ta-axonops-audit/appinspect-blocker-checks.txt
-          # Build a jq-friendly array of check IDs from the file.
-          # `tr -d '\r'` strips Windows-style line endings (defence
-          # against contributors editing the file on a CRLF system —
-          # without this, a `\r`-terminated check_id silently misses
-          # the equality check against AppInspect's `\r`-free output
-          # and the assertion passes when it shouldn't).
-          BLOCKER_IDS=$(grep -v '^#' "$BLOCKERS_FILE" | tr -d '\r' | grep -v '^[[:space:]]*$' | sed 's/[[:space:]]*$//' | jq -R . | jq -s .)
-          echo "Configured blocker check IDs:"
-          echo "$BLOCKER_IDS" | jq -r '.[]'
-          # Defend against the silent-skip case: a blocker check that
-          # isn't tagged `cloud` won't execute under
-          # `--included-tags cloud`, produce no result in
-          # appinspect.json, and the warning-filter below would
-          # vacuously pass. Verify every blocker_id is present in
-          # the executed-checks set first.
-          EXECUTED=$(jq '[.reports[].groups[].checks[].check_id]' appinspect.json)
-          MISSING=$(jq -n --argjson blockers "$BLOCKER_IDS" --argjson executed "$EXECUTED" '$blockers - $executed')
-          if [ "$(echo "$MISSING" | jq 'length')" != "0" ]; then
-            echo "Blocker IDs declared in appinspect-blocker-checks.txt but NOT executed under --included-tags cloud:"
-            echo "$MISSING" | jq -r '.[]'
-            echo "Fix: drop --included-tags cloud OR remove the un-executed ID from the blocker file with a note."
-            exit 1
-          fi
-          # Filter warnings whose check_id is in the blocker list.
-          TRIPPED=$(jq --argjson blockers "$BLOCKER_IDS" \
-            '[.reports[].groups[].checks[] | select(.result == "warning" and (.check_id as $cid | $blockers | index($cid)))]' \
-            appinspect.json)
-          TRIPPED_COUNT=$(echo "$TRIPPED" | jq 'length')
-          echo "Blocker warnings tripped: $TRIPPED_COUNT"
-          if [ "$TRIPPED_COUNT" != "0" ]; then
-            echo "=== Tripped blocker warnings ==="
-            echo "$TRIPPED" | jq '.[] | {check_id, name, description, messages}'
+          WARNINGS=$(jq '.summary.warning // 0' appinspect.json)
+          echo "AppInspect warnings: $WARNINGS"
+          if [ "$WARNINGS" != "0" ]; then
+            echo "=== Warnings ==="
+            jq '.reports[].groups[].checks[] | select(.result == "warning") | {check_id, name, description, messages}' appinspect.json
+            echo
+            echo "Splunkbase publishing under --included-tags cloud treats every warning as gating."
+            echo "Fix the TA generator template or update appinspect-blocker-checks.txt with a justification."
             exit 1
           fi
 

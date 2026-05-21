@@ -55,6 +55,7 @@ removing a module:
 | `syslog` | `github.com/axonops/audit/syslog` | `syslog/v*` |
 | `webhook` | `github.com/axonops/audit/webhook` | `webhook/v*` |
 | `loki` | `github.com/axonops/audit/loki` | `loki/v*` |
+| `splunk` | `github.com/axonops/audit/splunk` | `splunk/v*` |
 | `outputconfig` | `github.com/axonops/audit/outputconfig` | `outputconfig/v*` |
 | `outputs` | `github.com/axonops/audit/outputs` | `outputs/v*` |
 | `cmd/audit-gen` | `github.com/axonops/audit/cmd/audit-gen` | `cmd/audit-gen/v*` |
@@ -442,6 +443,7 @@ module pattern `v*` does NOT cover sub-module tags like
 | Tag name pattern | `syslog/v*` | `syslog` sub-module. |
 | Tag name pattern | `webhook/v*` | `webhook` sub-module. |
 | Tag name pattern | `loki/v*` | `loki` sub-module. |
+| Tag name pattern | `splunk/v*` | `splunk` sub-module. |
 | Tag name pattern | `outputconfig/v*` | `outputconfig` sub-module. |
 | Tag name pattern | `outputs/v*` | `outputs` convenience-package sub-module. |
 | Tag name pattern | `secrets/v*` | `secrets` parent sub-module. |
@@ -526,6 +528,7 @@ gh api repos/:owner/:repo/tags/protection --jq '.[] | .pattern' | sort
 #   secrets/openbao/v*
 #   secrets/v*
 #   secrets/vault/v*
+#   splunk/v*
 #   syslog/v*
 #   v*
 #   webhook/v*

@@ -26,7 +26,7 @@ The **caller goroutine** does validation and a non-blocking channel send.
 If the queue is full, `AuditEvent` returns `ErrQueueFull` immediately.
 
 The **drain goroutine** calls `Output.Write` for each configured output.
-For async outputs (file, syslog, webhook, loki), `Write` enqueues into
+For async outputs (file, syslog, webhook, loki, splunk), `Write` enqueues into
 the output's internal buffer and returns immediately. Each async output
 has its own background goroutine that performs the actual I/O. Only
 stdout writes synchronously from the drain goroutine.
@@ -36,7 +36,7 @@ when `Close()` times out are lost.
 
 ## Mandatory Async Buffer Pattern
 
-All outputs that perform I/O (file, syslog, webhook, loki) MUST use
+All outputs that perform I/O (file, syslog, webhook, loki, splunk) MUST use
 async delivery with internal buffers. This is a **security requirement**
 — output isolation prevents cascade failure that could silence all
 auditing. A stalled syslog server must not prevent file writes; a slow
@@ -74,6 +74,7 @@ github.com/axonops/audit/file         ← file output (depends on core)
 github.com/axonops/audit/syslog       ← syslog output (depends on core + srslog)
 github.com/axonops/audit/webhook      ← webhook output (depends on core)
 github.com/axonops/audit/loki         ← Loki output (depends on core)
+github.com/axonops/audit/splunk       ← Splunk HEC output (depends on core)
 github.com/axonops/audit/outputconfig ← YAML config loader (depends on core + go-yaml)
 github.com/axonops/audit/outputs      ← convenience: blank-import registers all outputs
 github.com/axonops/audit/secrets      ← secret provider interface for ref+ URI resolution

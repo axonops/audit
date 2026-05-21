@@ -29,6 +29,7 @@
 //   - github.com/axonops/audit/syslog — RFC 5424 syslog (TCP/UDP/TLS)
 //   - github.com/axonops/audit/webhook — batched HTTP webhook
 //   - github.com/axonops/audit/loki — Grafana Loki output with stream labels
+//   - github.com/axonops/audit/splunk — Splunk HEC output with CIM Change formatter and indexer acknowledgement
 //   - github.com/axonops/audit/outputconfig — YAML-based output configuration
 //   - github.com/axonops/audit/outputs — convenience: blank-import to register all output types
 //   - github.com/axonops/audit/secrets — secret provider interface for ref+ URI resolution
@@ -119,7 +120,7 @@
 //
 // # Outputs
 //
-//   - [Output] — interface for audit event destinations (file, syslog, webhook, stdout)
+//   - [Output] — interface for audit event destinations (file, syslog, webhook, loki, splunk, stdout)
 //   - [Stdout] — convenience constructor for [StdoutOutput] writing to [os.Stdout]
 //   - [StdoutOutput] — writes events to stdout or any io.Writer; included in core
 //   - [WithOutputs] — registers unnamed outputs; [WithNamedOutput] for per-output routing
@@ -306,8 +307,8 @@
 //
 // Outputs receive bytes from the leased formatter buffer. Per the
 // [Output.Write] contract, implementations MUST NOT retain data past
-// the call — all first-party outputs (file, syslog, webhook, loki) copy
-// on enqueue.
+// the call — all first-party outputs (file, syslog, webhook, loki, splunk)
+// copy on enqueue.
 //
 // # Graceful Shutdown
 //

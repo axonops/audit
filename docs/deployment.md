@@ -576,9 +576,9 @@ for the recipe.
 - [docs/metrics-monitoring.md § Health Endpoint](metrics-monitoring.md#health-endpoint)
   — `/healthz` and `/readyz` handler patterns for Kubernetes
   liveness and readiness probes.
-- [examples/20-capstone/](../examples/20-capstone/) — complete
+- [examples/21-capstone/](../examples/21-capstone/) — complete
   deployment example with Postgres, Loki, Prometheus, graceful
   shutdown.
-- [examples/16-health-endpoint/](../examples/16-health-endpoint/) —
+- [examples/17-health-endpoint/](../examples/17-health-endpoint/) —
   runnable `/healthz` and `/readyz` example driven by audit
   introspection.

@@ -342,8 +342,8 @@ strategies, K8s liveness wiring) see
 ## Further Reading
 
 - [Progressive Example: File Output](../examples/03-file-output/)
-- [Progressive Example: Multi-Output](../examples/09-multi-output/)
-- [Progressive Example: Capstone](../examples/20-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
+- [Progressive Example: Multi-Output](../examples/10-multi-output/)
+- [Progressive Example: Capstone](../examples/21-capstone/) — four outputs with HMAC, CEF, Loki, and PII stripping
 - [Output Configuration YAML](output-configuration.md) — full YAML reference
 - [Troubleshooting](troubleshooting.md) — failure symptoms and recovery
 - [Metrics & Monitoring](metrics-monitoring.md) — full metric reference

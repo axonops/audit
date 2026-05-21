@@ -208,7 +208,7 @@ A few things worth noting:
   (port-in-use, permission denied), buffered events are lost. For
   graceful shutdown, replace `log.Fatal(http.ListenAndServe(...))`
   with a `signal.NotifyContext` + `srv.Shutdown(ctx)` pattern; see
-  [examples/20-capstone/](../examples/20-capstone/) for a complete
+  [examples/21-capstone/](../examples/21-capstone/) for a complete
   example.
 
 ## 6. Run it
@@ -248,18 +248,18 @@ You now have a working integration. From here, pick the next topic
 based on what your deployment actually needs:
 
 - **Multiple outputs** — send one stream to a SIEM, another to disk:
-  [examples/09-multi-output/](../examples/09-multi-output/).
+  [examples/10-multi-output/](../examples/10-multi-output/).
 - **Routing by category or severity** — security events to PagerDuty,
   read events to a colder log:
-  [examples/10-event-routing/](../examples/10-event-routing/).
+  [examples/11-event-routing/](../examples/11-event-routing/).
 - **Sensitivity labels** — strip PII fields from compliance outputs:
-  [examples/11-sensitivity-labels/](../examples/11-sensitivity-labels/).
+  [examples/12-sensitivity-labels/](../examples/12-sensitivity-labels/).
 - **HMAC integrity** — tamper-evident events for regulated
-  environments: [examples/12-hmac-integrity/](../examples/12-hmac-integrity/).
+  environments: [examples/13-hmac-integrity/](../examples/13-hmac-integrity/).
 - **Production deployment** — systemd, Kubernetes, log directory
   permissions: [docs/output-configuration.md](output-configuration.md).
 - **Full reference application** — Postgres-backed CRUD with
   middleware, HMAC, Loki dashboards, Prometheus metrics, and graceful
-  shutdown: [examples/20-capstone/](../examples/20-capstone/).
+  shutdown: [examples/21-capstone/](../examples/21-capstone/).
 - **Threat model** — actors, guarantees, and what the library does
   not defend against: [docs/threat-model.md](threat-model.md).

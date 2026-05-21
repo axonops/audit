@@ -91,7 +91,7 @@ comment for the generated constant.
 | `field_name: {labels: [pii]}` | Optional with sensitivity label |
 | `field_name: {required: true, labels: [pii]}` | Required with label |
 
-Sensitivity labels are covered in the [Sensitivity Labels](../11-sensitivity-labels/)
+Sensitivity labels are covered in the [Sensitivity Labels](../12-sensitivity-labels/)
 example. For now, the key point is: `required: true` means the field
 must always be present; everything else is optional.
 
@@ -204,7 +204,7 @@ passing as a runtime validation error. The metadata vars reference
 the generated constants — `EventUserCreate` not `"user_create"` —
 so the entire taxonomy is type-safe. When sensitivity labels are
 defined, `FieldLabels` and `Label` constants are also generated — see
-the [Sensitivity Labels](../11-sensitivity-labels/) example.
+the [Sensitivity Labels](../12-sensitivity-labels/) example.
 
 **Code generation is optional.** The basic example used raw strings and
 it worked fine. But once you have more than a handful of event types,
@@ -331,7 +331,7 @@ The `app_name`, `host`, and `pid` are framework fields — set once in
 `event_category` field is automatically populated from the taxonomy's
 category definitions. Each event's `severity` reflects the per-category
 default declared in `taxonomy.yaml` (write=3, read=1, security=8) — see
-[Event Routing](../10-event-routing/) for severity-based routing. The
+[Event Routing](../11-event-routing/) for severity-based routing. The
 `INFO audit:` lines are lifecycle diagnostics on stderr — see
 [example 01](../01-basic/) for details.
 

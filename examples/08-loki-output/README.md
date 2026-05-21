@@ -1,7 +1,7 @@
 [← Back to examples](../README.md)
 
 > **Previous:** [07 — Webhook Output](../07-webhook-output/) |
-> **Next:** [09 — Multi-Output](../09-multi-output/)
+> **Next:** [09 — Splunk Output](../09-splunk-output/)
 # Example 08: Loki Output
 
 Sends audit events to [Grafana Loki](https://grafana.com/oss/loki/)

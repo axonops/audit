@@ -7289,6 +7289,86 @@ For consumer-specific taxonomies, regenerate the TA via
 
 ---
 
+## Testing this output
+
+The splunk output ships with three test layers — pick the one that
+matches the assertion you need.
+
+### Unit tests (no infrastructure)
+
+```bash
+make test-splunk
+```
+
+Cover the in-memory contract — config validation, envelope
+wrapping, HEC response-code action dispatch (the `classify`
+function), ACK state machine, channel GUID generation, retry
+backoff. Run on every PR; no Docker needed.
+
+| Test file | What it pins |
+|---|---|
+| `config_test.go` | Config defaults, validation rules, env-var resolution. |
+| `envelope_test.go` | HEC `/event` and `/raw` wire envelope shapes. |
+| `errors_test.go` | Sentinel errors, redaction, HEC `code` → action mapping. |
+| `ack_test.go` | ACK tracker state machine, resend window, channel GUID. |
+| `http_test.go` + `http_failures_test.go` | HTTP transport, response classify, retry/backoff. |
+| `splunk_test.go` | Public-API `New`/`Write`/`Close` contract. |
+| `register_test.go` | YAML output-factory registration. |
+| `property_test.go` | Rapid-driven property checks on envelope + classify. |
+| `redact_test.go` | Token redaction in `String`/`GoString`/`Format`. |
+| `bench_test.go` | Hot-path allocation + throughput benchmarks. |
+
+### Integration tests (real Splunk container)
+
+```bash
+make test-infra-splunk-up
+make test-integration-splunk
+make test-infra-splunk-down
+```
+
+Drive the output end-to-end against a real Splunk Enterprise
+container (the pinned image tag lives in
+[`tests/bdd/docker-compose.splunk.yml`](../tests/bdd/docker-compose.splunk.yml)).
+The full suite covers:
+
+| Test file | What it pins |
+|---|---|
+| `splunk_test.go` | Wire-format envelope (`/event` + `/raw`), gzip, batching, search round-trip. |
+| `splunk_cim_test.go` | `CIMChangeFormatter` mapping: `actor_id → user_id`, `event_type → action`, `outcome → status` collapse, gzip preservation, `_time` parsing. |
+| `splunk_ack_test.go` | ACK state machine including the deterministic resend-on-timeout path via an in-process HTTP reverse-proxy. |
+| `splunk_ta_install_test.go` | Reference TA install end-to-end: eventtype loading, `KV_MODE=json` extraction without `spath`, `EVAL-vendor_product` override, every eventtype tagged `change`, `tag=authentication` only on security-category events. |
+| `splunk_security_test.go` | HMAC integrity round-trip via `audit.VerifyHMAC`; sensitivity-label PII stripping (substring + JSON tree walk + Splunk-wide value search); HMAC-over-stripped-payload combined-config invariant. |
+| `splunk_fanout_test.go` | Auditor fan-out: file + splunk delivery, dead-splunk isolation (file still gets all events), per-output formatters (JSON to file, CIM to splunk). |
+| `splunk_metrics_test.go` | `audit.OutputMetrics` integration: flush accuracy, buffer-full drops via blocking server, HEC code 24 counts as flush (not drop), oversize event drops at Write. |
+
+The integration suite skips on `arm64` because Splunk does not
+publish an arm64 container image. ACK-mode tests that require the
+container token to have indexer-acknowledgement enabled skip
+cleanly when the test container's HEC token does not — the
+deterministic ACK resend test in `splunk_ack_test.go` runs
+unconditionally because it synthesises ackIds via an in-process
+proxy.
+
+### BDD scenarios (Gherkin)
+
+```bash
+make test-bdd-splunk        # @docker scenarios, against real container
+make test-bdd-splunk-stub   # @stub scenarios, in-process HEC stub
+```
+
+`tests/bdd/features/splunk_output.feature` documents every
+operator-visible behaviour as a Gherkin scenario. Happy-path
+scenarios (`@docker`) drive the real container; HEC error-code
+scenarios (`@stub`) drive an in-process stub because real Splunk
+does not produce codes 4/7/9/24/413 on demand.
+
+The `@appinspect` scenario runs `splunk-appinspect --mode precert`
+against the generated reference TA; it is gated by the
+`splunk-appinspect` Python tool being on `PATH` and runs in the
+`splunk-ta-appinspect` CI job.
+
+---
+
 ## Troubleshooting
 
 | Error | Cause | Fix |

@@ -1,0 +1,33 @@
+version: 1
+
+categories:
+  account:
+    - user_create
+    - user_update
+  security:
+    - login_success
+    - login_failure
+
+events:
+  user_create:
+    fields:
+      outcome:    {required: true}
+      actor_id:   {required: true}
+      target_id:  {required: true}
+      target_type: {required: true}
+  user_update:
+    fields:
+      outcome:   {required: true}
+      actor_id:  {required: true}
+      target_id: {required: true}
+  login_success:
+    fields:
+      outcome:  {required: true}
+      actor_id: {required: true}
+      source_ip: {required: true}
+  login_failure:
+    fields:
+      outcome:  {required: true}
+      actor_id: {required: true}
+      source_ip: {required: true}
+      reason:   {required: true}

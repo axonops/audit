@@ -47,16 +47,16 @@ func ssrfOptsFromConfig(cfg *Config) []audit.SSRFOption {
 func (o *Output) probeEndpoint(ctx context.Context) error {
 	healthURL, err := joinHealthURL(o.cfg.URL)
 	if err != nil {
-		return fmt.Errorf("%w: build health URL: %v", ErrHealthCheckFailed, err)
+		return fmt.Errorf("%w: build health URL: %w", ErrHealthCheckFailed, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, http.NoBody)
 	if err != nil {
-		return fmt.Errorf("%w: build request: %v", ErrHealthCheckFailed, err)
+		return fmt.Errorf("%w: build request: %w", ErrHealthCheckFailed, err)
 	}
 	req.Header.Set("User-Agent", o.cfg.UserAgent)
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %s: %v",
+		return fmt.Errorf("%w: %s: %w",
 			ErrHealthCheckFailed,
 			sanitizeURLForLog(o.cfg.URL),
 			err,

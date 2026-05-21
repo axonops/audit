@@ -99,10 +99,10 @@ type AckSnapshot struct {
 // separate set — `flushBatchAux` is called from both goroutines, and
 // these buffers are not concurrent-safe.
 type flushBufs struct {
+	gz        *gzip.Writer
 	envelope  bytes.Buffer
 	raw       bytes.Buffer
 	compress  bytes.Buffer
-	gz        *gzip.Writer // initialised once at construction
 	retryHint time.Duration
 }
 
@@ -116,9 +116,9 @@ func newFlushBufs() *flushBufs {
 // inFlightBatch holds one outstanding batch whose ackID is being
 // polled. Owned exclusively by ackTracker; never escapes the package.
 type inFlightBatch struct {
-	ackID   int64
-	entries []splunkEntry // retained for resend in AckModeRequired
 	sentAt  time.Time
+	entries []splunkEntry
+	ackID   int64
 	resends int
 }
 

@@ -63,13 +63,13 @@ func wrapEvent(dst *bytes.Buffer, cfg *Config, eventJSON []byte, now time.Time) 
 	// `event` is a RawMessage so the consumer's bytes pass through
 	// without re-encoding.
 	envelope := struct {
-		Event      json.RawMessage   `json:"event"`
-		Time       float64           `json:"time"`
+		Fields     map[string]string `json:"fields,omitempty"`
 		Host       string            `json:"host,omitempty"`
 		Source     string            `json:"source,omitempty"`
 		Sourcetype string            `json:"sourcetype,omitempty"`
 		Index      string            `json:"index,omitempty"`
-		Fields     map[string]string `json:"fields,omitempty"`
+		Event      json.RawMessage   `json:"event"`
+		Time       float64           `json:"time"`
 	}{
 		Event:      eventJSON,
 		Time:       timeVal,
@@ -205,7 +205,7 @@ func buildRawQueryParams(cfg *Config) string {
 func joinRawURL(base string, cfg *Config) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/services/collector/raw"
 	u.RawQuery = buildRawQueryParams(cfg)
@@ -217,7 +217,7 @@ func joinRawURL(base string, cfg *Config) (string, error) {
 func joinEventURL(base string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/services/collector/event"
 	u.RawQuery = ""
@@ -229,7 +229,7 @@ func joinEventURL(base string) (string, error) {
 func joinHealthURL(base string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/services/collector/health"
 	u.RawQuery = ""
@@ -243,7 +243,7 @@ func joinHealthURL(base string) (string, error) {
 func joinAckURL(base, channel string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/services/collector/ack"
 	q := u.Query()

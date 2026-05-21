@@ -234,12 +234,18 @@ func TestSplunkIntegration_BatchMultipleEvents(t *testing.T) {
 		require.NoError(t, out.Write(event))
 	}
 
-	// Wait for all N events to appear.
-	hits := waitForEvent(t, fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q | stats count`, m), 1)
-	require.GreaterOrEqual(t, len(hits), 1)
-	countStr, _ := hits[0]["count"].(string)
-	assert.Equal(t, fmt.Sprintf("%d", n), countStr,
-		"expected exactly %d events in Splunk for marker %s", n, m)
+	// Wait for all N events to appear. Using `| head N` so the
+	// search returns one row per indexed event — waitForEvent's
+	// `len(hits) >= N` predicate then correctly polls until all
+	// events are visible. (A `| stats count` query always returns
+	// exactly one row, so waitForEvent(..., 1) would be satisfied
+	// immediately even when count=0; the post-search count check
+	// would then fail before indexing finished.)
+	hits := waitForEvent(t,
+		fmt.Sprintf(`index=main sourcetype="audit:event" actor_id=%q | head %d`, m, n),
+		n)
+	assert.Len(t, hits, n,
+		"expected exactly %d events in Splunk for marker %s; got %d", n, m, len(hits))
 }
 
 func TestSplunkIntegration_GzipCompression_SendAndSearch(t *testing.T) {

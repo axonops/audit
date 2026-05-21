@@ -10,6 +10,8 @@ github.com/axonops/audit/secrets/openbao v0.1.11 h1:pIRUVAFg117K48btcK4USV/1yaTa
 github.com/axonops/audit/secrets/openbao v0.1.11/go.mod h1:apfMUZvQANpgFVt711xEGKL95NzMhmqSMEZOCTqb/Vo=
 github.com/axonops/audit/secrets/vault v0.1.11 h1:qfQxaslNpfucZQpUm6eZDR3gQwJIB04UyMrVckVEJPA=
 github.com/axonops/audit/secrets/vault v0.1.11/go.mod h1:gN0O2z8/gLSc7OTsBIXBcbS9bhL7Bn7QL324aoBFz7A=
+github.com/axonops/audit/splunk v0.0.0-20260520183351-bad90dd00155 h1:/dZXNUThB3Tp0rB1BGKCcInb2158F8cpfYRtMaBhaTQ=
+github.com/axonops/audit/splunk v0.0.0-20260520183351-bad90dd00155/go.mod h1:f1OixCRfeCnl4dCX62j2vxUyOD547Hv01WrwmnqGJ20=
 github.com/axonops/audit/syslog v0.1.11 h1:BZIREZNbxhrJYHEUO8JY/+JrEJ21YRSMC1ITeQX534c=
 github.com/axonops/audit/syslog v0.1.11/go.mod h1:frtAgiAsByHoIRe04emWBBjmkKp38EwM1sWXMEuLA0w=
 github.com/axonops/audit/webhook v0.1.11 h1:ybsP4yuIQIUZPjqoare5m49cHWTEzl5Uc456TtROHBQ=

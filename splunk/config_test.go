@@ -53,9 +53,9 @@ func TestValidate_HappyPath(t *testing.T) {
 
 func TestValidate_BoundsTable(t *testing.T) { //nolint:funlen // table-driven by design
 	tests := []struct {
-		name    string
+		wantErr error
 		mutate  func(*splunk.Config)
-		wantErr error // ErrConfigInvalid or ErrPR1NotImplemented
+		name    string
 	}{
 		{
 			name:    "BatchSize below MinBatchSize",

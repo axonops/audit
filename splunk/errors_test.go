@@ -98,16 +98,16 @@ func TestClassify_FullTable(t *testing.T) {
 // including the `unknown` fallback for an out-of-range value.
 func TestHECAction_String(t *testing.T) {
 	tests := []struct {
-		action hecAction
 		want   string
+		action hecAction
 	}{
-		{actionSuccess, "success"},
-		{actionRetry, "retry"},
-		{actionDrop, "drop"},
-		{actionStop, "stop"},
-		{actionCapacityWarn, "warn"},
-		{actionAckDisabled, "ack_disabled"},
-		{hecAction(99), "unknown"},
+		{want: "success", action: actionSuccess},
+		{want: "retry", action: actionRetry},
+		{want: "drop", action: actionDrop},
+		{want: "stop", action: actionStop},
+		{want: "warn", action: actionCapacityWarn},
+		{want: "ack_disabled", action: actionAckDisabled},
+		{want: "unknown", action: hecAction(99)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.want, func(t *testing.T) {

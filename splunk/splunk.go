@@ -86,7 +86,7 @@ type splunkEntry struct {
 
 // Output pushes audit events to a Splunk HEC endpoint. Implements
 // [audit.Output] and [audit.DeliveryReporter].
-type Output struct { //nolint:govet // fieldalignment: readability preferred
+type Output struct { //nolint:govet,gocritic // fieldalignment: readability preferred; typeDefFirst: methods defined below for grouping by concern
 	cfg           *Config
 	metrics       audit.Metrics
 	outputMetrics audit.OutputMetrics
@@ -128,7 +128,7 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // `metrics` may be nil — the output records via a no-op
 // [audit.NoOpOutputMetrics] when omitted. Use [WithOutputMetrics] to
 // pass a real [audit.OutputMetrics] sink.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { //nolint:gocognit // construction orchestrator; ACK + probe + tracker each is its own block
+func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { //nolint:gocognit,gocyclo,cyclop // construction orchestrator; ACK + probe + tracker each is its own block
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: nil config", ErrConfigInvalid)
 	}
@@ -179,11 +179,13 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { 
 	switch cfg.Endpoint {
 	case EndpointRaw:
 		endpointURL, err = joinRawURL(cfg.URL, cfg)
+	case EndpointEvent:
+		endpointURL, err = joinEventURL(cfg.URL)
 	default:
 		endpointURL, err = joinEventURL(cfg.URL)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: build endpoint URL: %v", ErrConfigInvalid, err)
+		return nil, fmt.Errorf("%w: build endpoint URL: %w", ErrConfigInvalid, err)
 	}
 
 	// Compute Name from URL host.
@@ -614,7 +616,7 @@ func (o *Output) flushBatchAux(ctx context.Context, batch []splunkEntry, bufs *f
 			o.recordDrop(len(batch))
 			o.stopped.Store(true)
 			return
-		default: // actionDrop
+		case actionDrop:
 			o.logger.Warn("audit/splunk: HEC rejected batch — dropping",
 				"output", o.name, "hec_code", hecCode, "error", o.redact(err))
 			bufs.retryHint = 0

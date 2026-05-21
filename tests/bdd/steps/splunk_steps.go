@@ -46,6 +46,7 @@ import (
 
 // splunkStubRequest is one recorded HEC request the stub received.
 type splunkStubRequest struct {
+	receivedAt  time.Time
 	method      string
 	path        string
 	rawQuery    string
@@ -55,7 +56,6 @@ type splunkStubRequest struct {
 	contentType string
 	channel     string // X-Splunk-Request-Channel (ACK)
 	body        []byte
-	receivedAt  time.Time
 }
 
 // splunkStub is the in-process HTTP server that the BDD scenarios
@@ -63,20 +63,19 @@ type splunkStubRequest struct {
 // configurable response behaviour (status, body, optional first-N
 // failures before success — for retry scenarios).
 type splunkStub struct {
-	server     *httptest.Server
-	mu         sync.Mutex
-	requests   []splunkStubRequest
-	respStatus int
-	respBody   []byte
-	failFirstN int32
-	failCount  atomic.Int32
-
-	// ACK support (#55 PR 2).
-	ackEnabled       atomic.Bool
+	server           *httptest.Server
+	ackResponsesByID map[int64]bool
+	requests         []splunkStubRequest
+	respBody         []byte
+	mu               sync.Mutex
 	ackIDCounter     atomic.Int64
 	ackPollHits      atomic.Int64
-	ackConfirmAll    atomic.Bool // when true, /ack returns true for every queried ID
-	ackResponsesByID map[int64]bool
+	respStatus       int
+	failFirstN       int32
+	failCount        atomic.Int32
+	// ACK support (#55 PR 2).
+	ackEnabled    atomic.Bool
+	ackConfirmAll atomic.Bool // when true, /ack returns true for every queried ID
 }
 
 // newSplunkStub returns a stub server that responds with HTTP 200 +
@@ -93,7 +92,7 @@ func newSplunkStub() *splunkStub {
 	return s
 }
 
-func (s *splunkStub) handle(w http.ResponseWriter, r *http.Request) {
+func (s *splunkStub) handle(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo,cyclop // single-handler dispatcher for stub HTTP server; branches are flat per-path concerns
 	body, _ := io.ReadAll(r.Body)
 	finalBody := body
 	if r.Header.Get("Content-Encoding") == "gzip" {
@@ -193,8 +192,8 @@ func (s *splunkStub) requestCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := 0
-	for _, r := range s.requests {
-		if r.path != "/services/collector/health" {
+	for i := range s.requests {
+		if s.requests[i].path != "/services/collector/health" {
 			n++
 		}
 	}
@@ -215,13 +214,13 @@ func (s *splunkStub) lastEventRequest() (splunkStubRequest, bool) {
 // splunkBDDState holds the scenario-scoped state for a splunk BDD run.
 // Stored in the AuditTestContext via a context-keyed slot.
 type splunkBDDState struct {
+	scenarioStart    time.Time
 	stub             *splunkStub
 	output           *splunk.Output
 	auditor          *audit.Auditor
 	logBuf           *splunkLogBuf
 	lastWriteErr     error
 	constructionErr  error
-	scenarioStart    time.Time
 	stopMetricCounts *recordingOutputMetrics
 
 	// TA generator scenarios (#55 PR 3).
@@ -236,23 +235,27 @@ type splunkBDDState struct {
 	// container pre-provisions. eventMarker is set when a scenario
 	// audits a uniquely marked event, then used by the "Splunk
 	// should have indexed N events with the marker" assertions.
-	realSplunk      bool
-	splunkBaseURL   string
-	splunkToken     string
-	eventMarker     string
+	splunkBaseURL string
+	splunkToken   string
+	eventMarker   string
+	realSplunk    bool
 }
 
 // splunkLogBuf is a concurrency-safe bytes.Buffer wrapper used as
 // the destination for the diagnostic-logger redaction scenario.
 type splunkLogBuf struct {
-	mu  sync.Mutex
 	buf bytes.Buffer
+	mu  sync.Mutex
 }
 
 func (t *splunkLogBuf) Write(p []byte) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.buf.Write(p)
+	n, err := t.buf.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("splunkLogBuf: %w", err)
+	}
+	return n, nil
 }
 
 func (t *splunkLogBuf) String() string {
@@ -266,9 +269,8 @@ func (t *splunkLogBuf) String() string {
 // NoOpOutputMetrics for forward-compatibility.
 type recordingOutputMetrics struct {
 	audit.NoOpOutputMetrics
-	flushes  atomic.Int64
-	drops    atomic.Int64
-	warnings atomic.Int64
+	flushes atomic.Int64
+	drops   atomic.Int64
 }
 
 func (r *recordingOutputMetrics) RecordFlush(_ int, _ time.Duration) { r.flushes.Add(1) }
@@ -276,7 +278,7 @@ func (r *recordingOutputMetrics) RecordDrop()                        { r.drops.A
 
 // registerSplunkSteps wires the Splunk step bindings into the godog
 // runner. Called from the central context registration.
-func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
+func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //nolint:gocognit,gocyclo,cyclop // godog step registration is inherently long; splitting would obscure step→handler locality
 	state := &splunkBDDState{}
 
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) { //nolint:unparam // godog hook signature
@@ -321,7 +323,12 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		// a clear error at the Given step rather than a downstream
 		// "search returned nothing" mystery.
 		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Get(state.splunkBaseURL + "/services/collector/health")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+			state.splunkBaseURL+"/services/collector/health", http.NoBody)
+		if err != nil {
+			return fmt.Errorf("build splunk health probe request: %w", err)
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("real Splunk container unreachable at %s: %w (run 'make test-infra-splunk-up'?)", state.splunkBaseURL, err)
 		}
@@ -590,7 +597,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		}
 		err := state.output.Write([]byte(`{"event_type":"x"}`))
 		if !errors.Is(err, audit.ErrOutputClosed) {
-			return fmt.Errorf("expected ErrOutputClosed, got %v", err)
+			return fmt.Errorf("expected ErrOutputClosed, got %w", err)
 		}
 		return nil
 	})
@@ -631,28 +638,28 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 
 	ctx.Step(`^the Write call should return ErrEventTooLarge$`, func() error {
 		if !errors.Is(state.lastWriteErr, audit.ErrEventTooLarge) {
-			return fmt.Errorf("last Write error = %v; want ErrEventTooLarge", state.lastWriteErr)
+			return fmt.Errorf("last Write error = %w; want ErrEventTooLarge", state.lastWriteErr)
 		}
 		return nil
 	})
 
 	ctx.Step(`^construction should fail with ErrConfigInvalid$`, func() error {
 		if !errors.Is(state.constructionErr, splunk.ErrConfigInvalid) {
-			return fmt.Errorf("construction error = %v; want ErrConfigInvalid", state.constructionErr)
+			return fmt.Errorf("construction error = %w; want ErrConfigInvalid", state.constructionErr)
 		}
 		return nil
 	})
 
 	ctx.Step(`^construction should fail with ErrPR1NotImplemented$`, func() error {
 		if !errors.Is(state.constructionErr, splunk.ErrPR1NotImplemented) {
-			return fmt.Errorf("construction error = %v; want ErrPR1NotImplemented", state.constructionErr)
+			return fmt.Errorf("construction error = %w; want ErrPR1NotImplemented", state.constructionErr)
 		}
 		return nil
 	})
 
 	ctx.Step(`^construction should succeed$`, func() error {
 		if state.constructionErr != nil {
-			return fmt.Errorf("construction failed: %v", state.constructionErr)
+			return fmt.Errorf("construction failed: %w", state.constructionErr)
 		}
 		return nil
 	})
@@ -733,7 +740,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		if !ok {
 			return fmt.Errorf("no event request recorded")
 		}
-		if v := requestHeader(req, name); v != "" {
+		if v := requestHeader(&req, name); v != "" {
 			return fmt.Errorf("request header %q unexpectedly present: %q", name, v)
 		}
 		return nil
@@ -744,7 +751,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		if !ok {
 			return fmt.Errorf("no event request recorded")
 		}
-		v := requestHeader(req, name)
+		v := requestHeader(&req, name)
 		uuidV4 := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 		if !uuidV4.MatchString(v) {
 			return fmt.Errorf("request header %q = %q; not a UUID v4", name, v)
@@ -917,7 +924,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
-		return fmt.Errorf("Splunk indexed %d events matching marker %q; wanted exactly %d within %ds",
+		return fmt.Errorf("splunk indexed %d events matching marker %q; wanted exactly %d within %ds",
 			lastCount, state.eventMarker, want, secs)
 	})
 
@@ -945,7 +952,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 // rules. This is the same pattern used by
 // splunk/tests/integration/splunk_test.go's insecureTLS().
 func insecureSearchTLS() *tls.Config {
-	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec // BDD search client; documented above
+	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec // BDD search client; documented above // audit:allow-insecure-skip-verify
 }
 
 // splunkSearchCount queries Splunk's management API for events
@@ -979,7 +986,8 @@ func splunkSearchCount(baseURL, spl string) (int, error) {
 			TLSClientConfig: insecureSearchTLS(),
 		},
 	}
-	req, err := http.NewRequest(http.MethodGet, mgmt.String(), nil) //nolint:gosec // test-only HTTP client
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		mgmt.String(), http.NoBody)
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
@@ -1010,7 +1018,7 @@ func splunkSearchCount(baseURL, spl string) (int, error) {
 			continue
 		}
 		if rec.Result.Count != "" {
-			fmt.Sscanf(rec.Result.Count, "%d", &n)
+			_, _ = fmt.Sscanf(rec.Result.Count, "%d", &n)
 		}
 	}
 	return n, nil
@@ -1032,7 +1040,7 @@ func parseAckMode(s string) splunk.AckMode {
 
 // requestHeader returns the value of the named header from a
 // recorded request, matching the existing splunkStubRequest fields.
-func requestHeader(req splunkStubRequest, name string) string {
+func requestHeader(req *splunkStubRequest, name string) string {
 	switch name {
 	case "X-Splunk-Request-Channel":
 		return req.channel
@@ -1090,7 +1098,11 @@ func splunkConstruct(state *splunkBDDState, mutate func(*splunk.Config)) error {
 	)
 	state.constructionErr = err
 	if err != nil {
-		return nil
+		// Scenarios assert on state.constructionErr in a later Then
+		// step; the Given itself must succeed so subsequent steps
+		// run. Returning err here would fail the scenario before the
+		// assertion has a chance to evaluate.
+		return nil //nolint:nilerr // see comment above
 	}
 	state.output = out
 	return nil
@@ -1123,7 +1135,11 @@ func splunkWriteEvent(state *splunkBDDState, eventType, suffix string) error {
 // tests can swap entropy sources if they need to (currently only
 // used for marker generation — no test override path).
 func cryptoRandFor(b []byte) (int, error) {
-	return rand.Read(b)
+	n, err := rand.Read(b)
+	if err != nil {
+		return n, fmt.Errorf("crypto/rand.Read: %w", err)
+	}
+	return n, nil
 }
 
 // lookupRequestHeader returns the named header value from the most
@@ -1155,12 +1171,12 @@ func lookupRequestHeader(state *splunkBDDState, name string) (string, bool) {
 func splunkBDDRepoRoot() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("os.Getwd: %w", err)
 	}
 	dir := cwd
 	for {
 		modPath := filepath.Join(dir, "go.mod")
-		if b, err := os.ReadFile(modPath); err == nil {
+		if b, err := os.ReadFile(modPath); err == nil { //nolint:gosec // modPath is built from filepath.Join + constant "go.mod"; no external input
 			if strings.Contains(string(b), "module github.com/axonops/audit\n") {
 				return dir, nil
 			}

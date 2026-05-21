@@ -7,6 +7,7 @@ require (
 	github.com/axonops/audit/loki v0.1.11
 	github.com/axonops/audit/outputconfig v0.1.11
 	github.com/axonops/audit/secrets/openbao v0.1.11
+	github.com/axonops/audit/splunk v0.0.0-20260520183351-bad90dd00155
 	github.com/axonops/audit/syslog v0.1.11
 	github.com/axonops/audit/webhook v0.1.11
 	github.com/axonops/syncmap v1.0.0

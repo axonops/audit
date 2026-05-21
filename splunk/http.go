@@ -136,7 +136,7 @@ var errRedirectBlocked = errors.New("audit/splunk: redirects are not followed")
 // The `bufs` argument is the caller's flushBufs — `bufs.retryHint`
 // is populated on actionRetry so the caller's retry loop can honour
 // the server's Retry-After.
-func (o *Output) doPost(ctx context.Context, body []byte, compressed bool, bufs *flushBufs) (hecAction, int, int, *int64, error) { //nolint:gocyclo,cyclop // long-but-flat HTTP wrapper; control flow follows classify() and resp.Header
+func (o *Output) doPost(ctx context.Context, body []byte, compressed bool, bufs *flushBufs) (action hecAction, httpStatus, hecCode int, ackID *int64, err error) { //nolint:nonamedreturns // named returns clarify the 5-value tuple
 	u := o.endpointURL
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
@@ -169,7 +169,7 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool, bufs 
 	defer drainAndClose(resp, maxResponseDrainEventOrRaw)
 
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseDrainEventOrRaw))
-	hecCode, ackID := parseHECResponse(bodyBytes)
+	hecCode, ackID = parseHECResponse(bodyBytes)
 
 	act := classify(resp.StatusCode, hecCode)
 	if act == actionSuccess {
@@ -199,7 +199,7 @@ func (o *Output) doPost(ctx context.Context, body []byte, compressed bool, bufs 
 // parseHECResponse decodes a HEC response body and returns its
 // (code, ackID) fields. Both default to zero/nil on parse failure.
 // Bounded by the caller's io.LimitReader.
-func parseHECResponse(body []byte) (int, *int64) {
+func parseHECResponse(body []byte) (hecCode int, ackID *int64) { //nolint:nonamedreturns // names clarify the 2-value tuple
 	if len(body) == 0 {
 		return 0, nil
 	}
@@ -243,7 +243,7 @@ func parseHECCode(body []byte) (int, error) {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		// Malformed JSON — return 0 and let classify() rely on the
 		// HTTP status alone.
-		return 0, err
+		return 0, fmt.Errorf("decode HEC response: %w", err)
 	}
 	return resp.Code, nil
 }

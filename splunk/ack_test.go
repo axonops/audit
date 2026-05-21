@@ -40,21 +40,15 @@ import (
 // ackTestStub is a HEC stub that records every request and supports
 // configurable /event ackID emission and /ack polling responses.
 type ackTestStub struct {
-	mu          sync.Mutex
-	eventReqs   atomic.Int64
-	ackReqs     atomic.Int64
-	channelHdrs []string // recorded X-Splunk-Request-Channel values per event request
-	bodies      [][]byte // recorded /event bodies
-	ackIDs      atomic.Int64
-
-	// ackResponses maps ackID → bool to return on /ack polls. Default
-	// (key absent): false. Tests pre-populate to simulate confirmations.
-	ackResponses map[int64]bool
-
-	// /event response controls.
-	eventReturnsCode14 atomic.Bool // simulate ACK disabled
-
-	srv *httptest.Server
+	ackResponses       map[int64]bool
+	srv                *httptest.Server
+	channelHdrs        []string
+	bodies             [][]byte
+	eventReqs          atomic.Int64
+	ackReqs            atomic.Int64
+	ackIDs             atomic.Int64
+	mu                 sync.Mutex
+	eventReturnsCode14 atomic.Bool
 }
 
 func newAckTestStub() *ackTestStub {
@@ -403,12 +397,12 @@ func TestAck_StateMachine_NoGoroutineLeak(t *testing.T) {
 func TestAck_PollEndpointFormat(t *testing.T) {
 	defer goleak.VerifyNone(t, goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"))
 	var captured struct {
-		mu     sync.Mutex
 		path   string
 		query  string
 		auth   string
-		body   []byte
 		method string
+		body   []byte
+		mu     sync.Mutex
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/services/collector/health", func(w http.ResponseWriter, _ *http.Request) {

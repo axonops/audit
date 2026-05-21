@@ -81,9 +81,9 @@ func (a hecAction) String() string {
 // /ack endpoints. Fields default to zero values when HEC returns a
 // truncated or non-conforming body.
 type hecResponse struct {
+	AckID *int64 `json:"ackId,omitempty"`
 	Text  string `json:"text,omitempty"`
 	Code  int    `json:"code"`
-	AckID *int64 `json:"ackId,omitempty"`
 }
 
 // classify maps an HTTP status + HEC code to the client action. The
@@ -96,7 +96,7 @@ type hecResponse struct {
 // This is the single source of truth for retry/drop/stop/warn
 // semantics. The full 28-entry table (codes 0-27 inclusive) is
 // exercised by TestOutput_HECErrorCodes_FullTable.
-func classify(httpStatus int, hecCode int) hecAction { //nolint:cyclop,gocyclo,funlen // dispatch table; explicit cases are clearer than a map
+func classify(httpStatus, hecCode int) hecAction { //nolint:cyclop,gocyclo,gocognit,funlen // dispatch table; explicit cases are clearer than a map
 	// HTTP 200 — success path, but HEC may signal capacity warning.
 	if httpStatus >= 200 && httpStatus < 300 {
 		switch hecCode {
@@ -184,14 +184,14 @@ func classify(httpStatus int, hecCode int) hecAction { //nolint:cyclop,gocyclo,f
 // switch on the action while preserving the response for logging and
 // metrics.
 type hecError struct {
+	Text       string
 	HTTPStatus int
 	Code       int
-	Text       string
 	Action     hecAction
 }
 
 // Error returns a human-readable form of the HEC error. **Never
-// includes the token, the URL, or any header values.**
+// includes the token, the URL, or any header values.**.
 func (e *hecError) Error() string {
 	return fmt.Sprintf("audit/splunk: HEC %d (code=%d action=%s): %s",
 		e.HTTPStatus, e.Code, e.Action, e.Text)

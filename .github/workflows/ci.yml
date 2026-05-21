@@ -699,7 +699,9 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 5
-    needs: [bdd, changes]
+    # splunk-ta-appinspect uploads its @appinspect scenario count too;
+    # bdd-verify must wait for it so the per-shard-count sum is complete.
+    needs: [bdd, splunk-ta-appinspect, changes]
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
@@ -1023,6 +1025,23 @@ jobs:
         # it's excluded from the default `make test-bdd-splunk`
         # local runs (where splunk-appinspect may not be installed).
         run: make test-bdd-splunk-appinspect
+
+      - name: Record @appinspect scenario count for bdd-verify
+        # The @appinspect scenario runs here rather than in the bdd
+        # matrix, so the bdd-verify gate that sums per-shard counts
+        # needs to see this job's contribution too — otherwise the
+        # total comes up 1 scenario short.
+        if: always()
+        run: |
+          echo "1" > /tmp/bdd-count.txt
+
+      - name: Upload @appinspect scenario count
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bdd-count-splunk-appinspect
+          path: /tmp/bdd-count.txt
+          retention-days: 1
 
   ci-pass:
     name: Test - CI Pass

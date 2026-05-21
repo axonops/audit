@@ -260,8 +260,9 @@ Installing it:
 
 The TA provides:
 
-- `INDEXED_EXTRACTIONS = json` for the `axonops:audit` sourcetype —
-  every CIM field is automatically indexed.
+- `KV_MODE = json` for the `axonops:audit` sourcetype — every CIM
+  field is searchable at search time (works for both HEC direct
+  ingest and forwarder ingest).
 - `change` tag on every audit event (CIM Change data model).
 - `authentication` tag on `security:*` events (CIM Authentication
   data model).

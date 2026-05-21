@@ -7275,8 +7275,9 @@ Installing it:
 
 The TA provides:
 
-- `INDEXED_EXTRACTIONS = json` for the `axonops:audit` sourcetype —
-  every CIM field is automatically indexed.
+- `KV_MODE = json` for the `axonops:audit` sourcetype — every CIM
+  field is searchable at search time (works for both HEC direct
+  ingest and forwarder ingest).
 - `change` tag on every audit event (CIM Change data model).
 - `authentication` tag on `security:*` events (CIM Authentication
   data model).
@@ -7350,9 +7351,9 @@ output + `cim_change` formatter.
 
 The TA generator is intentionally minimal. It does NOT generate:
 
-- `fields.conf` — `INDEXED_EXTRACTIONS = json` automatically extracts
-  every JSON key, so a static field declaration is unnecessary for
-  CIM compliance.
+- `fields.conf` — `KV_MODE = json` automatically extracts every
+  JSON key at search time, so a static field declaration is
+  unnecessary for CIM compliance.
 - `savedsearches.conf` — risk modifiers and scheduled searches are
   consumer-specific. Add them in your own app's `local/` directory.
 - `transforms.conf` — required only for non-JSON field extractions.
@@ -7419,19 +7420,20 @@ The load-bearing file. Configures the sourcetype:
 
 ```ini
 [axonops:audit]
-INDEXED_EXTRACTIONS = json
-KV_MODE = none
+KV_MODE = json
 TIMESTAMP_FIELDS = _time
 TIME_FORMAT = %s.%3N
 EVAL-vendor_product = "AxonOps:Audit"
 EVAL-dvc = if(isnotnull(dvc), dvc, host)
 ```
 
-- `INDEXED_EXTRACTIONS = json` extracts every JSON key at index
-  time — no FIELDALIAS rules needed because the `cim_change`
-  formatter already emits CIM-named keys.
-- `KV_MODE = none` prevents Splunk from running a second
-  search-time extraction over the same fields.
+- `KV_MODE = json` runs JSON KV extraction at SEARCH time. This
+  works uniformly for both forwarder ingest AND HEC direct ingest.
+  (`INDEXED_EXTRACTIONS = json` would only fire for forwarder
+  ingest — Splunk does not evaluate it on the indexer side for
+  HEC-sourced events, so we use `KV_MODE` instead to guarantee
+  the same field-extraction semantics regardless of how the data
+  reached the indexer.)
 - `TIMESTAMP_FIELDS = _time` + `TIME_FORMAT = %s.%3N` consumes
   the CIM canonical epoch-seconds-with-ms-precision timestamp.
 - `EVAL-vendor_product` stamps a per-TA constant so operator-
@@ -7445,11 +7447,14 @@ One stanza per `(category, event_type)` pair in the taxonomy:
 
 ```ini
 [account_user_create]
-search = sourcetype="axonops:audit" event_type="user_create"
+search = sourcetype="axonops:audit" (action="user_create" OR event_type="user_create")
 ```
 
 The stanza name is `<category>_<event_type>` (sanitised to
-ASCII-safe characters).
+ASCII-safe characters). The search matches `action="..."` (the
+CIM-canonical key emitted by `CIMChangeFormatter`) OR
+`event_type="..."` (the audit-canonical key kept by `JSONFormatter`),
+so the same TA works with either formatter.
 
 ### `default/tags.conf`
 

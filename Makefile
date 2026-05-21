@@ -1326,10 +1326,28 @@ test-infra-loki-up:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml up -d --build --wait
 	@echo "Loki infrastructure is ready."
 
-test-infra-splunk-up:
+test-infra-splunk-up: stage-splunk-ta
 	docker network create audit-test 2>/dev/null || true
 	docker compose -f $(COMPOSE_DIR)/docker-compose.splunk.yml up -d --build --wait
 	@echo "Splunk infrastructure is ready (HEC token: bdd-test-hec-token)."
+
+# stage-splunk-ta copies the reference TA from deploy/ to a gitignored
+# staging directory under tests/bdd/.tmp/splunk-ta. The container
+# bind-mounts the staging copy, NOT the source, so docker-splunk's
+# Ansible chown of /opt/splunk/etc/apps/ does not mutate the host's
+# tracked source tree.
+stage-splunk-ta:
+	@# docker-splunk's Ansible bootstrap chowns the mounted dir to
+	@# splunk:splunk (UID 41812 inside the container), which means a
+	@# subsequent `rm -rf` from the host fails with permission errors.
+	@# Use a docker one-shot to clean the staged copy with root privs.
+	@if [ -d $(COMPOSE_DIR)/.tmp/splunk-ta ]; then \
+		docker run --rm -v "$(CURDIR)/$(COMPOSE_DIR)/.tmp:/tmp/stage" alpine:3 \
+			sh -c 'rm -rf /tmp/stage/splunk-ta'; \
+	fi
+	@mkdir -p $(COMPOSE_DIR)/.tmp/splunk-ta
+	@cp -R deploy/splunk-ta-axonops-audit/. $(COMPOSE_DIR)/.tmp/splunk-ta/
+	@echo "Staged reference TA to $(COMPOSE_DIR)/.tmp/splunk-ta"
 
 test-infra-loki-down:
 	docker compose -f $(COMPOSE_DIR)/docker-compose.loki.yml down -v

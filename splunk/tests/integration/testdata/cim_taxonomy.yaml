@@ -1,8 +1,12 @@
-# Minimal taxonomy for the splunk_cim_test.go integration tests.
-# Mirrors the relevant events from
-# internal/schemagen/reference_ta_taxonomy.yaml but lives in the
-# sub-module's own testdata so the splunk/ go.mod does not need to
+# Minimal taxonomy for the splunk_cim_test.go integration tests
+# and the splunk_ta_install_test.go integration tests. Mirrors the
+# reference TA taxonomy at internal/schemagen/reference_ta_taxonomy.yaml
+# but lives in the sub-module's own testdata so splunk/go.mod does not
 # reach across the module boundary into the parent's internal/.
+#
+# Category + event combinations MUST match the reference TA's
+# eventtypes.conf so that the TA install tests can iterate over the
+# canonical eight `<category>_<event>` eventtypes.
 
 version: 1
 
@@ -11,11 +15,19 @@ categories:
     severity: 3
     events:
       - user_create
+      - user_update
+      - user_delete
+  configuration:
+    severity: 4
+    events:
+      - config_update
   security:
     severity: 8
     events:
       - login_success
       - login_failure
+      - logout
+      - permission_denied
 
 events:
   user_create:
@@ -28,6 +40,34 @@ events:
       target_id:
         required: true
       target_type:
+        required: true
+
+  user_update:
+    description: "An existing user account was modified"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+        required: true
+
+  user_delete:
+    description: "A user account was deleted"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+      target_id:
+        required: true
+
+  config_update:
+    description: "Configuration was modified"
+    fields:
+      outcome:
+        required: true
+      actor_id:
         required: true
 
   login_success:
@@ -48,4 +88,20 @@ events:
       actor_id:
         required: true
       source_ip:
+        required: true
+
+  logout:
+    description: "A user ended their session"
+    fields:
+      outcome:
+        required: true
+      actor_id:
+        required: true
+
+  permission_denied:
+    description: "An action was denied by access control"
+    fields:
+      outcome:
+        required: true
+      actor_id:
         required: true

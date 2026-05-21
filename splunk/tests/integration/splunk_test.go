@@ -48,11 +48,12 @@ import (
 )
 
 const (
-	splunkURL      = "http://localhost:8088"
-	splunkToken    = "bdd-test-hec-token"
-	splunkAdminURL = "http://localhost:8089" // Splunkd management port (search)
-	splunkUser     = "admin"
-	splunkPass     = "ChangeMeForRealUse123!"
+	splunkURL       = "http://localhost:8088"
+	splunkToken     = "bdd-test-hec-token"
+	splunkAdminURL  = "http://localhost:8089" // Splunkd management port (search)
+	splunkSearchURL = "https://localhost:8089"
+	splunkUser      = "admin"
+	splunkPass      = "ChangeMeForRealUse123!"
 )
 
 // searchClient is a dedicated HTTP client for the Splunk search API.

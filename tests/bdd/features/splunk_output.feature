@@ -195,12 +195,13 @@ Feature: Splunk HEC Output
     When I audit a uniquely marked splunk "user_create" event
     Then Splunk should have indexed exactly 1 event with the marker within 30 seconds
 
-  @docker
-  Scenario: AckMode=best_effort delivers events with the channel header
-    Given a real Splunk HEC receiver
+  @stub
+  Scenario: AckMode=best_effort sends the channel header on every HEC POST
+    Given a splunk HEC stub server
     And an auditor with splunk output and AckMode "best_effort"
     When I audit a uniquely marked splunk "user_create" event
-    Then Splunk should have indexed exactly 1 event with the marker within 30 seconds
+    Then the splunk receiver should have received exactly 1 request within 10 seconds
+    And the request header "X-Splunk-Request-Channel" should match a UUID v4
 
   @stub
   Scenario: AckMode=required blocks buffer progress until ack positive
@@ -235,9 +236,9 @@ Feature: Splunk HEC Output
     And the output directory should contain "default/data/ui/views/audit_events.xml"
     And the output directory should contain "metadata/default.meta"
 
-  Scenario: The generated TA emits INDEXED_EXTRACTIONS=json + EVAL constants (FIELDALIAS bridge)
+  Scenario: The generated TA emits KV_MODE=json + EVAL constants for search-time field extraction
     When I run audit-gen with splunk-ta format against the reference taxonomy
-    Then the file "default/props.conf" should contain "INDEXED_EXTRACTIONS = json"
+    Then the file "default/props.conf" should contain "KV_MODE = json"
     And the file "default/props.conf" should contain "EVAL-vendor_product"
     And the file "default/props.conf" should contain "EVAL-dvc"
 

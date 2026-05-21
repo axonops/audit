@@ -706,7 +706,12 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //n
 	// --- HEC Indexer Acknowledgement scenarios (#55 PR 2) ---
 
 	ctx.Step(`^an auditor with splunk output and AckMode "([^"]*)"$`, func(mode string) error {
-		state.stub.ackEnabled.Store(mode != "off")
+		// state.stub is nil on @docker scenarios that drive the real
+		// Splunk container; ackEnabled is a stub-only flag. The real
+		// container's HEC token's ACK state is fixed by docker-compose.
+		if state.stub != nil {
+			state.stub.ackEnabled.Store(mode != "off")
+		}
 		return splunkConstruct(state, func(c *splunk.Config) {
 			c.AckMode = parseAckMode(mode)
 			c.AckPollInterval = 50 * time.Millisecond
@@ -911,7 +916,12 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //n
 			_ = state.output.Close()
 			state.output = nil
 		}
-		query := fmt.Sprintf(`index=main sourcetype="audit:event" mark=%q`, state.eventMarker)
+		// Use a substring match on the unique per-scenario marker
+		// (bdd-marker-<crypto/rand hex>) instead of a `mark=` field
+		// predicate. Field extraction depends on a TA being installed
+		// for this sourcetype; the BDD container's default
+		// `audit:event` sourcetype has no TA, so we anchor on raw text.
+		query := fmt.Sprintf(`index=main sourcetype="audit:event" %q`, state.eventMarker)
 		deadline := time.Now().Add(time.Duration(secs) * time.Second)
 		var lastCount int
 		for time.Now().Before(deadline) {
@@ -932,7 +942,12 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //n
 		if state.eventMarker == "" {
 			return errors.New("no event marker set — preceding 'I audit a uniquely marked' step missing")
 		}
-		query := fmt.Sprintf(`index=main sourcetype="audit:event" mark=%q %s=%q`, state.eventMarker, field, value)
+		// Anchor by marker substring (no field extraction needed),
+		// then use the field as an actual Splunk predicate. The two
+		// known callers ask for `sourcetype` and `source`, both of
+		// which are Splunk metadata fields always populated and
+		// queryable by name regardless of payload field extraction.
+		query := fmt.Sprintf(`index=main %q %s=%q`, state.eventMarker, field, value)
 		count, err := splunkSearchCount(state.splunkBaseURL, query)
 		if err != nil {
 			return fmt.Errorf("splunk search: %w", err)
@@ -973,12 +988,14 @@ func splunkSearchCount(baseURL, spl string) (int, error) {
 		Host:   parsed.Hostname() + ":8089",
 		Path:   "/services/search/jobs/export",
 	}
-	q := mgmt.Query()
-	q.Set("search", "search "+spl+" | stats count")
-	q.Set("output_mode", "json")
-	q.Set("earliest_time", "-1h")
-	q.Set("latest_time", "now")
-	mgmt.RawQuery = q.Encode()
+	// /services/search/jobs/export requires POST with form-encoded
+	// body — GET returns "The method is not allowed."
+	form := neturl.Values{}
+	form.Set("search", "search "+spl+" | stats count")
+	form.Set("output_mode", "json")
+	form.Set("earliest_time", "-1h")
+	form.Set("latest_time", "now")
+	form.Set("exec_mode", "oneshot")
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -986,11 +1003,12 @@ func splunkSearchCount(baseURL, spl string) (int, error) {
 			TLSClientConfig: insecureSearchTLS(),
 		},
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
-		mgmt.String(), http.NoBody)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		mgmt.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth("admin", "ChangeMeForRealUse123!")
 	resp, err := client.Do(req)
 	if err != nil {

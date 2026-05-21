@@ -590,6 +590,7 @@ jobs:
             target: test-bdd-loki
             infra-up: test-infra-loki-up
             infra-down: test-infra-loki-down
+            timeout: 10
           - suite: splunk
             target: test-bdd-splunk
             # @docker-tagged Splunk scenarios drive the real

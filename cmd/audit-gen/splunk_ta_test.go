@@ -189,6 +189,7 @@ func TestSplunkTA_SavedSearches_OmittedForMinimalTA(t *testing.T) {
 func TestSplunkTA_AppConf_Skeleton(t *testing.T) {
 	dir := runSplunkTA(t, splunkTAOptions{
 		AppName:     "TA-test-app",
+		PackageID:   "ta-test-app",
 		AppVersion:  "1.2.3",
 		Author:      "Test Author",
 		Description: "Test description",
@@ -198,10 +199,18 @@ func TestSplunkTA_AppConf_Skeleton(t *testing.T) {
 	for _, stanza := range []string{"[install]", "[ui]", "[launcher]", "[package]", "[id]"} {
 		assert.Contains(t, body, stanza, "app.conf must contain %s stanza", stanza)
 	}
-	// Configurable fields reflect the options.
+	// Configurable fields reflect the options. PackageID is what
+	// Splunkbase's check_for_valid_package_id matches against the
+	// uncompressed directory name; AppName is the human-facing label.
 	assert.Contains(t, body, "version = 1.2.3")
-	assert.Contains(t, body, "id = TA-test-app")
-	assert.Contains(t, body, "name = TA-test-app")
+	assert.Contains(t, body, "label = TA-test-app",
+		"app.conf [ui] label must use AppName")
+	assert.Contains(t, body, "id = ta-test-app",
+		"app.conf [package] id must use PackageID")
+	assert.Contains(t, body, "name = ta-test-app",
+		"app.conf [id] name must use PackageID")
+	assert.Contains(t, body, "is_configured = false",
+		"Splunkbase publishing requires is_configured = false")
 	assert.Contains(t, body, "author = Test Author")
 	assert.Contains(t, body, "description = Test description")
 	// TAs ship as non-visible UI elements (no [ui] is_visible=true).
@@ -251,7 +260,13 @@ func TestSplunkTA_DeterministicOutput(t *testing.T) {
 	tax := taTestTaxonomy()
 	d1 := t.TempDir()
 	d2 := t.TempDir()
-	opts := splunkTAOptions{VendorProduct: "Determinism:Test"}
+	// Fix PackageID explicitly so two different t.TempDir() basenames
+	// don't make the test compare different package ids — we are
+	// testing template stability, not the basename-derived default.
+	opts := splunkTAOptions{
+		VendorProduct: "Determinism:Test",
+		PackageID:     "determinism-test-ta",
+	}
 	require.NoError(t, generateSplunkTA(d1, tax, opts))
 	require.NoError(t, generateSplunkTA(d2, tax, opts))
 

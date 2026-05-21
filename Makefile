@@ -1143,13 +1143,18 @@ ta:
 # emit a README would have to drop this exclusion.
 .PHONY: ta-diff-check
 ta-diff-check:
+	@# Generate into a temp subdir named splunk-ta-axonops-audit so
+	@# the PackageID (derived from filepath.Base(outDir)) matches
+	@# the committed reference TA exactly. Without the canonical
+	@# basename the package id stanza would diff against the deploy
+	@# tree even when everything else is byte-identical.
 	@TMP=$$(mktemp -d); \
 	go run ./cmd/audit-gen --format=splunk-ta \
 		--input internal/schemagen/reference_ta_taxonomy.yaml \
-		--output "$$TMP/ta" >/dev/null && \
-	if ! diff -qr --exclude=README.md --exclude=appinspect-blocker-checks.txt "$$TMP/ta" deploy/splunk-ta-axonops-audit >/dev/null; then \
+		--output "$$TMP/splunk-ta-axonops-audit" >/dev/null && \
+	if ! diff -qr --exclude=README.md --exclude=appinspect-blocker-checks.txt "$$TMP/splunk-ta-axonops-audit" deploy/splunk-ta-axonops-audit >/dev/null; then \
 		echo "deploy/splunk-ta-axonops-audit/ is stale; run 'make ta'"; \
-		diff -ur --exclude=README.md --exclude=appinspect-blocker-checks.txt deploy/splunk-ta-axonops-audit "$$TMP/ta" || true; \
+		diff -ur --exclude=README.md --exclude=appinspect-blocker-checks.txt deploy/splunk-ta-axonops-audit "$$TMP/splunk-ta-axonops-audit" || true; \
 		rm -rf "$$TMP"; exit 1; \
 	fi; \
 	rm -rf "$$TMP"

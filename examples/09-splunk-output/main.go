@@ -110,6 +110,18 @@ func main() {
 	fmt.Println("Audited: login_failure by mallory")
 
 	// Give the batch loop time to deliver before we close.
+	//
+	// 2s is twice the outputs.yaml flush_interval (1s) and well
+	// above the typical HEC POST round-trip. Production code does
+	// NOT need this sleep — `auditor.Close()` blocks until the
+	// drain goroutine flushes the queue (capped by ShutdownTimeout,
+	// default 5s). The sleep is here only so the example can print
+	// the "Done. Search your events:" guidance AFTER delivery has
+	// almost certainly completed, giving the reader an unambiguous
+	// signal that the events should be searchable.
+	//
+	// If you change `flush_interval` or `ack_mode` to `required`,
+	// raise this value accordingly — the demo coupling is intentional.
 	fmt.Println("\nWaiting for Splunk delivery...")
 	time.Sleep(2 * time.Second)
 

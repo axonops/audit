@@ -5,10 +5,45 @@
 
 # Example 09: Splunk HEC Output
 
-Sends audit events to a [Splunk Enterprise](https://www.splunk.com/)
-instance via the [HTTP Event Collector](https://docs.splunk.com/Documentation/Splunk/latest/Data/UsetheHTTPEventCollector)
-(HEC), with the CIM Change formatter for CIM-compliant indexed
-fields and the reference Technology Add-on for tag-based search.
+Sends audit events directly to Splunk with **CIM-compliant field
+mapping** and **at-least-once delivery via indexer acknowledgement**
+— so Enterprise Security correlation searches find your audit data
+without per-event mapping rules and compliance auditors can
+demonstrate no event was silently dropped.
+
+Implementation: events go to the [HTTP Event Collector](https://docs.splunk.com/Documentation/Splunk/latest/Data/UsetheHTTPEventCollector)
+(`/services/collector/event`) on [Splunk Enterprise](https://www.splunk.com/)
+or Splunk Cloud, formatted by the
+[`CIMChangeFormatter`](../../docs/splunk-output.md#formatter-choice-json-vs-cim_change)
+so every event already carries the CIM Change keys
+(`user_id`, `action`, `object_id`, `status`, …). Pair with the
+[reference Technology Add-on](../../deploy/splunk-ta-axonops-audit/)
+to get `tag=change` and `tag=authentication` applied at index time.
+
+## 30-second quickstart
+
+```bash
+# 1. Start Splunk (x86 only — see Prerequisites for arm64 caveat).
+docker run -d --name splunk \
+  -p 8000:8000 -p 8088:8088 -p 8089:8089 \
+  -e SPLUNK_PASSWORD=ChangeMeForRealUse123! \
+  -e SPLUNK_START_ARGS=--accept-license \
+  -e SPLUNK_HEC_TOKEN=example-hec-token \
+  -e SPLUNK_HEC_SSL=False \
+  splunk/splunk:10.4-rhel9
+
+# 2. Wait ~3 minutes for HEC.
+until curl -s http://localhost:8088/services/collector/health | grep -q 'HEC is healthy'; do sleep 5; done
+
+# 3. Generate typed builders + run.
+go generate ./... && go run .
+```
+
+Expected: four `Audited: …` lines printed, then `Done. Search
+your events:` with a copy-pasteable `curl` to Splunk's search REST.
+
+Read on for the why (CIM mapping, ACK modes, reference TA), the
+Splunk Cloud variant, and the production checklist.
 
 ## What You'll Learn
 
@@ -115,6 +150,41 @@ Done. Search your events:
 5. **Events queryable** — events appear in `index=main` with
    sourcetype `axonops:audit` within ~1 second.
 
+## What the HEC POST Body Looks Like
+
+Each batched event lands at HEC as a JSON envelope. For the first
+`user_create` event in this example, the wire payload is:
+
+```json
+{
+  "time": 1747830712.345,
+  "host": "dev-machine",
+  "source": "audit",
+  "sourcetype": "axonops:audit",
+  "index": "main",
+  "event": {
+    "_time": 1747830712.345,
+    "action": "user_create",
+    "app_name": "audit-example-splunk",
+    "dvc": "dev-machine",
+    "host": "dev-machine",
+    "object_category": "topic",
+    "object_id": "topic-orders",
+    "outcome": "success",
+    "severity_id": 3,
+    "status": "success",
+    "user_id": "alice",
+    "vendor_product": "AxonOps:Audit"
+  }
+}
+```
+
+The envelope's `host`/`source`/`sourcetype`/`index` fields are
+metadata Splunk consumes directly (they become the standard
+`_host`/`_source` etc. on the indexed event). The `event` object
+is what Splunk stores as `_raw` and what CIM correlation searches
+field-extract via the reference TA's `KV_MODE = json`.
+
 ## CIM Change Formatter — Field Renames
 
 With `formatter: { type: cim_change, vendor_product: "AxonOps:Audit" }`,
@@ -145,6 +215,17 @@ docker cp deploy/splunk-ta-axonops-audit \
 docker exec splunk /opt/splunk/bin/splunk restart
 ```
 
+> **Note:** the `splunk restart` step takes another 30–60 seconds
+> and bounces the HEC listener — re-run the
+> `until curl … HEC is healthy` loop from Prerequisites before
+> running the example. Production deployments install the TA via
+> Splunkbase or an apps-deployment pipeline so the restart happens
+> during a planned maintenance window, not on every run. For
+> repeated local iteration, bind-mount the TA into the container
+> at create-time (see
+> [`tests/bdd/docker-compose.splunk.yml`](../../tests/bdd/docker-compose.splunk.yml)
+> for the staged-copy pattern) to avoid the restart entirely.
+
 After install:
 
 - Every audit event carries `tag=change` — Enterprise Security's
@@ -171,14 +252,21 @@ ack_mode: "required"        # at-least-once with resend on timeout
 `best_effort` and `required` modes require the HEC token to have
 indexer acknowledgement enabled. Set this in Splunk Web at
 **Settings → Data inputs → HTTP Event Collector → ⟨your-token⟩
-→ Enable indexer acknowledgement**, or enable it on the test
-container by passing `SPLUNK_HEC_USEACK=1` to docker run (Splunk
-10.x+).
+→ Enable indexer acknowledgement**. (The docker-splunk image does
+not consistently honour an `SPLUNK_HEC_USEACK` env var across
+releases; the Splunk Web toggle is the reliable path. For
+provisioning-as-code, bake an `inputs.conf` with `useACK = 1` into
+a custom Splunk image or bind-mount it into
+`/opt/splunk/etc/apps/splunk_httpinput/local/`.)
 
-For most deployments `best_effort` is the right choice: every
-batch is verified asynchronously without blocking the producer.
-Use `required` only when at-least-once semantics matter more than
-throughput.
+**For an audit/compliance library, `required` is the right
+default.** Compliance auditors typically demand at-least-once
+evidence of delivery — `best_effort` records telemetry but does
+not gate the producer, so a buffer overflow during an indexer
+outage silently drops events. Use `best_effort` only when you
+have an upstream durable queue (Kafka, NATS JetStream, etc.) that
+already provides at-least-once semantics. Use `off` only for
+non-compliance signals where dropping under stress is acceptable.
 
 ## YAML Configuration Explained
 
@@ -192,12 +280,15 @@ outputs:
       url: "http://localhost:8088"   # HEC endpoint (no path)
       token: "example-hec-token"     # never log this; library redacts in String/GoString
       sourcetype: "axonops:audit"    # matches the reference TA's props.conf stanza
+      source: "audit"                # Splunk metadata `_source`; how operators
+                                     # distinguish audit-pipeline events from
+                                     # application logs in the same index
       index: "main"                  # set via `splunk add index <name>` first
       allow_insecure_http: true      # http:// only — production uses https
       allow_private_ranges: true     # localhost — blocks RFC1918 by default
 
-      batch_size: 10                 # push after 10 events
-      flush_interval: "1s"           # or 1 second, whichever first
+      batch_size: 10                 # push after 10 events (demo value; default 500)
+      flush_interval: "1s"           # or 1 second, whichever first (demo value; default 2s)
       timeout: "10s"
       max_retries: 5                 # retry transient HEC 5xx with exponential backoff
       gzip: true
@@ -209,20 +300,72 @@ outputs:
       ack_mode: "off"                # see "Indexer Acknowledgement" above
 ```
 
+The `batch_size: 10` and `flush_interval: 1s` values above are
+demo settings — they prioritise visibility (events appear in
+Splunk within ~1 second of running the example) over throughput.
+Production deployments should use the library defaults
+(`batch_size: 500` and `flush_interval: 2s`) unless you have
+measured a different target.
+
 Splunk Cloud deployments can use the convenience URL form
 [`splunkcloud://<stack-name>`](../../docs/splunk-output.md#splunk-cloud-specifics)
 which expands to the public-CA-signed HEC endpoint.
 
-## Splunk Cloud — Shorthand URL
+## Splunk Cloud — Drop-in Configuration
+
+Splunk Cloud customers don't need the Docker prerequisite at all
+— the HEC endpoint is provided by the stack. Replace the
+`outputs.yaml::splunk_audit` block above with this, then run
+`go run .` exactly as documented:
 
 ```yaml
-url: "splunkcloud://acme-prod"
-# expands to: https://http-inputs-acme-prod.splunkcloud.com:443
+outputs:
+  splunk_audit:
+    type: splunk
+    splunk:
+      # `splunkcloud://<stack-name>` expands to
+      # `https://http-inputs-<stack-name>.splunkcloud.com:443`.
+      # Only `[a-z0-9][a-z0-9-]{0,62}` is accepted; the library
+      # rejects anything else at construction time to prevent
+      # URL-injection foot-guns.
+      url: "splunkcloud://acme-prod"
+
+      # Token from Splunk Cloud's Settings → Data inputs → HTTP
+      # Event Collector → ⟨your-token⟩. Use a secret-resolver
+      # reference rather than a literal in production —
+      # `token: ${env:SPLUNK_HEC_TOKEN}` reads from the env at
+      # outputconfig.New time and the literal never lands in the
+      # repo.
+      token: "${env:SPLUNK_HEC_TOKEN}"
+
+      sourcetype: "axonops:audit"
+      index: "main"
+
+      # DELETE the two dev-only flags from the self-hosted block:
+      # the Splunk Cloud URL is https and the dial target is
+      # public-CA-signed; default policies are correct.
+      # allow_insecure_http: <REMOVE — Cloud is https only>
+      # allow_private_ranges: <REMOVE — public IPs only>
+
+      batch_size: 500                # library default — production scale
+      flush_interval: "2s"           # library default
+      timeout: "10s"
+      max_retries: 5
+      gzip: true
+
+      formatter:
+        type: cim_change
+        vendor_product: "AxonOps:Audit"
+
+      # ACK enablement on Splunk Cloud: Settings → Data inputs →
+      # HTTP Event Collector → ⟨your-token⟩ → Enable indexer
+      # acknowledgement. After enabling, set:
+      ack_mode: "required"
 ```
 
-Only `[a-z0-9][a-z0-9-]{0,62}` is accepted for the stack name —
-the library rejects anything else at construction time to prevent
-URL-injection foot-guns.
+A typical Splunk Cloud deployment differs from this self-hosted
+example only in those four lines: `url`, `token`, the two removed
+dev-only flags, and the recommended `ack_mode: required`.
 
 ## Blank Import — Splunk Ships Separately
 
@@ -262,6 +405,24 @@ splunk-bundled aggregator version, the second import can drop.)
 | `must be https` error | `http://` URL without flag | Add `allow_insecure_http: true` (development only). |
 | SSRF blocked on 127.0.0.1 | Private-range protection | Add `allow_private_ranges: true` (development only). |
 | `ack_mode != off` errors at startup | HEC token does not have ACK enabled | Enable ACK on the token in Splunk Web, or set `ack_mode: "off"`. |
+
+## Production Checklist
+
+The defaults this example sets are tuned for a one-shot demo on
+localhost. Before shipping to production, flip every line in this
+table:
+
+| Setting in this example | Production value | Why |
+|---|---|---|
+| `url: "http://localhost:8088"` | `https://<host>:8088` or `splunkcloud://<stack>` | HEC traffic crosses an untrusted network in any non-loopback deployment. |
+| `allow_insecure_http: true` | DELETE (default `false`) | `http://` is rejected unless this flag is set; production MUST use `https://`. |
+| `allow_private_ranges: true` | DELETE (default `false`) | SSRF protection blocks RFC1918 ranges by default; only needed for sidecar or air-gapped deployments. |
+| `token: "example-hec-token"` | `token: ${env:SPLUNK_HEC_TOKEN}` or a secrets-provider reference | Never commit the literal HEC token. |
+| `ack_mode: "off"` | `ack_mode: "required"` for compliance, `best_effort` if upstream provides at-least-once | See "Indexer Acknowledgement" above. |
+| `batch_size: 10` / `flush_interval: 1s` | `batch_size: 500` / `flush_interval: 2s` (defaults) | Demo values prioritise visibility; defaults prioritise throughput. |
+| `buffer_size: 1000` | Raise to absorb your peak burst | Buffer-full drops are silent except via the OutputMetrics counter — measure the high-water mark in production load tests and add ~30 %. |
+| Reference TA via `docker cp` | TA installed via Splunkbase or apps provisioning pipeline | The docker-cp install is for the demo container; production TAs ship via your Splunk app-deployment process. |
+| `verify_on_startup: <unset>` (default `true`) | Keep default | The startup probe surfaces misconfiguration at `audit.New` time instead of as silent loss on the first flush — important for boot-time fail-fast. |
 
 ## Cleanup
 

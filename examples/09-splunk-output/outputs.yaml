@@ -38,14 +38,20 @@ outputs:
       allow_private_ranges: true        # local dev only — SSRF protection blocks 127.0.0.1 by default
 
       # Batching — events are buffered and pushed in batches.
-      batch_size: 10                    # push after 10 events (default: 100)
-      max_batch_bytes: 819200           # cap a single POST at ~800 KB
-      max_event_bytes: 1048576          # reject any single event > 1 MiB at Write time
-      flush_interval: "1s"              # or push after 1 second, whichever comes first
+      # batch_size/flush_interval are demo values (fast visibility);
+      # production should use the defaults (100 / 5s) unless measured.
+      batch_size: 10                    # push after 10 events (default: 500)
+      flush_interval: "1s"              # or push after 1 second, whichever comes first (default: 2s)
       timeout: "10s"                    # HTTP request timeout
       max_retries: 5                    # retry transient HEC 5xx with exponential backoff
       gzip: true                        # compress push payloads
-      buffer_size: 1000                 # internal channel cap
+      buffer_size: 1000                 # internal channel cap (raise to absorb peak burst)
+
+      # max_batch_bytes / max_event_bytes are Layer-3 tuning knobs —
+      # the library defaults (819 200 / 1 048 576) are correct for
+      # typical audit events. Override only if you have very large
+      # custom fields or are pushing through a proxy with body-size
+      # limits. See docs/splunk-output.md for the full reference.
 
       # Optional: CIM Change formatter for Splunk's CIM-compliant
       # search experience. Pair this with the reference TA at

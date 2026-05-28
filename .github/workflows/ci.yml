@@ -289,7 +289,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 10
+    # Per-row override via matrix.timeout when a module needs more
+    # headroom (e.g. cmd/audit-gen race-detector runtime). Pattern
+    # mirrors the integration matrix at ${{ matrix.timeout }} below.
+    timeout-minutes: ${{ matrix.timeout || 10 }}
     needs: [hygiene, changes]
     if: needs.changes.outputs.code == 'true'
     strategy:
@@ -319,6 +322,8 @@ jobs:
           - module: cmd/audit-gen
             target: test-audit-gen
             flag: audit-gen
+            timeout: 15 # race-detector runtime is ~9-10 min on ubuntu-latest; bump above default 10
+
           - module: cmd/audit-validate
             target: test-audit-validate
             flag: audit-validate

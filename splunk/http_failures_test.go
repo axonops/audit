@@ -55,7 +55,7 @@ func TestOutput_ResponseContentLengthOverCap_Rejected(t *testing.T) {
 	rec := &recordingMetrics{}
 	cfg := validCfg(srv.URL)
 	cfg.MaxRetries = 0
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -94,7 +94,7 @@ func TestOutput_ResponseContentLengthUnknown_StillBounded(t *testing.T) {
 	defer srv.Close()
 
 	rec := &recordingMetrics{}
-	out, err := splunk.New(validCfg(srv.URL), nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(validCfg(srv.URL), splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -124,7 +124,7 @@ func TestOutput_NetworkFailures_ConnectionRefused(t *testing.T) {
 	cfg.RetryBaseDelay = 5 * time.Millisecond
 	cfg.RetryMaxDelay = 10 * time.Millisecond
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -145,7 +145,7 @@ func TestOutput_NetworkFailures_DNSResolutionFailure(t *testing.T) {
 	cfg.RetryMaxDelay = 10 * time.Millisecond
 	cfg.Timeout = 1 * time.Second
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -176,7 +176,7 @@ func TestOutput_NetworkFailures_TLSHandshakeFailure(t *testing.T) {
 	cfg.MaxRetries = 3
 	cfg.RetryBaseDelay = 5 * time.Millisecond
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -205,7 +205,7 @@ func TestOutput_TokenRedaction_TLSHandshakeError(t *testing.T) {
 	cfg.MaxRetries = 1
 	cfg.RetryBaseDelay = 5 * time.Millisecond
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	out, err := splunk.New(cfg, splunk.WithDiagnosticLogger(testLogger(logBuf)))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -253,7 +253,7 @@ func TestOutput_MalformedJSONResponseBody_TreatedAsRetryable5xx(t *testing.T) {
 	cfg.MaxRetries = 3
 	cfg.RetryBaseDelay = 5 * time.Millisecond
 	cfg.RetryMaxDelay = 50 * time.Millisecond
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -268,7 +268,7 @@ func TestOutput_CloseRacingInFlightWrite_NoPanic(t *testing.T) {
 	srv, _ := newStub(t)
 	cfg := validCfg(srv.URL)
 	cfg.BufferSize = 10_000
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 
 	const writers = 100
@@ -330,7 +330,7 @@ func TestOutput_KeepAlive_ConnectionReused(t *testing.T) {
 	cfg := validCfg(srv.URL)
 	cfg.BatchSize = 1
 	cfg.FlushInterval = 100 * time.Millisecond // minimum allowed
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"a"}`)))
@@ -373,7 +373,7 @@ func TestOutput_SingleEventOverMaxBatchBytes_Drops(t *testing.T) {
 	cfg.MaxBatchBytes = 1024
 	cfg.MaxEventBytes = 2048
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	// 1400-byte payload — accepted by MaxEventBytes (2048) at Write
@@ -408,7 +408,7 @@ func TestOutput_RedirectBlocked(t *testing.T) {
 	rec := &recordingMetrics{}
 	cfg := validCfg(srv.URL)
 	cfg.MaxRetries = 0
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -427,7 +427,7 @@ func TestOutput_RawEndpoint_NewlineFormat(t *testing.T) {
 	cfg.Endpoint = splunk.EndpointRaw
 	cfg.BatchSize = 2
 	cfg.FlushInterval = 10 * time.Second
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":1}`)))
@@ -446,7 +446,7 @@ func TestOutput_GzipDisabled_NoContentEncodingHeader(t *testing.T) {
 	cfg := validCfg(srv.URL)
 	gz := false
 	cfg.Gzip = &gz
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -466,7 +466,7 @@ func TestOutput_LibraryHeadersAlwaysSet(t *testing.T) {
 	srv, stub := newStub(t)
 	cfg := validCfg(srv.URL)
 	cfg.Headers = map[string]string{"X-Tenant": "alpha"}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -499,7 +499,7 @@ func TestConfig_ReservedHeadersRejected(t *testing.T) {
 			srv, _ := newStub(t)
 			cfg := validCfg(srv.URL)
 			cfg.Headers = map[string]string{h: "evil-value"}
-			_, err := splunk.New(cfg, nil)
+			_, err := splunk.New(cfg)
 			require.Error(t, err, "reserved header %q must be rejected", h)
 			assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 		})
@@ -510,7 +510,7 @@ func TestConfig_ReservedHeadersRejected(t *testing.T) {
 // host-suffix cache.
 func TestOutput_Name_ReturnsCachedValue(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -525,7 +525,7 @@ func TestOutput_Name_ReturnsCachedValue(t *testing.T) {
 // does not double-record metrics.
 func TestOutput_ReportsDelivery_True(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 	assert.True(t, out.ReportsDelivery())
@@ -537,7 +537,7 @@ func TestOutput_ReportsDelivery_True(t *testing.T) {
 // advances the wall-clock UnixNano timestamp.
 func TestOutput_LastDeliveryNanos_Lifecycle(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -569,7 +569,7 @@ func TestOutput_ExtractTime_FallbackEmitsWarn(t *testing.T) {
 	srv, _ := newStub(t)
 	logBuf := &splunkTestLogBuf{}
 	cfg := validCfg(srv.URL)
-	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	out, err := splunk.New(cfg, splunk.WithDiagnosticLogger(testLogger(logBuf)))
 	require.NoError(t, err)
 
 	// timestamp: "not-a-date" — extractTime can't parse it, falls back.
@@ -593,7 +593,7 @@ func TestOutput_ExtractTime_FallbackCount_MultipleEventsInOneBatch(t *testing.T)
 	cfg := validCfg(srv.URL)
 	cfg.BatchSize = 100                 // force a single batch
 	cfg.FlushInterval = 5 * time.Minute // only Close() triggers the flush (5m is the cfg max)
-	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	out, err := splunk.New(cfg, splunk.WithDiagnosticLogger(testLogger(logBuf)))
 	require.NoError(t, err)
 
 	for i := 0; i < 3; i++ {
@@ -614,7 +614,7 @@ func TestOutput_ExtractTime_Fallback_RateLimitedWithinInterval(t *testing.T) {
 	logBuf := &splunkTestLogBuf{}
 	cfg := validCfg(srv.URL)
 	cfg.BatchSize = 1 // force every Write to flush as its own batch
-	out, err := splunk.New(cfg, nil, splunk.WithDiagnosticLogger(testLogger(logBuf)))
+	out, err := splunk.New(cfg, splunk.WithDiagnosticLogger(testLogger(logBuf)))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"a","timestamp":"not-a-date"}`)))

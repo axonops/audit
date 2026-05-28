@@ -79,7 +79,7 @@ func skipIfAckDisabled(t *testing.T, mode splunk.AckMode) {
 		AckPollInterval:            500 * time.Millisecond,
 		AckResendWindow:            30 * time.Second,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if errors.Is(err, splunk.ErrAckDisabled) {
 		t.Skipf("test container's HEC token does not have ACK enabled: %v", err)
 	}
@@ -115,7 +115,7 @@ func newSplunkOutputWithACK(t *testing.T, mode splunk.AckMode, mutate func(*splu
 	if mutate != nil {
 		mutate(cfg)
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	return out
 }

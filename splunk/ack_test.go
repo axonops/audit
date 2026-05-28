@@ -163,7 +163,7 @@ func TestAck_OffMode_NoChannelHeader(t *testing.T) {
 	defer stub.Close()
 
 	cfg := ackTestConfig(stub.URL(), AckModeOff)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -181,7 +181,7 @@ func TestAck_BestEffort_ChannelHeaderSent(t *testing.T) {
 	defer stub.Close()
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -201,7 +201,7 @@ func TestAck_BestEffort_AckPollsAtInterval(t *testing.T) {
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
 	cfg.AckPollInterval = 50 * time.Millisecond
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -221,7 +221,7 @@ func TestAck_BestEffort_BufferNotGated(t *testing.T) {
 	defer stub.Close()
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -244,7 +244,7 @@ func TestAck_Required_BufferGatedUntilAckPositive(t *testing.T) {
 	// Generous resend window so the test isn't racing the resend
 	// timer — we only care about the confirmation drain path.
 	cfg.AckResendWindow = 30 * time.Second
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -278,7 +278,7 @@ func TestAck_Required_ResendWindowTimeout_Resends(t *testing.T) {
 	cfg := ackTestConfig(stub.URL(), AckModeRequired)
 	cfg.AckPollInterval = 50 * time.Millisecond
 	cfg.AckResendWindow = 200 * time.Millisecond
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -307,7 +307,7 @@ func TestAck_Required_BufferFull_DropsNewEventsWithMetric(t *testing.T) {
 	cfg.BufferSize = MinBufferSize
 	cfg.BatchSize = 1
 	cfg.FlushInterval = 100 * time.Millisecond
-	out, err := New(cfg, nil, WithOutputMetrics(rec))
+	out, err := New(cfg, WithOutputMetrics(rec))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -355,7 +355,7 @@ func TestAck_CryptoRandFailure_NewReturnsError(t *testing.T) {
 	randReader = iotest.ErrReader(io.ErrUnexpectedEOF)
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
-	_, err := New(cfg, nil)
+	_, err := New(cfg)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrCryptoRandFailed),
 		"New() must wrap ErrCryptoRandFailed when crypto/rand fails: got %v", err)
@@ -372,7 +372,7 @@ func TestAck_FeatureDetectAtStartup_HECDisabledAckFails(t *testing.T) {
 	stub.eventReturnsCode14.Store(true)
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
-	_, err := New(cfg, nil)
+	_, err := New(cfg)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrAckDisabled),
 		"New() must wrap ErrAckDisabled when HEC code 14 is returned on probe: got %v", err)
@@ -386,7 +386,7 @@ func TestAck_StateMachine_NoGoroutineLeak(t *testing.T) {
 	defer stub.Close()
 
 	cfg := ackTestConfig(stub.URL(), AckModeRequired)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -428,7 +428,7 @@ func TestAck_PollEndpointFormat(t *testing.T) {
 	defer srv.Close()
 
 	cfg := ackTestConfig(srv.URL, AckModeBestEffort)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.Eventually(t, func() bool {
@@ -469,7 +469,7 @@ func TestAck_PoolResponseBody_LimitReaderApplied(t *testing.T) {
 	defer srv.Close()
 
 	cfg := ackTestConfig(srv.URL, AckModeBestEffort)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	// Wait for one poll tick. The tracker should NOT have applied
@@ -490,7 +490,7 @@ func TestOutput_Close_FlushesAckRequiredQueue(t *testing.T) {
 
 	cfg := ackTestConfig(stub.URL(), AckModeRequired)
 	cfg.AckResendWindow = 30 * time.Second // avoid resend races
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -517,7 +517,7 @@ func TestAckTracker_RegisterAfterClosed_NoOp(t *testing.T) {
 	defer stub.Close()
 
 	cfg := ackTestConfig(stub.URL(), AckModeBestEffort)
-	out, err := New(cfg, nil)
+	out, err := New(cfg)
 	require.NoError(t, err)
 	tr := out.tracker
 	require.NoError(t, out.Close())
@@ -555,7 +555,7 @@ func TestOutput_AckMetricsSnapshot_PullsCounters(t *testing.T) {
 
 	// AckModeOff: snapshot is zero-valued.
 	cfgOff := ackTestConfig(stub.URL(), AckModeOff)
-	outOff, err := New(cfgOff, nil)
+	outOff, err := New(cfgOff)
 	require.NoError(t, err)
 	snap := outOff.AckMetricsSnapshot()
 	assert.Equal(t, AckSnapshot{}, snap, "AckModeOff snapshot must be zero-valued")
@@ -564,7 +564,7 @@ func TestOutput_AckMetricsSnapshot_PullsCounters(t *testing.T) {
 	// AckModeBestEffort: snapshot reflects the running tracker.
 	cfgOn := ackTestConfig(stub.URL(), AckModeBestEffort)
 	cfgOn.AckResendWindow = 30 * time.Second
-	outOn, err := New(cfgOn, nil)
+	outOn, err := New(cfgOn)
 	require.NoError(t, err)
 	require.NoError(t, outOn.Write([]byte(`{"event_type":"x"}`)))
 	require.Eventually(t, func() bool {

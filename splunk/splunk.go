@@ -127,10 +127,18 @@ type Output struct { //nolint:govet,gocritic // fieldalignment: readability pref
 // the startup health check fails (unless
 // [Config.DisableStartupVerification] is true).
 //
-// `metrics` may be nil — the output records via a no-op
-// [audit.NoOpOutputMetrics] when omitted. Use [WithOutputMetrics] to
-// pass a real [audit.OutputMetrics] sink.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { //nolint:gocognit,gocyclo,cyclop // construction orchestrator; ACK + probe + tracker each is its own block
+// Optional [Option] arguments tune construction-time behaviour:
+//   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
+//   - [WithOutputMetrics] supplies the per-output counters sink
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
+//     (the batch goroutine calls RecordDelivery after each POST)
+//   - [WithFrameworkContext] seeds host defaulting and framework
+//     metadata
+//   - [WithMaxIdleConns] tunes the HTTP transport idle pool
+//
+// All options are optional; the zero-value configuration constructs a
+// fully functional output with no instrumentation.
+func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocognit,gocyclo,cyclop // construction orchestrator; ACK + probe + tracker each is its own block
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: nil config", ErrConfigInvalid)
 	}
@@ -199,7 +207,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { 
 	ctx, cancel := context.WithCancel(context.Background())
 	out := &Output{
 		cfg:                cfg,
-		metrics:            metrics,
+		metrics:            o.coreMetrics,
 		outputMetrics:      o.outputMetrics,
 		logger:             o.logger,
 		client:             client,

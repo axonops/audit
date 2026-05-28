@@ -29,6 +29,7 @@ type Option func(*options)
 // valid — all fields receive sensible defaults inside [New].
 type options struct {
 	logger        *slog.Logger
+	coreMetrics   audit.Metrics
 	outputMetrics audit.OutputMetrics
 	fctx          audit.FrameworkContext
 	maxIdleConns  int
@@ -67,6 +68,25 @@ func WithOutputMetrics(m audit.OutputMetrics) Option {
 		}
 		o.outputMetrics = m
 	}
+}
+
+// WithCoreMetrics sets the auditor-wide [audit.Metrics] sink for this
+// output. The Splunk output calls [audit.Metrics.RecordDelivery] from
+// its background batch goroutine after each successful HEC POST. When
+// omitted or nil, the RecordDelivery call is skipped (no-op, no
+// allocation).
+//
+// Distinct from [WithOutputMetrics]: WithCoreMetrics carries the
+// pipeline-level interface (every output shares the same value);
+// WithOutputMetrics carries the per-output narrower counters
+// (queue depth, drops, flush latency).
+//
+// Consumers normally do not call this directly when using
+// [github.com/axonops/audit/outputconfig.New] — outputconfig wires
+// the auditor's [audit.Metrics] through to every output via this
+// option automatically.
+func WithCoreMetrics(m audit.Metrics) Option {
+	return func(o *options) { o.coreMetrics = m }
 }
 
 // WithFrameworkContext seeds the auditor-wide framework metadata

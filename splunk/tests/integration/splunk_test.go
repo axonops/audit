@@ -111,7 +111,7 @@ func newSplunkOutput(t *testing.T, mutate func(*splunk.Config)) *splunk.Output {
 	if mutate != nil {
 		mutate(cfg)
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	return out
 }

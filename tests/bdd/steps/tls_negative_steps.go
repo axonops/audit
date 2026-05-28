@@ -106,7 +106,7 @@ func registerTLSNegativeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		out, err := webhook.New(&webhook.Config{
 			URL:   "https://" + tc.BadReceiverAddr + "/audit",
 			TLSCA: tc.BadCerts.caPath,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 			if writeErr := out.Write([]byte(`{"event":"test"}` + "\n")); writeErr != nil {
@@ -121,7 +121,7 @@ func registerTLSNegativeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 		out, err := loki.New(&loki.Config{
 			URL:   "https://" + tc.BadReceiverAddr + "/loki/api/v1/push",
 			TLSCA: tc.BadCerts.caPath,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 			if writeErr := out.Write([]byte(`{"streams":[]}` + "\n")); writeErr != nil {

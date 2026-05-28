@@ -567,7 +567,7 @@ func createFanoutAuditor(tc *AuditTestContext, useFile, useSyslog, useWebhook bo
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: bs,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -775,7 +775,7 @@ func createTripleRoutedAuditor(tc *AuditTestContext) error {
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}
@@ -815,7 +815,7 @@ func createRoutedAuditor(tc *AuditTestContext, webhookRoute *audit.EventRoute) e
 		URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 		AllowPrivateRanges: true, BatchSize: 1,
 		FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}

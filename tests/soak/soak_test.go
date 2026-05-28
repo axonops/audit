@@ -182,7 +182,7 @@ func BenchmarkSoak_MixedOutputs(b *testing.B) {
 		BufferSize:         10000,
 		FlushInterval:      500 * time.Millisecond,
 		Timeout:            5 * time.Second,
-	}, nil)
+	})
 	if err != nil {
 		b.Fatalf("webhook output: %v", err)
 	}

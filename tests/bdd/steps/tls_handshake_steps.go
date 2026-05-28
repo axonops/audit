@@ -112,7 +112,7 @@ func registerTLSHandshakeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				TLSCA:              tc.BadCerts.caPath,
 				Timeout:            1 * time.Second,
 				AllowPrivateRanges: true,
-			}, nil)
+			})
 			if out == nil {
 				tc.LastErr = err
 				return nil
@@ -141,7 +141,7 @@ func registerTLSHandshakeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 				TLSCA:              tc.BadCerts.caPath,
 				Timeout:            1 * time.Second,
 				AllowPrivateRanges: true,
-			}, nil)
+			})
 			if out == nil {
 				tc.LastErr = err
 				return nil
@@ -270,7 +270,7 @@ func sendFlappingEvents(tc *AuditTestContext, events int, kind string) error {
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			FlushInterval:      100 * time.Millisecond,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("webhook new: %w", err)
 		}
@@ -287,7 +287,7 @@ func sendFlappingEvents(tc *AuditTestContext, events int, kind string) error {
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			FlushInterval:      100 * time.Millisecond,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("loki new: %w", err)
 		}

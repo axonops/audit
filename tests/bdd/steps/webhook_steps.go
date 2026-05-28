@@ -331,7 +331,7 @@ func registerWebhookGivenSteps(ctx *godog.ScenarioContext, tc *AuditTestContext)
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            5 * time.Second,
 		}
-		out, err := webhook.New(cfg, nil)
+		out, err := webhook.New(cfg)
 		if err != nil {
 			tc.LastErr = err
 			return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -393,7 +393,7 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			Timeout:            5 * time.Second,
 			MaxRetries:         1,
 		}
-		out, err := webhook.New(cfg, nil)
+		out, err := webhook.New(cfg)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -471,7 +471,7 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 
 		}
 
-		out, err := webhook.New(cfg, nil, oOpts...)
+		out, err := webhook.New(cfg, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -513,7 +513,7 @@ func registerWebhookGivenSSRFSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 
 		}
 
-		out, err := webhook.New(cfg, nil, oOpts...)
+		out, err := webhook.New(cfg, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -606,7 +606,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowInsecureHTTP:  false,
 			AllowPrivateRanges: true,
 			BatchSize:          1,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -624,7 +624,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			// config validation. Probe-time behaviour has its own
 			// scenarios (#286).
 			DisableStartupVerification: true,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -644,7 +644,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowInsecureHTTP:  true,
 			AllowPrivateRanges: true,
 			BatchSize:          1,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -663,7 +663,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowPrivateRanges:         true,
 			BatchSize:                  1,
 			DisableStartupVerification: true,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -677,7 +677,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			Headers:            map[string]string{"X-Bad": "value\r\nInjected: true"},
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -690,7 +690,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			URL:                "https://example.com/events",
 			AllowPrivateRanges: true,
 			BatchSize:          batchSize,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -704,7 +704,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			BufferSize:         bufSize,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -718,7 +718,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 			AllowPrivateRanges: true,
 			BatchSize:          1,
 			MaxRetries:         maxRetries,
-		}, nil)
+		})
 		if out != nil {
 			tc.AddCleanup(func() { _ = out.Close() })
 		}
@@ -754,7 +754,7 @@ func registerWebhookWhenConstructionSteps(ctx *godog.ScenarioContext, tc *AuditT
 
 		}
 
-		out, err := webhook.New(cfg, nil, oOpts...)
+		out, err := webhook.New(cfg, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create webhook output: %w", err)
 		}
@@ -923,7 +923,7 @@ func createWebhookAuditorWithWebhookMetrics(tc *AuditTestContext, batchSize int)
 	if tc.WebhookMetrics != nil {
 		wOpts = append(wOpts, webhook.WithOutputMetrics(tc.WebhookMetrics))
 	}
-	out, err := webhook.New(cfg, nil, wOpts...)
+	out, err := webhook.New(cfg, wOpts...)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -954,7 +954,7 @@ func createWebhookAuditorWithURL(tc *AuditTestContext, url string, cfg *webhook.
 }
 
 func createWebhookAuditorFromConfig(tc *AuditTestContext, cfg *webhook.Config) error {
-	out, err := webhook.New(cfg, nil)
+	out, err := webhook.New(cfg)
 	if err != nil {
 		tc.LastErr = err
 		return nil //nolint:nilerr // scenario may assert on tc.LastErr
@@ -1279,7 +1279,7 @@ func createWebhookAuditorSSRF(tc *AuditTestContext, url string, allowPrivate boo
 
 	}
 
-	out, err := webhook.New(cfg, nil, oOpts...)
+	out, err := webhook.New(cfg, oOpts...)
 	if err != nil {
 		return fmt.Errorf("create webhook output: %w", err)
 	}

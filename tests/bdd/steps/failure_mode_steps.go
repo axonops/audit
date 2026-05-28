@@ -84,7 +84,7 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 					FlushInterval:      100 * time.Millisecond,
 					AllowPrivateRanges: true,
 					AllowInsecureHTTP:  true,
-				}, nil)
+				})
 				if err != nil {
 					tc.LastErr = err
 					return
@@ -109,7 +109,7 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 					FlushInterval:      100 * time.Millisecond,
 					AllowPrivateRanges: true,
 					AllowInsecureHTTP:  true,
-				}, nil)
+				})
 				if err != nil {
 					tc.LastErr = err
 					return
@@ -179,7 +179,7 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 					MaxRetries:         1,
 					AllowPrivateRanges: true,
 					AllowInsecureHTTP:  true,
-				}, nil)
+				})
 				if err != nil {
 					tc.LastErr = err
 					return
@@ -222,7 +222,7 @@ func registerFailureModeSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) 
 					MaxRetries:         1,
 					AllowPrivateRanges: true,
 					AllowInsecureHTTP:  true,
-				}, nil)
+				})
 				if err != nil {
 					tc.LastErr = err
 					return

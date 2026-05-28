@@ -465,14 +465,14 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //n
 
 	ctx.Step(`^I construct a splunk output with URL "([^"]*)" and AllowInsecureHTTP false$`, func(url string) error {
 		cfg := &splunk.Config{URL: url, Token: "t", AllowInsecureHTTP: false, DisableStartupVerification: true}
-		_, err := splunk.New(cfg, nil)
+		_, err := splunk.New(cfg)
 		state.constructionErr = err
 		return nil
 	})
 
 	ctx.Step(`^I construct a splunk output with URL "([^"]*)"$`, func(url string) error {
 		cfg := &splunk.Config{URL: url, Token: "t", AllowInsecureHTTP: true, DisableStartupVerification: true}
-		out, err := splunk.New(cfg, nil)
+		out, err := splunk.New(cfg)
 		state.constructionErr = err
 		if err == nil {
 			state.output = out
@@ -482,7 +482,7 @@ func registerSplunkSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) { //n
 
 	ctx.Step(`^I construct a splunk output with URL "([^"]*)" and TLSCert "([^"]*)"$`, func(url, tlsCert string) error {
 		cfg := &splunk.Config{URL: url, Token: "t", AllowInsecureHTTP: true, DisableStartupVerification: true, TLSCert: tlsCert}
-		_, err := splunk.New(cfg, nil)
+		_, err := splunk.New(cfg)
 		state.constructionErr = err
 		return nil
 	})
@@ -1111,7 +1111,7 @@ func splunkConstruct(state *splunkBDDState, mutate func(*splunk.Config)) error {
 	if mutate != nil {
 		mutate(cfg)
 	}
-	out, err := splunk.New(cfg, nil,
+	out, err := splunk.New(cfg,
 		splunk.WithOutputMetrics(state.stopMetricCounts),
 	)
 	state.constructionErr = err

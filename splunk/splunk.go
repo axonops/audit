@@ -51,8 +51,9 @@ func libraryVersion() string {
 
 // Compile-time interface assertions.
 var (
-	_ audit.Output           = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
+	_ audit.Output               = (*Output)(nil)
+	_ audit.DeliveryReporter     = (*Output)(nil)
+	_ audit.LastDeliveryReporter = (*Output)(nil)
 )
 
 // ReportsDelivery implements [audit.DeliveryReporter] — splunk reports
@@ -115,8 +116,9 @@ type Output struct { //nolint:govet,gocritic // fieldalignment: readability pref
 	fallbackTimestamps *dropLimiter // rate-limited "timestamp extraction fell back to ingest time" warning
 	maxEventBytes      int
 
-	// Most recent successful delivery wall-clock time (powers
-	// [audit.DeliveryReporter.LastDeliveryAge]).
+	// Most recent successful delivery wall-clock UnixNano (powers
+	// [audit.LastDeliveryReporter] via [Output.LastDeliveryNanos],
+	// which the auditor consumes for [audit.Auditor.LastDeliveryAge]).
 	lastDeliveryNanos atomic.Int64
 }
 
@@ -328,13 +330,14 @@ func (o *Output) AckMetricsSnapshot() AckSnapshot {
 	return o.tracker.snapshot()
 }
 
-// LastDeliveryAge implements [audit.DeliveryReporter].
-func (o *Output) LastDeliveryAge() time.Duration {
-	ns := o.lastDeliveryNanos.Load()
-	if ns == 0 {
-		return 0
-	}
-	return time.Since(time.Unix(0, ns))
+// LastDeliveryNanos returns the wall-clock UnixNano of the most
+// recent successful HEC POST, or 0 if no delivery has yet succeeded.
+// Implements [audit.LastDeliveryReporter] (#753) — the core auditor
+// reads this via [audit.Auditor.LastDeliveryAge] for /healthz handlers
+// that flip to UNHEALTHY when the last delivery exceeds a staleness
+// threshold.
+func (o *Output) LastDeliveryNanos() int64 {
+	return o.lastDeliveryNanos.Load()
 }
 
 // recordOversized records a per-event oversize drop (rate-limited

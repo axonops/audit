@@ -532,27 +532,32 @@ func TestOutput_ReportsDelivery_True(t *testing.T) {
 }
 
 // TestOutput_LastDeliveryAge_ZeroBeforeFirstSuccess — the
-// DeliveryReporter.LastDeliveryAge starts at 0 until the first
-// successful delivery; thereafter it is monotonically increasing.
-func TestOutput_LastDeliveryAge_Lifecycle(t *testing.T) {
+// LastDeliveryReporter.LastDeliveryNanos starts at 0 until the first
+// successful delivery; thereafter each successful POST monotonically
+// advances the wall-clock UnixNano timestamp.
+func TestOutput_LastDeliveryNanos_Lifecycle(t *testing.T) {
 	srv, _ := newStub(t)
 	out, err := splunk.New(validCfg(srv.URL), nil)
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
 	// Before any send.
-	assert.Zero(t, out.LastDeliveryAge())
+	assert.Equal(t, int64(0), out.LastDeliveryNanos(),
+		"never-delivered output must report 0")
 
-	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
-	// Wait for the flush.
-	assert.Eventually(t, func() bool {
-		return out.LastDeliveryAge() > 0
-	}, 3*time.Second, 50*time.Millisecond)
+	require.NoError(t, out.Write([]byte(`{"event_type":"first"}`)))
+	require.Eventually(t, func() bool {
+		return out.LastDeliveryNanos() > 0
+	}, 3*time.Second, 50*time.Millisecond,
+		"first successful delivery must advance the timestamp")
+	first := out.LastDeliveryNanos()
 
-	// Age should keep increasing (no further sends).
-	a1 := out.LastDeliveryAge()
-	time.Sleep(50 * time.Millisecond)
-	assert.Greater(t, out.LastDeliveryAge(), a1)
+	// Second send must monotonically advance.
+	require.NoError(t, out.Write([]byte(`{"event_type":"second"}`)))
+	require.Eventually(t, func() bool {
+		return out.LastDeliveryNanos() > first
+	}, 3*time.Second, 50*time.Millisecond,
+		"successive HEC 2xx responses must monotonically advance")
 }
 
 // TestOutput_ExtractTime_FallbackEmitsWarn (AC 23) — events whose

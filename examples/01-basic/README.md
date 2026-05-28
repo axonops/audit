@@ -119,7 +119,7 @@ example — that's the default when no severity is configured.
 Severity becomes useful for routing: you can send high-severity events
 to a SIEM webhook while keeping low-severity events in local files.
 You'll learn how to set per-category severity levels and route by
-threshold in the [Event Routing](../10-event-routing/) example.
+threshold in the [Event Routing](../11-event-routing/) example.
 
 ### Buffer Full and Delivery Guarantees
 

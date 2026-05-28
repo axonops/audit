@@ -68,23 +68,23 @@ use (
     examples/01-basic
     examples/02-code-generation
     examples/03-file-output
-    examples/17-testing
+    examples/18-testing
     examples/04-formatters
-    examples/15-middleware
+    examples/16-middleware
     examples/06-syslog-output
     examples/07-webhook-output
-    examples/09-multi-output
-    examples/10-event-routing
-    examples/11-sensitivity-labels
-    examples/12-hmac-integrity
+    examples/10-multi-output
+    examples/11-event-routing
+    examples/12-sensitivity-labels
+    examples/13-hmac-integrity
     examples/05-standard-fields
     examples/08-loki-output
-    examples/13-tls-policy
-    examples/14-buffering
-    examples/20-capstone
-    examples/16-health-endpoint
-    examples/18-migration
-    examples/19-prometheus-reference
+    examples/14-tls-policy
+    examples/15-buffering
+    examples/21-capstone
+    examples/17-health-endpoint
+    examples/19-migration
+    examples/20-prometheus-reference
 )
 ```
 
@@ -327,7 +327,7 @@ would let the Docker image bake in unreleased local changes.
 
 Concrete examples in the repo:
 
-- **`examples/20-capstone/Dockerfile`** copies its own
+- **`examples/21-capstone/Dockerfile`** copies its own
   `go.mod` / `go.sum` and runs `go build` against
   proxy.golang.org versions. The local workspace is invisible
   to the build.
@@ -341,7 +341,7 @@ the capstone container, you have three options, ordered by
 realism:
 
 1. **Bump the local module's go.mod and rebuild the image.**
-   Edit `examples/20-capstone/go.mod` to add
+   Edit `examples/21-capstone/go.mod` to add
    `replace github.com/axonops/audit => ../../`. **This is the
    one exception to the [no-`replace` rule](#day-to-day-development)
    — acceptable for local debugging only.** Stash or revert the

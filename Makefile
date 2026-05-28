@@ -1389,6 +1389,7 @@ PUBLISH_MODULES := \
   syslog|github.com/axonops/audit/syslog|syslog/ \
   webhook|github.com/axonops/audit/webhook|webhook/ \
   loki|github.com/axonops/audit/loki|loki/ \
+  splunk|github.com/axonops/audit/splunk|splunk/ \
   outputconfig|github.com/axonops/audit/outputconfig|outputconfig/ \
   outputs|github.com/axonops/audit/outputs|outputs/ \
   cmd/audit-gen|github.com/axonops/audit/cmd/audit-gen|cmd/audit-gen/ \

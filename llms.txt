@@ -6,7 +6,7 @@
 > evidence, not developer convenience. Distinct from application
 > logging (slog/zap): every event is validated against a
 > consumer-defined taxonomy and delivered asynchronously to one or
-> more configurable outputs (file, syslog, webhook, Loki).
+> more configurable outputs (file, syslog, webhook, Loki, Splunk).
 > Delivery is at-most-once on the hot path — the queue drops with
 > a metric rather than blocking the caller.
 
@@ -16,6 +16,9 @@
 go get github.com/axonops/audit@latest
 go get github.com/axonops/audit/file@latest      # optional output backends — import only the
 go get github.com/axonops/audit/syslog@latest    # ones the application actually uses
+go get github.com/axonops/audit/webhook@latest
+go get github.com/axonops/audit/loki@latest
+go get github.com/axonops/audit/splunk@latest
 go get github.com/axonops/audit/outputconfig@latest
 ```
 
@@ -60,7 +63,7 @@ import (
 
     "github.com/axonops/audit"
     "github.com/axonops/audit/outputconfig"
-    _ "github.com/axonops/audit/outputs" // registers file/syslog/webhook/loki/stdout factories
+    _ "github.com/axonops/audit/outputs" // registers file/syslog/webhook/loki/splunk/stdout factories
 )
 
 //go:embed taxonomy.yaml
@@ -105,7 +108,7 @@ output configuration is decoupled from the binary.
    `events.UserLogin(actorID, outcome)` with compile-time field
    checking
 4. Author `outputs.yaml` declaring where events go (stdout for
-   dev, syslog/webhook/Loki/file for prod)
+   dev, syslog/webhook/Loki/Splunk/file for prod)
 5. Construct the auditor via `outputconfig.New(ctx, taxonomyYAML,
    "outputs.yaml", opts...)`
 6. Emit events via `auditor.AuditEvent(...)`; check the returned
@@ -213,10 +216,14 @@ register themselves via `init()` when blank-imported.
 - `github.com/axonops/audit/webhook` — webhook output
   (HTTP/HTTPS, bearer/basic/mTLS auth)
 - `github.com/axonops/audit/loki` — Grafana Loki output
+- `github.com/axonops/audit/splunk` — Splunk HEC output
+  (CIM Change formatter, indexer acknowledgement, Splunk Cloud
+  shorthand URL, reference TA generator via `audit-gen
+  --format=splunk-ta`)
 - `github.com/axonops/audit/outputs` — convenience package
-  that blank-imports four output backends (`file`, `loki`,
-  `syslog`, `webhook`) and registers `stdout` via its own
-  `init`, giving all five output types in one import
+  that blank-imports five output backends (`file`, `loki`,
+  `splunk`, `syslog`, `webhook`) and registers `stdout` via
+  its own `init`, giving all six output types in one import
 - `github.com/axonops/audit/outputconfig` — YAML-driven output
   configuration loader (recommended entry point)
 - `github.com/axonops/audit/audittest` — test helpers (in-memory

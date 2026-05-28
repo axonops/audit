@@ -53,7 +53,7 @@ func newTestLokiOutputForSize(t *testing.T, maxEventBytes int, opts ...loki.Opti
 		MaxEventBytes:      maxEventBytes,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil, opts...)
+	}, opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = out.Close()
@@ -111,7 +111,7 @@ func TestValidateConfig_MaxEventBytesDefault(t *testing.T) {
 		URL:                srv.URL + "/loki/api/v1/push",
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -125,7 +125,7 @@ func TestValidateConfig_MaxEventBytesNegative(t *testing.T) {
 		MaxEventBytes:      -1,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -139,7 +139,7 @@ func TestValidateConfig_MaxEventBytesBelowMin(t *testing.T) {
 		MaxEventBytes:      512,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -153,7 +153,7 @@ func TestValidateConfig_MaxEventBytesOverRange(t *testing.T) {
 		MaxEventBytes:      loki.MaxMaxEventBytes + 1,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }

@@ -89,7 +89,7 @@ func TestDropLimiter_OversizedAndBufferFullSilosAreIndependent_Loki(t *testing.T
 				FlushInterval:      100 * time.Millisecond,
 				AllowInsecureHTTP:  true,
 				AllowPrivateRanges: true,
-			}, nil, loki.WithDiagnosticLogger(logger))
+			}, loki.WithDiagnosticLogger(logger))
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = out.Close() })
 			// Registered AFTER the constructor so it runs BEFORE

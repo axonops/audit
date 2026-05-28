@@ -49,7 +49,7 @@ func TestHTTP_Success_204(t *testing.T) {
 	metrics := &testOutputMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"success_204"}`)))
@@ -71,7 +71,7 @@ func TestHTTP_Success_200(t *testing.T) {
 	metrics := &testOutputMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"success_200"}`)))
@@ -102,7 +102,7 @@ func TestHTTP_429_Retried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_429"}`)))
@@ -130,7 +130,7 @@ func TestHTTP_5xx_Retried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 5
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_5xx"}`)))
@@ -152,7 +152,7 @@ func TestHTTP_RetriesExhausted_Drops(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 2
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"exhausted"}`)))
@@ -184,7 +184,7 @@ func TestHTTP_4xx_NotRetried(t *testing.T) {
 			cfg := validConfigWithURL(srv.URL)
 			cfg.MaxRetries = 3
 
-			out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+			out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 			require.NoError(t, err)
 
 			require.NoError(t, out.Write([]byte(`{"event":"no_retry"}`)))
@@ -214,7 +214,7 @@ func TestHTTP_BasicAuth_Header(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.BasicAuth = &loki.BasicAuth{Username: "alice", Password: "secret"}
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"auth"}`)))
@@ -237,7 +237,7 @@ func TestHTTP_BearerToken_Header(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.BearerToken = "test-token-123"
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event":"bearer"}`)))
 	require.NoError(t, out.Close())
@@ -258,7 +258,7 @@ func TestHTTP_TenantID_Header(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.TenantID = "my-tenant"
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"tenant"}`)))
@@ -279,7 +279,7 @@ func TestHTTP_NoAuth_NoHeader(t *testing.T) {
 
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"no_auth"}`)))
@@ -306,7 +306,7 @@ func TestHTTP_ContentType_JSON(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.Gzip = false
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"ct"}`)))
@@ -329,7 +329,7 @@ func TestHTTP_ContentEncoding_Gzip(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.Gzip = true
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"gzip"}`)))
@@ -351,7 +351,7 @@ func TestHTTP_CompressedBody_ValidJSON(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.Gzip = true
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"validate_gzip"}`)))
@@ -392,7 +392,7 @@ func TestHTTP_RetryAfter_Respected(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"retry_after"}`)))
@@ -418,7 +418,7 @@ func TestHTTP_CustomHeaders(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.Headers = map[string]string{"X-Custom-Header": "test-value"}
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"custom_header"}`)))
@@ -514,7 +514,7 @@ func TestHTTP_Success_RecordsCoreMetrics(t *testing.T) {
 	coreMetrics := &mockCoreMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, coreMetrics)
+	out, err := loki.New(cfg, loki.WithCoreMetrics(coreMetrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"core_metrics"}`)))
@@ -535,7 +535,7 @@ func TestHTTP_Drop_RecordsCoreMetrics(t *testing.T) {
 	coreMetrics := &mockCoreMetrics{}
 	cfg := validConfigWithURL(srv.URL)
 
-	out, err := loki.New(cfg, coreMetrics)
+	out, err := loki.New(cfg, loki.WithCoreMetrics(coreMetrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"core_drop"}`)))
@@ -563,7 +563,7 @@ func TestHTTP_ContextCancelled_NoPanic(t *testing.T) {
 	cfg.MaxRetries = 1
 	cfg.Timeout = 2 * time.Second
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"cancel"}`)))
@@ -591,7 +591,7 @@ func TestHTTP_Redirect_NotRetried(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.MaxRetries = 3
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"redirect"}`)))
@@ -618,7 +618,7 @@ func TestHTTP_NilMetrics_NoPanic(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 
 	// Both metrics nil — should not panic.
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"nil_metrics"}`)))

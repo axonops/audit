@@ -158,11 +158,14 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // (may be nil). Per-output metrics may be supplied at construction
 // via [WithOutputMetrics].
 //
-// Optional [Option] arguments tune construction-time behaviour. Pass
-// [WithDiagnosticLogger] to route TLS-policy warnings to a custom
-// logger; [WithFrameworkContext] to seed the auditor-wide framework
-// metadata used as Loki stream labels.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
+// Optional [Option] arguments tune construction-time behaviour:
+//   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
+//   - [WithOutputMetrics] supplies the per-output counters sink
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
+//     (the background goroutine calls RecordDelivery after each push)
+//   - [WithFrameworkContext] seeds the auditor-wide framework metadata
+//     used as Loki stream labels
+func New(cfg *Config, opts ...Option) (*Output, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("audit/loki: config must not be nil")
 	}
@@ -219,7 +222,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 
 	o := &Output{
 		cfg:           cfg,
-		metrics:       metrics,
+		metrics:       resolved.coreMetrics,
 		ch:            make(chan lokiEntry, cfg.BufferSize),
 		closeCh:       make(chan struct{}),
 		cancel:        cancel,

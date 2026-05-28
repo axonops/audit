@@ -46,7 +46,7 @@ func TestLokiOutput_LastDeliveryNanos_AdvancesOn2xx(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         2,
 		BufferSize:         100,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 
@@ -88,7 +88,7 @@ func TestLokiOutput_LastDeliveryNanos_FrozenOn5xx(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         2,
 		BufferSize:         100,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 

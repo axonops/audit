@@ -52,7 +52,7 @@ func TestLokiStartupConnectivityCheck(t *testing.T) {
 		Timeout:            1 * time.Second,
 		BufferSize:         1000,
 		Gzip:               true,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "startup verification failed",
 		"probe failure must surface as 'startup verification failed' in the error message")
@@ -79,7 +79,7 @@ func TestLokiLazyConnect(t *testing.T) {
 		BufferSize:                 1000,
 		Gzip:                       true,
 		DisableStartupVerification: true,
-	}, nil)
+	})
 	require.NoError(t, err, "DisableStartupVerification should allow construction against unreachable URLs")
 	require.NoError(t, out.Close())
 }
@@ -103,7 +103,7 @@ func TestLokiStartupCheckRespectsSSRF(t *testing.T) {
 		Timeout:            1 * time.Second,
 		BufferSize:         1000,
 		Gzip:               true,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "startup verification failed")
 	errStr := err.Error()
@@ -132,7 +132,7 @@ func TestLokiStartupCheck_GoroutineLeakOnFailure(t *testing.T) {
 			Timeout:            500 * time.Millisecond,
 			BufferSize:         1000,
 			Gzip:               true,
-		}, nil)
+		})
 		require.Error(t, err, "iteration %d: probe must reject the unreachable URL", i)
 	}
 }
@@ -164,7 +164,7 @@ func TestLokiStartupCheck_HTTPSAgainstPlainTCP(t *testing.T) {
 		BufferSize:                 1000,
 		Gzip:                       true,
 		StartupVerificationTimeout: 1 * time.Second,
-	}, nil)
+	})
 	elapsed := time.Since(start)
 
 	_ = l.Close()
@@ -197,7 +197,7 @@ func TestLokiStartupCheck_CustomTimeoutOverridesDefault(t *testing.T) {
 		BufferSize:                 1000,
 		Gzip:                       true,
 		StartupVerificationTimeout: 100 * time.Millisecond,
-	}, nil)
+	})
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
@@ -227,7 +227,7 @@ func TestLokiStartupCheck_HTTPSSuccess(t *testing.T) {
 		Timeout:            5 * time.Second,
 		BufferSize:         1000,
 		Gzip:               true,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }

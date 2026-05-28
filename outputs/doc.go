@@ -20,9 +20,11 @@
 // This is a convenience package following the [image/all] pattern.
 // It blank-imports [github.com/axonops/audit/file],
 // [github.com/axonops/audit/syslog],
-// [github.com/axonops/audit/webhook], and
-// [github.com/axonops/audit/loki], causing their init() functions
-// to register output factories with the core registry.
+// [github.com/axonops/audit/webhook],
+// [github.com/axonops/audit/loki], and
+// [github.com/axonops/audit/splunk], causing their init() functions
+// to register output factories with the core registry. The package
+// also registers the built-in stdout factory in its own init().
 //
 // Production deployments SHOULD import only the output packages they
 // use to minimise binary size and dependency surface. This package

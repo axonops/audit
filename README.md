@@ -19,7 +19,9 @@
 ## ⚠️ Status
 
 This library is **pre-release (v0.x)**. The API may change between
-minor versions until v1.0.0. Pin your dependency version.
+minor versions until v1.0.0. Pin your dependency version
+(e.g. `go get github.com/axonops/audit@v0.2.0`) and read the
+CHANGELOG before upgrading.
 
 ---
 
@@ -110,7 +112,7 @@ import (
     "log"
 
     "github.com/axonops/audit/outputconfig"
-    _ "github.com/axonops/audit/outputs" // registers stdout/file/syslog/webhook/loki factories
+    _ "github.com/axonops/audit/outputs" // registers stdout/file/syslog/webhook/loki/splunk factories
 )
 
 //go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main
@@ -315,7 +317,7 @@ func TestUserCreation(t *testing.T) {
 }
 ```
 
-See [Example 17 — Testing](examples/18-testing/) and [Testing docs](docs/testing.md) for more.
+See [Example 18 — Testing](examples/18-testing/) and [Testing docs](docs/testing.md) for more.
 
 ---
 
@@ -339,7 +341,7 @@ for the full table of 31 names, types, and CEF mappings.
 
 | Resource | Description |
 |----------|-------------|
-| 📖 [Progressive Examples](examples/) | 20 examples from "hello world" to a [complete inventory demo](examples/21-capstone/), an [/healthz endpoint](examples/17-health-endpoint/), a [slog-coexistence migration demo](examples/19-migration/), and a [drop-in Prometheus reference adapter](examples/20-prometheus-reference/) — every output type, TLS policy, routing, formatters, testing, and buffering |
+| 📖 [Progressive Examples](examples/) | 21 examples from "hello world" to a [complete inventory demo](examples/21-capstone/), a [Splunk HEC integration](examples/09-splunk-output/), an [/healthz endpoint](examples/17-health-endpoint/), a [slog-coexistence migration demo](examples/19-migration/), and a [drop-in Prometheus reference adapter](examples/20-prometheus-reference/) — every output type, TLS policy, routing, formatters, testing, and buffering |
 | 📘 [API Reference](https://pkg.go.dev/github.com/axonops/audit) | pkg.go.dev documentation |
 | 🏗️ [Architecture](ARCHITECTURE.md) | Pipeline design, module boundaries, thread safety |
 | 🤝 [Contributing](CONTRIBUTING.md) | Development setup, PR process, code standards |

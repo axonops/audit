@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Go module dependencies
+  # Core module
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -20,6 +20,23 @@ updates:
   # File sub-module
   - package-ecosystem: "gomod"
     directory: "/file"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # iouring sub-module (file output's io_uring backend)
+  - package-ecosystem: "gomod"
+    directory: "/iouring"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -68,9 +85,145 @@ updates:
           - "minor"
           - "patch"
 
+  # Loki sub-module
+  - package-ecosystem: "gomod"
+    directory: "/loki"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Splunk sub-module
+  - package-ecosystem: "gomod"
+    directory: "/splunk"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
   # Output config sub-module
   - package-ecosystem: "gomod"
     directory: "/outputconfig"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Outputs convenience aggregator sub-module
+  - package-ecosystem: "gomod"
+    directory: "/outputs"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Secrets parent sub-module (provider interface)
+  - package-ecosystem: "gomod"
+    directory: "/secrets"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Secrets env provider sub-module
+  - package-ecosystem: "gomod"
+    directory: "/secrets/env"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Secrets file provider sub-module
+  - package-ecosystem: "gomod"
+    directory: "/secrets/file"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Secrets OpenBao provider sub-module
+  - package-ecosystem: "gomod"
+    directory: "/secrets/openbao"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Secrets Vault provider sub-module
+  - package-ecosystem: "gomod"
+    directory: "/secrets/vault"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -154,8 +307,10 @@ updates:
           - "patch"
 
   # Capstone (inventory demo) example
+  # Renumbered from 20-capstone → 21-capstone in PR #891 when the
+  # splunk example was inserted at position 09.
   - package-ecosystem: "gomod"
-    directory: "/examples/20-capstone"
+    directory: "/examples/21-capstone"
     schedule:
       interval: "weekly"
       day: "monday"

@@ -41,7 +41,12 @@
 //	    URL:       "https://ingest.example.com/audit",
 //	    BatchSize: 50,
 //	    Timeout:   15 * time.Second,
-//	}, nil) // optional audit.Metrics for pipeline delivery reporting
+//	})
+//
+// Optional auditor-wide [audit.Metrics] for pipeline delivery
+// reporting is supplied via [WithCoreMetrics]; per-output counters
+// via [WithOutputMetrics]; a custom diagnostic logger via
+// [WithDiagnosticLogger].
 //
 // Recommended import alias:
 //

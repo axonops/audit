@@ -173,14 +173,17 @@ type Output struct {
 
 // New creates a new [Output] from the given config.
 // It validates the config, builds an SSRF-safe HTTP client, and starts
-// the background batch goroutine. The metrics parameter is optional
-// (may be nil). Per-output metrics may be supplied at construction
-// via [WithOutputMetrics].
+// the background batch goroutine.
 //
-// Optional [Option] arguments tune construction-time behaviour. Pass
-// [WithDiagnosticLogger] to route TLS-policy warnings to a custom
-// logger.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
+// Optional [Option] arguments tune construction-time behaviour:
+//   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
+//   - [WithOutputMetrics] supplies the per-output counters sink
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
+//     (the background goroutine calls RecordDelivery after each POST)
+//
+// All options are optional; the zero-value configuration constructs a
+// fully functional output with no instrumentation.
+func New(cfg *Config, opts ...Option) (*Output, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("audit/webhook: config must not be nil")
 	}
@@ -244,7 +247,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) {
 		url:           cfg.URL,
 		name:          webhookName(cfg.URL),
 		headers:       headers,
-		metrics:       metrics,
+		metrics:       o.coreMetrics,
 		ch:            make(chan []byte, cfg.BufferSize),
 		closeCh:       make(chan struct{}),
 		cancel:        cancel,

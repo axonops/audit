@@ -834,7 +834,7 @@ and map to standard ArcSight CEF extension keys.
 | `taxonomy_yaml.go` | `ParseTaxonomyYAML`, YAML deserialization, `ErrInvalidInput` |
 | `config.go` | `Config`, `ValidationMode`, defaults and limits |
 | `options.go` | Functional options: `WithTaxonomy`, `WithOutputs`, `WithNamedOutput` |
-| `output.go` | `Output` interface, `DestinationKeyer`, `DeliveryReporter` |
+| `output.go` | `Output` interface, `DestinationKeyer`, `DeliveryReporter`, `LastDeliveryReporter`, `MetadataWriter`, `ContentTypeSetter`, `FrameworkFieldReceiver` |
 | `fanout.go` | `outputEntry`, per-output routing/formatting/sensitivity orchestration |
 | `filter.go` | `EventRoute`, `MatchesRoute`, `ValidateEventRoute` |
 | `format.go` | `Formatter` interface, `FormatOptions`, `IsExcluded` |

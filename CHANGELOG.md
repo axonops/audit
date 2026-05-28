@@ -120,12 +120,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Splunk output now satisfies
+  [`audit.LastDeliveryReporter`](https://pkg.go.dev/github.com/axonops/audit#LastDeliveryReporter)
+  so `Auditor.LastDeliveryAge("splunk:<host>")` reports the
+  staleness signal /healthz handlers expect. Previously
+  splunk exposed `LastDeliveryAge() time.Duration` directly,
+  which did NOT match the core interface (`LastDeliveryNanos() int64`),
+  causing the auditor to treat splunk as a never-delivered output
+  and return 0 indefinitely. Splunk has never been tagged, so this
+  is the first release shipping the corrected interface alignment.
 - Webhook output: when a `CEFFormatter` was configured, the
   request `Content-Type` header still claimed
   `application/x-ndjson`, lying to the receiver. The header now
   reflects the formatter's declared type (`text/plain` for CEF).
   Operators who need a different MIME type can still override via
   the output's `headers` configuration. (#463)
+- `audit/outputs` convenience aggregator now blank-imports
+  `audit/splunk` alongside file/syslog/webhook/loki, so a single
+  `import _ "github.com/axonops/audit/outputs"` registers all six
+  output factories. Splunk consumers no longer need a second
+  blank-import line. (#891 follow-up)
+- `.gitignore` example-binary patterns rewritten as renumber-resilient
+  globs (`examples/*/[0-9][0-9]-*`) instead of the previous
+  per-directory list, which had drifted out of sync after the
+  PR #891 renumber (09-splunk-output insertion, 09–20 → 10–21).
+  Twelve megabytes of stale ELF binaries removed from the source tree.
+- Dependabot now monitors all 14 modules including iouring, splunk,
+  outputs, secrets, and the four secret-provider sub-modules.
+  Previous configuration omitted nine modules. The capstone example
+  directory path is corrected to `/examples/21-capstone` (was
+  `/examples/20-capstone` before the PR #891 renumber).
 - Makefile `test-examples` target was a hard-coded list of 20
   example directories that drifted out of sync with `examples/`
   every time a new example was added (the issue body for #438

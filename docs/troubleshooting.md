@@ -180,6 +180,33 @@ it before launching the auditor.
 
 ---
 
+## Splunk Events Not Appearing
+
+```
+audit: output "splunk:hec.example.com": POST /services/collector/event:
+       HEC code 4: invalid token
+```
+
+| Cause | Fix |
+|-------|-----|
+| **Missing blank import** | Add `_ "github.com/axonops/audit/splunk"` directly, or `_ "github.com/axonops/audit/outputs"` for all built-in factories. |
+| **HEC token invalid (code 4)** | Verify the token in Splunk Web (Settings → Data inputs → HTTP Event Collector). The library validates the token for CR/LF/NUL and rejects the `Splunk `/`Bearer ` prefix foot-gun — strip those before passing. |
+| **Token disabled (code 7)** | Re-enable the token in the HEC settings UI. The output enters a permanent STOP state on code 7 and drops every subsequent event; rotate the token or fix the input config, then restart the application. |
+| **Index not allowed (code 6)** | The configured `index:` is not in the token's allowed-indexes list. Either add it in the HEC token settings, or change `index:` to one the token can write to. |
+| **Sourcetype rejected** | Mis-typed `sourcetype:` against the reference TA's `props.conf` stanza — use `axonops:audit` to match the reference TA at `deploy/splunk-ta-axonops-audit/`. |
+| **HEC ACK enabled in Splunk but `ack_mode: off`** | Some Splunk deployments require ACK. Set `ack_mode: best_effort` (telemetry only) or `required` (at-least-once). The library auto-detects via a feature probe and fails fast with `ErrAckDisabled` if the token does not support ACK. |
+| **`splunkcloud://` URL not expanding** | Use the literal `splunkcloud://<stack>` form. The library expands to `https://http-inputs-<stack>.splunkcloud.com:443`; invalid stack names (special chars, paths) are rejected at config time. |
+| **TLS handshake fails on Splunk Cloud** | Splunk Cloud requires TLS 1.2+. The default policy meets this; if you have overridden `tls.min_version`, ensure it's not below 1.2. mTLS is rejected for `splunkcloud://` (the cloud endpoint does not accept client certs). |
+| **HEC server returning HTTP 200 with HEC code != 0** | Some misconfigured proxies return 200 OK with a non-HEC body. The library probes `/services/collector/health` at startup and requires HEC code 0 or 17 — if the probe fails, the output refuses to construct. Set `disable_startup_verification: true` only if you understand the implication. |
+| **SSRF protection blocking** | The Splunk output uses the shared SSRF dial-control. For local containers (127.0.0.1), set `allow_private_ranges: true`. For `http://` URLs, set `allow_insecure_http: true` — production should use HTTPS. |
+| **Buffer full, events dropped** | The output has an internal channel. If events arrive faster than batches can flush, the non-blocking send arm drops with `reason=buffer_full`. Monitor `RecordDrop` and either increase `buffer_size` or reduce `batch_size`/`flush_interval` to push more often. |
+| **/healthz never flips UNHEALTHY despite outage** | `Auditor.LastDeliveryAge("splunk:<host>")` only advances on actual HEC 2xx — a TCP half-open or indexer ACK stall freezes the timestamp. Combine the staleness threshold with a queue-depth check for full coverage; see `examples/17-health-endpoint/` for the pattern. |
+
+For the end-to-end consumer guide (CIM Change formatter, reference TA
+generator, dashboard XML), see [`docs/splunk-output.md`](splunk-output.md).
+
+---
+
 ## File Output Not Writing
 
 | Cause | Fix |

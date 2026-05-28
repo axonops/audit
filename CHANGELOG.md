@@ -8,6 +8,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **Constructor signature unification across `webhook`, `loki`, and
+  `splunk` output modules.** All three modules previously took a
+  positional `metrics audit.Metrics` argument that was almost always
+  passed as `nil`. They now match `file` and `syslog` —
+  `New(cfg *Config, opts ...Option) (*Output, error)` — and accept
+  the auditor-wide metrics value via a new
+  [`WithCoreMetrics(audit.Metrics)`](https://pkg.go.dev/github.com/axonops/audit/webhook#WithCoreMetrics)
+  Option. Migration:
+
+  ```go
+  // Before (v0.1.x)
+  out, err := webhook.New(cfg, metrics, webhook.WithDiagnosticLogger(log))
+  out, err := loki.New(cfg, nil)
+  out, err := splunk.New(cfg, nil, splunk.WithFrameworkContext(fctx))
+
+  // After (v0.2.0)
+  out, err := webhook.New(cfg, webhook.WithCoreMetrics(metrics), webhook.WithDiagnosticLogger(log))
+  out, err := loki.New(cfg)
+  out, err := splunk.New(cfg, splunk.WithFrameworkContext(fctx))
+  ```
+
+  The name is `WithCoreMetrics` (not `WithMetrics`) to avoid
+  collision with the existing `audit.WithMetrics` core-package
+  option and to disambiguate from the per-module
+  `WithOutputMetrics(audit.OutputMetrics)` (narrower per-output
+  counters). YAML-driven consumers (`outputconfig.New`) need no
+  change — the factory now routes `fctx.CoreMetrics` through the
+  option internally. Surfaced by api-ergonomics-reviewer in the
+  v0.2.0 release gate as the v1.0 BLOCKER 1.
+
+### Known Issues
+
+- **`DeliveryReporter` contract gap on `file` and `syslog` outputs.**
+  Both `file.Output` and `syslog.Output` declare
+  `ReportsDelivery() bool { return true }` but their write paths do
+  NOT call `audit.Metrics.RecordDelivery`. By contrast, `webhook`,
+  `loki`, and `splunk` do call it from their background goroutines.
+  As a result, an auditor wired with only `file` or `syslog` outputs
+  reports zero events on the auditor-wide
+  [`audit.Metrics.RecordDelivery`](https://pkg.go.dev/github.com/axonops/audit#Metrics)
+  sink — either an intentional contract gap (per-output
+  `OutputMetrics.RecordFlush` is the canonical signal for those
+  outputs) or a real bug. Discovered by api-ergonomics-reviewer
+  during the v0.2.0 release gate; deferred to v0.3.0 for a scoped
+  investigation that picks one of: (a) document the contract gap
+  explicitly in `audit.DeliveryReporter` godoc, (b) wire RecordDelivery
+  through `file`/`syslog` to match `webhook`/`loki`/`splunk`, or
+  (c) consolidate every output onto `OutputMetrics` and drop the
+  auditor-wide `audit.Metrics.RecordDelivery` API. Consumers depending
+  on auditor-wide RecordDelivery counters should pair their
+  `audit.Metrics` adapter with per-output `OutputMetrics.RecordFlush`
+  in the meantime.
+
 - [`audit.EventRoute.IncludeCategories`](https://pkg.go.dev/github.com/axonops/audit#EventRoute)
   changes from `map[string]*SeverityRange` to
   `map[string]SeverityRange` (value type, not pointer). The

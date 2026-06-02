@@ -301,6 +301,7 @@ jobs:
           - module: "."
             target: test-core
             flag: core
+            timeout: 15 # TestParseTaxonomyYAML_LargeTaxonomyAccepted runs ~170s under -race (10 MiB taxonomy + precomputeSensitivity walk). Workaround for #894; root-cause investigation tracked in #895.
           - module: file
             target: test-file
             flag: file

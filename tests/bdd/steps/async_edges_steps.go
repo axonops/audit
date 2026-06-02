@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -124,11 +123,14 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
-		successes := 0
-		for k, v := range m.Events {
-			if strings.HasSuffix(k, ":success") {
-				successes += v
-			}
+		// #894: per-event RecordDelivery (the previous source of the
+		// `successes` term) was deleted. Delivered events now flow
+		// through OutputMetrics.RecordFlush; the per-output mock at
+		// tc.OutputMetricsMock holds the sum-of-batchSize. With a
+		// single mock output configured, delivered == flushed events.
+		delivered := 0
+		if tc.OutputMetricsMock != nil {
+			delivered = tc.OutputMetricsMock.FlushCount()
 		}
 		outputErrs := 0
 		for _, v := range m.OutputErrors {
@@ -146,11 +148,11 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		for _, v := range m.SerializationErrs {
 			serial += v
 		}
-		total := successes + outputErrs + filtered + validation + serial + m.BufferDrops
+		total := delivered + outputErrs + filtered + validation + serial + m.BufferDrops
 		if total != m.Submitted {
 			return fmt.Errorf(
-				"invariant broken: submitted=%d != successes=%d + output_errors=%d + filtered=%d + validation_errors=%d + serialization_errors=%d + buffer_drops=%d (sum=%d)",
-				m.Submitted, successes, outputErrs, filtered, validation, serial, m.BufferDrops, total)
+				"invariant broken: submitted=%d != delivered=%d + output_errors=%d + filtered=%d + validation_errors=%d + serialization_errors=%d + buffer_drops=%d (sum=%d)",
+				m.Submitted, delivered, outputErrs, filtered, validation, serial, m.BufferDrops, total)
 		}
 		return nil
 	})
@@ -321,11 +323,11 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		m := tc.MockMetrics
 		m.mu.Lock()
 		defer m.mu.Unlock()
+		// #894: per-event RecordDelivery was deleted; "successes" now
+		// comes from OutputMetrics.RecordFlush via tc.OutputMetricsMock.
 		successes := 0
-		for k, v := range m.Events {
-			if strings.HasSuffix(k, ":success") {
-				successes += v
-			}
+		if tc.OutputMetricsMock != nil {
+			successes = tc.OutputMetricsMock.FlushCount()
 		}
 		got := successes + m.BufferDrops
 		if got != want {

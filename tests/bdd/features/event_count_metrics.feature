@@ -6,9 +6,11 @@ Feature: Event Count Metrics
 
   The Metrics.RecordSubmitted method is called once per AuditEvent call,
   before any filtering, validation, or buffering. This is the "total
-  events in" counter. Combined with delivery and drop counters, consumers
-  can compute event accounting: submitted = delivered + filtered +
-  dropped + validation_errors + serialization_errors.
+  events in" counter. Combined with the per-output RecordFlush sums
+  (which carry the "delivered events" total) and drop counters,
+  consumers can compute event accounting:
+    submitted = delivered + filtered + dropped + validation_errors +
+    serialization_errors.
 
   Background:
     Given a standard test taxonomy
@@ -43,14 +45,10 @@ Feature: Event Count Metrics
     And I close the auditor
     Then RecordQueueDepth should have been called at least 1 time
 
-  Scenario: DeliveryReporter output skips core RecordDelivery
-    Given an auditor with file output and pipeline metrics
-    When I audit 5 events rapidly
-    And I close the auditor
-    Then the pipeline metrics should not have recorded a success event for file output
-
-  Scenario: Non-DeliveryReporter output records core RecordDelivery
-    Given an auditor with stdout output and metrics
-    When I audit event "user_create" with required fields
-    And I close the auditor
-    Then the metrics should have recorded event "success" for output "stdout"
+  # Notes (#894): the prior "DeliveryReporter skips core RecordDelivery"
+  # + "non-DeliveryReporter records core RecordDelivery" scenarios were
+  # removed when Metrics.RecordDelivery and DeliveryReporter were
+  # deleted. Per-output delivery counts now flow exclusively through
+  # OutputMetrics.RecordFlush — see the output_metrics_factory feature
+  # for the RecordFlush-sum assertions, and the per-output features
+  # (file/syslog/webhook/loki/splunk) for output-scoped coverage.

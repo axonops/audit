@@ -176,15 +176,10 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 		return nil
 	})
 
-	ctx.Step(`^the pipeline metrics should not have recorded a success event for file output$`, func() error {
-		if tc.Auditor != nil {
-			_ = tc.Auditor.Close()
-		}
-		if tc.MockMetrics.HasSuccessEventFor("file:") {
-			return fmt.Errorf("expected no core success metrics for file, but found success events")
-		}
-		return nil
-	})
+	// Note (#894): "the pipeline metrics should not have recorded a success
+	// event for file output" was the assertion that paired with the
+	// removed "DeliveryReporter skips core RecordDelivery" scenario.
+	// Both deleted alongside Metrics.RecordDelivery / DeliveryReporter.
 
 	ctx.Step(`^the output metrics should have recorded at least (\d+) drops?$`, func(n int) error {
 		if tc.Auditor != nil {

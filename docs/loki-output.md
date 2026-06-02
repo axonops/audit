@@ -447,6 +447,7 @@ the Loki output.
 | `tls.ca` | string | — | — | CA certificate path for TLS verification. |
 | `tls.cert` | string | — | — | Client certificate path for mTLS. MUST be set together with `tls.key`. |
 | `tls.key` | string | — | — | Client key path for mTLS. MUST be set together with `tls.cert`. |
+| `tls.key_password` | string | — | — | Optional password for a PKCS#8 v2 encrypted `tls.key`. Supports plain text, `${ENV}`, and `ref+openbao://...` / `ref+vault://...`. (#896) |
 | `tls.allow_tls12` | bool | `false` | — | Allow TLS 1.2 in addition to TLS 1.3. |
 | `tls.allow_weak_ciphers` | bool | `false` | — | Allow weaker cipher suites when TLS 1.2 is enabled. |
 | `allow_insecure_http` | bool | `false` | — | Allow `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |

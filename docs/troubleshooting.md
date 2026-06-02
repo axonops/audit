@@ -118,6 +118,9 @@ server is unreachable, `New()` (or `outputconfig.Load()`) fails.
 | **Wrong address/port** | Check `syslog.address` in your output YAML |
 | **TLS certificate mismatch** | Verify `tls.ca` points to the correct CA that signed the server's certificate |
 | **mTLS client cert rejected** | Verify `tls.cert` and `tls.key` are valid and accepted by the server |
+| **PKCS#1 `Proc-Type: 4,ENCRYPTED` key refused** | Legacy `openssl genrsa -des3` key; rewrap with `openssl pkcs8 -topk8 -v2 aes256 -in legacy.key -out modern.key` and configure `tls.key_password` for the new key. (#896) |
+| **Encrypted `tls.key` but no `tls.key_password` configured** | Set `tls.key_password` (plain text, `${ENV}`, or `ref+openbao://...` / `ref+vault://...`). The library refuses to decrypt with an empty password. (#896) |
+| **`tls.key_password` set but key is not encrypted** | Remove `tls.key_password` or supply an encrypted PKCS#8 key. The library refuses the mismatched combination. (#896) |
 | **Firewall blocking** | Check network connectivity to the syslog address and port |
 | **TLS version mismatch** | If the server only supports TLS 1.2, set `tls.allow_tls12: true` |
 

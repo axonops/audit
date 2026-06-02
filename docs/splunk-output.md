@@ -243,6 +243,7 @@ exhaustive field documentation. The most-frequently-used fields:
 | `ack_poll_interval` | `5s` | How often to poll `/services/collector/ack` |
 | `ack_resend_window` | `60s` | Required-mode resend timer |
 | `tls.allow_tls12` | `false` | Required for some legacy Splunk Enterprise builds. See [Per-Output TLS in output-configuration.md](output-configuration.md#per-output-tls) for the full `tls:` block. |
+| `tls.key_password` | — | Optional password for a PKCS#8 v2 encrypted `tls.key`. Supports plain text, `${ENV}`, and `ref+openbao://...` / `ref+vault://...`. (#896) |
 | `allow_insecure_http` | `false` | Permit `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |
 | `allow_private_ranges` | `false` | Allow private/loopback IP ranges (disables SSRF protection). Top-level — not TLS. |
 | `verify_on_startup` | `true` | Run `/services/collector/health` probe at construction |

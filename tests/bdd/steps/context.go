@@ -101,6 +101,12 @@ type AuditTestContext struct { //nolint:govet // fieldalignment: readability pre
 	OutputMetricsFactoryMock *MockOutputMetricsFactory // factory mock for outputconfig BDD scenarios
 	AuditDuration            time.Duration             // measured duration for timing assertions
 
+	// TLS encrypted-key scenarios (#896). Used by
+	// tls_encrypted_key_steps.go to thread the cert/key paths, the
+	// most recent helper result, and the most recent Config redaction
+	// snapshot across Given/When/Then.
+	TLSKeyState any // *tlsKeyState — typed in tls_encrypted_key_steps.go
+
 	// Schema-artifact scenario state (#548). The compiled schema is
 	// stored as `any` so this struct does not transitively pull
 	// `github.com/santhosh-tekuri/jsonschema/v5` into the non-test
@@ -280,5 +286,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	registerSyncDeliverySteps(ctx, tc)
 	registerMissingCoverageSteps(ctx, tc)
 	registerLastDeliveryAgeSteps(ctx, tc)
+	registerTLSEncryptedKeySteps(ctx, tc)
 	registerSchemaArtifactsStepsIfBuilt(ctx, tc)
 }

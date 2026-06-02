@@ -594,6 +594,94 @@ func TestWebhookOutput_ContentType_NDJSON(t *testing.T) {
 	assert.Equal(t, "application/x-ndjson", reqs[0].Headers.Get("Content-Type"))
 }
 
+// TestWebhookOutput_SetContentType_OneShot verifies that
+// [webhook.Output.SetContentType] enforces the one-shot contract
+// documented on [audit.ContentTypeSetter]: the first non-empty,
+// valid value wins; subsequent calls become silent no-ops.
+//
+// The contract matters because the auditor calls SetContentType
+// from drain.go after the output's batch loop is already running.
+// A second caller (a buggy library, a misuse from test code, a
+// hostile reconfiguration attempt) MUST NOT clobber the value the
+// auditor installed.
+func TestWebhookOutput_SetContentType_OneShot(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
+		cfg.BatchSize = 1
+	})
+
+	// First non-empty, valid call wins.
+	out.SetContentType("application/cef")
+	// Subsequent calls MUST be silent no-ops, regardless of validity.
+	out.SetContentType("application/json")
+	out.SetContentType("text/plain; charset=utf-8")
+
+	require.NoError(t, out.Write([]byte(`{"event":"oneshot"}`+"\n")))
+	require.True(t, srv.waitForRequests(1, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), 1)
+	assert.Equal(t, "application/cef", reqs[0].Headers.Get("Content-Type"),
+		"first non-empty value MUST win; later calls MUST be no-ops")
+}
+
+// TestWebhookOutput_SetContentType_Concurrent verifies the one-shot
+// contract holds under concurrent callers. Many goroutines race to
+// install distinct values; exactly one wins and the wire-level
+// Content-Type matches that winner across multiple subsequent
+// requests — the winner is stable, not just first-observed. The
+// race detector flags any data race in the underlying atomic store.
+func TestWebhookOutput_SetContentType_Concurrent(t *testing.T) {
+	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	})
+	out := newTestWebhookOutput(t, srv.url(), func(cfg *webhook.Config) {
+		cfg.BatchSize = 1
+	})
+
+	const concurrentCallers = 32
+	candidates := make([]string, concurrentCallers)
+	for i := range candidates {
+		candidates[i] = fmt.Sprintf("application/test-%02d", i)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(concurrentCallers)
+	for i := range concurrentCallers {
+		go func(ct string) {
+			defer wg.Done()
+			<-start
+			out.SetContentType(ct)
+		}(candidates[i])
+	}
+	close(start)
+	wg.Wait()
+
+	// Send 3 events and assert the winner is stable across requests
+	// — guards against a regression where SetContentType somehow
+	// mutates after the first observation.
+	const sentinelRequests = 3
+	for i := range sentinelRequests {
+		require.NoError(t, out.Write([]byte(fmt.Sprintf(`{"event":"concurrent-%d"}`+"\n", i))))
+	}
+	require.True(t, srv.waitForRequests(sentinelRequests, 2*time.Second))
+	require.NoError(t, out.Close())
+
+	reqs := srv.getRequests()
+	require.GreaterOrEqual(t, len(reqs), sentinelRequests)
+	winner := reqs[0].Headers.Get("Content-Type")
+	assert.Contains(t, candidates, winner,
+		"exactly one of the racing values MUST win; observed=%q", winner)
+	for i := 1; i < sentinelRequests; i++ {
+		assert.Equal(t, winner, reqs[i].Headers.Get("Content-Type"),
+			"winner MUST be stable across requests; req[%d] diverged", i)
+	}
+}
+
 func TestWebhookOutput_FlushInterval(t *testing.T) {
 	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)

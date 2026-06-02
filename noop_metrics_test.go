@@ -72,9 +72,9 @@ func TestNoOpOutputMetrics_AllMethodsCallable(t *testing.T) {
 	var m audit.OutputMetrics = audit.NoOpOutputMetrics{}
 
 	// All methods are callable without panic.
-	m.RecordDrop()
+	m.RecordDrop(1)
 	m.RecordFlush(10, 0)
-	m.RecordError()
+	m.RecordError(1)
 	m.RecordRetry(1)
 	m.RecordQueueDepth(50, 100)
 }

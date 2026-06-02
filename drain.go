@@ -163,9 +163,7 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 				"event_type", entry.eventType,
 				"panic", r,
 				"stack", string(buf[:n]))
-			// Always record the panic in core metrics, even for
-			// DeliveryReporter outputs — the output clearly did not
-			// self-report if it panicked.
+			// Always record the panic in core metrics.
 			if a.metrics != nil {
 				a.metrics.RecordOutputError(oe.output.Name())
 			}
@@ -218,7 +216,7 @@ func (a *Auditor) deliverToOutput(oe *outputEntry, entry *auditEntry, category s
 	} else {
 		writeErr = oe.output.Write(data)
 	}
-	a.recordWrite(oe.output.Name(), entry.eventType, oe.selfReports, writeErr)
+	a.recordWrite(oe.output.Name(), entry.eventType, writeErr)
 }
 
 // assemblePostFields builds the per-output wire bytes from the cached
@@ -291,15 +289,12 @@ func (a *Auditor) assemblePostFields(fc *formatCache, base []byte, fmtr Formatte
 }
 
 // prepareOutputEntries caches interface assertions and pre-constructs
-// per-output state (MetadataWriter, DeliveryReporter, FormatOptions,
-// HMAC). Called once at construction time after all options are applied.
+// per-output state (MetadataWriter, FormatOptions, HMAC). Called once
+// at construction time after all options are applied.
 func (a *Auditor) prepareOutputEntries() {
 	for _, oe := range a.entries {
 		if mw, ok := oe.output.(MetadataWriter); ok {
 			oe.metadataWriter = mw
-		}
-		if dr, ok := oe.output.(DeliveryReporter); ok {
-			oe.selfReports = dr.ReportsDelivery()
 		}
 		if oe.excludedLabels != nil {
 			oe.formatOpts = &FormatOptions{
@@ -548,23 +543,19 @@ func (a *Auditor) formatCached(oe *outputEntry, entry *auditEntry, ts time.Time,
 	return data
 }
 
-// recordWrite handles post-write metrics and error logging for both
-// the plain Write and MetadataWriter paths. Called once per output per
-// event with the result of the write call. No closures, no interface
-// dispatch — all parameters are concrete values.
-func (a *Auditor) recordWrite(outputName, eventType string, selfReports bool, writeErr error) {
+// recordWrite handles post-write error logging and the pipeline-wide
+// RecordOutputError counter. Per-output delivery counts (success and
+// error event totals) flow through each output's own OutputMetrics
+// RecordFlush / RecordError calls — the auditor no longer carries an
+// auditor-wide per-event delivery counter.
+func (a *Auditor) recordWrite(outputName, eventType string, writeErr error) {
 	if writeErr != nil {
 		a.logger.Load().Error("audit: output write failed",
 			"output", outputName,
 			"event_type", eventType,
 			"error", writeErr)
-		if a.metrics != nil && !selfReports {
+		if a.metrics != nil {
 			a.metrics.RecordOutputError(outputName)
-			a.metrics.RecordDelivery(outputName, EventError)
 		}
-		return
-	}
-	if a.metrics != nil && !selfReports {
-		a.metrics.RecordDelivery(outputName, EventSuccess)
 	}
 }

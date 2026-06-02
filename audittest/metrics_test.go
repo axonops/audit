@@ -20,7 +20,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/axonops/audit"
 	"github.com/axonops/audit/audittest"
 )
 
@@ -28,9 +27,6 @@ func TestMetricsRecorder_AllMethods(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewMetricsRecorder()
 
-	m.RecordDelivery("recorder", audit.EventSuccess)
-	m.RecordDelivery("recorder", audit.EventSuccess)
-	m.RecordDelivery("recorder", audit.EventError)
 	m.RecordOutputError("recorder")
 	m.RecordOutputFiltered("recorder")
 	m.RecordValidationError("user_create")
@@ -39,8 +35,6 @@ func TestMetricsRecorder_AllMethods(t *testing.T) {
 	m.RecordBufferDrop()
 	m.RecordBufferDrop()
 
-	assert.Equal(t, 2, m.EventDeliveries("recorder", audit.EventSuccess))
-	assert.Equal(t, 1, m.EventDeliveries("recorder", audit.EventError))
 	assert.Equal(t, 1, m.OutputErrors("recorder"))
 	assert.Equal(t, 1, m.OutputFiltered("recorder"))
 	assert.Equal(t, 1, m.ValidationErrors("user_create"))
@@ -53,7 +47,6 @@ func TestMetricsRecorder_ZeroValues(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewMetricsRecorder()
 
-	assert.Equal(t, 0, m.EventDeliveries("unknown", audit.EventSuccess))
 	assert.Equal(t, 0, m.ValidationErrors("unknown"))
 	assert.Equal(t, 0, m.BufferDrops())
 }
@@ -74,11 +67,6 @@ func TestMetricsRecorder_PerOutputMetrics(t *testing.T) {
 	m.RecordReconnect("localhost:514", false)
 	assert.Equal(t, 1, m.SyslogReconnects("localhost:514", true))
 	assert.Equal(t, 2, m.SyslogReconnects("localhost:514", false))
-
-	// Webhook metrics.
-	// Per-output metrics (webhook/loki) are now handled via
-	// audit.OutputMetrics, supplied at construction via the
-	// WithOutputMetrics option — see #455 / #696.
 }
 
 func TestMetricsRecorder_PerOutputMetrics_ZeroValues(t *testing.T) {
@@ -94,7 +82,6 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	m := audittest.NewMetricsRecorder()
 
 	// Core metrics.
-	m.RecordDelivery("recorder", audit.EventSuccess)
 	m.RecordBufferDrop()
 	m.RecordValidationError("test")
 
@@ -105,7 +92,6 @@ func TestMetricsRecorder_Reset(t *testing.T) {
 	m.Reset()
 
 	// Core zeroed.
-	assert.Equal(t, 0, m.EventDeliveries("recorder", audit.EventSuccess))
 	assert.Equal(t, 0, m.BufferDrops())
 	assert.Equal(t, 0, m.ValidationErrors("test"))
 
@@ -129,9 +115,8 @@ func TestMetricsRecorder_Reset_AllFields(t *testing.T) {
 	t.Parallel()
 	m := audittest.NewMetricsRecorder()
 
-	// Populate all 10 metric fields.
+	// Populate all metric fields.
 	m.RecordSubmitted()
-	m.RecordDelivery("out", audit.EventSuccess)
 	m.RecordOutputError("out")
 	m.RecordOutputFiltered("out")
 	m.RecordValidationError("evt")
@@ -144,7 +129,6 @@ func TestMetricsRecorder_Reset_AllFields(t *testing.T) {
 	m.Reset()
 
 	assert.Equal(t, 0, m.SubmittedCount())
-	assert.Equal(t, 0, m.EventDeliveries("out", audit.EventSuccess))
 	assert.Equal(t, 0, m.OutputErrors("out"))
 	assert.Equal(t, 0, m.OutputFiltered("out"))
 	assert.Equal(t, 0, m.ValidationErrors("evt"))
@@ -165,18 +149,15 @@ func TestMetricsRecorder_Concurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			m.RecordSubmitted()
-			m.RecordDelivery("out", audit.EventSuccess)
 			m.RecordOutputError("out")
 			m.RecordBufferDrop()
 			_ = m.SubmittedCount()
-			_ = m.EventDeliveries("out", audit.EventSuccess)
 			_ = m.BufferDrops()
 		}()
 	}
 	wg.Wait()
 
 	assert.Equal(t, 100, m.SubmittedCount())
-	assert.Equal(t, 100, m.EventDeliveries("out", audit.EventSuccess))
 	assert.Equal(t, 100, m.OutputErrors("out"))
 	assert.Equal(t, 100, m.BufferDrops())
 }

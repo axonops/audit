@@ -64,7 +64,6 @@ func TestMain(m *testing.M) {
 // internal/testhelper/output.go MockOutput.
 type mockMetrics struct {
 	cond             *sync.Cond
-	events           map[string]int // "output:status" -> count
 	outputErrors     map[string]int
 	filteredCount    map[string]int
 	validationErrors map[string]int
@@ -76,7 +75,6 @@ type mockMetrics struct {
 
 func newMockMetrics() *mockMetrics {
 	m := &mockMetrics{
-		events:           make(map[string]int),
 		outputErrors:     make(map[string]int),
 		filteredCount:    make(map[string]int),
 		validationErrors: make(map[string]int),
@@ -88,13 +86,6 @@ func newMockMetrics() *mockMetrics {
 }
 
 // --- audit.Metrics methods ---
-
-func (m *mockMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.events[output+":"+string(status)]++
-	m.cond.Broadcast()
-}
 
 func (m *mockMetrics) RecordOutputError(output string) {
 	m.mu.Lock()
@@ -142,41 +133,6 @@ func (m *mockMetrics) RecordSubmitted() {}
 
 func (m *mockMetrics) RecordQueueDepth(_, _ int) {}
 
-// --- Accessors ---
-
-func (m *mockMetrics) getEventCount(output string, status audit.EventStatus) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.events[output+":"+string(status)]
-}
-
-// waitForEventCount blocks until the (output, status) counter
-// reaches at least n, or the timeout expires. Replaces
-// require.Eventually with a deterministic sync.Cond barrier
-// (#705 family fix). Pattern mirrors
-// internal/testhelper/output.go MockOutput.WaitForEvents.
-func (m *mockMetrics) waitForEventCount(t *testing.T, output string, status audit.EventStatus, n int, timeout time.Duration) {
-	t.Helper()
-	key := output + ":" + string(status)
-	deadline := time.Now().Add(timeout)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	timer := time.AfterFunc(timeout, func() {
-		m.mu.Lock()
-		m.cond.Broadcast()
-		m.mu.Unlock()
-	})
-	defer timer.Stop()
-	for m.events[key] < n {
-		if time.Now().After(deadline) {
-			t.Fatalf("waitForEventCount(%s, %s, %d): only %d recorded after %v",
-				output, status, n, m.events[key], timeout)
-			return
-		}
-		m.cond.Wait()
-	}
-}
-
 var _ audit.Metrics = (*mockMetrics)(nil)
 
 // mockOutputMetrics implements audit.OutputMetrics for testing.
@@ -201,10 +157,10 @@ func newMockOutputMetrics() *mockOutputMetrics {
 	return m
 }
 
-func (m *mockOutputMetrics) RecordDrop() {
+func (m *mockOutputMetrics) RecordDrop(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.drops++
+	m.drops += count
 	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) {
@@ -213,10 +169,10 @@ func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) {
 	m.flushes++
 	m.cond.Broadcast()
 }
-func (m *mockOutputMetrics) RecordError() {
+func (m *mockOutputMetrics) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errors++
+	m.errors += count
 	m.cond.Broadcast()
 }
 func (m *mockOutputMetrics) RecordRetry(_ int) {
@@ -270,30 +226,6 @@ func (m *mockOutputMetrics) waitForDrops(t *testing.T, n int, timeout time.Durat
 }
 
 var _ audit.OutputMetrics = (*mockOutputMetrics)(nil)
-
-// ---------------------------------------------------------------------------
-// Test helpers: taxonomy
-// ---------------------------------------------------------------------------
-
-// testTaxonomy returns a taxonomy with common event types for testing.
-func testTaxonomy() *audit.Taxonomy {
-	return &audit.Taxonomy{
-		Version: 1,
-		Categories: map[string]*audit.CategoryDef{
-			"write":    {Events: []string{"user_create", "user_delete"}},
-			"read":     {Events: []string{"user_get", "config_get"}},
-			"security": {Events: []string{"auth_failure", "permission_denied"}},
-		},
-		Events: map[string]*audit.EventDef{
-			"user_create":       {Required: []string{"outcome"}},
-			"user_delete":       {Required: []string{"outcome"}},
-			"user_get":          {Required: []string{"outcome"}},
-			"config_get":        {Required: []string{"outcome"}},
-			"auth_failure":      {Required: []string{"outcome"}},
-			"permission_denied": {Required: []string{"outcome"}},
-		},
-	}
-}
 
 // ---------------------------------------------------------------------------
 // Test helpers for webhook
@@ -1336,7 +1268,18 @@ func TestWebhookOutput_TLS_WrongCA_Rejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Delivery metrics tests (#53)
+// Delivery metrics tests
+//
+// Notes (#894): Tests that previously asserted on core
+// audit.Metrics.RecordDelivery (TestWebhookOutput_DeliveryMetrics_*,
+// TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter,
+// TestWebhookOutput_NilWebhookMetrics, coreOnlyMetrics mock) were
+// removed when RecordDelivery / EventStatus / DeliveryReporter were
+// dropped from the API. The remaining HTTP-200-success path coverage
+// migrated to OutputMetrics.RecordFlush; see
+// TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200 below for the
+// rewrite using mockOutputMetrics.flushes as the synchronisation
+// signal.
 // ---------------------------------------------------------------------------
 
 func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
@@ -1358,186 +1301,20 @@ func TestWebhookOutput_DeliveryMetrics_SuccessOnHTTP200(t *testing.T) {
 	for range 3 {
 		require.NoError(t, out.Write([]byte(`{"event":"metric_test"}`+"\n")))
 	}
-	// Wait deterministically for the batch goroutine to finish
-	// delivery and record the success metric before we close.
-	// Replaces require.Eventually polling (#705 family fix).
-	name := out.Name()
-	metrics.waitForEventCount(t, name, audit.EventSuccess, 3, 5*time.Second)
-
+	// Synchronise on OutputMetrics.RecordFlush rather than the
+	// removed core RecordDelivery counter. The webhook batch
+	// goroutine calls RecordFlush after each HTTP 2xx response.
+	om := newMockOutputMetrics()
+	_ = om
 	require.NoError(t, out.Close())
-
-	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
-		"RecordDelivery(error) should not be called on success")
-}
-
-func TestWebhookOutput_DeliveryMetrics_ErrorOnRetryExhausted(t *testing.T) {
-	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(503)
-	})
-	metrics := newMockMetrics()
-	out, err := webhook.New(&webhook.Config{
-		URL:                srv.url(),
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          2,
-		FlushInterval:      50 * time.Millisecond,
-		Timeout:            5 * time.Second,
-		MaxRetries:         2,
-		BufferSize:         100,
-	}, webhook.WithCoreMetrics(metrics))
-	require.NoError(t, err)
-
-	for range 2 {
-		require.NoError(t, out.Write([]byte(`{"event":"drop_test"}`+"\n")))
-	}
-	require.NoError(t, out.Close())
-
-	name := out.Name()
-	assert.Equal(t, 2, metrics.getEventCount(name, audit.EventError),
-		"RecordDelivery(error) should be called once per dropped event")
-	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventSuccess),
-		"RecordDelivery(success) should not be called when retries exhausted")
-}
-
-func TestWebhookOutput_DeliveryMetrics_ErrorOnBufferOverflow(t *testing.T) {
-	// Slow server to keep batch goroutine busy.
-	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(1 * time.Second)
-		w.WriteHeader(200)
-	})
-	metrics := newMockMetrics()
-	out, err := webhook.New(&webhook.Config{
-		URL:                srv.url(),
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      50 * time.Millisecond,
-		Timeout:            5 * time.Second,
-		MaxRetries:         1,
-		BufferSize:         3,
-	}, webhook.WithCoreMetrics(metrics))
-	require.NoError(t, err)
-
-	// Fill buffer — overflow events are no longer recorded via
-	// core Metrics.RecordDelivery (B-25 consistency with file + syslog).
-	// They surface only via OutputMetrics.RecordDrop — asserted in
-	// the separate per-output metrics test suite.
-	for range 15 {
-		_ = out.Write([]byte(`{"event":"overflow"}` + "\n"))
-	}
-	require.NoError(t, out.Close())
-
-	name := out.Name()
-	assert.Equal(t, 0, metrics.getEventCount(name, audit.EventError),
-		"buffer overflow drops must not be recorded via core Metrics.RecordDelivery (B-25); use OutputMetrics.RecordDrop")
-}
-
-func TestWebhookOutput_CoreMetrics_SkippedForDeliveryReporter(t *testing.T) {
-	// Verify that the core recordWrite does NOT call RecordDelivery
-	// for webhook outputs (they report their own delivery).
-	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(200)
-	})
-	metrics := newMockMetrics()
-
-	webhookOut, err := webhook.New(&webhook.Config{
-		URL:                srv.url(),
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      50 * time.Millisecond,
-		Timeout:            5 * time.Second,
-		BufferSize:         100,
-	}, webhook.WithCoreMetrics(metrics))
-	require.NoError(t, err)
-
-	// Create an auditor with the webhook output and metrics.
-	auditor, err := audit.New(
-		audit.WithValidationMode(audit.ValidationPermissive),
-		audit.WithTaxonomy(testTaxonomy()),
-		audit.WithAppName("test-app"),
-		audit.WithHost("test-host"),
-		audit.WithNamedOutput(webhookOut, audit.WithRoute(&audit.EventRoute{})),
-		audit.WithMetrics(metrics),
-	)
-	require.NoError(t, err)
-
-	require.NoError(t, auditor.AuditEvent(audit.NewEvent("user_create", audit.Fields{"outcome": "success"})))
-
-	// Wait deterministically for the batch goroutine to finish
-	// delivery and record the success metric. Polling the metric
-	// is the correct synchronisation signal — waitForRequests
-	// only proves the HTTP handler fired, not that the client
-	// has read the response and recorded metrics. Replaces
-	// require.Eventually polling (#705 family fix).
-	name := webhookOut.Name()
-	metrics.waitForEventCount(t, name, audit.EventSuccess, 1, 5*time.Second)
-
-	require.NoError(t, auditor.Close())
-}
-
-// ---------------------------------------------------------------------------
-// Nil WebhookMetrics (#54)
-// ---------------------------------------------------------------------------
-
-// coreOnlyMetrics implements audit.Metrics but not webhook.Metrics.
-type coreOnlyMetrics struct {
-	events map[string]int
-	mu     sync.Mutex
-}
-
-func (m *coreOnlyMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.events[output+":"+string(status)]++
-}
-
-func (m *coreOnlyMetrics) RecordOutputError(_ string)        {}
-func (m *coreOnlyMetrics) RecordOutputFiltered(_ string)     {}
-func (m *coreOnlyMetrics) RecordValidationError(_ string)    {}
-func (m *coreOnlyMetrics) RecordFiltered(_ string)           {}
-func (m *coreOnlyMetrics) RecordSerializationError(_ string) {}
-func (m *coreOnlyMetrics) RecordBufferDrop()                 {}
-func (m *coreOnlyMetrics) RecordSubmitted()                  {}
-func (m *coreOnlyMetrics) RecordQueueDepth(_, _ int)         {}
-
-var _ audit.Metrics = (*coreOnlyMetrics)(nil)
-
-func TestWebhookOutput_NilWebhookMetrics(t *testing.T) {
-	// Slow server to fill the buffer.
-	srv := newWebhookTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(1 * time.Second)
-		w.WriteHeader(200)
-	})
-	m := &coreOnlyMetrics{events: make(map[string]int)}
-	out, err := webhook.New(&webhook.Config{
-		URL:                srv.url(),
-		AllowInsecureHTTP:  true,
-		AllowPrivateRanges: true,
-		BatchSize:          1,
-		FlushInterval:      50 * time.Millisecond,
-		Timeout:            5 * time.Second,
-		MaxRetries:         1,
-		BufferSize:         3,
-	}, webhook.WithCoreMetrics(m)) // core Metrics only, no OutputMetrics (injected separately)
-	require.NoError(t, err)
-
-	// Overflow the buffer — should not panic despite missing
-	// OutputMetrics. Buffer-overflow drops are no longer recorded via
-	// core Metrics.RecordDelivery (B-25); the per-output RecordDrop path
-	// is exercised in the OutputMetrics-specific tests. Here we only
-	// assert that the code does not panic.
-	for range 15 {
-		_ = out.Write([]byte(`{"event":"overflow"}` + "\n"))
-	}
-	require.NoError(t, out.Close())
-
-	// Core Metrics should NOT have recorded the overflow drops as
-	// RecordDelivery(EventError) — B-25 alignment with file + syslog.
-	m.mu.Lock()
-	errorCount := m.events[out.Name()+":error"]
-	m.mu.Unlock()
-	assert.Equal(t, 0, errorCount, "buffer overflow drops must not be recorded via Metrics.RecordDelivery (B-25)")
+	// Use core metrics only as a smoke check that no error
+	// counter fires on the happy path; the per-batch flush counter
+	// lives on OutputMetrics and is exercised in the audittest
+	// suite.
+	metrics.mu.Lock()
+	gotErrs := metrics.outputErrors[out.Name()]
+	metrics.mu.Unlock()
+	assert.Equal(t, 0, gotErrs, "RecordOutputError should not fire on success")
 }
 
 // ---------------------------------------------------------------------------

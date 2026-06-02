@@ -143,25 +143,9 @@ func TestWrapOutput_NoDestinationKeyer_ReturnsEmpty(t *testing.T) {
 	assert.Equal(t, "", dk.DestinationKey())
 }
 
-func TestWrapOutput_PreservesDeliveryReporter(t *testing.T) {
-	inner := &mockDeliveryReporter{
-		MockOutput: *testhelper.NewMockOutput("webhook:example.com"),
-	}
-	wrapped := audit.WrapOutput(inner, "my_webhook")
-
-	dr, ok := wrapped.(audit.DeliveryReporter)
-	require.True(t, ok, "wrapped output should implement DeliveryReporter")
-	assert.True(t, dr.ReportsDelivery())
-}
-
-func TestWrapOutput_NonDeliveryReporter_ReturnsFalse(t *testing.T) {
-	inner := testhelper.NewMockOutput("file:/tmp/test.log")
-	wrapped := audit.WrapOutput(inner, "my_file")
-
-	dr, ok := wrapped.(audit.DeliveryReporter)
-	require.True(t, ok, "namedOutput always implements DeliveryReporter")
-	assert.False(t, dr.ReportsDelivery())
-}
+// Note: TestWrapOutput_PreservesDeliveryReporter +
+// TestWrapOutput_NonDeliveryReporter_ReturnsFalse removed in #894
+// alongside the audit.DeliveryReporter interface itself.
 
 func TestWrapOutput_WriteDelegatesToInner(t *testing.T) {
 	inner := testhelper.NewMockOutput("inner")
@@ -264,13 +248,6 @@ type mockDestKeyer struct { //nolint:govet // fieldalignment: test struct, reada
 }
 
 func (m *mockDestKeyer) DestinationKey() string { return m.destKey }
-
-// mockDeliveryReporter wraps MockOutput with DeliveryReporter.
-type mockDeliveryReporter struct {
-	testhelper.MockOutput
-}
-
-func (m *mockDeliveryReporter) ReportsDelivery() bool { return true }
 
 // mockMetadataWriter wraps MockOutput with MetadataWriter.
 type mockMetadataWriter struct { //nolint:govet // fieldalignment: readability preferred

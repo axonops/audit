@@ -48,11 +48,11 @@ func ExampleNew() {
 
 	fmt.Println("count:", events.Count())
 	fmt.Println("type:", events.Events()[0].EventType)
-	fmt.Println("deliveries:", metrics.EventDeliveries("recorder", "success"))
+	fmt.Println("submitted:", metrics.SubmittedCount())
 	// Output:
 	// count: 1
 	// type: user_create
-	// deliveries: 1
+	// submitted: 1
 }
 
 func ExampleNewQuick() {

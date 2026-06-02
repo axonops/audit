@@ -222,109 +222,21 @@ func TestAudit_NilMetrics_NoPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// DeliveryReporter — recordWrite skips core metrics when selfReports=true
+// Note: DeliveryReporter and Metrics.RecordDelivery were removed in #894.
+// The previous TestWriteToOutput_DeliveryReporter_* tests asserted that
+// self-reporting outputs skipped core RecordDelivery double-counting;
+// with the API removed, the contract no longer exists and the tests
+// are deleted. Pipeline-wide RecordOutputError survives for plain Write
+// errors and is covered by TestRecordOutputError_PlainOutput below.
 // ---------------------------------------------------------------------------
 
-// deliveryReporterOutput is a mock output that implements DeliveryReporter.
-// It reports its own delivery, so the core auditor must NOT call RecordDelivery
-// or RecordOutputError for it.
-type deliveryReporterOutput struct {
-	writeErrToReturn error
-	testhelper.MockOutput
-}
-
-func newDeliveryReporterOutput(name string) *deliveryReporterOutput {
-	return &deliveryReporterOutput{
-		MockOutput: *testhelper.NewMockOutput(name),
-	}
-}
-
-func (d *deliveryReporterOutput) ReportsDelivery() bool { return true }
-
-func (d *deliveryReporterOutput) Write(data []byte) error {
-	if d.writeErrToReturn != nil {
-		return d.writeErrToReturn
-	}
-	return d.MockOutput.Write(data)
-}
-
-var _ audit.DeliveryReporter = (*deliveryReporterOutput)(nil)
-var _ audit.Output = (*deliveryReporterOutput)(nil)
-
-func TestWriteToOutput_DeliveryReporter_SuccessSkipsCoreMetrics(t *testing.T) {
+func TestRecordOutputError_PlainOutput(t *testing.T) {
 	t.Parallel()
-	// When an output satisfies DeliveryReporter and ReportsDelivery()
-	// returns true, the core auditor must NOT call RecordDelivery on success.
-	metrics := testhelper.NewMockMetrics()
-	out := newDeliveryReporterOutput("self-reporting")
-
-	auditor, err := audit.New(
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithAppName("test-app"),
-		audit.WithHost("test-host"),
-		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
-		audit.WithMetrics(metrics),
-	)
-	require.NoError(t, err)
-
-	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "bob",
-	})))
-	require.NoError(t, auditor.Close())
-
-	// The self-reporting output received the event.
-	assert.Equal(t, 1, out.EventCount())
-
-	// The core auditor must not have called RecordDelivery for this output.
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventSuccess),
-		"core auditor must not call RecordDelivery(success) for DeliveryReporter outputs")
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting", audit.EventError),
-		"core auditor must not call RecordDelivery(error) for DeliveryReporter outputs")
-}
-
-func TestWriteToOutput_DeliveryReporter_ErrorSkipsCoreMetrics(t *testing.T) {
-	t.Parallel()
-	// When a DeliveryReporter output fails on Write, the core auditor must
-	// NOT call RecordDelivery or RecordOutputError — the output is responsible.
-	metrics := testhelper.NewMockMetrics()
-	out := newDeliveryReporterOutput("self-reporting-fail")
-	out.writeErrToReturn = errors.New("delivery failed")
-
-	auditor, err := audit.New(
-		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
-		audit.WithAppName("test-app"),
-		audit.WithHost("test-host"),
-		audit.WithNamedOutput(out, audit.WithRoute(&audit.EventRoute{})),
-		audit.WithMetrics(metrics),
-	)
-	require.NoError(t, err)
-
-	require.NoError(t, auditor.AuditEvent(audit.NewEvent("auth_failure", audit.Fields{
-		"outcome":  "failure",
-		"actor_id": "bob",
-	})))
-	require.NoError(t, auditor.Close())
-
-	// Core auditor must not record any metrics for the self-reporting output.
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventSuccess),
-		"core auditor must not call RecordDelivery(success) for DeliveryReporter outputs")
-	assert.Equal(t, 0, metrics.GetEventCount("self-reporting-fail", audit.EventError),
-		"core auditor must not call RecordDelivery(error) for DeliveryReporter outputs")
-
-	metrics.Mu.Lock()
-	errCount := metrics.OutputErrors["self-reporting-fail"]
-	metrics.Mu.Unlock()
-	assert.Equal(t, 0, errCount,
-		"core auditor must not call RecordOutputError for DeliveryReporter outputs")
-}
-
-func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.T) {
-	t.Parallel()
-	// A plain output (not DeliveryReporter) must have RecordDelivery(success)
-	// called by the core auditor on a successful write.
+	// A plain output whose Write returns an error must trigger
+	// pipeline-wide RecordOutputError on the auditor's Metrics.
 	metrics := testhelper.NewMockMetrics()
 	out := testhelper.NewMockOutput("plain")
+	out.WriteErr = errors.New("delivery failed")
 
 	auditor, err := audit.New(
 		audit.WithTaxonomy(testhelper.ValidTaxonomy()),
@@ -341,8 +253,11 @@ func TestWriteToOutput_NonDeliveryReporter_SuccessRecordsCoreMetrics(t *testing.
 	})))
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("plain", audit.EventSuccess), 0,
-		"core auditor must call RecordDelivery(success) for plain (non-DeliveryReporter) outputs")
+	metrics.Mu.Lock()
+	errCount := metrics.OutputErrors["plain"]
+	metrics.Mu.Unlock()
+	assert.Greater(t, errCount, 0,
+		"core auditor must call RecordOutputError when a plain output's Write returns an error")
 }
 
 // ---------------------------------------------------------------------------
@@ -482,7 +397,7 @@ func TestLogger_Audit_OmitEmpty_NumericTypeBranches(t *testing.T) {
 // Metrics tests
 // ---------------------------------------------------------------------------
 
-func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
+func TestLogger_Audit_RecordSubmitted(t *testing.T) {
 	t.Parallel()
 
 	out := testhelper.NewMockOutput("test-out")
@@ -496,11 +411,15 @@ func TestLogger_Audit_MetricsRecordSuccess(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.True(t, out.WaitForEvents(1, 2*time.Second))
+	require.NoError(t, auditor.Close())
 
-	// Wait for the metric to be recorded — RecordDelivery fires after
-	// Write returns, so WaitForEvents alone is insufficient.
-	require.True(t, metrics.WaitForMetric("test-out:success", 1, 2*time.Second),
-		"timed out waiting for success metric")
+	// After #894 the canonical per-output delivery signal is OutputMetrics.RecordFlush
+	// (not Metrics.RecordDelivery). At the pipeline level, RecordSubmitted is the only
+	// remaining per-event counter — it fires once per AuditEvent call.
+	metrics.Mu.Lock()
+	submitted := metrics.Submitted
+	metrics.Mu.Unlock()
+	assert.Equal(t, 1, submitted, "RecordSubmitted should fire once per AuditEvent")
 }
 
 func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
@@ -526,8 +445,8 @@ func TestLogger_Audit_MetricsRecordOutputError(t *testing.T) {
 	// Close drains all pending events and completes metric recording.
 	require.NoError(t, auditor.Close())
 
-	assert.Greater(t, metrics.GetEventCount("bad-write", audit.EventError), 0)
-	assert.Greater(t, metrics.GetOutputErrorCount("bad-write"), 0)
+	assert.Greater(t, metrics.GetOutputErrorCount("bad-write"), 0,
+		"core auditor must call RecordOutputError when output's Write returns an error")
 }
 
 type errorWriteOutput struct {

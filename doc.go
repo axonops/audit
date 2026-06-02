@@ -124,7 +124,7 @@
 //   - [Stdout] — convenience constructor for [StdoutOutput] writing to [os.Stdout]
 //   - [StdoutOutput] — writes events to stdout or any io.Writer; included in core
 //   - [WithOutputs] — registers unnamed outputs; [WithNamedOutput] for per-output routing
-//   - [DeliveryReporter] — optional interface for outputs that handle their own delivery metrics
+//   - [LastDeliveryReporter] — optional interface exposing a per-output last-delivery timestamp
 //   - [MetadataWriter] — optional interface for outputs that need structured per-event context (event type, severity, category, timestamp)
 //   - [EventMetadata] — per-event value type passed to [MetadataWriter.WriteWithMetadata]
 //

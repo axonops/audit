@@ -82,7 +82,7 @@ func newMockMetrics() *mockMetrics {
 // RecordError counts errors recorded against the output. Used by
 // reconnect tests that need to assert the retry-write-failed branch
 // of handleWriteFailure was exercised.
-func (m *mockMetrics) RecordError() { m.errors.Add(1) }
+func (m *mockMetrics) RecordError(count int) { m.errors.Add(int64(count)) }
 
 // getErrorCount returns the number of RecordError invocations.
 func (m *mockMetrics) getErrorCount() int { return int(m.errors.Load()) }
@@ -173,9 +173,9 @@ type mockOutputMetrics struct {
 	depthCalls atomic.Int64
 }
 
-func (m *mockOutputMetrics) RecordDrop()                        { m.drops.Add(1) }
+func (m *mockOutputMetrics) RecordDrop(count int)               { m.drops.Add(int64(count)) }
 func (m *mockOutputMetrics) RecordFlush(_ int, _ time.Duration) { m.flushes.Add(1) }
-func (m *mockOutputMetrics) RecordError()                       { m.errors.Add(1) }
+func (m *mockOutputMetrics) RecordError(count int)              { m.errors.Add(int64(count)) }
 func (m *mockOutputMetrics) RecordRetry(_ int)                  { m.retries.Add(1) }
 func (m *mockOutputMetrics) RecordQueueDepth(_, _ int)          { m.depthCalls.Add(1) }
 
@@ -744,23 +744,8 @@ func TestSyslogOutput_Close_DrainsBuffer(t *testing.T) {
 		"no events should be dropped with a large buffer")
 }
 
-func TestSyslogOutput_ImplementsDeliveryReporter(t *testing.T) {
-	srv := newMockSyslogServer(t)
-	defer srv.close()
-
-	out, err := syslog.New(&syslog.Config{
-		Network:       "tcp",
-		Address:       srv.addr(),
-		FlushInterval: 5 * time.Millisecond,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = out.Close() })
-
-	var o audit.Output = out
-	dr, ok := o.(audit.DeliveryReporter)
-	require.True(t, ok, "syslog output must implement DeliveryReporter")
-	assert.True(t, dr.ReportsDelivery(), "syslog output must self-report delivery")
-}
+// Note (#894): TestSyslogOutput_ImplementsDeliveryReporter removed
+// when audit.DeliveryReporter was deleted alongside Metrics.RecordDelivery.
 
 // TestSyslogOutput_ImplementsOutputMetricsReceiver was removed in
 // #696 along with the OutputMetricsReceiver interface. Per-output

@@ -169,13 +169,6 @@ func NewMockMetrics() *MockMetrics {
 	}
 }
 
-// RecordDelivery satisfies audit.Metrics.
-func (m *MockMetrics) RecordDelivery(output string, status audit.EventStatus) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Events[output+":"+string(status)]++
-}
-
 // RecordOutputError satisfies audit.Metrics.
 func (m *MockMetrics) RecordOutputError(output string) {
 	m.mu.Lock()
@@ -287,10 +280,10 @@ type MockOutputMetrics struct { //nolint:govet // fieldalignment: readability pr
 }
 
 // RecordDrop satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordDrop() {
+func (m *MockOutputMetrics) RecordDrop(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.drops++
+	m.drops += count
 }
 
 // RecordFlush satisfies audit.OutputMetrics.
@@ -302,10 +295,10 @@ func (m *MockOutputMetrics) RecordFlush(_ int, dur time.Duration) {
 }
 
 // RecordError satisfies audit.OutputMetrics.
-func (m *MockOutputMetrics) RecordError() {
+func (m *MockOutputMetrics) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errors++
+	m.errors += count
 }
 
 // RecordRetry satisfies audit.OutputMetrics.

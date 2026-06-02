@@ -89,20 +89,15 @@ type DestinationKeyer interface {
 	DestinationKey() string
 }
 
-// DeliveryReporter is an optional interface that [Output] implementations
-// may satisfy to indicate they handle their own delivery metrics
-// reporting. When satisfied and [DeliveryReporter.ReportsDelivery]
-// returns true, the core auditor skips its default per-event
-// [Metrics.RecordDelivery] calls for that output — the output is
-// responsible for calling them after actual delivery.
+// Note: the deprecated DeliveryReporter interface (which let outputs
+// opt out of core RecordDelivery double-counting) was removed in #894
+// alongside Metrics.RecordDelivery itself. Per-output delivery counts
+// are now derived from [OutputMetrics.RecordFlush] batchSize sums;
+// per-output error counts come from [OutputMetrics.RecordError]
+// (which now takes an event count). See ADR 0005 for the rationale.
 //
-// Not to be confused with [LastDeliveryReporter] — that interface
-// reports a single timestamp for /healthz staleness probes; this
-// one controls per-event metrics dispatch (success / error /
-// filtered).
-type DeliveryReporter interface {
-	ReportsDelivery() bool
-}
+// [LastDeliveryReporter] is unrelated and still supported — it
+// reports a single timestamp for /healthz staleness probes.
 
 // EventMetadata carries per-event context for outputs that need
 // structured access to framework fields (e.g., for Loki labels or
@@ -260,9 +255,9 @@ type FrameworkContext struct { //nolint:govet // fieldalignment: readability pre
 // detect silently-failing async outputs whose own buffer is dropping
 // events while the core auditor queue stays low.
 //
-// Not to be confused with [DeliveryReporter] — that interface
-// controls per-event metrics dispatch (success / error / filtered);
-// this one reports a single timestamp for staleness probes.
+// Reports a single timestamp for staleness probes; unrelated to the
+// per-output OutputMetrics surface, which carries the live delivery
+// counters (RecordFlush / RecordError / RecordDrop).
 //
 // LastDeliveryNanos returns the wall-clock nanos of the last
 // successful end-to-end delivery (NOT the moment [Output.Write]

@@ -42,7 +42,11 @@ func NewOutputMetricsRecorder() *OutputMetricsRecorder {
 }
 
 // RecordDrop implements [audit.OutputMetrics].
-func (m *OutputMetricsRecorder) RecordDrop() { m.mu.Lock(); m.drops++; m.mu.Unlock() }
+func (m *OutputMetricsRecorder) RecordDrop(count int) {
+	m.mu.Lock()
+	m.drops += count
+	m.mu.Unlock()
+}
 
 // RecordFlush implements [audit.OutputMetrics].
 func (m *OutputMetricsRecorder) RecordFlush(_ int, d time.Duration) {
@@ -53,7 +57,11 @@ func (m *OutputMetricsRecorder) RecordFlush(_ int, d time.Duration) {
 }
 
 // RecordError implements [audit.OutputMetrics].
-func (m *OutputMetricsRecorder) RecordError() { m.mu.Lock(); m.errors++; m.mu.Unlock() }
+func (m *OutputMetricsRecorder) RecordError(count int) {
+	m.mu.Lock()
+	m.errors += count
+	m.mu.Unlock()
+}
 
 // RecordRetry implements [audit.OutputMetrics].
 func (m *OutputMetricsRecorder) RecordRetry(_ int) { m.mu.Lock(); m.retries++; m.mu.Unlock() }

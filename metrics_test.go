@@ -18,70 +18,16 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/axonops/audit"
 )
 
-// TestEventStatus_WireFormat_Stable is the named lock test for
-// issue #586. The underlying string value of each EventStatus
-// constant is part of the library's downstream-metric wire contract:
-// Prometheus queries, OTel collectors, and alerting rules all match
-// against these literal strings. If a future PR changes
-// `EventSuccess` or `EventError` to emit a different byte sequence,
-// this test MUST fail loudly before the change lands.
-//
-// The values here are documented in godoc and in the CHANGELOG
-// migration recipe for #586. DO NOT relax this test — update the
-// docs and the CHANGELOG instead, and treat it as a breaking
-// change.
-func TestEventStatus_WireFormat_Stable(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		status audit.EventStatus
-		want   string
-	}{
-		{"EventSuccess", audit.EventSuccess, "success"},
-		{"EventError", audit.EventError, "error"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, string(tt.status),
-				"EventStatus wire value MUST NOT change — see TestEventStatus_WireFormat_Stable godoc")
-		})
-	}
-}
-
-// TestEventStatus_TypeCompatibility verifies that passing a
-// string literal directly to [audit.Metrics.RecordDelivery] is a
-// compile error — the status parameter is typed.
-func TestEventStatus_TypeCompatibility(t *testing.T) {
-	t.Parallel()
-
-	// Compile-time assertion: these lines compile because
-	// EventSuccess/EventError are audit.EventStatus-typed.
-	status := audit.EventSuccess
-	assert.Equal(t, audit.EventSuccess, status)
-
-	// Untyped string conversion works explicitly.
-	var literal audit.EventStatus = "success"
-	assert.Equal(t, audit.EventSuccess, literal,
-		"typed string literal equality")
-}
-
-// TestNoOpMetrics_RecordDelivery_AcceptsTypedStatus proves that
-// [audit.NoOpMetrics] compiles with the typed signature.
-func TestNoOpMetrics_RecordDelivery_AcceptsTypedStatus(t *testing.T) {
-	t.Parallel()
-
-	var m audit.Metrics = audit.NoOpMetrics{}
-	// No-op — just needs to compile and not panic.
-	m.RecordDelivery("some-output", audit.EventSuccess)
-	m.RecordDelivery("some-output", audit.EventError)
-}
+// Note: TestEventStatus_WireFormat_Stable, TestEventStatus_TypeCompatibility,
+// and TestNoOpMetrics_RecordDelivery_AcceptsTypedStatus removed in #894
+// alongside audit.EventStatus / audit.EventSuccess / audit.EventError /
+// audit.Metrics.RecordDelivery. Per-output delivery counts now flow
+// through OutputMetrics.RecordFlush (batchSize sum) and OutputMetrics
+// .RecordError (event count), which have their own coverage in
+// audittest/output_metrics_test.go and per-output integration tests.
 
 // TestNoOpMetrics_AllMethodsArePresent reflects over the
 // [audit.Metrics] interface method set and asserts that

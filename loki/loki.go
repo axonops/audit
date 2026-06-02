@@ -42,7 +42,6 @@ const dropWarnInterval = 10 * time.Second
 var (
 	_ audit.Output           = (*Output)(nil)
 	_ audit.MetadataWriter   = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
 	_ audit.DestinationKeyer = (*Output)(nil)
 )
 
@@ -96,7 +95,7 @@ type frameworkFields struct { //nolint:govet // fieldalignment: readability pref
 
 // Output pushes audit events to a Grafana Loki instance via the HTTP
 // Push API. It implements [audit.Output], [audit.MetadataWriter],
-// [audit.DeliveryReporter], and [audit.DestinationKeyer].
+// and [audit.DestinationKeyer].
 //
 // Events are buffered and flushed in batches based on count, byte
 // size, or time interval — whichever threshold is reached first.
@@ -289,7 +288,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		// consistency across all self-reporting outputs (B-25).
 		// RecordDelivery(EventError) remains for retries-exhausted
 		// failures in http.go where delivery WAS attempted.
-		o.outputMetrics.RecordDrop()
+		o.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)
 	}
@@ -308,7 +307,7 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 		})
 		// Buffer drops counted via OutputMetrics.RecordDrop only — see
 		// B-25 note above.
-		o.outputMetrics.RecordDrop()
+		o.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -356,11 +355,6 @@ func (o *Output) Close() error {
 	o.client.CloseIdleConnections()
 	return nil
 }
-
-// ReportsDelivery returns true, indicating that Output reports
-// its own delivery metrics from the batch goroutine after actual HTTP
-// delivery, not from the Write enqueue path.
-func (o *Output) ReportsDelivery() bool { return true }
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx push response, or 0 if no batch has yet been delivered.

@@ -520,16 +520,8 @@ func TestOutput_Name_ReturnsCachedValue(t *testing.T) {
 	assert.True(t, strings.HasPrefix(n1, "splunk:"))
 }
 
-// TestOutput_ReportsDelivery_True — Output implements
-// audit.DeliveryReporter and reports true so the core pipeline
-// does not double-record metrics.
-func TestOutput_ReportsDelivery_True(t *testing.T) {
-	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL))
-	require.NoError(t, err)
-	defer func() { _ = out.Close() }()
-	assert.True(t, out.ReportsDelivery())
-}
+// Note (#894): TestOutput_ReportsDelivery_True removed when
+// audit.DeliveryReporter was deleted alongside Metrics.RecordDelivery.
 
 // TestOutput_LastDeliveryAge_ZeroBeforeFirstSuccess — the
 // LastDeliveryReporter.LastDeliveryNanos starts at 0 until the first

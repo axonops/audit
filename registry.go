@@ -152,8 +152,7 @@ var (
 // namedOutput wraps an [Output] to override its [Output.Name] method
 // with a consumer-chosen name from the YAML config. All other methods
 // delegate to the inner output, including the optional interfaces
-// [MetadataWriter], [DestinationKeyer], [DeliveryReporter], and
-// [LastDeliveryReporter].
+// [MetadataWriter], [DestinationKeyer], and [LastDeliveryReporter].
 type namedOutput struct {
 	Output
 	outputName string
@@ -171,16 +170,6 @@ func (n *namedOutput) DestinationKey() string {
 		return dk.DestinationKey()
 	}
 	return ""
-}
-
-// ReportsDelivery forwards to the inner output if it implements
-// [DeliveryReporter]. This ensures the core auditor correctly skips
-// per-event metrics for self-reporting outputs like webhook.
-func (n *namedOutput) ReportsDelivery() bool {
-	if dr, ok := n.Output.(DeliveryReporter); ok {
-		return dr.ReportsDelivery()
-	}
-	return false
 }
 
 // WriteWithMetadata forwards to the inner output if it implements
@@ -215,12 +204,11 @@ func (n *namedOutput) LastDeliveryNanos() int64 {
 // [WithOutputs] or [WithNamedOutput] directly.
 //
 // The returned output always satisfies [DestinationKeyer],
-// [DeliveryReporter], [MetadataWriter], and [LastDeliveryReporter]
-// regardless of the inner output. When the inner output does not
-// implement these interfaces, the wrapper returns zero-value
-// behaviour: empty string for DestinationKey, false for
-// ReportsDelivery, delegation to Write for WriteWithMetadata, and 0
-// for LastDeliveryNanos.
+// [MetadataWriter], and [LastDeliveryReporter] regardless of the
+// inner output. When the inner output does not implement these
+// interfaces, the wrapper returns zero-value behaviour: empty string
+// for DestinationKey, delegation to Write for WriteWithMetadata, and
+// 0 for LastDeliveryNanos.
 func WrapOutput(inner Output, name string) Output {
 	return &namedOutput{Output: inner, outputName: name}
 }

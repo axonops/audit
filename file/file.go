@@ -32,7 +32,6 @@ import (
 var (
 	_ audit.Output           = (*Output)(nil)
 	_ audit.DestinationKeyer = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
 )
 
 const (
@@ -377,7 +376,7 @@ func (f *Output) Write(data []byte) error {
 				"dropped", dropped,
 				"buffer_size", cap(f.ch))
 		})
-		f.outputMetrics.RecordDrop()
+		f.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -417,11 +416,6 @@ func (f *Output) Close() error {
 	}
 	return nil
 }
-
-// ReportsDelivery returns true, indicating that Output reports its
-// own delivery metrics from the background writeLoop after actual
-// file I/O, not from the Write enqueue path.
-func (f *Output) ReportsDelivery() bool { return true }
 
 // maxBatch is the upper bound on events coalesced into a single
 // Writev call. Sized to 256 per the #510 performance review: 1024
@@ -484,7 +478,7 @@ func (f *Output) writeBatch(batch [][]byte) {
 			logger.Error("audit: output file: panic recovered",
 				"panic", r,
 				"stack", string(buf[:n]))
-			om.RecordError()
+			om.RecordError(len(batch))
 		}
 	}()
 
@@ -499,7 +493,7 @@ func (f *Output) writeBatch(batch [][]byte) {
 	if _, err := f.writer.Writev(batch); err != nil {
 		logger.Error("audit: output file: delivery failed",
 			"error", err, "path", f.path, "batch_size", len(batch))
-		om.RecordError()
+		om.RecordError(len(batch))
 		return
 	}
 	// fsync-each-batch (#678). When configured, fsync(2) before
@@ -510,7 +504,7 @@ func (f *Output) writeBatch(batch [][]byte) {
 		if err := f.writer.Sync(); err != nil {
 			logger.Error("audit: output file: sync failed",
 				"error", err, "path", f.path, "batch_size", len(batch))
-			om.RecordError()
+			om.RecordError(len(batch))
 			return
 		}
 	}

@@ -274,7 +274,7 @@ type recordingOutputMetrics struct {
 }
 
 func (r *recordingOutputMetrics) RecordFlush(_ int, _ time.Duration) { r.flushes.Add(1) }
-func (r *recordingOutputMetrics) RecordDrop()                        { r.drops.Add(1) }
+func (r *recordingOutputMetrics) RecordDrop(count int)               { r.drops.Add(int64(count)) }
 
 // registerSplunkSteps wires the Splunk step bindings into the godog
 // runner. Called from the central context registration.

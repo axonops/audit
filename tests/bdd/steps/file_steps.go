@@ -706,10 +706,10 @@ func (m *MockFileMetrics) RecordRotation(_ string) {
 // on every async write failure (see file/file.go writeBatch), so the
 // override is a pure observability extension — no production code
 // change.
-func (m *MockFileMetrics) RecordError() {
+func (m *MockFileMetrics) RecordError(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.errors++
+	m.errors += count
 }
 
 // ErrorCount returns the number of RecordError calls observed.

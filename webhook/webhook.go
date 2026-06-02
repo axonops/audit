@@ -48,7 +48,6 @@ const dropWarnInterval = 10 * time.Second
 // Compile-time assertions.
 var (
 	_ audit.Output            = (*Output)(nil)
-	_ audit.DeliveryReporter  = (*Output)(nil)
 	_ audit.DestinationKeyer  = (*Output)(nil)
 	_ audit.ContentTypeSetter = (*Output)(nil)
 )
@@ -288,7 +287,7 @@ func (w *Output) Write(data []byte) error {
 		// only — not via pipeline-level Metrics.RecordDelivery. This
 		// matches file + syslog behaviour for consistency across all
 		// self-reporting outputs (B-25).
-		w.outputMetrics.RecordDrop()
+		w.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)
 	}
@@ -307,7 +306,7 @@ func (w *Output) Write(data []byte) error {
 		})
 		// Drops are counted via per-output OutputMetrics.RecordDrop
 		// only — see B-25 note above.
-		w.outputMetrics.RecordDrop()
+		w.outputMetrics.RecordDrop(1)
 		return nil // non-blocking — do not return error to drain goroutine
 	}
 }
@@ -350,11 +349,6 @@ func (w *Output) Close() error {
 	w.client.CloseIdleConnections()
 	return nil
 }
-
-// ReportsDelivery returns true, indicating that Output reports
-// its own delivery metrics from the batch goroutine after actual HTTP
-// delivery, not from the Write enqueue path.
-func (w *Output) ReportsDelivery() bool { return true }
 
 // LastDeliveryNanos returns the wall-clock UnixNano of the most recent
 // HTTP 2xx response, or 0 if no batch has yet been delivered. Updated

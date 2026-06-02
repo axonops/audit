@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **`splunk.ValidateCloudStack` removed from the public API.** The
+  function is now unexported as `splunk.validateCloudStack` — it is
+  an internal helper called by `Config.Validate` when expanding a
+  `splunkcloud://<stack>` URL. Consumers do not need to call it
+  directly: validation runs automatically. There was no external
+  use case; the symbol was exported temporarily to support a
+  black-box test which has now moved to the package-internal test
+  file. (#894)
 - **Constructor signature unification across `webhook`, `loki`, and
   `splunk` output modules.** All three modules previously took a
   positional `metrics audit.Metrics` argument that was almost always

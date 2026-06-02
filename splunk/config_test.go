@@ -241,44 +241,6 @@ func TestValidate_AppliesDefaults(t *testing.T) {
 	assert.True(t, *cfg.Gzip, "Gzip default should be true")
 }
 
-func TestValidateCloudStack(t *testing.T) {
-	tests := []struct {
-		name    string
-		stack   string
-		wantErr bool
-	}{
-		{"acme-prod", "acme-prod", false},
-		{"single char", "a", false},
-		{"63 chars", strings.Repeat("a", 63), false},
-		{"empty rejected", "", true},
-		{"64 chars rejected", strings.Repeat("a", 64), true},
-		{"with dot rejected", "acme.evil.com", true},
-		{"with at sign rejected", "acme@evil", true},
-		{"with slash rejected", "acme/path", true},
-		{"with colon rejected", "acme:1234", true},
-		{"with space rejected", "acme prod", true},
-		{"with hash rejected", "acme#1", true},
-		{"with backslash rejected", "acme\\bad", true},
-		{"with newline rejected", "acme\n", true},
-		{"with cyrillic homograph rejected", "аcme-prod", true}, // Cyrillic 'а'
-		{"starting with hyphen rejected", "-acme", true},
-		{"uppercase rejected", "ACME", true},
-		{"plus sign rejected", "acme+prod", true},
-		{"all digits accepted", "123", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := splunk.ValidateCloudStack(tc.stack)
-			if tc.wantErr {
-				require.Error(t, err)
-				assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 // TestConfig_SplunkCloud_ExpandsCorrectly verifies that a
 // `splunkcloud://<stack>` URL is rewritten in-place by Validate() to
 // the canonical Splunk Cloud HEC URL form.

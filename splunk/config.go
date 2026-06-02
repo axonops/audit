@@ -404,7 +404,7 @@ func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen,gocognit // l
 		if u.Opaque != "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Port() != "" {
 			return fmt.Errorf("%w: splunkcloud:// URL must be the bare form splunkcloud://<stack> with no path, port, query, or fragment", ErrConfigInvalid)
 		}
-		if err := ValidateCloudStack(u.Host); err != nil {
+		if err := validateCloudStack(u.Host); err != nil {
 			return err
 		}
 		// Splunk Cloud HEC presents a public-CA-signed cert and does
@@ -523,11 +523,11 @@ func (c *Config) Validate() error { //nolint:cyclop,gocyclo,funlen,gocognit // l
 	return nil
 }
 
-// ValidateCloudStack returns nil when `stack` matches the Splunk
-// Cloud stack-name shape (`^[a-z0-9][a-z0-9-]{0,62}$`). Used by PR 2's
-// `splunkcloud://<stack>` URL scheme handler; exposed now so PR 1
-// can test the regex independently. Defends against host smuggling.
-func ValidateCloudStack(stack string) error {
+// validateCloudStack returns nil when stack matches the Splunk Cloud
+// stack-name shape (^[a-z0-9][a-z0-9-]{0,62}$). Called by Validate
+// when expanding a splunkcloud://<stack> URL; defends against host
+// smuggling (path/port/query injection via a malformed stack name).
+func validateCloudStack(stack string) error {
 	if !validCloudStack.MatchString(stack) {
 		return fmt.Errorf("%w: splunkcloud stack name %q does not match %s", ErrConfigInvalid, stack, validCloudStack.String())
 	}

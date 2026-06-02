@@ -322,7 +322,6 @@ jobs:
           - module: cmd/audit-gen
             target: test-audit-gen
             flag: audit-gen
-            timeout: 15 # race-detector runtime is ~9-10 min on ubuntu-latest; bump above default 10
 
           - module: cmd/audit-validate
             target: test-audit-validate

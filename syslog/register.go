@@ -59,31 +59,34 @@ func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
 	}
 }
 
-// yamlTLSPolicy maps TLS policy fields from YAML.
-type yamlTLSPolicy struct {
-	AllowTLS12       bool `yaml:"allow_tls12"`
-	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+// yamlTLS groups all TLS configuration for the syslog output under a
+// single `tls:` block. Syslog speaks TCP/TLS, not HTTP, so it has no
+// equivalent of the HTTP outputs' allow_insecure_http /
+// allow_private_ranges SSRF flags — those would be meaningless here.
+type yamlTLS struct {
+	CA               string `yaml:"ca"`
+	Cert             string `yaml:"cert"`
+	Key              string `yaml:"key"`
+	AllowTLS12       bool   `yaml:"allow_tls12"`
+	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
 
 // yamlSyslogConfig is the YAML-specific representation of syslog
 // output configuration. Maps snake_case YAML fields to the Go
 // Config struct.
 type yamlSyslogConfig struct { //nolint:govet // fieldalignment: readability preferred
-	Network       string         `yaml:"network"`
-	Address       string         `yaml:"address"`
-	AppName       string         `yaml:"app_name"`
-	Facility      string         `yaml:"facility"`
-	TLSCert       string         `yaml:"tls_cert"`
-	TLSKey        string         `yaml:"tls_key"`
-	TLSCA         string         `yaml:"tls_ca"`
-	TLSPolicy     *yamlTLSPolicy `yaml:"tls_policy"`
-	Hostname      string         `yaml:"hostname"`
-	MaxRetries    int            `yaml:"max_retries"`
-	BufferSize    *int           `yaml:"buffer_size"`
-	BatchSize     *int           `yaml:"batch_size"`
-	FlushInterval string         `yaml:"flush_interval"`
-	MaxBatchBytes *int           `yaml:"max_batch_bytes"`
-	MaxEventBytes *int           `yaml:"max_event_bytes"`
+	Network       string   `yaml:"network"`
+	Address       string   `yaml:"address"`
+	AppName       string   `yaml:"app_name"`
+	Facility      string   `yaml:"facility"`
+	TLS           *yamlTLS `yaml:"tls"`
+	Hostname      string   `yaml:"hostname"`
+	MaxRetries    int      `yaml:"max_retries"`
+	BufferSize    *int     `yaml:"buffer_size"`
+	BatchSize     *int     `yaml:"batch_size"`
+	FlushInterval string   `yaml:"flush_interval"`
+	MaxBatchBytes *int     `yaml:"max_batch_bytes"`
+	MaxEventBytes *int     `yaml:"max_event_bytes"`
 	// VerifyOnStartup is the positive YAML surface for the inverted
 	// Config.DisableStartupVerification field. A nil pointer (key
 	// omitted) maps to verification ON; an explicit `true` keeps it
@@ -150,9 +153,6 @@ func yamlToSyslogConfig(name string, yc *yamlSyslogConfig) (*Config, error) {
 		Address:       yc.Address,
 		AppName:       yc.AppName,
 		Facility:      yc.Facility,
-		TLSCert:       yc.TLSCert,
-		TLSKey:        yc.TLSKey,
-		TLSCA:         yc.TLSCA,
 		Hostname:      yc.Hostname,
 		MaxRetries:    yc.MaxRetries,
 		BufferSize:    intPtrOrDefault(yc.BufferSize, DefaultBufferSize),
@@ -179,10 +179,13 @@ func yamlToSyslogConfig(name string, yc *yamlSyslogConfig) (*Config, error) {
 	if yc.VerifyOnStartup != nil && !*yc.VerifyOnStartup {
 		cfg.DisableStartupVerification = true
 	}
-	if yc.TLSPolicy != nil {
+	if yc.TLS != nil {
+		cfg.TLSCert = yc.TLS.Cert
+		cfg.TLSKey = yc.TLS.Key
+		cfg.TLSCA = yc.TLS.CA
 		cfg.TLSPolicy = &audit.TLSPolicy{
-			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: yc.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       yc.TLS.AllowTLS12,
+			AllowWeakCiphers: yc.TLS.AllowWeakCiphers,
 		}
 	}
 	return cfg, nil

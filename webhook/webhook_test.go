@@ -80,7 +80,7 @@ func TestValidateConfig(t *testing.T) {
 				URL:     "https://example.com/webhook",
 				TLSCert: "/tmp/cert.pem",
 			},
-			wantErr: "tls_cert and tls_key must both be set",
+			wantErr: "tls.cert and tls.key must both be set",
 		},
 		{
 			name: "key without cert",
@@ -88,7 +88,7 @@ func TestValidateConfig(t *testing.T) {
 				URL:    "https://example.com/webhook",
 				TLSKey: "/tmp/key.pem",
 			},
-			wantErr: "tls_cert and tls_key must both be set",
+			wantErr: "tls.cert and tls.key must both be set",
 		},
 		{
 			name: "batch size exceeds max",

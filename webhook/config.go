@@ -371,7 +371,7 @@ func validateWebhookConfig(cfg *Config) error {
 // validateWebhookTLSFiles checks TLS cert/key pairing and file existence.
 func validateWebhookTLSFiles(cfg *Config) error {
 	if (cfg.TLSCert != "") != (cfg.TLSKey != "") {
-		return fmt.Errorf("%w: webhook tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+		return fmt.Errorf("%w: webhook: tls.cert and tls.key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 	for _, path := range []string{cfg.TLSCert, cfg.TLSKey, cfg.TLSCA} {
 		if path != "" {

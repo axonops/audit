@@ -67,7 +67,7 @@ and read in order within it.
 | 11 | [event-routing](11-event-routing/) | Category and severity-based routing in YAML |
 | 12 | [sensitivity-labels](12-sensitivity-labels/) | Per-output field stripping with PII and financial labels |
 | 13 | [hmac-integrity](13-hmac-integrity/) | Per-output HMAC tamper detection — selective vs global |
-| 14 | [tls-policy](14-tls-policy/) | Global and per-output TLS policy configuration |
+| 14 | [tls-policy](14-tls-policy/) | Per-output TLS configuration via the nested `tls:` block |
 | 15 | [buffering](15-buffering/) | Two-level buffering, ErrQueueFull, per-output drops, tuning |
 | 16 | [middleware](16-middleware/) | Automatic HTTP audit logging with Hints |
 | 17 | [health-endpoint](17-health-endpoint/) | `/healthz` and `/readyz` HTTP handlers driven by Auditor introspection |

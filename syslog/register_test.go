@@ -146,7 +146,7 @@ func TestSyslogFactory_EmptyConfig_ReturnsError(t *testing.T) {
 }
 
 func TestSyslogFactory_WithTLSPolicy(t *testing.T) {
-	yaml := []byte("network: tcp+tls\naddress: localhost:6514\ntls_policy:\n  allow_tls12: true\n")
+	yaml := []byte("network: tcp+tls\naddress: localhost:6514\ntls:\n  allow_tls12: true\n")
 
 	factory := audit.LookupOutputFactory("syslog")
 	require.NotNil(t, factory)

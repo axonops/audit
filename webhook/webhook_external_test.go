@@ -2189,7 +2189,7 @@ func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
 
 	yaml := []byte(
 		"url: https://example.com/events\n" +
-			"tls_policy:\n" +
+			"tls:\n" +
 			"  allow_tls12: true\n" +
 			"  allow_weak_ciphers: true\n" +
 			"batch_size: 1\nflush_interval: 1s\ntimeout: 5s\n",

@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **YAML TLS configuration restructured under a single `tls:` block
+  for every output (webhook, loki, splunk, syslog) and every secret
+  provider (vault, openbao).** The top-level `tls_ca`, `tls_cert`,
+  `tls_key`, `tls_policy` keys are removed; they move under each
+  block's `tls:` sub-block as `ca`, `cert`, `key`, `allow_tls12`,
+  `allow_weak_ciphers`. Syslog's `tls:` block omits
+  `allow_insecure_http` / `allow_private_ranges` (HTTP-protocol
+  concepts that don't apply to TCP/TLS syslog). The
+  `allow_insecure_http` and `allow_private_ranges` flags stay at
+  each HTTP output's top level — they are HTTP/network policy, not
+  TLS, and nesting them inside `tls:` would be a category error.
+  Legacy flat keys are rejected by `yaml.DisallowUnknownField()` with
+  an actionable error. See [`docs/output-configuration.md`](docs/output-configuration.md#per-output-tls)
+  and [`examples/14-tls-policy/`](examples/14-tls-policy/). (#894)
 - **`splunk.ValidateCloudStack` removed from the public API.** The
   function is now unexported as `splunk.validateCloudStack` — it is
   an internal helper called by `Config.Validate` when expanding a

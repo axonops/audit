@@ -79,14 +79,14 @@ Feature: Syslog Output
     When I try to create a syslog output with TLS cert but no key
     Then the syslog construction should fail with exact error:
       """
-      audit: config validation failed: syslog tls_cert and tls_key must both be set or both empty
+      audit: config validation failed: syslog: tls.cert and tls.key must both be set or both empty
       """
 
   Scenario: TLS key without cert is rejected with exact error
     When I try to create a syslog output with TLS key but no cert
     Then the syslog construction should fail with exact error:
       """
-      audit: config validation failed: syslog tls_cert and tls_key must both be set or both empty
+      audit: config validation failed: syslog: tls.cert and tls.key must both be set or both empty
       """
 
   # --- Config validation ---

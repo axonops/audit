@@ -203,7 +203,7 @@ feature-detects at startup and refuses to launch if ACK is disabled
 ## Splunk Cloud Specifics
 
 - **No mTLS.** Splunk Cloud HEC presents a public-CA-signed cert.
-  Setting `tls_cert`/`tls_key`/`tls_ca` with a `splunkcloud://`
+  Setting `tls.cert`/`tls.key`/`tls.ca` with a `splunkcloud://`
   URL is rejected at config validation.
 - **Token visibility.** HEC tokens for Splunk Cloud must be created
   in the Splunk Cloud Web UI (not via REST API) for some
@@ -242,7 +242,9 @@ exhaustive field documentation. The most-frequently-used fields:
 | `ack_mode` | `off` | `off` / `best_effort` / `required` |
 | `ack_poll_interval` | `5s` | How often to poll `/services/collector/ack` |
 | `ack_resend_window` | `60s` | Required-mode resend timer |
-| `tls_policy.allow_tls12` | `false` | Required for some legacy Splunk Enterprise builds |
+| `tls.allow_tls12` | `false` | Required for some legacy Splunk Enterprise builds. See [Per-Output TLS in output-configuration.md](output-configuration.md#per-output-tls) for the full `tls:` block. |
+| `allow_insecure_http` | `false` | Permit `http://` URLs. **MUST NOT** be `true` in production. Top-level — not TLS. |
+| `allow_private_ranges` | `false` | Allow private/loopback IP ranges (disables SSRF protection). Top-level — not TLS. |
 | `verify_on_startup` | `true` | Run `/services/collector/health` probe at construction |
 
 ---
@@ -359,7 +361,7 @@ against the generated reference TA; it is gated by the
 | Error | Cause | Fix |
 |---|---|---|
 | `ErrConfigInvalid: URL scheme http is rejected unless AllowInsecureHTTP=true` | `http://` URL configured | Use `https://`, or set `allow_insecure_http: true` for development. |
-| `ErrConfigInvalid: splunkcloud:// does not support custom TLS material` | `splunkcloud://` + `tls_cert`/`tls_key`/`tls_ca` set | Remove the TLS material — Splunk Cloud uses public-CA TLS. |
+| `ErrConfigInvalid: splunkcloud:// does not support custom TLS material` | `splunkcloud://` + `tls.cert`/`tls.key`/`tls.ca` set | Remove the TLS material — Splunk Cloud uses public-CA TLS. |
 | `ErrConfigInvalid: Token must not start with "Splunk "` | Token includes the auth-scheme prefix | Strip the prefix from your token value; the library adds it. |
 | `ErrHealthCheckFailed` | `/services/collector/health` returned non-200 at startup | Verify the HEC port is reachable, the token is valid, and the SSL mode matches (`SPLUNK_HEC_SSL` server setting). |
 | `ErrAckDisabled` | `ack_mode != off` but the token's channel has ACK disabled | Enable ACK on the HEC token in Splunk Web. |

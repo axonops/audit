@@ -64,10 +64,7 @@ type yamlLokiConfig struct { //nolint:govet // fieldalignment: readability prefe
 	TenantID   string            `yaml:"tenant_id"`
 	Headers    map[string]string `yaml:"headers"`
 	Labels     *yamlLabelConfig  `yaml:"labels"`
-	TLSCA      string            `yaml:"tls_ca"`
-	TLSCert    string            `yaml:"tls_cert"`
-	TLSKey     string            `yaml:"tls_key"`
-	TLSPolicy  *yamlTLSPolicy    `yaml:"tls_policy"`
+	TLS        *yamlTLS          `yaml:"tls"`
 	BatchSize  *int              `yaml:"batch_size"`
 	MaxBatchB  *int              `yaml:"max_batch_bytes"`
 	MaxEventB  *int              `yaml:"max_event_bytes"`
@@ -96,9 +93,17 @@ type yamlLabelConfig struct {
 	Dynamic map[string]bool   `yaml:"dynamic"`
 }
 
-type yamlTLSPolicy struct {
-	AllowTLS12       bool `yaml:"allow_tls12"`
-	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+// yamlTLS groups all TLS configuration under a single `tls:` block.
+// Cert material (ca/cert/key) and policy flags (allow_tls12,
+// allow_weak_ciphers) live together; SSRF / transport-policy flags
+// (allow_insecure_http, allow_private_ranges) stay at the output's
+// top level — they are not TLS concerns.
+type yamlTLS struct {
+	CA               string `yaml:"ca"`
+	Cert             string `yaml:"cert"`
+	Key              string `yaml:"key"`
+	AllowTLS12       bool   `yaml:"allow_tls12"`
+	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
 
 // yamlDuration is a time.Duration that unmarshals from a YAML string.
@@ -179,9 +184,6 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 		BearerToken:                yc.BearerTkn,
 		TenantID:                   yc.TenantID,
 		Headers:                    yc.Headers,
-		TLSCA:                      yc.TLSCA,
-		TLSCert:                    yc.TLSCert,
-		TLSKey:                     yc.TLSKey,
 		BatchSize:                  intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
 		MaxBatchBytes:              intPtrOrDefault(yc.MaxBatchB, DefaultMaxBatchBytes),
 		MaxEventBytes:              intPtrOrDefault(yc.MaxEventB, DefaultMaxEventBytes),
@@ -206,10 +208,13 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 		}
 	}
 
-	if yc.TLSPolicy != nil {
+	if yc.TLS != nil {
+		cfg.TLSCA = yc.TLS.CA
+		cfg.TLSCert = yc.TLS.Cert
+		cfg.TLSKey = yc.TLS.Key
 		cfg.TLSPolicy = &audit.TLSPolicy{
-			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: yc.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       yc.TLS.AllowTLS12,
+			AllowWeakCiphers: yc.TLS.AllowWeakCiphers,
 		}
 	}
 

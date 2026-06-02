@@ -116,10 +116,10 @@ server is unreachable, `New()` (or `outputconfig.Load()`) fails.
 |-------|-----|
 | **Server not running** | Start the syslog server before the application |
 | **Wrong address/port** | Check `syslog.address` in your output YAML |
-| **TLS certificate mismatch** | Verify `tls_ca` points to the correct CA that signed the server's certificate |
-| **mTLS client cert rejected** | Verify `tls_cert` and `tls_key` are valid and accepted by the server |
+| **TLS certificate mismatch** | Verify `tls.ca` points to the correct CA that signed the server's certificate |
+| **mTLS client cert rejected** | Verify `tls.cert` and `tls.key` are valid and accepted by the server |
 | **Firewall blocking** | Check network connectivity to the syslog address and port |
-| **TLS version mismatch** | If the server only supports TLS 1.2, set `tls_policy.allow_tls12: true` |
+| **TLS version mismatch** | If the server only supports TLS 1.2, set `tls.allow_tls12: true` |
 
 After startup, TCP and TLS connections are re-established
 automatically on failure (up to `max_retries` attempts, default: 10).
@@ -154,7 +154,7 @@ values at construction and rejects CRLF injection. Common patterns:
 | **Bearer token** | `Authorization: "Bearer ${WEBHOOK_TOKEN}"` | Most common for SaaS receivers (Datadog, Splunk HEC, etc.). |
 | **Basic auth** | `Authorization: "Basic ${WEBHOOK_BASIC_B64}"` | Pre-encode `user:pass` as base64 outside the YAML so the secret is not literal. |
 | **API key header** | `X-API-Key: "${WEBHOOK_API_KEY}"` | The vendor's docs will name the header; common names: `X-Api-Key`, `X-Auth-Token`, `Apikey`. |
-| **mTLS** | (no `headers:` entry) — use `tls_ca`, `tls_client_cert`, `tls_client_key` | The webhook output's TLS block presents a client certificate. See [Output Configuration](output-configuration.md). |
+| **mTLS** | (no `headers:` entry) — use `tls.ca`, `tls.cert`, `tls.key` | The webhook output's `tls:` block presents a client certificate. See [Output Configuration](output-configuration.md). |
 | **HMAC body signature** | `X-Signature: "..."` — must be computed per request | The library does NOT sign request bodies. For receivers that require per-body HMAC (e.g. GitHub-style `X-Hub-Signature-256`), front the audit webhook with a small signing reverse-proxy that wraps each request, or open an issue if first-class support would help your use case. |
 | **Custom / vendor-specific** | Any single header value the receiver requires | Use any header name. Validation rejects CRLF/NUL/control-character values. |
 

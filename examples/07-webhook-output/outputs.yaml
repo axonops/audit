@@ -30,6 +30,7 @@ outputs:
       # url: "https://ingest.example.com/audit"
       # headers:
       #   Authorization: "Bearer ${WEBHOOK_TOKEN}"
-      # tls_ca: "/etc/audit/ca.pem"
-      # tls_cert: "/etc/audit/client.pem"
-      # tls_key: "/etc/audit/client-key.pem"
+      # tls:
+      #   ca: "/etc/audit/ca.pem"
+      #   cert: "/etc/audit/client.pem"
+      #   key: "/etc/audit/client-key.pem"

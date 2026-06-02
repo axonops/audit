@@ -226,7 +226,7 @@ func TestWebhookFactory_WithHeaders(t *testing.T) {
 }
 
 func TestWebhookFactory_WithTLSPolicy(t *testing.T) {
-	yaml := []byte("url: https://example.com/events\ntls_policy:\n  allow_tls12: true\n")
+	yaml := []byte("url: https://example.com/events\ntls:\n  allow_tls12: true\n")
 
 	factory := audit.LookupOutputFactory("webhook")
 	require.NotNil(t, factory)

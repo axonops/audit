@@ -15,6 +15,7 @@
 package splunk_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -125,6 +126,53 @@ func TestFactory_MalformedYAML(t *testing.T) {
 		"YAML decode error should name the output: %q", err.Error())
 }
 
+// TestFactory_RejectsUnknownTLSField — the strict YAML decoder
+// rejects typos inside the new `tls:` block. Without strict
+// decoding a typo like `tls.cret:` would silently disable mTLS
+// (cert path lost), downgrading TLS posture from what the
+// operator intended. Symmetry with webhook/loki/syslog which
+// have always used DisallowUnknownField.
+func TestFactory_RejectsUnknownTLSField(t *testing.T) {
+	t.Parallel()
+	rawYAML := []byte(`
+url: https://splunk.example.com:8088
+token: tkn
+verify_on_startup: false
+tls:
+  ca: /etc/audit/ca.pem
+  cret: /etc/audit/client.pem
+`)
+	factory := audit.LookupOutputFactory("splunk")
+	_, err := factory("bad_tls_field", rawYAML, audit.FrameworkContext{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cret",
+		"strict decode should name the unknown field: %q", err.Error())
+}
+
+// TestFactory_RejectsLegacyFlatTLSKeys — the migration from flat
+// keys (tls_cert/tls_key/tls_policy) to a nested `tls:` block must
+// fail loudly when an operator still has the legacy form, instead
+// of silently dropping the cert material.
+func TestFactory_RejectsLegacyFlatTLSKeys(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_policy"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			rawYAML := []byte(fmt.Sprintf(`
+url: https://splunk.example.com:8088
+token: tkn
+verify_on_startup: false
+%s: /etc/audit/some.pem
+`, key))
+			factory := audit.LookupOutputFactory("splunk")
+			_, err := factory("legacy_tls_"+key, rawYAML, audit.FrameworkContext{})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), key,
+				"strict decode should name the legacy key %q: %q", key, err.Error())
+		})
+	}
+}
+
 // TestFactory_BadDuration — an unparseable duration field is
 // surfaced with the field name and the offending value.
 func TestFactory_BadDuration(t *testing.T) {
@@ -190,7 +238,7 @@ verify_on_startup: false
 	require.NoError(t, out.Close())
 }
 
-// TestFactory_TLSPolicyBlock — the nested `tls_policy:` block lands
+// TestFactory_TLSPolicyBlock — the nested `tls:` block lands
 // in cfg.TLSPolicy and survives Validate().
 func TestFactory_TLSPolicyBlock(t *testing.T) {
 	t.Parallel()
@@ -200,7 +248,7 @@ url: ` + stub.URL + `
 token: tkn
 allow_insecure_http: true
 verify_on_startup: false
-tls_policy:
+tls:
   allow_tls12: true
   allow_weak_ciphers: false
 `)

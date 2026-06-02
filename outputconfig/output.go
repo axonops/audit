@@ -234,14 +234,20 @@ func injectStringField(m map[string]any, key, value string) {
 	m[key] = value
 }
 
-// yamlTLSPolicy is the YAML shape of a TLS policy block. It is used
-// by per-provider config parsing in provider_config.go. Each output
-// module (syslog, webhook, loki) declares its own local yamlTLSPolicy
-// type in its register.go; they are not coupled to this one. Root-
-// level tls_policy: was removed in #476.
-type yamlTLSPolicy struct {
-	AllowTLS12       bool `yaml:"allow_tls12"`
-	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+// yamlTLS is the YAML shape of a TLS block. It is used by per-
+// provider config parsing in provider_config.go for the openbao and
+// vault secret providers. Each output module (syslog, webhook, loki,
+// splunk) declares its own local yamlTLS type in its register.go;
+// they are not coupled to this one. Root-level tls_policy: was
+// removed in #476; flat tls_ca/tls_cert/tls_key keys and the
+// tls_policy sub-block (with allow_tls12/allow_weak_ciphers) were
+// folded into the single nested tls: block in #894.
+type yamlTLS struct {
+	CA               string `yaml:"ca"`
+	Cert             string `yaml:"cert"`
+	Key              string `yaml:"key"`
+	AllowTLS12       bool   `yaml:"allow_tls12"`
+	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
 
 func invokeFactory(name string, f *outputFields, globalAppName, globalHost, globalTimezone string, coreMetrics audit.Metrics, omf audit.OutputMetricsFactory, factories map[string]audit.OutputFactory, logger *slog.Logger) (audit.Output, error) {

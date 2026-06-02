@@ -1547,17 +1547,46 @@ outputs:
 	assert.Contains(t, err.Error(), "tls_policy is no longer a top-level key",
 		"error must explicitly state the removal")
 	assert.Contains(t, err.Error(), "syslog, webhook, loki",
-		"error must name the output types that accept per-output tls_policy")
+		"error must name the output types that accept per-output tls")
 	assert.Contains(t, err.Error(), "vault, openbao",
-		"error must name the providers that accept per-provider tls_policy")
+		"error must name the providers that accept per-provider tls")
 	assert.Contains(t, err.Error(), "#476",
 		"error must cite the governing issue for context")
 }
 
+// TestLoad_RootTLSRejected asserts that a root-level tls: key is
+// rejected with the same migration hint as the legacy root-level
+// tls_policy: key. The unified rejection guards against operators
+// trying the new shape at the wrong nesting level after the #894
+// schema unification.
+func TestLoad_RootTLSRejected(t *testing.T) {
+	t.Parallel()
+	data := []byte(`
+version: 1
+app_name: test
+host: test
+tls:
+  ca: /etc/audit/ca.pem
+  allow_tls12: true
+outputs:
+  console:
+    type: stdout
+`)
+	tax := testTaxonomy(t)
+	_, err := outputconfig.Load(context.Background(), data, tax)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, outputconfig.ErrOutputConfigInvalid)
+	assert.Contains(t, err.Error(), "tls_policy is no longer a top-level key",
+		"error must point operators at the per-output tls: block")
+	assert.Contains(t, err.Error(), "#894",
+		"error must cite the schema-unification issue for context")
+}
+
 // TestLoad_PerOutputTLSPolicy_Syslog verifies that syslog's per-output
-// tls_policy block continues to marshal through to the factory after
-// the root-level tls_policy removal (#476). Regression guard for the
-// path operators are now required to use.
+// tls block continues to marshal through to the factory after the
+// root-level tls_policy removal (#476) and the tls schema unification
+// (#894). Regression guard for the path operators are now required
+// to use.
 func TestLoad_PerOutputTLSPolicy_Syslog(t *testing.T) {
 	t.Parallel()
 	var captured atomic.Value
@@ -1576,7 +1605,7 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "localhost:6514"
-      tls_policy:
+      tls:
         allow_tls12: true
 `)
 	tax := testTaxonomy(t)
@@ -1587,7 +1616,7 @@ outputs:
 	raw, ok := captured.Load().(string)
 	require.True(t, ok, "syslog factory must have been invoked")
 	assert.Contains(t, raw, "allow_tls12: true",
-		"per-output tls_policy must marshal through to the factory")
+		"per-output tls block must marshal through to the factory")
 
 	for _, o := range result.OutputMetadata() {
 		_ = o.Output.Close()

@@ -2,35 +2,35 @@
 
 > **Previous:** [13 — HMAC Integrity](../13-hmac-integrity/) |
 > **Next:** [15 — Buffering](../15-buffering/)
-# Example 14: TLS Policy
+# Example 14: TLS
 
-Demonstrates how to configure per-output TLS policy in audit. TLS
-policy controls the minimum TLS version and allowed cipher suites
-for each TLS-enabled output (syslog TCP+TLS, webhook HTTPS, loki
-HTTPS) and each secret provider (vault, openbao).
+Demonstrates how to configure per-output TLS in audit. The single
+`tls:` block on each TLS-capable output groups the cert material
+(CA, cert, key) and the policy flags (TLS version, weak ciphers)
+together. Defaults to TLS 1.3 only.
 
 ## What You'll Learn
 
 1. Why audit defaults to **TLS 1.3 only** and when to change this
-2. How to configure **per-output TLS policy** inside each output block
-3. Why there is **no root-level `tls_policy:` key**
+2. How to configure **per-output TLS** inside each output's `tls:` block
+3. Why there is **no root-level `tls:` key**
 4. What `allow_tls12` and `allow_weak_ciphers` actually do
 5. How to configure **mTLS** (mutual TLS) with client certificates
 
 ## Prerequisites
 
-None — this example uses stdout output to demonstrate the TLS policy
+None — this example uses stdout output to demonstrate the TLS
 configuration without requiring actual TLS connections. This example is
-most useful after reading [07 — Syslog Output](../06-syslog-output/) or
-[08 — Webhook Output](../07-webhook-output/), which show the outputs
-that TLS policy applies to.
+most useful after reading [06 — Syslog Output](../06-syslog-output/) or
+[07 — Webhook Output](../07-webhook-output/), which show the outputs
+that TLS applies to.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | [`main.go`](main.go) | Loads config with TLS policy, demonstrates all 4 policy scenarios programmatically |
-| [`outputs.yaml`](outputs.yaml) | YAML config showing per-output tls_policy with commented production examples |
+| [`outputs.yaml`](outputs.yaml) | YAML config showing per-output `tls:` block with commented production examples |
 | [`taxonomy.yaml`](taxonomy.yaml) | Simple 2-event taxonomy |
 | [`audit_generated.go`](audit_generated.go) | Generated typed builders |
 
@@ -56,7 +56,7 @@ stderr):
 
   TLS 1.2 allowed, secure ciphers:
     MinVersion: TLS 1.2
-    CipherSuites: secure suites only
+    CipherSuites: secure suites only (13 suites)
 
   TLS 1.2 allowed, weak ciphers (NOT recommended):
     MinVersion: TLS 1.2
@@ -81,8 +81,9 @@ configuration:
 - **Cipher suite selection is not configurable** in Go for TLS 1.3 —
   this prevents misconfiguration
 
-If an output or provider does not set `tls_policy`, you get TLS 1.3
-only. This is the correct default for new deployments.
+If an output or provider omits the `tls:` block — or sets it without
+`allow_tls12: true` — you get TLS 1.3 only. This is the correct
+default for new deployments.
 
 ### The Four TLS Policy Configurations
 
@@ -96,34 +97,37 @@ only. This is the correct default for new deployments.
 **Note:** `allow_weak_ciphers` has no effect when `allow_tls12` is
 `false`, because TLS 1.3 cipher suites are not configurable in Go.
 
-### Per-Output Policy
+### Per-Output `tls:` Block
 
-`tls_policy` is configured inside each TLS-capable block — `syslog:`
-(when `network: tcp+tls`), `webhook:` (when `https://`), `loki:`
-(when `https://`), and each secret provider (`vault:`, `openbao:`).
-Each block stands alone; there is no shared root-level default.
+The `tls:` block is configured inside each TLS-capable output —
+`syslog:` (when `network: tcp+tls`), `webhook:` (when `https://`),
+`loki:` (when `https://`), `splunk:` (when `https://`) — and inside
+each secret provider (`vault:`, `openbao:`). Each block stands
+alone; there is no shared root-level default. Cert material and
+policy flags live together inside one block:
 
 ```yaml
 outputs:
-  # No tls_policy block → defaults to TLS 1.3 only.
+  # No tls block → defaults to TLS 1.3 only.
   modern_siem:
     type: syslog
     syslog:
       network: "tcp+tls"
       address: "modern-syslog.internal:6514"
 
-  # Per-output tls_policy for a legacy target.
+  # Per-output tls block for a legacy target.
   legacy_siem:
     type: syslog
     syslog:
       network: "tcp+tls"
       address: "legacy-syslog.internal:6514"
-      tls_policy:
+      tls:
+        ca: "/etc/audit/tls/ca.pem"
         allow_tls12: true           # allow TLS 1.2 for this output only
         allow_weak_ciphers: false   # still use only secure ciphers
 ```
 
-### Why No Root-Level `tls_policy:`?
+### Why No Root-Level `tls:`?
 
 Earlier versions allowed a root-level `tls_policy:` that would
 inherit into every output and provider. That was removed because it
@@ -131,14 +135,16 @@ created a privilege-escalation surface: a permissive policy set for a
 legacy syslog target would silently downgrade the TLS posture of
 secret-provider connections carrying bootstrap credentials.
 
-Setting `tls_policy:` at the top level of `outputs.yaml` now fails
-at startup with an "unknown top-level key" error. Configure
-`tls_policy` inside each affected output or provider block instead.
+Setting `tls:` (or the legacy `tls_policy:`) at the top level of
+`outputs.yaml` now fails at startup with an "unknown top-level key"
+error. Configure the `tls:` block inside each affected output or
+provider block instead.
 
 ### mTLS (Mutual TLS) with Client Certificates
 
 For environments that require client certificate authentication, all
-TLS-enabled outputs support `tls_cert` and `tls_key`:
+TLS-enabled outputs accept `cert:` and `key:` inside the `tls:`
+block:
 
 ```yaml
 outputs:
@@ -147,23 +153,46 @@ outputs:
     syslog:
       network: "tcp+tls"
       address: "syslog.internal:6514"
-      tls_ca: "/etc/audit/tls/ca.pem"          # verify server certificate
-      tls_cert: "/etc/audit/tls/client.pem"     # present client certificate
-      tls_key: "/etc/audit/tls/client-key.pem"  # client private key
+      tls:
+        ca: "/etc/audit/tls/ca.pem"          # verify server certificate
+        cert: "/etc/audit/tls/client.pem"    # present client certificate
+        key: "/etc/audit/tls/client-key.pem" # client private key
 ```
 
-Both `tls_cert` and `tls_key` MUST be set together. The server must be
-configured to require and verify client certificates.
+Both `tls.cert` and `tls.key` MUST be set together. The server must
+be configured to require and verify client certificates.
 
 ### Which Outputs Support TLS?
 
-| Output | TLS transport | TLS policy | Client certs (mTLS) |
-|--------|--------------|------------|---------------------|
+| Output | TLS transport | TLS block | Client certs (mTLS) |
+|--------|--------------|-----------|---------------------|
 | **Syslog** | `network: "tcp+tls"` | Yes | Yes |
 | **Webhook** | `url: "https://..."` | Yes | Yes |
 | **Loki** | `url: "https://..."` | Yes | Yes |
+| **Splunk** | `url: "https://..."` | Yes | Yes |
 | **File** | N/A (local filesystem) | No | No |
 | **Stdout** | N/A (process stdout) | No | No |
+
+### What's NOT in the `tls:` Block
+
+`allow_insecure_http` and `allow_private_ranges` stay at each
+output's top level — they are HTTP/network policy, not TLS:
+
+```yaml
+outputs:
+  ingest:
+    type: webhook
+    webhook:
+      url: "http://internal-collector:8080"
+      allow_insecure_http: true    # top level — not TLS
+      allow_private_ranges: true   # top level — SSRF/egress, not TLS
+      tls:
+        ca: "/etc/audit/ca.pem"    # still used if you switch to https://
+```
+
+`allow_insecure_http` is the *negation* of TLS; nesting it inside
+`tls:` would be a category error. `allow_private_ranges` is an
+SSRF/egress policy that applies equally to plain HTTP and HTTPS.
 
 ### Security Implications
 
@@ -183,7 +212,7 @@ no automatic hot-reload of certificate files.
 
 ## Further Reading
 
-- [Output Configuration YAML](../../docs/output-configuration.md) — TLS policy field reference
+- [Output Configuration YAML](../../docs/output-configuration.md) — `tls:` block field reference
 - [Output Types Overview](../../docs/outputs.md) — all five output types with TLS support notes
 - [Loki Output Reference](../../docs/loki-output.md) — loki TLS configuration examples
 - [RFC 8446: TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446) — the TLS 1.3 specification

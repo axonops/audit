@@ -134,15 +134,12 @@ func parseSecretsSection(raw any) (*secretsResult, error) { //nolint:gocognit,go
 // yamlProviderConfig is the YAML structure for both openbao and vault
 // provider configuration. Fields match the Go Config structs.
 type yamlProviderConfig struct { //nolint:govet // readability over alignment
-	Address            string         `yaml:"address"`
-	Token              string         `yaml:"token"`
-	Namespace          string         `yaml:"namespace"`
-	TLSCA              string         `yaml:"tls_ca"`
-	TLSCert            string         `yaml:"tls_cert"`
-	TLSKey             string         `yaml:"tls_key"`
-	TLSPolicy          *yamlTLSPolicy `yaml:"tls_policy"`
-	AllowInsecureHTTP  bool           `yaml:"allow_insecure_http"`
-	AllowPrivateRanges bool           `yaml:"allow_private_ranges"`
+	Address            string   `yaml:"address"`
+	Token              string   `yaml:"token"`
+	Namespace          string   `yaml:"namespace"`
+	TLS                *yamlTLS `yaml:"tls"`
+	AllowInsecureHTTP  bool     `yaml:"allow_insecure_http"`
+	AllowPrivateRanges bool     `yaml:"allow_private_ranges"`
 }
 
 // String returns a redacted representation to prevent token leakage
@@ -160,11 +157,15 @@ func parseOpenBaoProvider(raw any) (secrets.Provider, error) {
 		return nil, err
 	}
 
-	var tlsPolicy *audit.TLSPolicy
-	if cfg.TLSPolicy != nil {
+	var (
+		tlsCA, tlsCert, tlsKey string
+		tlsPolicy              *audit.TLSPolicy
+	)
+	if cfg.TLS != nil {
+		tlsCA, tlsCert, tlsKey = cfg.TLS.CA, cfg.TLS.Cert, cfg.TLS.Key
 		tlsPolicy = &audit.TLSPolicy{
-			AllowTLS12:       cfg.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: cfg.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       cfg.TLS.AllowTLS12,
+			AllowWeakCiphers: cfg.TLS.AllowWeakCiphers,
 		}
 	}
 
@@ -172,9 +173,9 @@ func parseOpenBaoProvider(raw any) (secrets.Provider, error) {
 		Address:            cfg.Address,
 		Token:              cfg.Token,
 		Namespace:          cfg.Namespace,
-		TLSCA:              cfg.TLSCA,
-		TLSCert:            cfg.TLSCert,
-		TLSKey:             cfg.TLSKey,
+		TLSCA:              tlsCA,
+		TLSCert:            tlsCert,
+		TLSKey:             tlsKey,
 		TLSPolicy:          tlsPolicy,
 		AllowInsecureHTTP:  cfg.AllowInsecureHTTP,
 		AllowPrivateRanges: cfg.AllowPrivateRanges,
@@ -193,11 +194,15 @@ func parseVaultProvider(raw any) (secrets.Provider, error) {
 		return nil, err
 	}
 
-	var tlsPolicy *audit.TLSPolicy
-	if cfg.TLSPolicy != nil {
+	var (
+		tlsCA, tlsCert, tlsKey string
+		tlsPolicy              *audit.TLSPolicy
+	)
+	if cfg.TLS != nil {
+		tlsCA, tlsCert, tlsKey = cfg.TLS.CA, cfg.TLS.Cert, cfg.TLS.Key
 		tlsPolicy = &audit.TLSPolicy{
-			AllowTLS12:       cfg.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: cfg.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       cfg.TLS.AllowTLS12,
+			AllowWeakCiphers: cfg.TLS.AllowWeakCiphers,
 		}
 	}
 
@@ -205,9 +210,9 @@ func parseVaultProvider(raw any) (secrets.Provider, error) {
 		Address:            cfg.Address,
 		Token:              cfg.Token,
 		Namespace:          cfg.Namespace,
-		TLSCA:              cfg.TLSCA,
-		TLSCert:            cfg.TLSCert,
-		TLSKey:             cfg.TLSKey,
+		TLSCA:              tlsCA,
+		TLSCert:            tlsCert,
+		TLSKey:             tlsKey,
 		TLSPolicy:          tlsPolicy,
 		AllowInsecureHTTP:  cfg.AllowInsecureHTTP,
 		AllowPrivateRanges: cfg.AllowPrivateRanges,

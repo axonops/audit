@@ -404,7 +404,7 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 				TLSCert:       "/tmp/cert.pem",
 				FlushInterval: 5 * time.Millisecond,
 			},
-			wantErr: "tls_cert and tls_key must both be set",
+			wantErr: "tls.cert and tls.key must both be set",
 		},
 		{
 			name: "key without cert",
@@ -414,7 +414,7 @@ func TestNewSyslogOutput_InvalidConfig(t *testing.T) {
 				TLSKey:        "/tmp/key.pem",
 				FlushInterval: 5 * time.Millisecond,
 			},
-			wantErr: "tls_cert and tls_key must both be set",
+			wantErr: "tls.cert and tls.key must both be set",
 		},
 		{
 			name: "nonexistent cert file",
@@ -3287,8 +3287,8 @@ func TestOutputFactory_LoggerReachesOutput(t *testing.T) {
 	yaml := []byte(
 		"network: tcp+tls\n" +
 			"address: 127.0.0.1:65530\n" +
-			"tls_ca: " + certs.CAPath + "\n" +
-			"tls_policy:\n" +
+			"tls:\n" +
+			"  ca: " + certs.CAPath + "\n" +
 			"  allow_tls12: true\n" +
 			"  allow_weak_ciphers: true\n",
 	)

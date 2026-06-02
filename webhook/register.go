@@ -62,10 +62,7 @@ func NewFactory(factory audit.OutputMetricsFactory) audit.OutputFactory {
 type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability preferred
 	URL                string            `yaml:"url"`
 	Headers            map[string]string `yaml:"headers"`
-	TLSCA              string            `yaml:"tls_ca"`
-	TLSCert            string            `yaml:"tls_cert"`
-	TLSKey             string            `yaml:"tls_key"`
-	TLSPolicy          *yamlTLSPolicy    `yaml:"tls_policy"`
+	TLS                *yamlTLS          `yaml:"tls"`
 	FlushInterval      yamlDuration      `yaml:"flush_interval"`
 	Timeout            yamlDuration      `yaml:"timeout"`
 	BatchSize          *int              `yaml:"batch_size"`
@@ -85,10 +82,17 @@ type yamlWebhookConfig struct { //nolint:govet // fieldalignment: readability pr
 	VerifyOnStartupTimeout yamlDuration `yaml:"verify_on_startup_timeout"`
 }
 
-// yamlTLSPolicy maps TLS policy fields from YAML.
-type yamlTLSPolicy struct {
-	AllowTLS12       bool `yaml:"allow_tls12"`
-	AllowWeakCiphers bool `yaml:"allow_weak_ciphers"`
+// yamlTLS groups all TLS configuration under a single `tls:` block.
+// Cert material (ca/cert/key) and policy flags (allow_tls12,
+// allow_weak_ciphers) live together; SSRF / transport-policy flags
+// (allow_insecure_http, allow_private_ranges) stay at the output's
+// top level — they are not TLS concerns.
+type yamlTLS struct {
+	CA               string `yaml:"ca"`
+	Cert             string `yaml:"cert"`
+	Key              string `yaml:"key"`
+	AllowTLS12       bool   `yaml:"allow_tls12"`
+	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
 
 // yamlDuration is a time.Duration that unmarshals from a YAML string
@@ -148,9 +152,6 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 	cfg := &Config{
 		URL:                        yc.URL,
 		Headers:                    yc.Headers,
-		TLSCA:                      yc.TLSCA,
-		TLSCert:                    yc.TLSCert,
-		TLSKey:                     yc.TLSKey,
 		FlushInterval:              time.Duration(yc.FlushInterval),
 		Timeout:                    time.Duration(yc.Timeout),
 		BatchSize:                  intPtrOrDefault(yc.BatchSize, DefaultBatchSize),
@@ -167,10 +168,13 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 	if yc.VerifyOnStartup != nil && !*yc.VerifyOnStartup {
 		cfg.DisableStartupVerification = true
 	}
-	if yc.TLSPolicy != nil {
+	if yc.TLS != nil {
+		cfg.TLSCA = yc.TLS.CA
+		cfg.TLSCert = yc.TLS.Cert
+		cfg.TLSKey = yc.TLS.Key
 		cfg.TLSPolicy = &audit.TLSPolicy{
-			AllowTLS12:       yc.TLSPolicy.AllowTLS12,
-			AllowWeakCiphers: yc.TLSPolicy.AllowWeakCiphers,
+			AllowTLS12:       yc.TLS.AllowTLS12,
+			AllowWeakCiphers: yc.TLS.AllowWeakCiphers,
 		}
 	}
 

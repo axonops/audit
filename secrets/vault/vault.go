@@ -433,7 +433,7 @@ func buildTLSConfig(cfg *Config) (*tls.Config, error) {
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	} else if cfg.TLSCert != "" || cfg.TLSKey != "" {
-		return nil, fmt.Errorf("%w: audit/secrets/vault: tls_cert and tls_key must both be set or both empty", audit.ErrConfigInvalid)
+		return nil, fmt.Errorf("%w: audit/secrets/vault: tls.cert and tls.key must both be set or both empty", audit.ErrConfigInvalid)
 	}
 
 	if cfg.TLSCA != "" {

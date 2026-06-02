@@ -226,6 +226,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		// result because the producer's drops were recorded at
 		// submit time, not drain time (#722 AC #4).
 		out := &slowMockOutput{delay: 200 * time.Millisecond}
+		tc.RecordingOutput = out
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),

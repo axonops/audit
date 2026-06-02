@@ -94,6 +94,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		// has separate coverage; this scenario isolates the core
 		// metrics invariant.
 		rec := &recordingMockOutput{name: "recording"}
+		tc.RecordingOutput = rec
 
 		opts := []audit.Option{
 			audit.WithTaxonomy(tc.Taxonomy),
@@ -124,12 +125,15 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		defer m.mu.Unlock()
 
 		// #894: per-event RecordDelivery (the previous source of the
-		// `successes` term) was deleted. Delivered events now flow
-		// through OutputMetrics.RecordFlush; the per-output mock at
-		// tc.OutputMetricsMock holds the sum-of-batchSize. With a
-		// single mock output configured, delivered == flushed events.
+		// `successes` term) was deleted. Delivered events are now
+		// counted directly from the recording mock output, which
+		// captures every Write() call in memory. Falls back to
+		// OutputMetrics.RecordFlush count when no recording output
+		// is wired.
 		delivered := 0
-		if tc.OutputMetricsMock != nil {
+		if tc.RecordingOutput != nil {
+			delivered = tc.RecordingOutput.eventCount()
+		} else if tc.OutputMetricsMock != nil {
 			delivered = tc.OutputMetricsMock.FlushCount()
 		}
 		outputErrs := 0
@@ -187,6 +191,7 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 			tc.MockMetrics = NewMockMetrics()
 		}
 		rec := &recordingMockOutput{name: "recording"}
+		tc.RecordingOutput = rec
 		auditor, err := audit.New(
 			audit.WithTaxonomy(tc.Taxonomy),
 			audit.WithAppName("test-app"),
@@ -324,9 +329,12 @@ func registerAsyncEdgesSteps(ctx *godog.ScenarioContext, tc *AuditTestContext) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		// #894: per-event RecordDelivery was deleted; "successes" now
-		// comes from OutputMetrics.RecordFlush via tc.OutputMetricsMock.
+		// comes from the recording mock output's eventCount() or the
+		// per-output OutputMetrics RecordFlush count.
 		successes := 0
-		if tc.OutputMetricsMock != nil {
+		if tc.RecordingOutput != nil {
+			successes = tc.RecordingOutput.eventCount()
+		} else if tc.OutputMetricsMock != nil {
 			successes = tc.OutputMetricsMock.FlushCount()
 		}
 		got := successes + m.BufferDrops

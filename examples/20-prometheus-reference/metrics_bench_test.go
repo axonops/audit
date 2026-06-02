@@ -63,7 +63,7 @@ func BenchmarkPrometheus_RecordFlush(b *testing.B) {
 // vector lookup.
 func BenchmarkPrometheus_RecordError_Count(b *testing.B) {
 	factory := setupBenchMetrics()
-	var om audit.OutputMetrics = factory("file", "bench-output-error")
+	om := factory("file", "bench-output-error")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {

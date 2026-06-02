@@ -177,8 +177,9 @@ type Output struct {
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the background goroutine calls RecordDelivery after each POST)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //
 // All options are optional; the zero-value configuration constructs a
 // fully functional output with no instrumentation.
@@ -283,10 +284,10 @@ func (w *Output) Write(data []byte) error {
 				"max_event_bytes", w.maxEventBytes,
 				"dropped", dropped)
 		})
-		// Drops are counted once via per-output OutputMetrics.RecordDrop
-		// only — not via pipeline-level Metrics.RecordDelivery. This
-		// matches file + syslog behaviour for consistency across all
-		// self-reporting outputs (B-25).
+		// Drops are counted via per-output OutputMetrics.RecordDrop.
+		// Since #894 removed Metrics.RecordDelivery, drops are
+		// reported only on this surface — no pipeline-wide
+		// double-counting risk.
 		w.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), w.maxEventBytes)

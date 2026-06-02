@@ -124,8 +124,9 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the batch goroutine calls RecordDelivery after each POST)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //   - [WithFrameworkContext] seeds host defaulting and framework
 //     metadata
 //   - [WithMaxIdleConns] tunes the HTTP transport idle pool

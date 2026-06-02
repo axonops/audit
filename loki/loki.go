@@ -160,8 +160,9 @@ type Output struct { //nolint:govet // fieldalignment: readability preferred
 // Optional [Option] arguments tune construction-time behaviour:
 //   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
 //   - [WithOutputMetrics] supplies the per-output counters sink
-//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
-//     (the background goroutine calls RecordDelivery after each push)
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics]
+//     sink (pipeline-wide RecordOutputError + other counters; per-
+//     event delivery counts flow through OutputMetrics.RecordFlush)
 //   - [WithFrameworkContext] seeds the auditor-wide framework metadata
 //     used as Loki stream labels
 func New(cfg *Config, opts ...Option) (*Output, error) {
@@ -283,11 +284,10 @@ func (o *Output) WriteWithMetadata(data []byte, meta audit.EventMetadata) error 
 				"dropped", dropped)
 		})
 		// Buffer drops (event never attempted) are counted via per-
-		// output OutputMetrics.RecordDrop only — not via pipeline-
-		// level Metrics.RecordDelivery. Matches file + syslog for
-		// consistency across all self-reporting outputs (B-25).
-		// RecordDelivery(EventError) remains for retries-exhausted
-		// failures in http.go where delivery WAS attempted.
+		// output OutputMetrics.RecordDrop. Since #894 removed
+		// Metrics.RecordDelivery, drops are reported only on this
+		// surface; retry-exhausted batches that DID attempt delivery
+		// call recordError(len(batch)) in http.go.
 		o.outputMetrics.RecordDrop(1)
 		return fmt.Errorf("%w: %w: event size %d exceeds max_event_bytes %d",
 			audit.ErrValidation, audit.ErrEventTooLarge, len(data), o.maxEventBytes)

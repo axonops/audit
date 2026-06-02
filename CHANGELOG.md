@@ -86,6 +86,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   option internally. Surfaced by api-ergonomics-reviewer in the
   v0.2.0 release gate as the v1.0 BLOCKER 1.
 
+### Fixed
+
+- **The v0.2.0 Known Issue "`DeliveryReporter` contract gap on
+  `file` and `syslog` outputs" is resolved.** Both outputs declared
+  `ReportsDelivery() bool { return true }` but never called
+  `Metrics.RecordDelivery`, so an auditor wired only with file or
+  syslog reported zero events on the auditor-wide sink. #894 drops
+  `Metrics.RecordDelivery` and the `DeliveryReporter` interface
+  entirely; per-output delivery counts now flow exclusively through
+  `OutputMetrics.RecordFlush` (batchSize sum) and
+  `OutputMetrics.RecordError(count)`. Every output reports
+  delivery consistently through the same surface — the file and
+  syslog contract gap is gone, not papered over.
+
 ### Known Issues
 
 - **`DeliveryReporter` contract gap on `file` and `syslog` outputs.**

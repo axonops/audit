@@ -547,3 +547,40 @@ var _ audit.OutputMetrics = (*factoryMockLokiMetrics)(nil)
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// TestRegister_TLS_NestedSchema_Loki locks the #894 contract: cert
+// material + policy flags live together inside the nested `tls:`
+// block on the loki output.
+func TestRegister_TLS_NestedSchema_Loki(t *testing.T) {
+	yaml := []byte(`url: https://loki.example.com/loki/api/v1/push
+tls:
+  allow_tls12: true
+  allow_weak_ciphers: false
+verify_on_startup: false
+`)
+	factory := audit.LookupOutputFactory("loki")
+	require.NotNil(t, factory)
+	out, err := factory("tls_nested", yaml, audit.FrameworkContext{})
+	require.NoError(t, err, "nested tls: block must parse cleanly: %v", err)
+	t.Cleanup(func() { _ = out.Close() })
+}
+
+// TestRegister_TLS_RejectsLegacyFlatKeys_Loki locks the #894
+// migration: every legacy flat key must be rejected by the strict
+// YAML decoder.
+func TestRegister_TLS_RejectsLegacyFlatKeys_Loki(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"tls_ca", "tls_cert", "tls_key", "tls_policy"} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			rawYAML := []byte("url: https://loki.example.com/loki/api/v1/push\n" +
+				"verify_on_startup: false\n" + key + ": /etc/audit/some.pem\n")
+			factory := audit.LookupOutputFactory("loki")
+			require.NotNil(t, factory)
+			_, err := factory("legacy_tls_"+key, rawYAML, audit.FrameworkContext{})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), key,
+				"strict decode should name the legacy key %q: %q", key, err.Error())
+		})
+	}
+}

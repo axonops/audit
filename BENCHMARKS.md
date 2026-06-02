@@ -2,6 +2,37 @@
 
 This file tracks benchmark results over time to detect performance regressions and measure optimisation impact.
 
+## v0.2.1 (#894): RecordDelivery removal — per-batch dispatch wins
+
+The pipeline-wide per-event `audit.Metrics.RecordDelivery` counter
+was removed in #894; per-output delivery counts now flow through
+`OutputMetrics.RecordFlush` (called once per batch) and
+`OutputMetrics.RecordError(count)` (called once per failed batch).
+This removes the per-event loops that previously sat on the
+webhook / loki / splunk delivery hot path. Measured on AMD Ryzen
+9 7950X (32 threads), Linux 6.14, Go 1.26, `count=3`:
+
+| Benchmark                            | Post-#894 ns/op | Per-batch fixed cost           | Allocs |
+|--------------------------------------|-----------------|--------------------------------|--------|
+| `BenchmarkSplunk_RecordSuccess_500`  | 34.5 ns/op      | constant: one RecordFlush call | 0      |
+| `BenchmarkSplunk_RecordSuccess_5000` | 34.6 ns/op      | constant: one RecordFlush call | 0      |
+| `BenchmarkSplunk_RecordDrop_5000`    |  1.5 ns/op      | single atomic increment        | 0      |
+
+The two RecordSuccess benchmarks produce identical timings
+regardless of batchSize — proof that no per-event work remains.
+
+Pre-#894 projection at `BatchSize=5000` (per-event
+`RecordDelivery` loop + per-event `RecordDrop` loop): the success
+path ran one `RecordDelivery(name, EventSuccess)` per event ≈ 50
+ns/call × 5000 = ~250 µs/op + ~35 ns base. Post-#894 is 35 ns/op
+flat. Splunk batch-success dispatch is ~7000× faster on the worst-
+case batch, free of per-event allocations, and independent of
+batchSize.
+
+The recordSuccess / recordDrop helpers in `webhook/http.go`,
+`loki/http.go`, and `splunk/splunk.go` all collapsed identically;
+the splunk benchmarks above are representative of the family.
+
 ## How to Use
 
 ```bash

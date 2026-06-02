@@ -102,6 +102,7 @@ type yamlTLS struct {
 	CA               string `yaml:"ca"`
 	Cert             string `yaml:"cert"`
 	Key              string `yaml:"key"`
+	KeyPassword      string `yaml:"key_password"`
 	AllowTLS12       bool   `yaml:"allow_tls12"`
 	AllowWeakCiphers bool   `yaml:"allow_weak_ciphers"`
 }
@@ -172,6 +173,7 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx aud
 	return audit.WrapOutput(output, name), nil
 }
 
+//nolint:gocyclo,cyclop // sequential YAML→Config field copy; splitting would obscure the schema flow
 func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 	var yc yamlLokiConfig
 	dec := yaml.NewDecoder(bytes.NewReader(rawConfig), yaml.DisallowUnknownField())
@@ -212,6 +214,9 @@ func parseLokiConfig(name string, rawConfig []byte) (*Config, error) {
 		cfg.TLSCA = yc.TLS.CA
 		cfg.TLSCert = yc.TLS.Cert
 		cfg.TLSKey = yc.TLS.Key
+		if yc.TLS.KeyPassword != "" {
+			cfg.TLSKeyPassword = []byte(yc.TLS.KeyPassword)
+		}
 		cfg.TLSPolicy = &audit.TLSPolicy{
 			AllowTLS12:       yc.TLS.AllowTLS12,
 			AllowWeakCiphers: yc.TLS.AllowWeakCiphers,

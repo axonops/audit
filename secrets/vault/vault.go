@@ -66,6 +66,10 @@ type Config struct { //nolint:govet // readability over alignment
 	// authentication.
 	TLSKey string
 
+	// TLSKeyPassword is the optional password for a PKCS#8 v2
+	// encrypted TLSKey. See [audit.LoadX509KeyPairWithPassword]. (#896)
+	TLSKeyPassword []byte
+
 	// TLSPolicy controls TLS version and cipher suite selection.
 	// Nil defaults to TLS 1.3 only.
 	TLSPolicy *audit.TLSPolicy
@@ -103,8 +107,12 @@ func (c Config) String() string {
 	} else if c.TLSCA != "" {
 		tlsMode = "tls"
 	}
-	return fmt.Sprintf("vault.Config{address=%q, token=%s, namespace=%s, tls=%s}",
-		sanitizeAddressForLog(c.Address), tokenState, namespaceState, tlsMode)
+	keyPw := "unset"
+	if len(c.TLSKeyPassword) > 0 {
+		keyPw = "[REDACTED]"
+	}
+	return fmt.Sprintf("vault.Config{address=%q, token=%s, namespace=%s, tls=%s, tls_key_password=%s}",
+		sanitizeAddressForLog(c.Address), tokenState, namespaceState, tlsMode, keyPw)
 }
 
 // GoString returns the same redacted representation as [Config.String].
@@ -427,7 +435,7 @@ func buildTLSConfig(cfg *Config) (*tls.Config, error) {
 	tlsCfg, _ := cfg.TLSPolicy.Apply(nil)
 
 	if cfg.TLSCert != "" && cfg.TLSKey != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+		cert, err := audit.LoadX509KeyPairWithPassword(cfg.TLSCert, cfg.TLSKey, cfg.TLSKeyPassword)
 		if err != nil {
 			return nil, fmt.Errorf("%w: audit/secrets/vault: load client certificate: %w", audit.ErrConfigInvalid, err)
 		}

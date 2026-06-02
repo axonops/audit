@@ -221,6 +221,15 @@ type Config struct { //nolint:govet // fieldalignment: readability preferred
 	// one without the other causes [New] to return an error.
 	TLSKey string
 
+	// TLSKeyPassword is the optional password for a PKCS#8 v2
+	// encrypted private key at TLSKey. When empty the key must be
+	// unencrypted; when non-empty the key must be a PKCS#8
+	// ENCRYPTED PRIVATE KEY PEM block. PKCS#1 DEK-Info legacy
+	// encrypted keys are refused — rewrap with
+	// `openssl pkcs8 -topk8 -v2 aes256`. See
+	// [audit.LoadX509KeyPairWithPassword] and #896.
+	TLSKeyPassword []byte
+
 	// TLSPolicy controls the TLS version and cipher suite policy applied
 	// to all Loki connections. When nil, the default policy (TLS 1.3
 	// only) is used. See [audit.TLSPolicy] for details on enabling TLS
@@ -333,8 +342,12 @@ func (c Config) String() string {
 	} else if c.BearerToken != "" {
 		auth = "bearer_token"
 	}
-	return fmt.Sprintf("LokiConfig{url=%q, auth=%s, gzip=%t, batch_size=%d}",
-		sanitizeURLForLog(c.URL), auth, c.Gzip, c.BatchSize)
+	keyPw := "<unset>"
+	if len(c.TLSKeyPassword) > 0 {
+		keyPw = "[REDACTED]"
+	}
+	return fmt.Sprintf("LokiConfig{url=%q, auth=%s, gzip=%t, batch_size=%d, tls_key_password=%s}",
+		sanitizeURLForLog(c.URL), auth, c.Gzip, c.BatchSize, keyPw)
 }
 
 // sanitizeURLForLog returns the scheme+host portion of a URL, dropping
@@ -570,7 +583,7 @@ func buildLokiTLSConfig(cfg *Config) (*tls.Config, []string, error) {
 	tlsCfg, warnings := cfg.TLSPolicy.Apply(nil)
 
 	if cfg.TLSCert != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
+		cert, err := audit.LoadX509KeyPairWithPassword(cfg.TLSCert, cfg.TLSKey, cfg.TLSKeyPassword)
 		if err != nil {
 			return nil, nil, fmt.Errorf("audit/loki: load client certificate: %w", err)
 		}

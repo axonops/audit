@@ -128,7 +128,7 @@ const (
 )
 
 // Config holds configuration for [Output].
-type Config struct {
+type Config struct { //nolint:govet // fieldalignment: readability of TLS field group preferred over packing
 	// Network is the transport protocol: "tcp", "udp", or "tcp+tls".
 	// Empty defaults to "tcp". Note: UDP syslog may silently truncate
 	// or drop messages larger than ~2048 bytes (RFC 5424 §6.1).
@@ -158,6 +158,10 @@ type Config struct {
 	// TLSKey is the path to the client private key for mTLS.
 	// Both TLSCert and TLSKey must be set for client authentication.
 	TLSKey string
+
+	// TLSKeyPassword is the optional password for a PKCS#8 v2
+	// encrypted TLSKey. See [audit.LoadX509KeyPairWithPassword]. (#896)
+	TLSKeyPassword []byte
 
 	// TLSCA is the path to the CA certificate for server verification.
 	// When set, the server's certificate is verified against this CA.
@@ -302,8 +306,12 @@ func (c Config) String() string {
 	} else if c.TLSCA != "" {
 		tlsMode = "tls"
 	}
-	return fmt.Sprintf("SyslogConfig{network=%s, address=%s, tls=%s, facility=%s}",
-		c.Network, c.Address, tlsMode, c.Facility)
+	keyPw := "<unset>"
+	if len(c.TLSKeyPassword) > 0 {
+		keyPw = "[REDACTED]"
+	}
+	return fmt.Sprintf("SyslogConfig{network=%s, address=%s, tls=%s, facility=%s, tls_key_password=%s}",
+		c.Network, c.Address, tlsMode, c.Facility, keyPw)
 }
 
 // GoString returns the same redacted representation as [Config.String].

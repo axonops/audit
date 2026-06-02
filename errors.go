@@ -63,6 +63,22 @@ var (
 	// [WithOutputs] with [WithNamedOutput].
 	ErrConfigInvalid = errors.New("audit: config validation failed")
 
+	// ErrLegacyEncryptedPEMKey is returned by
+	// [LoadX509KeyPairWithPassword] when the supplied key file is a
+	// PKCS#1 PEM block with a `Proc-Type: 4,ENCRYPTED` header (the
+	// legacy `openssl genrsa -des3` form). Go's `x509.DecryptPEMBlock`
+	// supports decrypting these blocks but is deprecated since Go 1.16
+	// because PKCS#5 v1.5 + MD5-based KDF + DES/3DES cipher choices
+	// are considered insecure. The library refuses to decode them and
+	// instead points the operator at the rewrap recipe:
+	//
+	//	openssl pkcs8 -topk8 -v2 aes256 -in legacy.key -out modern.key
+	//
+	// Test for this via:
+	//
+	//	if errors.Is(err, audit.ErrLegacyEncryptedPEMKey) { ... }
+	ErrLegacyEncryptedPEMKey = errors.New("audit: tls: legacy PKCS#1 DEK-Info encrypted key refused — rewrap with `openssl pkcs8 -topk8 -v2 aes256 -in legacy.key -out modern.key`")
+
 	// ErrHandleNotFound is returned by [Auditor.Handle], and wrapped in
 	// the panic value of [Auditor.MustHandle], when the requested event
 	// type is not registered in the taxonomy.

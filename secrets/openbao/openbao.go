@@ -107,7 +107,7 @@ func (c Config) String() string {
 	} else if c.TLSCA != "" {
 		tlsMode = "tls"
 	}
-	keyPw := "unset"
+	keyPw := "<unset>"
 	if len(c.TLSKeyPassword) > 0 {
 		keyPw = "[REDACTED]"
 	}

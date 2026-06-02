@@ -107,7 +107,7 @@ func TestValidateConfig_MaxEventBytesDefault(t *testing.T) {
 		URL:                srv.url(),
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 }
@@ -123,7 +123,7 @@ func TestValidateConfig_MaxEventBytesNegative(t *testing.T) {
 		MaxEventBytes:      -1,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -139,7 +139,7 @@ func TestValidateConfig_MaxEventBytesBelowMin(t *testing.T) {
 		MaxEventBytes:      512,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -155,7 +155,7 @@ func TestValidateConfig_MaxEventBytesOverRange(t *testing.T) {
 		MaxEventBytes:      webhook.MaxMaxEventBytes + 1,
 		AllowInsecureHTTP:  true,
 		AllowPrivateRanges: true,
-	}, nil)
+	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, audit.ErrConfigInvalid)
 }

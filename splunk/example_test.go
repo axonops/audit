@@ -39,7 +39,7 @@ func ExampleNew() {
 		Index:                      "audit_logs",
 		DisableStartupVerification: true,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -66,7 +66,7 @@ func ExampleNew_raw() {
 		Index:                      "audit_logs",
 		DisableStartupVerification: true,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -106,7 +106,7 @@ func ExampleNew_cimJSON() {
 		Sourcetype:                 "axonops:audit",
 		DisableStartupVerification: true,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -134,7 +134,7 @@ func ExampleNew_ackRequired() {
 		AckMode:                    splunk.AckModeRequired,
 		DisableStartupVerification: true,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if err != nil {
 		fmt.Println("error:", err)
 		return
@@ -159,7 +159,7 @@ func ExampleNew_splunkCloud() {
 		Token:                      "your-hec-token",
 		DisableStartupVerification: true,
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	if err != nil {
 		fmt.Println("error:", err)
 		return

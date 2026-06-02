@@ -97,7 +97,7 @@ func buildTestOutput(tb testing.TB, input TestPayloadInput) (*Output, []lokiEntr
 	tb.Helper()
 
 	cfg := buildTestConfig(input)
-	o, err := New(cfg, nil, WithFrameworkContext(audit.FrameworkContext{
+	o, err := New(cfg, WithFrameworkContext(audit.FrameworkContext{
 		AppName:  input.AppName,
 		Host:     input.Host,
 		Timezone: "UTC",

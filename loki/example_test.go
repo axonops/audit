@@ -47,7 +47,7 @@ func ExampleNew() {
 		DisableStartupVerification: true,
 	}
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return

@@ -186,7 +186,7 @@ func TestSplunkIntegration_Fanout_SplunkDown_FileStillSucceeds(t *testing.T) {
 		AllowInsecureHTTP:          true,
 		AllowPrivateRanges:         true,
 		DisableStartupVerification: true,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	auditor := newFanoutAuditor(t, fileOut, splunkOut)

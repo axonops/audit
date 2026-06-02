@@ -173,7 +173,7 @@ func TestFanOut_AllOutputs(t *testing.T) {
 		BatchSize:          1,
 		FlushInterval:      100 * time.Millisecond,
 		Timeout:            5 * time.Second,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	// Create auditor with all three outputs.
@@ -235,7 +235,7 @@ func TestFanOut_EventRouting(t *testing.T) {
 		BatchSize:          1,
 		FlushInterval:      100 * time.Millisecond,
 		Timeout:            5 * time.Second,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	auditor, err := audit.New(
@@ -324,7 +324,7 @@ func TestFanOut_PartialFailure(t *testing.T) {
 		FlushInterval:      100 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	auditor, err := audit.New(
@@ -373,7 +373,7 @@ func TestFanOut_MixedFormatters(t *testing.T) {
 		BatchSize:          1,
 		FlushInterval:      100 * time.Millisecond,
 		Timeout:            5 * time.Second,
-	}, nil)
+	})
 	require.NoError(t, err)
 
 	cefFmt := &audit.CEFFormatter{

@@ -238,7 +238,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			FlushInterval:      100 * time.Millisecond,
 			Timeout:            5 * time.Second,
 			BufferSize:         bufSize,
-		}, nil, webhook.WithOutputMetrics(om))
+		}, webhook.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
@@ -260,7 +260,7 @@ func registerEventMetricsThenSteps(ctx *godog.ScenarioContext, tc *AuditTestCont
 			FlushInterval:      200 * time.Millisecond,
 			Gzip:               true,
 			BufferSize:         bufSize,
-		}, nil, loki.WithOutputMetrics(om))
+		}, loki.WithOutputMetrics(om))
 		if err != nil {
 			return fmt.Errorf("create loki: %w", err)
 		}

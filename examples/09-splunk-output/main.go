@@ -57,8 +57,7 @@ import (
 	"time"
 
 	"github.com/axonops/audit/outputconfig"
-	_ "github.com/axonops/audit/outputs" // registers stdout, file, syslog, webhook, loki
-	_ "github.com/axonops/audit/splunk"  // register splunk separately (future releases of audit/outputs will include it)
+	_ "github.com/axonops/audit/outputs" // registers stdout/file/syslog/webhook/loki/splunk factories
 )
 
 //go:generate go run github.com/axonops/audit/cmd/audit-gen -input taxonomy.yaml -output audit_generated.go -package main

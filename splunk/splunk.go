@@ -51,8 +51,9 @@ func libraryVersion() string {
 
 // Compile-time interface assertions.
 var (
-	_ audit.Output           = (*Output)(nil)
-	_ audit.DeliveryReporter = (*Output)(nil)
+	_ audit.Output               = (*Output)(nil)
+	_ audit.DeliveryReporter     = (*Output)(nil)
+	_ audit.LastDeliveryReporter = (*Output)(nil)
 )
 
 // ReportsDelivery implements [audit.DeliveryReporter] — splunk reports
@@ -115,8 +116,9 @@ type Output struct { //nolint:govet,gocritic // fieldalignment: readability pref
 	fallbackTimestamps *dropLimiter // rate-limited "timestamp extraction fell back to ingest time" warning
 	maxEventBytes      int
 
-	// Most recent successful delivery wall-clock time (powers
-	// [audit.DeliveryReporter.LastDeliveryAge]).
+	// Most recent successful delivery wall-clock UnixNano (powers
+	// [audit.LastDeliveryReporter] via [Output.LastDeliveryNanos],
+	// which the auditor consumes for [audit.Auditor.LastDeliveryAge]).
 	lastDeliveryNanos atomic.Int64
 }
 
@@ -125,10 +127,18 @@ type Output struct { //nolint:govet,gocritic // fieldalignment: readability pref
 // the startup health check fails (unless
 // [Config.DisableStartupVerification] is true).
 //
-// `metrics` may be nil — the output records via a no-op
-// [audit.NoOpOutputMetrics] when omitted. Use [WithOutputMetrics] to
-// pass a real [audit.OutputMetrics] sink.
-func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { //nolint:gocognit,gocyclo,cyclop // construction orchestrator; ACK + probe + tracker each is its own block
+// Optional [Option] arguments tune construction-time behaviour:
+//   - [WithDiagnosticLogger] routes TLS-policy and runtime warnings
+//   - [WithOutputMetrics] supplies the per-output counters sink
+//   - [WithCoreMetrics] supplies the auditor-wide [audit.Metrics] sink
+//     (the batch goroutine calls RecordDelivery after each POST)
+//   - [WithFrameworkContext] seeds host defaulting and framework
+//     metadata
+//   - [WithMaxIdleConns] tunes the HTTP transport idle pool
+//
+// All options are optional; the zero-value configuration constructs a
+// fully functional output with no instrumentation.
+func New(cfg *Config, opts ...Option) (*Output, error) { //nolint:gocognit,gocyclo,cyclop // construction orchestrator; ACK + probe + tracker each is its own block
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: nil config", ErrConfigInvalid)
 	}
@@ -197,7 +207,7 @@ func New(cfg *Config, metrics audit.Metrics, opts ...Option) (*Output, error) { 
 	ctx, cancel := context.WithCancel(context.Background())
 	out := &Output{
 		cfg:                cfg,
-		metrics:            metrics,
+		metrics:            o.coreMetrics,
 		outputMetrics:      o.outputMetrics,
 		logger:             o.logger,
 		client:             client,
@@ -328,13 +338,14 @@ func (o *Output) AckMetricsSnapshot() AckSnapshot {
 	return o.tracker.snapshot()
 }
 
-// LastDeliveryAge implements [audit.DeliveryReporter].
-func (o *Output) LastDeliveryAge() time.Duration {
-	ns := o.lastDeliveryNanos.Load()
-	if ns == 0 {
-		return 0
-	}
-	return time.Since(time.Unix(0, ns))
+// LastDeliveryNanos returns the wall-clock UnixNano of the most
+// recent successful HEC POST, or 0 if no delivery has yet succeeded.
+// Implements [audit.LastDeliveryReporter] (#753) — the core auditor
+// reads this via [audit.Auditor.LastDeliveryAge] for /healthz handlers
+// that flip to UNHEALTHY when the last delivery exceeds a staleness
+// threshold.
+func (o *Output) LastDeliveryNanos() int64 {
+	return o.lastDeliveryNanos.Load()
 }
 
 // recordOversized records a per-event oversize drop (rate-limited

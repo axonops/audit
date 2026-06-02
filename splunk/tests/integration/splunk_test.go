@@ -50,15 +50,10 @@ import (
 const (
 	splunkURL       = "http://localhost:8088"
 	splunkToken     = "bdd-test-hec-token"
-	splunkAdminURL  = "http://localhost:8089" // Splunkd management port (search)
 	splunkSearchURL = "https://localhost:8089"
 	splunkUser      = "admin"
 	splunkPass      = "ChangeMeForRealUse123!"
 )
-
-// searchClient is a dedicated HTTP client for the Splunk search API.
-// Not http.DefaultClient per project rules.
-var searchClient = &http.Client{Timeout: 30 * time.Second} //nolint:gochecknoglobals // test infrastructure
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m,
@@ -116,27 +111,24 @@ func newSplunkOutput(t *testing.T, mutate func(*splunk.Config)) *splunk.Output {
 	if mutate != nil {
 		mutate(cfg)
 	}
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	return out
 }
 
 // waitForEvent polls Splunk's search API until at least `expected`
 // events match the given search query. Returns the matching events
-// (one map per hit). Times out after 30 seconds.
+// (one map per hit). Fails the test if not satisfied within 30 seconds.
 func waitForEvent(t *testing.T, query string, expected int) []map[string]any {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
 	var hits []map[string]any
-	for time.Now().Before(deadline) {
+	ok := assert.Eventually(t, func() bool {
 		hits = searchSplunk(t, query)
-		if len(hits) >= expected {
-			return hits
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	t.Fatalf("waitForEvent: expected >= %d hits for query %q within 30s, got %d", expected, query, len(hits))
-	return nil
+		return len(hits) >= expected
+	}, 30*time.Second, 500*time.Millisecond,
+		"waitForEvent: expected >= %d hits for query %q within 30s", expected, query)
+	require.True(t, ok)
+	return hits
 }
 
 // searchSplunk runs a one-shot search against the Splunk REST API
@@ -153,7 +145,7 @@ func searchSplunk(t *testing.T, query string) []map[string]any {
 	form.Set("latest_time", "now")
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
-		"https://localhost:8089/services/search/jobs/export",
+		splunkSearchURL+"/services/search/jobs/export",
 		strings.NewReader(form.Encode()))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

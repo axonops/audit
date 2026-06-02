@@ -246,7 +246,7 @@ func registerLokiReceiverLoggerRetrySteps(ctx *godog.ScenarioContext, tc *AuditT
 		if tc.LokiMetrics != nil {
 			oOpts = append(oOpts, loki.WithOutputMetrics(tc.LokiMetrics))
 		}
-		out, err := loki.New(cfg, nil, oOpts...)
+		out, err := loki.New(cfg, oOpts...)
 		if err != nil {
 			return fmt.Errorf("create loki output: %w", err)
 		}
@@ -500,7 +500,7 @@ func createLokiAuditorFromConfig(tc *AuditTestContext, cfg *loki.Config) error {
 	if tc.LokiMetrics != nil {
 		lOpts = append(lOpts, loki.WithOutputMetrics(tc.LokiMetrics))
 	}
-	out, err := loki.New(cfg, nil, lOpts...)
+	out, err := loki.New(cfg, lOpts...)
 	if err != nil {
 		return fmt.Errorf("create loki output: %w", err)
 	}

@@ -122,7 +122,7 @@ func registerMetricsGivenWebhookSteps(ctx *godog.ScenarioContext, tc *AuditTestC
 			URL: tc.WebhookURL + "/events", AllowInsecureHTTP: true,
 			AllowPrivateRanges: true, BatchSize: 1,
 			FlushInterval: 100 * time.Millisecond, Timeout: 5 * time.Second,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}
@@ -240,7 +240,7 @@ func registerMetricsGivenFilterSteps(ctx *godog.ScenarioContext, tc *AuditTestCo
 			// the construction-time probe so the route-filter metric
 			// behaviour (the property under test) is exercised.
 			DisableStartupVerification: true,
-		}, nil)
+		})
 		if err != nil {
 			return fmt.Errorf("create webhook: %w", err)
 		}

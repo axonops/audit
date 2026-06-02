@@ -29,6 +29,7 @@ type Option func(*options)
 // valid — all fields receive sensible defaults inside [New].
 type options struct {
 	logger        *slog.Logger
+	coreMetrics   audit.Metrics
 	outputMetrics audit.OutputMetrics
 	fctx          audit.FrameworkContext
 }
@@ -38,7 +39,7 @@ type options struct {
 // nil or not supplied, warnings go to [slog.Default].
 //
 // Consumers normally do not call this directly when using
-// [github.com/axonops/audit/outputconfig.Load] — outputconfig plumbs
+// [github.com/axonops/audit/outputconfig.New] — outputconfig plumbs
 // the auditor's diagnostic logger into every output it constructs.
 // Use this option when constructing a Loki output programmatically
 // and you want its warnings to match your application's log handler.
@@ -56,7 +57,7 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 // and zero-value semantics.
 //
 // Consumers normally do not call this directly when using
-// [github.com/axonops/audit/outputconfig.Load] — outputconfig wires
+// [github.com/axonops/audit/outputconfig.New] — outputconfig wires
 // per-output metrics through the [audit.OutputMetricsFactory]
 // supplied via outputconfig.WithOutputMetricsFactory.
 func WithOutputMetrics(m audit.OutputMetrics) Option {
@@ -68,13 +69,31 @@ func WithOutputMetrics(m audit.OutputMetrics) Option {
 	}
 }
 
+// WithCoreMetrics sets the auditor-wide [audit.Metrics] sink for this
+// output. The Loki output calls [audit.Metrics.RecordDelivery] from
+// its background goroutine after each successful push. When omitted
+// or nil, the RecordDelivery call is skipped (no-op, no allocation).
+//
+// Distinct from [WithOutputMetrics]: WithCoreMetrics carries the
+// pipeline-level interface (every output shares the same value);
+// WithOutputMetrics carries the per-output narrower counters
+// (queue depth, drops, flush latency).
+//
+// Consumers normally do not call this directly when using
+// [github.com/axonops/audit/outputconfig.New] — outputconfig wires
+// the auditor's [audit.Metrics] through to every output via this
+// option automatically.
+func WithCoreMetrics(m audit.Metrics) Option {
+	return func(o *options) { o.coreMetrics = m }
+}
+
 // WithFrameworkContext seeds the auditor-wide framework metadata
 // (AppName, Host, Timezone, PID) used as Loki stream labels. The
 // values are baked into a pre-computed cache at construction time so
 // every push reuses the same labels without per-event allocations.
 //
 // Consumers normally do not call this directly when using
-// [github.com/axonops/audit/outputconfig.Load] — outputconfig
+// [github.com/axonops/audit/outputconfig.New] — outputconfig
 // populates the equivalent values from the auditor configuration.
 // Use this option when constructing a Loki output programmatically
 // (for example in integration tests).

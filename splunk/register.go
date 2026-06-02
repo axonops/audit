@@ -205,8 +205,11 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx aud
 	if om != nil {
 		opts = append(opts, WithOutputMetrics(om))
 	}
+	if fctx.CoreMetrics != nil {
+		opts = append(opts, WithCoreMetrics(fctx.CoreMetrics))
+	}
 
-	return New(cfg, fctx.CoreMetrics, opts...)
+	return New(cfg, opts...)
 }
 
 // durOrDefault returns the wrapped duration if non-zero, else the

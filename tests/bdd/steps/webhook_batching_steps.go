@@ -365,7 +365,7 @@ func setupDualBatchingAuditor(tc *AuditTestContext, batchSize int) error {
 			Timeout:            5 * time.Second,
 			MaxRetries:         1,
 			BufferSize:         1000,
-		}, nil)
+		})
 	}
 
 	outA, err := mkOut(rcvA.url())
@@ -422,7 +422,7 @@ func setupBatchingAuditor(tc *AuditTestContext, batchSize int, formatter audit.F
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         1000,
-	}, nil)
+	})
 	if err != nil {
 		return fmt.Errorf("create webhook: %w", err)
 	}

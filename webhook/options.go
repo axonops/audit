@@ -29,6 +29,7 @@ type Option func(*options)
 // valid — all fields receive sensible defaults inside [New].
 type options struct {
 	logger        *slog.Logger
+	coreMetrics   audit.Metrics
 	outputMetrics audit.OutputMetrics
 }
 
@@ -38,7 +39,7 @@ type options struct {
 // [slog.Default].
 //
 // Consumers normally do not call this directly when using
-// [github.com/axonops/audit/outputconfig.Load] — outputconfig plumbs
+// [github.com/axonops/audit/outputconfig.New] — outputconfig plumbs
 // the auditor's diagnostic logger into every output it constructs.
 // Use this option when constructing a webhook output programmatically
 // and you want its warnings to match your application's log handler.
@@ -55,7 +56,7 @@ func WithDiagnosticLogger(l *slog.Logger) Option {
 // and zero-value semantics.
 //
 // Consumers normally do not call this directly when using
-// [github.com/axonops/audit/outputconfig.Load] — outputconfig wires
+// [github.com/axonops/audit/outputconfig.New] — outputconfig wires
 // per-output metrics through the [audit.OutputMetricsFactory]
 // supplied via outputconfig.WithOutputMetricsFactory.
 func WithOutputMetrics(m audit.OutputMetrics) Option {
@@ -65,6 +66,24 @@ func WithOutputMetrics(m audit.OutputMetrics) Option {
 		}
 		o.outputMetrics = m
 	}
+}
+
+// WithCoreMetrics sets the auditor-wide [audit.Metrics] sink for this
+// output. The webhook output calls [audit.Metrics.RecordDelivery] from
+// its background goroutine after each POST. When omitted or nil, the
+// RecordDelivery call is skipped (no-op, no allocation).
+//
+// Distinct from [WithOutputMetrics]: WithCoreMetrics carries the
+// pipeline-level interface (every output shares the same value);
+// WithOutputMetrics carries the per-output narrower counters
+// (queue depth, drops, flush latency).
+//
+// Consumers normally do not call this directly when using
+// [github.com/axonops/audit/outputconfig.New] — outputconfig wires
+// the auditor's [audit.Metrics] through to every output via this
+// option automatically.
+func WithCoreMetrics(m audit.Metrics) Option {
+	return func(o *options) { o.coreMetrics = m }
 }
 
 // resolveOptions applies the given options over a defaulted value.

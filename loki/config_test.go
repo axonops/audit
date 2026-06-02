@@ -904,7 +904,7 @@ func TestLoki_ConstructionWarningsRoutedToInjectedLogger(t *testing.T) {
 		Timeout:                    1 * time.Second,
 		BufferSize:                 1000,
 		DisableStartupVerification: true,
-	}, nil, loki.WithDiagnosticLogger(injected))
+	}, loki.WithDiagnosticLogger(injected))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -933,7 +933,7 @@ func TestLoki_NilDiagnosticLoggerFallsBackToDefault(t *testing.T) {
 		Timeout:                    1 * time.Second,
 		BufferSize:                 1000,
 		DisableStartupVerification: true,
-	}, nil, loki.WithDiagnosticLogger(nil))
+	}, loki.WithDiagnosticLogger(nil))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 

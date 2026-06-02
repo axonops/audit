@@ -156,8 +156,11 @@ func buildOutput(name string, rawConfig []byte, om audit.OutputMetrics, fctx aud
 	if om != nil {
 		opts = append(opts, WithOutputMetrics(om))
 	}
+	if fctx.CoreMetrics != nil {
+		opts = append(opts, WithCoreMetrics(fctx.CoreMetrics))
+	}
 
-	output, err := New(cfg, fctx.CoreMetrics, opts...)
+	output, err := New(cfg, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("audit/loki: output %q: %w", name, err)
 	}

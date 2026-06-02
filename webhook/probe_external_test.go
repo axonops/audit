@@ -56,7 +56,7 @@ func TestWebhookStartupConnectivityCheck(t *testing.T) {
 		Timeout:            1 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "startup verification failed",
 		"probe failure must surface as 'startup verification failed' in the error message")
@@ -84,7 +84,7 @@ func TestWebhookLazyConnect(t *testing.T) {
 		MaxRetries:                 1,
 		BufferSize:                 10,
 		DisableStartupVerification: true,
-	}, nil)
+	})
 	require.NoError(t, err, "DisableStartupVerification should allow construction against unreachable URLs")
 	require.NoError(t, out.Close())
 }
@@ -110,7 +110,7 @@ func TestWebhookStartupCheckRespectsSSRF(t *testing.T) {
 		Timeout:            1 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, nil)
+	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "startup verification failed",
 		"SSRF rejection at probe time should surface through the same error wrap")
@@ -145,7 +145,7 @@ func TestWebhookStartupCheck_GoroutineLeakOnFailure(t *testing.T) {
 			Timeout:            500 * time.Millisecond,
 			MaxRetries:         1,
 			BufferSize:         10,
-		}, nil)
+		})
 		require.Error(t, err, "iteration %d: probe must reject the unreachable URL", i)
 	}
 }
@@ -188,7 +188,7 @@ func TestWebhookStartupCheck_HTTPSAgainstPlainTCP(t *testing.T) {
 		MaxRetries:                 1,
 		BufferSize:                 10,
 		StartupVerificationTimeout: 1 * time.Second, // tight probe budget
-	}, nil)
+	})
 	elapsed := time.Since(start)
 
 	// Tear down the listener BEFORE goleak verifies so the accept
@@ -234,7 +234,7 @@ func TestWebhookStartupCheck_CustomTimeoutOverridesDefault(t *testing.T) {
 		MaxRetries:                 1,
 		BufferSize:                 10,
 		StartupVerificationTimeout: 100 * time.Millisecond,
-	}, nil)
+	})
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
@@ -264,7 +264,7 @@ func TestWebhookStartupCheck_HTTPSuccess(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
@@ -289,7 +289,7 @@ func TestWebhookStartupCheck_RejectsMissingScheme(t *testing.T) {
 		Timeout:            1 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, nil)
+	})
 	require.Error(t, err)
 }
 
@@ -317,7 +317,7 @@ func TestWebhookStartupCheck_HTTPSSuccess(t *testing.T) {
 		Timeout:            5 * time.Second,
 		MaxRetries:         1,
 		BufferSize:         10,
-	}, nil)
+	})
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }

@@ -112,8 +112,6 @@ func TestSplunkIntegration_OutputMetrics_FlushAccuracy_RealContainer(t *testing.
 	assert.Equal(t, int64(n), flushSum,
 		"flushSum must equal submitted count exactly in the healthy path; flushSum=%d, drops=%d", flushSum, drops)
 	assert.Zero(t, drops, "zero drops expected in the healthy path; got %d", drops)
-	assert.Equal(t, int64(n), flushSum+drops,
-		"conservation: every submitted event must be either flushed or dropped")
 }
 
 // TestSplunkIntegration_OutputMetrics_BufferFullDrops — exercise the
@@ -161,7 +159,7 @@ func TestSplunkIntegration_OutputMetrics_BufferFullDrops(t *testing.T) {
 		AllowPrivateRanges:         true,
 		DisableStartupVerification: true,
 		UserAgent:                  "test",
-	}, nil, splunk.WithOutputMetrics(recorder))
+	}, splunk.WithOutputMetrics(recorder))
 	require.NoError(t, err)
 
 	const submitted = 2000
@@ -229,7 +227,7 @@ func TestSplunkIntegration_OutputMetrics_HEC24NotCountedAsDrop(t *testing.T) {
 		AllowPrivateRanges:         true,
 		DisableStartupVerification: true,
 		UserAgent:                  "test",
-	}, nil, splunk.WithOutputMetrics(recorder))
+	}, splunk.WithOutputMetrics(recorder))
 	require.NoError(t, err)
 
 	const n = 10
@@ -282,7 +280,7 @@ func TestSplunkIntegration_OutputMetrics_OversizeDropped(t *testing.T) {
 		AllowPrivateRanges:         true,
 		DisableStartupVerification: true,
 		UserAgent:                  "test",
-	}, nil, splunk.WithOutputMetrics(recorder))
+	}, splunk.WithOutputMetrics(recorder))
 	require.NoError(t, err)
 
 	oversize := `{"event_type":"user_create","actor_id":"alice","outcome":"success","blob":"` +
@@ -327,7 +325,7 @@ func newSplunkOutputWithMetrics(t *testing.T, recorder audit.OutputMetrics, muta
 	if mutate != nil {
 		mutate(cfg)
 	}
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(recorder))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(recorder))
 	require.NoError(t, err)
 	return out
 }

@@ -187,20 +187,20 @@ func validCfg(serverURL string) *splunk.Config {
 
 func TestNew_ValidConfig(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
 }
 
 func TestNew_MissingURL(t *testing.T) {
-	_, err := splunk.New(&splunk.Config{Token: "x"}, nil)
+	_, err := splunk.New(&splunk.Config{Token: "x"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
 
 func TestNew_MissingToken(t *testing.T) {
-	_, err := splunk.New(&splunk.Config{URL: "https://x"}, nil)
+	_, err := splunk.New(&splunk.Config{URL: "https://x"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -209,7 +209,7 @@ func TestNew_TokenStartingWithSplunkPrefix_Rejected(t *testing.T) {
 	cfg := validCfg("https://x.test")
 	cfg.Token = "Splunk abc-def"
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -218,7 +218,7 @@ func TestNew_TokenStartingWithBearerPrefix_Rejected(t *testing.T) {
 	cfg := validCfg("https://x.test")
 	cfg.Token = "Bearer abc-def"
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -227,7 +227,7 @@ func TestNew_TokenWithControlChars_Rejected(t *testing.T) {
 	cfg := validCfg("https://x.test")
 	cfg.Token = "abc\r\nfake"
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -235,7 +235,7 @@ func TestNew_TokenWithControlChars_Rejected(t *testing.T) {
 func TestNew_URLWithCredentials_Rejected(t *testing.T) {
 	cfg := validCfg("https://user:pass@x.test")
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -244,7 +244,7 @@ func TestNew_HTTPRejected(t *testing.T) {
 	cfg := validCfg("http://x.test")
 	cfg.AllowInsecureHTTP = false
 	cfg.DisableStartupVerification = true
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrConfigInvalid)
 }
@@ -257,7 +257,7 @@ func TestNew_HTTPRejected(t *testing.T) {
 func TestNew_SplunkCloudScheme_ExpandsAndConstructs(t *testing.T) {
 	cfg := validCfg("splunkcloud://acme-prod")
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 	// The URL must be rewritten to the canonical form (visible via
@@ -273,7 +273,7 @@ func TestNew_HealthCheckFails(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfg := validCfg(srv.URL)
-	_, err := splunk.New(cfg, nil)
+	_, err := splunk.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, splunk.ErrHealthCheckFailed)
 }
@@ -281,14 +281,14 @@ func TestNew_HealthCheckFails(t *testing.T) {
 func TestNew_HealthCheckSkipped(t *testing.T) {
 	cfg := validCfg("https://nonexistent.invalid")
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 }
 
 func TestOutput_Name_FormatHostSuffix(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 	assert.True(t, strings.HasPrefix(out.Name(), "splunk:"))
@@ -297,7 +297,7 @@ func TestOutput_Name_FormatHostSuffix(t *testing.T) {
 
 func TestOutput_EventEnvelope_Format(t *testing.T) {
 	srv, stub := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 
 	evt := []byte(`{"timestamp":"2026-05-20T10:00:00.123Z","event_type":"user_login","actor_id":"alice"}`)
@@ -336,7 +336,7 @@ func TestOutput_EventEnvelope_ConcatenatedBatch(t *testing.T) {
 	cfg := validCfg(srv.URL)
 	cfg.BatchSize = 3
 	cfg.FlushInterval = 10 * time.Second // ensure flush is size-triggered
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	for i := 0; i < 3; i++ {
 		require.NoError(t, out.Write([]byte(`{"event_type":"x","actor_id":"a"}`)))
@@ -365,7 +365,7 @@ func TestOutput_AuthHeader_ExactSplunkPrefix(t *testing.T) {
 	srv, stub := newStub(t)
 	cfg := validCfg(srv.URL)
 	cfg.Token = "abc-123-def"
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -377,7 +377,7 @@ func TestOutput_AuthHeader_ExactSplunkPrefix(t *testing.T) {
 
 func TestOutput_UserAgentHeader(t *testing.T) {
 	srv, stub := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -391,7 +391,7 @@ func TestOutput_GzipCompression_DefaultOn(t *testing.T) {
 	srv, stub := newStub(t)
 	cfg := validCfg(srv.URL)
 	cfg.Gzip = nil // unset — defaults to true
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -405,7 +405,7 @@ func TestOutput_HECErrorCode_4_Stops(t *testing.T) {
 	stub.setResponse(403, []byte(`{"text":"Invalid token","code":4}`))
 	cfg := validCfg(srv.URL)
 	cfg.MaxRetries = 0
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	// Subsequent Writes return ErrOutputClosed once the batch loop has
@@ -421,7 +421,7 @@ func TestOutput_HECCode24_NotError_RequestSucceeds(t *testing.T) {
 	srv, stub := newStub(t)
 	stub.setResponse(200, []byte(`{"text":"Approaching capacity","code":24}`))
 	rec := &recordingMetrics{}
-	out, err := splunk.New(validCfg(srv.URL), nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(validCfg(srv.URL), splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
 	require.NoError(t, out.Close())
@@ -474,7 +474,7 @@ func TestOutput_HTTP503_Retries(t *testing.T) {
 	cfg.MaxRetries = 3
 	cfg.RetryBaseDelay = 10 * time.Millisecond
 	cfg.RetryMaxDelay = 50 * time.Millisecond
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	start := time.Now()
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -491,7 +491,7 @@ func TestOutput_HTTP503_Retries(t *testing.T) {
 
 func TestOutput_CloseIdempotent(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 	require.NoError(t, out.Close())
@@ -500,7 +500,7 @@ func TestOutput_CloseIdempotent(t *testing.T) {
 
 func TestOutput_WriteAfterClose_ReturnsErrOutputClosed(t *testing.T) {
 	srv, _ := newStub(t)
-	out, err := splunk.New(validCfg(srv.URL), nil)
+	out, err := splunk.New(validCfg(srv.URL))
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 	err = out.Write([]byte(`{"event_type":"x"}`))
@@ -512,7 +512,7 @@ func TestOutput_SingleEventOverMaxEventBytes_Drops(t *testing.T) {
 	cfg := validCfg(srv.URL)
 	cfg.MaxEventBytes = 1024 // minimum allowed; oversize threshold
 	cfg.DisableStartupVerification = true
-	out, err := splunk.New(cfg, nil)
+	out, err := splunk.New(cfg)
 	require.NoError(t, err)
 	big := make([]byte, 2048)
 	for i := range big {

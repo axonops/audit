@@ -528,7 +528,7 @@ func applyLokiTestDefaults(tc *AuditTestContext, cfg *loki.Config) {
 func createLokiAuditor(tc *AuditTestContext, cfg *loki.Config) error {
 	applyLokiTestDefaults(tc, cfg)
 
-	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(audit.FrameworkContext{
+	out, err := loki.New(cfg, loki.WithFrameworkContext(audit.FrameworkContext{
 		AppName: "bdd-audit",
 		Host:    "bdd-host",
 	}))
@@ -552,7 +552,7 @@ func createLokiAuditor(tc *AuditTestContext, cfg *loki.Config) error {
 }
 
 func tryCreateLokiOutput(tc *AuditTestContext, cfg *loki.Config) error {
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	if out != nil {
 		tc.AddCleanup(func() { _ = out.Close() })
 	}

@@ -61,7 +61,7 @@ func TestOutput_RecordSuccess_CallsCoreMetricsRecordDelivery(t *testing.T) {
 	srv, _ := newStub(t)
 	cm := &fakeCoreMetrics{}
 	cfg := validCfg(srv.URL)
-	out, err := splunk.New(cfg, cm)
+	out, err := splunk.New(cfg, splunk.WithCoreMetrics(cm))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"a"}`)))
@@ -93,7 +93,7 @@ func TestOutput_RecordDrop_CallsCoreMetricsRecordDelivery(t *testing.T) {
 	cfg.MaxRetries = 0
 	cfg.RetryBaseDelay = 5 * time.Millisecond
 	cfg.RetryMaxDelay = 10 * time.Millisecond
-	out, err := splunk.New(cfg, cm)
+	out, err := splunk.New(cfg, splunk.WithCoreMetrics(cm))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event_type":"x"}`)))
@@ -126,7 +126,7 @@ func TestOutput_BufferFull_RecordsDropMetric(t *testing.T) {
 	cfg := validCfg(srv.URL)
 	cfg.BufferSize = 100 // MinBufferSize
 	cfg.BatchSize = 1    // every event triggers a flush; the flush blocks
-	out, err := splunk.New(cfg, nil, splunk.WithOutputMetrics(rec))
+	out, err := splunk.New(cfg, splunk.WithOutputMetrics(rec))
 	require.NoError(t, err)
 	defer func() { _ = out.Close() }()
 
@@ -154,7 +154,7 @@ func TestWithMaxIdleConns(t *testing.T) {
 	srv, _ := newStub(t)
 
 	t.Run("explicit_value", func(t *testing.T) {
-		out, err := splunk.New(validCfg(srv.URL), nil, splunk.WithMaxIdleConns(50))
+		out, err := splunk.New(validCfg(srv.URL), splunk.WithMaxIdleConns(50))
 		require.NoError(t, err)
 		require.NoError(t, out.Close())
 	})
@@ -164,7 +164,7 @@ func TestWithMaxIdleConns(t *testing.T) {
 		// (the underlying http.Transport.MaxIdleConns defaults to 100
 		// when zero is passed in; the splunk option resolver applies
 		// its own default).
-		out, err := splunk.New(validCfg(srv.URL), nil, splunk.WithMaxIdleConns(0))
+		out, err := splunk.New(validCfg(srv.URL), splunk.WithMaxIdleConns(0))
 		require.NoError(t, err)
 		require.NoError(t, out.Close())
 	})

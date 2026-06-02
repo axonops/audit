@@ -210,7 +210,8 @@ func TestSplunkIntegration_SensitivityLabels_PIIExcluded(t *testing.T) {
 
 	rawAny, ok := hits[0]["_raw"]
 	require.True(t, ok, "search hit must include _raw")
-	rawStr, _ := rawAny.(string)
+	rawStr, isStr := rawAny.(string)
+	require.True(t, isStr, "_raw must be a string, got %T", rawAny)
 
 	// Substring assertions on _raw — catch literal-value and key-name
 	// leaks in the indexed payload.
@@ -292,7 +293,8 @@ func TestSplunkIntegration_HMACOverStrippedPayload(t *testing.T) {
 	hits := waitForEvent(t, fmt.Sprintf(
 		`index=main sourcetype="audit:event" %q`, m), 1)
 	require.GreaterOrEqual(t, len(hits), 1)
-	rawStr, _ := hits[0]["_raw"].(string)
+	rawStr, isStr := hits[0]["_raw"].(string)
+	require.True(t, isStr, "_raw must be a string, got %T", hits[0]["_raw"])
 	rawBytes := []byte(rawStr)
 
 	// First: the wire bytes must not contain the PII (sanity-check

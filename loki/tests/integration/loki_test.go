@@ -99,7 +99,7 @@ func newLokiOutputWithFC(t *testing.T, fctx audit.FrameworkContext, opts ...func
 	for _, opt := range opts {
 		opt(cfg)
 	}
-	out, err := loki.New(cfg, nil, loki.WithFrameworkContext(fctx))
+	out, err := loki.New(cfg, loki.WithFrameworkContext(fctx))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = out.Close() })
 	return out

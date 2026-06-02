@@ -79,7 +79,7 @@ func validConfigWithURL(url string) *loki.Config {
 func TestNew_ValidConfig(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.NoError(t, out.Close())
@@ -89,7 +89,7 @@ func TestNew_InvalidConfig(t *testing.T) {
 	t.Parallel()
 
 	cfg := &loki.Config{} // empty URL
-	_, err := loki.New(cfg, nil)
+	_, err := loki.New(cfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, audit.ErrConfigInvalid)
 }
@@ -99,7 +99,7 @@ func TestNew_ConfigCopied(t *testing.T) {
 
 	cfg := validConfig()
 	originalURL := cfg.URL
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	// Mutating the original config must not affect the output.
@@ -117,7 +117,7 @@ func TestNew_ConfigCopied(t *testing.T) {
 func TestOutput_Name(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 	assert.Equal(t, "loki:localhost:3100", out.Name())
 	require.NoError(t, out.Close())
@@ -128,7 +128,7 @@ func TestOutput_DestinationKey(t *testing.T) {
 
 	cfg := validConfig()
 	cfg.URL = "http://loki.example.com:3100/loki/api/v1/push?token=secret#frag"
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "http://loki.example.com:3100/loki/api/v1/push",
 		out.DestinationKey(),
@@ -143,7 +143,7 @@ func TestOutput_DestinationKey(t *testing.T) {
 func TestOutput_ReportsDelivery(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 	assert.True(t, out.ReportsDelivery(),
 		"Loki output must report its own delivery metrics")
@@ -157,7 +157,7 @@ func TestOutput_ReportsDelivery(t *testing.T) {
 func TestOutput_ImplementsInterfaces(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, out.Close()) }()
 
@@ -179,7 +179,7 @@ func TestOutput_ImplementsInterfaces(t *testing.T) {
 func TestOutput_FrameworkContextOption(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil, loki.WithFrameworkContext(audit.FrameworkContext{
+	out, err := loki.New(validConfig(), loki.WithFrameworkContext(audit.FrameworkContext{
 		AppName:  "myapp",
 		Host:     "prod-01",
 		Timezone: "UTC",
@@ -196,7 +196,7 @@ func TestOutput_FrameworkContextOption(t *testing.T) {
 func TestOutput_Write(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 
 	err = out.Write([]byte(`{"event":"test"}`))
@@ -207,7 +207,7 @@ func TestOutput_Write(t *testing.T) {
 func TestOutput_WriteWithMetadata(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 
 	meta := audit.EventMetadata{
@@ -224,7 +224,7 @@ func TestOutput_WriteWithMetadata(t *testing.T) {
 func TestOutput_WriteAfterClose(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 	require.NoError(t, out.Close())
 
@@ -244,7 +244,7 @@ func TestOutput_ConcurrentWriteAndClose(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.BufferSize = 10000
 
-	out, err := loki.New(cfg, nil)
+	out, err := loki.New(cfg)
 	require.NoError(t, err)
 
 	// Launch 50 goroutines writing concurrently.
@@ -277,7 +277,7 @@ func TestOutput_ConcurrentWriteAndClose(t *testing.T) {
 func TestOutput_CloseIdempotent(t *testing.T) {
 	t.Parallel()
 
-	out, err := loki.New(validConfig(), nil)
+	out, err := loki.New(validConfig())
 	require.NoError(t, err)
 
 	require.NoError(t, out.Close(), "first Close")
@@ -299,7 +299,7 @@ func TestOutput_BufferFull_DropsEvent(t *testing.T) {
 	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
 	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	// Write from multiple goroutines to overwhelm the buffer faster
@@ -339,7 +339,7 @@ func TestOutput_BufferFull_DoesNotRecordCoreEventError(t *testing.T) {
 	cfg.BatchSize = loki.MaxBatchSize    // prevent size-based flush
 	cfg.FlushInterval = 10 * time.Second // prevent timer-based flush
 
-	out, err := loki.New(cfg, coreMetrics, loki.WithOutputMetrics(outMetrics))
+	out, err := loki.New(cfg, loki.WithCoreMetrics(coreMetrics), loki.WithOutputMetrics(outMetrics))
 	require.NoError(t, err)
 
 	data := []byte(`{"event":"fill"}`)
@@ -376,7 +376,7 @@ func TestOutput_FlushOnClose(t *testing.T) {
 	cfg := validConfigWithURL(srv.URL)
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	// Write a few events, then close.
@@ -399,7 +399,7 @@ func TestOutput_FlushOnBatchSize(t *testing.T) {
 	cfg.BatchSize = 5
 	cfg.FlushInterval = 10 * time.Second // prevent timer flush
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	// Write exactly BatchSize events to trigger a flush.
@@ -422,7 +422,7 @@ func TestOutput_FlushOnTimer(t *testing.T) {
 	cfg.BatchSize = 10000                      // large, prevent size-based flush
 	cfg.FlushInterval = 200 * time.Millisecond // short timer
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	require.NoError(t, out.Write([]byte(`{"event":"timer_test"}`)))
@@ -443,7 +443,7 @@ func TestOutput_FlushOnMaxBatchBytes(t *testing.T) {
 	cfg.MaxBatchBytes = loki.MinMaxBatchBytes // smallest allowed byte threshold (1024)
 	cfg.FlushInterval = 10 * time.Second      // prevent timer flush
 
-	out, err := loki.New(cfg, nil, loki.WithOutputMetrics(metrics))
+	out, err := loki.New(cfg, loki.WithOutputMetrics(metrics))
 	require.NoError(t, err)
 
 	// Each event is ~22 bytes; 1024 / 22 ≈ 46 events to trigger.

@@ -130,6 +130,10 @@ func intPtrOrDefault(p *int, def int) int {
 	return *p
 }
 
+// buildOutput wires the per-output [audit.FrameworkContext] values
+// into the [Option] surface and calls [New]. Shared between
+// [defaultFactory] and [NewFactory] so both YAML code paths apply the
+// same option-resolution rules.
 func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om audit.OutputMetrics, logger *slog.Logger) (audit.Output, error) {
 	if len(rawConfig) == 0 {
 		return nil, fmt.Errorf("audit/webhook: output %q: config is required", name)
@@ -174,8 +178,11 @@ func buildOutput(name string, rawConfig []byte, coreMetrics audit.Metrics, om au
 	if om != nil {
 		opts = append(opts, WithOutputMetrics(om))
 	}
+	if coreMetrics != nil {
+		opts = append(opts, WithCoreMetrics(coreMetrics))
+	}
 
-	out, err := New(cfg, coreMetrics, opts...)
+	out, err := New(cfg, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("audit/webhook: output %q: %w", name, err)
 	}

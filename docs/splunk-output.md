@@ -79,7 +79,7 @@ out, err := splunk.New(&splunk.Config{
     URL:        "https://splunk.example.com:8088",
     Token:      os.Getenv("SPLUNK_HEC_TOKEN"),
     Sourcetype: "axonops:audit",
-}, nil)
+})
 if err != nil { /* handle */ }
 defer out.Close()
 

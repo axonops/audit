@@ -8,6 +8,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **Constructor signature unification across `webhook`, `loki`, and
+  `splunk` output modules.** All three modules previously took a
+  positional `metrics audit.Metrics` argument that was almost always
+  passed as `nil`. They now match `file` and `syslog` —
+  `New(cfg *Config, opts ...Option) (*Output, error)` — and accept
+  the auditor-wide metrics value via a new
+  [`WithCoreMetrics(audit.Metrics)`](https://pkg.go.dev/github.com/axonops/audit/webhook#WithCoreMetrics)
+  Option. Migration:
+
+  ```go
+  // Before (v0.1.x)
+  out, err := webhook.New(cfg, metrics, webhook.WithDiagnosticLogger(log))
+  out, err := loki.New(cfg, nil)
+  out, err := splunk.New(cfg, nil, splunk.WithFrameworkContext(fctx))
+
+  // After (v0.2.0)
+  out, err := webhook.New(cfg, webhook.WithCoreMetrics(metrics), webhook.WithDiagnosticLogger(log))
+  out, err := loki.New(cfg)
+  out, err := splunk.New(cfg, splunk.WithFrameworkContext(fctx))
+  ```
+
+  The name is `WithCoreMetrics` (not `WithMetrics`) to avoid
+  collision with the existing `audit.WithMetrics` core-package
+  option and to disambiguate from the per-module
+  `WithOutputMetrics(audit.OutputMetrics)` (narrower per-output
+  counters). YAML-driven consumers (`outputconfig.New`) need no
+  change — the factory now routes `fctx.CoreMetrics` through the
+  option internally. Surfaced by api-ergonomics-reviewer in the
+  v0.2.0 release gate as the v1.0 BLOCKER 1.
+
+### Known Issues
+
+- **`DeliveryReporter` contract gap on `file` and `syslog` outputs.**
+  Both `file.Output` and `syslog.Output` declare
+  `ReportsDelivery() bool { return true }` but their write paths do
+  NOT call `audit.Metrics.RecordDelivery`. By contrast, `webhook`,
+  `loki`, and `splunk` do call it from their background goroutines.
+  As a result, an auditor wired with only `file` or `syslog` outputs
+  reports zero events on the auditor-wide
+  [`audit.Metrics.RecordDelivery`](https://pkg.go.dev/github.com/axonops/audit#Metrics)
+  sink — either an intentional contract gap (per-output
+  `OutputMetrics.RecordFlush` is the canonical signal for those
+  outputs) or a real bug. Discovered by api-ergonomics-reviewer
+  during the v0.2.0 release gate; deferred to v0.3.0 for a scoped
+  investigation that picks one of: (a) document the contract gap
+  explicitly in `audit.DeliveryReporter` godoc, (b) wire RecordDelivery
+  through `file`/`syslog` to match `webhook`/`loki`/`splunk`, or
+  (c) consolidate every output onto `OutputMetrics` and drop the
+  auditor-wide `audit.Metrics.RecordDelivery` API. Consumers depending
+  on auditor-wide RecordDelivery counters should pair their
+  `audit.Metrics` adapter with per-output `OutputMetrics.RecordFlush`
+  in the meantime.
+
 - [`audit.EventRoute.IncludeCategories`](https://pkg.go.dev/github.com/axonops/audit#EventRoute)
   changes from `map[string]*SeverityRange` to
   `map[string]SeverityRange` (value type, not pointer). The
@@ -120,12 +173,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Splunk output now satisfies
+  [`audit.LastDeliveryReporter`](https://pkg.go.dev/github.com/axonops/audit#LastDeliveryReporter)
+  so `Auditor.LastDeliveryAge("splunk:<host>")` reports the
+  staleness signal /healthz handlers expect. Previously
+  splunk exposed `LastDeliveryAge() time.Duration` directly,
+  which did NOT match the core interface (`LastDeliveryNanos() int64`),
+  causing the auditor to treat splunk as a never-delivered output
+  and return 0 indefinitely. Splunk has never been tagged, so this
+  is the first release shipping the corrected interface alignment.
 - Webhook output: when a `CEFFormatter` was configured, the
   request `Content-Type` header still claimed
   `application/x-ndjson`, lying to the receiver. The header now
   reflects the formatter's declared type (`text/plain` for CEF).
   Operators who need a different MIME type can still override via
   the output's `headers` configuration. (#463)
+- `audit/outputs` convenience aggregator now blank-imports
+  `audit/splunk` alongside file/syslog/webhook/loki, so a single
+  `import _ "github.com/axonops/audit/outputs"` registers all six
+  output factories. Splunk consumers no longer need a second
+  blank-import line. (#891 follow-up)
+- `.gitignore` example-binary patterns rewritten as renumber-resilient
+  globs (`examples/*/[0-9][0-9]-*`) instead of the previous
+  per-directory list, which had drifted out of sync after the
+  PR #891 renumber (09-splunk-output insertion, 09–20 → 10–21).
+  Twelve megabytes of stale ELF binaries removed from the source tree.
+- Dependabot now monitors all 14 modules including iouring, splunk,
+  outputs, secrets, and the four secret-provider sub-modules.
+  Previous configuration omitted nine modules. The capstone example
+  directory path is corrected to `/examples/21-capstone` (was
+  `/examples/20-capstone` before the PR #891 renumber).
 - Makefile `test-examples` target was a hard-coded list of 20
   example directories that drifted out of sync with `examples/`
   every time a new example was added (the issue body for #438

@@ -43,7 +43,7 @@ func BenchmarkWriteWithMetadata(b *testing.B) {
 
 	cfg := validConfigWithURL(srv.URL)
 	cfg.BufferSize = 100000 // large buffer to avoid drops during bench
-	out, err := loki.New(cfg, nil, loki.WithDiagnosticLogger(silentLokiBenchLogger()))
+	out, err := loki.New(cfg, loki.WithDiagnosticLogger(silentLokiBenchLogger()))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func BenchmarkLokiOutput_MetadataWriter(b *testing.B) {
 	cfg.BufferSize = 100000
 	cfg.BatchSize = 1000
 	cfg.FlushInterval = 60 * time.Second // don't flush by timer during bench
-	out, err := loki.New(cfg, nil,
+	out, err := loki.New(cfg,
 		loki.WithDiagnosticLogger(silentLokiBenchLogger()),
 		loki.WithFrameworkContext(audit.FrameworkContext{
 			AppName:  "bench-app",

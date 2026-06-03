@@ -159,8 +159,21 @@ declare -a deletions
 # Read NUL-delimited records into an array. Each record is the
 # raw porcelain entry: "XY path\0" — where X is index status and
 # Y is working-tree status.
-porcelain_raw=$(git status -z --porcelain --untracked-files=no)
-if [[ -z "$porcelain_raw" ]]; then
+#
+# Capture via process substitution + mapfile (NOT $(git status -z)).
+# Bash's command substitution strips NUL bytes, so $(...) collapses
+# the -z-separated stream into one concatenated string with no
+# separators — silently turning N records into 1 garbled record.
+# v0.2.1 release run 26889155834 tripped exactly this: 35 go.mod
+# files in the porcelain produced a single "ignored null byte in
+# input" warning and an empty fileChanges GraphQL commit. mapfile
+# -d '' preserves the NUL framing end-to-end.
+declare -a records=()
+if ! mapfile -d '' -t records < <(git status -z --porcelain --untracked-files=no); then
+    echo "gh-graphql-commit: git status -z failed" >&2
+    exit 65
+fi
+if [[ ${#records[@]} -eq 0 ]]; then
     echo "gh-graphql-commit: no changes to commit" >&2
     exit 65
 fi
@@ -177,11 +190,11 @@ allowlist_match() {
     return 1
 }
 
-# Parse the NUL-delimited stream. Each record is "XY pathNUL"
-# except renames/copies which use the form "XY new\0old\0" — but
+# Parse each NUL-delimited record. Each record is "XY path"
+# except renames/copies which use the form "XY new\0old" — but
 # we reject renames anyway. We accept any combination of M, A, D
 # on the staged (X) or working-tree (Y) column.
-while IFS= read -r -d '' line; do
+for line in "${records[@]}"; do
     status="${line:0:2}"
     path="${line:3}"
 
@@ -213,7 +226,7 @@ while IFS= read -r -d '' line; do
         echo "gh-graphql-commit: unrecognised porcelain status '$status' for path: $path" >&2
         exit 65
     fi
-done < <(printf '%s' "$porcelain_raw")
+done
 
 # ----------------------------------------------------------------
 # Resolve expected head OID

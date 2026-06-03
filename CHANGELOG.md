@@ -120,6 +120,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release workflow `gh-graphql-commit.sh` now correctly parses
+  multi-file `git status -z` output.** The script captured the
+  NUL-delimited porcelain via `$(git status -z ...)`, but bash's
+  command-substitution silently strips NUL bytes — collapsing N
+  records into one garbled string and producing an empty
+  `fileChanges` GraphQL commit. v0.2.1 release run 26889155834
+  tripped this with 35 modified `go.mod` files: bash emitted
+  "command substitution: ignored null byte in input" and the
+  release-PR commit failed with exit 5. The fix switches to
+  `mapfile -d '' -t records < <(git status -z ...)` which preserves
+  NUL framing end-to-end. (#906)
 - **`outputconfig.Load` sanitises control bytes (NUL / C0 / C1 / DEL)
   out of factory error messages** before they enter the
   `outputconfig` error chain. goccy/go-yaml embeds offending source

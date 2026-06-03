@@ -120,6 +120,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Release workflow `tag-all` no longer mis-fires when CI
+  cascade-skips `wait-for-pr-merge`.** The gate now uses
+  `github.event_name` to disambiguate the workflow_dispatch happy
+  path from the push:tag recovery path, instead of relying on the
+  ambiguous `wait-for-pr-merge.result == 'skipped'` signal. The
+  v0.2.0 release attempt failed with this bug class (run
+  26802604151): `cmd/audit-gen` CI cancelled → CI Pass failed →
+  `update-deps-pr`/`wait-for-pr-merge` cascade-skipped → `tag-all`
+  ran with no SHA and emitted "No merge SHA available". The
+  `cmd/audit-gen` flake itself is fixed independently (#894 Item 6);
+  this fix prevents the same class of upstream cascade-skip from
+  ever again surfacing as a misleading `tag-all` failure. (#900)
 - **The v0.2.0 Known Issue "`DeliveryReporter` contract gap on
   `file` and `syslog` outputs" is resolved.** Both outputs declared
   `ReportsDelivery() bool { return true }` but never called

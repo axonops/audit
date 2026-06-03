@@ -47,7 +47,7 @@ repo root (gitignored). Its content is just a list of modules the
 workspace covers:
 
 ```
-go 1.26.3
+go 1.26.4
 
 use (
     .
@@ -95,12 +95,12 @@ use (
 
 ### Prerequisites
 
-- **Go toolchain.** The module files declare `go 1.26.3`. Any Go
+- **Go toolchain.** The module files declare `go 1.26.4`. Any Go
   toolchain that supports `GOTOOLCHAIN` auto-download (Go 1.21 or
-  newer) will fetch 1.26.3 automatically unless `GOTOOLCHAIN=local`
+  newer) will fetch 1.26.4 automatically unless `GOTOOLCHAIN=local`
   is set in your environment. If you need a deterministic local
-  toolchain, install go1.26.3 explicitly:
-  `go install golang.org/dl/go1.26.3@latest && go1.26.3 download`.
+  toolchain, install go1.26.4 explicitly:
+  `go install golang.org/dl/go1.26.4@latest && go1.26.4 download`.
 - **GNU `make`** on PATH. Windows: use WSL or install
   `make` via Chocolatey/Scoop.
 - **`$(go env GOPATH)/bin` on `PATH`** if you want to invoke
@@ -377,9 +377,9 @@ make workspace
 
 ### `go.mod file indicates go 1.x but the current version is 1.26`
 
-**Cause:** Your local Go toolchain is older than `go 1.26.3`.
+**Cause:** Your local Go toolchain is older than `go 1.26.4`.
 
-**Fix:** Either upgrade Go (`go install golang.org/dl/go1.26.3@latest && go1.26.3 download`) or rely on the `GOTOOLCHAIN` auto-download. If you have `GOTOOLCHAIN=local` set in your env, unset it.
+**Fix:** Either upgrade Go (`go install golang.org/dl/go1.26.4@latest && go1.26.4 download`) or rely on the `GOTOOLCHAIN` auto-download. If you have `GOTOOLCHAIN=local` set in your env, unset it.
 
 ### `make test` fails with `unknown revision <version>` on a sub-module path
 

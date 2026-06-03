@@ -1,6 +1,6 @@
 module github.com/axonops/audit/examples/08-loki-output
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/axonops/audit v0.1.13

@@ -310,13 +310,66 @@ func invokeFactory(name string, f *outputFields, globalAppName, globalHost, glob
 	}
 	output, err := factory(name, rawConfig, fctx)
 	if err != nil {
-		return nil, fmt.Errorf("output %q: %w", name, err)
+		// Sanitize control bytes (NUL / C0 / C1 / DEL) from the
+		// factory's error message before wrapping. goccy/go-yaml
+		// embeds the offending source bytes verbatim in its parse
+		// errors — caught by FuzzOutputConfigLoad on a NUL-containing
+		// inner field name like "\x00:" under `outputs.A.file:`.
+		// Leaking raw NULs into the error chain breaks log
+		// aggregators and is the same class of log-injection defence
+		// the type-name check at lines 269-277 enforces. The wrapper
+		// preserves errors.Is/As via Unwrap so sentinels in the
+		// factory error chain still resolve.
+		return nil, fmt.Errorf("output %q: %w", name, sanitizeErrorText(err))
 	}
 	if output == nil {
 		return nil, fmt.Errorf("output %q: factory for type %q returned nil output without an error — this is a factory bug",
 			name, f.typeName)
 	}
 	return output, nil
+}
+
+// sanitizedError wraps an error so its Error() string is the
+// control-byte-escaped form of the inner error's message, while
+// Unwrap returns the inner error so errors.Is / errors.As continue
+// to traverse the sentinel chain.
+type sanitizedError struct {
+	inner error
+	msg   string
+}
+
+func (e *sanitizedError) Error() string { return e.msg }
+func (e *sanitizedError) Unwrap() error { return e.inner }
+
+// sanitizeErrorText returns err untouched when its Error() contains
+// no control bytes, otherwise returns a wrapper whose Error() replaces
+// each control byte (0x00–0x1F or 0x7F) with its Go-escaped
+// representation. Used at the outputconfig→factory boundary to
+// guarantee no factory's YAML / TOML / JSON parser error can flow
+// raw control bytes from operator-supplied input into the
+// outputconfig error chain (#902 follow-up; FuzzOutputConfigLoad).
+func sanitizeErrorText(err error) error {
+	if err == nil {
+		return nil
+	}
+	s := err.Error()
+	if !strings.ContainsFunc(s, isControlRune) {
+		return err
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if isControlRune(r) {
+			fmt.Fprintf(&b, `\x%02x`, r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return &sanitizedError{inner: err, msg: b.String()}
+}
+
+func isControlRune(r rune) bool {
+	return r < 0x20 || r == 0x7F
 }
 
 // isValidImportPathSegment reports whether s is plausibly a Go

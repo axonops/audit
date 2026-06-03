@@ -267,6 +267,10 @@ if [[ -z "$EXPECTED_HEAD_OID" ]]; then
             >/dev/null
         EXPECTED_HEAD_OID="$DEFAULT_OID"
         echo "gh-graphql-commit: created branch $BRANCH from $DEFAULT_BRANCH ($DEFAULT_OID)"
+        # Debug for #912: trace post-branch-create commit submission.
+        echo "DEBUG: EXPECTED_HEAD_OID=$EXPECTED_HEAD_OID len=${#EXPECTED_HEAD_OID}"
+        echo "DEBUG: additions count=${#additions[@]} deletions count=${#deletions[@]}"
+        set -x
     else
         echo "gh-graphql-commit: branch $BRANCH does not exist; pass --auto-create-branch to create it" >&2
         exit 66
@@ -343,7 +347,12 @@ submit_mutation() {
         --raw-field variables="$variables"
 }
 
-response="$(submit_mutation "$(build_payload "$EXPECTED_HEAD_OID")" 2>&1 || true)"
+echo "DEBUG: about to call submit_mutation" >&2
+_payload="$(build_payload "$EXPECTED_HEAD_OID")"
+echo "DEBUG: payload built (length: ${#_payload})" >&2
+response="$(submit_mutation "$_payload" 2>&1 || true)"
+echo "DEBUG: submit_mutation done (response length: ${#response})" >&2
+echo "DEBUG: response head: ${response:0:1000}" >&2
 
 # STALE_DATA retry: the head OID we passed is no longer current
 # (someone or some prior workflow run pushed to the branch). Refetch
